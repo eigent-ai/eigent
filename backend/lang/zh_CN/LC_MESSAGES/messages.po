@@ -33,4 +33,3 @@ msgstr ""
 #: app/service/task.py:275
 msgid "Task already exists"
 msgstr ""
-

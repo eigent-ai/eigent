@@ -28,20 +28,22 @@ def test_browser_agent_creation(sample_chat_data):
 
     # Setup task lock in the registry before calling agent function
     from app.service.task import task_locks
+
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    _mod = 'app.agent.factory.browser'
-    with patch(f'{_mod}.agent_model') as mock_agent_model, \
-         patch('asyncio.create_task'), \
-         patch(f'{_mod}.HumanToolkit') as mock_human_toolkit, \
-         patch(f'{_mod}.HybridBrowserToolkit') as mock_browser_toolkit, \
-         patch(f'{_mod}.TerminalToolkit') as mock_terminal_toolkit, \
-         patch(f'{_mod}.NoteTakingToolkit') as mock_note_toolkit, \
-         patch(f'{_mod}.SearchToolkit') as mock_search_toolkit, \
-         patch(f'{_mod}.ToolkitMessageIntegration'), \
-         patch('uuid.uuid4') as mock_uuid:
-
+    _mod = "app.agent.factory.browser"
+    with (
+        patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch("asyncio.create_task"),
+        patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
+        patch(f"{_mod}.HybridBrowserToolkit") as mock_browser_toolkit,
+        patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
+        patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
+        patch(f"{_mod}.SearchToolkit") as mock_search_toolkit,
+        patch(f"{_mod}.ToolkitMessageIntegration"),
+        patch("uuid.uuid4") as mock_uuid,
+    ):
         # Mock all toolkit instances
         mock_human_toolkit.get_can_use_tools.return_value = []
         mock_browser_toolkit.return_value.get_tools.return_value = []
@@ -72,8 +74,9 @@ def test_browser_agent_creation(sample_chat_data):
         )  # agent_name (enum contains this value)
         # The system_prompt is a BaseMessage, so check its content attribute
         system_message = call_args[0][1]
-        if hasattr(system_message, 'content'):
+        if hasattr(system_message, "content"):
             assert "search" in system_message.content.lower()
         else:
-            assert "search" in str(system_message).lower(
+            assert (
+                "search" in str(system_message).lower()
             )  # system_prompt contains search

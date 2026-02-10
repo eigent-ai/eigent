@@ -27,14 +27,15 @@ async def test_mcp_agent_creation(sample_chat_data):
     """Test mcp_agent creates agent with MCP tools."""
     options = Chat(**sample_chat_data)
 
-    _mod = 'app.agent.factory.mcp'
-    with patch(f'{_mod}.ListenChatAgent') as mock_listen_agent, \
-         patch(f'{_mod}.ModelFactory.create') as mock_model_factory, \
-         patch('asyncio.create_task'), \
-         patch(f'{_mod}.McpSearchToolkit') as mock_mcp_search_toolkit, \
-         patch(f'{_mod}.get_mcp_tools') as mock_get_mcp_tools, \
-         patch(f'{_mod}.get_task_lock'):
-
+    _mod = "app.agent.factory.mcp"
+    with (
+        patch(f"{_mod}.ListenChatAgent") as mock_listen_agent,
+        patch(f"{_mod}.ModelFactory.create") as mock_model_factory,
+        patch("asyncio.create_task"),
+        patch(f"{_mod}.McpSearchToolkit") as mock_mcp_search_toolkit,
+        patch(f"{_mod}.get_mcp_tools") as mock_get_mcp_tools,
+        patch(f"{_mod}.get_task_lock"),
+    ):
         # Mock toolkit instances
         mock_mcp_search_toolkit.return_value.get_tools.return_value = []
         mock_get_mcp_tools.return_value = []

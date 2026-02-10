@@ -189,6 +189,7 @@ describe('ChatBox Component', async () => {
     setIsTaskEdit: vi.fn(),
     addTaskInfo: vi.fn(),
     updateTaskInfo: vi.fn(),
+    saveTaskInfo: vi.fn(),
     deleteTaskInfo: vi.fn(),
     getFormattedTaskTime: vi.fn(() => '00:00:00'),
     setAttaches: vi.fn(),

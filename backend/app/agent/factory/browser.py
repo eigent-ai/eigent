@@ -21,18 +21,18 @@ from camel.toolkits import ToolkitMessageIntegration
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
 from app.component.environment import env
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.human_toolkit import HumanToolkit
-from app.utils.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
-
-# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.search_toolkit import SearchToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 
 
 def browser_agent(options: Chat):
@@ -42,8 +42,9 @@ def browser_agent(options: Chat):
         f"in directory: {working_directory}"
     )
     message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(options.project_id, Agents.browser_agent
-                                     ).send_message_to_user
+        message_handler=HumanToolkit(
+            options.project_id, Agents.browser_agent
+        ).send_message_to_user
     )
 
     web_toolkit_custom = HybridBrowserToolkit(
@@ -92,7 +93,7 @@ def browser_agent(options: Chat):
     note_toolkit = NoteTakingToolkit(
         options.project_id,
         Agents.browser_agent,
-        working_directory=working_directory
+        working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
@@ -103,8 +104,9 @@ def browser_agent(options: Chat):
         search_tools = []
 
     tools = [
-        *HumanToolkit.
-        get_can_use_tools(options.project_id, Agents.browser_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.browser_agent
+        ),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),

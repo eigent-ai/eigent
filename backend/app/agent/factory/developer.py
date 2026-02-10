@@ -20,17 +20,17 @@ from camel.toolkits import ToolkitMessageIntegration
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DEVELOPER_SYS_PROMPT
+from app.agent.toolkit.human_toolkit import HumanToolkit
+
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.human_toolkit import HumanToolkit
-
-# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.web_deploy_toolkit import WebDeployToolkit
 
 
 async def developer_agent(options: Chat):
@@ -71,8 +71,9 @@ async def developer_agent(options: Chat):
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     tools = [
-        *HumanToolkit.
-        get_can_use_tools(options.project_id, Agents.developer_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.developer_agent
+        ),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),

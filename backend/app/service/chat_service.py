@@ -39,6 +39,9 @@ from app.agent.factory import (
     task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
@@ -57,18 +60,13 @@ from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
-from app.utils.toolkit.human_toolkit import HumanToolkit
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
 
 
 def format_task_context(
-    task_data: dict,
-    seen_files: set | None = None,
-    skip_files: bool = False
+    task_data: dict, seen_files: set | None = None, skip_files: bool = False
 ) -> str:
     """Format structured task data into a readable context string.
 
@@ -82,31 +80,33 @@ def format_task_context(
     """
     context_parts = []
 
-    if task_data.get('task_content'):
+    if task_data.get("task_content"):
         context_parts.append(f"Previous Task: {task_data['task_content']}")
 
-    if task_data.get('task_result'):
+    if task_data.get("task_result"):
         context_parts.append(
             f"Previous Task Result: {task_data['task_result']}"
         )
 
     # Skip file listing if requested
     if not skip_files:
-        working_directory = task_data.get('working_directory')
-        skip_ext = ('.pyc', '.tmp')
+        working_directory = task_data.get("working_directory")
+        skip_ext = (".pyc", ".tmp")
         if working_directory:
             try:
                 if os.path.exists(working_directory):
                     generated_files = []
                     for root, dirs, files in os.walk(working_directory):
                         dirs[:] = [
-                            d for d in dirs if not d.startswith('.') and d
-                            not in ['node_modules', '__pycache__', 'venv']
+                            d
+                            for d in dirs
+                            if not d.startswith(".")
+                            and d
+                            not in ["node_modules", "__pycache__", "venv"]
                         ]
                         for file in files:
-                            if (
-                                not file.startswith('.')
-                                and not file.endswith(skip_ext)
+                            if not file.startswith(".") and not file.endswith(
+                                skip_ext
                             ):
                                 file_path = os.path.join(root, file)
                                 absolute_path = os.path.abspath(file_path)
@@ -136,7 +136,7 @@ def collect_previous_task_context(
     working_directory: str,
     previous_task_content: str,
     previous_task_result: str,
-    previous_summary: str = ""
+    previous_summary: str = "",
 ) -> str:
     """
     Collect context from previous task including content, result,
@@ -177,14 +177,15 @@ def collect_previous_task_context(
             generated_files = []
             for root, dirs, files in os.walk(working_directory):
                 dirs[:] = [
-                    d for d in dirs if not d.startswith('.')
-                    and d not in ['node_modules', '__pycache__', 'venv']
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d not in ["node_modules", "__pycache__", "venv"]
                 ]
-                skip_ext = ('.pyc', '.tmp')
+                skip_ext = (".pyc", ".tmp")
                 for file in files:
-                    if (
-                        not file.startswith('.')
-                        and not file.endswith(skip_ext)
+                    if not file.startswith(".") and not file.endswith(
+                        skip_ext
                     ):
                         file_path = os.path.join(root, file)
                         absolute_path = os.path.abspath(file_path)
@@ -212,14 +213,15 @@ def check_conversation_history_length(
     Returns:
         tuple: (is_exceeded, total_length)
     """
-    if not hasattr(
-        task_lock, 'conversation_history'
-    ) or not task_lock.conversation_history:
+    if (
+        not hasattr(task_lock, "conversation_history")
+        or not task_lock.conversation_history
+    ):
         return False, 0
 
     total_length = 0
     for entry in task_lock.conversation_history:
-        total_length += len(entry.get('content', ''))
+        total_length += len(entry.get("content", ""))
 
     is_exceeded = total_length > max_length
 
@@ -253,19 +255,19 @@ def build_conversation_context(
         context = f"{header}\n"
 
         for entry in task_lock.conversation_history:
-            if entry['role'] == 'task_result':
-                if isinstance(entry['content'], dict):
+            if entry["role"] == "task_result":
+                if isinstance(entry["content"], dict):
                     formatted_context = format_task_context(
-                        entry['content'], skip_files=True
+                        entry["content"], skip_files=True
                     )
                     context += formatted_context + "\n\n"
-                    if entry['content'].get('working_directory'):
+                    if entry["content"].get("working_directory"):
                         working_directories.add(
-                            entry['content']['working_directory']
+                            entry["content"]["working_directory"]
                         )
                 else:
-                    context += entry['content'] + "\n"
-            elif entry['role'] == 'assistant':
+                    context += entry["content"] + "\n"
+            elif entry["role"] == "assistant":
                 context += f"Assistant: {entry['content']}\n\n"
 
         if working_directories:
@@ -275,14 +277,16 @@ def build_conversation_context(
                     if os.path.exists(working_directory):
                         for root, dirs, files in os.walk(working_directory):
                             dirs[:] = [
-                                d for d in dirs if not d.startswith('.') and d
-                                not in ['node_modules', '__pycache__', 'venv']
+                                d
+                                for d in dirs
+                                if not d.startswith(".")
+                                and d
+                                not in ["node_modules", "__pycache__", "venv"]
                             ]
                             for file in files:
-                                if not file.startswith('.'
-                                                       ) and not file.endswith(
-                                                           ('.pyc', '.tmp')
-                                                       ):
+                                if not file.startswith(
+                                    "."
+                                ) and not file.endswith((".pyc", ".tmp")):
                                     file_path = os.path.join(root, file)
                                     absolute_path = os.path.abspath(file_path)
                                     all_generated_files.add(absolute_path)
@@ -313,16 +317,32 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 @sync_step
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
+    """Main task execution loop. Called when POST /chat endpoint
+    is hit to start a new chat session.
+
+    Processes task queue, manages workforce lifecycle, and streams
+    responses back to the client via SSE.
+
+    Args:
+        options (Chat): Chat configuration containing task details and
+            model settings.
+        request (Request): FastAPI request object for client connection
+            management.
+        task_lock (TaskLock): Shared task state and queue for the project.
+
+    Yields:
+        SSE formatted responses for task progress, errors, and results
+    """
     start_event_loop = True
 
     # Initialize task_lock attributes
-    if not hasattr(task_lock, 'conversation_history'):
+    if not hasattr(task_lock, "conversation_history"):
         task_lock.conversation_history = []
-    if not hasattr(task_lock, 'last_task_result'):
+    if not hasattr(task_lock, "last_task_result"):
         task_lock.last_task_result = ""
-    if not hasattr(task_lock, 'question_agent'):
+    if not hasattr(task_lock, "question_agent"):
         task_lock.question_agent = None
-    if not hasattr(task_lock, 'summary_generated'):
+    if not hasattr(task_lock, "summary_generated"):
         task_lock.summary_generated = False
 
     # Create or reuse persistent question_agent
@@ -331,8 +351,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     else:
         hist_len = len(task_lock.conversation_history)
         logger.debug(
-            "Reusing existing question_agent "
-            f"with {hist_len} history entries"
+            f"Reusing existing question_agent with {hist_len} history entries"
         )
 
     question_agent = task_lock.question_agent
@@ -350,18 +369,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     logger.info("=" * 80)
     logger.info(
         "🚀 [LIFECYCLE] step_solve STARTED",
-        extra={
-            "project_id": options.project_id,
-            "task_id": options.task_id
-        }
+        extra={"project_id": options.project_id, "task_id": options.task_id},
     )
     logger.info("=" * 80)
     logger.debug(
         "Step solve options",
         extra={
             "task_id": options.task_id,
-            "model_platform": options.model_platform
-        }
+            "model_platform": options.model_platform,
+        },
     )
 
     while True:
@@ -370,8 +386,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             f"[LIFECYCLE] step_solve loop iteration #{loop_iteration}",
             extra={
                 "project_id": options.project_id,
-                "task_id": options.task_id
-            }
+                "task_id": options.task_id,
+            },
         )
 
         if await request.is_disconnected():
@@ -418,9 +434,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 extra={
                     "project_id": options.project_id,
                     "task_id": options.task_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             # Continue waiting instead of breaking on queue error
             continue
@@ -433,20 +449,22 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "received or start_event_loop",
                     extra={
                         "project_id": options.project_id,
-                        "start_event_loop": start_event_loop
-                    }
+                        "start_event_loop": start_event_loop,
+                    },
                 )
                 wf_state = (
-                    'None'
-                    if workforce is None else f'exists(id={id(workforce)})'
+                    "None"
+                    if workforce is None
+                    else f"exists(id={id(workforce)})"
                 )
                 logger.info(
                     "[NEW-QUESTION] Current workforce"
                     f" state: workforce={wf_state}"
                 )
                 ct_state = (
-                    'None'
-                    if camel_task is None else f'exists(id={camel_task.id})'
+                    "None"
+                    if camel_task is None
+                    else f"exists(id={camel_task.id})"
                 )
                 logger.info(
                     "[NEW-QUESTION] Current "
@@ -460,6 +478,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # tracer.start()
                 if start_event_loop is True:
                     question = options.question
+                    attaches_to_use = options.attaches
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
@@ -468,7 +487,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
-                    question = item.data
+                    question = item.data.question
+                    attaches_to_use = (
+                        item.data.attaches
+                        if item.data.attaches
+                        else options.attaches
+                    )
                     logger.info(
                         "[NEW-QUESTION] Follow-up "
                         "question from "
@@ -485,8 +509,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         extra={
                             "project_id": options.project_id,
                             "current_length": total_length,
-                            "max_length": 100000
-                        }
+                            "max_length": 100000,
+                        },
                     )
                     ctx_msg = (
                         "The conversation history "
@@ -494,18 +518,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         " a new project to continue."
                     )
                     yield sse_json(
-                        "context_too_long", {
+                        "context_too_long",
+                        {
                             "message": ctx_msg,
                             "current_length": total_length,
-                            "max_length": 100000
-                        }
+                            "max_length": 100000,
+                        },
                     )
                     continue
 
                 # Determine task complexity: attachments
                 # mean workforce, otherwise let agent decide
                 is_complex_task: bool
-                if len(options.attaches) > 0:
+                if len(attaches_to_use) > 0:
                     is_complex_task = True
                     logger.info(
                         "[NEW-QUESTION] Has attachments"
@@ -528,8 +553,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "without workforce"
                     )
                     conv_ctx = build_conversation_context(
-                        task_lock, header='=== Previous '
-                        'Conversation ==='
+                        task_lock, header="=== Previous Conversation ==="
                     )
                     simple_answer_prompt = (
                         f"{conv_ctx}"
@@ -541,8 +565,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     try:
                         simple_resp = question_agent.step(simple_answer_prompt)
-                        if (simple_resp and simple_resp.msgs):
-                            answer_content = (simple_resp.msgs[0].content)
+                        if simple_resp and simple_resp.msgs:
+                            answer_content = simple_resp.msgs[0].content
                         else:
                             answer_content = (
                                 "I understand your "
@@ -552,31 +576,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 "right now."
                             )
 
-                        task_lock.add_conversation('assistant', answer_content)
+                        task_lock.add_conversation("assistant", answer_content)
 
                         yield sse_json(
-                            "wait_confirm", {
-                                "content": answer_content,
-                                "question": question
-                            }
+                            "wait_confirm",
+                            {"content": answer_content, "question": question},
                         )
                     except Exception as e:
                         logger.error(f"Error generating simple answer: {e}")
                         yield sse_json(
-                            "wait_confirm", {
-                                "content":
-                                "I encountered an error"
+                            "wait_confirm",
+                            {
+                                "content": "I encountered an error"
                                 " while processing "
                                 "your question.",
-                                "question":
-                                question
-                            }
+                                "question": question,
+                            },
                         )
 
                     # Clean up empty folder if it was created for this task
-                    if hasattr(
-                        task_lock, 'new_folder_path'
-                    ) and task_lock.new_folder_path:
+                    if (
+                        hasattr(task_lock, "new_folder_path")
+                        and task_lock.new_folder_path
+                    ):
                         try:
                             folder_path = Path(task_lock.new_folder_path)
                             if folder_path.exists() and folder_path.is_dir():
@@ -618,7 +640,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "decomposing"
                     )
                     # Update the sync_step with new task_id
-                    if hasattr(item, 'new_task_id') and item.new_task_id:
+                    if hasattr(item, "new_task_id") and item.new_task_id:
                         set_current_task_id(
                             options.project_id, item.new_task_id
                         )
@@ -645,8 +667,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         (workforce, mcp) = await construct_workforce(options)
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
-                                format_agent_description(new_agent), await
-                                new_agent_model(new_agent, options)
+                                format_agent_description(new_agent),
+                                await new_agent_model(new_agent, options),
                             )
                     task_lock.status = Status.confirmed
 
@@ -655,28 +677,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     camel_task = Task(
                         content=clean_task_content, id=options.task_id
                     )
-                    if len(options.attaches) > 0:
+                    if len(attaches_to_use) > 0:
                         camel_task.additional_info = {
                             Path(file_path).name: file_path
-                            for file_path in options.attaches
+                            for file_path in attaches_to_use
                         }
 
                     # Stream decomposition in background
                     stream_state = {
                         "subtasks": [],
                         "seen_ids": set(),
-                        "last_content": ""
+                        "last_content": "",
                     }
                     state_holder: dict[str, Any] = {
                         "sub_tasks": [],
-                        "summary_task": ""
+                        "summary_task": "",
                     }
 
                     def on_stream_batch(
                         new_tasks: list[Task], is_final: bool = False
                     ):
                         fresh_tasks = [
-                            t for t in new_tasks
+                            t
+                            for t in new_tasks
                             if t.id not in stream_state["seen_ids"]
                         ]
                         for t in fresh_tasks:
@@ -685,16 +708,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     def on_stream_text(chunk):
                         try:
-                            accumulated_content = chunk.msg.content if hasattr(
-                                chunk, 'msg'
-                            ) and chunk.msg else str(chunk)
+                            accumulated_content = (
+                                chunk.msg.content
+                                if hasattr(chunk, "msg") and chunk.msg
+                                else str(chunk)
+                            )
                             last_content = stream_state["last_content"]
 
                             # Calculate delta: new content
                             # not in the previous chunk
                             if accumulated_content.startswith(last_content):
                                 delta_content = accumulated_content[
-                                    len(last_content):]
+                                    len(last_content) :
+                                ]
                             else:
                                 delta_content = accumulated_content
 
@@ -705,8 +731,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     task_lock.put_queue(
                                         ActionDecomposeTextData(
                                             data={
-                                                "project_id":
-                                                options.project_id,
+                                                "project_id": options.project_id,
                                                 "task_id": options.task_id,
                                                 "content": delta_content,
                                             }
@@ -738,9 +763,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 f"{len(sub_tasks)} subtasks"
                             )
                             try:
-                                setattr(
-                                    task_lock, "decompose_sub_tasks", sub_tasks
-                                )
+                                task_lock.decompose_sub_tasks = sub_tasks
                             except Exception:
                                 pass
 
@@ -751,29 +774,30 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     summary_task(
                                         summary_task_agent, camel_task
                                     ),
-                                    timeout=10
+                                    timeout=10,
                                 )
                                 task_lock.summary_generated = True
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.warning(
                                     "summary_task timeout",
                                     extra={
                                         "project_id": options.project_id,
-                                        "task_id": options.task_id
-                                    }
+                                        "task_id": options.task_id,
+                                    },
                                 )
                                 task_lock.summary_generated = True
                                 content_preview = (
                                     camel_task.content
-                                    if hasattr(camel_task, "content") else ""
+                                    if hasattr(camel_task, "content")
+                                    else ""
                                 )
                                 if content_preview is None:
                                     content_preview = ""
                                 if len(content_preview) > 80:
                                     cp = content_preview[:80]
-                                    summary_task_content = (cp + "...")
+                                    summary_task_content = cp + "..."
                                 else:
-                                    summary_task_content = (content_preview)
+                                    summary_task_content = content_preview
                                 summary_task_content = (
                                     f"Task|{summary_task_content}"
                                 )
@@ -781,23 +805,23 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 task_lock.summary_generated = True
                                 content_preview = (
                                     camel_task.content
-                                    if hasattr(camel_task, "content") else ""
+                                    if hasattr(camel_task, "content")
+                                    else ""
                                 )
                                 if content_preview is None:
                                     content_preview = ""
                                 if len(content_preview) > 80:
                                     cp = content_preview[:80]
-                                    summary_task_content = (cp + "...")
+                                    summary_task_content = cp + "..."
                                 else:
-                                    summary_task_content = (content_preview)
+                                    summary_task_content = content_preview
                                 summary_task_content = (
                                     f"Task|{summary_task_content}"
                                 )
 
                             state_holder["summary_task"] = summary_task_content
                             try:
-                                setattr(
-                                    task_lock, "summary_task_content",
+                                task_lock.summary_task_content = (
                                     summary_task_content
                                 )
                             except Exception:
@@ -806,8 +830,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             payload = {
                                 "project_id": options.project_id,
                                 "task_id": options.task_id,
-                                "sub_tasks":
-                                tree_sub_tasks(camel_task.subtasks),
+                                "sub_tasks": tree_sub_tasks(
+                                    camel_task.subtasks
+                                ),
                                 "delta_sub_tasks": tree_sub_tasks(sub_tasks),
                                 "is_final": True,
                                 "summary_task": summary_task_content,
@@ -818,7 +843,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         except Exception as e:
                             logger.error(
                                 f"Error in background decomposition: {e}",
-                                exc_info=True
+                                exc_info=True,
                             )
 
                     bg_task = asyncio.create_task(run_decomposition())
@@ -844,13 +869,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Save updated sub_tasks back to
                 # task_lock so Action.start uses
                 # the correct list
-                setattr(task_lock, "decompose_sub_tasks", sub_tasks)
+                task_lock.decompose_sub_tasks = sub_tasks
                 summary_task_content_local = getattr(
                     task_lock, "summary_task_content", summary_task_content
                 )
                 yield to_sub_tasks(camel_task, summary_task_content_local)
             elif item.action == Action.add_task:
-
                 # Check if this might be a misrouted second question
                 if camel_task is None and workforce is None:
                     logger.error(
@@ -860,12 +884,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"{options.project_id}"
                     )
                     yield sse_json(
-                        "error", {
-                            "message":
-                            "Cannot add task: task not "
+                        "error",
+                        {
+                            "message": "Cannot add task: task not "
                             "initialized. Please start"
                             " a task first."
-                        }
+                        },
                     )
                     continue
 
@@ -878,12 +902,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"{options.project_id}"
                     )
                     yield sse_json(
-                        "error", {
-                            "message":
-                            "Workforce not initialized."
+                        "error",
+                        {
+                            "message": "Workforce not initialized."
                             " Please start the task "
                             "first."
-                        }
+                        },
                     )
                     continue
 
@@ -894,7 +918,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 returnData = {
                     "project_id": item.project_id,
-                    "task_id": item.task_id or (len(camel_task.subtasks) + 1)
+                    "task_id": item.task_id or (len(camel_task.subtasks) + 1),
                 }
                 yield sse_json("add_task", returnData)
             elif item.action == Action.remove_task:
@@ -906,19 +930,19 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"{options.project_id}"
                     )
                     yield sse_json(
-                        "error", {
-                            "message":
-                            "Workforce not initialized."
+                        "error",
+                        {
+                            "message": "Workforce not initialized."
                             " Please start the task "
                             "first."
-                        }
+                        },
                     )
                     continue
 
                 workforce.remove_task(item.task_id)
                 returnData = {
                     "project_id": item.project_id,
-                    "task_id": item.task_id
+                    "task_id": item.task_id,
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
@@ -929,8 +953,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "Stop button)",
                     extra={
                         "project_id": options.project_id,
-                        "item_project_id": item.project_id
-                    }
+                        "item_project_id": item.project_id,
+                    },
                 )
                 logger.info("=" * 80)
 
@@ -963,6 +987,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         from camel.societies.workforce.workforce import (
                             Workforce as BaseWorkforce,
                         )
+
                         BaseWorkforce.stop(workforce)
                         logger.info(
                             "[LIFECYCLE] "
@@ -993,9 +1018,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Mark task as done and preserve context (like Action.end does)
                 task_lock.status = Status.done
                 end_message = (
-                    "<summary>Task stopped"
-                    "</summary>Task stopped "
-                    "by user"
+                    "<summary>Task stopped</summary>Task stopped by user"
                 )
                 task_lock.last_task_result = end_message
 
@@ -1010,14 +1033,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_content: str = f"Task {options.task_id}"
 
                 task_lock.add_conversation(
-                    'task_result', {
-                        'task_content':
-                        task_content,
-                        'task_result':
-                        end_message,
-                        'working_directory':
-                        get_working_directory(options, task_lock)
-                    }
+                    "task_result",
+                    {
+                        "task_content": task_content,
+                        "task_result": end_message,
+                        "working_directory": get_working_directory(
+                            options, task_lock
+                        ),
+                    },
                 )
 
                 # Clear camel_task as well
@@ -1059,16 +1082,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         " a new project to continue."
                     )
                     yield sse_json(
-                        "context_too_long", {
+                        "context_too_long",
+                        {
                             "message": ctx_msg,
                             "current_length": total_length,
-                            "max_length": 100000
-                        }
+                            "max_length": 100000,
+                        },
                     )
                     continue
 
                 if workforce is not None:
-                    if workforce._state.name == 'PAUSED':
+                    if workforce._state.name == "PAUSED":
                         # Resume paused workforce -
                         # subtasks should already
                         # be loaded
@@ -1084,27 +1108,26 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 task_lock.add_background_task(task)
             elif item.action == Action.task_state:
                 # Track completed task results for the end event
-                task_id = item.data.get('task_id', 'unknown')
-                task_state = item.data.get('state', 'unknown')
-                task_result = item.data.get('result', '')
+                task_id = item.data.get("task_id", "unknown")
+                task_state = item.data.get("state", "unknown")
+                task_result = item.data.get("result", "")
 
-                if task_state == 'DONE' and task_result:
+                if task_state == "DONE" and task_result:
                     last_completed_task_result = task_result
 
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
                 logger.info("=" * 80)
                 logger.info(
-                    "[LIFECYCLE] NEW_TASK_STATE "
-                    "action received (Multi-turn)",
-                    extra={"project_id": options.project_id}
+                    "[LIFECYCLE] NEW_TASK_STATE action received (Multi-turn)",
+                    extra={"project_id": options.project_id},
                 )
                 logger.info("=" * 80)
 
                 # Log new task state details
-                new_task_id = item.data.get('task_id', 'unknown')
-                new_task_state = item.data.get('state', 'unknown')
-                new_task_result = item.data.get('result', '')
+                new_task_id = item.data.get("task_id", "unknown")
+                new_task_state = item.data.get("state", "unknown")
+                new_task_result = item.data.get("result", "")
                 logger.info(
                     "[LIFECYCLE] New task details"
                     f": task_id={new_task_id}, "
@@ -1120,17 +1143,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"task {new_task_id}"
                     )
                     yield sse_json(
-                        "error", {
-                            "message":
-                            "Cannot process new task "
+                        "error",
+                        {
+                            "message": "Cannot process new task "
                             "state: current task not "
                             "initialized."
-                        }
+                        },
                     )
                     continue
 
                 old_task_content: str = camel_task.content
-                get_result = (get_task_result_with_optional_summary)
+                get_result = get_task_result_with_optional_summary
                 old_task_result: str = await get_result(camel_task, options)
 
                 old_task_content_clean: str = old_task_content
@@ -1140,27 +1163,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )[-1].strip()
 
                 task_lock.add_conversation(
-                    'task_result', {
-                        'task_content':
-                        old_task_content_clean,
-                        'task_result':
-                        old_task_result,
-                        'working_directory':
-                        get_working_directory(options, task_lock)
-                    }
+                    "task_result",
+                    {
+                        "task_content": old_task_content_clean,
+                        "task_result": old_task_result,
+                        "working_directory": get_working_directory(
+                            options, task_lock
+                        ),
+                    },
                 )
 
-                new_task_content = item.data.get('content', '')
+                new_task_content = item.data.get("content", "")
 
                 if new_task_content:
                     import time
+
                     task_id = item.data.get(
-                        'task_id', f"{int(time.time() * 1000)}-multi"
+                        "task_id", f"{int(time.time() * 1000)}-multi"
                     )
                     new_camel_task = Task(content=new_task_content, id=task_id)
-                    if hasattr(
-                        camel_task, 'additional_info'
-                    ) and camel_task.additional_info:
+                    if (
+                        hasattr(camel_task, "additional_info")
+                        and camel_task.additional_info
+                    ):
                         new_camel_task.additional_info = (
                             camel_task.additional_info
                         )
@@ -1216,12 +1241,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 " direct answer without "
                                 "workforce"
                             )
-                            conv_ctx = (
-                                build_conversation_context(
-                                    task_lock,
-                                    header='=== Previous '
-                                    'Conversation ==='
-                                )
+                            conv_ctx = build_conversation_context(
+                                task_lock,
+                                header="=== Previous Conversation ===",
                             )
                             simple_answer_prompt = (
                                 f"{conv_ctx}"
@@ -1236,10 +1258,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 simple_resp = question_agent.step(
                                     simple_answer_prompt
                                 )
-                                if (simple_resp and simple_resp.msgs):
-                                    answer_content = (
-                                        simple_resp.msgs[0].content
-                                    )
+                                if simple_resp and simple_resp.msgs:
+                                    answer_content = simple_resp.msgs[
+                                        0
+                                    ].content
                                 else:
                                     answer_content = (
                                         "I understand your "
@@ -1250,17 +1272,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     )
 
                                 task_lock.add_conversation(
-                                    'assistant', answer_content
+                                    "assistant", answer_content
                                 )
 
                                 # Send response to user
                                 # (don't send confirmed
                                 # if simple response)
                                 yield sse_json(
-                                    "wait_confirm", {
+                                    "wait_confirm",
+                                    {
                                         "content": answer_content,
-                                        "question": new_task_content
-                                    }
+                                        "question": new_task_content,
+                                    },
                                 )
                             except Exception as e:
                                 logger.error(
@@ -1268,14 +1291,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     f"answer in multi-turn: {e}"
                                 )
                                 yield sse_json(
-                                    "wait_confirm", {
-                                        "content":
-                                        "I encountered an error "
+                                    "wait_confirm",
+                                    {
+                                        "content": "I encountered an error "
                                         "while processing your "
                                         "question.",
-                                        "question":
-                                        new_task_content
-                                    }
+                                        "question": new_task_content,
+                                    },
                                 )
 
                             logger.info(
@@ -1321,14 +1343,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         stream_state = {
                             "subtasks": [],
                             "seen_ids": set(),
-                            "last_content": ""
+                            "last_content": "",
                         }
 
                         def on_stream_batch(
                             new_tasks: list[Task], is_final: bool = False
                         ):
                             fresh_tasks = [
-                                t for t in new_tasks
+                                t
+                                for t in new_tasks
                                 if t.id not in stream_state["seen_ids"]
                             ]
                             for t in fresh_tasks:
@@ -1337,10 +1360,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         def on_stream_text(chunk):
                             try:
-                                has_msg = (hasattr(chunk, 'msg') and chunk.msg)
+                                has_msg = hasattr(chunk, "msg") and chunk.msg
                                 accumulated_content = (
                                     chunk.msg.content
-                                    if has_msg else str(chunk)
+                                    if has_msg
+                                    else str(chunk)
                                 )
                                 last_content = stream_state["last_content"]
 
@@ -1348,20 +1372,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     last_content
                                 ):
                                     delta_content = accumulated_content[
-                                        len(last_content):]
+                                        len(last_content) :
+                                    ]
                                 else:
                                     delta_content = accumulated_content
 
-                                stream_state["last_content"
-                                             ] = accumulated_content
+                                stream_state["last_content"] = (
+                                    accumulated_content
+                                )
 
                                 if delta_content:
                                     asyncio.run_coroutine_threadsafe(
                                         task_lock.put_queue(
                                             ActionDecomposeTextData(
                                                 data={
-                                                    "project_id":
-                                                    options.project_id,
+                                                    "project_id": options.project_id,
                                                     "task_id": options.task_id,
                                                     "content": delta_content,
                                                 }
@@ -1402,33 +1427,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 summary_task(
                                     multi_turn_summary_agent, camel_task
                                 ),
-                                timeout=10
+                                timeout=10,
                             )
                             logger.info(
                                 "Generated LLM summary for multi-turn task",
-                                extra={"project_id": options.project_id}
+                                extra={"project_id": options.project_id},
                             )
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             logger.warning(
                                 "Multi-turn summary_task timeout",
                                 extra={
                                     "project_id": options.project_id,
-                                    "task_id": task_id
-                                }
+                                    "task_id": task_id,
+                                },
                             )
                             # Fallback to descriptive but not generic summary
                             task_content_for_summary = new_task_content
                             tc = task_content_for_summary
                             if len(tc) > 100:
                                 new_summary_content = (
-                                    "Follow-up Task|"
-                                    f"{tc[:97]}..."
+                                    f"Follow-up Task|{tc[:97]}..."
                                 )
                             else:
-                                new_summary_content = (
-                                    "Follow-up Task|"
-                                    f"{tc}"
-                                )
+                                new_summary_content = f"Follow-up Task|{tc}"
                         except Exception as e:
                             logger.error(
                                 "Error generating multi-turn "
@@ -1439,14 +1460,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             tc = task_content_for_summary
                             if len(tc) > 100:
                                 new_summary_content = (
-                                    "Follow-up Task|"
-                                    f"{tc[:97]}..."
+                                    f"Follow-up Task|{tc[:97]}..."
                                 )
                             else:
-                                new_summary_content = (
-                                    "Follow-up Task|"
-                                    f"{tc}"
-                                )
+                                new_summary_content = f"Follow-up Task|{tc}"
 
                         # Emit final subtasks once when
                         # decomposition is complete
@@ -1468,13 +1485,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     except Exception as e:
                         import traceback
+
                         logger.error(
                             f"[TRACE] Traceback: {traceback.format_exc()}"
                         )
                         # Continue with existing context if decomposition fails
                         yield sse_json(
                             "error",
-                            {"message": f"Failed to process task: {str(e)}"}
+                            {"message": f"Failed to process task: {str(e)}"},
                         )
                 else:
                     if workforce is None:
@@ -1501,7 +1519,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "write_file",
                     {
                         "file_path": item.data,
-                        "process_task_id": item.process_task_id
+                        "process_task_id": item.process_task_id,
                     },
                 )
             elif item.action == Action.ask:
@@ -1511,7 +1529,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "notice",
                     {
                         "notice": item.data,
-                        "process_task_id": item.process_task_id
+                        "process_task_id": item.process_task_id,
                     },
                 )
             elif item.action == Action.search_mcp:
@@ -1525,12 +1543,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"{options.project_id}"
                     )
                     yield sse_json(
-                        "error", {
-                            "message":
-                            "MCP agent not initialized."
+                        "error",
+                        {
+                            "message": "MCP agent not initialized."
                             " Please start a complex "
                             "task first."
-                        }
+                        },
                     )
                     continue
                 task = asyncio.create_task(install_mcp(mcp, item))
@@ -1540,16 +1558,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "terminal",
                     {
                         "output": item.data,
-                        "process_task_id": item.process_task_id
+                        "process_task_id": item.process_task_id,
                     },
                 )
             elif item.action == Action.pause:
                 if workforce is not None:
                     workforce.pause()
                     logger.info(
-                        "Workforce paused for "
-                        "project "
-                        f"{options.project_id}"
+                        f"Workforce paused for project {options.project_id}"
                     )
                 else:
                     logger.warning(
@@ -1561,9 +1577,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None:
                     workforce.resume()
                     logger.info(
-                        "Workforce resumed for "
-                        "project "
-                        f"{options.project_id}"
+                        f"Workforce resumed for project {options.project_id}"
                     )
                 else:
                     logger.warning(
@@ -1579,8 +1593,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if workforce is not None:
                     workforce.pause()
                     workforce.add_single_agent_worker(
-                        format_agent_description(item), await
-                        new_agent_model(item, options)
+                        format_agent_description(item),
+                        await new_agent_model(item, options),
                     )
                     workforce.resume()
             elif item.action == Action.timeout:
@@ -1603,15 +1617,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 timeout_seconds = item.data.get("timeout_seconds", 0)
 
                 yield sse_json(
-                    "error", {
+                    "error",
+                    {
                         "message": timeout_message,
                         "type": "timeout",
                         "details": {
                             "in_flight_tasks": in_flight,
                             "pending_tasks": pending,
                             "timeout_seconds": timeout_seconds,
-                        }
-                    }
+                        },
+                    },
                 )
 
             elif item.action == Action.end:
@@ -1662,9 +1677,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                     # Use item data as final result
                     # if camel_task is None
-                    final_result: str = str(
-                        item.data
-                    ) if item.data else "Task completed"
+                    final_result: str = (
+                        str(item.data) if item.data else "Task completed"
+                    )
                 else:
                     get_result = get_task_result_with_optional_summary
                     final_result: str = await get_result(camel_task, options)
@@ -1684,14 +1699,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_content: str = f"Task {options.task_id}"
 
                 task_lock.add_conversation(
-                    'task_result', {
-                        'task_content':
-                        task_content,
-                        'task_result':
-                        final_result,
-                        'working_directory':
-                        get_working_directory(options, task_lock)
-                    }
+                    "task_result",
+                    {
+                        "task_content": task_content,
+                        "task_result": final_result,
+                        "working_directory": get_working_directory(
+                            options, task_lock
+                        ),
+                    },
                 )
 
                 yield sse_json("end", final_result)
@@ -1732,7 +1747,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"{options.project_id}"
                     )
             elif item.action == Action.supplement:
-
                 # Check if this might be a misrouted second question
                 if camel_task is None:
                     logger.warning(
@@ -1741,13 +1755,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         f"project {options.project_id}"
                     )
                     yield sse_json(
-                        "error", {
-                            "message":
-                            "Cannot supplement task: "
+                        "error",
+                        {
+                            "message": "Cannot supplement task: "
                             "task not initialized. "
                             "Please start a task "
                             "first."
-                        }
+                        },
                     )
                     continue
                 else:
@@ -1835,18 +1849,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     "ModelProcessingError for task "
                     f"{options.task_id}, action "
                     f"{item.action}: {e}",
-                    exc_info=True
+                    exc_info=True,
                 )
                 yield sse_json("error", {"message": str(e)})
-                if "workforce" in locals(
-                ) and workforce is not None and workforce._running:
+                if (
+                    "workforce" in locals()
+                    and workforce is not None
+                    and workforce._running
+                ):
                     workforce.stop()
         except Exception as e:
             logger.error(
                 "Unhandled exception for task "
                 f"{options.task_id}, action "
                 f"{item.action}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             yield sse_json("error", {"message": str(e)})
             # Continue processing other items instead of breaking
@@ -1856,7 +1873,7 @@ async def install_mcp(
     mcp: ListenChatAgent,
     install_mcp: ActionInstallMcpData,
 ):
-    mcp_keys = list(install_mcp.data.get('mcpServers', {}).keys())
+    mcp_keys = list(install_mcp.data.get("mcpServers", {}).keys())
     logger.info(f"Installing MCP tools: {mcp_keys}")
     try:
         mcp.add_tools(await get_mcp_tools(install_mcp.data))
@@ -1890,23 +1907,24 @@ def tree_sub_tasks(sub_tasks: list[Task], depth: int = 0):
         return []
 
     result = (
-        chain(sub_tasks).filter(lambda x: x.content != "").map(
+        chain(sub_tasks)
+        .filter(lambda x: x.content != "")
+        .map(
             lambda x: {
                 "id": x.id,
                 "content": x.content,
                 "state": x.state,
                 "subtasks": tree_sub_tasks(x.subtasks, depth + 1),
             }
-        ).value()
+        )
+        .value()
     )
 
     return result
 
 
 def update_sub_tasks(
-    sub_tasks: list[Task],
-    update_tasks: dict[str, TaskContent],
-    depth: int = 0
+    sub_tasks: list[Task], update_tasks: dict[str, TaskContent], depth: int = 0
 ):
     if depth > 5:  # limit the depth of the recursion
         return []
@@ -1923,8 +1941,9 @@ def update_sub_tasks(
     return sub_tasks
 
 
-def add_sub_tasks(camel_task: Task,
-                  update_tasks: list[TaskContent]) -> list[Task]:
+def add_sub_tasks(
+    camel_task: Task, update_tasks: list[TaskContent]
+) -> list[Task]:
     """Add new tasks (with empty id) to camel_task
     and return the list of added tasks."""
     added_tasks = []
@@ -1940,9 +1959,7 @@ def add_sub_tasks(camel_task: Task,
 
 
 async def question_confirm(
-    agent: ListenChatAgent,
-    prompt: str,
-    task_lock: TaskLock | None = None
+    agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None
 ) -> bool:
     """Simple question confirmation - returns True
     for complex tasks, False for simple questions."""
@@ -1990,21 +2007,17 @@ Is this a complex task? (yes/no):"""
         normalized = content.strip().lower()
         is_complex = "yes" in normalized
 
-        result_str = ('complex task' if is_complex else 'simple question')
+        result_str = "complex task" if is_complex else "simple question"
         logger.info(
-            "Question confirm result: "
-            f"{result_str}",
-            extra={
-                "response": content,
-                "is_complex": is_complex
-            }
+            f"Question confirm result: {result_str}",
+            extra={"response": content, "is_complex": is_complex},
         )
 
         return is_complex
 
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")
-        return True
+        raise
 
 
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
@@ -2030,7 +2043,7 @@ Do not include any other text or formatting.
         logger.error(
             "Error generating task summary",
             extra={"error": str(e)},
-            exc_info=True
+            exc_info=True,
         )
         raise
 
@@ -2127,7 +2140,7 @@ async def get_task_result_with_optional_summary(
 
 
 async def construct_workforce(
-    options: Chat
+    options: Chat,
 ) -> tuple[Workforce, ListenChatAgent]:
     """Construct a workforce with all required agents.
 
@@ -2137,10 +2150,7 @@ async def construct_workforce(
     """
     logger.debug(
         "construct_workforce started",
-        extra={
-            "project_id": options.project_id,
-            "task_id": options.task_id
-        }
+        extra={"project_id": options.project_id, "task_id": options.task_id},
     )
 
     # Store main event loop reference for thread-safe async task scheduling
@@ -2170,14 +2180,14 @@ async def construct_workforce(
                         ).register_toolkits(
                             NoteTakingToolkit(
                                 options.project_id,
-                                working_directory=working_directory
+                                working_directory=working_directory,
                             )
                         )
                     ).get_tools()
                 ],
-            ) for key, prompt in {
-                Agents.coordinator_agent:
-                f"""
+            )
+            for key, prompt in {
+                Agents.coordinator_agent: f"""
 You are a helpful coordinator.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory \
@@ -2190,8 +2200,7 @@ The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
             """,
-                Agents.task_agent:
-                f"""
+                Agents.task_agent: f"""
 You are a helpful task planner.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory \
@@ -2226,8 +2235,9 @@ the current date.
         """,
             options,
             [
-                *HumanToolkit.
-                get_can_use_tools(options.project_id, Agents.new_worker_agent),
+                *HumanToolkit.get_can_use_tools(
+                    options.project_id, Agents.new_worker_agent
+                ),
                 *(
                     ToolkitMessageIntegration(
                         message_handler=HumanToolkit(
@@ -2236,7 +2246,7 @@ the current date.
                     ).register_toolkits(
                         NoteTakingToolkit(
                             options.project_id,
-                            working_directory=working_directory
+                            working_directory=working_directory,
                         )
                     )
                 ).get_tools(),
@@ -2308,7 +2318,8 @@ the current date.
         task_agent=task_agent,
         new_worker_agent=new_worker_agent,
         use_structured_output_handler=False
-        if model_platform_enum == ModelPlatformType.OPENAI else True,
+        if model_platform_enum == ModelPlatformType.OPENAI
+        else True,
     )
 
     # Register workforce metrics callback
@@ -2380,8 +2391,8 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
         extra={
             "agent_name": data.name,
             "project_id": options.project_id,
-            "task_id": options.task_id
-        }
+            "task_id": options.task_id,
+        },
     )
     logger.debug(
         "New agent data", extra={"agent_data": data.model_dump_json()}
@@ -2425,7 +2436,7 @@ the current date.
 """
 
     # Pass per-agent custom model config if available
-    custom_model_config = getattr(data, 'custom_model_config', None)
+    custom_model_config = getattr(data, "custom_model_config", None)
     return agent_model(
         data.name,
         enhanced_description,

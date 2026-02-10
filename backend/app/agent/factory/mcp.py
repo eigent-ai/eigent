@@ -18,10 +18,10 @@ from camel.models import ModelFactory
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
+from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
-from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
 
 
 async def mcp_agent(options: Chat):
@@ -43,8 +43,10 @@ async def mcp_agent(options: Chat):
                 tool_names = [
                     (
                         tool.get_function_name()
-                        if hasattr(tool, "get_function_name") else str(tool)
-                    ) for tool in mcp_tools
+                        if hasattr(tool, "get_function_name")
+                        else str(tool)
+                    )
+                    for tool in mcp_tools
                 ]
                 logger.debug(f"MCP tools: {tool_names}")
             tools = [*tools, *mcp_tools]
@@ -61,10 +63,8 @@ async def mcp_agent(options: Chat):
         task_lock.put_queue(
             ActionCreateAgentData(
                 data={
-                    "agent_name":
-                    Agents.mcp_agent,
-                    "agent_id":
-                    agent_id,
+                    "agent_name": Agents.mcp_agent,
+                    "agent_id": agent_id,
                     "tools": [
                         key
                         for key in options.installed_mcp["mcpServers"].keys()
@@ -85,7 +85,9 @@ async def mcp_agent(options: Chat):
             model_config_dict=(
                 {
                     "user": str(options.project_id),
-                } if options.is_cloud() else None
+                }
+                if options.is_cloud()
+                else None
             ),
             timeout=600,  # 10 minutes
             **{

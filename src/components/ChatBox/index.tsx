@@ -489,6 +489,7 @@ export default function ChatBox(): JSX.Element {
           agent: chatStore.tasks[_taskId].activeAsk,
           reply: tempMessageContent,
         });
+        chatStore.setAttaches(_taskId, []);
         if (chatStore.tasks[_taskId].askList.length === 0) {
           chatStore.setActiveAsk(_taskId, '');
         } else {
@@ -569,6 +570,7 @@ export default function ChatBox(): JSX.Element {
                 tempMessageContent,
                 attachesToSend
               );
+              chatStore.setAttaches(_taskId, []);
             } catch (err: any) {
               console.error('Failed to start task:', err);
               toast.error(
@@ -584,26 +586,30 @@ export default function ChatBox(): JSX.Element {
               '[Multi-turn] Continuing conversation with improve API'
             );
 
+            const attachesForThisTurn = JSON.parse(
+              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+            );
+            const improveAttaches =
+              attachesForThisTurn.map(
+                (f: { filePath: string }) => f.filePath
+              ) || [];
+
             //Generate nextId in case new chatStore is created to sync with the backend beforehand
             const nextTaskId = generateUniqueId();
             chatStore.setNextTaskId(nextTaskId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            // This reuses the existing SSE connection and step_solve loop
             fetchPost(`/chat/${projectStore.activeProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
+              attaches: improveAttaches,
             });
             chatStore.setIsPending(_taskId, true);
-            // Add the user message to show it in UI
             chatStore.addMessages(_taskId, {
               id: generateUniqueId(),
               role: 'user',
               content: tempMessageContent,
-              attaches:
-                JSON.parse(
-                  JSON.stringify(chatStore.tasks[_taskId]?.attaches)
-                ) || [],
+              attaches: attachesForThisTurn,
             });
             chatStore.setAttaches(_taskId, []);
             setMessage('');
@@ -645,6 +651,7 @@ export default function ChatBox(): JSX.Element {
               attachesToSend
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
+            chatStore.setAttaches(_taskId, []);
           } catch (err: any) {
             console.error('Failed to start task:', err);
             toast.error(
@@ -690,10 +697,13 @@ export default function ChatBox(): JSX.Element {
       if (result.success && result.files && result.files.length > 0) {
         const taskId = chatStore.activeTaskId as string;
         const files = [
-          ...chatStore.tasks[taskId].attaches.filter(
-            (f) => !result.files.find((r: File) => r.filePath === f.filePath)
+          ...(chatStore.tasks[taskId].attaches || []),
+          ...result.files.filter(
+            (r: File) =>
+              !chatStore.tasks[taskId].attaches?.some(
+                (f: File) => f.filePath === r.filePath
+              )
           ),
-          ...result.files,
         ];
         chatStore.setAttaches(taskId, files);
       }

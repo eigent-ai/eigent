@@ -62,7 +62,7 @@ export function VerticalNavigation({
     >
       <TabsList
         className={cn(
-          'rounded-0 flex w-48 flex-col gap-1 border-0 bg-transparent p-0',
+          'flex flex-col gap-1.5 rounded-none border-none bg-transparent p-0',
           listClassName
         )}
       >
@@ -72,7 +72,7 @@ export function VerticalNavigation({
             value={item.value}
             disabled={item.disabled}
             className={cn(
-              'w-full justify-start gap-2 rounded-lg px-3 py-2 text-sm',
+              'w-full justify-start gap-2 rounded-lg px-5 py-1.5 text-body-sm',
               'bg-transparent data-[state=inactive]:bg-transparent',
               'data-[state=inactive]:text-menubutton-text-default data-[state=inactive]:opacity-70',
               'data-[state=inactive]:hover:bg-menubutton-fill-hover data-[state=inactive]:hover:opacity-100',

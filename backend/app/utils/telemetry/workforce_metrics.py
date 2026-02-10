@@ -17,21 +17,25 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict
+from typing import Any
 
 import camel
-from camel.societies.workforce.events import (LogEvent, TaskAssignedEvent,
-                                              TaskCompletedEvent,
-                                              TaskCreatedEvent,
-                                              TaskDecomposedEvent,
-                                              TaskFailedEvent,
-                                              TaskStartedEvent,
-                                              TaskUpdatedEvent,
-                                              WorkerCreatedEvent)
+from camel.societies.workforce.events import (
+    LogEvent,
+    TaskAssignedEvent,
+    TaskCompletedEvent,
+    TaskCreatedEvent,
+    TaskDecomposedEvent,
+    TaskFailedEvent,
+    TaskStartedEvent,
+    TaskUpdatedEvent,
+    WorkerCreatedEvent,
+)
 from camel.societies.workforce.workforce_metrics import WorkforceMetrics
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import \
-    OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter,
+)
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -122,8 +126,9 @@ def initialize_tracer_provider() -> None:
     # Get configuration from environment
     langfuse_public_key = os.getenv(ENV_LANGFUSE_PUBLIC_KEY)
     langfuse_secret_key = os.getenv(ENV_LANGFUSE_SECRET_KEY)
-    langfuse_base_url = os.getenv(ENV_LANGFUSE_BASE_URL,
-                                  DEFAULT_LANGFUSE_BASE_URL)
+    langfuse_base_url = os.getenv(
+        ENV_LANGFUSE_BASE_URL, DEFAULT_LANGFUSE_BASE_URL
+    )
 
     # Create resource with service information
     resource = Resource(attributes={SERVICE_NAME: SERVICE_NAME_WORKFORCE})
@@ -137,8 +142,9 @@ def initialize_tracer_provider() -> None:
         # Set environment variables for OTLP exporter
         endpoint_url = _create_langfuse_endpoint(langfuse_base_url)
         os.environ[ENV_OTEL_EXPORTER_OTLP_ENDPOINT] = endpoint_url
-        auth_header = _create_basic_auth_header(langfuse_public_key,
-                                                langfuse_secret_key)
+        auth_header = _create_basic_auth_header(
+            langfuse_public_key, langfuse_secret_key
+        )
         os.environ[ENV_OTEL_EXPORTER_OTLP_HEADERS] = auth_header
 
         # Create exporter using environment variables
@@ -174,7 +180,8 @@ def get_tracer_provider() -> TracerProvider:
     if _GLOBAL_TRACER_PROVIDER is None:
         raise RuntimeError(
             "TracerProvider not initialized. "
-            "Call initialize_tracer_provider() during app startup.")
+            "Call initialize_tracer_provider() during app startup."
+        )
     return _GLOBAL_TRACER_PROVIDER
 
 
@@ -254,10 +261,12 @@ class WorkforceMetricsCallback(WorkforceMetrics):
 
             # Get tracer from the shared provider
             # Use CAMEL version for instrumentation versioning
-            self.tracer = provider.get_tracer(TRACER_NAME_WORKFORCE,
-                                              camel.__version__)
+            self.tracer = provider.get_tracer(
+                TRACER_NAME_WORKFORCE, camel.__version__
+            )
             self.root_span = self.tracer.start_span(
-                f"{SPAN_WORKFORCE_EXECUTION}:{task_id}")
+                f"{SPAN_WORKFORCE_EXECUTION}:{task_id}"
+            )
             # Langfuse-specific attributes
             self.root_span.set_attribute(ATTR_LANGFUSE_SESSION_ID, project_id)
             tags = json.dumps(DEFAULT_LANGFUSE_TAGS.copy())
@@ -272,11 +281,13 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         # Track quality scores (task_id -> quality_score)
         self.task_quality_scores = {}
 
-    def log_worker_created(self,
-                           event: WorkerCreatedEvent,
-                           agent_class: str = None,
-                           model_type: str = None,
-                           **kwargs) -> None:
+    def log_worker_created(
+        self,
+        event: WorkerCreatedEvent,
+        agent_class: str = None,
+        model_type: str = None,
+        **kwargs,
+    ) -> None:
         """Log worker creation as a span.
 
         Args:
@@ -290,8 +301,9 @@ class WorkforceMetricsCallback(WorkforceMetrics):
 
         # Create span as child of root span using context
         ctx = trace.set_span_in_context(self.root_span)
-        with self.tracer.start_as_current_span(SPAN_WORKER_CREATED,
-                                               context=ctx) as span:
+        with self.tracer.start_as_current_span(
+            SPAN_WORKER_CREATED, context=ctx
+        ) as span:
             # Eigent-specific attributes
             span.set_attribute(ATTR_WORKER_ID, event.worker_id)
             span.set_attribute(ATTR_WORKER_TYPE, event.worker_type)
@@ -314,8 +326,9 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             return
 
         ctx = trace.set_span_in_context(self.root_span)
-        with self.tracer.start_as_current_span(SPAN_TASK_CREATED,
-                                               context=ctx) as span:
+        with self.tracer.start_as_current_span(
+            SPAN_TASK_CREATED, context=ctx
+        ) as span:
             span.set_attribute(ATTR_TASK_ID, event.task_id)
             span.set_attribute(ATTR_TASK_DESCRIPTION, event.description)
             span.set_attribute(ATTR_PROJECT_ID, self.project_id)
@@ -337,14 +350,16 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             return
 
         ctx = trace.set_span_in_context(self.root_span)
-        with self.tracer.start_as_current_span(SPAN_TASK_DECOMPOSED,
-                                               context=ctx) as span:
+        with self.tracer.start_as_current_span(
+            SPAN_TASK_DECOMPOSED, context=ctx
+        ) as span:
             span.set_attribute(ATTR_TASK_PARENT_ID, event.parent_task_id)
             span.set_attribute(ATTR_PROJECT_ID, self.project_id)
 
             if event.subtask_ids:
-                span.set_attribute(ATTR_TASK_SUBTASK_IDS,
-                                   json.dumps(event.subtask_ids))
+                span.set_attribute(
+                    ATTR_TASK_SUBTASK_IDS, json.dumps(event.subtask_ids)
+                )
 
             span.set_status(Status(StatusCode.OK))
 
@@ -358,15 +373,17 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             return
 
         ctx = trace.set_span_in_context(self.root_span)
-        with self.tracer.start_as_current_span(SPAN_TASK_ASSIGNED,
-                                               context=ctx) as span:
+        with self.tracer.start_as_current_span(
+            SPAN_TASK_ASSIGNED, context=ctx
+        ) as span:
             span.set_attribute(ATTR_TASK_ID, event.task_id)
             span.set_attribute(ATTR_WORKER_ID, event.worker_id)
             span.set_attribute(ATTR_PROJECT_ID, self.project_id)
 
             if event.queue_time_seconds is not None:
-                span.set_attribute(ATTR_TASK_QUEUE_TIME_SECONDS,
-                                   event.queue_time_seconds)
+                span.set_attribute(
+                    ATTR_TASK_QUEUE_TIME_SECONDS, event.queue_time_seconds
+                )
 
             # Add dependencies as JSON array
             if event.dependencies:
@@ -385,8 +402,9 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             return
 
         ctx = trace.set_span_in_context(self.root_span)
-        with self.tracer.start_as_current_span(SPAN_TASK_UPDATED,
-                                               context=ctx) as span:
+        with self.tracer.start_as_current_span(
+            SPAN_TASK_UPDATED, context=ctx
+        ) as span:
             span.set_attribute(ATTR_TASK_ID, event.task_id)
             span.set_attribute(ATTR_PROJECT_ID, self.project_id)
             span.set_attribute(ATTR_TASK_UPDATE_TYPE, event.update_type)
@@ -396,17 +414,17 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             if event.parent_task_id:
                 span.set_attribute(ATTR_TASK_PARENT_ID, event.parent_task_id)
             if event.old_value is not None:
-                span.set_attribute(ATTR_TASK_UPDATE_OLD_VALUE,
-                                   event.old_value)
+                span.set_attribute(ATTR_TASK_UPDATE_OLD_VALUE, event.old_value)
             if event.new_value is not None:
-                span.set_attribute(ATTR_TASK_UPDATE_NEW_VALUE,
-                                   event.new_value)
+                span.set_attribute(ATTR_TASK_UPDATE_NEW_VALUE, event.new_value)
             if event.metadata:
-                span.set_attribute(ATTR_TASK_UPDATE_METADATA,
-                                   json.dumps(event.metadata))
-            if hasattr(event, 'timestamp') and event.timestamp:
-                span.set_attribute(ATTR_TASK_TIMESTAMP,
-                                   event.timestamp.isoformat())
+                span.set_attribute(
+                    ATTR_TASK_UPDATE_METADATA, json.dumps(event.metadata)
+                )
+            if hasattr(event, "timestamp") and event.timestamp:
+                span.set_attribute(
+                    ATTR_TASK_TIMESTAMP, event.timestamp.isoformat()
+                )
 
             span.set_status(Status(StatusCode.OK))
 
@@ -421,11 +439,13 @@ class WorkforceMetricsCallback(WorkforceMetrics):
 
         # Start a long-running span for task execution as child of root span
         ctx = trace.set_span_in_context(self.root_span)
-        span = self.tracer.start_span(f"{SPAN_TASK_EXECUTION}:{event.task_id}",
-                                      context=ctx)
+        span = self.tracer.start_span(
+            f"{SPAN_TASK_EXECUTION}:{event.task_id}", context=ctx
+        )
         span.set_attribute(ATTR_TASK_ID, event.task_id)
-        worker_id = event.worker_id if hasattr(event,
-                                               'worker_id') else 'unknown'
+        worker_id = (
+            event.worker_id if hasattr(event, "worker_id") else "unknown"
+        )
         span.set_attribute(ATTR_WORKER_ID, worker_id)
         span.set_attribute(ATTR_PROJECT_ID, self.project_id)
         span.set_attribute(ATTR_TASK_STATUS, "started")
@@ -449,30 +469,39 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             span.set_attribute(ATTR_WORKER_ID, event.worker_id)
 
             # Add timestamp as ISO string
-            if hasattr(event, 'timestamp') and event.timestamp:
-                span.set_attribute(ATTR_TASK_TIMESTAMP,
-                                   event.timestamp.isoformat())
+            if hasattr(event, "timestamp") and event.timestamp:
+                span.set_attribute(
+                    ATTR_TASK_TIMESTAMP, event.timestamp.isoformat()
+                )
 
             if event.parent_task_id:
                 span.set_attribute(ATTR_TASK_PARENT_ID, event.parent_task_id)
             if event.processing_time_seconds is not None:
-                span.set_attribute(ATTR_TASK_PROCESSING_TIME_SECONDS,
-                                   event.processing_time_seconds)
+                span.set_attribute(
+                    ATTR_TASK_PROCESSING_TIME_SECONDS,
+                    event.processing_time_seconds,
+                )
 
             # Check for quality score from parsed log messages first
             if event.task_id in self.task_quality_scores:
                 quality_score = self.task_quality_scores.pop(event.task_id)
                 span.set_attribute(ATTR_TASK_QUALITY_SCORE, quality_score)
             # Fallback to event attributes if available
-            elif hasattr(event,
-                         'quality_score') and event.quality_score is not None:
-                span.set_attribute(ATTR_TASK_QUALITY_SCORE,
-                                   event.quality_score)
-            elif hasattr(
-                    event, 'metadata'
-            ) and event.metadata and 'quality_score' in event.metadata:
-                span.set_attribute(ATTR_TASK_QUALITY_SCORE,
-                                   event.metadata['quality_score'])
+            elif (
+                hasattr(event, "quality_score")
+                and event.quality_score is not None
+            ):
+                span.set_attribute(
+                    ATTR_TASK_QUALITY_SCORE, event.quality_score
+                )
+            elif (
+                hasattr(event, "metadata")
+                and event.metadata
+                and "quality_score" in event.metadata
+            ):
+                span.set_attribute(
+                    ATTR_TASK_QUALITY_SCORE, event.metadata["quality_score"]
+                )
 
             if event.token_usage:
                 # Store all token usage as custom attributes
@@ -519,8 +548,10 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         # Pattern: "Task <task_id> completed successfully (quality score: X)."
         # TODO: add this from the camel
         if log_event.level == "info":
-            pattern = (r'Task\s+(\S+)\s+completed successfully'
-                       r'.*quality score:\s*(\d+)')
+            pattern = (
+                r"Task\s+(\S+)\s+completed successfully"
+                r".*quality score:\s*(\d+)"
+            )
             match = re.search(pattern, log_event.message)
             if match:
                 task_id = match.group(1)
@@ -530,8 +561,9 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         # Only log errors and critical messages
         if log_event.level in ["error", "critical"]:
             ctx = trace.set_span_in_context(self.root_span)
-            with self.tracer.start_as_current_span(SPAN_LOG_MESSAGE,
-                                                   context=ctx) as span:
+            with self.tracer.start_as_current_span(
+                SPAN_LOG_MESSAGE, context=ctx
+            ) as span:
                 span.set_attribute("log.level", log_event.level)
                 span.set_attribute("log.message", log_event.message)
                 span.set_attribute(ATTR_PROJECT_ID, self.project_id)
@@ -543,8 +575,9 @@ class WorkforceMetricsCallback(WorkforceMetrics):
 
                 # Set span status based on log level
                 if log_event.level == "critical":
-                    span.set_status(Status(StatusCode.ERROR,
-                                           log_event.message))
+                    span.set_status(
+                        Status(StatusCode.ERROR, log_event.message)
+                    )
 
     def log_all_tasks_completed(self, event) -> None:
         """Log when all tasks in the workforce are completed.
@@ -556,19 +589,22 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             return
 
         ctx = trace.set_span_in_context(self.root_span)
-        with self.tracer.start_as_current_span(SPAN_ALL_TASKS_COMPLETED,
-                                               context=ctx) as span:
+        with self.tracer.start_as_current_span(
+            SPAN_ALL_TASKS_COMPLETED, context=ctx
+        ) as span:
             span.set_attribute(ATTR_PROJECT_ID, self.project_id)
             span.set_attribute(ATTR_TASK_ID, self.task_id)
 
             # Add timestamp as ISO string
-            if hasattr(event, 'timestamp') and event.timestamp:
-                span.set_attribute(ATTR_TASK_TIMESTAMP,
-                                   event.timestamp.isoformat())
+            if hasattr(event, "timestamp") and event.timestamp:
+                span.set_attribute(
+                    ATTR_TASK_TIMESTAMP, event.timestamp.isoformat()
+                )
 
-            if hasattr(event, 'total_tasks'):
-                span.set_attribute(ATTR_WORKFORCE_TOTAL_TASKS,
-                                   event.total_tasks)
+            if hasattr(event, "total_tasks"):
+                span.set_attribute(
+                    ATTR_WORKFORCE_TOTAL_TASKS, event.total_tasks
+                )
             span.set_status(Status(StatusCode.OK))
 
         # End the root span when all tasks are completed
@@ -582,12 +618,14 @@ class WorkforceMetricsCallback(WorkforceMetrics):
         Returns:
             JSON string representation of metrics
         """
-        return json.dumps({
-            "project_id": self.project_id,
-            "task_id": self.task_id,
-            "otel_enabled": self.enabled,
-            "active_spans": len(self.task_spans),
-        })
+        return json.dumps(
+            {
+                "project_id": self.project_id,
+                "task_id": self.task_id,
+                "otel_enabled": self.enabled,
+                "active_spans": len(self.task_spans),
+            }
+        )
 
     def get_ascii_tree_representation(self) -> str:
         """Get ASCII tree representation of workforce metrics.
@@ -596,10 +634,12 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             ASCII tree string
         """
         active_count = len(self.task_spans)
-        return (f"OpenTelemetry Metrics for project {self.project_id}, "
-                f"task {self.task_id} (active spans: {active_count})")
+        return (
+            f"OpenTelemetry Metrics for project {self.project_id}, "
+            f"task {self.task_id} (active spans: {active_count})"
+        )
 
-    def get_kpis(self) -> Dict[str, Any]:
+    def get_kpis(self) -> dict[str, Any]:
         """Get key performance indicators.
 
         Returns:

@@ -19,6 +19,7 @@ With Workforce, agents plan, solve, and verify work together—like a project te
 - Built-in coordination, planning, and failure recovery
 - Ideal for hackathons, evaluations, code review, brainstorming, and more
 - Configure roles, toolsets, and communication patterns for *any* scenario
+
 </aside>
 
 ## System Design

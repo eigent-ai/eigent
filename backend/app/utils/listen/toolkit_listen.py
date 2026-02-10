@@ -17,15 +17,19 @@ import json
 import logging
 import queue
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
 from inspect import iscoroutinefunction, signature
-from typing import Any, Callable, Type, TypeVar
+from typing import Any, TypeVar
 
-from app.service.task import (ActionActivateToolkitData,
-                              ActionDeactivateToolkitData, get_task_lock,
-                              process_task)
-from app.utils.toolkit.abstract_toolkit import AbstractToolkit
+from app.agent.toolkit.abstract_toolkit import AbstractToolkit
+from app.service.task import (
+    ActionActivateToolkitData,
+    ActionDeactivateToolkitData,
+    get_task_lock,
+    process_task,
+)
 
 logger = logging.getLogger("toolkit_listen")
 
@@ -35,8 +39,10 @@ MAX_LENGTH = 500
 def _truncate(text: str, max_length: int = MAX_LENGTH) -> str:
     """Truncate text if it exceeds max_length."""
     if len(text) > max_length:
-        return (f"{text[:max_length]}... "
-                f"(truncated, total length: {len(text)} chars)")
+        return (
+            f"{text[:max_length]}... "
+            f"(truncated, total length: {len(text)} chars)"
+        )
     return text
 
 
@@ -98,11 +104,13 @@ def _get_context(
     # Multi-layer fallback to get process_task_id
     process_task_id = process_task.get("")
     if not process_task_id:
-        process_task_id = getattr(toolkit, 'api_task_id', "")
+        process_task_id = getattr(toolkit, "api_task_id", "")
         if not process_task_id:
-            logger.warning(f"[toolkit_listen] Both ContextVar process_task "
-                           f"and toolkit.api_task_id are empty for "
-                           f"{toolkit_name}.{method_name}")
+            logger.warning(
+                f"[toolkit_listen] Both ContextVar process_task "
+                f"and toolkit.api_task_id are empty for "
+                f"{toolkit_name}.{method_name}"
+            )
 
     return toolkit_name, method_name, process_task_id, skip_workflow_display
 
@@ -122,7 +130,8 @@ def _create_activate_data(
             "toolkit_name": toolkit_name,
             "method_name": method_name,
             "message": args_str,
-        })
+        }
+    )
 
 
 def _create_deactivate_data(
@@ -140,7 +149,8 @@ def _create_deactivate_data(
             "toolkit_name": toolkit_name,
             "method_name": method_name,
             "message": res_msg,
-        })
+        }
+    )
 
 
 def _log_deactivate(
@@ -153,10 +163,12 @@ def _log_deactivate(
     """Log toolkit deactivation."""
     status = "ERROR" if error is not None else "SUCCESS"
     timestamp = datetime.now().isoformat()
-    logger.info(f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | "
-                f"Method: {method_name} | Task ID: {process_task_id} | "
-                f"Agent: {agent_name} | Status: {status} | "
-                f"Timestamp: {timestamp}")
+    logger.info(
+        f"[TOOLKIT DEACTIVATE] Toolkit: {toolkit_name} | "
+        f"Method: {method_name} | Task ID: {process_task_id} | "
+        f"Agent: {agent_name} | Status: {status} | "
+        f"Timestamp: {timestamp}"
+    )
 
 
 def _safe_put_queue(task_lock, data):
@@ -209,10 +221,13 @@ def _safe_put_queue(task_lock, data):
                 status, error = result_queue.get(timeout=1.0)
                 if status == "error":
                     logger.error(
-                        f"[SAFE_PUT_QUEUE] Thread execution failed: {error}")
+                        f"[SAFE_PUT_QUEUE] Thread execution failed: {error}"
+                    )
             except queue.Empty:
-                logger.warning(f"[SAFE_PUT_QUEUE] Thread timeout after 1s "
-                               f"for {data.__class__.__name__}")
+                logger.warning(
+                    f"[SAFE_PUT_QUEUE] Thread timeout after 1s "
+                    f"for {data.__class__.__name__}"
+                )
 
         except Exception as e:
             logger.error(f"[SAFE_PUT_QUEUE] Failed to send data to queue: {e}")
@@ -268,10 +283,11 @@ def listen_toolkit(
             @wraps(wrap)
             async def async_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
-                if not hasattr(toolkit, 'api_task_id'):
+                if not hasattr(toolkit, "api_task_id"):
                     logger.warning(
                         f"[listen_toolkit] {toolkit.__class__.__name__} "
-                        f"missing api_task_id, calling method directly")
+                        f"missing api_task_id, calling method directly"
+                    )
                     return await func(*args, **kwargs)
 
                 task_lock = get_task_lock(toolkit.api_task_id)
@@ -281,8 +297,12 @@ def listen_toolkit(
 
                 if not skip:
                     activate_data = _create_activate_data(
-                        toolkit, toolkit_name, method_name, process_task_id,
-                        args_str)
+                        toolkit,
+                        toolkit_name,
+                        method_name,
+                        process_task_id,
+                        args_str,
+                    )
                     await task_lock.put_queue(activate_data)
 
                 error = None
@@ -293,13 +313,22 @@ def listen_toolkit(
                     error = e
 
                 res_msg = _format_result(res, error, return_msg)
-                _log_deactivate(toolkit_name, method_name, process_task_id,
-                                toolkit.agent_name, error)
+                _log_deactivate(
+                    toolkit_name,
+                    method_name,
+                    process_task_id,
+                    toolkit.agent_name,
+                    error,
+                )
 
                 if not skip:
                     deactivate_data = _create_deactivate_data(
-                        toolkit, toolkit_name, method_name, process_task_id,
-                        res_msg)
+                        toolkit,
+                        toolkit_name,
+                        method_name,
+                        process_task_id,
+                        res_msg,
+                    )
                     await task_lock.put_queue(deactivate_data)
 
                 if error is not None:
@@ -314,10 +343,11 @@ def listen_toolkit(
             @wraps(wrap)
             def sync_wrapper(*args, **kwargs):
                 toolkit: AbstractToolkit = args[0]
-                if not hasattr(toolkit, 'api_task_id'):
+                if not hasattr(toolkit, "api_task_id"):
                     logger.warning(
                         f"[listen_toolkit] {toolkit.__class__.__name__} "
-                        f"missing api_task_id, calling method directly")
+                        f"missing api_task_id, calling method directly"
+                    )
                     return func(*args, **kwargs)
 
                 task_lock = get_task_lock(toolkit.api_task_id)
@@ -327,8 +357,12 @@ def listen_toolkit(
 
                 if not skip:
                     activate_data = _create_activate_data(
-                        toolkit, toolkit_name, method_name, process_task_id,
-                        args_str)
+                        toolkit,
+                        toolkit_name,
+                        method_name,
+                        process_task_id,
+                        args_str,
+                    )
                     _safe_put_queue(task_lock, activate_data)
 
                 error = None
@@ -342,7 +376,8 @@ def listen_toolkit(
                             f"Async function {func.__name__} "
                             f"was incorrectly called in sync context. "
                             f"This is a bug - the function should be marked "
-                            f"as async or should not return a coroutine.")
+                            f"as async or should not return a coroutine."
+                        )
                         logger.error(f"[listen_toolkit] {error_msg}")
                         res.close()
                         raise TypeError(error_msg)
@@ -350,13 +385,22 @@ def listen_toolkit(
                     error = e
 
                 res_msg = _format_result(res, error, return_msg)
-                _log_deactivate(toolkit_name, method_name, process_task_id,
-                                toolkit.agent_name, error)
+                _log_deactivate(
+                    toolkit_name,
+                    method_name,
+                    process_task_id,
+                    toolkit.agent_name,
+                    error,
+                )
 
                 if not skip:
                     deactivate_data = _create_deactivate_data(
-                        toolkit, toolkit_name, method_name, process_task_id,
-                        res_msg)
+                        toolkit,
+                        toolkit_name,
+                        method_name,
+                        process_task_id,
+                        res_msg,
+                    )
                     _safe_put_queue(task_lock, deactivate_data)
 
                 if error is not None:
@@ -369,26 +413,27 @@ def listen_toolkit(
     return decorator
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 # Methods that should not be wrapped by auto_listen_toolkit
 # These are utility/helper methods that don't perform actual tool operations
 EXCLUDED_METHODS = {
-    'get_tools',  # Tool enumeration
-    'get_can_use_tools',  # Tool filtering
-    'toolkit_name',  # Metadata getter
-    'run_mcp_server',  # MCP server initialization
-    'model_dump',  # Pydantic model serialization
-    'model_dump_json',  # Pydantic model serialization
-    'dict',  # Pydantic legacy dict method
-    'json',  # Pydantic legacy json method
-    'copy',  # Object copying
-    'update',  # Object update
+    "get_tools",  # Tool enumeration
+    "get_can_use_tools",  # Tool filtering
+    "toolkit_name",  # Metadata getter
+    "run_mcp_server",  # MCP server initialization
+    "model_dump",  # Pydantic model serialization
+    "model_dump_json",  # Pydantic model serialization
+    "dict",  # Pydantic legacy dict method
+    "json",  # Pydantic legacy json method
+    "copy",  # Object copying
+    "update",  # Object update
 }
 
 
 def auto_listen_toolkit(
-        base_toolkit_class: Type[T]) -> Callable[[Type[T]], Type[T]]:
+    base_toolkit_class: type[T],
+) -> Callable[[type[T]], type[T]]:
     """
     Class decorator that automatically wraps all public methods
     from the base toolkit with the @listen_toolkit decorator.
@@ -409,12 +454,11 @@ def auto_listen_toolkit(
             agent_name: str = Agents.document_agent
     """
 
-    def class_decorator(cls: Type[T]) -> Type[T]:
-
+    def class_decorator(cls: type[T]) -> type[T]:
         base_methods = {}
         for name in dir(base_toolkit_class):
             # Skip private methods and excluded helper methods
-            if not name.startswith('_') and name not in EXCLUDED_METHODS:
+            if not name.startswith("_") and name not in EXCLUDED_METHODS:
                 attr = getattr(base_toolkit_class, name)
                 if callable(attr):
                     base_methods[name] = attr
@@ -429,8 +473,9 @@ def auto_listen_toolkit(
                 # Check if already decorated by looking for
                 # the __listen_toolkit__ marker
                 # that listen_toolkit adds to its wrappers
-                is_already_decorated = getattr(overridden_method,
-                                               '__listen_toolkit__', False)
+                is_already_decorated = getattr(
+                    overridden_method, "__listen_toolkit__", False
+                )
 
                 if is_already_decorated:
                     # Already has @listen_toolkit, skip
@@ -438,25 +483,28 @@ def auto_listen_toolkit(
 
                 # Not decorated, wrap the overridden method
                 decorated_override = listen_toolkit(base_method)(
-                    overridden_method)
+                    overridden_method
+                )
                 setattr(cls, method_name, decorated_override)
                 continue
 
             sig = signature(base_method)
 
-            def create_wrapper(method_name: str,
-                               base_method: Callable) -> Callable:
+            def create_wrapper(
+                method_name: str, base_method: Callable
+            ) -> Callable:
                 # Unwrap decorators to check the actual function
                 unwrapped_method = base_method
-                while hasattr(unwrapped_method, '__wrapped__'):
+                while hasattr(unwrapped_method, "__wrapped__"):
                     unwrapped_method = unwrapped_method.__wrapped__
 
                 # Check if the unwrapped method is a coroutine function
                 if iscoroutinefunction(unwrapped_method):
 
                     async def async_method_wrapper(self, *args, **kwargs):
-                        return await getattr(super(cls, self),
-                                             method_name)(*args, **kwargs)
+                        return await getattr(super(cls, self), method_name)(
+                            *args, **kwargs
+                        )
 
                     async_method_wrapper.__name__ = method_name
                     async_method_wrapper.__signature__ = sig
@@ -464,8 +512,9 @@ def auto_listen_toolkit(
                 else:
 
                     def sync_method_wrapper(self, *args, **kwargs):
-                        return getattr(super(cls, self), method_name)(*args,
-                                                                      **kwargs)
+                        return getattr(super(cls, self), method_name)(
+                            *args, **kwargs
+                        )
 
                     sync_method_wrapper.__name__ = method_name
                     sync_method_wrapper.__signature__ = sig
