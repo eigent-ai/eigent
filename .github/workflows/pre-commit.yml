@@ -39,6 +39,7 @@ jobs:
               app/middleware \
               app/model \
               app/service \
+              benchmark \
               tests/app \
               -type f ! -path '*__pycache__*') \
             app/__init__.py \

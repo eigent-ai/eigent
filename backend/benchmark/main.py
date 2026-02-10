@@ -20,16 +20,14 @@ from datetime import datetime
 from pathlib import Path
 
 from benchmark.client import BenchmarkClient
-from benchmark.environment import BenchmarkConfig
+from benchmark.environment import BenchmarkConfig, ModelKwargs
 
 DATASET_DIR = Path(__file__).parent / "dataset"
 RESULTS_DIR = Path(__file__).parent
 
 
 async def run_benchmark(
-    client: BenchmarkClient,
-    benchmark_path: Path,
-    verbose: bool = False
+    client: BenchmarkClient, benchmark_path: Path, verbose: bool = False
 ) -> dict:
     """Load a benchmark config and run it.
 
@@ -132,6 +130,13 @@ async def main() -> None:
     if not paths:
         print(f"No benchmark configs found in {DATASET_DIR}")
         return
+
+    defaults = ModelKwargs()
+    print("=== Benchmark Model Configuration ===")
+    print(f"  Platform: {defaults.model_platform}")
+    print(f"  Model:    {defaults.model_type}")
+    print(f"  API URL:  {defaults.api_url}")
+    print()
 
     all_results = []
     async with BenchmarkClient() as client:
