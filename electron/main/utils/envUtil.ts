@@ -15,6 +15,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { readEnvValue } from '../init';
 
 export const ENV_START = '# === MCP INTEGRATION ENV START ===';
 export const ENV_END = '# === MCP INTEGRATION ENV END ===';
@@ -124,61 +125,23 @@ export function readGlobalEnvKey(key: string): string | null {
  * 2. .env.development file (development mode only)
  * 3. Global ~/.eigent/.env file
  *
- * This allows flexible configuration via:
- * - Command line: SET HTTP_PROXY=... && eigent.exe (Windows)
- * - Command line: export HTTP_PROXY=... && ./eigent (macOS/Linux)
- * - Development: .env.development file in project root
- * - User config: ~/.eigent/.env file
- *
  * @param key - The environment variable key to read
  * @returns The value if found, null otherwise
- *
- * @example
- * // Read HTTP_PROXY from any source
- * const proxy = readEnvValue('HTTP_PROXY');
- * if (proxy) {
- *   console.log('Proxy configured:', proxy);
- * }
  */
-export function readEnvValue(key: string): string | null {
+export function readEnvValueWithPriority(key: string): string | null {
   // Priority 1: Process environment variables (highest priority)
-  // This allows inline configuration: SET HTTP_PROXY=... && eigent.exe
   if (process.env[key]) {
     return process.env[key]!;
   }
 
   // Priority 2: .env.development file (development mode only)
-  // Only active when NODE_ENV=development
   if (process.env.NODE_ENV === 'development') {
-    try {
-      const devEnvPath = path.join(process.cwd(), '.env.development');
-      if (fs.existsSync(devEnvPath)) {
-        const content = fs.readFileSync(devEnvPath, 'utf-8');
-        const prefix = key + '=';
-
-        for (const line of content.split(/\r?\n/)) {
-          if (line.startsWith(prefix)) {
-            let value = line.slice(prefix.length).trim();
-
-            // Strip surrounding quotes (single or double)
-            if (
-              (value.startsWith('"') && value.endsWith('"')) ||
-              (value.startsWith("'") && value.endsWith("'"))
-            ) {
-              value = value.slice(1, -1);
-            }
-
-            return value;
-          }
-        }
-      }
-    } catch (error) {
-      // Silently ignore read errors and fall through to next priority
-    }
+    const devEnvPath = path.join(process.cwd(), '.env.development');
+    const value = readEnvValue(devEnvPath, key);
+    if (value) return value;
   }
 
-  // Priority 3: Global ~/.eigent/.env file (lowest priority)
-  // Persistent user configuration
+  // Priority 3: Global ~/.eigent/.env file
   return readGlobalEnvKey(key);
 }
 

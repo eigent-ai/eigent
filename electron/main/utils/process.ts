@@ -18,7 +18,7 @@ import log from 'electron-log';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { maskProxyUrl, readEnvValue } from './envUtil';
+import { maskProxyUrl, readEnvValueWithPriority } from './envUtil';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -40,15 +40,19 @@ export function getBackendPath() {
  * 2. .env.development file (development mode only)
  * 3. Global ~/.eigent/.env config
  *
- * Returns an object with HTTP_PROXY, HTTPS_PROXY, and lowercase variants
+ * Returns an object with HTTP_PROXY, HTTPS_PROXY, NO_PROXY and lowercase variants
  * if a proxy is configured, or an empty object if not.
  * Supports separate HTTP and HTTPS proxy configurations.
  */
 function getProxyEnvVars(): Record<string, string> {
   // Check both uppercase and lowercase variants
-  const httpProxy = readEnvValue('HTTP_PROXY') || readEnvValue('http_proxy');
+  const httpProxy =
+    readEnvValueWithPriority('HTTP_PROXY') ||
+    readEnvValueWithPriority('http_proxy');
 
-  const httpsProxy = readEnvValue('HTTPS_PROXY') || readEnvValue('https_proxy');
+  const httpsProxy =
+    readEnvValueWithPriority('HTTPS_PROXY') ||
+    readEnvValueWithPriority('https_proxy');
 
   // Return empty object if no proxy configured
   if (!httpProxy && !httpsProxy) {
@@ -67,6 +71,11 @@ function getProxyEnvVars(): Record<string, string> {
     );
   }
 
+  // Get NO_PROXY configuration (with default for local connections)
+  const noProxy = readEnvValueWithPriority('NO_PROXY') || 
+                  readEnvValueWithPriority('no_proxy') || 
+                  'localhost,127.0.0.1,.local';
+
   // Return all variants (some tools need uppercase, others lowercase)
   // Filter out undefined values
   const result: Record<string, string> = {};
@@ -80,6 +89,10 @@ function getProxyEnvVars(): Record<string, string> {
     result.HTTPS_PROXY = httpsProxy;
     result.https_proxy = httpsProxy;
   }
+
+  // Always set NO_PROXY when proxy is configured to avoid issues with local connections
+  result.NO_PROXY = noProxy;
+  result.no_proxy = noProxy;
 
   return result;
 }
