@@ -240,21 +240,26 @@ async def validate_model(request: ValidateModelRequest):
 
         result = ValidateModelResponse(**response_data)
 
-        logger.info(
-            "Model validation completed",
-            extra={
-                "platform": platform,
-                "model_type": model_type,
-                "is_valid": validation_result.is_valid,
-                "is_tool_calls": validation_result.is_tool_calls,
-                "error_type": validation_result.error_type.value
-                if validation_result.error_type
-                else None,
-                "failed_stage": validation_result.failed_stage.value
-                if validation_result.failed_stage
-                else None,
-            },
-        )
+        # Use error or warning log level if there's an issue
+        log_extra = {
+            "platform": platform,
+            "model_type": model_type,
+            "is_valid": validation_result.is_valid,
+            "is_tool_calls": validation_result.is_tool_calls,
+            "error_type": validation_result.error_type.value
+            if validation_result.error_type
+            else None,
+            "failed_stage": validation_result.failed_stage.value
+            if validation_result.failed_stage
+            else None,
+        }
+
+        if not validation_result.is_valid:
+            logger.error("Model validation completed", extra=log_extra)
+        elif validation_result.error_type:
+            logger.warning("Model validation completed", extra=log_extra)
+        else:
+            logger.info("Model validation completed", extra=log_extra)
 
         return result
 

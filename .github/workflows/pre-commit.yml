@@ -44,6 +44,7 @@ jobs:
             app/__init__.py \
             app/router.py \
             app/component/__init__.py \
+            app/component/model_validation.py \
             app/component/pydantic/__init__.py \
             app/utils/listen/__init__.py \
             app/utils/server/__init__.py \
