@@ -567,9 +567,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       }
 
-      let mcpLocal = {};
+      let mcpLocal: { mcpServers?: Record<string, unknown> } = {};
       if (window.ipcRenderer) {
-        mcpLocal = await window.ipcRenderer.invoke('mcp-list');
+        try {
+          mcpLocal = (await window.ipcRenderer.invoke('mcp-list')) || {
+            mcpServers: {},
+          };
+        } catch (error) {
+          console.error('Failed to load MCP config:', error);
+          mcpLocal = { mcpServers: {} };
+        }
       }
       console.log('mcpLocal', mcpLocal);
 
@@ -724,10 +731,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               api_url: apiModel.api_url,
               extra_params: apiModel.extra_params,
               installed_mcp:
-                mcpLocal &&
-                typeof (mcpLocal as { mcpServers?: unknown }).mcpServers ===
-                  'object'
-                  ? (mcpLocal as { mcpServers: Record<string, unknown> })
+                mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object'
+                  ? mcpLocal
                   : { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
