@@ -14,6 +14,8 @@
 
 import logging
 
+import httpx
+from camel.types import ModelType
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -205,8 +207,6 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
     If api_key is provided for OpenAI-compatible platforms,
     also fetches available models from the API.
     """
-    from camel.types import ModelType
-
     platform = request.platform
     api_key = request.api_key
     api_url = request.api_url
@@ -225,6 +225,7 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
         "moonshot": ["moonshot", "kimi"],
         "azure": ["gpt-", "o1", "o3", "o4"],
         # These platforms can run any model → return all
+        "openai_compatible_model": [],
         "openrouter": [],
         "bedrock": [],
         "ollama": [],
@@ -257,10 +258,10 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
 
         # For OpenAI-compatible platforms with an API key,
         # also fetch live models from the API
+        # Note: platform names are normalized (lowercase, hyphens → underscores)
         openai_like = {
             "openai",
             "openai_compatible_model",
-            "openai-compatible-model",
             "azure",
             "openrouter",
             "lmstudio",
@@ -272,8 +273,6 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
         platform_lower = (platform or "").lower().replace("-", "_")
         if api_key and platform_lower in openai_like:
             try:
-                import httpx
-
                 api_base_url = (api_url or "https://api.openai.com/v1").rstrip(
                     "/"
                 )
