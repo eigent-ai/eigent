@@ -52,6 +52,7 @@ import {
   getEmailFolderPath,
   getEnvPath,
   maskProxyUrl,
+  readEnvValue,
   readGlobalEnvKey,
   removeEnvKey,
   updateEnvBlock,
@@ -134,11 +135,27 @@ app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
 // ==================== Proxy configuration ====================
-// Read proxy from global .env file on startup
-proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+// Read proxy from multiple sources with priority:
+// 1. Process environment (inline: SET HTTP_PROXY=... && eigent.exe)
+// 2. .env.development (development mode)
+// 3. Global ~/.eigent/.env file
+// Check both HTTP_PROXY and HTTPS_PROXY (with lowercase variants)
+const httpProxy = readEnvValue('HTTP_PROXY') || readEnvValue('http_proxy');
+const httpsProxy = readEnvValue('HTTPS_PROXY') || readEnvValue('https_proxy');
+
+// Prefer HTTPS proxy if available, fallback to HTTP proxy
+proxyUrl = httpsProxy || httpProxy;
+
 if (proxyUrl) {
   log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
   app.commandLine.appendSwitch('proxy-server', proxyUrl);
+
+  // Log which proxy type is being used
+  if (httpsProxy) {
+    log.info('[PROXY] Using HTTPS_PROXY configuration');
+  } else if (httpProxy) {
+    log.info('[PROXY] Using HTTP_PROXY configuration');
+  }
 } else {
   log.info('[PROXY] No proxy configured');
 }

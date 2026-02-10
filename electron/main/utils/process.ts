@@ -18,7 +18,7 @@ import log from 'electron-log';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { maskProxyUrl, readGlobalEnvKey } from './envUtil';
+import { maskProxyUrl, readEnvValue } from './envUtil';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -35,35 +35,50 @@ export function getBackendPath() {
 }
 
 /**
- * Get proxy environment variables from global ~/.eigent/.env config.
+ * Get proxy environment variables with priority:
+ * 1. Process environment variables (inline/system)
+ * 2. .env.development file (development mode only)
+ * 3. Global ~/.eigent/.env config
+ *
  * Returns an object with HTTP_PROXY, HTTPS_PROXY, and lowercase variants
  * if a proxy is configured, or an empty object if not.
  * Supports separate HTTP and HTTPS proxy configurations.
  */
 function getProxyEnvVars(): Record<string, string> {
-  const httpProxy = readGlobalEnvKey('HTTP_PROXY');
-  const httpsProxy = readGlobalEnvKey('HTTPS_PROXY');
+  // Check both uppercase and lowercase variants
+  const httpProxy = readEnvValue('HTTP_PROXY') || readEnvValue('http_proxy');
 
+  const httpsProxy = readEnvValue('HTTPS_PROXY') || readEnvValue('https_proxy');
+
+  // Return empty object if no proxy configured
   if (!httpProxy && !httpsProxy) {
     return {};
   }
 
+  // Log configured proxies
+  if (httpProxy) {
+    log.info(
+      `[INSTALL SCRIPT] HTTP Proxy configured: ${maskProxyUrl(httpProxy)}`
+    );
+  }
+  if (httpsProxy) {
+    log.info(
+      `[INSTALL SCRIPT] HTTPS Proxy configured: ${maskProxyUrl(httpsProxy)}`
+    );
+  }
+
+  // Return all variants (some tools need uppercase, others lowercase)
+  // Filter out undefined values
   const result: Record<string, string> = {};
 
   if (httpProxy) {
     result.HTTP_PROXY = httpProxy;
     result.http_proxy = httpProxy;
-    log.info(
-      `[INSTALL SCRIPT] HTTP Proxy configured: ${maskProxyUrl(httpProxy)}`
-    );
   }
 
   if (httpsProxy) {
     result.HTTPS_PROXY = httpsProxy;
     result.https_proxy = httpsProxy;
-    log.info(
-      `[INSTALL SCRIPT] HTTPS Proxy configured: ${maskProxyUrl(httpsProxy)}`
-    );
   }
 
   return result;
