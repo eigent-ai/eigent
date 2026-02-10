@@ -693,11 +693,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      let mcpLocal = {};
-      if (window.ipcRenderer) {
-        mcpLocal = await window.ipcRenderer.invoke('mcp-list');
-      }
-
       fetchEventSource(api, {
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
@@ -722,10 +717,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               api_key: apiModel.api_key,
               api_url: apiModel.api_url,
               extra_params: apiModel.extra_params,
-              installed_mcp:
-                mcpLocal && Object.keys(mcpLocal).length > 0
-                  ? mcpLocal
-                  : { mcpServers: {} },
+              installed_mcp: { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
               attaches: (
