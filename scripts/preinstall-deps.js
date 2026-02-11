@@ -48,6 +48,7 @@ const TERMINAL_BASE_PACKAGES = [
   'openpyxl',
   'beautifulsoup4',
   'pillow',
+  'plotly',
 ];
 
 console.log('🚀 Starting pre-installation of dependencies...');
