@@ -23,6 +23,7 @@ from app.agent.listen_chat_agent import logger
 from app.agent.prompt import BROWSER_SYS_PROMPT
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -96,6 +97,13 @@ def browser_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+    # Save reference before registering for toolkits_to_register_agent
+    image_analysis_toolkit_for_agent_registration = ImageAnalysisToolkit(
+        options.project_id
+    )
+    image_analysis_toolkit = message_integration.register_toolkits(
+        image_analysis_toolkit_for_agent_registration
+    )
 
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
     if search_tools:
@@ -110,6 +118,7 @@ def browser_agent(options: Chat):
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
+        *image_analysis_toolkit.get_tools(),
         *search_tools,
     ]
 
@@ -135,7 +144,11 @@ def browser_agent(options: Chat):
             HumanToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
+            ImageAnalysisToolkit.toolkit_name(),
         ],
-        toolkits_to_register_agent=[web_toolkit_for_agent_registration],
+        toolkits_to_register_agent=[
+            web_toolkit_for_agent_registration,
+            image_analysis_toolkit_for_agent_registration,
+        ],
         enable_snapshot_clean=True,
     )

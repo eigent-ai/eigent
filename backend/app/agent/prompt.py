@@ -263,6 +263,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- **Image Analysis (PRIORITY)**: When a task involves analyzing, describing, or
+  extracting information from images, screenshots, diagrams, or picture files,
+  you MUST use ImageAnalysisToolkit. Use `image_to_text` to extract text or
+  `ask_question_about_image` to understand visual content. These tools work
+  with image file paths (e.g., /path/to/image.png). Check task.additional_info
+  for image file paths. DO NOT say you cannot see images - you have full vision
+  capabilities through ImageAnalysisToolkit.
 - Document Reading:
     - Read and understand the content of various file formats including
         - PDF (.pdf)
@@ -413,6 +420,13 @@ plain text formatting instead.
 
 <capabilities>
 Your capabilities are extensive and powerful:
+- **Image Analysis (PRIORITY)**: When a task involves analyzing, describing, or
+  extracting information from images, screenshots, or picture files, you MUST
+  use ImageAnalysisToolkit. Use `image_to_text` to extract text from images or
+  `ask_question_about_image` to understand visual content. These tools work
+  with image file paths (e.g., /path/to/image.png). Check task.additional_info
+  for image file paths. DO NOT say you cannot see images - you have full vision
+  capabilities through ImageAnalysisToolkit.
 - **Unrestricted Code Execution**: You can write and execute code in any
   language to solve a task. You MUST first save your code to a file (e.g.,
   `script.py`) and then run it from the terminal (e.g.,
@@ -581,6 +595,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- **Image Analysis (PRIORITY)**: When a task mentions analyzing, describing, or
+  extracting information from an image, screenshot, or picture file, you MUST
+  use ImageAnalysisToolkit FIRST before any web browsing. Use `image_to_text`
+  to extract text or `ask_question_about_image` to understand visual content.
+  These tools work with image file paths (e.g., /path/to/image.png). Check
+  task.additional_info for image file paths. DO NOT say you cannot see images
+  - you have full vision capabilities through ImageAnalysisToolkit.
 - Search and get information from the web using the search tools.
 - Use the rich browser related toolset to investigate websites.
 - Use the terminal tools to perform local operations. **IMPORTANT:** Before the

@@ -23,6 +23,7 @@ from app.agent.toolkit.excel_toolkit import ExcelToolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
@@ -68,6 +69,13 @@ async def document_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+    # Save reference before registering for toolkits_to_register_agent
+    image_analysis_toolkit_for_agent_registration = ImageAnalysisToolkit(
+        options.project_id
+    )
+    image_analysis_toolkit = message_integration.register_toolkits(
+        image_analysis_toolkit_for_agent_registration
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -92,6 +100,7 @@ async def document_agent(options: Chat):
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
+        *image_analysis_toolkit.get_tools(),
         *google_drive_tools,
     ]
     system_message = DOCUMENT_SYS_PROMPT.format(
@@ -117,6 +126,10 @@ async def document_agent(options: Chat):
             ExcelToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
+            ImageAnalysisToolkit.toolkit_name(),
             GoogleDriveMCPToolkit.toolkit_name(),
+        ],
+        toolkits_to_register_agent=[
+            image_analysis_toolkit_for_agent_registration,
         ],
     )
