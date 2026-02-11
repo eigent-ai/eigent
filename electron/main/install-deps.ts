@@ -61,11 +61,8 @@ export const checkAndInstallDepsOnUpdate = async ({
       return false;
     }
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
-    const prebuiltVenvDir = path.join(
-      process.resourcesPath,
-      'prebuilt',
-      'venv'
-    );
+    const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+    const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
