@@ -22,13 +22,15 @@ import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
-import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
+import { maskProxyUrl, readEnvValueWithPriority } from './utils/envUtil';
 import {
+  ensureTerminalVenvAtUserPath,
+  findNodejsWheelBinPath,
+  findNodejsWheelNpmPath,
   getBackendPath,
   getBinaryPath,
   getCachePath,
   getPrebuiltPythonDir,
-  getPrebuiltVenvPath,
   getUvEnv,
   getVenvPath,
   getVenvPythonPath,
@@ -40,7 +42,10 @@ const execAsync = promisify(exec);
 
 const DEFAULT_SERVER_URL = 'https://dev.eigent.ai/api';
 
-function readEnvValue(filePath: string, key: string): string | undefined {
+export function readEnvValue(
+  filePath: string,
+  key: string
+): string | undefined {
   try {
     if (!fs.existsSync(filePath)) return undefined;
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -234,22 +239,22 @@ export async function startBackend(
   const uvEnv = getUvEnv(currentVersion);
   const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
 
-  // Load proxy configuration from global .env file
-  const proxyUrl = readGlobalEnvKey('HTTP_PROXY');
-
   // Build proxy env vars if configured
-  const proxyEnv = proxyUrl
-    ? {
-        HTTP_PROXY: proxyUrl,
-        HTTPS_PROXY: proxyUrl,
-        http_proxy: proxyUrl,
-        https_proxy: proxyUrl,
-      }
-    : {};
+  const proxyEnv = {
+    HTTP_PROXY: readEnvValueWithPriority('HTTP_PROXY'),
+    HTTPS_PROXY: readEnvValueWithPriority('HTTPS_PROXY'),
+    http_proxy: readEnvValueWithPriority('http_proxy'),
+    https_proxy: readEnvValueWithPriority('https_proxy'),
+    // Ensure local connections bypass proxy
+    NO_PROXY:
+      readEnvValueWithPriority('NO_PROXY') || 'localhost,127.0.0.1,.local',
+    no_proxy:
+      readEnvValueWithPriority('no_proxy') || 'localhost,127.0.0.1,.local',
+  };
 
-  if (proxyUrl) {
+  if (proxyEnv.HTTP_PROXY || proxyEnv.HTTPS_PROXY) {
     log.info(
-      `[BACKEND] Proxy configured for backend: ${maskProxyUrl(proxyUrl)}`
+      `[BACKEND] Proxy configured for backend: ${maskProxyUrl((proxyEnv.HTTP_PROXY || proxyEnv.HTTPS_PROXY) as string)}`
     );
   }
 
@@ -305,6 +310,23 @@ export async function startBackend(
     `Backend SERVER_URL resolved to: ${serverUrl} (source: ${resolvedSource})`
   );
 
+  // Ensure prebuilt terminal venv is copied to ~/.eigent/venvs for terminal toolkit
+  ensureTerminalVenvAtUserPath(currentVersion);
+
+  // Add nodejs-wheel paths for browser toolkit (needs npm, npx, and node)
+  const npmWrapperDir = findNodejsWheelNpmPath(venvPath);
+  const nodejsWheelBin = findNodejsWheelBinPath(venvPath);
+  const pathEnv = process.env.PATH || '';
+  const pathParts: string[] = [];
+  if (npmWrapperDir) pathParts.push(npmWrapperDir);
+  if (nodejsWheelBin && nodejsWheelBin !== npmWrapperDir) {
+    pathParts.push(nodejsWheelBin);
+  }
+  const updatedPath =
+    pathParts.length > 0
+      ? pathParts.join(path.delimiter) + path.delimiter + pathEnv
+      : pathEnv;
+
   const env = {
     ...process.env,
     ...uvEnv,
@@ -313,6 +335,7 @@ export async function startBackend(
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
+    PATH: updatedPath,
   };
 
   const displayFilteredLogs = (data: String) => {
@@ -397,18 +420,9 @@ export async function startBackend(
         }
 
         // Cleanup corrupted venv (pyvenv.cfg may reference non-existent Python version)
-        // This is especially important for prebuilt venvs with hardcoded paths from CI
-        const prebuiltVenvPath = getPrebuiltVenvPath();
         try {
-          // If the broken venv is the prebuilt venv, we need to remove it
-          // and let UV recreate it from the bundled Python
           if (fs.existsSync(venvPath)) {
             log.info(`Removing potentially corrupted venv: ${venvPath}`);
-            if (venvPath === prebuiltVenvPath) {
-              log.info(
-                `This is the prebuilt venv with hardcoded paths - will recreate from bundled Python`
-              );
-            }
             fs.rmSync(venvPath, { recursive: true, force: true });
           }
         } catch (e) {
