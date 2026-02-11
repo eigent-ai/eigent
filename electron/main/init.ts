@@ -22,7 +22,7 @@ import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
-import { maskProxyUrl, readEnvValueWithPriority } from './utils/envUtil';
+import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
   ensureTerminalVenvAtUserPath,
   findNodejsWheelBinPath,
@@ -42,10 +42,7 @@ const execAsync = promisify(exec);
 
 const DEFAULT_SERVER_URL = 'https://dev.eigent.ai/api';
 
-export function readEnvValue(
-  filePath: string,
-  key: string
-): string | undefined {
+function readEnvValue(filePath: string, key: string): string | undefined {
   try {
     if (!fs.existsSync(filePath)) return undefined;
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -239,22 +236,22 @@ export async function startBackend(
   const uvEnv = getUvEnv(currentVersion);
   const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
 
-  // Build proxy env vars if configured
-  const proxyEnv = {
-    HTTP_PROXY: readEnvValueWithPriority('HTTP_PROXY'),
-    HTTPS_PROXY: readEnvValueWithPriority('HTTPS_PROXY'),
-    http_proxy: readEnvValueWithPriority('http_proxy'),
-    https_proxy: readEnvValueWithPriority('https_proxy'),
-    // Ensure local connections bypass proxy
-    NO_PROXY:
-      readEnvValueWithPriority('NO_PROXY') || 'localhost,127.0.0.1,.local',
-    no_proxy:
-      readEnvValueWithPriority('no_proxy') || 'localhost,127.0.0.1,.local',
-  };
+  // Load proxy configuration from global .env file
+  const proxyUrl = readGlobalEnvKey('HTTP_PROXY');
 
-  if (proxyEnv.HTTP_PROXY || proxyEnv.HTTPS_PROXY) {
+  // Build proxy env vars if configured
+  const proxyEnv = proxyUrl
+    ? {
+        HTTP_PROXY: proxyUrl,
+        HTTPS_PROXY: proxyUrl,
+        http_proxy: proxyUrl,
+        https_proxy: proxyUrl,
+      }
+    : {};
+
+  if (proxyUrl) {
     log.info(
-      `[BACKEND] Proxy configured for backend: ${maskProxyUrl((proxyEnv.HTTP_PROXY || proxyEnv.HTTPS_PROXY) as string)}`
+      `[BACKEND] Proxy configured for backend: ${maskProxyUrl(proxyUrl)}`
     );
   }
 
