@@ -38,6 +38,10 @@
         "!terminal_venv/**/*.pyc",
         "!terminal_venv/**/__pycache__"
       ]
+    },
+    {
+      "from": "resources/example-skills",
+      "to": "example-skills"
     }
   ],
   "protocols": [

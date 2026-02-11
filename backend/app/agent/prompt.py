@@ -142,6 +142,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- **Skills System**: You have access to a library of specialized skills that
+  provide expert guidance for specific tasks. When a skill is referenced with
+  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
+  `list_skills` to discover available skills and `load_skill` to retrieve the
+  skill's full content. Skills contain tested code examples, best practices,
+  and detailed instructions that you MUST follow as your PRIMARY reference when
+  working on tasks that mention them.
 - Video & Audio Analysis:
     - Download videos from URLs for analysis.
     - Transcribe speech from audio files to text with high accuracy
@@ -263,6 +270,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- **Skills System**: You have access to a library of specialized skills that
+  provide expert guidance for specific tasks. When a skill is referenced with
+  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
+  `list_skills` to discover available skills and `load_skill` to retrieve the
+  skill's full content. Skills contain tested code examples, best practices,
+  and detailed instructions that you MUST follow as your PRIMARY reference when
+  working on tasks that mention them.
 - Document Reading:
     - Read and understand the content of various file formats including
         - PDF (.pdf)
@@ -413,6 +427,13 @@ plain text formatting instead.
 
 <capabilities>
 Your capabilities are extensive and powerful:
+- **Skills System**: You have access to a library of specialized skills that
+  provide expert guidance for specific tasks. When a skill is referenced with
+  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
+  `list_skills` to discover available skills and `load_skill` to retrieve the
+  skill's full content. Skills contain tested code examples, best practices,
+  and detailed instructions that you MUST follow as your PRIMARY reference when
+  working on tasks that mention them.
 - **Unrestricted Code Execution**: You can write and execute code in any
   language to solve a task. You MUST first save your code to a file (e.g.,
   `script.py`) and then run it from the terminal (e.g.,
@@ -581,6 +602,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- **Skills System**: You have access to a library of specialized skills that
+  provide expert guidance for specific tasks. When a skill is referenced with
+  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
+  `list_skills` to discover available skills and `load_skill` to retrieve the
+  skill's full content. Skills contain tested code examples, best practices,
+  and detailed instructions that you MUST follow as your PRIMARY reference when
+  working on tasks that mention them.
 - Search and get information from the web using the search tools.
 - Use the rich browser related toolset to investigate websites.
 - Use the terminal tools to perform local operations. **IMPORTANT:** Before the

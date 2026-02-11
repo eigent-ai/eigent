@@ -27,6 +27,7 @@ from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
 from app.component.environment import env
@@ -97,6 +98,13 @@ def browser_agent(options: Chat):
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
+    skill_toolkit = SkillToolkit(
+        options.project_id,
+        Agents.browser_agent,
+        working_directory=working_directory,
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
     if search_tools:
         search_tools = message_integration.register_functions(search_tools)
@@ -111,6 +119,7 @@ def browser_agent(options: Chat):
         *terminal_toolkit,
         *note_toolkit.get_tools(),
         *search_tools,
+        *skill_toolkit.get_tools(),
     ]
 
     system_message = BROWSER_SYS_PROMPT.format(
@@ -135,6 +144,7 @@ def browser_agent(options: Chat):
             HumanToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
         ],
         toolkits_to_register_agent=[web_toolkit_for_agent_registration],
         enable_snapshot_clean=True,

@@ -16,7 +16,7 @@ import SearchInput from '@/components/SearchInput';
 import { Button } from '@/components/ui/button';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SkillDeleteDialog from './components/SkillDeleteDialog';
 import SkillListItem from './components/SkillListItem';
@@ -24,13 +24,19 @@ import SkillUploadDialog from './components/SkillUploadDialog';
 
 export default function Skills() {
   const { t } = useTranslation();
-  const { skills } = useSkillsStore();
+  const { skills, syncFromDisk } = useSkillsStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<Skill | null>(null);
   const [collapsedYourSkills, setCollapsedYourSkills] = useState(false);
   const [collapsedExampleSkills, setCollapsedExampleSkills] = useState(false);
+
+  // On first mount, sync skills from local SKILL.md files
+  useEffect(() => {
+    // No-op on web; in Electron this will scan ~/.eigent/skills
+    syncFromDisk();
+  }, [syncFromDisk]);
 
   const yourSkills = useMemo(() => {
     return skills

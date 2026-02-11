@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "pip>=23.0",
-    "camel-ai[eigent]==0.2.85a0",
+    "camel-ai[eigent] @ git+https://github.com/camel-ai/camel.git@master",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",

@@ -41,6 +41,7 @@ from app.agent.factory import (
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
@@ -308,11 +309,56 @@ def build_conversation_context(
     return context
 
 
-def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
-    """Build context information for workforce."""
-    return build_conversation_context(
+# When the user mentions a skill in double curly braces (e.g. {{Data Analyzer}}),
+# the coordinator must actively load that skill using tools.
+_COORDINATOR_SKILL_INSTRUCTION = """
+🎯 SKILL-BASED TASK DECOMPOSITION:
+
+When the user mentions a skill in double curly braces (e.g., {{pdf}}, {{data-analyzer}}):
+
+**YOU MUST FOLLOW THIS WORKFLOW:**
+
+1. **First, call `list_skills`** to see all available skills and verify the mentioned skill exists
+
+2. **Then, call `load_skill` with the exact skill name** to retrieve its full content
+   - The skill content will include code examples, best practices, and detailed instructions
+   - This is your PRIMARY and AUTHORITATIVE reference for the task
+
+3. **Design subtasks based on the loaded skill content**:
+   - Follow the examples, code patterns, and approaches shown in the skill
+   - Reference specific sections, libraries, and functions mentioned in the skill
+   - Each subtask should map to specific parts of the skill content
+   - DO NOT use general knowledge - follow the skill's instructions exactly
+
+4. **Important**:
+   - You MUST load the skill before designing subtasks (no shortcuts!)
+   - The skill name in double braces is just a reference - always load it explicitly
+   - If `list_skills` shows no matching skill, inform the user
+
+**Example workflow:**
+User: "Use {{pdf}} to extract tables from documents"
+You:
+- Call `list_skills()` → See available skills including "pdf"
+- Call `load_skill("pdf")` → Get full PDF skill content with code examples
+- Design subtasks based on the skill's table extraction examples
+"""
+
+# Skills are now loaded explicitly by agents using list_skills/load_skill tools
+# rather than being auto-injected based on {{skill}} syntax.
+
+
+def build_context_for_workforce(
+    task_lock: TaskLock,
+    options: Chat,
+    task_content: str | None = None,
+) -> str:
+    """Build context information for workforce.
+    Instructs coordinator to actively load skills using list_skills/load_skill tools.
+    """
+    base = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
+    return _COORDINATOR_SKILL_INSTRUCTION.strip() + "\n\n" + base
 
 
 @sync_step
@@ -2183,7 +2229,12 @@ async def construct_workforce(
                                 working_directory=working_directory,
                             )
                         )
-                    ).get_tools()
+                    ).get_tools(),
+                    *SkillToolkit(
+                        options.project_id,
+                        key,
+                        working_directory=working_directory,
+                    ).get_tools(),
                 ],
             )
             for key, prompt in {

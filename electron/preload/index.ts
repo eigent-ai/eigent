@@ -155,6 +155,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-project-folder-path', email, projectId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
+  // Skills
+  getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
+  skillsScan: () => ipcRenderer.invoke('skills-scan'),
+  skillWrite: (skillDirName: string, content: string) =>
+    ipcRenderer.invoke('skill-write', skillDirName, content),
+  skillDelete: (skillDirName: string) =>
+    ipcRenderer.invoke('skill-delete', skillDirName),
+  skillRead: (filePath: string) => ipcRenderer.invoke('skill-read', filePath),
+  skillListFiles: (skillDirName: string) =>
+    ipcRenderer.invoke('skill-list-files', skillDirName),
+  skillImportZip: (zipPathOrBuffer: string | ArrayBuffer) =>
+    ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer),
+  openSkillFolder: (skillName: string) =>
+    ipcRenderer.invoke('open-skill-folder', skillName),
 });
 
 // --------- Preload scripts loading ---------

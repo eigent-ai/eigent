@@ -20,6 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { parseSkillMd } from '@/lib/skillToolkit';
 import { useSkillsStore } from '@/store/skillsStore';
 import { File, Upload, X } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -36,12 +37,13 @@ export default function SkillUploadDialog({
   onClose,
 }: SkillUploadDialogProps) {
   const { t } = useTranslation();
-  const { addSkill } = useSkillsStore();
+  const { addSkill, syncFromDisk } = useSkillsStore();
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isZip, setIsZip] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -56,7 +58,7 @@ export default function SkillUploadDialog({
   const processFile = useCallback(
     async (file: File) => {
       // Validate file type
-      const validExtensions = ['.skill', '.md', '.txt', '.json'];
+      const validExtensions = ['.skill', '.md', '.txt', '.json', '.zip'];
       const extension = file.name
         .substring(file.name.lastIndexOf('.'))
         .toLowerCase();
@@ -66,16 +68,23 @@ export default function SkillUploadDialog({
         return;
       }
 
-      // Validate file size (max 1MB)
-      if (file.size > 1024 * 1024) {
+      // Validate file size (max 5MB to allow small zip bundles)
+      if (file.size > 5 * 1024 * 1024) {
         toast.error(t('capabilities.file-too-large'));
         return;
       }
 
       try {
-        const content = await file.text();
         setSelectedFile(file);
-        setFileContent(content);
+        if (extension === '.zip') {
+          // For zip, we don't read content in renderer; main process will import
+          setIsZip(true);
+          setFileContent('');
+        } else {
+          const content = await file.text();
+          setIsZip(false);
+          setFileContent(content);
+        }
       } catch (_error) {
         toast.error(t('capabilities.file-read-error'));
       }
@@ -103,25 +112,48 @@ export default function SkillUploadDialog({
   };
 
   const handleUpload = async () => {
-    if (!selectedFile || !fileContent) return;
+    if (!selectedFile) return;
 
     setIsUploading(true);
     try {
-      // Parse skill name from file name or content
+      // Zip import: read file in renderer and send buffer to main (no path in sandbox)
+      if (isZip) {
+        if (!(window as any).electronAPI?.skillImportZip) {
+          toast.error(t('capabilities.skill-add-error'));
+          return;
+        }
+        let buffer: ArrayBuffer;
+        try {
+          buffer = await selectedFile.arrayBuffer();
+        } catch {
+          toast.error(t('capabilities.file-read-error'));
+          return;
+        }
+        const result = await (window as any).electronAPI.skillImportZip(buffer);
+        if (!result?.success) {
+          toast.error(result?.error || t('capabilities.skill-add-error'));
+          return;
+        }
+        await syncFromDisk();
+        toast.success(t('capabilities.skill-added-success'));
+        handleClose();
+        return;
+      }
+
+      if (!fileContent) return;
+
       const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
 
-      // Try to extract name and description from content
-      let name = fileName;
-      let description = '';
+      // Prefer SKILL.md frontmatter (name + description) at upload time
+      const meta = parseSkillMd(fileContent);
+      let name = meta?.name ?? fileName;
+      let description = meta?.description ?? '';
 
-      // If it's a markdown file, try to parse the first heading and paragraph
-      if (fileContent.startsWith('#')) {
+      // Fallback: no frontmatter — use first heading and first paragraph
+      if (!meta && fileContent.startsWith('#')) {
         const lines = fileContent.split('\n');
         const headingMatch = lines[0].match(/^#\s+(.+)/);
-        if (headingMatch) {
-          name = headingMatch[1];
-        }
-        // Find first non-empty, non-heading line for description
+        if (headingMatch) name = headingMatch[1];
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
           if (line && !line.startsWith('#')) {
@@ -153,6 +185,7 @@ export default function SkillUploadDialog({
     setSelectedFile(null);
     setFileContent('');
     setIsDragging(false);
+    setIsZip(false);
     onClose();
   };
 
@@ -185,7 +218,7 @@ export default function SkillUploadDialog({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".skill,.md,.txt,.json"
+                accept=".skill,.md,.txt,.json,.zip"
                 onChange={handleFileSelect}
                 className="hidden"
               />
