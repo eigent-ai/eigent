@@ -52,5 +52,9 @@
   "open-in-vscode": "在 VS Code 中打开",
   "open-in-cursor": "在 Cursor 中打开",
   "open-in-file-manager": "在文件管理器中打开",
-  "failed-to-open-folder": "无法打开文件夹"
+  "failed-to-open-folder": "无法打开文件夹",
+  "model-error-go-to-settings": "Model Settings",
+  "model-error-invalid-api-key": "Your API key is invalid or expired. Please update it in",
+  "model-error-model-not-found": "The configured model was not found. Please check your settings in",
+  "model-error-quota-exceeded": "You've exceeded your API quota. Please check your plan or update your key in"
 }
