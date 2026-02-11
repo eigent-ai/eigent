@@ -361,5 +361,7 @@
 
   "preferred-ide": "IDE المفضل",
   "preferred-ide-description": "اختر التطبيق الذي سيتم استخدامه عند فتح مجلدات مشاريع الوكيل.",
-  "system-file-manager": "مدير ملفات النظام"
+  "system-file-manager": "مدير ملفات النظام",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

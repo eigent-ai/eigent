@@ -416,5 +416,7 @@
 
   "preferred-ide": "Preferred IDE",
   "preferred-ide-description": "Choose which application to use when opening agent project folders.",
-  "system-file-manager": "System File Manager"
+  "system-file-manager": "System File Manager",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

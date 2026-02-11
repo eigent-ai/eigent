@@ -247,5 +247,7 @@
 
   "preferred-ide": "IDE préféré",
   "preferred-ide-description": "Choisissez l'application à utiliser lors de l'ouverture des dossiers de projets d'agent.",
-  "system-file-manager": "Gestionnaire de fichiers système"
+  "system-file-manager": "Gestionnaire de fichiers système",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

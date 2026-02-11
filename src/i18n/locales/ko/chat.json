@@ -49,5 +49,9 @@
   "new-project": "새 프로젝트",
   "no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다.",
   "open-in-ide": "IDE에서 열기",
-  "failed-to-open-folder": "폴더를 열 수 없습니다"
+  "failed-to-open-folder": "폴더를 열 수 없습니다",
+  "model-error-go-to-settings": "Model Settings",
+  "model-error-invalid-api-key": "Your API key is invalid or expired. Please update it in",
+  "model-error-model-not-found": "The configured model was not found. Please check your settings in",
+  "model-error-quota-exceeded": "You've exceeded your API quota. Please check your plan or update your key in"
 }
