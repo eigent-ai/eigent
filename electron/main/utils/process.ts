@@ -1065,6 +1065,7 @@ export const TERMINAL_BASE_PACKAGES = [
   'openpyxl',
   'beautifulsoup4',
   'pillow',
+  'plotly',
 ];
 
 /**
