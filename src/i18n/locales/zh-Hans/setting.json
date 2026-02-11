@@ -7,7 +7,6 @@
   "eigent-cloud": "Eigent Cloud",
   "default": "默认",
   "profile": "个人资料",
-
   "account": "账户",
   "you-are-currently-signed-in-with": "你当前使用的是 {{email}} 账户",
   "manage": "管理",
@@ -19,7 +18,6 @@
   "dark": "深色",
   "light": "亮色",
   "transparent": "透明",
-
   "data-privacy": "数据隐私",
   "data-privacy-description": "Eigent 基于本地优先原则确保您的隐私。您的数据默认存储在您的设备上。云功能是可选的，仅使用最小的数据来实现功能。详细信息请访问我们的",
   "privacy-policy": "隐私政策",
@@ -35,7 +33,6 @@
   "how-we-handle-your-data-line-5": "我们不会出售您的数据给第三方。",
   "enable-privacy-permissions-settings": "启用隐私权限设置",
   "enable-privacy-permissions-settings-description": "通过打开此功能，您承认已阅读并同意我们的隐私政策，关于您的任务数据如何被收集、处理和保护。",
-
   "api-key-can-not-be-empty": "API Key 不能为空！",
   "api-host-can-not-be-empty": "API Host 不能为空！",
   "model-type-can-not-be-empty": "Model Type 不能为空！",
@@ -158,7 +155,6 @@
   "reset": "重置",
   "reset-success": "重置成功！",
   "reset-failed": "重置失败！",
-
   "browser-login": "浏览器登录",
   "browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
   "open-browser-login": "打开浏览器登录",
@@ -166,7 +162,6 @@
   "browser-opened-successfully": "浏览器已成功打开。请登录您的账户。",
   "failed-to-open-browser": "打开浏览器失败，请重试。",
   "restart-to-apply": "重启应用",
-
   "cookie-manager": "Cookie 管理器",
   "cookie-manager-description": "管理从浏览器会话中保存的 Cookie。可以删除特定网站或全部 Cookie。",
   "refresh": "刷新",
@@ -185,7 +180,6 @@
   "confirm-delete-all-cookies": "确定要删除所有 Cookie 吗？此操作无法撤销。",
   "all-cookies-deleted": "所有 Cookie 已成功删除。",
   "cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。",
-
   "cloud-not-available-in-local-proxy": "在本地代理模式下无法使用云端版本",
   "set-as-default": "设为默认",
   "api-key-setting": "API 密钥设置",
@@ -193,11 +187,9 @@
   "model-type-setting": "模型类型设置",
   "please-select": "请选择",
   "configuring": "正在配置...",
-
   "models-default-setting-title": "默认设置",
   "models-default-setting-description": "从已配置的模型中选择一个作为 Eigent 的默认模型，它将全局应用到您的工作区。",
   "models-configuration": "配置",
-
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
   "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
@@ -208,5 +200,10 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
-  "minimax-m2-5-name": "Minimax M2.5"
+  "minimax-m2-5-name": "Minimax M2.5",
+  "preferred-ide": "首选 IDE",
+  "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
+  "system-file-manager": "系统文件管理器",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }
