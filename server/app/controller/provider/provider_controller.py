@@ -29,6 +29,7 @@ from app.model.provider.provider import (
     ProviderIn,
     ProviderOut,
     ProviderPreferIn,
+    VaildStatus,
 )
 
 logger = logging.getLogger("server_provider_controller")
@@ -133,6 +134,29 @@ async def delete(id: int, session: Session = Depends(session), auth: Auth = Depe
     except Exception as e:
         logger.error(
             "Provider deletion failed", extra={"user_id": user_id, "provider_id": id, "error": str(e)}, exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.patch("/provider/{id}/invalidate", name="invalidate provider")
+async def invalidate(id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
+    """Mark a provider as invalid."""
+    user_id = auth.user.id
+    model = session.exec(
+        select(Provider).where(Provider.user_id == user_id, Provider.no_delete(), Provider.id == id)
+    ).one_or_none()
+    if not model:
+        logger.warning("Provider not found for invalidation", extra={"user_id": user_id, "provider_id": id})
+        raise HTTPException(status_code=404, detail=_("Provider not found"))
+
+    try:
+        model.is_vaild = VaildStatus.not_valid
+        model.save(session)
+        logger.info("Provider invalidated", extra={"user_id": user_id, "provider_id": id})
+        return {"success": True}
+    except Exception as e:
+        logger.error(
+            "Provider invalidation failed", extra={"user_id": user_id, "provider_id": id, "error": str(e)}, exc_info=True
         )
         raise HTTPException(status_code=500, detail="Internal server error")
 
