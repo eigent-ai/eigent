@@ -7,7 +7,6 @@
   "eigent-cloud": "Eigent Cloud",
   "default": "默认",
   "profile": "个人资料",
-
   "account": "账户",
   "you-are-currently-signed-in-with": "你当前使用的是 {{email}} 账户",
   "manage": "管理",
@@ -19,7 +18,6 @@
   "dark": "深色",
   "light": "亮色",
   "transparent": "透明",
-
   "data-privacy": "数据隐私",
   "data-privacy-description": "Eigent 基于本地优先原则确保您的隐私。您的数据默认存储在您的设备上。云功能是可选的，仅使用最小的数据来实现功能。详细信息请访问我们的",
   "privacy-policy": "隐私政策",
@@ -33,6 +31,8 @@
   "how-we-handle-your-data-line-3": "凭据存储在本地，加密，仅用于批准的步骤。",
   "how-we-handle-your-data-line-4": "您的数据永远不会用于训练我们的 AI 模型，除非您明确同意。",
   "how-we-handle-your-data-line-5": "我们不会出售您的数据给第三方。",
+  "enable-privacy-permissions-settings": "启用隐私权限设置",
+  "enable-privacy-permissions-settings-description": "通过打开此功能，您承认已阅读并同意我们的隐私政策，关于您的任务数据如何被收集、处理和保护。",
   "api-key-can-not-be-empty": "API Key 不能为空！",
   "api-host-can-not-be-empty": "API Host 不能为空！",
   "model-type-can-not-be-empty": "Model Type 不能为空！",
@@ -114,7 +114,14 @@
   "warning-google-search-not-configured": "警告：Google 搜索未配置",
   "search-functionality-may-be-limited-without-google-api": "没有 Google API 密钥和搜索引擎 ID，搜索功能可能受限。您可以在 MCP & 工具设置中配置这些。",
   "search-engine": "搜索引擎",
+  "allow-agent-to-take-screenshots": "允许智能体截屏",
+  "allow-agent-to-take-screenshots-description": "允许智能体捕获您计算机屏幕的截图。这可用于支持、诊断或监控目的。截图可能包含可见的个人信息，请谨慎启用。",
+  "allow-agent-to-access-local-software": "允许智能体访问本地软件",
+  "allow-agent-to-access-local-software-description": "授予智能体与您本地机器上安装的软件交互和使用的权限。这对于故障排除、运行诊断或执行特定任务可能是必要的。",
+  "allow-agent-to-access-your-address": "允许智能体访问您的地址",
+  "allow-agent-to-access-your-address-description": "授权智能体查看和使用您的位置或地址详细信息。这对于基于位置的服务或个性化支持可能是必需的。",
   "password-storage": "密码存储",
+  "password-storage-description": "确定如何处理和存储密码。您可以选择在设备或应用程序中安全存储密码，或选择每次手动输入。所有存储的密码都经过加密。",
   "notion-mcp-installed-successfully": "Notion MCP 安装成功",
   "failed-to-install-notion-mcp": "Notion MCP 安装失败",
   "google-calendar-installed-successfully": "Google Calendar 安装成功",
@@ -148,7 +155,6 @@
   "reset": "重置",
   "reset-success": "重置成功！",
   "reset-failed": "重置失败！",
-
   "browser-login": "浏览器登录",
   "browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
   "open-browser-login": "打开浏览器登录",
@@ -156,7 +162,6 @@
   "browser-opened-successfully": "浏览器已成功打开。请登录您的账户。",
   "failed-to-open-browser": "打开浏览器失败，请重试。",
   "restart-to-apply": "重启应用",
-
   "cookie-manager": "Cookie 管理器",
   "cookie-manager-description": "管理从浏览器会话中保存的 Cookie。可以删除特定网站或全部 Cookie。",
   "refresh": "刷新",
@@ -175,7 +180,6 @@
   "confirm-delete-all-cookies": "确定要删除所有 Cookie 吗？此操作无法撤销。",
   "all-cookies-deleted": "所有 Cookie 已成功删除。",
   "cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。",
-
   "cloud-not-available-in-local-proxy": "在本地代理模式下无法使用云端版本",
   "set-as-default": "设为默认",
   "api-key-setting": "API 密钥设置",
@@ -183,11 +187,9 @@
   "model-type-setting": "模型类型设置",
   "please-select": "请选择",
   "configuring": "正在配置...",
-
   "models-default-setting-title": "默认设置",
   "models-default-setting-description": "从已配置的模型中选择一个作为 Eigent 的默认模型，它将全局应用到您的工作区。",
   "models-configuration": "配置",
-
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
   "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
@@ -196,17 +198,15 @@
   "gpt-5-name": "GPT-5",
   "gpt-5.1-name": "GPT-5.1",
   "gpt-5.2-name": "GPT-5.2",
-  "gpt-5.4-name": "GPT-5.4",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-haiku-4-5-name": "Claude Haiku 4.5",
   "claude-sonnet-4-5-name": "Claude Sonnet 4.5",
   "claude-sonnet-4-6-name": "Claude Sonnet 4.6",
   "claude-opus-4-6-name": "Claude Opus 4.6",
   "minimax-m2-5-name": "Minimax M2.5",
-
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
   "system-file-manager": "系统文件管理器",
-  "help-improve-eigent": "帮助改进 Eigent",
-  "help-improve-eigent-description": "允许 Eigent 收集匿名错误日志和使用数据以改进服务。此项为可选，可随时更改。"
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }
