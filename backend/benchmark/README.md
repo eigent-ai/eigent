@@ -96,6 +96,8 @@ export BENCHMARK_API_URL=""
 | `BENCHMARK_API_KEY`        | `$OPENAI_API_KEY`           | API key for the provider.                                                   |
 | `BENCHMARK_API_URL`        | `https://api.openai.com/v1` | Base URL for the provider's API.                                            |
 
+> **Important:** If the model is served through an OpenAI-compatible API (e.g. DeepSeek, MiniMax, Ollama, vLLM, LiteLLM, or any other non-OpenAI provider), set `BENCHMARK_MODEL_PLATFORM` to `openai-compatible-model` — **not** `openai`. The `openai` platform value is reserved for the official OpenAI API only.
+
 To override a single benchmark, add `model_kwargs` to its JSON config — these take priority over environment variables.
 
 2. Create `benchmark/checker/<n>.py` with a `check(working_directory: str) -> bool` function.

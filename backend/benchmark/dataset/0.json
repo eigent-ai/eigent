@@ -1,12 +1,18 @@
 {
   "metadata": {
     "difficulty": "easy",
-    "description": "Google a specific blog post on mathspp.com about obfuscated Python, read and understand the code tricks, then faithfully reproduce the exact program as hello_world.py.",
-    "tags": ["browser", "coding", "python", "target-searching"]
+    "description": "1) search tool usage and choosing the appropriate website from results, 2) interpreting advanced obfuscated Python code patterns (requires deep coding comprehension), 3) strict instruction following with implicit output modification instead of directly copying code from the website.",
+    "tags": [
+      "instruction-following",
+      "browser",
+      "coding",
+      "python",
+      "target-searching"
+    ]
   },
   "data": {
     "name": "0",
-    "question": "Google search 'The most obscure Hello, world! program', choose the link from the website mathspp, read the page, and write a Python script named 'hello_world.py' that faithfully reproduces the exact obfuscated Hello World program shown on that page. Do not simplify or rewrite it — copy the same structure, tricks, and naming conventions used by the author. The script must print 'Hello, World!' when run.",
+    "question": "Find 'obscure hello world program' from mathspp, read the page, and write a Python script named 'hello_world.py' that faithfully reproduces the obfuscated Hello World program shown on that page. Do not simplify or rewrite it, just use the same structure, tricks, and naming conventions used by the author. Notice that the script MUST print 'Hello, WORLD!' when run.",
     "env": {}
   },
   "tests": {

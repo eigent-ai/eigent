@@ -38,7 +38,6 @@ logging.getLogger("camel.base_model").setLevel(logging.WARNING)
 logging.getLogger("camel.agents").setLevel(logging.WARNING)
 logging.getLogger("camel.societies").setLevel(logging.WARNING)
 
-import app.patches.strip_think_tags  # noqa: F401 — must run before any model use
 from app import api
 from app.component.environment import env
 from app.router import register_routers

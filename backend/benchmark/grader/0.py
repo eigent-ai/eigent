@@ -66,31 +66,48 @@ def grade(working_directory: str) -> tuple[int, int]:
         "mathspp.com/blog/the-most-obscure-hello-world" in u for u in visited
     ):
         completed += 1
+    else:
+        print(
+            "MISS [1]: did not visit "
+            "mathspp.com/blog/the-most-obscure-hello-world"
+        )
 
     script = Path(working_directory) / "hello_world.py"
     if not script.exists():
+        print("MISS [2-7]: hello_world.py does not exist")
         return completed, total
 
     source = script.read_text()
     tree = ast.parse(source)
 
-    # 1. Uses a decorator that immediately instantiates a class
+    # 2. Uses a decorator that immediately instantiates a class
+    found = False
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.decorator_list:
+            found = True
             completed += 1
             break
+    if not found:
+        print("MISS [2]: no decorated class definition found")
 
-    # 2. Overloads __format__
+    # 3. Overloads __format__
+    found = False
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "__format__":
+            found = True
             completed += 1
             break
+    if not found:
+        print("MISS [3]: no __format__ method found")
 
-    # 3. Uses property injection on the class
+    # 4. Uses property injection on the class
     if "property" in source:
         completed += 1
+    else:
+        print("MISS [4]: no 'property' usage found in source")
 
-    # 4. __format__ returns an empty string
+    # 5. __format__ returns an empty string
+    found = False
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "__format__":
             for child in ast.walk(node):
@@ -98,18 +115,27 @@ def grade(working_directory: str) -> tuple[int, int]:
                     child.value, ast.Constant
                 ):
                     if child.value.value == "":
+                        found = True
                         completed += 1
                         break
             break
+    if not found:
+        print('MISS [5]: __format__ does not return an empty string ""')
 
-    # 5. Uses function annotation to trigger f-string evaluation
+    # 6. Uses function annotation to trigger f-string evaluation
+    found = False
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.returns is not None:
             if isinstance(node.returns, ast.JoinedStr):
+                found = True
                 completed += 1
                 break
+    if not found:
+        print(
+            "MISS [6]: no function annotation with f-string (JoinedStr) found"
+        )
 
-    # 6. Uses _ as both class name and instance variable
+    # 7. Uses _ as both class name and instance variable
     has_class_underscore = False
     has_attr_underscore = False
     for node in ast.walk(tree):
@@ -122,6 +148,13 @@ def grade(working_directory: str) -> tuple[int, int]:
                 has_attr_underscore = True
     if has_class_underscore and has_attr_underscore:
         completed += 1
+    else:
+        parts = []
+        if not has_class_underscore:
+            parts.append("no class named '_'")
+        if not has_attr_underscore:
+            parts.append("no _._ attribute access")
+        print(f"MISS [7]: {', '.join(parts)}")
 
     return completed, total
 
