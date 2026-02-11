@@ -18,6 +18,7 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urlparse
 
 BROWSER_LOG_DIR = Path(__file__).resolve().parents[2] / "browser_log"
 ANSWER_CSV = (
@@ -118,7 +119,15 @@ def grade(working_directory: str) -> tuple[int, int]:
 
     # 1. Visited YC W25 companies page
     visited = _visited_urls()
-    if any("ycombinator.com" in u and "W25" in u for u in visited):
+    if any(
+        (p := urlparse(u)).hostname is not None
+        and (
+            p.hostname == "ycombinator.com"
+            or p.hostname.endswith(".ycombinator.com")
+        )
+        and "W25" in u
+        for u in visited
+    ):
         completed += 1
     else:
         print("MISS [1]: did not visit ycombinator.com W25 companies page")

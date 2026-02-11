@@ -17,6 +17,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 BROWSER_LOG_DIR = Path(__file__).resolve().parents[2] / "browser_log"
 
@@ -58,7 +59,15 @@ def grade(working_directory: str) -> tuple[int, int]:
 
     # 1. Visited the Python 3.13 What's New page
     visited = _visited_urls()
-    if any("docs.python.org" in u and "3.13" in u for u in visited):
+    if any(
+        (p := urlparse(u)).hostname is not None
+        and (
+            p.hostname == "docs.python.org"
+            or p.hostname.endswith(".docs.python.org")
+        )
+        and "3.13" in p.path
+        for u in visited
+    ):
         completed += 1
     else:
         print("MISS [1]: did not visit docs.python.org/3.13 What's New page")

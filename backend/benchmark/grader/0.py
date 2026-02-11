@@ -16,6 +16,7 @@ import ast
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 BROWSER_LOG_DIR = Path(__file__).resolve().parents[2] / "browser_log"
 
@@ -63,7 +64,12 @@ def grade(working_directory: str) -> tuple[int, int]:
     # 1. Visited mathspp.com blog page
     visited = _visited_urls()
     if any(
-        "mathspp.com/blog/the-most-obscure-hello-world" in u for u in visited
+        (p := urlparse(u)).hostname is not None
+        and (
+            p.hostname == "mathspp.com" or p.hostname.endswith(".mathspp.com")
+        )
+        and "/blog/the-most-obscure-hello-world" in p.path
+        for u in visited
     ):
         completed += 1
     else:
