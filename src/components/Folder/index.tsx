@@ -1034,11 +1034,13 @@ function HtmlRenderer({
             height: `${10000 / zoom}%`,
           }}
         >
+          {/* allow-same-origin: lets agent-generated HTML access localStorage/sessionStorage (e.g. saving game state).
+               Security is maintained via CSP allowlist in index.html which restricts script sources. */}
           <iframe
             ref={iframeRef}
             srcDoc={processedHtml}
             className="bg-white h-full w-full border-0"
-            sandbox="allow-scripts allow-forms"
+            sandbox="allow-scripts allow-forms allow-same-origin"
             title={selectedFile.name}
             tabIndex={0}
             onLoad={() => iframeRef.current?.focus()}
