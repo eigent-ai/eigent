@@ -312,35 +312,41 @@ def build_conversation_context(
 # When the user mentions a skill in double curly braces (e.g. {{Data Analyzer}}),
 # the coordinator must actively load that skill using tools.
 _COORDINATOR_SKILL_INSTRUCTION = """
-🎯 SKILL-BASED TASK DECOMPOSITION:
+🎯 CRITICAL: SKILL-BASED TASK DECOMPOSITION PROTOCOL
 
-When the user mentions a skill in double curly braces (e.g., {{pdf}}, {{data-analyzer}}):
+When the user mentions a skill with double curly braces (e.g., {{pdf}}, {{excalidraw}}, {{data-analyzer}}),
+you are REQUIRED to use the SkillToolkit to load that skill. DO NOT access skill files directly.
 
-**YOU MUST FOLLOW THIS WORKFLOW:**
+**MANDATORY WORKFLOW (NO EXCEPTIONS):**
 
-1. **First, call `list_skills`** to see all available skills and verify the mentioned skill exists
+1. **ALWAYS call `list_skills()` first**
+   - This shows all available skills
+   - Verify the mentioned skill exists
+   - If the skill doesn't exist, inform the user immediately
 
-2. **Then, call `load_skill` with the exact skill name** to retrieve its full content
-   - The skill content will include code examples, best practices, and detailed instructions
-   - This is your PRIMARY and AUTHORITATIVE reference for the task
+2. **ALWAYS call `load_skill("<skill-name>")` second**
+   - Pass the exact skill name (lowercase, hyphenated)
+   - The returned content is the AUTHORITATIVE reference
+   - Contains examples, patterns, API documentation, and best practices
 
-3. **Design subtasks based on the loaded skill content**:
-   - Follow the examples, code patterns, and approaches shown in the skill
-   - Reference specific sections, libraries, and functions mentioned in the skill
-   - Each subtask should map to specific parts of the skill content
-   - DO NOT use general knowledge - follow the skill's instructions exactly
+3. **Design subtasks based ONLY on the loaded skill content**
+   - Follow code examples and patterns from the skill
+   - Reference specific sections, functions, and parameters mentioned
+   - DO NOT use general knowledge or assumptions
+   - DO NOT access files like /Users/.../.eigent/skills/.../ directly
 
 4. **Important**:
    - You MUST load the skill before designing subtasks (no shortcuts!)
    - The skill name in double braces is just a reference - always load it explicitly
    - If `list_skills` shows no matching skill, inform the user
 
-**Example workflow:**
-User: "Use {{pdf}} to extract tables from documents"
+**Example (CORRECT):**
+User: "I just added the {{excalidraw}} skill for Eigent, can you make something amazing with this skill?"
 You:
-- Call `list_skills()` → See available skills including "pdf"
-- Call `load_skill("pdf")` → Get full PDF skill content with code examples
-- Design subtasks based on the skill's table extraction examples
+1. Call `list_skills()` → Verify "excalidraw" exists
+2. Call `load_skill("excalidraw")` → Get full Excalidraw documentation
+3. Design subtasks based on examples in the loaded content
+
 """
 
 # Skills are now loaded explicitly by agents using list_skills/load_skill tools
@@ -2234,6 +2240,7 @@ async def construct_workforce(
                         options.project_id,
                         key,
                         working_directory=working_directory,
+                        user_id=options.user_id,
                     ).get_tools(),
                 ],
             )

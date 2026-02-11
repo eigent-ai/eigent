@@ -978,6 +978,96 @@ function registerIpcHandlers() {
     }
   });
 
+  // ======================== skills-config.json handlers ========================
+
+  function getSkillConfigPath(userId: string): string {
+    return path.join(os.homedir(), '.eigent', userId, 'skills-config.json');
+  }
+
+  async function loadSkillConfig(userId: string): Promise<any> {
+    const configPath = getSkillConfigPath(userId);
+    if (!existsSync(configPath)) {
+      return { version: 1, skills: {} };
+    }
+    try {
+      const content = await fsp.readFile(configPath, 'utf-8');
+      return JSON.parse(content);
+    } catch (error) {
+      log.error('Failed to load skill config', error);
+      return { version: 1, skills: {} };
+    }
+  }
+
+  async function saveSkillConfig(userId: string, config: any): Promise<void> {
+    const configPath = getSkillConfigPath(userId);
+    await fsp.mkdir(path.dirname(configPath), { recursive: true });
+    await fsp.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  }
+
+  ipcMain.handle('skill-config-load', async (_event, userId: string) => {
+    try {
+      const config = await loadSkillConfig(userId);
+      return { success: true, config };
+    } catch (error: any) {
+      log.error('skill-config-load failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  ipcMain.handle(
+    'skill-config-toggle',
+    async (_event, userId: string, skillName: string, enabled: boolean) => {
+      try {
+        const config = await loadSkillConfig(userId);
+        if (!config.skills[skillName]) {
+          config.skills[skillName] = {
+            enabled,
+            scope: 'global',
+            addedAt: Date.now(),
+            isExample: false,
+          };
+        } else {
+          config.skills[skillName].enabled = enabled;
+        }
+        await saveSkillConfig(userId, config);
+        return { success: true, config: config.skills[skillName] };
+      } catch (error: any) {
+        log.error('skill-config-toggle failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'skill-config-update',
+    async (_event, userId: string, skillName: string, skillConfig: any) => {
+      try {
+        const config = await loadSkillConfig(userId);
+        config.skills[skillName] = { ...skillConfig };
+        await saveSkillConfig(userId, config);
+        return { success: true };
+      } catch (error: any) {
+        log.error('skill-config-update failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'skill-config-delete',
+    async (_event, userId: string, skillName: string) => {
+      try {
+        const config = await loadSkillConfig(userId);
+        delete config.skills[skillName];
+        await saveSkillConfig(userId, config);
+        return { success: true };
+      } catch (error: any) {
+        log.error('skill-config-delete failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
   ipcMain.handle(
     'skill-import-zip',
     async (

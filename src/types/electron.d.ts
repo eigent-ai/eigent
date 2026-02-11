@@ -170,6 +170,24 @@ interface ElectronAPI {
   openSkillFolder: (
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
+  // Skills config (~/.eigent/<userId>/skills-config.json)
+  skillConfigLoad: (
+    userId: string
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigToggle: (
+    userId: string,
+    skillName: string,
+    enabled: boolean
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigUpdate: (
+    userId: string,
+    skillName: string,
+    skillConfig: any
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillConfigDelete: (
+    userId: string,
+    skillName: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

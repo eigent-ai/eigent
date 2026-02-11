@@ -76,6 +76,8 @@ class Chat(BaseModel):
     # User-specific search engine configurations
     # (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
     search_config: dict[str, str] | None = None
+    # User identifier for user-specific skill configurations
+    user_id: str | None = None
 
     @field_validator("model_platform")
     @classmethod
