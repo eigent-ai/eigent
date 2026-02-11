@@ -243,7 +243,7 @@ export default function SettingModels() {
                 provider_id: found.id,
                 apiKey: found.api_key || '',
                 apiHost: found.endpoint_url || '',
-                is_valid: !!found?.is_valid,
+                is_valid: found?.is_vaild === 2,
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 externalConfig: fi.externalConfig
@@ -372,6 +372,15 @@ export default function SettingModels() {
     }
 
     return t('setting.select-default-model');
+  };
+
+  const isDefaultModelInvalid = (): boolean => {
+    // Check for custom model preference
+    const preferredIdx = form.findIndex((f) => f.prefer);
+    if (preferredIdx !== -1) {
+      return form[preferredIdx].is_valid === false;
+    }
+    return false;
   };
 
   // Check if a model is configured
@@ -557,7 +566,7 @@ export default function SettingModels() {
       provider_name: item.id,
       api_key: form[idx].apiKey,
       endpoint_url: form[idx].apiHost,
-      is_valid: form[idx].is_valid,
+      is_vaild: 2,
       model_type: form[idx].model_type,
     };
     if (externalConfig) {
@@ -587,7 +596,7 @@ export default function SettingModels() {
               provider_id: found.id,
               apiKey: found.api_key || '',
               apiHost: found.endpoint_url || '',
-              is_valid: !!found.is_valid,
+              is_valid: found.is_vaild === 2,
               prefer: found.prefer ?? false,
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
@@ -731,7 +740,7 @@ export default function SettingModels() {
         provider_name: localPlatform,
         api_key: 'not-required',
         endpoint_url: currentEndpoint, // Save base URL without specific endpoints
-        is_valid: true,
+        is_vaild: 2,
         model_type: currentType,
         encrypted_config: {
           model_platform: localPlatform,
@@ -1033,7 +1042,8 @@ export default function SettingModels() {
     modelId: string | null,
     isActive: boolean,
     isSubItem: boolean = false,
-    isConfigured: boolean = false
+    isConfigured: boolean = false,
+    isValid: boolean = true
   ) => {
     const modelImage = getModelImage(modelId);
     const fallbackIcon =
@@ -1074,8 +1084,11 @@ export default function SettingModels() {
             {label}
           </span>
         </div>
-        {isConfigured && (
+        {isConfigured && isValid && (
           <div className="m-1 h-2 w-2 rounded-full bg-text-success" />
+        )}
+        {isConfigured && !isValid && (
+          <div className="m-1 h-2 w-2 rounded-full bg-text-error" />
         )}
       </button>
     );
@@ -1293,8 +1306,10 @@ export default function SettingModels() {
                       : t('setting.set-as-default')}
                   </Button>
                 )}
-                {form[idx].provider_id ? (
+                {form[idx].provider_id && form[idx].is_valid !== false ? (
                   <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
+                ) : form[idx].provider_id && form[idx].is_valid === false ? (
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-error" />
                 ) : (
                   <div className="h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
                 )}
@@ -1311,8 +1326,19 @@ export default function SettingModels() {
               type={showApiKey[idx] ? 'text' : 'password'}
               size="default"
               title={t('setting.api-key-setting')}
-              state={errors[idx]?.apiKey ? 'error' : 'default'}
-              note={errors[idx]?.apiKey ?? undefined}
+              state={
+                errors[idx]?.apiKey
+                  ? 'error'
+                  : form[idx].provider_id && form[idx].is_valid === false
+                    ? 'error'
+                    : 'default'
+              }
+              note={
+                errors[idx]?.apiKey ??
+                (form[idx].provider_id && form[idx].is_valid === false
+                  ? t('setting.api-key-invalid-or-expired')
+                  : undefined)
+              }
               placeholder={` ${t('setting.enter-your-api-key')} ${
                 item.name
               } ${t('setting.key')}`}
@@ -1711,11 +1737,19 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
+              <button
+                className={`flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid px-3 py-1 font-semibold transition-colors hover:opacity-70 active:opacity-90 ${
+                  isDefaultModelInvalid()
+                    ? 'border-border-warning bg-surface-warning text-text-warning'
+                    : 'border-border-success bg-surface-success text-text-success'
+                }`}
+              >
                 <span className="whitespace-nowrap text-body-sm">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
+                <ChevronDown
+                  className={`h-4 w-4 flex-shrink-0 ${isDefaultModelInvalid() ? 'text-text-warning' : 'text-text-success'}`}
+                />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1759,6 +1793,7 @@ export default function SettingModels() {
                   {items.map((item, idx) => {
                     const isConfigured = !!form[idx]?.provider_id;
                     const isPreferred = form[idx]?.prefer;
+                    const isValid = form[idx]?.is_valid !== false;
                     const modelImage = getModelImage(item.id);
 
                     return (
@@ -1795,10 +1830,15 @@ export default function SettingModels() {
                             <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
                           {isPreferred && (
-                            <Check className="h-4 w-4 text-text-success" />
+                            <Check
+                              className={`h-4 w-4 ${isValid ? 'text-text-success' : 'text-text-error'}`}
+                            />
                           )}
-                          {isConfigured && !isPreferred && (
+                          {isConfigured && !isPreferred && isValid && (
                             <div className="h-2 w-2 rounded-full bg-text-success" />
+                          )}
+                          {isConfigured && !isPreferred && !isValid && (
+                            <div className="h-2 w-2 rounded-full bg-text-error" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1925,7 +1965,8 @@ export default function SettingModels() {
                         item.id,
                         selectedTab === `byok-${item.id}`,
                         true,
-                        !!form[idx].provider_id
+                        !!form[idx].provider_id,
+                        form[idx].is_valid !== false
                       )
                     )}
                   </div>
