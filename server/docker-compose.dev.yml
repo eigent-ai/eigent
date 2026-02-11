@@ -1,5 +1,5 @@
 services:
-  # PostgreSQL Database Only
+  # PostgreSQL Database
   postgres:
     image: postgres:15
     container_name: eigent_postgres
@@ -8,15 +8,32 @@ services:
       POSTGRES_DB: eigent
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - eigent_network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d eigent" ]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d eigent']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: eigent-redis-dev
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - eigent_redis_data:/data
+    networks:
+      - eigent_network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,6 +41,7 @@ services:
 volumes:
   postgres_data:
     driver: local
+  eigent_redis_data:
 
 networks:
   eigent_network:
