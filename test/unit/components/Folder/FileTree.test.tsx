@@ -54,7 +54,6 @@ describe('FileTree', () => {
       screen.getByRole('button', { name: /readme\.md/i })
     ).toBeInTheDocument();
   });
-
   it('uses consistent first-column box (h-4 w-4) for folder and file rows for alignment', () => {
     const { container } = render(
       <FileTree
@@ -73,7 +72,6 @@ describe('FileTree', () => {
       expect(firstCol).toBeInTheDocument();
     });
   });
-
   it('uses gap-2 on row for consistent spacing between chevron, icon, and label', () => {
     const { container } = render(
       <FileTree
@@ -90,7 +88,6 @@ describe('FileTree', () => {
       expect(btn.className).toMatch(/gap-2/);
     });
   });
-
   it('file row first column has aria-hidden for accessibility', () => {
     render(
       <FileTree
