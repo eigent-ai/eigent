@@ -18,6 +18,7 @@ import log from 'electron-log';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { maskProxyUrl, readEnvValueWithPriority } from './envUtil';
 
 export function getResourcePath() {
   return path.join(app.getAppPath(), 'resources');
@@ -33,6 +34,69 @@ export function getBackendPath() {
   }
 }
 
+/**
+ * Get proxy environment variables with priority:
+ * 1. Process environment variables (inline/system)
+ * 2. .env.development file (development mode only)
+ * 3. Global ~/.eigent/.env config
+ *
+ * Returns an object with HTTP_PROXY, HTTPS_PROXY, NO_PROXY and lowercase variants
+ * if a proxy is configured, or an empty object if not.
+ * Supports separate HTTP and HTTPS proxy configurations.
+ */
+function getProxyEnvVars(): Record<string, string> {
+  // Check both uppercase and lowercase variants
+  const httpProxy =
+    readEnvValueWithPriority('HTTP_PROXY') ||
+    readEnvValueWithPriority('http_proxy');
+
+  const httpsProxy =
+    readEnvValueWithPriority('HTTPS_PROXY') ||
+    readEnvValueWithPriority('https_proxy');
+
+  // Return empty object if no proxy configured
+  if (!httpProxy && !httpsProxy) {
+    return {};
+  }
+
+  // Log configured proxies
+  if (httpProxy) {
+    log.info(
+      `[INSTALL SCRIPT] HTTP Proxy configured: ${maskProxyUrl(httpProxy)}`
+    );
+  }
+  if (httpsProxy) {
+    log.info(
+      `[INSTALL SCRIPT] HTTPS Proxy configured: ${maskProxyUrl(httpsProxy)}`
+    );
+  }
+
+  // Get NO_PROXY configuration (with default for local connections)
+  const noProxy = readEnvValueWithPriority('NO_PROXY') || 
+                  readEnvValueWithPriority('no_proxy') || 
+                  'localhost,127.0.0.1,.local';
+
+  // Return all variants (some tools need uppercase, others lowercase)
+  // Filter out undefined values
+  const result: Record<string, string> = {};
+
+  if (httpProxy) {
+    result.HTTP_PROXY = httpProxy;
+    result.http_proxy = httpProxy;
+  }
+
+  if (httpsProxy) {
+    result.HTTPS_PROXY = httpsProxy;
+    result.https_proxy = httpsProxy;
+  }
+
+  // Always set NO_PROXY when proxy is configured to avoid issues with local connections
+  result.NO_PROXY = noProxy;
+  result.no_proxy = noProxy;
+
+  return result;
+}
+
 export function runInstallScript(scriptPath: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
     const installScriptPath = path.join(
@@ -42,8 +106,15 @@ export function runInstallScript(scriptPath: string): Promise<boolean> {
     );
     log.info(`Running script at: ${installScriptPath}`);
 
+    // Get proxy configuration from global .env file
+    const proxyEnv = getProxyEnvVars();
+
     const nodeProcess = spawn(process.execPath, [installScriptPath], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      env: {
+        ...process.env,
+        ...proxyEnv,
+        ELECTRON_RUN_AS_NODE: '1',
+      },
     });
 
     let stderrOutput = '';
