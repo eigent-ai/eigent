@@ -601,12 +601,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
     def get_tools(self):
         tools = super().get_tools()
-        # Camel's _create_mode_wrapper creates new wrapper functions for
-        # browser_click / browser_type / browser_mouse_drag that lose the
-        # __listen_toolkit__ marker set by @auto_listen_toolkit.
-        # Without this marker, ListenChatAgent._execute_tool sends duplicate
-        # activate/deactivate events.  Propagate the marker from the
-        # class-level decorated methods to the FunctionTool functions.
         for tool in tools:
             if not getattr(tool.func, "__listen_toolkit__", False):
                 cls_method = getattr(type(self), tool.func.__name__, None)
