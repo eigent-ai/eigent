@@ -18,12 +18,14 @@ import {
   fetchPut,
   getBaseURL,
   proxyFetchGet,
+  proxyFetchPatch,
   proxyFetchPost,
   proxyFetchPut,
   uploadFile,
   waitForBackendReady,
 } from '@/api/http';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
+import { showModelErrorToast } from '@/components/Toast/modelErrorToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
 import {
@@ -525,6 +527,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         api_url: '',
         extra_params: {},
       };
+      let preferredProviderId: number | null = null;
       if (modelType === 'custom' || modelType === 'local') {
         const res = await proxyFetchGet('/api/providers', {
           prefer: true,
@@ -539,6 +542,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           );
         }
 
+        preferredProviderId = provider.id ?? null;
         apiModel = {
           api_key: provider.api_key,
           model_type: provider.model_type,
@@ -1885,13 +1889,26 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 throw new Error('Invalid error message format: missing data');
               }
 
-              // Safely extract error message with fallback chain
+              // Safely extract error message and error code with fallback chain
               const errorMessage =
                 agentMessages.data?.message ||
                 (typeof agentMessages.data === 'string'
                   ? agentMessages.data
                   : null) ||
                 'An error occurred while processing your request';
+              const errorCode = agentMessages.data?.error_code ?? null;
+
+              // Show model error toast with settings link
+              showModelErrorToast(errorMessage, errorCode);
+
+              // If API key is invalid, mark the provider as invalid on the server
+              if (errorCode === 'invalid_api_key' && preferredProviderId) {
+                proxyFetchPatch(
+                  `/api/provider/${preferredProviderId}/invalidate`
+                ).catch((err: unknown) =>
+                  console.error('Failed to invalidate provider:', err)
+                );
+              }
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
