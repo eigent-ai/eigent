@@ -316,7 +316,9 @@ export async function startBackend(
   const pathEnv = process.env.PATH || '';
   const pathParts: string[] = [];
   if (npmWrapperDir) pathParts.push(npmWrapperDir);
-  if (nodejsWheelBin) pathParts.push(nodejsWheelBin);
+  if (nodejsWheelBin && nodejsWheelBin !== npmWrapperDir) {
+    pathParts.push(nodejsWheelBin);
+  }
   const updatedPath =
     pathParts.length > 0
       ? pathParts.join(path.delimiter) + path.delimiter + pathEnv

@@ -772,6 +772,7 @@ export function getPrebuiltTerminalVenvPath(): string | null {
 
   if (needsFix) {
     fixPyvenvCfgPlaceholder(pyvenvCfgPath);
+    ensureVenvPythonSymlink(prebuiltTerminalVenvPath);
     fixVenvScriptShebangs(prebuiltTerminalVenvPath);
     fs.writeFileSync(fixedMarkerPath, currentVersion, 'utf-8');
   }
