@@ -52,13 +52,18 @@ import {
   getEmailFolderPath,
   getEnvPath,
   maskProxyUrl,
+  readEnvValueWithPriority,
   readGlobalEnvKey,
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
 import { zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
-import { getBackendPath, getVenvPath, isBinaryExists } from './utils/process';
+import {
+  checkVenvExistsForPreCheck,
+  getBackendPath,
+  isBinaryExists,
+} from './utils/process';
 import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
@@ -134,11 +139,31 @@ app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
 // ==================== Proxy configuration ====================
-// Read proxy from global .env file on startup
-proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+// Read proxy from multiple sources with priority:
+// 1. Process environment (inline: SET HTTP_PROXY=... && eigent.exe)
+// 2. .env.development (development mode)
+// 3. Global ~/.eigent/.env file
+// Check both HTTP_PROXY and HTTPS_PROXY (with lowercase variants)
+const httpProxy =
+  readEnvValueWithPriority('HTTP_PROXY') ||
+  readEnvValueWithPriority('http_proxy');
+const httpsProxy =
+  readEnvValueWithPriority('HTTPS_PROXY') ||
+  readEnvValueWithPriority('https_proxy');
+
+// Prefer HTTPS proxy if available, fallback to HTTP proxy
+proxyUrl = httpsProxy || httpProxy;
+
 if (proxyUrl) {
   log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
   app.commandLine.appendSwitch('proxy-server', proxyUrl);
+
+  // Log which proxy type is being used
+  if (httpsProxy) {
+    log.info('[PROXY] Using HTTPS_PROXY configuration');
+  } else if (httpProxy) {
+    log.info('[PROXY] Using HTTP_PROXY configuration');
+  }
 } else {
   log.info('[PROXY] No proxy configured');
 }
@@ -1155,17 +1180,39 @@ function registerIpcHandlers() {
       log.error('global env-remove error:', error);
     }
 
+    // Also remove from .env.development file (remove from anywhere in file, not just MCP block)
+    const DEV_ENV_PATH = path.join(process.cwd(), '.env.development');
+    try {
+      if (fs.existsSync(DEV_ENV_PATH)) {
+        let devContent = fs.readFileSync(DEV_ENV_PATH, 'utf-8');
+        let devLines = devContent.split(/\r?\n/);
+        // Remove key from anywhere in the file (not limited to MCP block)
+        devLines = devLines.filter((line) => !line.trim().startsWith(key + '='));
+        fs.writeFileSync(DEV_ENV_PATH, devLines.join('\n'), 'utf-8');
+        log.info(`env-remove: removed ${key} from .env.development`);
+      }
+    } catch (error) {
+      log.error('.env.development env-remove error:', error);
+    }
+
     return { success: true };
   });
 
   // ==================== read global env handler ====================
-  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set([
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'NO_PROXY',
+    'http_proxy',
+    'https_proxy',
+    'no_proxy',
+  ]);
   ipcMain.handle('read-global-env', async (_event, key: string) => {
     if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
       log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
       return { value: null };
     }
-    return { value: readGlobalEnvKey(key) };
+    return { value: readEnvValueWithPriority(key) };
   });
 
   // ==================== new window handler ====================
@@ -1644,11 +1691,8 @@ async function createWindow() {
   let hasPrebuiltDeps = false;
   if (app.isPackaged) {
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
-    const prebuiltVenvDir = path.join(
-      process.resourcesPath,
-      'prebuilt',
-      'venv'
-    );
+    const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+    const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
@@ -1659,10 +1703,9 @@ async function createWindow() {
     );
     const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
 
+    const hasVenv = fs.existsSync(pyvenvCfg);
     hasPrebuiltDeps =
-      fs.existsSync(uvPath) &&
-      fs.existsSync(bunPath) &&
-      fs.existsSync(pyvenvCfg);
+      fs.existsSync(uvPath) && fs.existsSync(bunPath) && hasVenv;
     if (hasPrebuiltDeps) {
       log.info(
         '[PRE-CHECK] Prebuilt dependencies found, skipping installation check'
@@ -1687,9 +1730,9 @@ async function createWindow() {
   const installedLockPath = path.join(backendPath, 'uv_installed.lock');
   const installationCompleted = fs.existsSync(installedLockPath);
 
-  // Check if venv path exists for current version
-  const venvPath = getVenvPath(currentVersion);
-  const venvExists = fs.existsSync(venvPath);
+  // Check venv existence WITHOUT triggering extraction (defers to startBackend when window is visible)
+  const { exists: venvExists, path: venvPath } =
+    checkVenvExistsForPreCheck(currentVersion);
 
   // If prebuilt deps are available, skip installation
   const needsInstallation = hasPrebuiltDeps

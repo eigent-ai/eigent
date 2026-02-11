@@ -15,6 +15,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { readEnvValue } from '../init';
 
 export const ENV_START = '# === MCP INTEGRATION ENV START ===';
 export const ENV_END = '# === MCP INTEGRATION ENV END ===';
@@ -114,6 +115,34 @@ export function readGlobalEnvKey(key: string): string | null {
     // ignore read errors
   }
   return null;
+}
+
+/**
+ * Read environment variable value with priority system.
+ *
+ * Priority order (highest to lowest):
+ * 1. Process environment variables (inline/system)
+ * 2. .env.development file (development mode only)
+ * 3. Global ~/.eigent/.env file
+ *
+ * @param key - The environment variable key to read
+ * @returns The value if found, null otherwise
+ */
+export function readEnvValueWithPriority(key: string): string | null {
+  // Priority 1: Process environment variables (highest priority)
+  if (process.env[key]) {
+    return process.env[key]!;
+  }
+
+  // Priority 2: .env.development file (development mode only)
+  if (process.env.NODE_ENV === 'development') {
+    const devEnvPath = path.join(process.cwd(), '.env.development');
+    const value = readEnvValue(devEnvPath, key);
+    if (value) return value;
+  }
+
+  // Priority 3: Global ~/.eigent/.env file
+  return readGlobalEnvKey(key);
 }
 
 /**
