@@ -41,6 +41,7 @@ async def test_developer_agent_creation(sample_chat_data):
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
         patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
         patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
+        patch(f"{_mod}.ImageAnalysisToolkit") as mock_image_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
     ):
@@ -49,6 +50,7 @@ async def test_developer_agent_creation(sample_chat_data):
         mock_note_toolkit.return_value.get_tools.return_value = []
         mock_web_toolkit.return_value.get_tools.return_value = []
         mock_screenshot_toolkit.return_value.get_tools.return_value = []
+        mock_image_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
 
         mock_agent = MagicMock()
@@ -87,6 +89,7 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
         patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
         patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
+        patch(f"{_mod}.ImageAnalysisToolkit") as mock_image_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
     ):
@@ -95,6 +98,7 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
         mock_note_toolkit.return_value.get_tools.return_value = []
         mock_web_toolkit.return_value.get_tools.return_value = []
         mock_screenshot_toolkit.return_value.get_tools.return_value = []
+        mock_image_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
 
         mock_agent = MagicMock()
