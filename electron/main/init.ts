@@ -239,18 +239,24 @@ export async function startBackend(
   const uvEnv = getUvEnv(currentVersion);
   const globalEnvPath = path.join(os.homedir(), '.eigent', '.env');
 
-  // Build proxy env vars if configured
-  const proxyEnv = {
-    HTTP_PROXY: readEnvValueWithPriority('HTTP_PROXY'),
-    HTTPS_PROXY: readEnvValueWithPriority('HTTPS_PROXY'),
-    http_proxy: readEnvValueWithPriority('http_proxy'),
-    https_proxy: readEnvValueWithPriority('https_proxy'),
-    // Ensure local connections bypass proxy
-    NO_PROXY:
-      readEnvValueWithPriority('NO_PROXY') || 'localhost,127.0.0.1,.local',
-    no_proxy:
-      readEnvValueWithPriority('no_proxy') || 'localhost,127.0.0.1,.local',
-  };
+  // Build proxy env vars if configured (filter out null values to avoid
+  // Node.js coercing them to the string "null", which uv/reqwest would
+  // interpret as a proxy at http://null/ causing DNS failures)
+  const proxyEnv: Record<string, string> = {};
+  for (const key of [
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'http_proxy',
+    'https_proxy',
+  ]) {
+    const val = readEnvValueWithPriority(key);
+    if (val) proxyEnv[key] = val;
+  }
+  // Ensure local connections bypass proxy
+  proxyEnv.NO_PROXY =
+    readEnvValueWithPriority('NO_PROXY') || 'localhost,127.0.0.1,.local';
+  proxyEnv.no_proxy =
+    readEnvValueWithPriority('no_proxy') || 'localhost,127.0.0.1,.local';
 
   if (proxyEnv.HTTP_PROXY || proxyEnv.HTTPS_PROXY) {
     log.info(
