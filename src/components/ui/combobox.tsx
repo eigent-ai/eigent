@@ -100,7 +100,7 @@ export function Combobox({
 
   const stateClasses =
     state === 'error'
-      ? 'border-input-border-cuation bg-input-bg-default'
+      ? 'border-input-border-caution bg-input-bg-default'
       : state === 'success'
         ? 'border-input-border-success bg-input-bg-confirm'
         : 'border-input-border-default bg-input-bg-default';
@@ -198,7 +198,7 @@ export function Combobox({
           className={cn(
             'mt-1.5 !text-body-xs',
             state === 'error'
-              ? 'text-text-cuation'
+              ? 'text-text-caution'
               : state === 'success'
                 ? 'text-text-success'
                 : 'text-text-label'

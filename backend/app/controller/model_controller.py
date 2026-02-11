@@ -27,6 +27,46 @@ logger = logging.getLogger("model_controller")
 
 router = APIRouter()
 
+# Constants
+DEFAULT_OPENAI_API_URL = "https://api.openai.com/v1"
+
+# Platform names that support OpenAI-compatible API endpoints
+# Note: Platform names are normalized (lowercase, hyphens → underscores)
+OPENAI_COMPATIBLE_PLATFORMS = {
+    "openai",
+    "openai_compatible_model",
+    "azure",
+    "openrouter",
+    "lmstudio",
+    "vllm",
+    "sglang",
+    "zai",
+    "modelark",
+}
+
+# Maps platform names to model name prefixes for filtering
+# Empty list means the platform can run any model
+MODEL_PREFIXES: dict[str, list[str]] = {
+    "openai": ["gpt-", "o1", "o3", "o4", "chatgpt-"],
+    "anthropic": ["claude-"],
+    "gemini": ["gemini-"],
+    "deepseek": ["deepseek"],
+    "qwen": ["qwen"],
+    "minimax": ["minimax"],
+    "moonshot": ["moonshot", "kimi"],
+    "azure": ["gpt-", "o1", "o3", "o4"],
+    # These platforms can run any model → return all
+    "openai_compatible_model": [],
+    "openrouter": [],
+    "bedrock": [],
+    "ollama": [],
+    "vllm": [],
+    "sglang": [],
+    "lmstudio": [],
+    "modelark": [],
+    "zai": [],
+}
+
 
 class ValidateModelRequest(BaseModel):
     model_platform: str = Field("OPENAI", description="Model platform")
@@ -214,34 +254,16 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
     model_types: list[str] = []
     source = "camel"
 
-    # Platform name → model name prefixes for filtering
-    PLATFORM_PREFIXES: dict[str, list[str]] = {
-        "openai": ["gpt-", "o1", "o3", "o4", "chatgpt-"],
-        "anthropic": ["claude-"],
-        "gemini": ["gemini-"],
-        "deepseek": ["deepseek"],
-        "qwen": ["qwen"],
-        "minimax": ["minimax"],
-        "moonshot": ["moonshot", "kimi"],
-        "azure": ["gpt-", "o1", "o3", "o4"],
-        # These platforms can run any model → return all
-        "openai_compatible_model": [],
-        "openrouter": [],
-        "bedrock": [],
-        "ollama": [],
-        "vllm": [],
-        "sglang": [],
-        "lmstudio": [],
-        "modelark": [],
-        "zai": [],
-    }
+    # Normalize platform name once: lowercase and replace hyphens with underscores
+    # This is needed because some platforms use hyphens (e.g., "openai-compatible-model")
+    # but Python dict keys use underscores for consistency
+    platform_lower = (platform or "").lower().replace("-", "_")
 
     try:
         all_model_types = [mt.value for mt in ModelType]
 
-        if platform:
-            platform_lower = platform.lower().replace("-", "_")
-            prefixes = PLATFORM_PREFIXES.get(platform_lower)
+        if platform_lower:
+            prefixes = MODEL_PREFIXES.get(platform_lower)
 
             if prefixes is not None and len(prefixes) > 0:
                 # Filter model types by known prefixes for this platform
@@ -258,24 +280,9 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
 
         # For OpenAI-compatible platforms with an API key,
         # also fetch live models from the API
-        # Note: platform names are normalized (lowercase, hyphens → underscores)
-        openai_like = {
-            "openai",
-            "openai_compatible_model",
-            "azure",
-            "openrouter",
-            "lmstudio",
-            "vllm",
-            "sglang",
-            "zai",
-            "modelark",
-        }
-        platform_lower = (platform or "").lower().replace("-", "_")
-        if api_key and platform_lower in openai_like:
+        if api_key and platform_lower in OPENAI_COMPATIBLE_PLATFORMS:
             try:
-                api_base_url = (api_url or "https://api.openai.com/v1").rstrip(
-                    "/"
-                )
+                api_base_url = (api_url or DEFAULT_OPENAI_API_URL).rstrip("/")
                 headers = {"Authorization": f"Bearer {api_key}"}
 
                 async with httpx.AsyncClient(timeout=10.0) as client:

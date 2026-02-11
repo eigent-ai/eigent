@@ -91,8 +91,7 @@ export function ModelTypeCombobox({
       })
       .catch((err) => {
         console.error('Failed to fetch model type suggestions:', err);
-        // Cache empty array to avoid retrying on every render
-        suggestionsCache[cacheKey] = [];
+        // Don't cache errors to allow retry on next render
         setOptions([]);
       })
       .finally(() => {
