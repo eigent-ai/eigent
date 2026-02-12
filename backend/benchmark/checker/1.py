@@ -11,34 +11,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-"""Checker for benchmark 0: hello_world.py should print 'Hello, WORLD!'"""
+"""Checker for benchmark 1: python313_features.md with warnings and
+multiprocessing sections."""
 
-import subprocess
+import re
 import sys
 from pathlib import Path
 
 
 def check(working_directory: str) -> bool:
-    script = Path(working_directory) / "hello_world.py"
+    md_file = Path(working_directory) / "python313_features.md"
 
-    if not script.exists():
-        print(f"FAIL: {script} does not exist")
+    if not md_file.exists():
+        print(f"FAIL: {md_file} does not exist")
         return False
 
-    result = subprocess.run(
-        [sys.executable, str(script)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    content = md_file.read_text()
 
-    output = result.stdout.strip()
-    if output == "Hello, WORLD!":
-        print("PASS")
-        return True
-    else:
-        print(f"FAIL: expected 'Hello, WORLD!', got '{output}'")
+    if len(content.strip()) < 50:
+        print("FAIL: file content is too short")
         return False
+
+    # Check for at least 2 heading sections (# warnings, # multiprocessing)
+    h1_sections = re.findall(r"^# .+", content, re.MULTILINE)
+    if len(h1_sections) < 2:
+        print(
+            f"FAIL: expected at least 2 # sections, found {len(h1_sections)}"
+        )
+        return False
+
+    lower = content.lower()
+    if "warnings" not in lower:
+        print("FAIL: missing warnings section")
+        return False
+
+    if "multiprocessing" not in lower:
+        print("FAIL: missing multiprocessing section")
+        return False
+
+    print("PASS")
+    return True
 
 
 if __name__ == "__main__":
