@@ -261,6 +261,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
   "network-proxy": "Proxy de red",
   "network-proxy-description": "Configure un servidor proxy para las solicitudes de red. Esto es útil si necesita acceder a APIs externas a través de un proxy.",
   "proxy-placeholder": "http://127.0.0.1:7890",

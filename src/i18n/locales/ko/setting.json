@@ -261,6 +261,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
   "network-proxy": "네트워크 프록시",
   "network-proxy-description": "네트워크 요청을 위한 프록시 서버를 구성합니다. 프록시를 통해 외부 API에 접근해야 하는 경우 유용합니다.",
   "proxy-placeholder": "http://127.0.0.1:7890",
