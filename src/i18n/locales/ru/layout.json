@@ -166,5 +166,7 @@
   "days-ago": "дней назад",
   "delete-project": "Удалить проект",
   "delete-project-confirmation": "Вы уверены, что хотите удалить этот проект и все его задачи? Это действие нельзя отменить.",
-  "please-select-model": "Пожалуйста, выберите модель в Настройки > Модели, чтобы продолжить."
+  "please-select-model": "Пожалуйста, выберите модель в Настройки > Модели, чтобы продолжить.",
+  "agree-to-terms": "I agree to the",
+  "please-accept-terms": "Please accept the Terms of Use and Privacy Policy to continue"
 }
