@@ -332,20 +332,12 @@ export default function SettingModels() {
           setCloudPrefer(false);
         }
 
-        // Detect Codex OAuth connection via marker config
+        // Detect Codex OAuth connection via status API
         try {
-          const configs = await proxyFetchGet('/api/configs');
-          const configList = Array.isArray(configs) ? configs : [];
-          const hasCodex = configList.some(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'codex' &&
-              c.config_name === 'CODEX_OAUTH_TOKEN' &&
-              c.config_value &&
-              String(c.config_value).length > 0
-          );
-          setCodexConnected(hasCodex);
+          const codexStatus = await fetchGet('/codex/status');
+          setCodexConnected(codexStatus?.authenticated === true);
         } catch {
-          // ignore config check failure
+          // ignore codex status check failure
         }
       } catch (e) {
         console.error('Error fetching providers:', e);
@@ -990,30 +982,6 @@ export default function SettingModels() {
     );
   };
 
-  // Save or update the Codex OAuth marker config
-  const saveCodexMarkerConfig = async () => {
-    const existingConfigs = await proxyFetchGet('/api/configs');
-    const existing = Array.isArray(existingConfigs)
-      ? existingConfigs.find(
-          (c: any) =>
-            c.config_group?.toLowerCase() === 'codex' &&
-            c.config_name === 'CODEX_OAUTH_TOKEN'
-        )
-      : null;
-
-    const configPayload = {
-      config_group: 'Codex',
-      config_name: 'CODEX_OAUTH_TOKEN',
-      config_value: 'exists',
-    };
-
-    if (existing) {
-      await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
-    } else {
-      await proxyFetchPost('/api/configs', configPayload);
-    }
-  };
-
   // Codex OAuth: connect via PKCE flow and save as OpenAI provider
   const handleCodexOAuth = async (idx: number) => {
     setCodexConnecting(true);
@@ -1068,7 +1036,7 @@ export default function SettingModels() {
     }
   };
 
-  // Save Codex OAuth token as an OpenAI provider and persist marker config
+  // Save Codex OAuth token as an OpenAI provider
   const saveCodexAsProvider = async (installResponse: any, idx: number) => {
     if (!installResponse?.access_token) return;
     try {
@@ -1093,36 +1061,14 @@ export default function SettingModels() {
     } catch (providerError) {
       console.warn('Failed to save Codex token as provider', providerError);
     }
-
-    try {
-      await saveCodexMarkerConfig();
-    } catch (configError) {
-      console.warn('Failed to persist Codex marker config', configError);
-    }
   };
 
-  // Disconnect Codex OAuth: revoke token, remove marker config, reset provider
+  // Disconnect Codex OAuth: revoke token and reset provider
   const handleCodexDisconnect = async (idx: number) => {
     try {
       await fetchPost('/codex/disconnect');
     } catch {
       // ignore cleanup failure
-    }
-    // Remove marker config
-    try {
-      const existingConfigs = await proxyFetchGet('/api/configs');
-      const existing = Array.isArray(existingConfigs)
-        ? existingConfigs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'codex' &&
-              c.config_name === 'CODEX_OAUTH_TOKEN'
-          )
-        : null;
-      if (existing) {
-        await proxyFetchDelete(`/api/configs/${existing.id}`);
-      }
-    } catch {
-      // ignore config cleanup failure
     }
     // Delete the provider so the form doesn't show a revoked key
     const { provider_id } = form[idx];
