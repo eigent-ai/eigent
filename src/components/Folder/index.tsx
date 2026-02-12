@@ -71,7 +71,7 @@ interface FileTreeProps {
   isShowSourceCode: boolean;
 }
 
-const FileTree: React.FC<FileTreeProps> = ({
+export const FileTree: React.FC<FileTreeProps> = ({
   node,
   level = 0,
   selectedFile,
@@ -105,29 +105,33 @@ const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`text-primary flex w-full items-center justify-start rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
+              className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
                 selectedFile?.path === child.path
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
             >
-              {child.isFolder && (
-                <span className="flex h-4 w-4 items-center justify-center">
+              {child.isFolder ? (
+                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
                   {isExpanded ? (
                     <ChevronDown className="h-4 w-4" />
                   ) : (
                     <ChevronRight className="h-4 w-4" />
                   )}
                 </span>
+              ) : (
+                <span
+                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                  aria-hidden
+                />
               )}
-              {!child.isFolder && <span className="w-4" />}
 
               {child.isFolder ? (
-                <FolderIcon className="mr-2 h-5 w-5 flex-shrink-0 text-yellow-600" />
+                <FolderIcon className="h-5 w-5 flex-shrink-0 text-yellow-600" />
               ) : child.icon ? (
-                <child.icon className="mr-2 h-5 w-5 flex-shrink-0" />
+                <child.icon className="h-5 w-5 flex-shrink-0" />
               ) : (
-                <FileText className="mr-2 h-5 w-5 flex-shrink-0" />
+                <FileText className="h-5 w-5 flex-shrink-0" />
               )}
 
               <span
