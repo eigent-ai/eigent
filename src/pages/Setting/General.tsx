@@ -351,75 +351,80 @@ export default function SettingGeneral() {
             ))}
           </div>
         </div>
-      </div>
-      <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="flex flex-col gap-1">
-          <div className="text-body-base font-bold text-text-heading">
-            {t('setting.network-proxy')}
+
+        {/* Network Proxy Section */}
+        <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex flex-col gap-1">
+            <div className="text-body-base font-bold text-text-heading">
+              {t('setting.network-proxy')}
+            </div>
+            <div className="mb-4 text-sm leading-13 text-text-secondary">
+              {t('setting.network-proxy-description')}
+            </div>
           </div>
-          <div className="mb-4 text-sm leading-13 text-text-secondary">
-            {t('setting.network-proxy-description')}
-          </div>
+          <Input
+            placeholder={t('setting.proxy-placeholder')}
+            value={proxyUrl}
+            onChange={(e) => {
+              setProxyUrl(e.target.value);
+              setProxyNeedsRestart(false);
+            }}
+            className="flex-1"
+            size="default"
+            note={
+              proxyNeedsRestart ? t('setting.proxy-restart-hint') : undefined
+            }
+            trailingButton={
+              <Button
+                variant={proxyNeedsRestart ? 'outline' : 'primary'}
+                size="sm"
+                onClick={
+                  proxyNeedsRestart
+                    ? () => window.electronAPI?.restartApp()
+                    : handleSaveProxy
+                }
+                disabled={!proxyNeedsRestart && isProxySaving}
+              >
+                {proxyNeedsRestart
+                  ? t('setting.restart-to-apply')
+                  : isProxySaving
+                    ? t('setting.saving')
+                    : t('setting.save')}
+              </Button>
+            }
+          />
         </div>
-        <Input
-          placeholder={t('setting.proxy-placeholder')}
-          value={proxyUrl}
-          onChange={(e) => {
-            setProxyUrl(e.target.value);
-            setProxyNeedsRestart(false);
-          }}
-          className="flex-1"
-          size="default"
-          note={proxyNeedsRestart ? t('setting.proxy-restart-hint') : undefined}
-          trailingButton={
-            <Button
-              variant={proxyNeedsRestart ? 'outline' : 'primary'}
-              size="sm"
-              onClick={
-                proxyNeedsRestart
-                  ? () => window.electronAPI?.restartApp()
-                  : handleSaveProxy
-              }
-              disabled={!proxyNeedsRestart && isProxySaving}
-            >
-              {proxyNeedsRestart
-                ? t('setting.restart-to-apply')
-                : isProxySaving
-                  ? t('setting.saving')
-                  : t('setting.save')}
-            </Button>
-          }
-        />
-      </div>
-      {/* Preferred IDE Section */}
-      <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="flex flex-col gap-1">
-          <div className="text-body-base font-bold text-text-heading">
-            {t('setting.preferred-ide')}
+
+        {/* Preferred IDE Section - same card style as Network Proxy */}
+        <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex flex-col gap-1">
+            <div className="text-body-base font-bold text-text-heading">
+              {t('setting.preferred-ide')}
+            </div>
+            <div className="mb-4 text-sm leading-13 text-text-secondary">
+              {t('setting.preferred-ide-description')}
+            </div>
           </div>
-          <div className="text-sm leading-13 text-text-secondary">
-            {t('setting.preferred-ide-description')}
-          </div>
+          <Select
+            value={authStore.preferredIDE}
+            onValueChange={(value) =>
+              authStore.setPreferredIDE(value as 'vscode' | 'cursor' | 'system')
+            }
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border bg-input-bg-default">
+              <SelectGroup>
+                <SelectItem value="system">
+                  {t('setting.system-file-manager')}
+                </SelectItem>
+                <SelectItem value="vscode">VS Code</SelectItem>
+                <SelectItem value="cursor">Cursor</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
-        <Select
-          value={authStore.preferredIDE}
-          onValueChange={(value) =>
-            authStore.setPreferredIDE(value as 'vscode' | 'cursor' | 'system')
-          }
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="border bg-input-bg-default">
-            <SelectGroup>
-              <SelectItem value="system">
-                {t('setting.system-file-manager')}
-              </SelectItem>
-              <SelectItem value="vscode">VS Code</SelectItem>
-              <SelectItem value="cursor">Cursor</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
       </div>
     </div>
   );
