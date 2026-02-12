@@ -36,14 +36,6 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
-
-// OAuth polling constants
-const OAUTH_POLL_INTERVAL_MS = 1500;
-const OAUTH_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
-// TODO: Extract OAuth status strings ('authorizing', 'success', 'failed',
-// 'cancelled') into a shared enum to avoid hardcoded comparisons.
-
 interface McpItem {
   id: number;
   name: string;
@@ -244,14 +236,14 @@ const ToolSelect = forwardRef<
                 env_vars: value.env_vars,
                 toolkit: value.toolkit,
                 desc:
-                  key.toLowerCase() === 'notion'
-                    ? t('layout.notion-workspace-integration')
-                    : key.toLowerCase() === 'google calendar'
-                      ? t('layout.google-calendar-integration')
-                      : value.env_vars && value.env_vars.length > 0
-                        ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
-                            ', '
-                          )}`
+                  value.env_vars && value.env_vars.length > 0
+                    ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
+                        ', '
+                      )}`
+                    : key.toLowerCase() === 'notion'
+                      ? t('layout.notion-workspace-integration')
+                      : key.toLowerCase() === 'google calendar'
+                        ? t('layout.google-calendar-integration')
                         : '',
                 onInstall,
               };
@@ -494,7 +486,9 @@ const ToolSelect = forwardRef<
 
             // WAIT for OAuth status completion instead of using setInterval
             const start = Date.now();
-            while (Date.now() - start < OAUTH_POLL_TIMEOUT_MS) {
+            const timeoutMs = 5 * 60 * 1000; // 5 minutes
+
+            while (Date.now() - start < timeoutMs) {
               try {
                 const statusResponse = await fetchGet(
                   '/oauth/status/google_calendar'
@@ -577,7 +571,7 @@ const ToolSelect = forwardRef<
               }
 
               // Wait before next poll
-              await new Promise((r) => setTimeout(r, OAUTH_POLL_INTERVAL_MS));
+              await new Promise((r) => setTimeout(r, 1500));
             }
 
             console.log('[ToolSelect installMcp] Polling timeout');
