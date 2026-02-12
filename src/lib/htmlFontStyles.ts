@@ -54,7 +54,17 @@ export function isHtmlDocument(text: string): boolean {
   return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
 }
 
-/** Defers inline scripts until window load when the document has external <script src="...">, so CDN scripts (e.g. Chart.js) are available before chart code runs. */
+/**
+ * Returns true if the script attributes indicate classic (inline) JavaScript.
+ */
+function isClassicInlineJs(attrs: string): boolean {
+  const a = attrs.toLowerCase();
+  if (/type\s*=\s*["']?\s*module\s*["']?/.test(a)) return false;
+  if (/type\s*=\s*["']?\s*application\/ld\+json/.test(a)) return false;
+  return true;
+}
+
+/** Defers inline classic-JS until DOMContentLoaded when external scripts exist; leaves type="module" and application/ld+json unchanged and preserves attributes. */
 export function deferInlineScriptsUntilLoad(html: string): string {
   const lower = html.toLowerCase();
   let idx = lower.indexOf('<script');
@@ -95,9 +105,10 @@ export function deferInlineScriptsUntilLoad(html: string): string {
     }
     const fullTag = html.slice(scriptStart, contentEnd + endTag.length);
     const content = html.slice(contentStart, contentEnd);
-    if (!hasSrc && content.trim().length > 0) {
+    const openTag = html.slice(scriptStart, attrEnd + 1);
+    if (!hasSrc && content.trim().length > 0 && isClassicInlineJs(attrs)) {
       const escaped = content.replace(/<\/script>/gi, '<\\/script>');
-      result += `<script>window.addEventListener('load',function(){${escaped}});</script>`;
+      result += `${openTag}window.addEventListener('DOMContentLoaded',function(){${escaped}});</script>`;
     } else {
       result += fullTag;
     }
