@@ -23,7 +23,6 @@ from fastapi import FastAPI
 
 from app.controller import (
     chat_controller,
-    codex_controller,
     health_controller,
     model_controller,
     task_controller,
@@ -71,11 +70,6 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": tool_controller.router,
             "tags": ["tool"],
             "description": "Tool installation and management",
-        },
-        {
-            "router": codex_controller.router,
-            "tags": ["codex"],
-            "description": "Codex OAuth provider authentication",
         },
     ]
 
