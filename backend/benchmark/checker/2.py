@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-"""Checker for benchmark 6: yc_w25_b2b_ai.csv with B2B AI companies."""
+"""Checker for benchmark 2: yc_w25_b2b_ai.csv with B2B AI companies."""
 
 import csv
 import sys
