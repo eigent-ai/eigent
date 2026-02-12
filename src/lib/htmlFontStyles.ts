@@ -56,18 +56,52 @@ export function isHtmlDocument(text: string): boolean {
 
 /** Defers inline scripts until window load when the document has external <script src="...">, so CDN scripts (e.g. Chart.js) are available before chart code runs. */
 export function deferInlineScriptsUntilLoad(html: string): string {
-  const hasExternalScript = /<script\s[^>]*\bsrc\s*=/i.test(html);
-  if (!hasExternalScript) return html;
-
-  const scriptTagRegex = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi;
-  return html.replace(
-    scriptTagRegex,
-    (fullMatch, attrs: string, content: string) => {
-      const isInline = !attrs || !/\bsrc\s*=/i.test(attrs);
-      if (!isInline) return fullMatch;
-
-      const escaped = content.replace(/<\/script>/gi, '<\\/script>');
-      return `<script>window.addEventListener('load',function(){${escaped}});</script>`;
+  const lower = html.toLowerCase();
+  let idx = lower.indexOf('<script');
+  let hasExternal = false;
+  while (idx !== -1) {
+    const end = html.indexOf('>', idx);
+    if (end !== -1 && /\bsrc\s*=/.test(html.slice(idx, end))) {
+      hasExternal = true;
+      break;
     }
-  );
+    idx = lower.indexOf('<script', idx + 1);
+  }
+  if (!hasExternal) return html;
+
+  let result = '';
+  let i = 0;
+  while (i < html.length) {
+    const scriptStart = lower.indexOf('<script', i);
+    if (scriptStart === -1) {
+      result += html.slice(i);
+      break;
+    }
+    result += html.slice(i, scriptStart);
+    const afterOpen = scriptStart + '<script'.length;
+    const attrEnd = html.indexOf('>', afterOpen);
+    if (attrEnd === -1) {
+      result += html.slice(scriptStart);
+      break;
+    }
+    const attrs = html.slice(afterOpen, attrEnd);
+    const hasSrc = /\bsrc\s*=/.test(attrs);
+    const contentStart = attrEnd + 1;
+    const endTag = '</script>';
+    const contentEnd = html.toLowerCase().indexOf(endTag, contentStart);
+    if (contentEnd === -1) {
+      result += html.slice(scriptStart);
+      break;
+    }
+    const fullTag = html.slice(scriptStart, contentEnd + endTag.length);
+    const content = html.slice(contentStart, contentEnd);
+    if (!hasSrc && content.trim().length > 0) {
+      const escaped = content.replace(/<\/script>/gi, '<\\/script>');
+      result += `<script>window.addEventListener('load',function(){${escaped}});</script>`;
+    } else {
+      result += fullTag;
+    }
+    i = contentEnd + endTag.length;
+  }
+  return result;
 }
