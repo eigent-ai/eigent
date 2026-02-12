@@ -77,7 +77,6 @@ export default function SettingGeneral() {
 
   // Proxy configuration state
   const [proxyUrl, setProxyUrl] = useState('');
-  const [loadedProxyUrl, setLoadedProxyUrl] = useState(''); // Track the initially loaded value
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
 
@@ -159,20 +158,16 @@ export default function SettingGeneral() {
   ];
 
   useEffect(() => {
-    // Load proxy configuration from env (with priority system)
+    // Load proxy configuration from global env
     const loadProxyConfig = async () => {
       if (window.electronAPI?.readGlobalEnv) {
         try {
-          const result =
-            (await window.electronAPI.readGlobalEnv('HTTPS_PROXY')) ||
-            (await window.electronAPI.readGlobalEnv('HTTP_PROXY'));
-          const value = result?.value || '';
-          setProxyUrl(value);
-          setLoadedProxyUrl(value); // Remember the loaded value
+          const result = await window.electronAPI.readGlobalEnv('HTTP_PROXY');
+          if (result?.value) {
+            setProxyUrl(result.value);
+          }
         } catch (_error) {
           console.log('No proxy configured');
-          setProxyUrl('');
-          setLoadedProxyUrl('');
         }
       }
     };
@@ -233,9 +228,6 @@ export default function SettingGeneral() {
       setIsProxySaving(false);
     }
   };
-
-  // Check if proxy value has changed from loaded value
-  const hasProxyChanged = proxyUrl.trim() !== loadedProxyUrl.trim();
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -380,24 +372,22 @@ export default function SettingGeneral() {
           size="default"
           note={proxyNeedsRestart ? t('setting.proxy-restart-hint') : undefined}
           trailingButton={
-            proxyNeedsRestart ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.electronAPI?.restartApp()}
-              >
-                {t('setting.restart-to-apply')}
-              </Button>
-            ) : hasProxyChanged ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleSaveProxy}
-                disabled={isProxySaving}
-              >
-                {isProxySaving ? t('setting.saving') : t('setting.save')}
-              </Button>
-            ) : undefined
+            <Button
+              variant={proxyNeedsRestart ? 'outline' : 'primary'}
+              size="sm"
+              onClick={
+                proxyNeedsRestart
+                  ? () => window.electronAPI?.restartApp()
+                  : handleSaveProxy
+              }
+              disabled={!proxyNeedsRestart && isProxySaving}
+            >
+              {proxyNeedsRestart
+                ? t('setting.restart-to-apply')
+                : isProxySaving
+                  ? t('setting.saving')
+                  : t('setting.save')}
+            </Button>
           }
         />
       </div>

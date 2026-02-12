@@ -52,7 +52,6 @@ import {
   getEmailFolderPath,
   getEnvPath,
   maskProxyUrl,
-  readEnvValueWithPriority,
   readGlobalEnvKey,
   removeEnvKey,
   updateEnvBlock,
@@ -139,31 +138,11 @@ app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
 // ==================== Proxy configuration ====================
-// Read proxy from multiple sources with priority:
-// 1. Process environment (inline: SET HTTP_PROXY=... && eigent.exe)
-// 2. .env.development (development mode)
-// 3. Global ~/.eigent/.env file
-// Check both HTTP_PROXY and HTTPS_PROXY (with lowercase variants)
-const httpProxy =
-  readEnvValueWithPriority('HTTP_PROXY') ||
-  readEnvValueWithPriority('http_proxy');
-const httpsProxy =
-  readEnvValueWithPriority('HTTPS_PROXY') ||
-  readEnvValueWithPriority('https_proxy');
-
-// Prefer HTTPS proxy if available, fallback to HTTP proxy
-proxyUrl = httpsProxy || httpProxy;
-
+// Read proxy from global .env file on startup
+proxyUrl = readGlobalEnvKey('HTTP_PROXY');
 if (proxyUrl) {
   log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
   app.commandLine.appendSwitch('proxy-server', proxyUrl);
-
-  // Log which proxy type is being used
-  if (httpsProxy) {
-    log.info('[PROXY] Using HTTPS_PROXY configuration');
-  } else if (httpProxy) {
-    log.info('[PROXY] Using HTTP_PROXY configuration');
-  }
 } else {
   log.info('[PROXY] No proxy configured');
 }
@@ -1180,39 +1159,17 @@ function registerIpcHandlers() {
       log.error('global env-remove error:', error);
     }
 
-    // Also remove from .env.development file (remove from anywhere in file, not just MCP block)
-    const DEV_ENV_PATH = path.join(process.cwd(), '.env.development');
-    try {
-      if (fs.existsSync(DEV_ENV_PATH)) {
-        let devContent = fs.readFileSync(DEV_ENV_PATH, 'utf-8');
-        let devLines = devContent.split(/\r?\n/);
-        // Remove key from anywhere in the file (not limited to MCP block)
-        devLines = devLines.filter((line) => !line.trim().startsWith(key + '='));
-        fs.writeFileSync(DEV_ENV_PATH, devLines.join('\n'), 'utf-8');
-        log.info(`env-remove: removed ${key} from .env.development`);
-      }
-    } catch (error) {
-      log.error('.env.development env-remove error:', error);
-    }
-
     return { success: true };
   });
 
   // ==================== read global env handler ====================
-  const ALLOWED_GLOBAL_ENV_KEYS = new Set([
-    'HTTP_PROXY',
-    'HTTPS_PROXY',
-    'NO_PROXY',
-    'http_proxy',
-    'https_proxy',
-    'no_proxy',
-  ]);
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
   ipcMain.handle('read-global-env', async (_event, key: string) => {
     if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
       log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
       return { value: null };
     }
-    return { value: readEnvValueWithPriority(key) };
+    return { value: readGlobalEnvKey(key) };
   });
 
   // ==================== new window handler ====================
