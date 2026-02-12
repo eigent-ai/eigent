@@ -23,6 +23,7 @@ import {
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Node as CustomNodeComponent } from './node';
+import { createWorkflowWheelHandler } from './workflowWheelHandler';
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
@@ -371,15 +372,12 @@ export default function Workflow({
       document.querySelector('.react-flow__pane');
     if (!container) return;
 
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY !== 0 && !isEditMode) {
-        e.preventDefault();
-
-        const { x, y, zoom } = getViewport();
-        const nextX = clampViewportX(x - e.deltaY);
-        setViewport({ x: nextX, y, zoom }, { duration: 0 });
-      }
-    };
+    const onWheel = createWorkflowWheelHandler({
+      isEditMode,
+      getViewport,
+      setViewport,
+      clampViewportX,
+    });
 
     container.addEventListener('wheel', onWheel, { passive: false });
 
