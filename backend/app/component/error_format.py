@@ -84,11 +84,7 @@ def normalize_error_to_openai_format(
                 "param": None,
                 "code": "model_not_found",
             }
-        elif (
-            "insufficient_quota" in lower
-            or "quota" in lower
-            or " 429" in lower
-        ):
+        elif "insufficient_quota" in lower or "quota" in lower:
             error_code = "insufficient_quota"
             message = (
                 "You exceeded your current quota, "
@@ -99,6 +95,17 @@ def normalize_error_to_openai_format(
                 "type": "insufficient_quota",
                 "param": None,
                 "code": "insufficient_quota",
+            }
+        elif "rate limit" in lower or "rate_limit" in lower:
+            error_code = "rate_limit_exceeded"
+            message = (
+                "Rate limit exceeded. Please try again in a moment."
+            )
+            error_obj = {
+                "message": message,
+                "type": "rate_limit_exceeded",
+                "param": None,
+                "code": "rate_limit_exceeded",
             }
 
     return message, error_code, error_obj
