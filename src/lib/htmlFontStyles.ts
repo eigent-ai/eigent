@@ -53,3 +53,21 @@ export function isHtmlDocument(text: string): boolean {
   const trimmed = text.trim();
   return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
 }
+
+/** Defers inline scripts until window load when the document has external <script src="...">, so CDN scripts (e.g. Chart.js) are available before chart code runs. */
+export function deferInlineScriptsUntilLoad(html: string): string {
+  const hasExternalScript = /<script\s[^>]*\bsrc\s*=/i.test(html);
+  if (!hasExternalScript) return html;
+
+  const scriptTagRegex = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+  return html.replace(
+    scriptTagRegex,
+    (fullMatch, attrs: string, content: string) => {
+      const isInline = !attrs || !/\bsrc\s*=/i.test(attrs);
+      if (!isInline) return fullMatch;
+
+      const escaped = content.replace(/<\/script>/gi, '<\\/script>');
+      return `<script>window.addEventListener('load',function(){${escaped}});</script>`;
+    }
+  );
+}
