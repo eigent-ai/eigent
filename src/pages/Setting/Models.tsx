@@ -545,6 +545,12 @@ export default function SettingModels() {
           ),
           closeButton: true,
         });
+        // Update is_valid to true when validation succeeds
+        setForm((prev) => {
+          const next = [...prev];
+          next[idx] = { ...next[idx], is_valid: true };
+          return next;
+        });
       } else {
         console.log('failed', res.message);
         // Surface error inline on API Key input
@@ -552,6 +558,12 @@ export default function SettingModels() {
           const next = [...prev];
           if (!next[idx]) next[idx] = {} as any;
           next[idx].apiKey = getValidateMessage(res);
+          return next;
+        });
+        // Update is_valid to false when validation fails
+        setForm((prev) => {
+          const next = [...prev];
+          next[idx] = { ...next[idx], is_valid: false };
           return next;
         });
         return;
@@ -564,6 +576,12 @@ export default function SettingModels() {
         const next = [...prev];
         if (!next[idx]) next[idx] = {} as any;
         next[idx].apiKey = getValidateMessage(e);
+        return next;
+      });
+      // Update is_valid to false when validation fails
+      setForm((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], is_valid: false };
         return next;
       });
       return;
@@ -1949,7 +1967,7 @@ export default function SettingModels() {
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
                   {items.map((item, idx) => {
-                    const isConfigured = !!form[idx]?.provider_id;
+                    const isConfigured = !!form[idx]?.provider_id && form[idx]?.is_valid !== false;
                     const isPreferred = form[idx]?.prefer;
                     const modelImage = getModelImage(item.id);
 
@@ -2117,7 +2135,7 @@ export default function SettingModels() {
                         item.id,
                         selectedTab === `byok-${item.id}`,
                         true,
-                        !!form[idx].provider_id
+                        !!form[idx].provider_id && form[idx].is_valid !== false
                       )
                     )}
                   </div>
