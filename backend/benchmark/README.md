@@ -76,7 +76,29 @@ The `metadata` field (optional) provides information about the benchmark:
 - `description`: Brief explanation of what skills or capabilities the benchmark tests
 - `tags`: Array of keywords for filtering and organization
 
-`model_platform` and `model_type` default to `"openai"` and `"gpt-4o"`. `api_key` defaults to `$OPENAI_API_KEY`. Set `api_url` for custom endpoints.
+The `model_kwargs` field is optional. Defaults come from `BENCHMARK_*` environment variables (see below), falling back to `openai` / `gpt-5.2` / `$OPENAI_API_KEY`. Per-benchmark JSON values override the environment defaults.
+
+### Custom model providers
+
+You can override the model for all benchmarks via environment variables (see `.env.example`):
+
+```bash
+export BENCHMARK_MODEL_PLATFORM="openai-compatible-model"
+export BENCHMARK_MODEL_TYPE=""
+export BENCHMARK_API_KEY=""
+export BENCHMARK_API_URL=""
+```
+
+| Variable                   | Default                     | Description                                                                 |
+| -------------------------- | --------------------------- | --------------------------------------------------------------------------- |
+| `BENCHMARK_MODEL_PLATFORM` | `openai`                    | Provider name. Use `openai-compatible-model` for any OpenAI-compatible API. |
+| `BENCHMARK_MODEL_TYPE`     | `gpt-5.2`                   | Model identifier passed to the provider.                                    |
+| `BENCHMARK_API_KEY`        | `$OPENAI_API_KEY`           | API key for the provider.                                                   |
+| `BENCHMARK_API_URL`        | `https://api.openai.com/v1` | Base URL for the provider's API.                                            |
+
+> **Important:** If the model is served through an OpenAI-compatible API (e.g. DeepSeek, MiniMax, Ollama, vLLM, LiteLLM, or any other non-OpenAI provider), set `BENCHMARK_MODEL_PLATFORM` to `openai-compatible-model` — **not** `openai`. The `openai` platform value is reserved for the official OpenAI API only.
+
+To override a single benchmark, add `model_kwargs` to its JSON config — these take priority over environment variables.
 
 2. Create `benchmark/checker/<n>.py` with a `check(working_directory: str) -> bool` function.
 
