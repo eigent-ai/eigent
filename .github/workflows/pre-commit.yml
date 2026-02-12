@@ -56,6 +56,8 @@ jobs:
             app/utils/toolkit/slack_toolkit.py \
             app/utils/toolkit/twitter_toolkit.py \
             app/utils/toolkit/whatsapp_toolkit.py \
+            app/utils/workforce.py \
+            app/utils/single_agent_worker.py \
             tests/conftest.py
         env:
           SKIP: no-commit-to-branch
