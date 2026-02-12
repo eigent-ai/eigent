@@ -16,10 +16,15 @@ import json
 import os
 from pathlib import Path
 
-from dotenv import dotenv_values
+from dotenv import dotenv_values, load_dotenv
 from pydantic import BaseModel
 
 from app.model.chat import Chat, McpServers
+
+# Load benchmark env files (.env takes priority over .env.development)
+_BENCHMARK_DIR = Path(__file__).resolve().parent
+load_dotenv(_BENCHMARK_DIR / ".env")
+load_dotenv(_BENCHMARK_DIR / ".env.development")
 
 
 class Env(BaseModel):
@@ -37,10 +42,12 @@ class Tests(BaseModel):
 
 
 class ModelKwargs(BaseModel):
-    model_platform: str = "openai"
-    model_type: str = "gpt-4o"
-    api_key: str | None = None
-    api_url: str | None = None
+    model_platform: str = os.environ.get("BENCHMARK_MODEL_PLATFORM", "openai")
+    model_type: str = os.environ.get("BENCHMARK_MODEL_TYPE", "gpt-5.2")
+    api_key: str | None = os.environ.get("BENCHMARK_API_KEY")
+    api_url: str = os.environ.get(
+        "BENCHMARK_API_URL", "https://api.openai.com/v1"
+    )
 
 
 class Metadata(BaseModel):
@@ -64,7 +71,11 @@ class BenchmarkData(BaseModel):
                 server_env.update(env_vars)
                 server_cfg["env"] = server_env
 
-        api_key = model_kwargs.api_key or os.environ["OPENAI_API_KEY"]
+        api_key = (
+            model_kwargs.api_key
+            or os.environ.get("BENCHMARK_API_KEY")
+            or os.environ["OPENAI_API_KEY"]
+        )
 
         self._chat = Chat(
             task_id=f"benchmark_{self.name}",

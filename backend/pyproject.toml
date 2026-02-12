@@ -38,6 +38,7 @@ dev = [
 [tool.ruff]
 line-length = 79
 target-version = "py311"
+exclude = ["benchmark/answer"]
 
 [tool.ruff.lint]
 select = [
@@ -70,7 +71,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.bandit]
-exclude_dirs = ["tests", ".venv", "venv"]
+exclude_dirs = ["tests", ".venv", "venv", "benchmark/answer"]
 skips = [
     "B101",  # assert_used - OK in non-production code
     "B105",  # hardcoded_password_string - false positive on env var names
