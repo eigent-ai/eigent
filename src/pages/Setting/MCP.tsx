@@ -43,6 +43,10 @@ import { Tag as TagComponent } from '@/components/ui/tag';
 import { ConfigFile } from 'electron/main/utils/mcpConfig';
 import { toast } from 'sonner';
 
+// OAuth polling constants
+const OAUTH_POLL_INTERVAL_MS = 2000;
+const OAUTH_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export default function SettingMCP() {
   const _navigate = useNavigate();
   const { checkAgentTool } = useAuthStore();
@@ -329,10 +333,13 @@ export default function SettingMCP() {
                     } catch (err) {
                       console.error('Polling oauth status failed', err);
                     }
-                  }, 2000);
+                  }, OAUTH_POLL_INTERVAL_MS);
 
                   // Safety timeout
-                  setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+                  setTimeout(
+                    () => clearInterval(pollInterval),
+                    OAUTH_POLL_TIMEOUT_MS
+                  );
                 } else {
                   toast.error(
                     response.error ||
@@ -360,22 +367,18 @@ export default function SettingMCP() {
             name: key,
             env_vars: value.env_vars,
             desc:
-              value.env_vars && value.env_vars.length > 0
-                ? `${t(
-                    'setting.environmental-variables-required'
-                  )}: ${value.env_vars.join(', ')}`
-                : key.toLowerCase() === 'notion'
-                  ? t('setting.notion-workspace-integration')
-                  : key.toLowerCase() === 'google calendar'
-                    ? t('setting.google-calendar-integration')
+              key.toLowerCase() === 'notion'
+                ? t('setting.notion-workspace-integration')
+                : key.toLowerCase() === 'google calendar'
+                  ? t('setting.google-calendar-integration')
+                  : value.env_vars && value.env_vars.length > 0
+                    ? `${t(
+                        'setting.environmental-variables-required'
+                      )}: ${value.env_vars.join(', ')}`
                     : '',
             onInstall,
           };
         });
-        console.log('API response:', res);
-        console.log('Generated list:', list);
-        console.log('Essential integrations:', essentialIntegrations);
-
         setIntegrations(
           list.filter(
             (item) => !essentialIntegrations.find((i) => i.key === item.key)
