@@ -23,17 +23,12 @@ import {
 } from '@/types/constants';
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
 import {
-  Bird,
   Bot,
   Circle,
   CircleCheckBig,
   CircleSlash,
   CircleSlash2,
-  CodeXml,
   Ellipsis,
-  FileText,
-  Globe,
-  Image,
   LoaderCircle,
   SquareChevronLeft,
   SquareCode,
@@ -52,6 +47,7 @@ import {
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import { agentMap } from './agents';
 import { MarkDown } from './MarkDown';
 
 interface NodeProps {
@@ -293,54 +289,6 @@ export function Node({ id, data }: NodeProps) {
     }
     setIsExpanded(!isExpanded);
     data.onExpandChange(id, !isExpanded);
-  };
-
-  const agentMap = {
-    developer_agent: {
-      name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-text-primary" />,
-      textColor: 'text-text-developer',
-      bgColor: 'bg-bg-fill-coding-active',
-      shapeColor: 'bg-bg-fill-coding-default',
-      borderColor: 'border-bg-fill-coding-active',
-      bgColorLight: 'bg-emerald-200',
-    },
-    browser_agent: {
-      name: 'Browser Agent',
-      icon: <Globe size={16} className="text-text-primary" />,
-      textColor: 'text-blue-700',
-      bgColor: 'bg-bg-fill-browser-active',
-      shapeColor: 'bg-bg-fill-browser-default',
-      borderColor: 'border-bg-fill-browser-active',
-      bgColorLight: 'bg-blue-200',
-    },
-    document_agent: {
-      name: 'Document Agent',
-      icon: <FileText size={16} className="text-text-primary" />,
-      textColor: 'text-yellow-700',
-      bgColor: 'bg-bg-fill-writing-active',
-      shapeColor: 'bg-bg-fill-writing-default',
-      borderColor: 'border-bg-fill-writing-active',
-      bgColorLight: 'bg-yellow-200',
-    },
-    multi_modal_agent: {
-      name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-text-primary" />,
-      textColor: 'text-fuchsia-700',
-      bgColor: 'bg-bg-fill-multimodal-active',
-      shapeColor: 'bg-bg-fill-multimodal-default',
-      borderColor: 'border-bg-fill-multimodal-active',
-      bgColorLight: 'bg-fuchsia-200',
-    },
-    social_media_agent: {
-      name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-text-primary" />,
-      textColor: 'text-purple-700',
-      bgColor: 'bg-violet-700',
-      shapeColor: 'bg-violet-300',
-      borderColor: 'border-violet-700',
-      bgColorLight: 'bg-purple-50',
-    },
   };
 
   const agentToolkits = {

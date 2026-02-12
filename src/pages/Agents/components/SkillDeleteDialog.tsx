@@ -12,13 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  Dialog,
-  DialogContent,
-  DialogContentSection,
-  DialogFooter,
-  DialogHeader,
-} from '@/components/ui/dialog';
+import ConfirmModal from '@/components/ui/alertDialog';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -42,32 +36,23 @@ export default function SkillDeleteDialog({
   const handleDelete = () => {
     if (skill) {
       deleteSkill(skill.id);
-      toast.success(t('capabilities.skill-deleted-success'));
+      toast.success(t('agents.skill-deleted-success'));
     }
     onConfirm();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
-      <DialogContent size="sm" showCloseButton onClose={onCancel}>
-        <DialogHeader title={t('capabilities.delete-skill')} />
-        <DialogContentSection>
-          <p className="text-body-sm text-text-body">
-            {t('capabilities.delete-skill-confirmation', {
-              name: skill?.name || '',
-            })}
-          </p>
-        </DialogContentSection>
-        <DialogFooter
-          showCancelButton
-          showConfirmButton
-          cancelButtonText={t('layout.cancel')}
-          confirmButtonText={t('layout.delete')}
-          confirmButtonVariant="cuation"
-          onCancel={onCancel}
-          onConfirm={handleDelete}
-        />
-      </DialogContent>
-    </Dialog>
+    <ConfirmModal
+      isOpen={open}
+      onClose={onCancel}
+      onConfirm={handleDelete}
+      title={t('agents.delete-skill')}
+      message={t('agents.delete-skill-confirmation', {
+        name: skill?.name || '',
+      })}
+      confirmText={t('layout.delete')}
+      cancelText={t('layout.cancel')}
+      confirmVariant="cuation"
+    />
   );
 }

@@ -144,7 +144,7 @@ export default function Home() {
             // });
             // chatStore.setSnapshots(chatStore.activeTaskId as string, list);
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             console.error('capture webview error:', error);
           });
       });
