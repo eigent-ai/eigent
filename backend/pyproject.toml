@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "pip>=23.0",
-    "camel-ai[eigent]==0.2.87",
+    "camel-ai[eigent]==0.2.89",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",
@@ -38,6 +38,7 @@ dev = [
 [tool.ruff]
 line-length = 79
 target-version = "py311"
+exclude = ["benchmark/answer"]
 
 [tool.ruff.lint]
 select = [
@@ -70,7 +71,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.bandit]
-exclude_dirs = ["tests", ".venv", "venv"]
+exclude_dirs = ["tests", ".venv", "venv", "benchmark/answer"]
 skips = [
     "B101",  # assert_used - OK in non-production code
     "B105",  # hardcoded_password_string - false positive on env var names
