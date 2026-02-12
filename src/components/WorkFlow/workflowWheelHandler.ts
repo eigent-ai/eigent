@@ -35,7 +35,7 @@ export function createWorkflowWheelHandler(
   return (e: WheelEvent) => {
     if (isEditMode) return;
 
-    // Mac trackpad pinch-to-zoom sends ctrlKey=true — prevent browser zoom when zoom is disabled
+    // Block zoom gestures (Mac pinch, Windows Ctrl+wheel). Trade-off: disables Ctrl+wheel zoom over canvas.
     if (e.ctrlKey) {
       e.preventDefault();
       return;
