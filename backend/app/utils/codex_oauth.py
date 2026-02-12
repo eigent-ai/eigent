@@ -14,8 +14,8 @@
 r"""OpenAI Codex OAuth manager.
 
 Handles Authorization Code + PKCE flow using Codex CLI's public client_id.
-The resulting access token is an OpenAI API key that can be stored as
-OPENAI_API_KEY for model provider usage.
+The resulting access token is stored in an encrypted file and used
+independently of the OPENAI_API_KEY environment variable.
 """
 
 import base64
@@ -50,7 +50,8 @@ logger = logging.getLogger("codex_oauth")
 CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_AUTH_URL = "https://auth.openai.com/oauth/authorize"
 CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
-CODEX_AUDIENCE = "https://api.openai.com/v1"
+# Fixed callback port used by Codex CLI
+CODEX_CALLBACK_PORT = 1455
 
 # Token storage path
 CODEX_TOKEN_DIR = os.path.join(
@@ -280,9 +281,6 @@ class CodexOAuthManager:
 
             logger.info("Saved encrypted Codex token to %s", path)
 
-            if token_data.get("access_token"):
-                os.environ["OPENAI_API_KEY"] = token_data["access_token"]
-
             return True
         except Exception as e:
             logger.error("Failed to save Codex token: %s", e)
@@ -304,7 +302,7 @@ class CodexOAuthManager:
 
     @classmethod
     def clear_token(cls) -> bool:
-        r"""Remove stored token and clean environment variable."""
+        r"""Remove stored token file."""
         path = cls._token_path()
         try:
             if os.path.exists(path):
@@ -314,9 +312,6 @@ class CodexOAuthManager:
             token_dir = os.path.dirname(path)
             if os.path.exists(token_dir) and not os.listdir(token_dir):
                 os.rmdir(token_dir)
-
-            if "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
 
             return True
         except Exception as e:
@@ -448,26 +443,29 @@ class CodexOAuthManager:
                 # Generate state parameter to prevent CSRF attacks
                 oauth_state = secrets.token_urlsafe(32)
 
-                # Start localhost callback server on an ephemeral port
-                server = HTTPServer(("127.0.0.1", 0), _CallbackHandler)
+                # Start localhost callback server on fixed port 1455 (Codex standard)
+                server = HTTPServer(
+                    ("127.0.0.1", CODEX_CALLBACK_PORT), _CallbackHandler
+                )
                 server.auth_code = None
                 server.auth_error = None
                 server.expected_state = oauth_state
                 state.server = server
-                port = server.server_address[1]
 
-                redirect_uri = f"http://localhost:{port}/auth/callback"
+                redirect_uri = (
+                    f"http://localhost:{CODEX_CALLBACK_PORT}/auth/callback"
+                )
 
                 params = urlencode(
                     {
                         "response_type": "code",
                         "client_id": CODEX_CLIENT_ID,
                         "redirect_uri": redirect_uri,
-                        "scope": "openai.organization.read openai.api.read",
-                        "audience": CODEX_AUDIENCE,
+                        "scope": "openid profile email offline_access",
                         "code_challenge": code_challenge,
                         "code_challenge_method": "S256",
                         "state": oauth_state,
+                        "id_token_add_organizations": "true",
                         "codex_cli_simplified_flow": "true",
                     }
                 )
@@ -477,7 +475,10 @@ class CodexOAuthManager:
                     server.server_close()
                     return
 
-                logger.info("Opening browser for Codex OAuth on port %d", port)
+                logger.info(
+                    "Opening browser for Codex OAuth on port %d",
+                    CODEX_CALLBACK_PORT,
+                )
                 webbrowser.open(auth_url)
 
                 # Wait for the callback (single request)

@@ -364,11 +364,14 @@ class TestTokenOperations:
         assert mode == (stat.S_IRUSR | stat.S_IWUSR)
 
     @pytest.mark.unit
-    def test_save_sets_environment_variable(self, temp_token_path, clean_env):
-        """save_token should set OPENAI_API_KEY environment variable."""
+    def test_save_does_not_set_environment_variable(
+        self, temp_token_path, clean_env
+    ):
+        """save_token should NOT set OPENAI_API_KEY environment variable."""
         CodexOAuthManager.save_token({"access_token": "sk-test-key"})
 
-        assert os.environ.get("OPENAI_API_KEY") == "sk-test-key"
+        # Token should only be stored in file, not in env var
+        assert "OPENAI_API_KEY" not in os.environ
 
     @pytest.mark.unit
     def test_save_computes_expires_at_from_expires_in(
@@ -454,15 +457,17 @@ class TestTokenOperations:
         assert not os.path.exists(temp_token_path)
 
     @pytest.mark.unit
-    def test_clear_removes_environment_variable(
+    def test_clear_does_not_modify_environment_variable(
         self, temp_token_path, clean_env
     ):
-        """clear_token should unset OPENAI_API_KEY."""
-        os.environ["OPENAI_API_KEY"] = "to-be-removed"
+        """clear_token should NOT modify OPENAI_API_KEY env var."""
+        os.environ["OPENAI_API_KEY"] = "existing-key"
 
         CodexOAuthManager.clear_token()
 
-        assert "OPENAI_API_KEY" not in os.environ
+        # Env var should remain untouched - it's managed separately
+        assert os.environ.get("OPENAI_API_KEY") == "existing-key"
+        os.environ.pop("OPENAI_API_KEY", None)
 
     @pytest.mark.unit
     def test_clear_succeeds_when_no_file(self, temp_token_path):
