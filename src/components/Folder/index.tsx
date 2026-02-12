@@ -1038,6 +1038,7 @@ function HtmlRenderer({
             height: `${10000 / zoom}%`,
           }}
         >
+          {/*Security is maintained via CSP allowlist in index.html which restricts script sources. */}
           <iframe
             ref={iframeRef}
             srcDoc={processedHtml}
