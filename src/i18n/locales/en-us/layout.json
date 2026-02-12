@@ -65,6 +65,7 @@
   "environmental-variables-required": "Environmental variables required:",
   "notion-workspace-integration": "Notion workspace integration for reading and managing Notion pages",
   "google-calendar-integration": "Google Calendar integration for managing events and schedules",
+  "codex-integration": "OpenAI Codex integration via OAuth",
   "coming-soon": "Coming Soon",
   "uninstall": "Uninstall",
   "install": "Install",
@@ -168,5 +169,7 @@
   "days-ago": "days ago",
   "delete-project": "Delete Project",
   "delete-project-confirmation": "Are you sure you want to delete this project and all its tasks? This action cannot be undone.",
-  "please-select-model": "Please select a model in Settings > Models to continue."
+  "please-select-model": "Please select a model in Settings > Models to continue.",
+  "agree-to-terms": "I agree to the",
+  "please-accept-terms": "Please accept the Terms of Use and Privacy Policy to continue"
 }
