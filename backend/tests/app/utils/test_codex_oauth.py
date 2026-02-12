@@ -254,7 +254,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_captures_authorization_code(self):
         """Handler should capture auth code from callback URL."""
-        path = "/callback?code=auth_code_123&state=valid_state"
+        path = "/auth/callback?code=auth_code_123&state=valid_state"
         with mock_callback_request(
             path, expected_state="valid_state"
         ) as handler:
@@ -266,7 +266,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_captures_error_response(self):
         """Handler should capture error from callback URL."""
-        path = "/callback?error=access_denied&error_description=User%20denied"
+        path = "/auth/callback?error=access_denied&error_description=User%20denied"
         with mock_callback_request(path) as handler:
             _CallbackHandler.do_GET(handler)
 
@@ -276,7 +276,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_handles_missing_code(self):
         """Handler should return 400 when code is missing."""
-        with mock_callback_request("/callback?state=xyz") as handler:
+        with mock_callback_request("/auth/callback?state=xyz") as handler:
             _CallbackHandler.do_GET(handler)
 
             assert handler.response_code == 400
@@ -285,7 +285,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_escapes_html_in_error(self):
         """Handler should escape HTML in error messages to prevent XSS."""
-        path = "/callback?error=<script>&error_description=<img>"
+        path = "/auth/callback?error=<script>&error_description=<img>"
         with mock_callback_request(path) as handler:
             _CallbackHandler.do_GET(handler)
 
@@ -296,7 +296,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_rejects_mismatched_state(self):
         """Handler should reject callback with mismatched state (CSRF protection)."""
-        path = "/callback?code=auth_code_123&state=wrong_state"
+        path = "/auth/callback?code=auth_code_123&state=wrong_state"
         with mock_callback_request(
             path, expected_state="correct_state"
         ) as handler:
@@ -309,7 +309,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_accepts_matching_state(self):
         """Handler should accept callback with matching state."""
-        path = "/callback?code=auth_code_123&state=my_state_value"
+        path = "/auth/callback?code=auth_code_123&state=my_state_value"
         with mock_callback_request(
             path, expected_state="my_state_value"
         ) as handler:
@@ -322,7 +322,7 @@ class TestCallbackHandler:
     @pytest.mark.unit
     def test_skips_state_validation_when_not_expected(self):
         """Handler should skip state validation if server has no expected_state."""
-        path = "/callback?code=auth_code_123"
+        path = "/auth/callback?code=auth_code_123"
         with mock_callback_request(path, expected_state=None) as handler:
             _CallbackHandler.do_GET(handler)
 
@@ -509,12 +509,13 @@ class TestAuthenticationStatus:
         assert CodexOAuthManager.is_authenticated() is True
 
     @pytest.mark.unit
-    def test_is_authenticated_true_with_env_var(self, temp_token_path):
-        """is_authenticated should return True when env var is set."""
+    def test_is_authenticated_false_with_only_env_var(self, temp_token_path):
+        """is_authenticated should return False when only env var is set (no Codex OAuth token)."""
         os.environ["OPENAI_API_KEY"] = "env-token"
 
         try:
-            assert CodexOAuthManager.is_authenticated() is True
+            # Codex OAuth status should not be affected by generic OPENAI_API_KEY
+            assert CodexOAuthManager.is_authenticated() is False
         finally:
             os.environ.pop("OPENAI_API_KEY", None)
 
@@ -538,12 +539,15 @@ class TestAuthenticationStatus:
         assert token == "file-token"
 
     @pytest.mark.unit
-    def test_get_access_token_falls_back_to_env(self, temp_token_path):
-        """get_access_token should use env var when no file."""
+    def test_get_access_token_returns_none_without_oauth_token(
+        self, temp_token_path
+    ):
+        """get_access_token should return None when no Codex OAuth token exists."""
         os.environ["OPENAI_API_KEY"] = "env-fallback"
 
         try:
-            assert CodexOAuthManager.get_access_token() == "env-fallback"
+            # Should not fall back to env var; Codex OAuth token is separate
+            assert CodexOAuthManager.get_access_token() is None
         finally:
             os.environ.pop("OPENAI_API_KEY", None)
 

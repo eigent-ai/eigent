@@ -48,7 +48,7 @@ logger = logging.getLogger("codex_oauth")
 # OpenAI / Codex OAuth constants
 # Fixed public client_id from the Codex CLI (not a secret).
 CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-CODEX_AUTH_URL = "https://auth.openai.com/authorize"
+CODEX_AUTH_URL = "https://auth.openai.com/oauth/authorize"
 CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
 CODEX_AUDIENCE = "https://api.openai.com/v1"
 
@@ -325,11 +325,9 @@ class CodexOAuthManager:
 
     @classmethod
     def is_authenticated(cls) -> bool:
-        r"""Return True if a Codex/OpenAI token is available."""
+        r"""Return True if a Codex OAuth token is available."""
         token = cls.load_token()
-        if token and token.get("access_token"):
-            return True
-        return bool(os.environ.get("OPENAI_API_KEY"))
+        return bool(token and token.get("access_token"))
 
     @classmethod
     def is_token_expired(cls) -> bool:
@@ -355,11 +353,11 @@ class CodexOAuthManager:
 
     @classmethod
     def get_access_token(cls) -> str | None:
-        r"""Return the current access token, preferring the stored file."""
+        r"""Return the current Codex OAuth access token."""
         token = cls.load_token()
         if token and token.get("access_token"):
             return token["access_token"]
-        return os.environ.get("OPENAI_API_KEY")
+        return None
 
     @classmethod
     def get_token_info(cls) -> dict | None:
@@ -450,7 +448,7 @@ class CodexOAuthManager:
                 # Generate state parameter to prevent CSRF attacks
                 oauth_state = secrets.token_urlsafe(32)
 
-                # Start localhost callback server on a random port
+                # Start localhost callback server on an ephemeral port
                 server = HTTPServer(("127.0.0.1", 0), _CallbackHandler)
                 server.auth_code = None
                 server.auth_error = None
@@ -458,7 +456,7 @@ class CodexOAuthManager:
                 state.server = server
                 port = server.server_address[1]
 
-                redirect_uri = f"http://localhost:{port}/callback"
+                redirect_uri = f"http://localhost:{port}/auth/callback"
 
                 params = urlencode(
                     {
