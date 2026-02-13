@@ -46,9 +46,11 @@ export function splitFrontmatter(contents: string): {
   frontmatter: string | null;
   body: string;
 } {
-  const lines = contents.split('\n');
+  // Strip BOM and leading whitespace/newlines so the first `---` is detected
+  const cleaned = contents.replace(/^\uFEFF/, '').trimStart();
+  const lines = cleaned.split('\n');
   if (!lines.length || lines[0].trim() !== FRONTMATTER_DELIM) {
-    return { frontmatter: null, body: contents };
+    return { frontmatter: null, body: cleaned };
   }
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].trim() === FRONTMATTER_DELIM) {
@@ -57,7 +59,7 @@ export function splitFrontmatter(contents: string): {
       return { frontmatter, body };
     }
   }
-  return { frontmatter: null, body: contents };
+  return { frontmatter: null, body: cleaned };
 }
 
 /** Simple YAML-like parse for "name:" and "description:" (first-level keys only). */
@@ -68,7 +70,8 @@ function parseSimpleYaml(text: string): Record<string, string> {
     const match = line.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/);
     if (match) {
       const value = match[2].trim();
-      out[match[1]] = value.replace(/^['"]|['"]$/g, '').trim();
+      // Lowercase key so `Name:` / `name:` / `NAME:` all work
+      out[match[1].toLowerCase()] = value.replace(/^['"]|['"]$/g, '').trim();
     }
   }
   return out;

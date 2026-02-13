@@ -15,10 +15,10 @@
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Navigation';
-import Models from '@/pages/Setting/Models';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Memory from './Memory';
+import Models from './Models';
 import Skills from './Skills';
 
 export default function Capabilities() {
@@ -32,11 +32,11 @@ export default function Capabilities() {
     },
     {
       id: 'skills',
-      name: t('capabilities.skills'),
+      name: t('agents.skills'),
     },
     {
       id: 'memory',
-      name: t('capabilities.memory'),
+      name: t('agents.memory'),
     },
   ];
 
@@ -45,17 +45,15 @@ export default function Capabilities() {
   };
 
   return (
-    <div className="m-auto flex h-auto max-w-[900px] flex-col px-4 py-4">
-      <div className="flex h-auto w-full px-3">
-        <div className="sticky top-20 flex !w-[222px] flex-shrink-0 flex-grow-0 flex-col self-start pr-4 pt-md">
+    <div className="m-auto flex h-auto max-w-[940px] flex-col">
+      <div className="flex h-auto w-full px-6">
+        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
           <VerticalNavigation
             items={
               menuItems.map((menu) => ({
                 value: menu.id,
                 label: (
-                  <span className="text-sm font-bold leading-13 text-text-primary">
-                    {menu.name}
-                  </span>
+                  <span className="text-body-sm font-bold">{menu.name}</span>
                 ),
               })) as VerticalNavItem[]
             }
@@ -68,7 +66,7 @@ export default function Capabilities() {
         </div>
 
         <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="flex flex-col gap-4 py-md pb-md">
+          <div className="flex flex-col gap-4">
             {activeTab === 'models' && <Models />}
             {activeTab === 'skills' && <Skills />}
             {activeTab === 'memory' && <Memory />}
