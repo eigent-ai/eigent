@@ -20,6 +20,15 @@ from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 
+def _validate_file_path(image_path: str) -> None:
+    """Validate that image_path is a local file path, not a URL."""
+    if image_path.startswith(("http://", "https://")):
+        raise ValueError(
+            f"ImageAnalysisToolkit only accepts local file paths, not URLs. "
+            f"Provided: {image_path}"
+        )
+
+
 @auto_listen_toolkit(BaseImageAnalysisToolkit)
 class ImageAnalysisToolkit(BaseImageAnalysisToolkit, AbstractToolkit):
     agent_name: str = Agents.multi_modal_agent
@@ -32,3 +41,15 @@ class ImageAnalysisToolkit(BaseImageAnalysisToolkit, AbstractToolkit):
     ):
         super().__init__(model, timeout)
         self.api_task_id = api_task_id
+
+    def image_to_text(self, image_path: str) -> str:
+        """Extract text from an image file. Only accepts local file paths."""
+        _validate_file_path(image_path)
+        return super().image_to_text(image_path)
+
+    def ask_question_about_image(
+        self, image_path: str, question: str
+    ) -> str:
+        """Answer a question about an image file. Only accepts local file paths."""
+        _validate_file_path(image_path)
+        return super().ask_question_about_image(image_path, question)
