@@ -57,6 +57,9 @@ jobs:
             app/utils/toolkit/whatsapp_toolkit.py \
             app/utils/workforce.py \
             app/utils/single_agent_worker.py \
-            tests/conftest.py
+            app/utils/file_utils.py \
+            tests/conftest.py \
+            tests/unit/utils/test_file_utils.py \
+            tests/unit/service/test_chat_service.py
         env:
           SKIP: no-commit-to-branch

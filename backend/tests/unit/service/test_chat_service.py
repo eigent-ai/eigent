@@ -25,6 +25,7 @@ from app.service.chat_service import (
     collect_previous_task_context,
     construct_workforce,
     format_agent_description,
+    format_task_context,
     install_mcp,
     new_agent_model,
     question_confirm,
@@ -42,6 +43,36 @@ from app.service.task import (
     ImprovePayload,
     TaskLock,
 )
+
+
+@pytest.mark.unit
+class TestFormatTaskContext:
+    """Test cases for format_task_context function."""
+
+    def test_format_task_context_with_working_directory_and_files(
+        self, temp_dir
+    ):
+        """Test format_task_context lists generated files via safe_list_directory."""
+        (temp_dir / "output.txt").write_text("content")
+        task_data = {
+            "task_content": "Create file",
+            "task_result": "Done",
+            "working_directory": str(temp_dir),
+        }
+        result = format_task_context(task_data, skip_files=False)
+        assert "Previous Task: Create file" in result
+        assert "output.txt" in result
+        assert "Generated Files from Previous Task:" in result
+
+    def test_format_task_context_skip_files(self, temp_dir):
+        """Test format_task_context with skip_files=True omits file listing."""
+        task_data = {
+            "task_content": "Task",
+            "task_result": "Result",
+            "working_directory": str(temp_dir),
+        }
+        result = format_task_context(task_data, skip_files=True)
+        assert "Generated Files from Previous Task:" not in result
 
 
 @pytest.mark.unit

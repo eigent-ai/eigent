@@ -17,7 +17,6 @@
 import logging
 import os
 import platform
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -32,6 +31,10 @@ MAX_PATH_LENGTH_UNIX = 4096
 DEFAULT_MAX_FILE_SIZE_READ = 10 * 1024 * 1024  # 10 MB
 DEFAULT_ENCODING = "utf-8"
 FALLBACK_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
+# Default directory names to skip when listing (safe_list_directory)
+DEFAULT_SKIP_DIRS = frozenset(
+    {".git", "node_modules", "__pycache__", "venv", ".venv"}
+)
 
 
 def _max_path_length() -> int:
@@ -190,13 +193,7 @@ def safe_list_directory(
     except OSError:
         return []
     path_for_walk = base_real
-    skip_dirs = skip_dirs or {
-        ".git",
-        "node_modules",
-        "__pycache__",
-        "venv",
-        ".venv",
-    }
+    skip_dirs = skip_dirs or set(DEFAULT_SKIP_DIRS)
     result: list[str] = []
     try:
         for root, dirs, files in os.walk(
@@ -235,94 +232,6 @@ def safe_list_directory(
     except OSError as e:
         logger.warning("safe_list_directory failed for %r: %s", dir_path, e)
     return result
-
-
-def safe_read_file(
-    path: str,
-    base: str | None = None,
-    max_size: int = DEFAULT_MAX_FILE_SIZE_READ,
-    encoding: str = DEFAULT_ENCODING,
-) -> str | None:
-    """
-    Read file content with path confinement, size limit, and encoding fallback.
-    Returns None on path escape, OSError, or size exceed.
-    """
-    if base and not is_safe_path(path, base):
-        logger.warning("safe_read_file: path not under base: %r", path)
-        return None
-    path_to_use = path
-    if base and not os.path.isabs(path):
-        joined = safe_join_path(base, path)
-        if joined is None:
-            return None
-        path_to_use = joined
-    if not os.path.isfile(path_to_use):
-        return None
-    try:
-        size = os.path.getsize(path_to_use)
-        if size > max_size:
-            logger.warning(
-                "safe_read_file: file too large %d > %d", size, max_size
-            )
-            return None
-        for enc in (encoding,) + FALLBACK_ENCODINGS:
-            if enc == encoding and enc in FALLBACK_ENCODINGS:
-                continue
-            try:
-                with open(path_to_use, encoding=enc) as f:
-                    return f.read()
-            except (UnicodeDecodeError, LookupError):
-                continue
-        return None
-    except OSError as e:
-        logger.debug("safe_read_file failed: %s", e)
-        return None
-
-
-def safe_write_file(
-    path: str,
-    content: str,
-    base: str | None = None,
-    encoding: str = DEFAULT_ENCODING,
-    create_dirs: bool = True,
-) -> bool:
-    """
-    Write content to path with optional base confinement.
-    Returns False on path escape or OSError.
-    """
-    if base and not os.path.isabs(path):
-        resolved = safe_resolve_path(path, base)
-        if resolved is None:
-            return False
-        path = resolved
-    elif base and not is_safe_path(path, base):
-        return False
-    try:
-        parent = os.path.dirname(path)
-        if parent and create_dirs and not os.path.isdir(parent):
-            os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding=encoding) as f:
-            f.write(content)
-        return True
-    except OSError as e:
-        logger.warning("safe_write_file failed: %s", e)
-        return False
-
-
-def create_temp_dir(
-    prefix: str = "eigent_", base: str | None = None
-) -> str | None:
-    """
-    Create a temporary directory. If base is set, it must exist and be a directory;
-    the temp dir will be created under base. Returns None on failure.
-    """
-    try:
-        if base and os.path.isdir(base):
-            return tempfile.mkdtemp(prefix=prefix, dir=base)
-        return tempfile.mkdtemp(prefix=prefix)
-    except OSError as e:
-        logger.warning("create_temp_dir failed: %s", e)
-        return None
 
 
 def get_working_directory(options: Chat, task_lock=None) -> str:
