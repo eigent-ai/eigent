@@ -21,7 +21,6 @@ import logging
 
 from fastapi import FastAPI
 
-from app.api import skill_config_api
 from app.controller import (
     chat_controller,
     health_controller,
@@ -71,11 +70,6 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": tool_controller.router,
             "tags": ["tool"],
             "description": "Tool installation and management",
-        },
-        {
-            "router": skill_config_api.router,
-            "tags": ["skills"],
-            "description": "Skill configuration management (enable/disable skills)",
         },
     ]
 
