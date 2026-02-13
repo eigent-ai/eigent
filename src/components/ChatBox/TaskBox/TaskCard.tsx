@@ -185,7 +185,7 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 pl-sm transition-all duration-300">
+      <div className="flex h-auto w-full flex-col gap-2 px-sm transition-all duration-300">
         <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm">
           <div className="absolute left-0 top-0 w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />

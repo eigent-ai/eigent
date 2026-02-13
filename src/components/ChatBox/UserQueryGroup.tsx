@@ -216,7 +216,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="py-sm pl-sm"
+          className="px-sm py-sm"
         >
           <UserMessageCard
             id={queryGroup.userMessage.id}
@@ -295,7 +295,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4 pl-3"
+                className="flex flex-col gap-4 px-sm"
               >
                 <AgentMessageCard
                   typewriter={
@@ -308,7 +308,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 />
                 {/* File List */}
                 {message.fileList && (
-                  <div className="flex flex-wrap gap-2 pl-3">
+                  <div className="flex flex-wrap gap-2">
                     {message.fileList.map((file: any, fileIndex: number) => (
                       <motion.div
                         key={`file-${message.id}-${file.name}-${fileIndex}`}
@@ -348,7 +348,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4 pl-3"
+                className="flex flex-col gap-4 px-sm"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -365,7 +365,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4 pl-3"
+                className="flex flex-col gap-4 px-sm"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -388,7 +388,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex flex-col gap-4 pl-3"
+              className="flex flex-col gap-4 px-sm"
             >
               {message.fileList && (
                 <div className="flex flex-wrap gap-2">
