@@ -23,12 +23,12 @@ from app.agent.toolkit.excel_toolkit import ExcelToolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
-from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.pptx_toolkit import PPTXToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
@@ -69,12 +69,13 @@ async def document_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    # Save reference before registering for toolkits_to_register_agent
-    image_analysis_toolkit_for_agent_registration = ImageAnalysisToolkit(
-        options.project_id
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id, working_directory=working_directory
     )
-    image_analysis_toolkit = message_integration.register_toolkits(
-        image_analysis_toolkit_for_agent_registration
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit
     )
 
     terminal_toolkit = TerminalToolkit(
@@ -100,7 +101,7 @@ async def document_agent(options: Chat):
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
-        *image_analysis_toolkit.get_tools(),
+        *screenshot_toolkit.get_tools(),
         *google_drive_tools,
     ]
     system_message = DOCUMENT_SYS_PROMPT.format(
@@ -126,10 +127,10 @@ async def document_agent(options: Chat):
             ExcelToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
-            ImageAnalysisToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
             GoogleDriveMCPToolkit.toolkit_name(),
         ],
         toolkits_to_register_agent=[
-            image_analysis_toolkit_for_agent_registration,
+            screenshot_toolkit_for_agent_registration,
         ],
     )

@@ -43,7 +43,7 @@ async def test_document_agent_creation(sample_chat_data):
         patch(f"{_mod}.MarkItDownToolkit") as mock_markdown_toolkit,
         patch(f"{_mod}.ExcelToolkit") as mock_excel_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
-        patch(f"{_mod}.ImageAnalysisToolkit") as mock_image_toolkit,
+        patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.GoogleDriveMCPToolkit") as mock_gdrive_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
@@ -55,7 +55,7 @@ async def test_document_agent_creation(sample_chat_data):
         mock_markdown_toolkit.return_value.get_tools.return_value = []
         mock_excel_toolkit.return_value.get_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []
-        mock_image_toolkit.return_value.get_tools.return_value = []
+        mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
         mock_gdrive_toolkit.get_can_use_tools = AsyncMock(return_value=[])
 
