@@ -53,8 +53,6 @@ export interface Skill {
   isExample: boolean;
 }
 
-// Dir names of default skills seeded by main process under ~/.eigent/skills.
-// These are shown in the "Example skills" section; all other disk skills are "Your skills".
 export const EXAMPLE_SKILL_DIR_NAMES = [
   'code-reviewer',
   'report-writer',
@@ -67,7 +65,7 @@ interface SkillsState {
   addSkill: (
     skill: Omit<Skill, 'id' | 'addedAt' | 'isExample'>
   ) => Promise<void>;
-  updateSkill: (id: string, updates: Partial<Skill>) => void;
+  updateSkill: (id: string, updates: Partial<Skill>) => Promise<void>;
   deleteSkill: (id: string) => Promise<void>;
   toggleSkill: (id: string) => Promise<void>;
   getSkillsByType: (isExample: boolean) => Skill[];
@@ -118,13 +116,12 @@ export const useSkillsStore = create<SkillsState>()(
           try {
             const userId = emailToUserId(useAuthStore.getState().email);
             if (userId) {
-              const scope = newSkill.scope.isGlobal ? 'global' : 'project';
               await window.electronAPI.skillConfigUpdate(
                 userId,
                 newSkill.name,
                 {
                   enabled: newSkill.enabled,
-                  scope,
+                  scope: newSkill.scope,
                   addedAt: newSkill.addedAt,
                   isExample: false,
                 }
@@ -141,12 +138,44 @@ export const useSkillsStore = create<SkillsState>()(
         }));
       },
 
-      updateSkill: (id, updates) => {
+      updateSkill: async (id, updates) => {
+        const skill = get().skills.find((s) => s.id === id);
+        if (!skill) return;
+
         set((state) => ({
-          skills: state.skills.map((skill) =>
-            skill.id === id ? { ...skill, ...updates } : skill
+          skills: state.skills.map((s) =>
+            s.id === id ? { ...s, ...updates } : s
           ),
         }));
+
+        // Persist to configuration file if updating scope or enabled status
+        if (
+          hasSkillsFsApi() &&
+          (updates.scope || updates.enabled !== undefined)
+        ) {
+          try {
+            const userId = emailToUserId(useAuthStore.getState().email);
+            if (!userId) return;
+
+            const updatedSkill = { ...skill, ...updates };
+            await window.electronAPI.skillConfigUpdate(userId, skill.name, {
+              enabled: updatedSkill.enabled,
+              scope: updatedSkill.scope,
+              addedAt: updatedSkill.addedAt,
+              isExample: updatedSkill.isExample,
+            });
+            console.log(
+              `[Skills] Updated config for skill: ${skill.name}`,
+              updates
+            );
+          } catch (error) {
+            console.error('[Skills] Failed to update skill config:', error);
+            // Revert on error
+            set((state) => ({
+              skills: state.skills.map((s) => (s.id === id ? skill : s)),
+            }));
+          }
+        }
       },
 
       deleteSkill: async (id) => {
@@ -224,26 +253,40 @@ export const useSkillsStore = create<SkillsState>()(
         return get().skills.filter((skill) => skill.isExample === isExample);
       },
 
-      // Load skills from ~/.eigent/skills (main process seeds example skills when empty)
+      // Load skills from ~/.eigent/skills
       syncFromDisk: async () => {
         if (!hasSkillsFsApi()) return;
         try {
-          // 1. Scan skills from filesystem
+          const userId = emailToUserId(useAuthStore.getState().email);
+
           const result = await window.electronAPI.skillsScan();
           if (!result.success || !result.skills) return;
 
-          // 2. Load configuration from local file via Electron IPC
+          if (userId) {
+            console.log(`[Skills] Initializing config for user: ${userId}`);
+            await window.electronAPI.skillConfigInit(userId);
+          }
+
           let config: any = { global: null, project: null };
           try {
-            const userId = emailToUserId(useAuthStore.getState().email);
             if (userId) {
+              console.log(`[Skills] Loading config for user: ${userId}`);
               const result = await window.electronAPI.skillConfigLoad(userId);
               if (result.success && result.config) {
                 config.global = result.config;
+                console.log(
+                  `[Skills] Loaded config with ${Object.keys(result.config.skills || {}).length} skills configured`
+                );
+              } else {
+                console.warn('[Skills] Failed to load config:', result.error);
               }
+            } else {
+              console.warn(
+                '[Skills] No userId available, skipping config load'
+              );
             }
           } catch (error) {
-            console.warn('Failed to load skill config, using defaults:', error);
+            console.error('[Skills] Error loading skill config:', error);
           }
 
           const prevByKey = new Map<string, Skill>(
@@ -264,11 +307,28 @@ export const useSkillsStore = create<SkillsState>()(
                   EXAMPLE_SKILL_DIR_NAMES as readonly string[]
                 ).includes(s.skillDirName);
 
-                // Get enabled status from config (project overrides global)
+                // Get config from global/project
                 const globalConfig = config.global?.skills?.[s.name];
                 const projectConfig = config.project?.skills?.[s.name];
-                const enabledFromConfig =
-                  projectConfig?.enabled ?? globalConfig?.enabled ?? true;
+                const skillConfig = projectConfig ?? globalConfig;
+
+                const enabledFromConfig = skillConfig?.enabled ?? true;
+
+                let scopeFromConfig: SkillScope;
+                if (
+                  skillConfig?.scope &&
+                  typeof skillConfig.scope === 'object'
+                ) {
+                  scopeFromConfig = {
+                    isGlobal: skillConfig.scope.isGlobal ?? true,
+                    selectedAgents: skillConfig.scope.selectedAgents ?? [],
+                  };
+                } else {
+                  scopeFromConfig = {
+                    isGlobal: true,
+                    selectedAgents: [],
+                  };
+                }
 
                 return {
                   id: `disk-${s.skillDirName}`,
@@ -277,13 +337,11 @@ export const useSkillsStore = create<SkillsState>()(
                   filePath: s.path,
                   fileContent: existing?.fileContent ?? '',
                   skillDirName: s.skillDirName,
-                  addedAt: existing?.addedAt ?? Date.now(),
-                  scope: existing?.scope ?? {
-                    isGlobal: true,
-                    selectedAgents: [],
-                  },
+                  addedAt:
+                    skillConfig?.addedAt ?? existing?.addedAt ?? Date.now(),
+                  scope: scopeFromConfig,
                   enabled: enabledFromConfig,
-                  isExample,
+                  isExample: skillConfig?.isExample ?? isExample,
                 };
               }
             )

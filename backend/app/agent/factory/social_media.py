@@ -11,8 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-from camel.messages import BaseMessage
-
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import SOCIAL_MEDIA_SYS_PROMPT
@@ -20,11 +18,11 @@ from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
-
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.agent.toolkit.reddit_toolkit import RedditToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.twitter_toolkit import TwitterToolkit
 from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
@@ -32,6 +30,7 @@ from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
+from camel.messages import BaseMessage
 
 
 async def social_media_agent(options: Chat):
@@ -70,6 +69,11 @@ async def social_media_agent(options: Chat):
             Agents.social_media_agent,
             working_directory=working_directory,
         ).get_tools(),
+        *SkillToolkit(
+            options.project_id,
+            Agents.social_media_agent,
+            working_directory=working_directory,
+        ).get_tools(),
         # *DiscordToolkit(options.project_id).get_tools(),
         # *GoogleSuiteToolkit(options.project_id).get_tools(),
     ]
@@ -94,5 +98,6 @@ async def social_media_agent(options: Chat):
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
         ],
     )

@@ -20,24 +20,10 @@ import platform
 from pathlib import Path
 from typing import Any
 
-from camel.models import ModelProcessingError
-from camel.tasks import Task
-from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
-from fastapi import Request
-from inflection import titleize
-from pydash import chain
-
 from app.agent.agent_model import agent_model
-from app.agent.factory import (
-    browser_agent,
-    developer_agent,
-    document_agent,
-    mcp_agent,
-    multi_modal_agent,
-    question_confirm_agent,
-    task_summary_agent,
-)
+from app.agent.factory import (browser_agent, developer_agent, document_agent,
+                               mcp_agent, multi_modal_agent,
+                               question_confirm_agent, task_summary_agent)
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -45,23 +31,22 @@ from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
-from app.service.task import (
-    Action,
-    ActionDecomposeProgressData,
-    ActionDecomposeTextData,
-    ActionImproveData,
-    ActionInstallMcpData,
-    ActionNewAgent,
-    Agents,
-    TaskLock,
-    delete_task_lock,
-    set_current_task_id,
-)
+from app.service.task import (Action, ActionDecomposeProgressData,
+                              ActionDecomposeTextData, ActionImproveData,
+                              ActionInstallMcpData, ActionNewAgent, Agents,
+                              TaskLock, delete_task_lock, set_current_task_id)
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
+from camel.models import ModelProcessingError
+from camel.tasks import Task
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
+from fastapi import Request
+from inflection import titleize
+from pydash import chain
 
 logger = logging.getLogger("chat_service")
 
@@ -308,51 +293,6 @@ def build_conversation_context(
 
     return context
 
-
-# When the user mentions a skill in double curly braces (e.g. {{Data Analyzer}}),
-# the coordinator must actively load that skill using tools.
-_COORDINATOR_SKILL_INSTRUCTION = """
-🎯 CRITICAL: SKILL-BASED TASK DECOMPOSITION PROTOCOL
-
-When the user mentions a skill with double curly braces (e.g., {{pdf}}, {{excalidraw}}, {{data-analyzer}}),
-you are REQUIRED to use the SkillToolkit to load that skill. DO NOT access skill files directly.
-
-**MANDATORY WORKFLOW (NO EXCEPTIONS):**
-
-1. **ALWAYS call `list_skills()` first**
-   - This shows all available skills
-   - Verify the mentioned skill exists
-   - If the skill doesn't exist, inform the user immediately
-
-2. **ALWAYS call `load_skill("<skill-name>")` second**
-   - Pass the exact skill name (lowercase, hyphenated)
-   - The returned content is the AUTHORITATIVE reference
-   - Contains examples, patterns, API documentation, and best practices
-
-3. **Design subtasks based ONLY on the loaded skill content**
-   - Follow code examples and patterns from the skill
-   - Reference specific sections, functions, and parameters mentioned
-   - DO NOT use general knowledge or assumptions
-   - DO NOT access files like /Users/.../.eigent/skills/.../ directly
-
-4. **Important**:
-   - You MUST load the skill before designing subtasks (no shortcuts!)
-   - The skill name in double braces is just a reference - always load it explicitly
-   - If `list_skills` shows no matching skill, inform the user
-
-**Example (CORRECT):**
-User: "I just added the {{excalidraw}} skill for Eigent, can you make something amazing with this skill?"
-You:
-1. Call `list_skills()` → Verify "excalidraw" exists
-2. Call `load_skill("excalidraw")` → Get full Excalidraw documentation
-3. Design subtasks based on examples in the loaded content
-
-"""
-
-# Skills are now loaded explicitly by agents using list_skills/load_skill tools
-# rather than being auto-injected based on {{skill}} syntax.
-
-
 def build_context_for_workforce(
     task_lock: TaskLock,
     options: Chat,
@@ -361,10 +301,9 @@ def build_context_for_workforce(
     """Build context information for workforce.
     Instructs coordinator to actively load skills using list_skills/load_skill tools.
     """
-    base = build_conversation_context(
+    return build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
-    return _COORDINATOR_SKILL_INSTRUCTION.strip() + "\n\n" + base
 
 
 @sync_step
@@ -1036,9 +975,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info("[LIFECYCLE] 🛑 Stopping workforce")
                     if workforce._running:
                         # Import correct BaseWorkforce from camel
-                        from camel.societies.workforce.workforce import (
-                            Workforce as BaseWorkforce,
-                        )
+                        from camel.societies.workforce.workforce import \
+                            Workforce as BaseWorkforce
 
                         BaseWorkforce.stop(workforce)
                         logger.info(

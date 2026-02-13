@@ -990,9 +990,25 @@ function registerIpcHandlers() {
 
   async function loadSkillConfig(userId: string): Promise<any> {
     const configPath = getSkillConfigPath(userId);
+
+    // Auto-create config file if it doesn't exist
     if (!existsSync(configPath)) {
-      return { version: 1, skills: {} };
+      const defaultConfig = { version: 1, skills: {} };
+      try {
+        await fsp.mkdir(path.dirname(configPath), { recursive: true });
+        await fsp.writeFile(
+          configPath,
+          JSON.stringify(defaultConfig, null, 2),
+          'utf-8'
+        );
+        log.info(`Auto-created skills config at ${configPath}`);
+        return defaultConfig;
+      } catch (error) {
+        log.error('Failed to create default skills config', error);
+        return defaultConfig;
+      }
     }
+
     try {
       const content = await fsp.readFile(configPath, 'utf-8');
       return JSON.parse(content);
@@ -1024,9 +1040,13 @@ function registerIpcHandlers() {
       try {
         const config = await loadSkillConfig(userId);
         if (!config.skills[skillName]) {
+          // Use SkillScope object format
           config.skills[skillName] = {
             enabled,
-            scope: 'global',
+            scope: {
+              isGlobal: true,
+              selectedAgents: [],
+            },
             addedAt: Date.now(),
             isExample: false,
           };
@@ -1071,6 +1091,75 @@ function registerIpcHandlers() {
       }
     }
   );
+
+  // Initialize skills config for a user (ensures config file exists)
+  ipcMain.handle('skill-config-init', async (_event, userId: string) => {
+    try {
+      log.info(`[SKILLS-CONFIG] Initializing config for user: ${userId}`);
+      const config = await loadSkillConfig(userId);
+
+      try {
+        const exampleSkillsDir = getExampleSkillsSourceDir();
+        const defaultConfigPath = path.join(
+          exampleSkillsDir,
+          'default-config.json'
+        );
+
+        if (existsSync(defaultConfigPath)) {
+          const defaultConfigContent = await fsp.readFile(
+            defaultConfigPath,
+            'utf-8'
+          );
+          const defaultConfig = JSON.parse(defaultConfigContent);
+
+          if (defaultConfig.skills) {
+            let addedCount = 0;
+            // Merge default skills config with user's existing config
+            for (const [skillName, skillConfig] of Object.entries(
+              defaultConfig.skills
+            )) {
+              if (!config.skills[skillName]) {
+                // Add new skill config with current timestamp
+                config.skills[skillName] = {
+                  ...(skillConfig as any),
+                  addedAt: Date.now(),
+                };
+                addedCount++;
+                log.info(
+                  `[SKILLS-CONFIG] Initialized config for example skill: ${skillName}`
+                );
+              }
+            }
+
+            if (addedCount > 0) {
+              await saveSkillConfig(userId, config);
+              log.info(
+                `[SKILLS-CONFIG] Added ${addedCount} example skill configs`
+              );
+            }
+          }
+        } else {
+          log.warn(
+            `[SKILLS-CONFIG] Default config not found at: ${defaultConfigPath}`
+          );
+        }
+      } catch (err) {
+        log.error(
+          '[SKILLS-CONFIG] Failed to load default config template:',
+          err
+        );
+        // Continue anyway - user config is still valid
+      }
+
+      log.info(
+        `[SKILLS-CONFIG] Config initialized with ${Object.keys(config.skills || {}).length} skills`
+      );
+      return { success: true, config };
+    } catch (error: any) {
+      log.error('skill-config-init failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
 
   ipcMain.handle(
     'skill-import-zip',

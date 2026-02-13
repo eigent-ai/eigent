@@ -170,7 +170,9 @@ interface ElectronAPI {
   openSkillFolder: (
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
-  // Skills config (~/.eigent/<userId>/skills-config.json)
+  skillConfigInit: (
+    userId: string
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
   skillConfigLoad: (
     userId: string
   ) => Promise<{ success: boolean; config?: any; error?: string }>;

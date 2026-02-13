@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "description": "Default configuration template for example skills. Each skill is enabled by default with global scope (all agents, including future ones).",
+  "skills": {
+    "code-reviewer": {
+      "enabled": true,
+      "scope": {
+        "isGlobal": true,
+        "selectedAgents": []
+      },
+      "addedAt": 0,
+      "isExample": true
+    },
+    "data-analyzer": {
+      "enabled": true,
+      "scope": {
+        "isGlobal": true,
+        "selectedAgents": []
+      },
+      "addedAt": 0,
+      "isExample": true
+    },
+    "report-writer": {
+      "enabled": true,
+      "scope": {
+        "isGlobal": true,
+        "selectedAgents": []
+      },
+      "addedAt": 0,
+      "isExample": true
+    }
+  }
+}

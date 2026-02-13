@@ -88,7 +88,7 @@ export default function SkillListItem(props: SkillListItemProps) {
       <div
         role={isClickable ? 'button' : undefined}
         tabIndex={isClickable ? 0 : undefined}
-        className={`flex w-full flex-col flex-wrap items-center justify-center gap-3 rounded-2xl bg-surface-primary px-6 py-8 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isClickable ? 'cursor-pointer hover:bg-surface-tertiary' : ''}`}
+        className={`focus-visible:ring-ring flex w-full flex-col flex-wrap items-center justify-center gap-3 rounded-2xl bg-surface-primary px-6 py-8 transition-colors focus:outline-none focus-visible:ring-2 ${isClickable ? 'cursor-pointer hover:bg-surface-tertiary' : ''}`}
         onClick={isClickable ? props.onAddClick : undefined}
         onKeyDown={
           isClickable
@@ -145,15 +145,24 @@ export default function SkillListItem(props: SkillListItemProps) {
         selectedAgents: [],
       });
     } else {
-      // When user selects "All agents", select every available agent
+      // When user selects "All agents", use empty array to indicate ALL agents (including future ones)
       handleScopeChange({
         isGlobal: true,
-        selectedAgents: allAgents,
+        selectedAgents: [], // Empty array = all agents, including future agents
       });
     }
   };
 
   const handleToggleAgent = (agentName: string) => {
+    if (isAllAgentsSelected) {
+      const newSelectedAgents = allAgents.filter((a) => a !== agentName);
+      handleScopeChange({
+        isGlobal: false,
+        selectedAgents: newSelectedAgents,
+      });
+      return;
+    }
+
     const isSelected = skill.scope.selectedAgents.includes(agentName);
     const newSelectedAgents = isSelected
       ? skill.scope.selectedAgents.filter((a) => a !== agentName)
@@ -171,11 +180,11 @@ export default function SkillListItem(props: SkillListItemProps) {
   };
 
   return (
-    <div className="flex-1 w-full flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors">
+    <div className="w-full flex-1 flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors">
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-body-base font-bold text-text-heading">
+          <span className="text-body-base truncate font-bold text-text-heading">
             {skill.name}
           </span>
         </div>
@@ -208,8 +217,8 @@ export default function SkillListItem(props: SkillListItemProps) {
       </div>
 
       {/* Row 2: Description full width / wrapped */}
-      <div className="flex-1 w-full max-h-[100px]">
-        <p className="text-body-sm text-text-label overflow-hidden text-ellipsis wrap">
+      <div className="max-h-[100px] w-full flex-1">
+        <p className="wrap overflow-hidden text-ellipsis text-body-sm text-text-label">
           {skill.description}
         </p>
       </div>
@@ -229,12 +238,12 @@ export default function SkillListItem(props: SkillListItemProps) {
         </Button>
 
         {scopeOpen && (
-          <div className="w-full flex flex-wrap items-center gap-2 pt-4 border-t-[0.5px] border-x-0 border-b-0 border-solid border-border-secondary">
+          <div className="flex w-full flex-wrap items-center gap-2 border-x-0 border-b-0 border-t-[0.5px] border-solid border-border-secondary pt-4">
             {/* All agents as first tab; then each agent toggle */}
             <button
               type="button"
               onClick={handleToggleAllAgents}
-              className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity [&>svg]:shrink-0 hover:opacity-100 ${
+              className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                 isAllAgentsSelected
                   ? 'opacity-100 [&>svg]:text-icon-success'
                   : 'opacity-60 [&>svg]:text-inherit'
@@ -249,7 +258,9 @@ export default function SkillListItem(props: SkillListItemProps) {
             </button>
 
             {allAgents.map((agentName) => {
-              const isSelected = skill.scope.selectedAgents.includes(agentName);
+              const isSelected =
+                isAllAgentsSelected ||
+                skill.scope.selectedAgents.includes(agentName);
               const display = getWorkflowAgentDisplay(agentName);
               const icon = display?.icon ?? (
                 <Bot size={16} className="shrink-0 text-inherit" />
@@ -259,7 +270,7 @@ export default function SkillListItem(props: SkillListItemProps) {
                   key={agentName}
                   type="button"
                   onClick={() => handleToggleAgent(agentName)}
-                  className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity [&>svg]:shrink-0 hover:opacity-100 ${
+                  className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                     isSelected
                       ? 'opacity-100 [&>svg]:text-icon-success'
                       : 'opacity-50 [&>svg]:text-inherit'

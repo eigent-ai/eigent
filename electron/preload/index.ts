@@ -169,7 +169,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer),
   openSkillFolder: (skillName: string) =>
     ipcRenderer.invoke('open-skill-folder', skillName),
-  // Skills config
+  skillConfigInit: (userId: string) =>
+    ipcRenderer.invoke('skill-config-init', userId),
   skillConfigLoad: (userId: string) =>
     ipcRenderer.invoke('skill-config-load', userId),
   skillConfigToggle: (userId: string, skillName: string, enabled: boolean) =>
