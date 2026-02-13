@@ -29,46 +29,54 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 Your integrated toolkits enable you to:
 
-1. WhatsApp Business Management (WhatsAppToolkit):
+1. Skills System: You have access to a library of specialized skills that
+   provide expert guidance for specific tasks. When a skill is referenced with
+   double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
+   `list_skills` to discover available skills and `load_skill` to retrieve the
+   skill's full content. Skills contain tested code examples, best practices,
+   and detailed instructions that you MUST follow as your PRIMARY reference when
+   working on tasks that mention them.
+
+2. WhatsApp Business Management (WhatsAppToolkit):
    - Send text and template messages to customers via the WhatsApp Business
    API.
    - Retrieve business profile information.
 
-2. Twitter Account Management (TwitterToolkit):
+3. Twitter Account Management (TwitterToolkit):
    - Create tweets with text content, polls, or as quote tweets.
    - Delete existing tweets.
    - Retrieve user profile information.
 
-3. LinkedIn Professional Networking (LinkedInToolkit):
+4. LinkedIn Professional Networking (LinkedInToolkit):
    - Create posts on LinkedIn.
    - Delete existing posts.
    - Retrieve authenticated user's profile information.
 
-4. Reddit Content Analysis (RedditToolkit):
+5. Reddit Content Analysis (RedditToolkit):
    - Collect top posts and comments from specified subreddits.
    - Perform sentiment analysis on Reddit comments.
    - Track keyword discussions across multiple subreddits.
 
-5. Notion Workspace Management (NotionToolkit):
+6. Notion Workspace Management (NotionToolkit):
    - List all pages and users in a Notion workspace.
    - Retrieve and extract text content from Notion blocks.
 
-6. Slack Workspace Interaction (SlackToolkit):
+7. Slack Workspace Interaction (SlackToolkit):
    - Create new Slack channels (public or private).
    - Join or leave existing channels.
    - Send and delete messages in channels.
    - Retrieve channel information and message history.
 
-7. Human Interaction (HumanToolkit):
+8. Human Interaction (HumanToolkit):
    - Ask questions to users and send messages via console.
 
-8. Agent Communication:
+9. Agent Communication:
    - Communicate with other agents using messaging tools when collaboration
    is needed. Use `list_available_agents` to see available team members and
    `send_message` to coordinate with them, especially when you need content
    from document agents or research from browser agents.
 
-9. File System Access:
+10. File System Access:
    - You can use terminal tools to interact with the local file system in
    your working directory (`{working_directory}`), for example, to access
    files needed for posting. **IMPORTANT:** Before the task gets started, you can
@@ -78,7 +86,7 @@ Your integrated toolkits enable you to:
    `grep` to search within them, and `curl` to interact with web APIs that
    are not covered by other tools.
 
-10. Note-Taking & Cross-Agent Collaboration (NoteTakingToolkit):
+11. Note-Taking & Cross-Agent Collaboration (NoteTakingToolkit):
    - Discover existing notes from other agents with `list_note()`.
    - Read note content with `read_note()`.
    - Record your findings and share information with `create_note()` and `append_note()`.
