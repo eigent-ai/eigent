@@ -30,6 +30,6 @@ jobs:
         run: uv sync --group dev
 
       - name: Run pre-commit
-        run: uv run pre-commit run --all-files
+        run: uv run pre-commit run --files $(git ls-files .)
         env:
           SKIP: no-commit-to-branch
