@@ -37,4 +37,5 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
             working_directory = env(
                 "file_save_path", os.path.expanduser("~/Downloads")
             )
+        os.makedirs(working_directory, exist_ok=True)
         super().__init__(working_directory, timeout)

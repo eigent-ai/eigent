@@ -37,4 +37,5 @@ class ExcelToolkit(BaseExcelToolkit, AbstractToolkit):
             working_directory = env(
                 "file_save_path", os.path.expanduser("~/Downloads")
             )
+        os.makedirs(working_directory, exist_ok=True)
         super().__init__(timeout=timeout, working_directory=working_directory)

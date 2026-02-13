@@ -39,6 +39,7 @@ class AudioAnalysisToolkit(BaseAudioAnalysisToolkit, AbstractToolkit):
             cache_dir = env(
                 "file_save_path", os.path.expanduser("~/.eigent/tmp/")
             )
+        os.makedirs(cache_dir, exist_ok=True)
         super().__init__(
             cache_dir, transcribe_model, audio_reasoning_model, timeout
         )
