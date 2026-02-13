@@ -47,9 +47,7 @@ class ImageAnalysisToolkit(BaseImageAnalysisToolkit, AbstractToolkit):
         _validate_file_path(image_path)
         return super().image_to_text(image_path)
 
-    def ask_question_about_image(
-        self, image_path: str, question: str
-    ) -> str:
+    def ask_question_about_image(self, image_path: str, question: str) -> str:
         """Answer a question about an image file. Only accepts local file paths."""
         _validate_file_path(image_path)
         return super().ask_question_about_image(image_path, question)
