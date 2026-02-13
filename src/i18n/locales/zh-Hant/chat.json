@@ -49,5 +49,9 @@
   "new-project": "新項目",
   "no-reply-received-task-continue": "沒有收到回复，任務繼續",
   "open-in-ide": "在 IDE 中開啟",
-  "failed-to-open-folder": "無法開啟資料夾"
+  "failed-to-open-folder": "無法開啟資料夾",
+  "model-error-go-to-settings": "Model Settings",
+  "model-error-invalid-api-key": "Your API key is invalid or expired. Please update it in",
+  "model-error-model-not-found": "The configured model was not found. Please check your settings in",
+  "model-error-quota-exceeded": "You've exceeded your API quota. Please check your plan or update your key in"
 }

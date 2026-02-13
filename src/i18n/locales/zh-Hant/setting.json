@@ -194,5 +194,7 @@
   "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。",
   "preferred-ide": "偏好 IDE",
   "preferred-ide-description": "選擇開啟智能體專案資料夾時使用的應用程式。",
-  "system-file-manager": "系統檔案管理器"
+  "system-file-manager": "系統檔案管理器",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

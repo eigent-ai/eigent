@@ -272,5 +272,7 @@
 
   "preferred-ide": "Предпочитаемая IDE",
   "preferred-ide-description": "Выберите приложение для открытия папок проектов агента.",
-  "system-file-manager": "Системный файловый менеджер"
+  "system-file-manager": "Системный файловый менеджер",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

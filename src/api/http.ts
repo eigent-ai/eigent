@@ -176,7 +176,7 @@ async function getProxyBaseURL() {
 }
 
 async function proxyFetchRequest(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
   customHeaders: Record<string, string> = {}
@@ -234,6 +234,9 @@ export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
 
 export const proxyFetchPut = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('PUT', url, data, headers);
+
+export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
+  proxyFetchRequest('PATCH', url, data, headers);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('DELETE', url, data, headers);

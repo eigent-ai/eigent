@@ -49,5 +49,9 @@
   "new-project": "Nouveau projet",
   "no-reply-received-task-continue": "Aucune réponse reçue, la tâche continue",
   "open-in-ide": "Ouvrir dans l'IDE",
-  "failed-to-open-folder": "Impossible d'ouvrir le dossier"
+  "failed-to-open-folder": "Impossible d'ouvrir le dossier",
+  "model-error-go-to-settings": "Model Settings",
+  "model-error-invalid-api-key": "Your API key is invalid or expired. Please update it in",
+  "model-error-model-not-found": "The configured model was not found. Please check your settings in",
+  "model-error-quota-exceeded": "You've exceeded your API quota. Please check your plan or update your key in"
 }

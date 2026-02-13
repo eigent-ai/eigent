@@ -272,5 +272,7 @@
 
   "preferred-ide": "優先IDE",
   "preferred-ide-description": "エージェントプロジェクトフォルダを開くときに使用するアプリケーションを選択します。",
-  "system-file-manager": "システムファイルマネージャー"
+  "system-file-manager": "システムファイルマネージャー",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

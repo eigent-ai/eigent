@@ -216,5 +216,7 @@
 
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
-  "system-file-manager": "系统文件管理器"
+  "system-file-manager": "系统文件管理器",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

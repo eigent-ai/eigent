@@ -272,5 +272,7 @@
 
   "preferred-ide": "Bevorzugte IDE",
   "preferred-ide-description": "Wählen Sie die Anwendung aus, die beim Öffnen von Agent-Projektordnern verwendet werden soll.",
-  "system-file-manager": "System-Dateimanager"
+  "system-file-manager": "System-Dateimanager",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }

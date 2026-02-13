@@ -272,5 +272,7 @@
 
   "preferred-ide": "IDE preferido",
   "preferred-ide-description": "Elija qué aplicación usar al abrir las carpetas de proyectos del agente.",
-  "system-file-manager": "Administrador de archivos del sistema"
+  "system-file-manager": "Administrador de archivos del sistema",
+  "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
+  "default-model-unavailable": "Default model unavailable — please select another"
 }
