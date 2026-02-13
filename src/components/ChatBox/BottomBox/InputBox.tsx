@@ -235,28 +235,72 @@ export const Inputbox = ({
     if (dragCounter.current === 0) setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
     if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
       if (dropped.length === 0) return;
-      const mapped = dropped.map((f: File) => ({
-        fileName: f.name,
-        filePath: (f as any).path || f.name,
-      }));
-      const newFiles = [
-        ...files.filter(
-          (f: FileAttachment) => !mapped.find((m) => m.filePath === f.filePath)
-        ),
-        ...mapped.filter((m) => !files.find((f) => f.filePath === m.filePath)),
-      ];
-      onFilesChange?.(newFiles);
+
+      console.log('[Drag-Drop] Processing dropped files:', dropped.length);
+
+      // Use Electron's webUtils.getPathForFile to get file paths
+      const fileData = dropped.map((f: File) => {
+        try {
+          const path = window.electronAPI.getPathForFile(f);
+          return { name: f.name, path };
+        } catch (error) {
+          console.error(
+            '[Drag-Drop] Failed to get path for file:',
+            f.name,
+            error
+          );
+          return { name: f.name, path: undefined };
+        }
+      });
+
+      console.log('[Drag-Drop] File data:', fileData);
+
+      // Filter out files without paths
+      const validFiles = fileData.filter((f) => f.path);
+
+      if (validFiles.length === 0) {
+        console.error('[Drag-Drop] No valid file paths found');
+        toast.error(
+          'Unable to access file paths. Please use the file picker instead.'
+        );
+        return;
+      }
+
+      // Use Electron IPC to process the file paths
+      const result = await window.electronAPI.processDroppedFiles(validFiles);
+
+      console.log('[Drag-Drop] IPC result:', result);
+
+      if (result.success && result.files) {
+        const newFiles = [
+          ...files.filter(
+            (f: FileAttachment) =>
+              !result.files!.find((m: any) => m.filePath === f.filePath)
+          ),
+          ...result.files.filter(
+            (m: any) => !files.find((f) => f.filePath === m.filePath)
+          ),
+        ];
+        console.log('[Drag-Drop] Setting files:', newFiles);
+        onFilesChange?.(newFiles);
+        toast.success(`Added ${result.files.length} file(s)`);
+      } else {
+        console.error('[Drag-Drop] Failed:', result.error);
+        toast.error(result.error || 'Failed to process dropped files');
+      }
     } catch (error) {
-      console.error('Drop File Error:', error);
+      console.error('[Drag-Drop] Error:', error);
+      toast.error('Failed to process dropped files');
     }
   };
 
