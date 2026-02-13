@@ -359,9 +359,5 @@
   "proxy-saved-restart-required": "تم حفظ تكوين الوكيل. أعد تشغيل التطبيق لتطبيق التغييرات.",
   "proxy-save-failed": "فشل حفظ تكوين الوكيل.",
   "proxy-invalid-url": "عنوان URL للوكيل غير صالح. يجب أن يبدأ بـ http:// أو https:// أو socks4:// أو socks5://.",
-  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل.",
-
-  "preferred-ide": "IDE المفضل",
-  "preferred-ide-description": "اختر التطبيق الذي سيتم استخدامه عند فتح مجلدات مشاريع الوكيل.",
-  "system-file-manager": "مدير ملفات النظام"
+  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل."
 }
