@@ -30,11 +30,19 @@ vi.mock('@/api/http', () => ({
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
-  proxyFetchPost: vi.fn(),
+  proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
   proxyFetchPut: vi.fn(),
-  proxyFetchGet: vi.fn(),
+  proxyFetchGet: vi.fn(() =>
+    Promise.resolve({
+      value: '',
+      api_url: '',
+      items: [],
+      warning_code: null,
+    })
+  ),
   uploadFile: vi.fn(),
   fetchDelete: vi.fn(),
+  waitForBackendReady: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('@microsoft/fetch-event-source', () => ({
@@ -71,10 +79,22 @@ vi.mock('../../../src/store/authStore', () => ({
     workerListData: {},
   })),
   useWorkerList: vi.fn(() => []),
+  getWorkerList: vi.fn(() => []),
 }));
 
+vi.mock('../../../src/store/projectStore', () => ({
+  useProjectStore: {
+    getState: vi.fn(() => ({
+      activeProjectId: null,
+      getHistoryId: () => null,
+    })),
+  },
+}));
+
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import { useChatStore } from '../../../src/store/chatStore';
+import { ChatTaskStatus } from '../../../src/types/constants';
 
 // Mock electron IPC
 (global as any).ipcRenderer = {
@@ -506,6 +526,54 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       expect(result.current.getState().updateCount).toBe(initialCount + 2);
+    });
+  });
+
+  /**
+   * Issue #1212: Duplicate task execution after network reconnection / system wake-up.
+   * When the task is already FINISHED, SSE onerror must not retry (throw to stop retry).
+   */
+  describe('SSE onerror - no retry when task already finished (issue #1212)', () => {
+    it('should stop retry when task is already FINISHED (avoids duplicate execution)', async () => {
+      const mockFetchEventSource = vi.mocked(fetchEventSource);
+      mockFetchEventSource.mockImplementation((_url, opts) => {
+        // Simulate connection error; when onerror runs, store checks task status
+        // and throws to stop retry (issue #1212 fix)
+        try {
+          opts.onerror?.(new Error('Failed to fetch'));
+        } catch {
+          // Expected: onerror throws to stop fetch-event-source from retrying
+        }
+        return Promise.resolve();
+      });
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useChatStore());
+
+      let taskId: string;
+      await act(async () => {
+        taskId = result.current.getState().create();
+        result.current.getState().setActiveTaskId(taskId!);
+        result.current.getState().setStatus(taskId!, ChatTaskStatus.FINISHED);
+        result.current.getState().addMessages(taskId!, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: 'Test message',
+        });
+        result.current.getState().setHasMessages(taskId!, true);
+      });
+
+      await act(async () => {
+        await result.current.getState().startTask(taskId!);
+      });
+
+      expect(mockFetchEventSource).toHaveBeenCalledTimes(1);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('already finished, stopping retry')
+      );
+
+      logSpy.mockRestore();
     });
   });
 });
