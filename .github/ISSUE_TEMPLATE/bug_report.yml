@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: What version of eigent are you using?
-      placeholder: E.g., 0.0.82
+      placeholder: E.g., 0.0.83
     validations:
       required: true
 
