@@ -580,120 +580,86 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Replay', () => {
-    beforeEach(() => {
-      vi.mocked(proxyFetchGet).mockImplementation((url: string) => {
-        if (url?.includes?.('snapshots')) return Promise.resolve([]);
-        return Promise.resolve({
-          value: '',
-          api_url: '',
-          items: [],
-          warning_code: null,
-        });
-      });
+    const replayProjectState = () => ({
+      activeProjectId: 'proj-replay',
+      getHistoryId: () => null,
     });
 
-    it('replay() creates task with type replay, adds message, and calls startTask', async () => {
-      const getState = vi.fn(() => ({
-        activeProjectId: 'proj-1',
-        getHistoryId: () => null,
-      }));
-      vi.mocked(useProjectStore.getState).mockImplementation(getState as any);
+    beforeEach(() => {
+      vi.mocked(useProjectStore.getState).mockImplementation(
+        replayProjectState as any
+      );
+      vi.mocked(proxyFetchGet).mockImplementation((url: string) =>
+        url?.includes?.('snapshots')
+          ? Promise.resolve([])
+          : Promise.resolve({
+              value: '',
+              api_url: '',
+              items: [],
+              warning_code: null,
+            })
+      );
+    });
 
+    it('replay() creates task and starts SSE', async () => {
+      vi.mocked(fetchEventSource).mockImplementation(() => Promise.resolve());
       const { result } = renderHook(() => useChatStore());
-      const mockFetchEventSource = vi.mocked(fetchEventSource);
-      mockFetchEventSource.mockImplementation(() => Promise.resolve());
 
+      await act(async () => {
+        await result.current.getState().replay('replay-1', 'Q', 0.2);
+      });
+
+      expect(result.current.getState().tasks['replay-1']).toBeDefined();
+      expect(result.current.getState().activeTaskId).toBe('replay-1');
+      expect(fetchEventSource).toHaveBeenCalled();
+    });
+
+    it('replay SSE: AbortError does not throw', async () => {
+      vi.mocked(fetchEventSource).mockImplementation(() =>
+        Promise.reject(new DOMException('', 'AbortError'))
+      );
+      const { result } = renderHook(() => useChatStore());
       let taskId!: string;
       await act(async () => {
-        taskId = result.current.getState().create('replay-task-1');
+        taskId = result.current.getState().create();
         result.current.getState().setHasMessages(taskId, true);
         result.current.getState().addMessages(taskId, {
           id: generateUniqueId(),
           role: 'user',
-          content: 'Replay question',
-        });
-      });
-
-      await act(async () => {
-        await result.current.getState().replay(taskId!, 'Replay question', 0.2);
-      });
-
-      expect(result.current.getState().tasks[taskId!]).toBeDefined();
-      expect(result.current.getState().activeTaskId).toBe(taskId);
-      expect(mockFetchEventSource).toHaveBeenCalled();
-    });
-
-    it('Replay SSE: AbortError is handled and does not throw', async () => {
-      const getState = vi.fn(() => ({
-        activeProjectId: 'proj-replay',
-        getHistoryId: () => null,
-      }));
-      vi.mocked(useProjectStore.getState).mockImplementation(getState as any);
-
-      const mockFetchEventSource = vi.mocked(fetchEventSource);
-      mockFetchEventSource.mockImplementation(() =>
-        Promise.reject(new DOMException('aborted', 'AbortError'))
-      );
-
-      const { result } = renderHook(() => useChatStore());
-      let taskId!: string;
-      await act(async () => {
-        taskId = result.current.getState().create('replay-task-abort');
-        result.current.getState().setActiveTaskId(taskId!);
-        result.current.getState().addMessages(taskId!, {
-          id: generateUniqueId(),
-          role: 'user',
           content: 'Q',
         });
-        result.current.getState().setHasMessages(taskId!, true);
       });
 
       await expect(
-        act(async () => {
-          await result.current
-            .getState()
-            .startTask(taskId!, 'replay', undefined, 0.2);
-        })
+        result.current.getState().startTask(taskId, 'replay', undefined, 0.2)
       ).resolves.toBeUndefined();
     });
 
-    it('Replay SSE: unexpected error is logged and rethrown', async () => {
-      const getState = vi.fn(() => ({
-        activeProjectId: 'proj-replay',
-        getHistoryId: () => null,
-      }));
-      vi.mocked(useProjectStore.getState).mockImplementation(getState as any);
-
-      const mockFetchEventSource = vi.mocked(fetchEventSource);
-      const sseError = new Error('SSE stream failed');
-      mockFetchEventSource.mockImplementation(() => Promise.reject(sseError));
-
+    it('replay SSE: unexpected error is logged and rethrown', async () => {
+      const err = new Error('SSE failed');
+      vi.mocked(fetchEventSource).mockImplementation(() => Promise.reject(err));
       const consoleSpy = vi
         .spyOn(console, 'error')
         .mockImplementation(() => {});
-
       const { result } = renderHook(() => useChatStore());
-      let taskId: string;
+      let taskId!: string;
       await act(async () => {
-        taskId = result.current.getState().create('replay-task-err');
-        result.current.getState().setActiveTaskId(taskId!);
-        result.current.getState().addMessages(taskId!, {
+        taskId = result.current.getState().create();
+        result.current.getState().setHasMessages(taskId, true);
+        result.current.getState().addMessages(taskId, {
           id: generateUniqueId(),
           role: 'user',
           content: 'Q',
         });
-        result.current.getState().setHasMessages(taskId!, true);
       });
 
       await expect(
-        result.current.getState().startTask(taskId!, 'replay', undefined, 0.2)
-      ).rejects.toThrow('SSE stream failed');
-
+        result.current.getState().startTask(taskId, 'replay', undefined, 0.2)
+      ).rejects.toThrow('SSE failed');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('SSE stream failed for task'),
-        sseError
+        err
       );
-
       consoleSpy.mockRestore();
     });
   });
