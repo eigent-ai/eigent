@@ -2425,8 +2425,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (type === 'replay') {
         try {
           await ssePromise;
-        } catch {
-          // Stream completed (aborted) or error - expected when load completes
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            // Expected: stream closed normally, we aborted to resolve the promise
+            return;
+          }
+          // Unexpected: actual error during stream
+          console.error(`SSE stream failed for task ${newTaskId}:`, err);
+          throw err; // Let loadProjectFromHistory handle it
         }
       }
     },

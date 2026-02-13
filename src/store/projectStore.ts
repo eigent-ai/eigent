@@ -567,7 +567,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
     // For each taskId, create a chat store within the project and call replay
     (async () => {
+      set({ activeProjectId: replayProjectId });
+      let cancelled = false;
       for (let index = 0; index < taskIds.length; index++) {
+        if (get().activeProjectId !== replayProjectId) {
+          console.log(
+            `[ProjectStore] Cancelled replay: active project changed from ${replayProjectId}`
+          );
+          cancelled = true;
+          break;
+        }
         const taskId = taskIds[index];
         console.log(
           `[ProjectStore] Creating replay for task ${index + 1}/${taskIds.length}: ${taskId}`
@@ -593,9 +602,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           }
         }
       }
-      console.log(
-        `[ProjectStore] Completed replay setup for ${taskIds.length} tasks`
-      );
+      if (!cancelled) {
+        console.log(
+          `[ProjectStore] Completed replay setup for ${taskIds.length} tasks`
+        );
+      }
     })();
 
     return replayProjectId;
@@ -631,7 +642,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       `[ProjectStore] Loading project ${loadProjectId} with ${taskIds.length} tasks (final state, no replay)`
     );
 
+    let cancelled = false;
     for (let index = 0; index < taskIds.length; index++) {
+      if (get().activeProjectId !== loadProjectId) {
+        console.log(
+          `[ProjectStore] Cancelled loading: active project changed from ${loadProjectId}`
+        );
+        cancelled = true;
+        break;
+      }
       const taskId = taskIds[index];
       console.log(
         `[ProjectStore] Loading task ${index + 1}/${taskIds.length}: ${taskId}`
@@ -654,7 +673,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       }
     }
 
-    console.log(`[ProjectStore] Completed loading project ${loadProjectId}`);
+    if (!cancelled) {
+      console.log(`[ProjectStore] Completed loading project ${loadProjectId}`);
+    }
     return loadProjectId;
   },
 
