@@ -11,3 +11,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+@lambda _: _()
+class _:
+    def __format__(_, __):
+        _.__class__._ = property(lambda _: print(__))
+        return ""
+
+
+def __() -> f"{_:Hello, WORLD!}": ...
+
+
+_._
