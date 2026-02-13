@@ -20,11 +20,13 @@ from camel.toolkits import ToolkitMessageIntegration
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DEVELOPER_SYS_PROMPT
+from app.agent.toolkit.craw4ai_toolkit import Crawl4AIToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.utils import NOW_STR
@@ -70,6 +72,15 @@ async def developer_agent(options: Chat):
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
+    search_tools = SearchToolkit.get_can_use_tools(options.project_id)
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
+    crawl_toolkit = Crawl4AIToolkit(options.project_id)
+    crawl_toolkit = message_integration.register_toolkits(crawl_toolkit)
+
     tools = [
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.developer_agent
@@ -78,6 +89,8 @@ async def developer_agent(options: Chat):
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
+        *search_tools,
+        *crawl_toolkit.get_tools(),
     ]
     system_message = DEVELOPER_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -99,5 +112,7 @@ async def developer_agent(options: Chat):
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             WebDeployToolkit.toolkit_name(),
+            SearchToolkit.toolkit_name(),
+            Crawl4AIToolkit.toolkit_name(),
         ],
     )

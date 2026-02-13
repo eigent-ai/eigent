@@ -22,6 +22,7 @@ from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
 from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
+from app.agent.toolkit.craw4ai_toolkit import Crawl4AIToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 
@@ -75,6 +76,16 @@ def multi_modal_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+
+    search_tools = SearchToolkit.get_can_use_tools(options.project_id)
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
+    crawl_toolkit = Crawl4AIToolkit(options.project_id)
+    crawl_toolkit = message_integration.register_toolkits(crawl_toolkit)
+
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
@@ -83,6 +94,8 @@ def multi_modal_agent(options: Chat):
         ),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
+        *search_tools,
+        *crawl_toolkit.get_tools(),
     ]
     if options.is_cloud():
         # TODO: check llm has this model
@@ -147,5 +160,6 @@ def multi_modal_agent(options: Chat):
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             SearchToolkit.toolkit_name(),
+            Crawl4AIToolkit.toolkit_name(),
         ],
     )
