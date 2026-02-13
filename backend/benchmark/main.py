@@ -15,15 +15,17 @@
 import asyncio
 import csv
 import importlib.util
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from benchmark.client import BenchmarkClient
-from benchmark.environment import BenchmarkConfig
+from benchmark.environment import BenchmarkConfig, ModelKwargs
 
 DATASET_DIR = Path(__file__).parent / "dataset"
 RESULTS_DIR = Path(__file__).parent
+BROWSER_LOG_DIR = Path(__file__).parent.parent / "browser_log"
 
 
 async def run_benchmark(
@@ -41,15 +43,28 @@ async def run_benchmark(
         dict: Results including benchmark name, model, checker and
             grader outcomes.
     """
+    # Clear browser logs so previous benchmark visits don't leak into this run
+    if BROWSER_LOG_DIR.exists():
+        for log_file in BROWSER_LOG_DIR.iterdir():
+            if log_file.is_file():
+                log_file.unlink()
+
     config = BenchmarkConfig.from_json(benchmark_path)
     data = config.data
 
     model_kwargs = config.model_kwargs
     model = f"{model_kwargs.model_platform}/{model_kwargs.model_type}"
+
+    # Clear previous working directory so results are from a fresh run
+    working_dir_path = Path(data.get_working_directory(model_kwargs))
+    if working_dir_path.exists():
+        shutil.rmtree(working_dir_path)
+        working_dir_path.mkdir(parents=True, exist_ok=True)
+
     print(f"--- Benchmark: {data.name} ---")
     print(f"Question: {data.question}")
     print(f"Model: {model}")
-    print(f"Working directory: {data.get_working_directory(model_kwargs)}")
+    print(f"Working directory: {working_dir_path}")
     print(f"Checkers: {config.tests.checker}")
     print(f"Graders: {config.tests.grader}")
 
@@ -130,6 +145,13 @@ async def main() -> None:
     if not paths:
         print(f"No benchmark configs found in {DATASET_DIR}")
         return
+
+    defaults = ModelKwargs()
+    print("=== Benchmark Model Configuration ===")
+    print(f"  Platform: {defaults.model_platform}")
+    print(f"  Model:    {defaults.model_type}")
+    print(f"  API URL:  {defaults.api_url}")
+    print()
 
     all_results = []
     async with BenchmarkClient() as client:
