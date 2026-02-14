@@ -261,14 +261,14 @@ class TestCollectPreviousTaskContext:
         assert "Previous Task:" not in result
         assert "Previous Task Result:" not in result
 
-    @patch("app.service.chat_service.logger")
+    @patch("app.utils.file_utils.logger")
     def test_collect_previous_task_context_file_system_error(
         self, mock_logger, temp_dir
     ):
         """Test collect_previous_task_context handles file system errors gracefully."""
         working_directory = str(temp_dir)
 
-        # Mock os.walk to raise an exception
+        # Mock os.walk to raise an exception (used inside safe_list_directory)
         with patch("os.walk", side_effect=PermissionError("Access denied")):
             result = collect_previous_task_context(
                 working_directory=working_directory,
@@ -282,7 +282,7 @@ class TestCollectPreviousTaskContext:
             assert "Test task" in result
             assert "Generated Files from Previous Task:" not in result
 
-            # Should log warning
+            # Warning is logged by file_utils.safe_list_directory
             mock_logger.warning.assert_called_once()
 
     def test_collect_previous_task_context_relative_paths(self, temp_dir):
@@ -1002,7 +1002,7 @@ class TestChatServiceErrorCases:
         working_directory = str(temp_dir)
 
         with patch("os.walk", side_effect=OSError("Permission denied")):
-            with patch("app.service.chat_service.logger") as mock_logger:
+            with patch("app.utils.file_utils.logger") as mock_logger:
                 result = collect_previous_task_context(
                     working_directory=working_directory,
                     previous_task_content="Test task",
@@ -1019,7 +1019,7 @@ class TestChatServiceErrorCases:
                 # Should not include file listing
                 assert "Generated Files from Previous Task:" not in result
 
-                # Should log warning
+                # Warning is logged by file_utils.safe_list_directory
                 mock_logger.warning.assert_called_once()
 
     def test_collect_previous_task_context_abspath_used(self, temp_dir):
