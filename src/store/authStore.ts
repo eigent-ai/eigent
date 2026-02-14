@@ -28,7 +28,8 @@ type CloudModelType =
   | 'gpt-5'
   | 'gpt-5.1'
   | 'gpt-5.2'
-  | 'gpt-5-mini';
+  | 'gpt-5-mini'
+  | 'minimax_m2_5';
 
 // auth info interface
 interface AuthInfo {
