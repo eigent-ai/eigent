@@ -33,8 +33,10 @@
   "installation-failed": "安装失败",
   "projects": "專案",
   "mcp-tools": "MCP & 工具",
+  "connectors": "連接器",
   "browser": "瀏覽器",
   "settings": "設定",
+  "general": "一般",
   "workers": "工作器",
   "triggers": "觸發器",
   "new-project": "新專案",
@@ -168,5 +170,6 @@
   "days-ago": "天前",
   "delete-project": "刪除專案",
   "delete-project-confirmation": "您確定要刪除此專案及其所有任務嗎？此操作無法撤銷。",
-  "please-select-model": "請在設定 > 模型中選擇一個模型以繼續。"
+  "please-select-model": "請在設定 > 模型中選擇一個模型以繼續。",
+  "capabilities": "能力"
 }

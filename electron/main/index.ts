@@ -34,6 +34,7 @@ import os, { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
+import * as unzipper from 'unzipper';
 import { copyBrowserData } from './copy';
 import { FileReader } from './fileReader';
 import {
@@ -826,6 +827,370 @@ function registerIpcHandlers() {
     }
   });
 
+  // ======================== skills ========================
+  // SKILLS_ROOT, SKILL_FILE, seedDefaultSkillsIfEmpty are defined at module level (used at startup too).
+  function parseSkillFrontmatter(
+    content: string
+  ): { name: string; description: string } | null {
+    if (!content.startsWith('---')) return null;
+    const end = content.indexOf('\n---', 3);
+    const block = end > 0 ? content.slice(4, end) : content.slice(4);
+    const nameMatch = block.match(/^\s*name\s*:\s*(.+)$/m);
+    const descMatch = block.match(/^\s*description\s*:\s*(.+)$/m);
+    const name = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
+    const desc = descMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
+    if (name && desc) return { name, description: desc };
+    return null;
+  }
+
+  ipcMain.handle('get-skills-dir', async () => {
+    try {
+      if (!existsSync(SKILLS_ROOT)) {
+        await fsp.mkdir(SKILLS_ROOT, { recursive: true });
+      }
+      await seedDefaultSkillsIfEmpty();
+      return { success: true, path: SKILLS_ROOT };
+    } catch (error: any) {
+      log.error('get-skills-dir failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  ipcMain.handle('skills-scan', async () => {
+    try {
+      if (!existsSync(SKILLS_ROOT)) {
+        return { success: true, skills: [] };
+      }
+      await seedDefaultSkillsIfEmpty();
+      const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
+      const skills: Array<{
+        name: string;
+        description: string;
+        path: string;
+        scope: string;
+        skillDirName: string;
+      }> = [];
+      for (const e of entries) {
+        if (!e.isDirectory() || e.name.startsWith('.')) continue;
+        const skillPath = path.join(SKILLS_ROOT, e.name, SKILL_FILE);
+        try {
+          const raw = await fsp.readFile(skillPath, 'utf-8');
+          const meta = parseSkillFrontmatter(raw);
+          if (meta) {
+            skills.push({
+              name: meta.name,
+              description: meta.description,
+              path: skillPath,
+              scope: 'user',
+              skillDirName: e.name,
+            });
+          }
+        } catch (_) {
+          // skip invalid or unreadable skill
+        }
+      }
+      return { success: true, skills };
+    } catch (error: any) {
+      log.error('skills-scan failed', error);
+      return { success: false, error: error?.message, skills: [] };
+    }
+  });
+
+  ipcMain.handle(
+    'skill-write',
+    async (_event, skillDirName: string, content: string) => {
+      try {
+        const dir = path.join(SKILLS_ROOT, skillDirName);
+        await fsp.mkdir(dir, { recursive: true });
+        await fsp.writeFile(path.join(dir, SKILL_FILE), content, 'utf-8');
+        return { success: true };
+      } catch (error: any) {
+        log.error('skill-write failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
+  ipcMain.handle('skill-delete', async (_event, skillDirName: string) => {
+    try {
+      const dir = path.join(SKILLS_ROOT, skillDirName);
+      if (!existsSync(dir)) return { success: true };
+      await fsp.rm(dir, { recursive: true, force: true });
+      return { success: true };
+    } catch (error: any) {
+      log.error('skill-delete failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  ipcMain.handle('skill-read', async (_event, filePath: string) => {
+    try {
+      const fullPath = path.isAbsolute(filePath)
+        ? filePath
+        : path.join(SKILLS_ROOT, filePath, SKILL_FILE);
+      const content = await fsp.readFile(fullPath, 'utf-8');
+      return { success: true, content };
+    } catch (error: any) {
+      log.error('skill-read failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  ipcMain.handle('skill-list-files', async (_event, skillDirName: string) => {
+    try {
+      const dir = path.join(SKILLS_ROOT, skillDirName);
+      if (!existsSync(dir))
+        return { success: false, error: 'Skill folder not found', files: [] };
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      const files = entries.map((e) =>
+        e.isDirectory() ? `${e.name}/` : e.name
+      );
+      return { success: true, files };
+    } catch (error: any) {
+      log.error('skill-list-files failed', error);
+      return { success: false, error: error?.message, files: [] };
+    }
+  });
+
+  ipcMain.handle('open-skill-folder', async (_event, skillName: string) => {
+    try {
+      const name = String(skillName || '').trim();
+      if (!name) return { success: false, error: 'Skill name is required' };
+      if (!existsSync(SKILLS_ROOT))
+        return { success: false, error: 'Skills dir not found' };
+      const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
+      const nameLower = name.toLowerCase();
+      for (const e of entries) {
+        if (!e.isDirectory() || e.name.startsWith('.')) continue;
+        const skillPath = path.join(SKILLS_ROOT, e.name, SKILL_FILE);
+        try {
+          const raw = await fsp.readFile(skillPath, 'utf-8');
+          const meta = parseSkillFrontmatter(raw);
+          if (meta && meta.name.toLowerCase().trim() === nameLower) {
+            const dirPath = path.join(SKILLS_ROOT, e.name);
+            await shell.openPath(dirPath);
+            return { success: true };
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+      return { success: false, error: `Skill not found: ${name}` };
+    } catch (error: any) {
+      log.error('open-skill-folder failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  // ======================== skills-config.json handlers ========================
+
+  function getSkillConfigPath(userId: string): string {
+    return path.join(os.homedir(), '.eigent', userId, 'skills-config.json');
+  }
+
+  async function loadSkillConfig(userId: string): Promise<any> {
+    const configPath = getSkillConfigPath(userId);
+
+    // Auto-create config file if it doesn't exist
+    if (!existsSync(configPath)) {
+      const defaultConfig = { version: 1, skills: {} };
+      try {
+        await fsp.mkdir(path.dirname(configPath), { recursive: true });
+        await fsp.writeFile(
+          configPath,
+          JSON.stringify(defaultConfig, null, 2),
+          'utf-8'
+        );
+        log.info(`Auto-created skills config at ${configPath}`);
+        return defaultConfig;
+      } catch (error) {
+        log.error('Failed to create default skills config', error);
+        return defaultConfig;
+      }
+    }
+
+    try {
+      const content = await fsp.readFile(configPath, 'utf-8');
+      return JSON.parse(content);
+    } catch (error) {
+      log.error('Failed to load skill config', error);
+      return { version: 1, skills: {} };
+    }
+  }
+
+  async function saveSkillConfig(userId: string, config: any): Promise<void> {
+    const configPath = getSkillConfigPath(userId);
+    await fsp.mkdir(path.dirname(configPath), { recursive: true });
+    await fsp.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  }
+
+  ipcMain.handle('skill-config-load', async (_event, userId: string) => {
+    try {
+      const config = await loadSkillConfig(userId);
+      return { success: true, config };
+    } catch (error: any) {
+      log.error('skill-config-load failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  ipcMain.handle(
+    'skill-config-toggle',
+    async (_event, userId: string, skillName: string, enabled: boolean) => {
+      try {
+        const config = await loadSkillConfig(userId);
+        if (!config.skills[skillName]) {
+          // Use SkillScope object format
+          config.skills[skillName] = {
+            enabled,
+            scope: {
+              isGlobal: true,
+              selectedAgents: [],
+            },
+            addedAt: Date.now(),
+            isExample: false,
+          };
+        } else {
+          config.skills[skillName].enabled = enabled;
+        }
+        await saveSkillConfig(userId, config);
+        return { success: true, config: config.skills[skillName] };
+      } catch (error: any) {
+        log.error('skill-config-toggle failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'skill-config-update',
+    async (_event, userId: string, skillName: string, skillConfig: any) => {
+      try {
+        const config = await loadSkillConfig(userId);
+        config.skills[skillName] = { ...skillConfig };
+        await saveSkillConfig(userId, config);
+        return { success: true };
+      } catch (error: any) {
+        log.error('skill-config-update failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'skill-config-delete',
+    async (_event, userId: string, skillName: string) => {
+      try {
+        const config = await loadSkillConfig(userId);
+        delete config.skills[skillName];
+        await saveSkillConfig(userId, config);
+        return { success: true };
+      } catch (error: any) {
+        log.error('skill-config-delete failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
+  // Initialize skills config for a user (ensures config file exists)
+  ipcMain.handle('skill-config-init', async (_event, userId: string) => {
+    try {
+      log.info(`[SKILLS-CONFIG] Initializing config for user: ${userId}`);
+      const config = await loadSkillConfig(userId);
+
+      try {
+        const exampleSkillsDir = getExampleSkillsSourceDir();
+        const defaultConfigPath = path.join(
+          exampleSkillsDir,
+          'default-config.json'
+        );
+
+        if (existsSync(defaultConfigPath)) {
+          const defaultConfigContent = await fsp.readFile(
+            defaultConfigPath,
+            'utf-8'
+          );
+          const defaultConfig = JSON.parse(defaultConfigContent);
+
+          if (defaultConfig.skills) {
+            let addedCount = 0;
+            // Merge default skills config with user's existing config
+            for (const [skillName, skillConfig] of Object.entries(
+              defaultConfig.skills
+            )) {
+              if (!config.skills[skillName]) {
+                // Add new skill config with current timestamp
+                config.skills[skillName] = {
+                  ...(skillConfig as any),
+                  addedAt: Date.now(),
+                };
+                addedCount++;
+                log.info(
+                  `[SKILLS-CONFIG] Initialized config for example skill: ${skillName}`
+                );
+              }
+            }
+
+            if (addedCount > 0) {
+              await saveSkillConfig(userId, config);
+              log.info(
+                `[SKILLS-CONFIG] Added ${addedCount} example skill configs`
+              );
+            }
+          }
+        } else {
+          log.warn(
+            `[SKILLS-CONFIG] Default config not found at: ${defaultConfigPath}`
+          );
+        }
+      } catch (err) {
+        log.error(
+          '[SKILLS-CONFIG] Failed to load default config template:',
+          err
+        );
+        // Continue anyway - user config is still valid
+      }
+
+      log.info(
+        `[SKILLS-CONFIG] Config initialized with ${Object.keys(config.skills || {}).length} skills`
+      );
+      return { success: true, config };
+    } catch (error: any) {
+      log.error('skill-config-init failed', error);
+      return { success: false, error: error?.message };
+    }
+  });
+
+  ipcMain.handle(
+    'skill-import-zip',
+    async (
+      _event,
+      zipPathOrBuffer: string | Buffer | ArrayBuffer | Uint8Array
+    ) => {
+      const isBufferLike =
+        Buffer.isBuffer(zipPathOrBuffer) ||
+        zipPathOrBuffer instanceof ArrayBuffer ||
+        zipPathOrBuffer instanceof Uint8Array;
+      if (isBufferLike) {
+        const buf = Buffer.isBuffer(zipPathOrBuffer)
+          ? zipPathOrBuffer
+          : Buffer.from(zipPathOrBuffer as ArrayBuffer);
+        const tempPath = path.join(
+          os.tmpdir(),
+          `eigent-skill-import-${Date.now()}.zip`
+        );
+        try {
+          await fsp.writeFile(tempPath, buf);
+          const result = await importSkillsFromZip(tempPath);
+          return result;
+        } finally {
+          await fsp.unlink(tempPath).catch(() => {});
+        }
+      }
+      return importSkillsFromZip(zipPathOrBuffer as string);
+    }
+  );
+
   // ==================== read file handler ====================
   ipcMain.handle('read-file', async (event, filePath: string) => {
     try {
@@ -1419,6 +1784,7 @@ const ensureEigentDirectories = () => {
     path.join(eigentBase, 'cache'),
     path.join(eigentBase, 'venvs'),
     path.join(eigentBase, 'runtime'),
+    path.join(eigentBase, 'skills'),
   ];
 
   for (const dir of requiredDirs) {
@@ -1430,6 +1796,72 @@ const ensureEigentDirectories = () => {
 
   log.info('.eigent directory structure ensured');
 };
+
+// ==================== skills (used at startup and by IPC) ====================
+const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
+const SKILL_FILE = 'SKILL.md';
+
+const getExampleSkillsSourceDir = (): string =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, 'example-skills')
+    : path.join(app.getAppPath(), 'resources', 'example-skills');
+
+async function seedDefaultSkillsIfEmpty(): Promise<void> {
+  if (!existsSync(SKILLS_ROOT)) return;
+  const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
+  const hasAnySkill = entries.some(
+    (e) => e.isDirectory() && !e.name.startsWith('.')
+  );
+  if (hasAnySkill) return;
+  const exampleDir = getExampleSkillsSourceDir();
+  if (!existsSync(exampleDir)) {
+    log.warn('Example skills source dir missing:', exampleDir);
+    return;
+  }
+  const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
+  for (const e of sourceEntries) {
+    if (!e.isDirectory() || e.name.startsWith('.')) continue;
+    const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
+    if (!existsSync(skillMd)) continue;
+    const content = await fsp.readFile(skillMd, 'utf-8');
+    const destDir = path.join(SKILLS_ROOT, e.name);
+    await fsp.mkdir(destDir, { recursive: true });
+    await fsp.writeFile(path.join(destDir, SKILL_FILE), content, 'utf-8');
+  }
+  log.info('Seeded default skills to ~/.eigent/skills from', exampleDir);
+}
+
+async function importSkillsFromZip(zipPath: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    if (!existsSync(zipPath)) {
+      return { success: false, error: 'Zip file does not exist' };
+    }
+    const ext = path.extname(zipPath).toLowerCase();
+    if (ext !== '.zip') {
+      return { success: false, error: 'Only .zip files are supported' };
+    }
+    if (!existsSync(SKILLS_ROOT)) {
+      await fsp.mkdir(SKILLS_ROOT, { recursive: true });
+    }
+    const directory = await unzipper.Open.file(zipPath);
+    for (const file of directory.files as any[]) {
+      if (file.type === 'Directory') continue;
+      const destPath = path.join(SKILLS_ROOT, file.path);
+      const destDir = path.dirname(destPath);
+      await fsp.mkdir(destDir, { recursive: true });
+      const content = await file.buffer();
+      await fsp.writeFile(destPath, content);
+    }
+    log.info('Imported skills from zip into ~/.eigent/skills:', zipPath);
+    return { success: true };
+  } catch (error: any) {
+    log.error('importSkillsFromZip failed', error);
+    return { success: false, error: error?.message || String(error) };
+  }
+}
 
 // ==================== Shared backend startup logic ====================
 // Starts backend after installation completes
@@ -1456,6 +1888,7 @@ async function createWindow() {
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
+  await seedDefaultSkillsIfEmpty();
 
   log.info(
     `[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`

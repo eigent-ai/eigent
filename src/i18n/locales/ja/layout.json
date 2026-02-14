@@ -31,8 +31,10 @@
   "installation-failed": "インストールに失敗しました",
   "projects": "プロジェクト",
   "mcp-tools": "MCP & ツール",
+  "connectors": "コネクタ",
   "browser": "ブラウザ",
   "settings": "設定",
+  "general": "一般",
   "workers": "ワーカー",
   "triggers": "トリガー",
   "new-project": "新規プロジェクト",
@@ -166,5 +168,6 @@
   "days-ago": "日前",
   "delete-project": "プロジェクトを削除",
   "delete-project-confirmation": "このプロジェクトとそのすべてのタスクを削除してもよろしいですか？この操作は元に戻せません。",
-  "please-select-model": "続行するには、設定 > モデルでモデルを選択してください。"
+  "please-select-model": "続行するには、設定 > モデルでモデルを選択してください。",
+  "capabilities": "機能"
 }

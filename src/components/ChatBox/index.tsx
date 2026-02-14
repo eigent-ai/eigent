@@ -156,8 +156,9 @@ export default function ChatBox(): JSX.Element {
   // 			.catch((err) => console.error("Failed to fetch settings:", err));
   // 	}
   // }, [privacyDialogOpen]);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
+  const skill_prompt = searchParams.get('skill_prompt');
 
   const [loading, setLoading] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
@@ -352,6 +353,17 @@ export default function ChatBox(): JSX.Element {
       handleSendShare(share_token);
     }
   }, [share_token, isConfigLoaded, isPrivacyLoaded, handleSendShare]);
+
+  // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
+  useEffect(() => {
+    if (skill_prompt) {
+      setMessage(skill_prompt);
+      // Clear the skill_prompt param from URL after setting the message
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('skill_prompt');
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [skill_prompt, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!chatStore) return;

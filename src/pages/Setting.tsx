@@ -19,10 +19,9 @@ import VerticalNavigation, {
 } from '@/components/Navigation';
 import useAppVersion from '@/hooks/use-app-version';
 import General from '@/pages/Setting/General';
-import Models from '@/pages/Setting/Models';
 import Privacy from '@/pages/Setting/Privacy';
 import { useAuthStore } from '@/store/authStore';
-import { Fingerprint, Settings, TagIcon, TextSelect } from 'lucide-react';
+import { Fingerprint, Settings, TagIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -47,12 +46,6 @@ export default function Setting() {
       name: t('setting.privacy'),
       icon: Fingerprint,
       path: '/setting/privacy',
-    },
-    {
-      id: 'models',
-      name: t('setting.models'),
-      icon: TextSelect,
-      path: '/setting/models',
     },
   ];
   // Initialize tab from URL once, then manage locally without routing
@@ -130,7 +123,6 @@ export default function Setting() {
           <div className="flex flex-col gap-4">
             {activeTab === 'general' && <General />}
             {activeTab === 'privacy' && <Privacy />}
-            {activeTab === 'models' && <Models />}
           </div>
         </div>
       </div>
