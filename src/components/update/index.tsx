@@ -150,7 +150,7 @@ const Update = () => {
               }}
             >
               <span
-                className="font-medium text-text-label"
+                className="font-medium text-text-tertiary"
                 style={{ fontSize: '10px', lineHeight: '16px' }}
               >
                 {t('update.downloading-in-progress')}
