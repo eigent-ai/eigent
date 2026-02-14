@@ -1,0 +1,50 @@
+app-id: ai.eigent.Eigent
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '24.08'
+command: eigent
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+
+modules:
+  - name: eigent
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/eigent-ai/eigent/releases/download/v0.0.82/Eigent-0.0.82.AppImage
+        sha256: de2ca68848f3c060a39e8296c1e55b05e1840c5a65c8c804c0fb8e534cb3f4fc
+        dest-filename: Eigent.AppImage
+      - type: file
+        path: ai.eigent.Eigent.metainfo.xml
+    build-commands:
+      - chmod +x Eigent.AppImage
+      - ./Eigent.AppImage --appimage-extract
+      - install -d /app/bin /app/lib/eigent
+      - cp -r squashfs-root/* /app/lib/eigent/
+      - install -Dm644 squashfs-root/eigent.desktop /app/share/applications/ai.eigent.Eigent.desktop
+      - desktop-file-edit --set-key=Exec --set-value='/app/bin/eigent %U' /app/share/applications/ai.eigent.Eigent.desktop
+      - desktop-file-edit --set-key=Icon --set-value='ai.eigent.Eigent' /app/share/applications/ai.eigent.Eigent.desktop
+      - |
+        for size in 16 32 48 64 128 256 512; do
+          if [ -f "squashfs-root/usr/share/icons/hicolor/${size}x${size}/apps/eigent.png" ]; then
+            install -Dm644 "squashfs-root/usr/share/icons/hicolor/${size}x${size}/apps/eigent.png" \
+              "/app/share/icons/hicolor/${size}x${size}/apps/ai.eigent.Eigent.png"
+          fi
+        done
+      - |
+        printf '%s\n' '#!/bin/bash' 'export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID}"' 'exec zypak-wrapper /app/lib/eigent/eigent "$@"' > /app/bin/eigent
+        chmod +x /app/bin/eigent
+      - install -Dm644 ai.eigent.Eigent.metainfo.xml /app/share/metainfo/ai.eigent.Eigent.metainfo.xml

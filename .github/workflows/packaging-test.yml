@@ -1,0 +1,29 @@
+name: Packaging Tests
+
+on:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/packaging-*.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils
+
+      - name: Run packaging tests
+        run: |
+          chmod +x ./packaging/tests/test-packaging.sh
+          ./packaging/tests/test-packaging.sh
