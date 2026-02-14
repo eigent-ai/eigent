@@ -19,7 +19,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-// ── Shared toast shell (matches toast.pen spec) ─────────────────────
 interface UpdateToastProps {
   toastId: string | number;
   children: React.ReactNode;
@@ -31,7 +30,6 @@ const UpdateToastShell = ({ toastId, children, onClose }: UpdateToastProps) => {
 
   return (
     <div className="w-[275px] overflow-hidden rounded-xl border border-border-secondary bg-fill-default shadow-perfect">
-      {/* Header — #f5f5f5cc bg, padding 8px vertical / 12px horizontal */}
       <div className="flex items-center justify-between bg-surface-primary px-3 py-2">
         <div className="flex items-center gap-2">
           <Package className="h-4 w-4 text-icon-primary" strokeWidth={1.33} />
@@ -49,11 +47,9 @@ const UpdateToastShell = ({ toastId, children, onClose }: UpdateToastProps) => {
             toast.dismiss(toastId);
           }}
         >
-          <X className="h-[8px] w-[8px]" strokeWidth={1.33} />
+          <X className="h-[16px] w-[16px]" strokeWidth={1.33} />
         </button>
       </div>
-
-      {/* Body */}
       {children}
     </div>
   );
@@ -69,7 +65,6 @@ const Update = () => {
     window.ipcRenderer.invoke('check-update');
   };
 
-  // ── 1. New version available ────────────────────────────────────
   const onUpdateCanAvailable = useCallback(
     (_event: Electron.IpcRendererEvent, info: VersionInfo) => {
       if (info.update) {
@@ -111,7 +106,6 @@ const Update = () => {
     [t]
   );
 
-  // ── 2. Error ────────────────────────────────────────────────────
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
       toast.error(t('update.update-error'), {
@@ -121,16 +115,14 @@ const Update = () => {
     [t]
   );
 
-  // ── 3. Download progress ────────────────────────────────────────
   const onDownloadProgress = useCallback(
     (_event: Electron.IpcRendererEvent, progress: ProgressInfo) => {
-      console.log('Download progress received:', progress);
       setDownloadProgress(progress.percent ?? 0);
     },
     []
   );
 
-  // Render download-progress toast whenever progress changes
+  // listen to download progress and update toast
   useEffect(() => {
     if (isDownloading) {
       toast.custom(
@@ -141,7 +133,6 @@ const Update = () => {
               setIsDownloading(false);
             }}
           >
-            {/* Status text — padding 6px vertical / 12px horizontal to align with header icon */}
             <div
               className="flex cursor-pointer items-center gap-1 px-3 py-1.5"
               onClick={() => {
@@ -150,7 +141,7 @@ const Update = () => {
               }}
             >
               <span
-                className="font-medium text-text-tertiary"
+                className="font-medium text-text-label"
                 style={{ fontSize: '10px', lineHeight: '16px' }}
               >
                 {t('update.downloading-in-progress')}
@@ -162,7 +153,6 @@ const Update = () => {
                 {t('update.click-to-stop')}
               </span>
             </div>
-            {/* Progress bar — 4px height, full width, no side padding */}
             <Progress value={downloadProgress} className="h-1 rounded-none" />
           </UpdateToastShell>
         ),
@@ -171,7 +161,6 @@ const Update = () => {
     }
   }, [downloadProgress, isDownloading, t]);
 
-  // ── 4. Download complete ────────────────────────────────────────
   const onUpdateDownloaded = useCallback(
     (_event: Electron.IpcRendererEvent) => {
       setIsDownloading(false);
@@ -188,7 +177,7 @@ const Update = () => {
                 {t('update.ready-to-install')}
               </span>
               <span
-                className="cursor-pointer font-medium text-text-primary underline decoration-text-tertiary underline-offset-2 hover:decoration-text-primary"
+                className="cursor-pointer font-medium text-text-primary decoration-text-label hover:decoration-text-primary"
                 style={{ fontSize: '10px', lineHeight: '16px' }}
                 onClick={() => window.ipcRenderer.invoke('quit-and-install')}
               >
@@ -203,7 +192,6 @@ const Update = () => {
     [t]
   );
 
-  // ── IPC listeners ───────────────────────────────────────────────
   useEffect(() => {
     if (sessionStorage.getItem('updateElectronShown')) {
       return;
@@ -228,46 +216,6 @@ const Update = () => {
     onDownloadProgress,
     onUpdateDownloaded,
   ]);
-
-  // ── DEV-ONLY: mock triggers for testing toasts from console ─────
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-
-    const w = window as any;
-
-    w.__mockUpdateAvailable = () => {
-      onUpdateCanAvailable(
-        {} as Electron.IpcRendererEvent,
-        { update: true, version: '1.0.0', newVersion: '1.1.0' } as VersionInfo
-      );
-    };
-
-    w.__mockDownloadStart = () => {
-      setIsDownloading(true);
-      setDownloadProgress(0);
-    };
-
-    w.__mockDownloadProgress = (percent: number) => {
-      setIsDownloading(true);
-      setDownloadProgress(percent);
-    };
-
-    w.__mockDownloadComplete = () => {
-      onUpdateDownloaded({} as Electron.IpcRendererEvent);
-    };
-
-    console.log(
-      '%c[Update] Dev helpers ready: __mockUpdateAvailable(), __mockDownloadStart(), __mockDownloadProgress(n), __mockDownloadComplete()',
-      'color: #4ade80'
-    );
-
-    return () => {
-      delete w.__mockUpdateAvailable;
-      delete w.__mockDownloadStart;
-      delete w.__mockDownloadProgress;
-      delete w.__mockDownloadComplete;
-    };
-  }, [onUpdateCanAvailable, onUpdateDownloaded]);
 
   return null;
 };
