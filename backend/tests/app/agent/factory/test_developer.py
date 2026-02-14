@@ -36,6 +36,9 @@ async def test_developer_agent_creation(sample_chat_data):
     _mod = "app.agent.factory.developer"
     with (
         patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
@@ -82,6 +85,9 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
     _mod = "app.agent.factory.developer"
     with (
         patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,

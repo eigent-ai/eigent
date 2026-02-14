@@ -168,20 +168,18 @@ def initialize_tracer_provider() -> None:
     _GLOBAL_TRACER_PROVIDER = provider
 
 
-def get_tracer_provider() -> TracerProvider:
+def get_tracer_provider() -> TracerProvider | None:
     """Get the global TracerProvider instance.
 
     Returns:
-        TracerProvider: The global tracer provider
-
-    Raises:
-        RuntimeError: If called before initialization
+        TracerProvider if initialized, None otherwise
     """
     if _GLOBAL_TRACER_PROVIDER is None:
-        raise RuntimeError(
+        logger.warning(
             "TracerProvider not initialized. "
             "Call initialize_tracer_provider() during app startup."
         )
+        return None
     return _GLOBAL_TRACER_PROVIDER
 
 
@@ -258,22 +256,28 @@ class WorkforceMetricsCallback(WorkforceMetrics):
             # Get the global shared tracer provider
             # This ensures only one BatchSpanProcessor is running
             provider = get_tracer_provider()
-
-            # Get tracer from the shared provider
-            # Use CAMEL version for instrumentation versioning
-            self.tracer = provider.get_tracer(
-                TRACER_NAME_WORKFORCE, camel.__version__
-            )
-            self.root_span = self.tracer.start_span(
-                f"{SPAN_WORKFORCE_EXECUTION}:{task_id}"
-            )
-            # Langfuse-specific attributes
-            self.root_span.set_attribute(ATTR_LANGFUSE_SESSION_ID, project_id)
-            tags = json.dumps(DEFAULT_LANGFUSE_TAGS.copy())
-            self.root_span.set_attribute(ATTR_LANGFUSE_TAGS, tags)
-            # Custom attributes
-            self.root_span.set_attribute(ATTR_PROJECT_ID, project_id)
-            self.root_span.set_attribute(ATTR_TASK_ID, task_id)
+            if provider is None:
+                # TracerProvider not initialized (e.g., app startup not
+                # completed or running in test environment)
+                self.enabled = False
+            else:
+                # Get tracer from the shared provider
+                # Use CAMEL version for instrumentation versioning
+                self.tracer = provider.get_tracer(
+                    TRACER_NAME_WORKFORCE, camel.__version__
+                )
+                self.root_span = self.tracer.start_span(
+                    f"{SPAN_WORKFORCE_EXECUTION}:{task_id}"
+                )
+                # Langfuse-specific attributes
+                self.root_span.set_attribute(
+                    ATTR_LANGFUSE_SESSION_ID, project_id
+                )
+                tags = json.dumps(DEFAULT_LANGFUSE_TAGS.copy())
+                self.root_span.set_attribute(ATTR_LANGFUSE_TAGS, tags)
+                # Custom attributes
+                self.root_span.set_attribute(ATTR_PROJECT_ID, project_id)
+                self.root_span.set_attribute(ATTR_TASK_ID, task_id)
 
         # Track active spans for task execution
         self.task_spans = {}
