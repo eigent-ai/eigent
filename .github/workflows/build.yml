@@ -288,7 +288,7 @@ jobs:
             release/win-x64/*
             release/linux-x64/*
 
-      # Extract version from tag (e.g., v0.0.83 -> 0.0.83)
+      # Extract version from tag (e.g., v0.0.84 -> 0.0.84)
       - name: Extract version
         if: startsWith(github.ref, 'refs/tags/')
         id: version
