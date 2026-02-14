@@ -277,18 +277,74 @@ jobs:
           fi
 
       # Create GitHub Release
+      - name: Prepare GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          # GitHub release assets must have unique filenames.
+          # Both mac folders contain latest-mac.yml, so stage assets with
+          # channel-specific manifest names for macOS and keep one compatibility file.
+          rm -rf gh-release-assets
+          mkdir -p gh-release-assets
+
+          copy_file() {
+            local src_file="$1"
+            local dst_name="$2"
+            [ -f "$src_file" ] || return 0
+
+            if [ -e "gh-release-assets/$dst_name" ]; then
+              echo "Duplicate release asset name detected: $dst_name"
+              echo "  existing: gh-release-assets/$dst_name"
+              echo "  incoming: $src_file"
+              exit 1
+            fi
+
+            cp -f "$src_file" "gh-release-assets/$dst_name"
+          }
+
+          copy_assets() {
+            local src_dir="$1"
+            local skip_name="${2:-}"
+            [ -d "$src_dir" ] || return 0
+
+            while IFS= read -r -d '' file; do
+              local name
+              name="$(basename "$file")"
+
+              if [ -n "$skip_name" ] && [ "$name" = "$skip_name" ]; then
+                continue
+              fi
+
+              copy_file "$file" "$name"
+            done < <(find "$src_dir" -maxdepth 1 -type f -print0)
+          }
+
+          # Stage all normal artifacts (exclude duplicate mac manifest names first).
+          copy_assets "release/mac-arm64" "latest-mac.yml"
+          copy_assets "release/mac-intel" "latest-mac.yml"
+          copy_assets "release/win-x64"
+          copy_assets "release/linux-x64"
+
+          # macOS updater channels configured in electron/main/update.ts:
+          # arm64 -> latest-arm64-mac.yml, x64 -> latest-x64-mac.yml
+          copy_file "release/mac-arm64/latest-mac.yml" "latest-arm64-mac.yml"
+          copy_file "release/mac-intel/latest-mac.yml" "latest-x64-mac.yml"
+
+          # Compatibility manifest for clients still using default latest-mac.yml.
+          copy_file "release/mac-intel/latest-mac.yml" "latest-mac.yml"
+
+          echo "Prepared GitHub release assets:"
+          ls -1 gh-release-assets
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: |
-            release/mac-arm64/*
-            release/mac-intel/*
-            release/win-x64/*
-            release/linux-x64/*
+            gh-release-assets/*
 
-      # Extract version from tag (e.g., v0.0.83 -> 0.0.83)
+      # Extract version from tag (e.g., v0.0.84 -> 0.0.84)
       - name: Extract version
         if: startsWith(github.ref, 'refs/tags/')
         id: version
