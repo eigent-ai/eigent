@@ -35,6 +35,8 @@ FALLBACK_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
 DEFAULT_SKIP_DIRS = frozenset(
     {".git", "node_modules", "__pycache__", "venv", ".venv"}
 )
+# Default file extensions to skip when listing (safe_list_directory)
+DEFAULT_SKIP_EXTENSIONS: tuple[str, ...] = (".pyc", ".tmp", ".temp")
 
 
 def _max_path_length() -> int:
@@ -79,6 +81,13 @@ def is_safe_path(path: str, base: str) -> bool:
     """
     Return True if path is under base (realpath) and within path length limits.
     Handles None/empty and symlinks by resolving.
+
+    Args:
+        path: Path to validate (file or directory).
+        base: Base directory that path must be under.
+
+    Returns:
+        True if path resolves under base and within path length limits.
     """
     if not path or not base:
         return False
@@ -125,32 +134,38 @@ def safe_resolve_path(path: str, base: str) -> str | None:
         return None
 
 
-def normalize_working_path(path: str | None) -> str:
+def normalize_working_path(path: str | Path | None) -> str:
     """
-    Normalize and validate a working directory path.
-    Returns a safe default (user home or cwd) if path is None, empty, or invalid.
+    Normalize and validate a working directory path using pathlib.
+    Requires a non-empty path; raises ValueError if path is None or empty.
+    For invalid or nonexistent paths, falls back to parent or user home.
+
+    Args:
+        path: Working directory path (str or Path). Must be specified.
+
+    Returns:
+        Absolute, resolved directory path as a string.
+
+    Raises:
+        ValueError: If path is None or empty/whitespace.
     """
-    if not path or not str(path).strip():
-        fallback = os.path.expanduser("~")
-        logger.debug("Empty working path, using fallback: %s", fallback)
-        return fallback
-    path = str(path).strip()
+    if path is None or not str(path).strip():
+        raise ValueError("Working directory path must be specified.")
+    p = Path(path).expanduser().resolve()
     try:
-        resolved = os.path.abspath(os.path.expanduser(path))
-        if len(resolved) > _max_path_length():
-            logger.warning("Working path too long, using parent: %s", resolved)
-            resolved = str(Path(resolved).parent)
-        if not os.path.exists(resolved):
-            parent = os.path.dirname(resolved)
-            if parent and parent != resolved and os.path.isdir(parent):
-                return parent
-            return os.path.expanduser("~")
-        return (
-            resolved if os.path.isdir(resolved) else str(Path(resolved).parent)
-        )
+        if len(str(p)) > _max_path_length():
+            logger.warning("Working path too long, using parent: %s", p)
+            p = p.parent
+        if not p.exists():
+            if p.parent.exists() and p.parent.is_dir():
+                return str(p.parent)
+            return str(Path.home())
+        if p.is_dir():
+            return str(p)
+        return str(p.parent)
     except (OSError, RuntimeError) as e:
         logger.warning("Invalid working path %r: %s", path, e)
-        return os.path.expanduser("~")
+        return str(Path.home())
 
 
 def safe_list_directory(
@@ -159,7 +174,7 @@ def safe_list_directory(
     *,
     max_entries: int = 10_000,
     skip_dirs: set[str] | None = None,
-    skip_extensions: tuple[str, ...] = (".pyc", ".tmp", ".temp"),
+    skip_extensions: tuple[str, ...] = DEFAULT_SKIP_EXTENSIONS,
     skip_prefix: str = ".",
     follow_symlinks: bool = False,
     path_filter: Callable[[str], bool] | None = None,
@@ -167,15 +182,25 @@ def safe_list_directory(
     """
     List files under dir_path with optional base confinement and filters.
     If base is set, only returns paths that resolve under base (no traversal).
-    Returns list of absolute file paths; skips directories matching skip_dirs
-    and files starting with skip_prefix or ending with skip_extensions.
-
-    dir_path is validated against base (or cwd when base is None) before use.
     For CodeQL: only the trusted base path is used in path operations; we
     validate dir_path is under base then list base (same as dir_path when
     base equals dir_path, as in chat_service).
+
+    Args:
+        dir_path: Directory to list; must resolve under base when base is set.
+        base: Confinement base (default: cwd). Paths outside this are excluded.
+        max_entries: Maximum number of file paths to return.
+        skip_dirs: Directory names to skip (default: DEFAULT_SKIP_DIRS).
+        skip_extensions: File extensions to skip (default: DEFAULT_SKIP_EXTENSIONS).
+        skip_prefix: Skip dirs/files whose name starts with this prefix.
+        follow_symlinks: Whether to follow symlinks when walking.
+        path_filter: Optional predicate; only paths for which it returns True are included.
+
+    Returns:
+        List of absolute file paths under dir_path (subject to filters and max_entries).
     """
     if not dir_path or not dir_path.strip():
+        logger.warning("safe_list_directory: empty dir_path")
         return []
     resolve_base = base if base else os.getcwd()
     # Validate dir_path is under base; do not use return value in path ops.
@@ -246,14 +271,14 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
 
         task_lock = get_task_lock_if_exists(options.project_id)
 
-    raw: str
+    raw: Path | str
     if (
         task_lock
         and hasattr(task_lock, "new_folder_path")
         and task_lock.new_folder_path
     ):
-        raw = str(task_lock.new_folder_path)
+        raw = Path(task_lock.new_folder_path)
     else:
-        raw = env("file_save_path", options.file_save_path())
+        raw = Path(env("file_save_path", options.file_save_path()))
 
     return normalize_working_path(raw)

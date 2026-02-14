@@ -33,12 +33,15 @@ from app.utils.file_utils import (
 class TestNormalizeWorkingPath:
     """Tests for normalize_working_path."""
 
-    def test_none_returns_fallback(self):
-        assert normalize_working_path(None) == os.path.expanduser("~")
+    def test_none_raises(self):
+        with pytest.raises(ValueError, match="must be specified"):
+            normalize_working_path(None)
 
-    def test_empty_string_returns_fallback(self):
-        assert normalize_working_path("") == os.path.expanduser("~")
-        assert normalize_working_path("   ") == os.path.expanduser("~")
+    def test_empty_string_raises(self):
+        with pytest.raises(ValueError, match="must be specified"):
+            normalize_working_path("")
+        with pytest.raises(ValueError, match="must be specified"):
+            normalize_working_path("   ")
 
     def test_valid_dir_returns_absolute(self, temp_dir):
         result = normalize_working_path(str(temp_dir))
