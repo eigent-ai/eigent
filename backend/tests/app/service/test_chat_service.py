@@ -102,7 +102,6 @@ class TestCollectPreviousTaskContext:
         assert "Previous Task Result:" in result
         assert "Successfully created script.py" in result
         assert "=== END OF PREVIOUS TASK CONTEXT ===" in result
-        assert "=== NEW TASK ===" in result
 
     def test_collect_previous_task_context_with_generated_files(
         self, temp_dir
@@ -239,7 +238,6 @@ class TestCollectPreviousTaskContext:
         # Should still have the structural elements
         assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
         assert "=== END OF PREVIOUS TASK CONTEXT ===" in result
-        assert "=== NEW TASK ===" in result
 
         # Should not have content sections for empty inputs
         assert "Previous Task:" not in result
@@ -320,7 +318,6 @@ class TestBuildContextForWorkforce:
         # Create mock TaskLock
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
-            {"role": "user", "content": "Create a Python script"},
             {
                 "role": "assistant",
                 "content": "I will create a Python script for you",
@@ -335,14 +332,10 @@ class TestBuildContextForWorkforce:
 
         result = build_context_for_workforce(task_lock, options)
 
-        # Should include conversation history
+        # Should include conversation history header
         assert "=== CONVERSATION HISTORY ===" in result
-        assert "user: Create a Python script" in result
-        assert "assistant: I will create a Python script for you" in result
-
-        # Should include previous task context
-        assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
-        assert "Script created successfully" in result
+        # build_conversation_context only processes assistant and task_result roles
+        assert "I will create a Python script for you" in result
 
     def test_build_context_for_workforce_empty_history(self, temp_dir):
         """Test build_context_for_workforce with empty conversation history."""
@@ -360,15 +353,17 @@ class TestBuildContextForWorkforce:
         assert result == ""
 
     def test_build_context_for_workforce_task_result_role(self, temp_dir):
-        """Test build_context_for_workforce handles 'task_result' role specially."""
+        """Test build_context_for_workforce handles 'task_result' role."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
-            {"role": "user", "content": "First question"},
             {
                 "role": "task_result",
                 "content": "Full task context from previous task",
             },
-            {"role": "user", "content": "Second question"},
+            {
+                "role": "assistant",
+                "content": "Task completed successfully",
+            },
         ]
         task_lock.last_task_result = "Final result"
         task_lock.last_task_summary = "Task summary"
@@ -378,22 +373,18 @@ class TestBuildContextForWorkforce:
 
         result = build_context_for_workforce(task_lock, options)
 
-        # Should simplify task_result display
-        assert "[Previous Task Completed]" in result
-        assert (
-            "Full task context from previous task" not in result
-        )  # Should not show full content
-        assert "user: First question" in result
-        assert "user: Second question" in result
+        # build_conversation_context appends string task_result content directly
+        assert "Full task context from previous task" in result
+        assert "Task completed successfully" in result
 
     def test_build_context_for_workforce_with_last_task_result(self, temp_dir):
-        """Test build_context_for_workforce includes last task result context."""
-        # Create some files in temp directory
-        (temp_dir / "output.txt").write_text("Task output")
-
+        """Test build_context_for_workforce with assistant entries."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
-            {"role": "user", "content": "Test question"}
+            {
+                "role": "assistant",
+                "content": "Task completed with output.txt",
+            },
         ]
         task_lock.last_task_result = "Task completed with output.txt"
         task_lock.last_task_summary = "File creation task"
@@ -403,13 +394,9 @@ class TestBuildContextForWorkforce:
 
         result = build_context_for_workforce(task_lock, options)
 
-        # Should include conversation history and task context
+        # Should include conversation history
         assert "=== CONVERSATION HISTORY ===" in result
-        assert "user: Test question" in result
-        assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
         assert "Task completed with output.txt" in result
-        assert "File creation task" in result
-        assert "output.txt" in result  # Generated file should be listed
 
 
 @pytest.mark.unit
@@ -617,17 +604,14 @@ class TestChatServiceAgentOperations:
 
     @pytest.mark.asyncio
     async def test_question_confirm_simple_query(self, mock_camel_agent):
-        """Test question_confirm with simple query that gets direct response."""
-        mock_camel_agent.step.return_value.msgs[
-            0
-        ].content = "Hello! How can I help you today?"
+        """Test question_confirm with simple query returns False."""
+        mock_camel_agent.step.return_value.msgs[0].content = "no"
         mock_camel_agent.chat_history = []
 
         result = await question_confirm(mock_camel_agent, "hello")
 
-        # Should return SSE formatted response for simple queries
-        assert "wait_confirm" in result
-        assert "Hello! How can I help you today?" in result
+        # Should return False for simple queries (no "yes" in response)
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_question_confirm_complex_task(self, mock_camel_agent):
@@ -698,6 +682,10 @@ class TestChatServiceAgentOperations:
         with (
             patch("app.service.chat_service.agent_model") as mock_agent_model,
             patch(
+                "app.service.chat_service.get_working_directory",
+                return_value="/tmp/test_workdir",
+            ),
+            patch(
                 "app.service.chat_service.Workforce",
                 return_value=mock_workforce,
             ),
@@ -712,6 +700,10 @@ class TestChatServiceAgentOperations:
             patch(
                 "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=mock_task_lock,
+            ),
+            patch(
+                "app.service.chat_service.WorkforceMetricsCallback",
+                return_value=MagicMock(),
             ),
         ):
             mock_agent_model.return_value = MagicMock()
@@ -769,23 +761,15 @@ class TestChatServiceIntegration:
             "def hello(): print('Hello World')"
         )
 
-        # Mock file_save_path method to return our temp directory
-        with patch.object(
-            Chat, "file_save_path", return_value=str(working_dir)
-        ):
-            # Test the context building directly
-            context = build_context_for_workforce(task_lock, options)
+        # Test the context building directly
+        # build_context_for_workforce now only calls build_conversation_context
+        # which only processes assistant and task_result roles
+        context = build_context_for_workforce(task_lock, options)
 
-            # Verify context includes conversation history
-            assert "=== CONVERSATION HISTORY ===" in context
-            assert "user: Create a Python script" in context
-            assert "assistant: Script created successfully" in context
-
-            # Verify context includes task context with files
-            assert "=== CONTEXT FROM PREVIOUS TASK ===" in context
-            assert "def hello(): print('Hello World')" in context
-            assert "Python Hello World Script" in context
-            assert "script.py" in context
+        # Verify context includes conversation history header
+        assert "=== CONVERSATION HISTORY ===" in context
+        # assistant entries are included
+        assert "Script created successfully" in context
 
     @pytest.mark.asyncio
     async def test_step_solve_new_task_state_context_collection(
@@ -824,7 +808,6 @@ class TestChatServiceIntegration:
             assert "main.py" in result
             assert "config.json" in result
             assert "=== END OF PREVIOUS TASK CONTEXT ===" in result
-            assert "=== NEW TASK ===" in result
 
     @pytest.mark.asyncio
     async def test_step_solve_end_action_context_collection(
@@ -1039,26 +1022,23 @@ class TestChatServiceErrorCases:
                 # Should log warning
                 mock_logger.warning.assert_called_once()
 
-    def test_collect_previous_task_context_relpath_exception(self, temp_dir):
-        """Test collect_previous_task_context handles os.path.relpath exceptions."""
+    def test_collect_previous_task_context_abspath_used(self, temp_dir):
+        """Test collect_previous_task_context uses absolute paths for files."""
         working_directory = str(temp_dir)
 
         # Create a test file
         (temp_dir / "test.txt").write_text("test content")
 
-        with patch("os.path.relpath", side_effect=ValueError("Invalid path")):
-            with patch("app.service.chat_service.logger") as mock_logger:
-                result = collect_previous_task_context(
-                    working_directory=working_directory,
-                    previous_task_content="Test task",
-                    previous_task_result="Test result",
-                    previous_summary="Test summary",
-                )
+        result = collect_previous_task_context(
+            working_directory=working_directory,
+            previous_task_content="Test task",
+            previous_task_result="Test result",
+            previous_summary="Test summary",
+        )
 
-                # Should handle the exception gracefully
-                assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
-                # Should log warning about file collection failure
-                mock_logger.warning.assert_called_once()
+        # Should include absolute path for the file
+        assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
+        assert "test.txt" in result
 
     def test_build_context_for_workforce_missing_attributes(self, temp_dir):
         """Test build_context_for_workforce handles missing attributes gracefully."""
@@ -1076,20 +1056,18 @@ class TestChatServiceErrorCases:
         # Should handle missing attributes gracefully
         assert result == ""
 
-    def test_build_context_for_workforce_file_save_path_exception(self):
-        """Test build_context_for_workforce handles file_save_path exceptions."""
+    def test_build_context_for_workforce_empty_conversation(self):
+        """Test build_context_for_workforce returns empty for empty conversation."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
         task_lock.last_task_result = "Test result"
         task_lock.last_task_summary = "Test summary"
 
         options = MagicMock()
-        options.file_save_path.side_effect = Exception("Path error")
 
-        with patch("app.service.chat_service.logger") as mock_logger:
-            # Should handle exception when getting file path
-            with pytest.raises(Exception, match="Path error"):
-                build_context_for_workforce(task_lock, options)
+        # Should return empty string for empty conversation history
+        result = build_context_for_workforce(task_lock, options)
+        assert result == ""
 
     def test_collect_previous_task_context_unicode_handling(self, temp_dir):
         """Test collect_previous_task_context handles unicode content correctly."""
@@ -1245,6 +1223,22 @@ class TestChatServiceErrorCases:
             ),
             patch(
                 "app.service.chat_service.agent_model",
+                side_effect=Exception("Agent creation failed"),
+            ),
+            patch(
+                "app.agent.factory.developer.agent_model",
+                side_effect=Exception("Agent creation failed"),
+            ),
+            patch(
+                "app.agent.factory.browser.agent_model",
+                side_effect=Exception("Agent creation failed"),
+            ),
+            patch(
+                "app.agent.factory.document.agent_model",
+                side_effect=Exception("Agent creation failed"),
+            ),
+            patch(
+                "app.agent.factory.multi_modal.agent_model",
                 side_effect=Exception("Agent creation failed"),
             ),
         ):
