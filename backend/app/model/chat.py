@@ -45,7 +45,7 @@ class QuestionAnalysisResult(BaseModel):
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 PLATFORM_MAPPING = {
-    "Z.ai": "openai-compatible-model",
+    "z.ai": "openai-compatible-model",
     "ModelArk": "openai-compatible-model",
 }
 

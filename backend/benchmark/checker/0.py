@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-"""Checker for benchmark 0: hello_world.py should print 'Hello, World!'"""
+"""Checker for benchmark 0: hello_world.py should print 'Hello, WORLD!'"""
 
 import subprocess
 import sys
@@ -33,11 +33,11 @@ def check(working_directory: str) -> bool:
     )
 
     output = result.stdout.strip()
-    if output == "Hello, World!":
+    if output == "Hello, WORLD!":
         print("PASS")
         return True
     else:
-        print(f"FAIL: expected 'Hello, World!', got '{output}'")
+        print(f"FAIL: expected 'Hello, WORLD!', got '{output}'")
         return False
 
 
