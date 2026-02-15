@@ -16,6 +16,7 @@ import { fetchPut, proxyFetchDelete } from '@/api/http';
 import GroupedHistoryView from '@/components/GroupedHistoryView';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { ChatTaskStatus } from '@/types/constants';
@@ -188,15 +189,30 @@ export default function Project() {
     navigate({ pathname: '/' });
   };
 
-  const handleSetActive = (taskId: string, question: string) => {
-    const task = chatStore.tasks[taskId];
-    if (task) {
-      // if there is a record, display the result
-      chatStore.setActiveTaskId(taskId);
+  const handleSetActive = async (
+    projectId: string,
+    question: string,
+    historyId: string,
+    project?: { tasks: { task_id: string }[]; project_name?: string }
+  ) => {
+    const existingProject = projectStore.getProjectById(projectId);
+    if (existingProject) {
+      projectStore.setHistoryId(projectId, historyId);
+      projectStore.setActiveProject(projectId);
       navigate(`/`);
     } else {
-      // if there is no record, execute replay
-      handleReplay(taskId, question);
+      const taskIdsList = project?.tasks
+        ?.map((t) => t.task_id)
+        .filter(Boolean) || [projectId];
+      await loadProjectFromHistory(
+        projectStore,
+        navigate,
+        projectId,
+        question,
+        historyId,
+        taskIdsList,
+        project?.project_name
+      );
     }
   };
 
