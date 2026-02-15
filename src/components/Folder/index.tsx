@@ -31,7 +31,10 @@ import FolderComponent from './FolderComponent';
 import { proxyFetchGet } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { injectFontStyles } from '@/lib/htmlFontStyles';
+import {
+  deferInlineScriptsUntilLoad,
+  injectFontStyles,
+} from '@/lib/htmlFontStyles';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from 'react-i18next';
@@ -992,8 +995,12 @@ function HtmlRenderer({
         return;
       }
 
+      // Defer inline scripts until load when document has external scripts (e.g. Chart.js),
+      const htmlWithDeferredScripts =
+        deferInlineScriptsUntilLoad(processedHtmlContent);
+
       // Set the processed HTML with font styles - iframe sandbox provides security
-      setProcessedHtml(injectFontStyles(processedHtmlContent));
+      setProcessedHtml(injectFontStyles(htmlWithDeferredScripts));
     };
 
     processHtml();
