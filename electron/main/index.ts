@@ -821,7 +821,7 @@ function registerIpcHandlers() {
         const files = fileData
           .filter((f) => f.path) // Only process files with valid paths
           .map((f) => ({
-            filePath: f.path!,
+            filePath: fs.realpathSync(f.path!),
             fileName: f.name,
           }));
 

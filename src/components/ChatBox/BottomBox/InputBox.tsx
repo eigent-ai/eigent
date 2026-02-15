@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import {
   ArrowRight,
@@ -248,55 +249,14 @@ export const Inputbox = ({
 
       console.log('[Drag-Drop] Processing dropped files:', dropped.length);
 
-      // Use Electron's webUtils.getPathForFile to get file paths
-      const fileData = dropped.map((f: File) => {
-        try {
-          const path = window.electronAPI.getPathForFile(f);
-          return { name: f.name, path };
-        } catch (error) {
-          console.error(
-            '[Drag-Drop] Failed to get path for file:',
-            f.name,
-            error
-          );
-          return { name: f.name, path: undefined };
-        }
-      });
+      const result = await processDroppedFiles(dropped, files);
 
-      console.log('[Drag-Drop] File data:', fileData);
-
-      // Filter out files without paths
-      const validFiles = fileData.filter((f) => f.path);
-
-      if (validFiles.length === 0) {
-        console.error('[Drag-Drop] No valid file paths found');
-        toast.error(
-          'Unable to access file paths. Please use the file picker instead.'
-        );
-        return;
-      }
-
-      // Use Electron IPC to process the file paths
-      const result = await window.electronAPI.processDroppedFiles(validFiles);
-
-      console.log('[Drag-Drop] IPC result:', result);
-
-      if (result.success && result.files) {
-        const newFiles = [
-          ...files.filter(
-            (f: FileAttachment) =>
-              !result.files!.find((m: any) => m.filePath === f.filePath)
-          ),
-          ...result.files.filter(
-            (m: any) => !files.find((f) => f.filePath === m.filePath)
-          ),
-        ];
-        console.log('[Drag-Drop] Setting files:', newFiles);
-        onFilesChange?.(newFiles);
-        toast.success(`Added ${result.files.length} file(s)`);
+      if (result.success) {
+        console.log('[Drag-Drop] Setting files:', result.files);
+        onFilesChange?.(result.files);
+        toast.success(`Added ${result.added} file(s)`);
       } else {
-        console.error('[Drag-Drop] Failed:', result.error);
-        toast.error(result.error || 'Failed to process dropped files');
+        toast.error(result.error);
       }
     } catch (error) {
       console.error('[Drag-Drop] Error:', error);
