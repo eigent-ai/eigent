@@ -27,15 +27,16 @@ import logging
 from pathlib import Path
 from typing import Final
 
-logger = logging.getLogger("memory_file")
+logger = logging.getLogger("long_term_memory")
 
 _MEMORY_FILENAME: Final[str] = "memory.md"
 _EIGENT_DIR: Final[str] = ".eigent"
 _DEFAULT_INDEX_LINES: Final[int] = 200
 _MAX_INDEX_LINES: Final[int] = 2000
 
-_CONTINUATION_NOTE: Final[str] = "\n\n...(further memory in .eigent/; read files as needed)\n"
-_INDEX_HEADER: Final[str] = "=== Project memory index (.eigent/memory.md) ===\n"
+_INDEX_HEADER: Final[str] = (
+    "=== Project memory index (.eigent/memory.md) ===\n"
+)
 
 
 class MemoryFileError(Exception):
@@ -92,6 +93,11 @@ Project long-term memory lives under .eigent/ in the project directory.
 """
 
 
+def _continuation_note(remaining_lines: int) -> str:
+    """Note shown when index is truncated; includes remaining line count."""
+    return f"\n\n...({remaining_lines} more lines in .eigent/; read files as needed)\n"
+
+
 def get_index_for_prompt(
     working_directory: str,
     max_lines: int = _DEFAULT_INDEX_LINES,
@@ -113,7 +119,10 @@ def get_index_for_prompt(
 
     lines = content.splitlines()
     if len(lines) > effective_max:
-        index_content = "\n".join(lines[:effective_max]) + _CONTINUATION_NOTE
+        remaining = len(lines) - effective_max
+        index_content = "\n".join(lines[:effective_max]) + _continuation_note(
+            remaining
+        )
     else:
         index_content = content
 

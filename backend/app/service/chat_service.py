@@ -58,7 +58,7 @@ from app.service.task import (
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory
-from app.utils.memory_file import (
+from app.utils.long_term_memory import (
     MEMORY_ARCHITECTURE_PROMPT,
     get_index_for_prompt,
 )
@@ -1246,7 +1246,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 "workforce"
                             )
                             conv_ctx = build_conversation_context(
-                                task_lock, header="=== Previous Conversation ==="
+                                task_lock,
+                                header="=== Previous Conversation ===",
                             )
                             simple_answer_prompt = (
                                 f"{conv_ctx}"
@@ -2438,8 +2439,9 @@ For any date-related tasks, you MUST use this as \
 the current date.
 """
 
-    if getattr(data, "use_project_memory", False):
+    if getattr(data, "use_long_term_memory", False):
         enhanced_description += MEMORY_ARCHITECTURE_PROMPT
+        # Snapshot at agent-creation time; .eigent/ may change during the session.
         memory_index = get_index_for_prompt(working_directory)
         if memory_index:
             enhanced_description += "\n" + memory_index
