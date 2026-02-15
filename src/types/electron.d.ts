@@ -36,6 +36,17 @@ interface ElectronAPI {
     fileCount?: number;
     canceled?: boolean;
   }>;
+  processDroppedFiles: (
+    fileData: Array<{ name: string; path?: string }>
+  ) => Promise<{
+    success: boolean;
+    files?: Array<{
+      filePath: string;
+      fileName: string;
+    }>;
+    error?: string;
+  }>;
+  getPathForFile: (file: File) => string;
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;

@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import {
   ArrowRight,
@@ -235,28 +236,31 @@ export const Inputbox = ({
     if (dragCounter.current === 0) setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
     if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
       if (dropped.length === 0) return;
-      const mapped = dropped.map((f: File) => ({
-        fileName: f.name,
-        filePath: (f as any).path || f.name,
-      }));
-      const newFiles = [
-        ...files.filter(
-          (f: FileAttachment) => !mapped.find((m) => m.filePath === f.filePath)
-        ),
-        ...mapped.filter((m) => !files.find((f) => f.filePath === m.filePath)),
-      ];
-      onFilesChange?.(newFiles);
+
+      console.log('[Drag-Drop] Processing dropped files:', dropped.length);
+
+      const result = await processDroppedFiles(dropped, files);
+
+      if (result.success) {
+        console.log('[Drag-Drop] Setting files:', result.files);
+        onFilesChange?.(result.files);
+        toast.success(`Added ${result.added} file(s)`);
+      } else {
+        toast.error(result.error);
+      }
     } catch (error) {
-      console.error('Drop File Error:', error);
+      console.error('[Drag-Drop] Error:', error);
+      toast.error('Failed to process dropped files');
     }
   };
 
