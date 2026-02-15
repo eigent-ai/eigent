@@ -46,6 +46,7 @@ import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
 import {
+  AlertCircle,
   Check,
   ChevronDown,
   ChevronUp,
@@ -182,6 +183,7 @@ export default function SettingModels() {
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
+  const [localIsValid, setLocalIsValid] = useState<Record<string, boolean>>({});
   const [localVerifying, setLocalVerifying] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localInputError, setLocalInputError] = useState(false);
@@ -270,6 +272,7 @@ export default function SettingModels() {
         const endpoints: Record<string, string> = {};
         const types: Record<string, string> = {};
         const providerIds: Record<string, number | undefined> = {};
+        const isValidMap: Record<string, boolean> = {};
 
         localProviders.forEach((local: any) => {
           const platform =
@@ -280,6 +283,7 @@ export default function SettingModels() {
             (platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '');
           types[platform] = local.encrypted_config?.model_type || '';
           providerIds[platform] = local.id;
+          isValidMap[platform] = !!local.is_valid;
 
           // Set prefer state if any local model is preferred
           if (local.prefer) {
@@ -291,6 +295,7 @@ export default function SettingModels() {
         setLocalEndpoints(endpoints);
         setLocalTypes(types);
         setLocalProviderIds(providerIds);
+        setLocalIsValid(isValidMap);
 
         // Fetch Ollama models if ollama endpoint is set
         const ollamaEndpoint = endpoints['ollama'] || DEFAULT_OLLAMA_ENDPOINT;
@@ -757,6 +762,10 @@ export default function SettingModels() {
       );
       if (local) {
         setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: local.id }));
+        setLocalIsValid((prev) => ({
+          ...prev,
+          [localPlatform]: !!local.is_valid,
+        }));
         setLocalPrefer(local.prefer ?? false);
 
         // Check if this was a pending default model selection
@@ -888,6 +897,7 @@ export default function SettingModels() {
       }));
       setLocalTypes((prev) => ({ ...prev, [localPlatform]: '' }));
       setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: undefined }));
+      setLocalIsValid((prev) => ({ ...prev, [localPlatform]: false }));
       // Reset prefer state only if this platform was the preferred one
       if (localPrefer) {
         setLocalPrefer(false);
@@ -1028,13 +1038,15 @@ export default function SettingModels() {
   };
 
   // Helper to render sidebar tab item
+  // isConfigured: provider exists, isError: configured but invalid/expired
   const renderSidebarItem = (
     tabId: SidebarTab,
     label: string,
     modelId: string | null,
     isActive: boolean,
     isSubItem: boolean = false,
-    isConfigured: boolean = false
+    isConfigured: boolean = false,
+    isError: boolean = false
   ) => {
     const modelImage = getModelImage(modelId);
     const fallbackIcon =
@@ -1075,9 +1087,11 @@ export default function SettingModels() {
             {label}
           </span>
         </div>
-        {isConfigured && (
+        {isConfigured && isError ? (
+          <AlertCircle className="m-0.5 h-3 w-3 text-text-error" />
+        ) : isConfigured ? (
           <div className="m-1 h-2 w-2 rounded-full bg-text-success" />
-        )}
+        ) : null}
       </button>
     );
   };
@@ -1297,7 +1311,18 @@ export default function SettingModels() {
                       : t('setting.set-as-default')}
                   </Button>
                 )}
-                {form[idx].provider_id ? (
+                {form[idx].provider_id && !form[idx].is_valid ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <AlertCircle className="h-3 w-3 shrink-0 text-text-error" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {t('setting.api-key-expired-or-invalid')}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : form[idx].provider_id ? (
                   <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
                 ) : (
                   <div className="h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
@@ -1530,7 +1555,18 @@ export default function SettingModels() {
                   </Button>
                 )}
               </div>
-              {isConfigured ? (
+              {isConfigured && !localIsValid[platform] ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <AlertCircle className="h-3 w-3 text-text-error" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {t('setting.model-disconnected-or-invalid')}
+                  </TooltipContent>
+                </Tooltip>
+              ) : isConfigured ? (
                 <div className="h-2 w-2 rounded-full bg-text-success" />
               ) : (
                 <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
@@ -1704,7 +1740,7 @@ export default function SettingModels() {
       {/* Content Section */}
       <div className="mb-8 flex flex-col gap-6">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-row items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="flex w-full flex-col items-end justify-start gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex w-full flex-col items-start justify-center gap-1">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.models-default-setting-title')}
@@ -1716,7 +1752,7 @@ export default function SettingModels() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
-                <span className="whitespace-nowrap text-body-sm">
+                <span className="break-words text-left text-body-sm">
                   {getDefaultModelDisplayText()}
                 </span>
                 <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
@@ -1798,12 +1834,17 @@ export default function SettingModels() {
                           {!isConfigured && (
                             <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
+                          {isConfigured && !form[idx]?.is_valid && (
+                            <AlertCircle className="h-3 w-3 text-text-error" />
+                          )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-text-success" />
                           )}
-                          {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
-                          )}
+                          {isConfigured &&
+                            form[idx]?.is_valid &&
+                            !isPreferred && (
+                              <div className="h-2 w-2 rounded-full bg-text-success" />
+                            )}
                         </div>
                       </DropdownMenuItem>
                     );
@@ -1859,12 +1900,17 @@ export default function SettingModels() {
                           {!isConfigured && (
                             <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
+                          {isConfigured && !localIsValid[model.id] && (
+                            <AlertCircle className="h-3 w-3 text-text-error" />
+                          )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-text-success" />
                           )}
-                          {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
-                          )}
+                          {isConfigured &&
+                            localIsValid[model.id] &&
+                            !isPreferred && (
+                              <div className="h-2 w-2 rounded-full bg-text-success" />
+                            )}
                         </div>
                       </DropdownMenuItem>
                     );
@@ -1929,7 +1975,8 @@ export default function SettingModels() {
                         item.id,
                         selectedTab === `byok-${item.id}`,
                         true,
-                        !!form[idx].provider_id
+                        !!form[idx].provider_id,
+                        !!form[idx].provider_id && !form[idx].is_valid
                       )
                     )}
                   </div>
@@ -1963,7 +2010,8 @@ export default function SettingModels() {
                       'local-ollama',
                       selectedTab === 'local-ollama',
                       true,
-                      !!localProviderIds['ollama']
+                      !!localProviderIds['ollama'],
+                      !!localProviderIds['ollama'] && !localIsValid['ollama']
                     )}
                     {renderSidebarItem(
                       'local-vllm',
@@ -1971,7 +2019,8 @@ export default function SettingModels() {
                       'local-vllm',
                       selectedTab === 'local-vllm',
                       true,
-                      !!localProviderIds['vllm']
+                      !!localProviderIds['vllm'],
+                      !!localProviderIds['vllm'] && !localIsValid['vllm']
                     )}
                     {renderSidebarItem(
                       'local-sglang',
@@ -1979,7 +2028,8 @@ export default function SettingModels() {
                       'local-sglang',
                       selectedTab === 'local-sglang',
                       true,
-                      !!localProviderIds['sglang']
+                      !!localProviderIds['sglang'],
+                      !!localProviderIds['sglang'] && !localIsValid['sglang']
                     )}
                     {renderSidebarItem(
                       'local-lmstudio',
@@ -1987,7 +2037,9 @@ export default function SettingModels() {
                       'local-lmstudio',
                       selectedTab === 'local-lmstudio',
                       true,
-                      !!localProviderIds['lmstudio']
+                      !!localProviderIds['lmstudio'],
+                      !!localProviderIds['lmstudio'] &&
+                        !localIsValid['lmstudio']
                     )}
                   </div>
                 </div>
