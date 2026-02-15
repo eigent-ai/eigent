@@ -14,10 +14,48 @@
 
 import { Progress } from '@/components/ui/progress';
 import type { ProgressInfo } from 'electron-updater';
+import { Package, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+interface UpdateToastProps {
+  toastId: string | number;
+  children: React.ReactNode;
+  onClose?: () => void;
+}
+
+const UpdateToastShell = ({ toastId, children, onClose }: UpdateToastProps) => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="w-[275px] overflow-hidden rounded-xl border border-border-secondary bg-fill-default shadow-perfect">
+      <div className="flex items-center justify-between bg-surface-primary px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4 text-icon-primary" strokeWidth={1.33} />
+          <span
+            className="font-bold text-text-heading"
+            style={{ fontSize: '13px', lineHeight: '20px' }}
+          >
+            {t('update.update-eigent')}
+          </span>
+        </div>
+        <button
+          className="flex h-4 w-4 items-center justify-center rounded text-icon-secondary transition-colors hover:text-icon-primary"
+          onClick={() => {
+            onClose?.();
+            toast.dismiss(toastId);
+          }}
+        >
+          <X className="h-[16px] w-[16px]" strokeWidth={1.33} />
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+};
+
+// ── Main component ──────────────────────────────────────────────────
 const Update = () => {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
@@ -30,18 +68,39 @@ const Update = () => {
   const onUpdateCanAvailable = useCallback(
     (_event: Electron.IpcRendererEvent, info: VersionInfo) => {
       if (info.update) {
-        toast(t('update.new-version-available'), {
-          description: `v${info.version} → v${info.newVersion}`,
-          action: {
-            label: t('update.download'),
-            onClick: () => {
-              setIsDownloading(true);
-              setDownloadProgress(0);
-              window.ipcRenderer.invoke('start-download');
-            },
-          },
-          duration: Infinity,
-        });
+        toast.custom(
+          (toastId) => (
+            <UpdateToastShell toastId={toastId}>
+              <div className="px-3 py-1.5">
+                <p
+                  className="font-medium text-text-label"
+                  style={{ fontSize: '10px', lineHeight: '16px' }}
+                >
+                  {t('update.new-version-available')}
+                </p>
+                <p
+                  className="mt-0.5 text-text-disabled"
+                  style={{ fontSize: '10px', lineHeight: '16px' }}
+                >
+                  v{info.version} → v{info.newVersion}
+                </p>
+                <button
+                  className="mt-2 w-full rounded-md bg-fill-fill-primary px-3 py-1.5 font-medium text-text-on-action transition-colors hover:bg-fill-fill-primary-hover"
+                  style={{ fontSize: '10px' }}
+                  onClick={() => {
+                    setIsDownloading(true);
+                    setDownloadProgress(0);
+                    window.ipcRenderer.invoke('start-download');
+                    toast.dismiss(toastId);
+                  }}
+                >
+                  {t('update.download')}
+                </button>
+              </div>
+            </UpdateToastShell>
+          ),
+          { id: 'update-available', duration: Infinity }
+        );
       }
     },
     [t]
@@ -58,7 +117,6 @@ const Update = () => {
 
   const onDownloadProgress = useCallback(
     (_event: Electron.IpcRendererEvent, progress: ProgressInfo) => {
-      console.log('Download progress received:', progress);
       setDownloadProgress(progress.percent ?? 0);
     },
     []
@@ -68,37 +126,68 @@ const Update = () => {
   useEffect(() => {
     if (isDownloading) {
       toast.custom(
-        (_toastId) => (
-          <div className="w-[300px] rounded-lg bg-white-100% p-4 shadow-lg">
-            <div className="mb-2 text-sm font-medium">
-              {t('update.downloading-update')}
+        (toastId) => (
+          <UpdateToastShell
+            toastId={toastId}
+            onClose={() => {
+              setIsDownloading(false);
+            }}
+          >
+            <div
+              className="flex cursor-pointer items-center gap-1 px-3 py-1.5"
+              onClick={() => {
+                setIsDownloading(false);
+                toast.dismiss(toastId);
+              }}
+            >
+              <span
+                className="font-medium text-text-label"
+                style={{ fontSize: '10px', lineHeight: '16px' }}
+              >
+                {t('update.downloading-in-progress')}
+              </span>
+              <span
+                className="font-medium text-text-primary"
+                style={{ fontSize: '10px', lineHeight: '16px' }}
+              >
+                {t('update.click-to-stop')}
+              </span>
             </div>
-            <Progress value={downloadProgress} className="mb-2" />
-            <div className="text-xs text-gray-500">
-              {Math.round(downloadProgress)}% {t('update.complete')}
-            </div>
-          </div>
+            <Progress value={downloadProgress} className="h-1 rounded-none" />
+          </UpdateToastShell>
         ),
-        {
-          id: 'download-progress',
-          duration: Infinity,
-        }
+        { id: 'download-progress', duration: Infinity }
       );
     }
   }, [downloadProgress, isDownloading, t]);
 
   const onUpdateDownloaded = useCallback(
     (_event: Electron.IpcRendererEvent) => {
-      toast.dismiss('download-progress');
       setIsDownloading(false);
-      toast.success(t('update.download-completed'), {
-        description: t('update.click-to-install-update'),
-        action: {
-          label: t('update.install'),
-          onClick: () => window.ipcRenderer.invoke('quit-and-install'),
-        },
-        duration: Infinity,
-      });
+      toast.dismiss('download-progress');
+
+      toast.custom(
+        (toastId) => (
+          <UpdateToastShell toastId={toastId}>
+            <div className="flex items-center gap-1 px-3 py-1.5">
+              <span
+                className="font-medium text-text-label"
+                style={{ fontSize: '10px', lineHeight: '16px' }}
+              >
+                {t('update.ready-to-install')}
+              </span>
+              <span
+                className="cursor-pointer font-medium text-text-primary decoration-text-label hover:decoration-text-primary"
+                style={{ fontSize: '10px', lineHeight: '16px' }}
+                onClick={() => window.ipcRenderer.invoke('quit-and-install')}
+              >
+                {t('update.click-to-restart')}
+              </span>
+            </div>
+          </UpdateToastShell>
+        ),
+        { id: 'update-downloaded', duration: Infinity }
+      );
     },
     [t]
   );
