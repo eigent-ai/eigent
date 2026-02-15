@@ -242,7 +242,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.85a0" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.90a1" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -285,7 +285,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.85a0"
+version = "0.2.90a1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -299,12 +299,13 @@ dependencies = [
     { name = "pillow" },
     { name = "psutil" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/ab/7d305f80e868a60c7097ab510063a171e1798d163b5f8fd7fe7c16553e13/camel_ai-0.2.85a0.tar.gz", hash = "sha256:432de9bac1e40bd4ebf434ca80eaf3993121f87924820e26ad2bad69c1fb5cf5", size = 1126159, upload-time = "2026-01-23T02:24:08.868Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/cc/78345177dfffd532f21889bb4794f197e21ca79451a27243f0240db04840/camel_ai-0.2.90a1.tar.gz", hash = "sha256:0a84a7991a8679a83dcf1c6124d0a5ae953282526cf5a04a07bec8b7338436eb", size = 1156184, upload-time = "2026-02-12T22:32:31.727Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/0c/35d73b5d648413844bdfeaf95172a6b7c19802150829f5f907753a773d19/camel_ai-0.2.85a0-py3-none-any.whl", hash = "sha256:6045e9af72fee918ca3acc92f3b4af8af084af7b0cf6435c01a1252bd04ae6b3", size = 1599866, upload-time = "2026-01-23T02:24:06.78Z" },
+    { url = "https://files.pythonhosted.org/packages/05/2c/926157452c27d1f93640a2293a7a0193212cdb4d1d34f62b98c4392491ce/camel_ai-0.2.90a1-py3-none-any.whl", hash = "sha256:2764de542c165d57b35836999500aeb2ba148077d494a168009fb7a4ddc64ca3", size = 1632784, upload-time = "2026-02-12T22:32:29.704Z" },
 ]
 
 [package.optional-dependencies]

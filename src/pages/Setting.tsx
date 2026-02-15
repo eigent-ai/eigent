@@ -14,7 +14,6 @@
 
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
-import versionLogo from '@/assets/version-logo.png';
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Navigation';
@@ -34,7 +33,7 @@ export default function Setting() {
   const version = useAppVersion();
   const { appearance } = useAuthStore();
   const { t } = useTranslation();
-  const _logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
+  const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
   // Setting menu configuration
   const settingMenus = [
     {
@@ -122,7 +121,7 @@ export default function Setting() {
               }
               className="flex cursor-pointer items-center bg-transparent transition-opacity duration-200 hover:opacity-60"
             >
-              <img src={versionLogo} alt="version-logo" className="h-5" />
+              <img src={logoSrc} alt="version-logo" className="h-5" />
             </button>
           </div>
         </div>
