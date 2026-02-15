@@ -1,5 +1,19 @@
 /* Import GitHub markdown styles */
 @import 'github-markdown-css/github-markdown.css';
+
+/* Scope theme tokens to .markdown-body only so the library does not affect app layout/typography.
+   The library sets color-scheme and variables on [data-theme], which would leak to the whole app. */
+[data-theme='dark'],
+[data-theme='light'] {
+  color-scheme: unset;
+}
+[data-theme='dark'] .markdown-body {
+  color-scheme: dark;
+}
+[data-theme='light'] .markdown-body {
+  color-scheme: light;
+}
+
 /* Custom overrides for better integration */
 .markdown-body {
   box-sizing: border-box;
