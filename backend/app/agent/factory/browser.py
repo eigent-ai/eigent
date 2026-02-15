@@ -26,6 +26,7 @@ from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
@@ -96,6 +97,14 @@ def browser_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id, working_directory=working_directory
+    )
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit
+    )
 
     search_tools = SearchToolkit.get_can_use_tools(options.project_id)
     if search_tools:
@@ -110,6 +119,7 @@ def browser_agent(options: Chat):
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,
         *note_toolkit.get_tools(),
+        *screenshot_toolkit.get_tools(),
         *search_tools,
     ]
 
@@ -135,7 +145,11 @@ def browser_agent(options: Chat):
             HumanToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
         ],
-        toolkits_to_register_agent=[web_toolkit_for_agent_registration],
+        toolkits_to_register_agent=[
+            web_toolkit_for_agent_registration,
+            screenshot_toolkit_for_agent_registration,
+        ],
         enable_snapshot_clean=True,
     )

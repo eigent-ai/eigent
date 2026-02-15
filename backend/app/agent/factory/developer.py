@@ -57,6 +57,8 @@ async def developer_agent(options: Chat):
     screenshot_toolkit = ScreenshotToolkit(
         options.project_id, working_directory=working_directory
     )
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
     screenshot_toolkit = message_integration.register_toolkits(
         screenshot_toolkit
     )
@@ -99,5 +101,9 @@ async def developer_agent(options: Chat):
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             WebDeployToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
+        ],
+        toolkits_to_register_agent=[
+            screenshot_toolkit_for_agent_registration,
         ],
     )
