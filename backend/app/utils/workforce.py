@@ -952,9 +952,7 @@ class Workforce(BaseWorkforce):
                 # Cleanup agents in AgentPool
                 if hasattr(child, "agent_pool") and child.agent_pool:
                     pool = child.agent_pool
-                    for agent in list(
-                        getattr(pool, "_available_agents", [])
-                    ):
+                    for agent in list(getattr(pool, "_available_agents", [])):
                         cb = getattr(agent, "_cdp_release_callback", None)
                         if callable(cb):
                             try:

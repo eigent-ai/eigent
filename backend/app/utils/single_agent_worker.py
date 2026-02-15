@@ -87,8 +87,14 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 `TaskState.FAILED`.
         """
         # Log task details before getting agent (for clone tracking)
-        task_content_preview = task.content[:100] + "..." if len(task.content) > 100 else task.content
-        logger.info(f"[TASK REQUEST] Requesting agent for task_id={task.id}, content_preview='{task_content_preview}'")
+        task_content_preview = (
+            task.content[:100] + "..."
+            if len(task.content) > 100
+            else task.content
+        )
+        logger.info(
+            f"[TASK REQUEST] Requesting agent for task_id={task.id}, content_preview='{task_content_preview}'"
+        )
 
         # Get agent efficiently (from pool or by cloning)
         worker_agent = await self._get_worker_agent()

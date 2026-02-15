@@ -171,7 +171,9 @@ def _log_deactivate(
     )
 
 
-def _filter_kwargs_for_callable(func: Callable[..., Any], kwargs: dict) -> dict:
+def _filter_kwargs_for_callable(
+    func: Callable[..., Any], kwargs: dict
+) -> dict:
     """Drop unexpected kwargs unless the callable accepts **kwargs."""
     if not kwargs:
         return kwargs
@@ -179,7 +181,9 @@ def _filter_kwargs_for_callable(func: Callable[..., Any], kwargs: dict) -> dict:
         sig = signature(func)
     except (TypeError, ValueError):
         return kwargs
-    if any(param.kind == param.VAR_KEYWORD for param in sig.parameters.values()):
+    if any(
+        param.kind == param.VAR_KEYWORD for param in sig.parameters.values()
+    ):
         return kwargs
     allowed = set(sig.parameters.keys())
     return {k: v for k, v in kwargs.items() if k in allowed}

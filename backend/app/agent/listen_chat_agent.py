@@ -737,9 +737,7 @@ class ListenChatAgent(ChatAgent):
 
         # Restore original CDP URL in parent toolkit
         if new_cdp_port is not None and hasattr(self, "_browser_toolkit"):
-            self._browser_toolkit.config_loader.get_browser_config().cdp_url = (
-                original_cdp_url
-            )
+            self._browser_toolkit.config_loader.get_browser_config().cdp_url = original_cdp_url
 
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
