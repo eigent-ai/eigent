@@ -1,12 +1,27 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import logging
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from app.component.model_validation import create_agent
-from camel.types import ModelType
+from pydantic import BaseModel, Field, field_validator
+
 from app.component.error_format import normalize_error_to_openai_format
-from utils import traceroot_wrapper as traceroot
+from app.component.model_validation import create_agent
+from app.model.chat import PLATFORM_MAPPING
 
-logger = traceroot.get_logger("model_controller")
-
+logger = logging.getLogger("model_controller")
 
 router = APIRouter()
 
@@ -16,8 +31,17 @@ class ValidateModelRequest(BaseModel):
     model_type: str = Field("GPT_4O_MINI", description="Model type")
     api_key: str | None = Field(None, description="API key")
     url: str | None = Field(None, description="Model URL")
-    model_config_dict: dict | None = Field(None, description="Model config dict")
-    extra_params: dict | None = Field(None, description="Extra model parameters")
+    model_config_dict: dict | None = Field(
+        None, description="Model config dict"
+    )
+    extra_params: dict | None = Field(
+        None, description="Extra model parameters"
+    )
+
+    @field_validator("model_platform")
+    @classmethod
+    def map_model_platform(cls, v: str) -> str:
+        return PLATFORM_MAPPING.get(v, v)
 
 
 class ValidateModelResponse(BaseModel):
@@ -29,7 +53,6 @@ class ValidateModelResponse(BaseModel):
 
 
 @router.post("/model/validate")
-@traceroot.trace()
 async def validate_model(request: ValidateModelRequest):
     """Validate model configuration and tool call support."""
     platform = request.model_platform
@@ -37,11 +60,22 @@ async def validate_model(request: ValidateModelRequest):
     has_custom_url = request.url is not None
     has_config = request.model_config_dict is not None
 
-    logger.info("Model validation started", extra={"platform": platform, "model_type": model_type, "has_url": has_custom_url, "has_config": has_config})
+    logger.info(
+        "Model validation started",
+        extra={
+            "platform": platform,
+            "model_type": model_type,
+            "has_url": has_custom_url,
+            "has_config": has_config,
+        },
+    )
 
     # API key validation
     if request.api_key is not None and str(request.api_key).strip() == "":
-        logger.warning("Model validation failed: empty API key", extra={"platform": platform, "model_type": model_type})
+        logger.warning(
+            "Model validation failed: empty API key",
+            extra={"platform": platform, "model_type": model_type},
+        )
         raise HTTPException(
             status_code=400,
             detail={
@@ -52,13 +86,16 @@ async def validate_model(request: ValidateModelRequest):
                     "param": None,
                     "code": "invalid_api_key",
                 },
-            }
+            },
         )
 
     try:
         extra = request.extra_params or {}
 
-        logger.debug("Creating agent for validation", extra={"platform": platform, "model_type": model_type})
+        logger.debug(
+            "Creating agent for validation",
+            extra={"platform": platform, "model_type": model_type},
+        )
         agent = create_agent(
             platform,
             model_type,
@@ -68,7 +105,10 @@ async def validate_model(request: ValidateModelRequest):
             **extra,
         )
 
-        logger.debug("Agent created, executing test step", extra={"platform": platform, "model_type": model_type})
+        logger.debug(
+            "Agent created, executing test step",
+            extra={"platform": platform, "model_type": model_type},
+        )
         response = agent.step(
             input_message="""
             Get the content of https://www.camel-ai.org,
@@ -78,10 +118,17 @@ async def validate_model(request: ValidateModelRequest):
             """
         )
 
-
     except Exception as e:
         # Normalize error to OpenAI-style error structure
-        logger.error("Model validation failed", extra={"platform": platform, "model_type": model_type, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Model validation failed",
+            extra={
+                "platform": platform,
+                "model_type": model_type,
+                "error": str(e),
+            },
+            exc_info=True,
+        )
         message, error_code, error_obj = normalize_error_to_openai_format(e)
 
         raise HTTPException(
@@ -90,9 +137,9 @@ async def validate_model(request: ValidateModelRequest):
                 "message": message,
                 "error_code": error_code,
                 "error": error_obj,
-            }
+            },
         )
-    
+
     # Check validation results
     is_valid = bool(response)
     is_tool_calls = False
@@ -100,21 +147,34 @@ async def validate_model(request: ValidateModelRequest):
     if response and hasattr(response, "info") and response.info:
         tool_calls = response.info.get("tool_calls", [])
         if tool_calls and len(tool_calls) > 0:
-            is_tool_calls = (
-                tool_calls[0].result
-                == "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+            expected = (
+                "Tool execution completed"
+                " successfully for"
+                " https://www.camel-ai.org,"
+                " Website Content:"
+                " Welcome to CAMEL AI!"
             )
+            is_tool_calls = tool_calls[0].result == expected
 
+    no_tool_msg = (
+        "This model doesn't support tool calls. please try with another model."
+    )
     result = ValidateModelResponse(
         is_valid=is_valid,
         is_tool_calls=is_tool_calls,
-        message="Validation Success"
-        if is_tool_calls
-        else "This model doesn't support tool calls. please try with another model.",
+        message="Validation Success" if is_tool_calls else no_tool_msg,
         error_code=None,
         error=None,
     )
 
-    logger.info("Model validation completed", extra={"platform": platform, "model_type": model_type, "is_valid": is_valid, "is_tool_calls": is_tool_calls})
+    logger.info(
+        "Model validation completed",
+        extra={
+            "platform": platform,
+            "model_type": model_type,
+            "is_valid": is_valid,
+            "is_tool_calls": is_tool_calls,
+        },
+    )
 
     return result

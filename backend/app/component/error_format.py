@@ -1,8 +1,24 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import json
 import re
 
 
-def normalize_error_to_openai_format(exception: Exception) -> tuple[str, str | None, dict | None]:
+def normalize_error_to_openai_format(
+    exception: Exception,
+) -> tuple[str, str | None, dict | None]:
     """
     Normalize error to OpenAI-style error structure.
 
@@ -41,7 +57,12 @@ def normalize_error_to_openai_format(exception: Exception) -> tuple[str, str | N
     # Heuristics if not parsed
     if error_obj is None:
         lower = raw_msg.lower()
-        if "invalid_api_key" in lower or "incorrect api key" in lower or "unauthorized" in lower or " 401" in lower:
+        if (
+            "invalid_api_key" in lower
+            or "incorrect api key" in lower
+            or "unauthorized" in lower
+            or " 401" in lower
+        ):
             error_code = "invalid_api_key"
             message = "Invalid key. Validation failed."
             error_obj = {
@@ -50,7 +71,11 @@ def normalize_error_to_openai_format(exception: Exception) -> tuple[str, str | N
                 "param": None,
                 "code": "invalid_api_key",
             }
-        elif "model_not_found" in lower or "does not exist" in lower or " 404" in lower:
+        elif (
+            "model_not_found" in lower
+            or "does not exist" in lower
+            or " 404" in lower
+        ):
             error_code = "model_not_found"
             message = "Invalid model name. Validation failed."
             error_obj = {
@@ -59,9 +84,16 @@ def normalize_error_to_openai_format(exception: Exception) -> tuple[str, str | N
                 "param": None,
                 "code": "model_not_found",
             }
-        elif "insufficient_quota" in lower or "quota" in lower or " 429" in lower:
+        elif (
+            "insufficient_quota" in lower
+            or "quota" in lower
+            or " 429" in lower
+        ):
             error_code = "insufficient_quota"
-            message = "You exceeded your current quota, please check your plan and billing details."
+            message = (
+                "You exceeded your current quota, "
+                "please check your plan and billing details."
+            )
             error_obj = {
                 "message": message,
                 "type": "insufficient_quota",

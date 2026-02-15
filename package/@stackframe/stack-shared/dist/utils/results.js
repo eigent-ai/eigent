@@ -125,7 +125,7 @@ var RetryError = class extends AggregateError {
       errors,
       import_strings.deindent`
       Error after ${errors.length} attempts.
-      
+
       ${isAllSame ? import_strings.deindent`
         Attempts 1-${errors.length}:
           ${strings[0]}

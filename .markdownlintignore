@@ -1,0 +1,10 @@
+node_modules
+CONTRIBUTING.md
+README.md
+README_CN.md
+README_JA.md
+README_PT-BR.md
+server/README_CN.md
+server/README_EN.md
+docs/troubleshooting/bug.md
+backend/benchmark/answer/

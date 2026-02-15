@@ -1,44 +1,49 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import os
-import sys
 import pathlib
+import sys
 
 # Add project root to Python path to import shared utils
 _project_root = pathlib.Path(__file__).parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from utils import traceroot_wrapper as traceroot
-from app import api
-from app.component.environment import auto_include_routers, env
-from fastapi.staticfiles import StaticFiles
+import logging
 
-# Import middleware to register BabelMiddleware
-import app.middleware  # noqa: F401
+from fastapi.staticfiles import StaticFiles
 
 # Import exception handlers to register them
 import app.exception.handler  # noqa: F401
 
-# Only initialize traceroot if enabled
-if traceroot.is_enabled():
-    from traceroot.integrations.fastapi import connect_fastapi
+# Import middleware to register BabelMiddleware
+import app.middleware  # noqa: F401
+from app import api
+from app.component.environment import auto_include_routers, env
 
-    connect_fastapi(api)
-
-logger = traceroot.get_logger("server_main")
+logger = logging.getLogger("server_main")
 
 prefix = env("url_prefix", "")
 auto_include_routers(api, prefix, "app/controller")
-public_dir = os.environ.get("PUBLIC_DIR") or os.path.join(
-    os.path.dirname(__file__), "app", "public"
-)
+public_dir = os.environ.get("PUBLIC_DIR") or os.path.join(os.path.dirname(__file__), "app", "public")
 if not os.path.isdir(public_dir):
     try:
         os.makedirs(public_dir, exist_ok=True)
         logger.warning(f"Public directory did not exist. Created: {public_dir}")
     except Exception as e:
-        logger.error(
-            f"Public directory missing and could not be created: {public_dir}. Error: {e}"
-        )
+        logger.error(f"Public directory missing and could not be created: {public_dir}. Error: {e}")
         public_dir = None
 
 if public_dir and os.path.isdir(public_dir):

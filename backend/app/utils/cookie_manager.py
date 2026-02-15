@@ -1,11 +1,25 @@
-import sqlite3
-import os
-from typing import List, Dict, Optional
-from utils import traceroot_wrapper as traceroot
-import shutil
-from datetime import datetime
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-logger = traceroot.get_logger("cookie_manager")
+import logging
+import os
+import shutil
+import sqlite3
+from datetime import datetime
+from typing import Any
+
+logger = logging.getLogger("cookie_manager")
 
 
 class CookieManager:
@@ -16,11 +30,15 @@ class CookieManager:
         self.user_data_dir = user_data_dir
 
         # Check for cookies in partition directory first (for persist:user_login)
-        partition_cookies_path = os.path.join(user_data_dir, "Partitions", "user_login", "Cookies")
+        partition_cookies_path = os.path.join(
+            user_data_dir, "Partitions", "user_login", "Cookies"
+        )
 
         if os.path.exists(partition_cookies_path):
             self.cookies_db_path = partition_cookies_path
-            logger.info(f"Using partition cookies at: {partition_cookies_path}")
+            logger.info(
+                f"Using partition cookies at: {partition_cookies_path}"
+            )
         else:
             # Fallback to default location
             self.cookies_db_path = os.path.join(user_data_dir, "Cookies")
@@ -30,22 +48,37 @@ class CookieManager:
                 if os.path.exists(alt_path):
                     self.cookies_db_path = alt_path
                 else:
-                    logger.warning(f"Cookies database not found at {self.cookies_db_path} or {partition_cookies_path}")
+                    logger.warning(
+                        f"Cookies database not found at {self.cookies_db_path} or {partition_cookies_path}"
+                    )
 
-    def _get_cookies_connection(self) -> Optional[sqlite3.Connection]:
+    def _get_cookies_connection(self) -> sqlite3.Connection | None:
         """Get database connection using a temporary copy to avoid locks"""
         if not os.path.exists(self.cookies_db_path):
-            logger.warning(f"Cookies database not found: {self.cookies_db_path}")
+            logger.warning(
+                f"Cookies database not found: {self.cookies_db_path}"
+            )
             return None
 
+        temp_db_path = self.cookies_db_path + ".tmp"
+        conn = None
         try:
-            temp_db_path = self.cookies_db_path + ".tmp"
             shutil.copy2(self.cookies_db_path, temp_db_path)
             conn = sqlite3.connect(temp_db_path)
             conn.row_factory = sqlite3.Row
             return conn
         except Exception as e:
             logger.error(f"Error connecting to cookies database: {e}")
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            try:
+                if os.path.exists(temp_db_path):
+                    os.remove(temp_db_path)
+            except OSError:
+                pass
             return None
 
     def _cleanup_temp_db(self):
@@ -57,7 +90,7 @@ class CookieManager:
         except Exception as e:
             logger.debug(f"Error cleaning up temp database: {e}")
 
-    def get_cookie_domains(self) -> List[Dict[str, any]]:
+    def get_cookie_domains(self) -> list[dict[str, Any]]:
         """Get list of all domains with cookies"""
         conn = self._get_cookies_connection()
         if not conn:
@@ -80,21 +113,27 @@ class CookieManager:
             domains = []
             for row in rows:
                 try:
-                    chrome_timestamp = row['last_access']
+                    chrome_timestamp = row["last_access"]
                     if chrome_timestamp:
-                        seconds_since_epoch = (chrome_timestamp / 1000000.0) - 11644473600
-                        last_access = datetime.fromtimestamp(seconds_since_epoch).strftime('%Y-%m-%d %H:%M:%S')
+                        seconds_since_epoch = (
+                            chrome_timestamp / 1000000.0
+                        ) - 11644473600
+                        last_access = datetime.fromtimestamp(
+                            seconds_since_epoch
+                        ).strftime("%Y-%m-%d %H:%M:%S")
                     else:
                         last_access = "Never"
                 except Exception as e:
                     logger.debug(f"Error converting timestamp: {e}")
                     last_access = "Unknown"
 
-                domains.append({
-                    'domain': row['domain'],
-                    'cookie_count': row['cookie_count'],
-                    'last_access': last_access
-                })
+                domains.append(
+                    {
+                        "domain": row["domain"],
+                        "cookie_count": row["cookie_count"],
+                        "last_access": last_access,
+                    }
+                )
 
             logger.info(f"Found {len(domains)} domains with cookies")
             return domains
@@ -106,7 +145,7 @@ class CookieManager:
             conn.close()
             self._cleanup_temp_db()
 
-    def get_cookies_for_domain(self, domain: str) -> List[Dict[str, str]]:
+    def get_cookies_for_domain(self, domain: str) -> list[dict[str, str]]:
         """Get all cookies for a specific domain"""
         conn = self._get_cookies_connection()
         if not conn:
@@ -127,19 +166,28 @@ class CookieManager:
                 WHERE host_key = ? OR host_key LIKE ?
                 ORDER BY name
             """
-            cursor.execute(query, (domain, f'%.{domain}'))
+            cursor.execute(query, (domain, f"%.{domain}"))
             rows = cursor.fetchall()
 
             cookies = []
             for row in rows:
-                cookies.append({
-                    'domain': row['host_key'],
-                    'name': row['name'],
-                    'value': row['value'][:50] + '...' if len(row['value']) > 50 else row['value'],
-                    'path': row['path'],
-                    'secure': bool(row['is_secure']),
-                    'httponly': bool(row['is_httponly'])
-                })
+                raw_value = row["value"]
+                if raw_value is None:
+                    value_str = ""
+                elif len(raw_value) > 50:
+                    value_str = raw_value[:50] + "..."
+                else:
+                    value_str = raw_value
+                cookies.append(
+                    {
+                        "domain": row["host_key"],
+                        "name": row["name"],
+                        "value": value_str,
+                        "path": row["path"],
+                        "secure": bool(row["is_secure"]),
+                        "httponly": bool(row["is_httponly"]),
+                    }
+                )
 
             return cookies
 
@@ -153,7 +201,9 @@ class CookieManager:
     def delete_cookies_for_domain(self, domain: str) -> bool:
         """Delete all cookies for a specific domain"""
         if not os.path.exists(self.cookies_db_path):
-            logger.warning(f"Cookies database not found: {self.cookies_db_path}")
+            logger.warning(
+                f"Cookies database not found: {self.cookies_db_path}"
+            )
             return False
 
         try:
@@ -163,7 +213,7 @@ class CookieManager:
                 DELETE FROM cookies
                 WHERE host_key = ? OR host_key LIKE ?
             """
-            cursor.execute(delete_query, (domain, f'%.{domain}'))
+            cursor.execute(delete_query, (domain, f"%.{domain}"))
             deleted_count = cursor.rowcount
             conn.commit()
 
@@ -186,9 +236,9 @@ class CookieManager:
     def _cleanup_wal_files(self):
         """Remove SQLite WAL and SHM files"""
         try:
-            wal_path = self.cookies_db_path + '-wal'
-            shm_path = self.cookies_db_path + '-shm'
-            journal_path = self.cookies_db_path + '-journal'
+            wal_path = self.cookies_db_path + "-wal"
+            shm_path = self.cookies_db_path + "-shm"
+            journal_path = self.cookies_db_path + "-journal"
 
             for path in [wal_path, shm_path, journal_path]:
                 if os.path.exists(path):
@@ -200,7 +250,9 @@ class CookieManager:
     def delete_all_cookies(self) -> bool:
         """Delete all cookies"""
         if not os.path.exists(self.cookies_db_path):
-            logger.warning(f"Cookies database not found: {self.cookies_db_path}")
+            logger.warning(
+                f"Cookies database not found: {self.cookies_db_path}"
+            )
             return False
 
         try:
@@ -226,11 +278,12 @@ class CookieManager:
             logger.error(f"Error deleting all cookies: {e}")
             return False
 
-    def search_cookies(self, keyword: str) -> List[Dict[str, any]]:
+    def search_cookies(self, keyword: str) -> list[dict[str, Any]]:
         """Search cookies by domain keyword"""
         domains = self.get_cookie_domains()
         keyword_lower = keyword.lower()
         return [
-            domain for domain in domains
-            if keyword_lower in domain['domain'].lower()
+            domain
+            for domain in domains
+            if keyword_lower in (domain["domain"] or "").lower()
         ]

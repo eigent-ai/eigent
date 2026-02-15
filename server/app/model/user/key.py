@@ -1,8 +1,23 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from enum import IntEnum, StrEnum
-from typing import Optional
+
 from pydantic import BaseModel, computed_field
-from sqlmodel import Field, Column, SmallInteger
 from sqlalchemy_utils import ChoiceType
+from sqlmodel import Column, Field, SmallInteger
+
 from app.component.environment import env_not_empty
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
@@ -10,9 +25,8 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 class ModelType(StrEnum):
     gpt4_1 = "gpt-4.1"
     gpt4_mini = "gpt-4.1-mini"
-    gemini_2_5_pro = "gemini/gemini-2.5-pro"
-    gemini_2_5_flash = "gemini-2.5-flash"
     gemini_3_pro = "gemini-3-pro-preview"
+    minimax_m2_5 = "minimax_m2_5"
 
 
 class KeyStatus(IntEnum):
@@ -29,8 +43,8 @@ class Key(AbstractModel, DefaultTimes, table=True):
 
 
 class KeyOut(BaseModel):
-    warning_code: Optional[str] = None
-    warning_text: Optional[str] = None
+    warning_code: str | None = None
+    warning_text: str | None = None
     value: str
 
     @computed_field(return_type=str)

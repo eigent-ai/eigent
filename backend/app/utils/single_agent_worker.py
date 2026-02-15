@@ -1,16 +1,33 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import datetime
+import logging
+
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
-from camel.societies.workforce.single_agent_worker import SingleAgentWorker as BaseSingleAgentWorker
-from camel.tasks.task import Task, TaskState, is_task_result_insufficient
-from utils import traceroot_wrapper as traceroot
-
-from app.utils.agent import ListenChatAgent
 from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
-from colorama import Fore
+from camel.societies.workforce.single_agent_worker import (
+    SingleAgentWorker as BaseSingleAgentWorker,
+)
 from camel.societies.workforce.utils import TaskResult
+from camel.tasks.task import Task, TaskState, is_task_result_insufficient
 from camel.utils.context_utils import ContextUtility
+from colorama import Fore
 
-logger = traceroot.get_logger("single_agent_worker")
+from app.agent.listen_chat_agent import ListenChatAgent
+
+logger = logging.getLogger("single_agent_worker")
 
 
 class SingleAgentWorker(BaseSingleAgentWorker):
@@ -26,13 +43,16 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         context_utility: ContextUtility | None = None,
         enable_workflow_memory: bool = False,
     ) -> None:
-        logger.info("Initializing SingleAgentWorker", extra={
-            "description": description,
-            "worker_agent_name": worker.agent_name,
-            "use_agent_pool": use_agent_pool,
-            "pool_max_size": pool_max_size,
-            "enable_workflow_memory": enable_workflow_memory
-        })
+        logger.info(
+            "Initializing SingleAgentWorker",
+            extra={
+                "description": description,
+                "worker_agent_name": worker.agent_name,
+                "use_agent_pool": use_agent_pool,
+                "pool_max_size": pool_max_size,
+                "enable_workflow_memory": enable_workflow_memory,
+            },
+        )
         super().__init__(
             description=description,
             worker=worker,
@@ -46,7 +66,9 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         )
         self.worker = worker  # change type hint
 
-    async def _process_task(self, task: Task, dependencies: list[Task]) -> TaskState:
+    async def _process_task(
+        self, task: Task, dependencies: list[Task]
+    ) -> TaskState:
         r"""Processes a task with its dependencies using an efficient agent
         management system.
 
@@ -72,12 +94,14 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         worker_agent = await self._get_worker_agent()
         worker_agent.process_task_id = task.id  # type: ignore  rewrite line
 
-        logger.info("Starting task processing", extra={
-            "task_id": task.id,
-            "worker_agent_id": worker_agent.agent_id,
-            "dependencies_count": len(dependencies),
-            "task_content_preview": task_content_preview
-        })
+        logger.info(
+            "Starting task processing",
+            extra={
+                "task_id": task.id,
+                "worker_agent_id": worker_agent.agent_id,
+                "dependencies_count": len(dependencies),
+            },
+        )
 
         response_content = ""
         final_response = None
@@ -111,38 +135,61 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 if isinstance(response, AsyncStreamingChatAgentResponse):
                     # With stream_accumulate=False, we need to accumulate delta content
                     accumulated_content = ""
+                    last_chunk = None
+                    chunk_count = 0
                     async for chunk in response:
+                        chunk_count += 1
+                        last_chunk = chunk
                         if chunk.msg and chunk.msg.content:
                             accumulated_content += chunk.msg.content
+                    logger.info(
+                        f"Streaming complete: {chunk_count} chunks, content_length={len(accumulated_content)}"
+                    )
                     response_content = accumulated_content
+                    # Store usage info from last chunk for later use
+                    response._last_chunk_info = (
+                        last_chunk.info if last_chunk else {}
+                    )
                 else:
                     # Regular ChatAgentResponse
-                    response_content = response.msg.content if response.msg else ""
+                    response_content = (
+                        response.msg.content if response.msg else ""
+                    )
 
-                task_result = self.structured_handler.parse_structured_response(
-                    response_text=response_content,
-                    schema=TaskResult,
-                    fallback_values={
-                        "content": "Task processing failed",
-                        "failed": True,
-                    },
+                task_result = (
+                    self.structured_handler.parse_structured_response(
+                        response_text=response_content,
+                        schema=TaskResult,
+                        fallback_values={
+                            "content": "Task processing failed",
+                            "failed": True,
+                        },
+                    )
                 )
             else:
                 # Use native structured output if supported
-                response = await worker_agent.astep(prompt, response_format=TaskResult)
+                response = await worker_agent.astep(
+                    prompt, response_format=TaskResult
+                )
 
-                # Handle streaming response for native output
+                # Handle streaming response for native output (shouldn't happen now but keep for safety)
                 if isinstance(response, AsyncStreamingChatAgentResponse):
                     task_result = None
                     # With stream_accumulate=False, we need to accumulate delta content
                     accumulated_content = ""
+                    last_chunk = None
                     async for chunk in response:
+                        last_chunk = chunk
                         if chunk.msg:
                             if chunk.msg.content:
                                 accumulated_content += chunk.msg.content
                             if chunk.msg.parsed:
                                 task_result = chunk.msg.parsed
                     response_content = accumulated_content
+                    # Store usage info from last chunk for later use
+                    response._last_chunk_info = (
+                        last_chunk.info if last_chunk else {}
+                    )
                     # If no parsed result found in streaming, create fallback
                     if task_result is None:
                         task_result = TaskResult(
@@ -152,16 +199,24 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                 else:
                     # Regular ChatAgentResponse
                     task_result = response.msg.parsed
-                    response_content = response.msg.content if response.msg else ""
+                    response_content = (
+                        response.msg.content if response.msg else ""
+                    )
 
             # Get token usage from the response
             if isinstance(response, AsyncStreamingChatAgentResponse):
-                # For streaming responses, get the final response info
-                final_response = await response
-                usage_info = final_response.info.get("usage") or final_response.info.get("token_usage")
+                # For streaming responses, get info from last chunk captured during iteration
+                chunk_info = getattr(response, "_last_chunk_info", {})
+                usage_info = chunk_info.get("usage") or chunk_info.get(
+                    "token_usage"
+                )
             else:
-                usage_info = response.info.get("usage") or response.info.get("token_usage")
-            total_tokens = usage_info.get("total_tokens", 0) if usage_info else 0
+                usage_info = response.info.get("usage") or response.info.get(
+                    "token_usage"
+                )
+            total_tokens = (
+                usage_info.get("total_tokens", 0) if usage_info else 0
+            )
 
             # collect conversation from working agent to
             # accumulator for workflow memory
@@ -175,16 +230,24 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                     work_records = worker_agent.memory.retrieve()
 
                     # write these records to the accumulator's memory
-                    memory_records = [record.memory_record for record in work_records]
+                    memory_records = [
+                        record.memory_record for record in work_records
+                    ]
                     accumulator.memory.write_records(memory_records)
 
-                    logger.debug(f"Transferred {len(memory_records)} memory records to accumulator")
+                    logger.debug(
+                        f"Transferred {len(memory_records)} memory records to accumulator"
+                    )
 
                 except Exception as e:
-                    logger.warning(f"Failed to transfer conversation to accumulator: {e}")
+                    logger.warning(
+                        f"Failed to transfer conversation to accumulator: {e}"
+                    )
 
         except Exception as e:
-            logger.error(f"Error processing task {task.id}: {type(e).__name__}: {e}")
+            logger.error(
+                f"Error processing task {task.id}: {type(e).__name__}: {e}"
+            )
             # Store error information in task result
             task.result = f"{type(e).__name__}: {e!s}"
             return TaskState.FAILED
@@ -198,10 +261,16 @@ class SingleAgentWorker(BaseSingleAgentWorker):
 
         # Create worker attempt details with descriptive keys
         # Use final_response if available (streaming), otherwise use response
-        response_for_info = final_response if final_response is not None else response
+        response_for_info = (
+            final_response if final_response is not None else response
+        )
         worker_attempt_details = {
-            "agent_id": getattr(worker_agent, "agent_id", worker_agent.role_name),
-            "original_worker_id": getattr(self.worker, "agent_id", self.worker.role_name),
+            "agent_id": getattr(
+                worker_agent, "agent_id", worker_agent.role_name
+            ),
+            "original_worker_id": getattr(
+                self.worker, "agent_id", self.worker.role_name
+            ),
             "timestamp": str(datetime.datetime.now()),
             "description": f"Attempt by "
             f"{getattr(worker_agent, 'agent_id', worker_agent.role_name)} "
@@ -209,7 +278,11 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             f"{getattr(self.worker, 'agent_id', self.worker.role_name)}) "
             f"to process task: {task.content}",
             "response_content": response_content[:50],
-            "tool_calls": str(response_for_info.info.get("tool_calls", []) if response_for_info and hasattr(response_for_info, 'info') else [])[:50],
+            "tool_calls": str(
+                response_for_info.info.get("tool_calls", [])
+                if response_for_info and hasattr(response_for_info, "info")
+                else []
+            )[:50],
             "total_tokens": total_tokens,
         }
 
@@ -228,8 +301,12 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         if not self.use_structured_output_handler:
             # Handle native structured output parsing
             if task_result is None:
-                logger.error("Error in worker step execution: Invalid task result")
-                print(f"{Fore.RED}Error in worker step execution: Invalid task result{Fore.RESET}")
+                logger.error(
+                    "Error in worker step execution: Invalid task result"
+                )
+                print(
+                    f"{Fore.RED}Error in worker step execution: Invalid task result{Fore.RESET}"
+                )
                 task_result = TaskResult(
                     content="Failed to generate valid task result.",
                     failed=True,
@@ -251,6 +328,8 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             return TaskState.FAILED
 
         if is_task_result_insufficient(task):
-            logger.warning(f"Task {task.id}: Content validation failed - task marked as failed")
+            logger.warning(
+                f"Task {task.id}: Content validation failed - task marked as failed"
+            )
             return TaskState.FAILED
         return TaskState.DONE

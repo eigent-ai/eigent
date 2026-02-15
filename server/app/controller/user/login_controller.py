@@ -1,6 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import logging
+
+from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi_babel import _
 from sqlmodel import Session
+
 from app.component import code
 from app.component.auth import Auth
 from app.component.database import session
@@ -10,24 +27,18 @@ from app.exception.exception import UserException
 from app.model.user.user import (
     LoginByPasswordIn,
     LoginResponse,
+    RegisterIn,
     Status,
     User,
-    RegisterIn,
 )
-from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
 
-logger = traceroot.get_logger("server_login_controller")
-
+logger = logging.getLogger("server_login_controller")
 
 router = APIRouter(tags=["Login/Registration"])
 
 
 @router.post("/login", name="login by email or password")
-@traceroot.trace()
-async def by_password(
-    data: LoginByPasswordIn, session: Session = Depends(session)
-) -> LoginResponse:
+async def by_password(data: LoginByPasswordIn, session: Session = Depends(session)) -> LoginResponse:
     """
     User login with email and password
     """
@@ -39,9 +50,7 @@ async def by_password(
         raise UserException(code.password, _("Account or password error"))
 
     if not password_verify(data.password, user.password):
-        logger.warning(
-            "Login failed: invalid password", extra={"user_id": user.id, "email": email}
-        )
+        logger.warning("Login failed: invalid password", extra={"user_id": user.id, "email": email})
         raise UserException(code.password, _("Account or password error"))
 
     logger.info("User login successful", extra={"user_id": user.id, "email": email})
@@ -49,7 +58,6 @@ async def by_password(
 
 
 @router.post("/dev_login", name="OAuth2 password flow login (for Swagger UI)")
-@traceroot.trace()
 async def dev_login(
     username: str = Form(...),  # OAuth2 uses 'username' but we accept email
     password: str = Form(...),
@@ -82,7 +90,6 @@ async def dev_login(
 
 
 @router.post("/login-by_stack", name="login by stack")
-@traceroot.trace()
 async def by_stack_auth(
     token: str,
     type: str = "signup",
@@ -93,9 +100,7 @@ async def by_stack_auth(
         stack_id = await StackAuth.user_id(token)
         info = await StackAuth.user_info(token)
     except Exception as e:
-        logger.error(
-            "Stack auth failed", extra={"type": type, "error": str(e)}, exc_info=True
-        )
+        logger.error("Stack auth failed", extra={"type": type, "error": str(e)}, exc_info=True)
         raise HTTPException(500, detail=_("Authentication failed"))
 
     user = User.by(User.stack_id == stack_id, s=session).one_or_none()
@@ -128,9 +133,7 @@ async def by_stack_auth(
                         "stack_id": stack_id,
                     },
                 )
-                return LoginResponse(
-                    token=Auth.create_access_token(user.id), email=user.email
-                )
+                return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
             except Exception as e:
                 s.rollback()
                 logger.error(
@@ -155,14 +158,11 @@ async def by_stack_auth(
 
 
 @router.post("/register", name="register by email/password")
-@traceroot.trace()
 async def register(data: RegisterIn, session: Session = Depends(session)):
     email = data.email
 
     if User.by(User.email == email, s=session).one_or_none():
-        logger.warning(
-            "Registration failed: email already exists", extra={"email": email}
-        )
+        logger.warning("Registration failed: email already exists", extra={"email": email})
         raise UserException(code.error, _("Email already registered"))
 
     with session as s:

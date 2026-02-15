@@ -1,54 +1,68 @@
-import * as React from "react";
-import * as TabsPrimitive from "@radix-ui/react-tabs";
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { cn } from "@/lib/utils";
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import * as React from 'react';
+
+import { cn } from '@/lib/utils';
 
 const Tabs = TabsPrimitive.Root;
 
 const TabsList = React.forwardRef<
-	React.ElementRef<typeof TabsPrimitive.List>,
-	React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
 >(({ className, ...props }, ref) => (
-	<TabsPrimitive.List
-		ref={ref}
-		className={cn(
-			"inline-flex items-center justify-center bg-muted p-1 text-muted-foreground bg-menutabs-bg-default rounded-xl border border-solid border-menutabs-border-default",
-			"data-[orientation=vertical]:flex data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full",
-			className
-		)}
-		{...props}
-	/>
+  <TabsPrimitive.List
+    ref={ref}
+    className={cn(
+      'bg-muted text-muted-foreground inline-flex items-center justify-center rounded-xl border border-solid border-menutabs-border-default bg-menutabs-bg-default p-1',
+      'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
+      className
+    )}
+    {...props}
+  />
 ));
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 const TabsTrigger = React.forwardRef<
-	React.ElementRef<typeof TabsPrimitive.Trigger>,
-	React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
 >(({ className, ...props }, ref) => (
-	<TabsPrimitive.Trigger
-		ref={ref}
-		className={cn(
-			"gap-1 inline-flex items-center justify-center whitespace-nowrap rounded-xl px-2 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm bg-menutabs-fill-default",
-			className
-		)}
-		{...props}
-	/>
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      'ring-offset-background focus-visible:ring-ring inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-menutabs-fill-default px-2 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm',
+      className
+    )}
+    {...props}
+  />
 ));
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
 const TabsContent = React.forwardRef<
-	React.ElementRef<typeof TabsPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
 >(({ className, ...props }, ref) => (
-	<TabsPrimitive.Content
-		ref={ref}
-		className={cn(
-			"mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-			className
-		)}
-		{...props}
-	/>
+  <TabsPrimitive.Content
+    ref={ref}
+    className={cn(
+      'ring-offset-background focus-visible:ring-ring mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+      className
+    )}
+    {...props}
+  />
 ));
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-export { Tabs, TabsList, TabsTrigger, TabsContent };
+export { Tabs, TabsContent, TabsList, TabsTrigger };

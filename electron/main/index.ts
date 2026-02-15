@@ -1,45 +1,69 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import axios from 'axios';
 import {
   app,
   BrowserWindow,
-  shell,
+  dialog,
   ipcMain,
   Menu,
-  dialog,
   nativeTheme,
   protocol,
   session,
+  shell,
 } from 'electron';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import os, { homedir } from 'node:os';
 import log from 'electron-log';
-import { update, registerUpdateIpcHandlers } from './update';
-import { checkToolInstalled, killProcessOnPort, startBackend } from './init';
-import { WebViewManager } from './webview';
-import { FileReader } from './fileReader';
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import fs, { existsSync, readFileSync } from 'node:fs';
-import fsp from 'fs/promises';
-import { addMcp, removeMcp, updateMcp, readMcpConfig } from './utils/mcpConfig';
-import {
-  getEnvPath,
-  updateEnvBlock,
-  removeEnvKey,
-  getEmailFolderPath,
-} from './utils/envUtil';
-import { copyBrowserData } from './copy';
-import { findAvailablePort } from './init';
-import kill from 'tree-kill';
-import { zipFolder } from './utils/log';
-import mime from 'mime';
-import axios from 'axios';
 import FormData from 'form-data';
+import fsp from 'fs/promises';
+import mime from 'mime';
+import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import fs, { existsSync } from 'node:fs';
+import os, { homedir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import kill from 'tree-kill';
+import { copyBrowserData } from './copy';
+import { FileReader } from './fileReader';
+import {
+  checkToolInstalled,
+  findAvailablePort,
+  killProcessOnPort,
+  startBackend,
+} from './init';
 import {
   checkAndInstallDepsOnUpdate,
-  PromiseReturnType,
   getInstallationStatus,
+  PromiseReturnType,
 } from './install-deps';
-import { isBinaryExists, getBackendPath, getVenvPath } from './utils/process';
+import { registerUpdateIpcHandlers, update } from './update';
+import {
+  getEmailFolderPath,
+  getEnvPath,
+  maskProxyUrl,
+  readGlobalEnvKey,
+  removeEnvKey,
+  updateEnvBlock,
+} from './utils/envUtil';
+import { zipFolder } from './utils/log';
+import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
+import {
+  checkVenvExistsForPreCheck,
+  getBackendPath,
+  isBinaryExists,
+} from './utils/process';
+import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
 
@@ -58,8 +82,9 @@ let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
-let browser_port = 9223;
-let use_external_cdp = false;  // Flag to track if using external CDP browser
+let browser_port = 9222;
+let use_external_cdp = false;
+let proxyUrl: string | null = null;
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -72,7 +97,8 @@ interface CdpBrowser {
 let cdp_browser_pool: CdpBrowser[] = [];
 
 // Map to store multiple browser processes by port
-let cdp_browser_processes: Map<number, ChildProcessWithoutNullStreams> = new Map();
+let cdp_browser_processes: Map<number, ChildProcessWithoutNullStreams> =
+  new Map();
 
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
@@ -126,6 +152,39 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// ==================== Proxy configuration ====================
+// Read proxy from global .env file on startup
+proxyUrl = readGlobalEnvKey('HTTP_PROXY');
+if (proxyUrl) {
+  log.info(`[PROXY] Applying proxy configuration: ${maskProxyUrl(proxyUrl)}`);
+  app.commandLine.appendSwitch('proxy-server', proxyUrl);
+} else {
+  log.info('[PROXY] No proxy configured');
+}
+
+// ==================== Anti-fingerprint settings ====================
+// Disable automation controlled indicator to avoid detection
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+
+// Override User Agent to remove Electron/eigent identifiers
+// Dynamically generate User Agent based on actual platform and Chrome version
+const getPlatformUA = () => {
+  // Use actual Chrome version from Electron instead of hardcoded value
+  const chromeVersion = process.versions.chrome || '131.0.0.0';
+  switch (process.platform) {
+    case 'darwin':
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'win32':
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    case 'linux':
+      return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+    default:
+      return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  }
+};
+const normalUserAgent = getPlatformUA();
+app.userAgentFallback = normalUserAgent;
+
 // ==================== protocol privileges ====================
 // Register custom protocol privileges before app ready
 protocol.registerSchemesAsPrivileged([
@@ -145,8 +204,13 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Disable system theme
-nativeTheme.themeSource = 'light';
+// Respect system theme on Windows, keep light theme on macOS for consistency
+const isWindows = process.platform === 'win32';
+if (isWindows) {
+  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
+} else {
+  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
+}
 
 // Set log level
 log.transports.console.level = 'info';
@@ -340,139 +404,174 @@ function registerIpcHandlers() {
   });
 
   // Set browser port
-  ipcMain.handle('set-browser-port', (event, port: number, isExternal: boolean = false) => {
-    log.info(`Setting browser port to ${port}, external: ${isExternal}`)
-    browser_port = port
-    use_external_cdp = isExternal
-    return { success: true, port: browser_port, use_external_cdp }
-  });
+  ipcMain.handle(
+    'set-browser-port',
+    (event, port: number, isExternal: boolean = false) => {
+      log.info(`Setting browser port to ${port}, external: ${isExternal}`);
+      browser_port = port;
+      use_external_cdp = isExternal;
+      return { success: true, port: browser_port, use_external_cdp };
+    }
+  );
 
   // Get external CDP flag
   ipcMain.handle('get-use-external-cdp', () => {
-    log.info(`Getting use_external_cdp: ${use_external_cdp}`)
-    return use_external_cdp
+    log.info(`Getting use_external_cdp: ${use_external_cdp}`);
+    return use_external_cdp;
   });
 
   // ==================== CDP Browser Pool Management ====================
 
   // Get all browsers in the pool
   ipcMain.handle('get-cdp-browsers', () => {
-    log.info(`[CDP POOL GET] ========================================`)
-    log.info(`[CDP POOL GET] Getting CDP browser pool at ${new Date().toISOString()}`)
-    log.info(`[CDP POOL GET] Pool size: ${cdp_browser_pool.length}`)
+    log.info(`[CDP POOL GET] ========================================`);
+    log.info(
+      `[CDP POOL GET] Getting CDP browser pool at ${new Date().toISOString()}`
+    );
+    log.info(`[CDP POOL GET] Pool size: ${cdp_browser_pool.length}`);
 
     if (cdp_browser_pool.length > 0) {
       cdp_browser_pool.forEach((b, idx) => {
-        log.info(`[CDP POOL GET]   Browser ${idx + 1}: port=${b.port}, isExternal=${b.isExternal}, name="${b.name}", id=${b.id}`)
-      })
+        log.info(
+          `[CDP POOL GET]   Browser ${idx + 1}: port=${b.port}, isExternal=${b.isExternal}, name="${b.name}", id=${b.id}`
+        );
+      });
     } else {
-      log.warn(`[CDP POOL GET]   ⚠️  Pool is EMPTY - no browsers configured`)
+      log.warn(`[CDP POOL GET]   ⚠️  Pool is EMPTY - no browsers configured`);
     }
 
-    log.info(`[CDP POOL GET] ========================================`)
-    return cdp_browser_pool
+    log.info(`[CDP POOL GET] ========================================`);
+    return cdp_browser_pool;
   });
 
   // Get running browser processes
   ipcMain.handle('get-running-browser-ports', () => {
     const runningPorts = Array.from(cdp_browser_processes.keys());
-    log.info(`Getting running browser ports: ${runningPorts.join(', ')}`)
+    log.info(`Getting running browser ports: ${runningPorts.join(', ')}`);
     return runningPorts;
   });
 
   // Add browser to pool
-  ipcMain.handle('add-cdp-browser', (event, port: number, isExternal: boolean, name?: string) => {
-    log.info(`[CDP POOL ADD] ========================================`)
-    log.info(`[CDP POOL ADD] Request to add browser at ${new Date().toISOString()}`)
-    log.info(`[CDP POOL ADD] Port: ${port}`)
-    log.info(`[CDP POOL ADD] Is External: ${isExternal}`)
-    log.info(`[CDP POOL ADD] Name: "${name}"`)
-    log.info(`[CDP POOL ADD] Current pool size: ${cdp_browser_pool.length}`)
+  ipcMain.handle(
+    'add-cdp-browser',
+    (event, port: number, isExternal: boolean, name?: string) => {
+      log.info(`[CDP POOL ADD] ========================================`);
+      log.info(
+        `[CDP POOL ADD] Request to add browser at ${new Date().toISOString()}`
+      );
+      log.info(`[CDP POOL ADD] Port: ${port}`);
+      log.info(`[CDP POOL ADD] Is External: ${isExternal}`);
+      log.info(`[CDP POOL ADD] Name: "${name}"`);
+      log.info(`[CDP POOL ADD] Current pool size: ${cdp_browser_pool.length}`);
 
-    // Check if browser with this port already exists
-    const existing = cdp_browser_pool.find(b => b.port === port);
-    if (existing) {
-      log.warn(`[CDP POOL ADD] ❌ REJECTED - Browser with port ${port} already exists in pool`)
-      log.warn(`[CDP POOL ADD]    Existing browser: id=${existing.id}, name="${existing.name}"`)
-      log.info(`[CDP POOL ADD] ========================================`)
-      return { success: false, error: 'Browser with this port already exists' };
+      // Check if browser with this port already exists
+      const existing = cdp_browser_pool.find((b) => b.port === port);
+      if (existing) {
+        log.warn(
+          `[CDP POOL ADD] ❌ REJECTED - Browser with port ${port} already exists in pool`
+        );
+        log.warn(
+          `[CDP POOL ADD]    Existing browser: id=${existing.id}, name="${existing.name}"`
+        );
+        log.info(`[CDP POOL ADD] ========================================`);
+        return {
+          success: false,
+          error: 'Browser with this port already exists',
+        };
+      }
+
+      const newBrowser: CdpBrowser = {
+        id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        port,
+        isExternal,
+        name,
+        addedAt: Date.now(),
+      };
+
+      cdp_browser_pool.push(newBrowser);
+      log.info(`[CDP POOL ADD] ✅ SUCCESS - Browser added to pool`);
+      log.info(`[CDP POOL ADD]    Browser ID: ${newBrowser.id}`);
+      log.info(`[CDP POOL ADD]    New pool size: ${cdp_browser_pool.length}`);
+      log.info(
+        `[CDP POOL ADD]    All ports in pool: [${cdp_browser_pool.map((b) => b.port).join(', ')}]`
+      );
+      log.info(`[CDP POOL ADD] ========================================`);
+
+      return { success: true, browser: newBrowser };
     }
-
-    const newBrowser: CdpBrowser = {
-      id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      port,
-      isExternal,
-      name,
-      addedAt: Date.now(),
-    };
-
-    cdp_browser_pool.push(newBrowser);
-    log.info(`[CDP POOL ADD] ✅ SUCCESS - Browser added to pool`)
-    log.info(`[CDP POOL ADD]    Browser ID: ${newBrowser.id}`)
-    log.info(`[CDP POOL ADD]    New pool size: ${cdp_browser_pool.length}`)
-    log.info(`[CDP POOL ADD]    All ports in pool: [${cdp_browser_pool.map(b => b.port).join(', ')}]`)
-    log.info(`[CDP POOL ADD] ========================================`)
-
-    return { success: true, browser: newBrowser };
-  });
+  );
 
   // Remove browser from pool
   ipcMain.handle('remove-cdp-browser', (event, browserId: string) => {
-    log.info(`[CDP POOL REMOVE] ========================================`)
-    log.info(`[CDP POOL REMOVE] Request to remove browser: ${browserId}`)
+    log.info(`[CDP POOL REMOVE] ========================================`);
+    log.info(`[CDP POOL REMOVE] Request to remove browser: ${browserId}`);
 
-    const index = cdp_browser_pool.findIndex(b => b.id === browserId);
+    const index = cdp_browser_pool.findIndex((b) => b.id === browserId);
     if (index === -1) {
-      log.warn(`[CDP POOL REMOVE] ❌ Browser not found: ${browserId}`)
-      log.info(`[CDP POOL REMOVE] ========================================`)
+      log.warn(`[CDP POOL REMOVE] ❌ Browser not found: ${browserId}`);
+      log.info(`[CDP POOL REMOVE] ========================================`);
       return { success: false, error: 'Browser not found' };
     }
 
     const removed = cdp_browser_pool.splice(index, 1)[0];
-    log.info(`[CDP POOL REMOVE] Removed browser: port=${removed.port}, name="${removed.name}"`)
+    log.info(
+      `[CDP POOL REMOVE] Removed browser: port=${removed.port}, name="${removed.name}"`
+    );
 
     // If it's a launched browser, kill the process
     if (!removed.isExternal && cdp_browser_processes.has(removed.port)) {
-      log.info(`[CDP POOL REMOVE] Killing launched browser process on port ${removed.port}`);
+      log.info(
+        `[CDP POOL REMOVE] Killing launched browser process on port ${removed.port}`
+      );
       try {
         const process = cdp_browser_processes.get(removed.port);
         process?.kill();
         cdp_browser_processes.delete(removed.port);
-        log.info(`[CDP POOL REMOVE] Browser process killed successfully`)
+        log.info(`[CDP POOL REMOVE] Browser process killed successfully`);
       } catch (error) {
-        log.warn(`[CDP POOL REMOVE] Failed to kill browser process on port ${removed.port}: ${error}`);
+        log.warn(
+          `[CDP POOL REMOVE] Failed to kill browser process on port ${removed.port}: ${error}`
+        );
       }
     }
 
-    log.info(`[CDP POOL REMOVE] ✅ SUCCESS - Remaining pool size: ${cdp_browser_pool.length}`)
-    log.info(`[CDP POOL REMOVE] ========================================`)
+    log.info(
+      `[CDP POOL REMOVE] ✅ SUCCESS - Remaining pool size: ${cdp_browser_pool.length}`
+    );
+    log.info(`[CDP POOL REMOVE] ========================================`);
 
     return { success: true, browser: removed };
   });
 
   // Update browser in pool
-  ipcMain.handle('update-cdp-browser', (event, browserId: string, updates: Partial<CdpBrowser>) => {
-    log.info(`Updating CDP browser: ${browserId}`)
+  ipcMain.handle(
+    'update-cdp-browser',
+    (event, browserId: string, updates: Partial<CdpBrowser>) => {
+      log.info(`Updating CDP browser: ${browserId}`);
 
-    const browser = cdp_browser_pool.find(b => b.id === browserId);
-    if (!browser) {
-      return { success: false, error: 'Browser not found' };
+      const browser = cdp_browser_pool.find((b) => b.id === browserId);
+      if (!browser) {
+        return { success: false, error: 'Browser not found' };
+      }
+
+      // Update allowed fields
+      if (updates.name !== undefined) browser.name = updates.name;
+
+      log.info(`Browser updated in pool`);
+      return { success: true, browser };
     }
-
-    // Update allowed fields
-    if (updates.name !== undefined) browser.name = updates.name;
-
-    log.info(`Browser updated in pool`)
-    return { success: true, browser };
-  });
+  );
 
   // Check if CDP port is available
   ipcMain.handle('check-cdp-port', async (event, port: number) => {
     log.info(`Checking CDP port availability: ${port}`);
     try {
-      const response = await axios.get(`http://localhost:${port}/json/version`, {
-        timeout: 3000,
-      });
+      const response = await axios.get(
+        `http://localhost:${port}/json/version`,
+        {
+          timeout: 3000,
+        }
+      );
 
       if (response.status === 200 && response.data) {
         log.info(`CDP port ${port} is available and responsive`);
@@ -486,18 +585,21 @@ function registerIpcHandlers() {
       log.warn(`CDP port ${port} is not available: ${error.message}`);
       return {
         available: false,
-        error: error.code === 'ECONNREFUSED'
-          ? 'Connection refused - no browser running on this port'
-          : error.message,
+        error:
+          error.code === 'ECONNREFUSED'
+            ? 'Connection refused - no browser running on this port'
+            : error.message,
       };
     }
   });
 
   // Launch CDP browser with custom port
   ipcMain.handle('launch-cdp-browser', async (event, port: number) => {
-    log.info(`[CDP LAUNCH] ========================================`)
-    log.info(`[CDP LAUNCH] Request to launch browser at ${new Date().toISOString()}`)
-    log.info(`[CDP LAUNCH] Target port: ${port}`)
+    log.info(`[CDP LAUNCH] ========================================`);
+    log.info(
+      `[CDP LAUNCH] Request to launch browser at ${new Date().toISOString()}`
+    );
+    log.info(`[CDP LAUNCH] Target port: ${port}`);
 
     try {
       const platform = process.platform;
@@ -507,11 +609,20 @@ function registerIpcHandlers() {
       let playwrightCacheDir: string;
 
       if (platform === 'darwin') {
-        playwrightCacheDir = path.join(app.getPath('home'), 'Library/Caches/ms-playwright');
+        playwrightCacheDir = path.join(
+          app.getPath('home'),
+          'Library/Caches/ms-playwright'
+        );
       } else if (platform === 'win32') {
-        playwrightCacheDir = path.join(app.getPath('home'), 'AppData/Local/ms-playwright');
+        playwrightCacheDir = path.join(
+          app.getPath('home'),
+          'AppData/Local/ms-playwright'
+        );
       } else if (platform === 'linux') {
-        playwrightCacheDir = path.join(app.getPath('home'), '.cache/ms-playwright');
+        playwrightCacheDir = path.join(
+          app.getPath('home'),
+          '.cache/ms-playwright'
+        );
       } else {
         return {
           success: false,
@@ -526,19 +637,22 @@ function registerIpcHandlers() {
         if (!existsSync(playwrightCacheDir)) {
           return {
             success: false,
-            error: 'Playwright Chromium not found. Please run: npx playwright install chromium',
+            error:
+              'Playwright Chromium not found. Please run: npx playwright install chromium',
           };
         }
 
-        const chromiumDirs = fs.readdirSync(playwrightCacheDir)
-          .filter(dir => dir.startsWith('chromium-'))
+        const chromiumDirs = fs
+          .readdirSync(playwrightCacheDir)
+          .filter((dir) => dir.startsWith('chromium-'))
           .sort()
           .reverse();
 
         if (chromiumDirs.length === 0) {
           return {
             success: false,
-            error: 'No Playwright Chromium installations found. Please run: npx playwright install chromium',
+            error:
+              'No Playwright Chromium installations found. Please run: npx playwright install chromium',
           };
         }
 
@@ -547,10 +661,15 @@ function registerIpcHandlers() {
         if (platform === 'darwin') {
           for (const dir of chromiumDirs) {
             const chromiumAppPaths = [
-              path.join(playwrightCacheDir, dir, 'chrome-mac-arm64', 'Chromium.app'),
+              path.join(
+                playwrightCacheDir,
+                dir,
+                'chrome-mac-arm64',
+                'Chromium.app'
+              ),
               path.join(playwrightCacheDir, dir, 'chrome-mac', 'Chromium.app'),
             ];
-            if (chromiumAppPaths.some(p => existsSync(p))) {
+            if (chromiumAppPaths.some((p) => existsSync(p))) {
               selectedChromiumDir = dir;
               log.info(`Selected Chromium version with Chromium.app: ${dir}`);
               break;
@@ -567,32 +686,67 @@ function registerIpcHandlers() {
           // Priority: Chromium.app (older versions) > Google Chrome for Testing (newer versions)
           const possiblePaths = [
             // ARM64 paths
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac-arm64', 'Chromium.app/Contents/MacOS/Chromium'),
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac-arm64', 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-mac-arm64',
+              'Chromium.app/Contents/MacOS/Chromium'
+            ),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-mac-arm64',
+              'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+            ),
             // Intel/Universal paths
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac', 'Chromium.app/Contents/MacOS/Chromium'),
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-mac', 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-mac',
+              'Chromium.app/Contents/MacOS/Chromium'
+            ),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-mac',
+              'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+            ),
           ];
 
           // Find the first path that exists
-          chromeExecutable = possiblePaths.find(p => existsSync(p)) || null;
+          chromeExecutable = possiblePaths.find((p) => existsSync(p)) || null;
         } else if (platform === 'win32') {
           // Windows: Try to find chrome.exe in possible directories
           const possiblePaths = [
             // 64-bit paths
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-win64', 'chrome.exe'),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-win64',
+              'chrome.exe'
+            ),
             // 32-bit or older versions
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-win', 'chrome.exe'),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-win',
+              'chrome.exe'
+            ),
           ];
 
-          chromeExecutable = possiblePaths.find(p => existsSync(p)) || null;
+          chromeExecutable = possiblePaths.find((p) => existsSync(p)) || null;
         } else if (platform === 'linux') {
           // Linux: Try to find chrome in possible directories
           const possiblePaths = [
-            path.join(playwrightCacheDir, latestChromiumDir, 'chrome-linux', 'chrome'),
+            path.join(
+              playwrightCacheDir,
+              latestChromiumDir,
+              'chrome-linux',
+              'chrome'
+            ),
           ];
 
-          chromeExecutable = possiblePaths.find(p => existsSync(p)) || null;
+          chromeExecutable = possiblePaths.find((p) => existsSync(p)) || null;
         }
 
         if (!chromeExecutable || !existsSync(chromeExecutable)) {
@@ -603,7 +757,6 @@ function registerIpcHandlers() {
         }
 
         log.info(`Using Chromium at: ${chromeExecutable}`);
-
       } catch (error: any) {
         log.error(`Error finding Playwright Chromium: ${error}`);
         return {
@@ -614,7 +767,10 @@ function registerIpcHandlers() {
 
       // Create user data directory with port number in name
       // This allows multiple browsers on different ports to maintain separate profiles
-      const userDataDir = path.join(app.getPath('userData'), `cdp_browser_profile_${port}`);
+      const userDataDir = path.join(
+        app.getPath('userData'),
+        `cdp_browser_profile_${port}`
+      );
 
       // Create directory if it doesn't exist (preserve existing data)
       if (!existsSync(userDataDir)) {
@@ -626,8 +782,10 @@ function registerIpcHandlers() {
 
       // Check if browser on this port is already running
       if (cdp_browser_processes.has(port)) {
-        log.warn(`[CDP LAUNCH] ❌ Browser process already exists on port ${port}`);
-        log.info(`[CDP LAUNCH] ========================================`)
+        log.warn(
+          `[CDP LAUNCH] ❌ Browser process already exists on port ${port}`
+        );
+        log.info(`[CDP LAUNCH] ========================================`);
         return {
           success: false,
           error: `Browser already running on port ${port}`,
@@ -655,44 +813,68 @@ function registerIpcHandlers() {
       });
 
       browserProcess.on('error', (error) => {
-        log.error(`[CDP LAUNCH] Browser process error on port ${port}: ${error}`);
+        log.error(
+          `[CDP LAUNCH] Browser process error on port ${port}: ${error}`
+        );
         cdp_browser_processes.delete(port);
 
         // Also remove from pool if it was added
-        const browserInPool = cdp_browser_pool.find(b => b.port === port && !b.isExternal);
+        const browserInPool = cdp_browser_pool.find(
+          (b) => b.port === port && !b.isExternal
+        );
         if (browserInPool) {
           const index = cdp_browser_pool.indexOf(browserInPool);
           cdp_browser_pool.splice(index, 1);
-          log.warn(`[CDP POOL AUTO-REMOVE] Browser on port ${port} removed from pool due to process error`);
-          log.info(`[CDP POOL AUTO-REMOVE] New pool size: ${cdp_browser_pool.length}`);
+          log.warn(
+            `[CDP POOL AUTO-REMOVE] Browser on port ${port} removed from pool due to process error`
+          );
+          log.info(
+            `[CDP POOL AUTO-REMOVE] New pool size: ${cdp_browser_pool.length}`
+          );
         }
       });
 
       browserProcess.on('exit', (code) => {
-        log.info(`[CDP LAUNCH] Browser process on port ${port} exited with code ${code}`);
+        log.info(
+          `[CDP LAUNCH] Browser process on port ${port} exited with code ${code}`
+        );
         cdp_browser_processes.delete(port);
 
         // Also remove from pool if it was added
-        const browserInPool = cdp_browser_pool.find(b => b.port === port && !b.isExternal);
+        const browserInPool = cdp_browser_pool.find(
+          (b) => b.port === port && !b.isExternal
+        );
         if (browserInPool) {
           const index = cdp_browser_pool.indexOf(browserInPool);
           cdp_browser_pool.splice(index, 1);
-          log.warn(`[CDP POOL AUTO-REMOVE] Browser on port ${port} removed from pool due to process exit`);
+          log.warn(
+            `[CDP POOL AUTO-REMOVE] Browser on port ${port} removed from pool due to process exit`
+          );
           log.info(`[CDP POOL AUTO-REMOVE] Exited with code: ${code}`);
-          log.info(`[CDP POOL AUTO-REMOVE] Browser ID: ${browserInPool.id}, Name: "${browserInPool.name}"`);
-          log.info(`[CDP POOL AUTO-REMOVE] New pool size: ${cdp_browser_pool.length}`);
+          log.info(
+            `[CDP POOL AUTO-REMOVE] Browser ID: ${browserInPool.id}, Name: "${browserInPool.name}"`
+          );
+          log.info(
+            `[CDP POOL AUTO-REMOVE] New pool size: ${cdp_browser_pool.length}`
+          );
           if (cdp_browser_pool.length > 0) {
-            log.info(`[CDP POOL AUTO-REMOVE] Remaining ports: [${cdp_browser_pool.map(b => b.port).join(', ')}]`);
+            log.info(
+              `[CDP POOL AUTO-REMOVE] Remaining ports: [${cdp_browser_pool.map((b) => b.port).join(', ')}]`
+            );
           }
         }
       });
 
       // Store the process in the Map
       cdp_browser_processes.set(port, browserProcess);
-      log.info(`[CDP LAUNCH] Browser process stored in map, PID: ${browserProcess.pid}`);
+      log.info(
+        `[CDP LAUNCH] Browser process stored in map, PID: ${browserProcess.pid}`
+      );
 
       // Poll for browser to become ready (max 5 seconds)
-      log.info(`[CDP LAUNCH] Polling for browser to become ready (max 5 seconds)...`);
+      log.info(
+        `[CDP LAUNCH] Polling for browser to become ready (max 5 seconds)...`
+      );
       const maxWaitTime = 5000; // 5 seconds
       const pollInterval = 300; // Check every 300ms
       const startTime = Date.now();
@@ -702,18 +884,31 @@ function registerIpcHandlers() {
       while (Date.now() - startTime < maxWaitTime) {
         attempt++;
         try {
-          log.info(`[CDP LAUNCH] Attempt ${attempt}: Checking http://localhost:${port}/json/version`);
-          const response = await axios.get(`http://localhost:${port}/json/version`, {
-            timeout: 1000, // Short timeout for each attempt
-          });
+          log.info(
+            `[CDP LAUNCH] Attempt ${attempt}: Checking http://localhost:${port}/json/version`
+          );
+          const response = await axios.get(
+            `http://localhost:${port}/json/version`,
+            {
+              timeout: 1000, // Short timeout for each attempt
+            }
+          );
 
           if (response.status === 200 && response.data) {
             const elapsedTime = Date.now() - startTime;
-            log.info(`[CDP LAUNCH] ✅ SUCCESS - Browser ready on port ${port} after ${elapsedTime}ms (${attempt} attempts)`);
-            log.info(`[CDP LAUNCH] Browser info: ${JSON.stringify(response.data)}`);
-            log.info(`[CDP LAUNCH] ⚠️  NOTE: Browser launched but NOT added to pool yet`);
-            log.info(`[CDP LAUNCH] ⚠️  The UI must call 'add-cdp-browser' to add it to the pool`);
-            log.info(`[CDP LAUNCH] ========================================`)
+            log.info(
+              `[CDP LAUNCH] ✅ SUCCESS - Browser ready on port ${port} after ${elapsedTime}ms (${attempt} attempts)`
+            );
+            log.info(
+              `[CDP LAUNCH] Browser info: ${JSON.stringify(response.data)}`
+            );
+            log.info(
+              `[CDP LAUNCH] ⚠️  NOTE: Browser launched but NOT added to pool yet`
+            );
+            log.info(
+              `[CDP LAUNCH] ⚠️  The UI must call 'add-cdp-browser' to add it to the pool`
+            );
+            log.info(`[CDP LAUNCH] ========================================`);
             // This is our own launched browser, not external
             use_external_cdp = false;
             return {
@@ -726,26 +921,32 @@ function registerIpcHandlers() {
           lastError = pollError;
           // Log only every 3rd attempt to avoid spam
           if (attempt % 3 === 0) {
-            log.info(`[CDP LAUNCH] Attempt ${attempt}: Not ready yet (${pollError.code || pollError.message})`);
+            log.info(
+              `[CDP LAUNCH] Attempt ${attempt}: Not ready yet (${pollError.code || pollError.message})`
+            );
           }
         }
 
         // Wait before next attempt
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       }
 
       // If we get here, browser didn't respond within max wait time
       const totalTime = Date.now() - startTime;
-      log.warn(`[CDP LAUNCH] ❌ Verification failed after ${totalTime}ms (${attempt} attempts)`);
-      log.warn(`[CDP LAUNCH] Last error: ${lastError?.code || lastError?.message || 'Unknown'}`);
-      log.info(`[CDP LAUNCH] ========================================`)
+      log.warn(
+        `[CDP LAUNCH] ❌ Verification failed after ${totalTime}ms (${attempt} attempts)`
+      );
+      log.warn(
+        `[CDP LAUNCH] Last error: ${lastError?.code || lastError?.message || 'Unknown'}`
+      );
+      log.info(`[CDP LAUNCH] ========================================`);
       return {
         success: false,
         error: `Browser launched but not responding on CDP port after ${totalTime}ms`,
       };
     } catch (error: any) {
       log.error(`[CDP LAUNCH] ❌ FAILED to launch browser: ${error}`);
-      log.info(`[CDP LAUNCH] ========================================`)
+      log.info(`[CDP LAUNCH] ========================================`);
       return {
         success: false,
         error: error.message,
@@ -1024,7 +1225,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -1046,7 +1247,7 @@ function registerIpcHandlers() {
     if (mcp.args && typeof mcp.args === 'string') {
       try {
         mcp.args = JSON.parse(mcp.args);
-      } catch (e) {
+      } catch (_error) {
         // If parsing fails, split by comma as fallback
         mcp.args = mcp.args
           .split(',')
@@ -1284,6 +1485,159 @@ function registerIpcHandlers() {
     }
   });
 
+  // ==================== IDE integration handler ====================
+  ipcMain.handle(
+    'get-project-folder-path',
+    async (_event, email: string, projectId: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const result = manager.createProjectStructure(email, projectId);
+      return result.path;
+    }
+  );
+
+  ipcMain.handle(
+    'open-in-ide',
+    async (_event, folderPath: string, ide: string) => {
+      const getIDECommand = (): string => {
+        const platform = process.platform;
+        const homeDir = homedir();
+
+        if (ide === 'vscode') {
+          if (platform === 'darwin') {
+            // macOS: Check common VS Code CLI paths
+            const vscodePaths = [
+              '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+              '/usr/local/bin/code',
+            ];
+            for (const p of vscodePaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] VS Code not found on macOS, using system file manager'
+            );
+            return '';
+          } else if (platform === 'win32') {
+            // Windows: Check common VS Code paths
+            const vscodePaths = [
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Microsoft VS Code',
+                'bin',
+                'code.cmd'
+              ),
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Microsoft VS Code',
+                'Code.exe'
+              ),
+              'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
+              'C:\\Program Files\\Microsoft VS Code\\Code.exe',
+            ];
+            for (const p of vscodePaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] VS Code not found on Windows, using system file manager'
+            );
+            return '';
+          }
+          return 'code'; // Linux
+        } else if (ide === 'cursor') {
+          if (platform === 'darwin') {
+            // macOS: Check common Cursor CLI paths
+            const cursorPaths = [
+              '/Applications/Cursor.app/Contents/Resources/app/bin/cursor',
+              '/usr/local/bin/cursor',
+            ];
+            for (const p of cursorPaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] Cursor not found on macOS, using system file manager'
+            );
+            return '';
+          } else if (platform === 'win32') {
+            // Windows: Check common Cursor paths
+            const cursorPaths = [
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Cursor',
+                'resources',
+                'app',
+                'bin',
+                'cursor.cmd'
+              ),
+              path.join(
+                homeDir,
+                'AppData',
+                'Local',
+                'Programs',
+                'Cursor',
+                'Cursor.exe'
+              ),
+              path.join(homeDir, 'AppData', 'Local', 'Cursor', 'Cursor.exe'),
+            ];
+            for (const p of cursorPaths) {
+              if (existsSync(p)) return p;
+            }
+            log.warn(
+              '[IDE] Cursor not found on Windows, using system file manager'
+            );
+            return '';
+          }
+          return 'cursor'; // Linux
+        }
+        return '';
+      };
+
+      const cmd = getIDECommand();
+      if (!cmd) {
+        // IDE not found or 'system' selected - open with system file manager
+        const errorMsg = await shell.openPath(folderPath);
+        if (errorMsg) {
+          log.error('[IDE] shell.openPath error:', errorMsg);
+          return { success: false, error: errorMsg };
+        }
+        return { success: true };
+      }
+
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        // Use shell: true so .cmd/.bat wrappers work on Windows
+        const child = spawn(cmd, [folderPath], {
+          shell: true,
+          stdio: 'ignore',
+          detached: true,
+        });
+        child.unref();
+
+        child.on('error', (error) => {
+          log.warn(
+            `[IDE] ${cmd} not found, falling back to system file manager:`,
+            error.message
+          );
+          shell.openPath(folderPath).then((errorMsg) => {
+            resolve(
+              errorMsg ? { success: false, error: errorMsg } : { success: true }
+            );
+          });
+        });
+
+        child.on('spawn', () => {
+          resolve({ success: true });
+        });
+      });
+    }
+  );
+
   // ==================== env handler ====================
 
   ipcMain.handle('get-env-path', async (_event, email) => {
@@ -1373,6 +1727,16 @@ function registerIpcHandlers() {
     }
 
     return { success: true };
+  });
+
+  // ==================== read global env handler ====================
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
+  ipcMain.handle('read-global-env', async (_event, key: string) => {
+    if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
+      log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
+      return { value: null };
+    }
+    return { value: readGlobalEnvKey(key) };
   });
 
   // ==================== new window handler ====================
@@ -1674,21 +2038,39 @@ async function createWindow() {
     )}`
   );
 
+  // Platform-specific window configuration
+  // Windows: Use native frame for better native feel, solid background
+  // macOS: Use frameless with transparency and vibrancy effects
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
     height: 800,
     minWidth: 1050,
     minHeight: 650,
-    frame: false,
-    transparent: true,
-    vibrancy: 'sidebar',
-    visualEffectState: 'active',
-    backgroundColor: '#f5f5f580',
+    // Use native frame on Windows for better native integration
+    frame: isWindows ? true : false,
+    show: false, // Don't show until content is ready to avoid white screen
+    // Only use transparency on macOS and Linux (not supported well on Windows)
+    transparent: !isWindows,
+    // macOS-only visual effects
+    vibrancy: isMac ? 'sidebar' : undefined,
+    visualEffectState: isMac ? 'active' : undefined,
+    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    backgroundColor: isWindows
+      ? nativeTheme.shouldUseDarkColors
+        ? '#1e1e1e'
+        : '#ffffff'
+      : '#f5f5f580',
+    // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    roundedCorners: true,
+    // Rounded corners on macOS and Linux (as original)
+    roundedCorners: !isWindows,
+    // Windows-specific options
+    ...(isWindows && {
+      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
@@ -1701,6 +2083,47 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('render-process-gone', (event, details) => {
+    log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    if (win && !win.isDestroyed()) {
+      // Reload the window after a brief delay
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) {
+          log.info('[RENDERER] Attempting to reload after crash...');
+          if (VITE_DEV_SERVER_URL) {
+            win.loadURL(VITE_DEV_SERVER_URL);
+          } else {
+            win.loadFile(indexHtml);
+          }
+        }
+      }, 1000);
+    }
+  });
+
+  win.webContents.on(
+    'did-fail-load',
+    (event, errorCode, errorDescription, validatedURL) => {
+      log.error(
+        `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
+      );
+      // Retry loading after a delay
+      if (errorCode !== -3) {
+        // -3 is USER_CANCELLED, don't retry
+        setTimeout(() => {
+          if (win && !win.isDestroyed()) {
+            log.info('[RENDERER] Retrying load after failure...');
+            if (VITE_DEV_SERVER_URL) {
+              win.loadURL(VITE_DEV_SERVER_URL);
+            } else {
+              win.loadFile(indexHtml);
+            }
+          }
+        }, 2000);
+      }
+    }
+  );
 
   // Main window now uses default userData directly with partition 'persist:main_window'
   // No migration needed - data is already persistent
@@ -1788,6 +2211,32 @@ async function createWindow() {
   // ==================== CHECK IF INSTALLATION IS NEEDED BEFORE LOADING CONTENT ====================
   log.info('Pre-checking if dependencies need to be installed...');
 
+  // Check if prebuilt dependencies are available (for packaged app)
+  let hasPrebuiltDeps = false;
+  if (app.isPackaged) {
+    const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
+    const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+    const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
+    const uvPath = path.join(
+      prebuiltBinDir,
+      process.platform === 'win32' ? 'uv.exe' : 'uv'
+    );
+    const bunPath = path.join(
+      prebuiltBinDir,
+      process.platform === 'win32' ? 'bun.exe' : 'bun'
+    );
+    const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
+
+    const hasVenv = fs.existsSync(pyvenvCfg);
+    hasPrebuiltDeps =
+      fs.existsSync(uvPath) && fs.existsSync(bunPath) && hasVenv;
+    if (hasPrebuiltDeps) {
+      log.info(
+        '[PRE-CHECK] Prebuilt dependencies found, skipping installation check'
+      );
+    }
+  }
+
   // Check version and tools status synchronously
   const currentVersion = app.getVersion();
   const versionFile = path.join(app.getPath('userData'), 'version.txt');
@@ -1805,17 +2254,19 @@ async function createWindow() {
   const installedLockPath = path.join(backendPath, 'uv_installed.lock');
   const installationCompleted = fs.existsSync(installedLockPath);
 
-  // Check if venv path exists for current version
-  const venvPath = getVenvPath(currentVersion);
-  const venvExists = fs.existsSync(venvPath);
+  // Check venv existence WITHOUT triggering extraction (defers to startBackend when window is visible)
+  const { exists: venvExists, path: venvPath } =
+    checkVenvExistsForPreCheck(currentVersion);
 
-  const needsInstallation =
-    !versionExists ||
-    savedVersion !== currentVersion ||
-    !uvExists ||
-    !bunExists ||
-    !installationCompleted ||
-    !venvExists;
+  // If prebuilt deps are available, skip installation
+  const needsInstallation = hasPrebuiltDeps
+    ? false
+    : !versionExists ||
+      savedVersion !== currentVersion ||
+      !uvExists ||
+      !bunExists ||
+      !installationCompleted ||
+      !venvExists;
 
   log.info('Installation check result:', {
     needsInstallation,
@@ -1917,15 +2368,27 @@ async function createWindow() {
     win.loadFile(indexHtml);
   }
 
-  // Wait for window to be ready
+  // Wait for window to be ready with timeout
   await new Promise<void>((resolve) => {
+    const loadTimeout = setTimeout(() => {
+      log.warn('Window content load timeout (10s), showing window anyway...');
+      resolve();
+    }, 10000);
+
     win!.webContents.once('did-finish-load', () => {
+      clearTimeout(loadTimeout);
       log.info(
         'Window content loaded, starting dependency check immediately...'
       );
       resolve();
     });
   });
+
+  // Show window now that content is loaded (or timeout reached)
+  if (win && !win.isDestroyed()) {
+    win.show();
+    log.info('Window shown after content loaded');
+  }
 
   // Mark window as ready and process any queued protocol URLs
   isWindowReady = true;
@@ -2211,9 +2674,8 @@ app.whenReady().then(async () => {
     try {
       log.info('[DEVTOOLS] Installing React DevTools extension...');
       // Dynamic import to avoid bundling in production
-      const { default: installExtension, REACT_DEVELOPER_TOOLS } = await import(
-        'electron-devtools-installer'
-      );
+      const { default: installExtension, REACT_DEVELOPER_TOOLS } =
+        await import('electron-devtools-installer');
       const name = await installExtension(REACT_DEVELOPER_TOOLS, {
         loadExtensionOptions: { allowFileAccess: true },
       });
@@ -2224,9 +2686,29 @@ app.whenReady().then(async () => {
     }
   }
 
+  // ==================== Anti-fingerprint: Set User Agent for all sessions ====================
+  // Use the same dynamic User Agent as app.userAgentFallback
+  session.defaultSession.setUserAgent(normalUserAgent);
+  // Also set for the user_login partition used by webviews
+  session.fromPartition('persist:user_login').setUserAgent(normalUserAgent);
+  // And for main_window partition
+  session.fromPartition('persist:main_window').setUserAgent(normalUserAgent);
+  log.info('[ANTI-FINGERPRINT] User Agent set for all sessions');
+
+  // ==================== Apply proxy to Electron sessions ====================
+  if (proxyUrl) {
+    const proxyConfig = { proxyRules: proxyUrl };
+    await session.defaultSession.setProxy(proxyConfig);
+    await session.fromPartition('persist:user_login').setProxy(proxyConfig);
+    await session.fromPartition('persist:main_window').setProxy(proxyConfig);
+    log.info(
+      `[PROXY] Applied proxy to all sessions: ${maskProxyUrl(proxyUrl)}`
+    );
+  }
+
   // ==================== download handle ====================
-  session.defaultSession.on('will-download', (event, item, webContents) => {
-    item.once('done', (event, state) => {
+  session.defaultSession.on('will-download', (event, item, _webContents) => {
+    item.once('done', (_event, _state) => {
       shell.showItemInFolder(item.getURL().replace('localfile://', ''));
     });
   });

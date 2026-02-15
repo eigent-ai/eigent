@@ -1,15 +1,30 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from enum import IntEnum
-from typing import List
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel
 from sqlalchemy import Column, SmallInteger, String
 from sqlalchemy.orm import Mapped
-from sqlmodel import Field, Relationship, JSON
 from sqlalchemy_utils import ChoiceType
+from sqlmodel import JSON, Field, Relationship
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from app.model.mcp.mcp_env import McpEnv, McpEnvOut
-from app.type.pydantic import HttpUrlStr
 from app.model.mcp.category import Category, CategoryOut
-from typing import TYPE_CHECKING
+from app.model.mcp.mcp_env import McpEnv
+from app.type.pydantic import HttpUrlStr
 
 if TYPE_CHECKING:
     from app.model.mcp.mcp_user import McpUser
@@ -49,7 +64,7 @@ class Mcp(AbstractModel, DefaultTimes, table=True):
     envs: Mapped[list[McpEnv]] = Relationship()
     # user_env: Mapped[McpUser] = Relationship()
 
-    mcp_user: List["McpUser"] = Relationship(back_populates="mcp")
+    mcp_user: list["McpUser"] = Relationship(back_populates="mcp")
 
 
 class McpIn(BaseModel):

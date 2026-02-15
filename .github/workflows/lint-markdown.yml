@@ -22,17 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get changed markdown files
         id: changed-files
-        uses: tj-actions/changed-files@v45
+        uses: tj-actions/changed-files@v47
         with:
           files: |
             **.md
 
       - name: Lint markdown
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: npx markdownlint-cli@0.43.0 $CHANGED_FILES --ignore node_modules
+        run: npx markdownlint-cli@0.43.0 $CHANGED_FILES
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}

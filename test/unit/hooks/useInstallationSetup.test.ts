@@ -1,23 +1,41 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { useInstallationSetup } from '../../../src/hooks/useInstallationSetup'
-import { useInstallationStore } from '../../../src/store/installationStore'
-import { useAuthStore } from '../../../src/store/authStore'
-import { setupElectronMocks, TestScenarios, type MockedElectronAPI } from '../../mocks/electronMocks'
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useInstallationSetup } from '../../../src/hooks/useInstallationSetup';
+import { useAuthStore } from '../../../src/store/authStore';
+import { useInstallationStore } from '../../../src/store/installationStore';
+import {
+  setupElectronMocks,
+  TestScenarios,
+  type MockedElectronAPI,
+} from '../../mocks/electronMocks';
 
 // Mock the stores
-vi.mock('../../../src/store/installationStore')
-vi.mock('../../../src/store/authStore')
+vi.mock('../../../src/store/installationStore');
+vi.mock('../../../src/store/authStore');
 
 describe('useInstallationSetup Hook', () => {
-  let electronAPI: MockedElectronAPI
-  let mockInstallationStore: any
-  let mockAuthStore: any
+  let electronAPI: MockedElectronAPI;
+  let mockInstallationStore: any;
+  let mockAuthStore: any;
 
   beforeEach(() => {
     // Set up electron mocks
-    const mocks = setupElectronMocks()
-    electronAPI = mocks.electronAPI
+    const mocks = setupElectronMocks();
+    electronAPI = mocks.electronAPI;
 
     // Mock installation store
     mockInstallationStore = {
@@ -25,339 +43,368 @@ describe('useInstallationSetup Hook', () => {
       addLog: vi.fn(),
       setSuccess: vi.fn(),
       setError: vi.fn(),
-    }
+    };
 
     // Mock auth store
     mockAuthStore = {
       initState: 'done',
       setInitState: vi.fn(),
-    }
+    };
 
     // Set up mock implementations
     vi.mocked(useInstallationStore).mockImplementation((selector: any) => {
       if (typeof selector === 'function') {
-        return selector(mockInstallationStore)
+        return selector(mockInstallationStore);
       }
-      return mockInstallationStore
-    })
+      return mockInstallationStore;
+    });
 
-    vi.mocked(useAuthStore).mockReturnValue(mockAuthStore)
+    vi.mocked(useAuthStore).mockReturnValue(mockAuthStore);
 
     // Mock console.log to avoid noise in tests
-    vi.spyOn(console, 'log').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-  })
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
 
   afterEach(() => {
-    vi.clearAllMocks()
-    electronAPI.reset()
-  })
+    vi.clearAllMocks();
+    electronAPI.reset();
+  });
 
   describe('Initial Setup', () => {
     it('should check tool installation status on mount', async () => {
       // Mock IPC response for tool check
-      electronAPI.mockState.toolInstalled = true
-      
-      renderHook(() => useInstallationSetup())
+      electronAPI.mockState.toolInstalled = true;
+
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(window.ipcRenderer.invoke).toHaveBeenCalledWith('check-tool-installed')
-      })
-    })
+        expect(window.ipcRenderer.invoke).toHaveBeenCalledWith(
+          'check-tool-installed'
+        );
+      });
+    });
 
     it('should check backend installation status on mount', async () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(electronAPI.getInstallationStatus).toHaveBeenCalled()
-      })
-    })
+        expect(electronAPI.getInstallationStatus).toHaveBeenCalled();
+      });
+    });
 
     it('should start installation if backend installation is in progress', async () => {
-      electronAPI.mockState.isInstalling = true
-      
-      renderHook(() => useInstallationSetup())
+      electronAPI.mockState.isInstalling = true;
+
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(mockInstallationStore.startInstallation).toHaveBeenCalled()
-      })
-    })
+        expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
+      });
+    });
 
     it('should set initState to carousel if tool is not installed', async () => {
       // Set initial state to permissions (as would happen on fresh startup)
-      mockAuthStore.initState = 'permissions'
+      mockAuthStore.initState = 'permissions';
 
       // Mock tool not installed
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
-        isInstalled: false
-      })
+        isInstalled: false,
+      });
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(mockAuthStore.setInitState).toHaveBeenCalledWith('carousel')
-      })
-    })
-  })
+        expect(mockAuthStore.setInitState).toHaveBeenCalledWith('carousel');
+      });
+    });
+  });
 
   describe('Electron IPC Event Handling', () => {
     it('should register all required event listeners', () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
-      expect(electronAPI.onInstallDependenciesStart).toHaveBeenCalled()
-      expect(electronAPI.onInstallDependenciesLog).toHaveBeenCalled()
-      expect(electronAPI.onInstallDependenciesComplete).toHaveBeenCalled()
-    })
+      expect(electronAPI.onInstallDependenciesStart).toHaveBeenCalled();
+      expect(electronAPI.onInstallDependenciesLog).toHaveBeenCalled();
+      expect(electronAPI.onInstallDependenciesComplete).toHaveBeenCalled();
+    });
 
     it('should handle install-dependencies-start event', () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       // Get the registered callback
-      const startCallback = electronAPI.onInstallDependenciesStart.mock.calls[0][0]
-      
-      act(() => {
-        startCallback()
-      })
+      const startCallback =
+        electronAPI.onInstallDependenciesStart.mock.calls[0][0];
 
-      expect(mockInstallationStore.startInstallation).toHaveBeenCalled()
-    })
+      act(() => {
+        startCallback();
+      });
+
+      expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
+    });
 
     it('should handle install-dependencies-log event', () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       // Get the registered callback
-      const logCallback = electronAPI.onInstallDependenciesLog.mock.calls[0][0]
-      const logData = { type: 'stdout', data: 'Installing packages...' }
-      
+      const logCallback = electronAPI.onInstallDependenciesLog.mock.calls[0][0];
+      const logData = { type: 'stdout', data: 'Installing packages...' };
+
       act(() => {
-        logCallback(logData)
-      })
+        logCallback(logData);
+      });
 
       expect(mockInstallationStore.addLog).toHaveBeenCalledWith({
         type: 'stdout',
         data: 'Installing packages...',
         timestamp: expect.any(Date),
-      })
-    })
+      });
+    });
 
     it('should handle install-dependencies-complete event with success', () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       // Get the registered callback
-      const completeCallback = electronAPI.onInstallDependenciesComplete.mock.calls[0][0]
-      const completeData = { success: true }
-      
-      act(() => {
-        completeCallback(completeData)
-      })
+      const completeCallback =
+        electronAPI.onInstallDependenciesComplete.mock.calls[0][0];
+      const completeData = { success: true };
 
-      expect(mockInstallationStore.setSuccess).toHaveBeenCalled()
-      expect(mockAuthStore.setInitState).toHaveBeenCalledWith('done')
-    })
+      act(() => {
+        completeCallback(completeData);
+      });
+
+      expect(mockInstallationStore.setSuccess).toHaveBeenCalled();
+      expect(mockAuthStore.setInitState).toHaveBeenCalledWith('done');
+    });
 
     it('should handle install-dependencies-complete event with failure', () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       // Get the registered callback
-      const completeCallback = electronAPI.onInstallDependenciesComplete.mock.calls[0][0]
-      const completeData = { success: false, error: 'Installation failed' }
-      
-      act(() => {
-        completeCallback(completeData)
-      })
+      const completeCallback =
+        electronAPI.onInstallDependenciesComplete.mock.calls[0][0];
+      const completeData = { success: false, error: 'Installation failed' };
 
-      expect(mockInstallationStore.setError).toHaveBeenCalledWith('Installation failed')
-      expect(mockAuthStore.setInitState).not.toHaveBeenCalledWith('done')
-    })
+      act(() => {
+        completeCallback(completeData);
+      });
+
+      expect(mockInstallationStore.setError).toHaveBeenCalledWith(
+        'Installation failed'
+      );
+      expect(mockAuthStore.setInitState).not.toHaveBeenCalledWith('done');
+    });
 
     it('should handle complete event without error message', () => {
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
-      const completeCallback = electronAPI.onInstallDependenciesComplete.mock.calls[0][0]
-      const completeData = { success: false }
-      
+      const completeCallback =
+        electronAPI.onInstallDependenciesComplete.mock.calls[0][0];
+      const completeData = { success: false };
+
       act(() => {
-        completeCallback(completeData)
-      })
+        completeCallback(completeData);
+      });
 
-      expect(mockInstallationStore.setError).toHaveBeenCalledWith('Installation failed')
-    })
-  })
+      expect(mockInstallationStore.setError).toHaveBeenCalledWith(
+        'Installation failed'
+      );
+    });
+  });
 
   describe('Event Listener Cleanup', () => {
     it('should remove all event listeners on unmount', () => {
-      const { unmount } = renderHook(() => useInstallationSetup())
+      const { unmount } = renderHook(() => useInstallationSetup());
 
-      unmount()
+      unmount();
 
-      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith('install-dependencies-start')
-      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith('install-dependencies-log')
-      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith('install-dependencies-complete')
-    })
-  })
+      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith(
+        'install-dependencies-start'
+      );
+      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith(
+        'install-dependencies-log'
+      );
+      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith(
+        'install-dependencies-complete'
+      );
+    });
+  });
 
   describe('Test Scenarios Integration', () => {
     it('should handle fresh installation scenario', async () => {
-      TestScenarios.freshInstall(electronAPI)
+      TestScenarios.freshInstall(electronAPI);
 
       // Set initial state to permissions (as would happen on fresh startup)
-      mockAuthStore.initState = 'permissions'
+      mockAuthStore.initState = 'permissions';
 
       // Mock tool not installed
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
-        isInstalled: false
-      })
+        isInstalled: false,
+      });
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(mockAuthStore.setInitState).toHaveBeenCalledWith('carousel')
-      })
-    })
+        expect(mockAuthStore.setInitState).toHaveBeenCalledWith('carousel');
+      });
+    });
 
     it('should handle version update scenario', async () => {
-      TestScenarios.versionUpdate(electronAPI)
-      
-      renderHook(() => useInstallationSetup())
+      TestScenarios.versionUpdate(electronAPI);
+
+      renderHook(() => useInstallationSetup());
 
       // Simulate version update detection and installation start
-      electronAPI.simulateInstallationStart()
+      electronAPI.simulateInstallationStart();
 
       await vi.waitFor(() => {
-        expect(mockInstallationStore.startInstallation).toHaveBeenCalled()
-      })
-    })
+        expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
+      });
+    });
 
     it('should handle venv removed scenario', async () => {
-      TestScenarios.venvRemoved(electronAPI)
-      electronAPI.mockState.isInstalling = true
+      TestScenarios.venvRemoved(electronAPI);
+      electronAPI.mockState.isInstalling = true;
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(mockInstallationStore.startInstallation).toHaveBeenCalled()
-      })
-    })
+        expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
+      });
+    });
 
     it('should handle installation in progress scenario', async () => {
-      TestScenarios.installationInProgress(electronAPI)
+      TestScenarios.installationInProgress(electronAPI);
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(mockInstallationStore.startInstallation).toHaveBeenCalled()
-      })
-    })
+        expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
+      });
+    });
 
     it('should handle uvicorn startup with dependency installation', async () => {
-      TestScenarios.uvicornDepsInstall(electronAPI)
+      TestScenarios.uvicornDepsInstall(electronAPI);
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       // Simulate uvicorn detecting and installing dependencies
       act(() => {
-        electronAPI.simulateUvicornStartup()
-      })
+        electronAPI.simulateUvicornStartup();
+      });
 
       await vi.waitFor(() => {
-        expect(mockInstallationStore.startInstallation).toHaveBeenCalled()
-      })
+        expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
+      });
 
       // Should receive logs and completion
       await vi.waitFor(() => {
-        expect(mockInstallationStore.addLog).toHaveBeenCalled()
-        expect(mockInstallationStore.setSuccess).toHaveBeenCalled()
-      })
-    })
-  })
+        expect(mockInstallationStore.addLog).toHaveBeenCalled();
+        expect(mockInstallationStore.setSuccess).toHaveBeenCalled();
+      });
+    });
+  });
 
   describe('Error Handling', () => {
     it('should handle tool installation check failure', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      
-      window.ipcRenderer.invoke = vi.fn().mockRejectedValue(new Error('IPC failed'))
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
-      renderHook(() => useInstallationSetup())
+      window.ipcRenderer.invoke = vi
+        .fn()
+        .mockRejectedValue(new Error('IPC failed'));
+
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
           '[useInstallationSetup] Tool installation check failed:',
           expect.any(Error)
-        )
-      })
+        );
+      });
 
-      consoleErrorSpy.mockRestore()
-    })
+      consoleErrorSpy.mockRestore();
+    });
 
     it('should handle installation status check failure', async () => {
       // Mock console.error to suppress expected error logs
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
-      electronAPI.getInstallationStatus.mockRejectedValue(new Error('Status check failed'))
+      electronAPI.getInstallationStatus.mockRejectedValue(
+        new Error('Status check failed')
+      );
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       // Should not crash, should handle the error gracefully
       await vi.waitFor(() => {
-        expect(electronAPI.getInstallationStatus).toHaveBeenCalled()
-      })
+        expect(electronAPI.getInstallationStatus).toHaveBeenCalled();
+      });
 
       // Wait for error to be logged
       await vi.waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalled()
-      })
+        expect(consoleErrorSpy).toHaveBeenCalled();
+      });
 
-      consoleErrorSpy.mockRestore()
-    })
-  })
+      consoleErrorSpy.mockRestore();
+    });
+  });
 
   describe('Multiple Hook Instances', () => {
     it('should handle multiple hook instances without conflicts', () => {
-      const { result: hook1 } = renderHook(() => useInstallationSetup())
-      const { result: hook2 } = renderHook(() => useInstallationSetup())
+      const { result: _hook1 } = renderHook(() => useInstallationSetup());
+      const { result: _hook2 } = renderHook(() => useInstallationSetup());
 
       // Both hooks should register listeners
-      expect(electronAPI.onInstallDependenciesStart).toHaveBeenCalledTimes(2)
-      expect(electronAPI.onInstallDependenciesLog).toHaveBeenCalledTimes(2)
-      expect(electronAPI.onInstallDependenciesComplete).toHaveBeenCalledTimes(2)
-    })
-  })
+      expect(electronAPI.onInstallDependenciesStart).toHaveBeenCalledTimes(2);
+      expect(electronAPI.onInstallDependenciesLog).toHaveBeenCalledTimes(2);
+      expect(electronAPI.onInstallDependenciesComplete).toHaveBeenCalledTimes(
+        2
+      );
+    });
+  });
 
   describe('State Dependencies', () => {
     it('should react to initState changes', async () => {
-      mockAuthStore.initState = 'carousel'
-      
-      const { rerender } = renderHook(() => useInstallationSetup())
+      mockAuthStore.initState = 'carousel';
+
+      const { rerender } = renderHook(() => useInstallationSetup());
 
       // Change initState to 'done'
-      mockAuthStore.initState = 'done'
-      rerender()
+      mockAuthStore.initState = 'done';
+      rerender();
 
       // Should check tool installation again
       await vi.waitFor(() => {
-        expect(window.ipcRenderer.invoke).toHaveBeenCalledWith('check-tool-installed')
-      })
-    })
+        expect(window.ipcRenderer.invoke).toHaveBeenCalledWith(
+          'check-tool-installed'
+        );
+      });
+    });
 
     it('should not set carousel state if initState is not done', async () => {
-      mockAuthStore.initState = 'loading'
-      
+      mockAuthStore.initState = 'loading';
+
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
-        isInstalled: false
-      })
+        isInstalled: false,
+      });
 
-      renderHook(() => useInstallationSetup())
+      renderHook(() => useInstallationSetup());
 
       await vi.waitFor(() => {
-        expect(window.ipcRenderer.invoke).toHaveBeenCalledWith('check-tool-installed')
-      })
+        expect(window.ipcRenderer.invoke).toHaveBeenCalledWith(
+          'check-tool-installed'
+        );
+      });
 
       // Should not call setInitState because initState is not 'done'
-      expect(mockAuthStore.setInitState).not.toHaveBeenCalledWith('carousel')
-    })
-  })
-
-})
+      expect(mockAuthStore.setInitState).not.toHaveBeenCalledWith('carousel');
+    });
+  });
+});

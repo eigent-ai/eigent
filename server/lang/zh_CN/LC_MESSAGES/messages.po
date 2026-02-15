@@ -31,7 +31,7 @@ msgid "User"
 msgstr ""
 
 #: app/component/permission.py:13
-msgid "User manger"
+msgid "User manager"
 msgstr ""
 
 #: app/component/permission.py:17
@@ -55,7 +55,7 @@ msgid "Admin"
 msgstr ""
 
 #: app/component/permission.py:29
-msgid "Admin manger"
+msgid "Admin manager"
 msgstr ""
 
 #: app/component/permission.py:33
@@ -79,7 +79,7 @@ msgid "Role"
 msgstr ""
 
 #: app/component/permission.py:45
-msgid "Role manger"
+msgid "Role manager"
 msgstr ""
 
 #: app/component/permission.py:49
@@ -103,7 +103,7 @@ msgid "Mcp"
 msgstr ""
 
 #: app/component/permission.py:61
-msgid "Mcp manger"
+msgid "Mcp manager"
 msgstr ""
 
 #: app/component/permission.py:65
@@ -213,4 +213,3 @@ msgstr ""
 #: app/model/abstract/model.py:66
 msgid "There is no data that meets the conditions"
 msgstr ""
-

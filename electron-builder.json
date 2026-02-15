@@ -6,16 +6,45 @@
   "directories": {
     "output": "release"
   },
-  "files": ["dist-electron", "dist", "resources", "!backend", "!dist/images","!**/__pycache__","!server","!docs"],
+  "files": [
+    "dist-electron",
+    "dist",
+    "resources",
+    "!backend",
+    "!dist/images",
+    "!**/__pycache__",
+    "!server",
+    "!docs"
+  ],
   "extraResources": [
     {
-      "from": "backend",  
+      "from": "backend",
       "to": "backend",
-      "filter": ["**/*", "!.venv/**/*"]
+      "filter": ["**/*", "!.venv/**/*", "!workspace/.initial_env/**/*"]
     },
     {
-      "from": "utils",
-      "to": "utils"
+      "from": "resources/prebuilt",
+      "to": "prebuilt",
+      "filter": [
+        "**/*",
+        "!cache/**/*",
+        "!**/.npm-cache/**/*",
+        "!uv_python/**/*.pyc",
+        "!uv_python/**/__pycache__",
+        "!terminal_venv/**/*.pyc",
+        "!terminal_venv/**/__pycache__",
+        "!**/__pycache__/**",
+        "!**/*.pyc",
+        "!**/*.pyo",
+        "!venv/**/__pycache__/**",
+        "!venv/**/*.pyc",
+
+        "!venv/lib/python*/site-packages/yt_dlp/**",
+        "!venv/lib/python*/site-packages/yt_dlp-*.dist-info/**",
+        "!uv_python/**/site-packages/pip/**",
+        "!uv_python/**/site-packages/setuptools/**",
+        "!uv_python/**/site-packages/wheel/**"
+      ]
     }
   ],
   "protocols": [
@@ -33,6 +62,7 @@
     }
   ],
   "icon": "build/icon.ico",
+  "afterPack": "./config/before-sign.cjs",
   "afterSign": "./config/notarize.cjs",
   "mac": {
     "icon": "build/icon.icns",
@@ -42,6 +72,26 @@
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "notarize": false,
+    "signIgnore": [
+      ".*\\.py$",
+      ".*\\.pyc$",
+      ".*\\.pyo$",
+      ".*\\.pyi$",
+      ".*\\.typed$",
+      ".*\\.txt$",
+      ".*\\.md$",
+      ".*\\.rst$",
+      ".*\\.json$",
+      ".*\\.yaml$",
+      ".*\\.yml$",
+      ".*\\.toml$",
+      ".*\\.cfg$",
+      ".*\\.ini$",
+      ".*\\.csv$",
+      ".*\\.html$",
+      ".*\\.css$",
+      ".*\\.map$"
+    ],
     "extendInfo": {
       "CFBundleURLTypes": [
         {
@@ -51,8 +101,19 @@
       ]
     }
   },
+  "dmg": {
+    "background": "src/assets/dmg-background.png",
+    "window": {
+      "width": 660,
+      "height": 400
+    },
+    "iconSize": 128,
+    "contents": [
+      { "x": 180, "y": 200, "type": "file" },
+      { "x": 480, "y": 200, "type": "link", "path": "/Applications" }
+    ]
+  },
   "win": {
-    "certificateFile": null,
     "icon": "build/icon.ico",
     "artifactName": "${productName}.Setup.${version}.exe",
     "target": [
@@ -62,6 +123,11 @@
       }
     ]
   },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": ["AppImage"],
+    "category": "Development"
+  },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
@@ -70,7 +136,7 @@
     "deleteAppDataOnUninstall": false,
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
-    "installerHeaderIcon": "build/icon.ico", 
+    "installerHeaderIcon": "build/icon.ico",
     "include": "build/installer.nsh"
   }
 }

@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.15.2",
     "openai>=1.99.3,<2",
-    "camel-ai==0.2.83a7",
+    "camel-ai==0.2.90a1",
     "pydantic[email]>=2.11.1",
     "click>=8.1.8",
     "fastapi>=0.115.12",
@@ -34,8 +34,38 @@ dependencies = [
     "cryptography>=45.0.4",
     "sqids>=0.5.2",
     "exa-py>=1.14.16",
-    "traceroot>=0.0.7",
 ]
 
 [tool.ruff]
 line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+]
+ignore = [
+    "E402",   # module level import not at top of file
+    "E501",   # line too long (handled by formatter)
+    "E712",   # == False comparisons (needed for SQLAlchemy)
+    "B904",   # raise from
+    "B023",   # closure captures loop variable
+    "B008",   # function call in default args (FastAPI Depends pattern)
+    "B007",   # loop variable not used (acceptable)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/alembic/**" = ["F811"]  # redefinition OK in migrations
+
+[tool.ruff.lint.isort]
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

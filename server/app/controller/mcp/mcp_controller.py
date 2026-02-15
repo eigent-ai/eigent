@@ -1,21 +1,36 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import logging
 import os
-from typing import Dict
-from fastapi import Depends, HTTPException, APIRouter
+
+from camel.toolkits.mcp_toolkit import MCPToolkit
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi_babel import _
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
-from sqlmodel import Session, col, select
 from sqlalchemy.orm import selectinload, with_loader_criteria
+from sqlmodel import Session, col, select
+
 from app.component.auth import Auth, auth_must
 from app.component.database import session
+from app.component.environment import env
 from app.model.mcp.mcp import Mcp, McpOut, McpType
 from app.model.mcp.mcp_env import McpEnv, Status as McpEnvStatus
 from app.model.mcp.mcp_user import McpImportType, McpUser, Status
-from camel.toolkits.mcp_toolkit import MCPToolkit
-from app.component.environment import env
-from utils import traceroot_wrapper as traceroot
 
-logger = traceroot.get_logger("server_mcp_controller")
+logger = logging.getLogger("server_mcp_controller")
 
 from app.component.validator.McpServer import (
     McpRemoteServer,
@@ -45,8 +60,7 @@ async def pre_instantiate_mcp_toolkit(config_dict: dict) -> bool:
             # Set global auth directory to persist authentication across tasks
             if "MCP_REMOTE_CONFIG_DIR" not in server_config["env"]:
                 server_config["env"]["MCP_REMOTE_CONFIG_DIR"] = env(
-                    "MCP_REMOTE_CONFIG_DIR",
-                    os.path.expanduser("~/.mcp-auth")
+                    "MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")
                 )
 
         # Create MCP toolkit and attempt to connect
@@ -67,7 +81,6 @@ async def pre_instantiate_mcp_toolkit(config_dict: dict) -> bool:
 
 
 @router.get("/mcps", name="mcp list")
-@traceroot.trace()
 async def gets(
     keyword: str | None = None,
     category_id: int | None = None,
@@ -99,60 +112,68 @@ async def gets(
                 with_loader_criteria(McpUser, col(McpUser.user_id) == user_id),
             )
         )
-    
+
     result = paginate(session, stmt)
-    total = result.total if hasattr(result, 'total') else 0
-    logger.debug("MCP list retrieved", extra={"user_id": user_id, "keyword": keyword, "category_id": category_id, "mine": mine, "total": total})
+    total = result.total if hasattr(result, "total") else 0
+    logger.debug(
+        "MCP list retrieved",
+        extra={"user_id": user_id, "keyword": keyword, "category_id": category_id, "mine": mine, "total": total},
+    )
     return result
 
 
 @router.get("/mcp", name="mcp detail", response_model=McpOut)
-@traceroot.trace()
 async def get(id: int, session: Session = Depends(session)):
     """Get MCP server details."""
     try:
-        stmt = select(Mcp).where(Mcp.no_delete(), Mcp.id == id).options(selectinload(Mcp.category), selectinload(Mcp.envs))
+        stmt = (
+            select(Mcp).where(Mcp.no_delete(), Mcp.id == id).options(selectinload(Mcp.category), selectinload(Mcp.envs))
+        )
         model = session.exec(stmt).one()
         logger.debug("MCP detail retrieved", extra={"mcp_id": id, "mcp_key": model.key})
         return model
-    except Exception as e:
+    except Exception:
         logger.warning("MCP not found", extra={"mcp_id": id})
         raise HTTPException(status_code=404, detail=_("Mcp not found"))
 
 
 @router.post("/mcp/install", name="mcp install")
-@traceroot.trace()
 async def install(mcp_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Install MCP server for user."""
     user_id = auth.user.id
-    
+
     mcp = session.get_one(Mcp, mcp_id)
     if not mcp:
         logger.warning("MCP install failed: MCP not found", extra={"user_id": user_id, "mcp_id": mcp_id})
         raise HTTPException(status_code=404, detail=_("Mcp not found"))
-    
+
     exists = session.exec(select(McpUser).where(McpUser.mcp_id == mcp.id, McpUser.user_id == user_id)).first()
     if exists:
-        logger.warning("MCP install failed: already installed", extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key})
+        logger.warning(
+            "MCP install failed: already installed", extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key}
+        )
         raise HTTPException(status_code=400, detail=_("mcp is installed"))
 
     install_command: dict = mcp.install_command
 
     # Pre-instantiate MCP toolkit for authentication
-    config_dict = {
-        "mcpServers": {
-            mcp.key: install_command
-        }
-    }
+    config_dict = {"mcpServers": {mcp.key: install_command}}
 
     try:
         success = await pre_instantiate_mcp_toolkit(config_dict)
         if not success:
-            logger.warning("MCP pre-instantiation failed, continuing with installation", extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key})
+            logger.warning(
+                "MCP pre-instantiation failed, continuing with installation",
+                extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key},
+            )
         else:
             logger.debug("MCP toolkit pre-instantiated", extra={"mcp_key": mcp.key})
     except Exception as e:
-        logger.warning("MCP pre-instantiation exception", extra={"user_id": user_id, "mcp_key": mcp.key, "error": str(e)}, exc_info=True)
+        logger.warning(
+            "MCP pre-instantiation exception",
+            extra={"user_id": user_id, "mcp_key": mcp.key, "error": str(e)},
+            exc_info=True,
+        )
 
     try:
         mcp_user = McpUser(
@@ -172,12 +193,15 @@ async def install(mcp_id: int, session: Session = Depends(session), auth: Auth =
         logger.info("MCP installed", extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key})
         return mcp_user
     except Exception as e:
-        logger.error("MCP installation failed", extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key, "error": str(e)}, exc_info=True)
+        logger.error(
+            "MCP installation failed",
+            extra={"user_id": user_id, "mcp_id": mcp_id, "mcp_key": mcp.key, "error": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/mcp/import/{mcp_type}", name="mcp import")
-@traceroot.trace()
 async def import_mcp(
     mcp_type: McpImportType, mcp_data: dict, session: Session = Depends(session), auth: Auth = Depends(auth_must)
 ):
@@ -190,27 +214,24 @@ async def import_mcp(
         if not is_valid:
             logger.warning("Local MCP import validation failed", extra={"user_id": user_id, "error": res})
             raise HTTPException(status_code=400, detail=res)
-        
-        mcp_data: Dict[str, McpServerItem] = res.mcpServers
+
+        mcp_data: dict[str, McpServerItem] = res.mcpServers
         imported_count = 0
 
         for name, data in mcp_data.items():
-            config_dict = {
-                "mcpServers": {
-                    name: {
-                        "command": data.command,
-                        "args": data.args,
-                        "env": data.env or {}
-                    }
-                }
-            }
+            config_dict = {"mcpServers": {name: {"command": data.command, "args": data.args, "env": data.env or {}}}}
 
             try:
                 success = await pre_instantiate_mcp_toolkit(config_dict)
                 if not success:
-                    logger.warning("Local MCP pre-instantiation failed, continuing", extra={"user_id": user_id, "mcp_name": name})
+                    logger.warning(
+                        "Local MCP pre-instantiation failed, continuing", extra={"user_id": user_id, "mcp_name": name}
+                    )
             except Exception as e:
-                logger.warning("Local MCP pre-instantiation exception", extra={"user_id": user_id, "mcp_name": name, "error": str(e)})
+                logger.warning(
+                    "Local MCP pre-instantiation exception",
+                    extra={"user_id": user_id, "mcp_name": name, "error": str(e)},
+                )
 
             try:
                 mcp_user = McpUser(
@@ -229,23 +250,27 @@ async def import_mcp(
                 mcp_user.save()
                 imported_count += 1
             except Exception as e:
-                logger.error("Failed to import local MCP", extra={"user_id": user_id, "mcp_name": name, "error": str(e)}, exc_info=True)
-        
+                logger.error(
+                    "Failed to import local MCP",
+                    extra={"user_id": user_id, "mcp_name": name, "error": str(e)},
+                    exc_info=True,
+                )
+
         logger.info("Local MCPs imported", extra={"user_id": user_id, "count": imported_count})
         return {"message": "Local MCP servers imported successfully", "count": imported_count}
-    
+
     elif mcp_type == McpImportType.Remote:
         logger.info("Importing remote MCP server", extra={"user_id": user_id})
         is_valid, res = validate_mcp_remote_servers(mcp_data)
         if not is_valid:
             logger.warning("Remote MCP import validation failed", extra={"user_id": user_id, "error": res})
             raise HTTPException(status_code=400, detail=res)
-        
+
         data: McpRemoteServer = res
 
         try:
-        # For remote servers, we don't need to pre-instantiate as they typically don't require authentication
-        # but we can still try to validate the connection if needed
+            # For remote servers, we don't need to pre-instantiate as they typically don't require authentication
+            # but we can still try to validate the connection if needed
             mcp_user = McpUser(
                 mcp_id=0,
                 user_id=user_id,
@@ -255,8 +280,15 @@ async def import_mcp(
                 server_url=data.server_url,
             )
             mcp_user.save()
-            logger.info("Remote MCP imported", extra={"user_id": user_id, "server_name": data.server_name, "server_url": data.server_url})
+            logger.info(
+                "Remote MCP imported",
+                extra={"user_id": user_id, "server_name": data.server_name, "server_url": data.server_url},
+            )
             return mcp_user
         except Exception as e:
-            logger.error("Remote MCP import failed", extra={"user_id": user_id, "server_name": data.server_name, "error": str(e)}, exc_info=True)
+            logger.error(
+                "Remote MCP import failed",
+                extra={"user_id": user_id, "server_name": data.server_name, "error": str(e)},
+                exc_info=True,
+            )
             raise HTTPException(status_code=500, detail="Internal server error")

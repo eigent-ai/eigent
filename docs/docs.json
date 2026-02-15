@@ -65,8 +65,11 @@
                 "icon": "brain",
                 "expanded": true,
                 "pages": [
+                  "/core/models/byok",
+                  "/core/models/local-model",
                   "/core/models/gemini",
-                  "/core/models/local-model"
+                  "/core/models/minimax",
+                  "/core/models/kimi"
                 ]
               },
               "/core/tools",
@@ -76,10 +79,7 @@
           {
             "group": "Troubleshooting",
             "icon": "question-circle",
-            "pages": [
-              "/troubleshooting/support",
-              "/troubleshooting/bug"
-            ]
+            "pages": ["/troubleshooting/support", "/troubleshooting/bug"]
           }
         ]
       }

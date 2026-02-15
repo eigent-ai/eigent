@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "difficulty": "easy",
+    "description": "1) search tool usage and choosing the appropriate website from results, 2) interpreting advanced obfuscated Python code patterns (requires deep coding comprehension), 3) strict instruction following with implicit output modification instead of directly copying code from the website.",
+    "tags": [
+      "instruction-following",
+      "browser",
+      "coding",
+      "python",
+      "target-searching"
+    ]
+  },
+  "data": {
+    "name": "0",
+    "question": "Find 'obscure hello world program' from mathspp, read the page, and write a Python script named 'hello_world.py' that faithfully reproduces the obfuscated Hello World program shown on that page. Do not simplify or rewrite it, just use the same structure, tricks, and naming conventions used by the author. Notice that the script MUST print 'Hello, WORLD!' when run.",
+    "env": {}
+  },
+  "tests": {
+    "checker": ["benchmark/checker/0.py"],
+    "grader": ["benchmark/grader/0.py"]
+  }
+}

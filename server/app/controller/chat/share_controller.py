@@ -1,22 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlmodel import Session, asc, select
-from app.component.database import session
-import json
-import asyncio
-from itsdangerous import SignatureExpired, BadTimeSignature
-from starlette.responses import StreamingResponse
-from app.model.chat.chat_share import ChatHistoryShareOut, ChatShare, ChatShareIn
-from app.model.chat.chat_step import ChatStep
-from app.model.chat.chat_history import ChatHistory
-from utils import traceroot_wrapper as traceroot
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-logger = traceroot.get_logger("server_chat_share")
+import asyncio
+import json
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from itsdangerous import BadTimeSignature, SignatureExpired
+from sqlmodel import Session, asc, select
+from starlette.responses import StreamingResponse
+
+from app.component.database import session
+from app.model.chat.chat_history import ChatHistory
+from app.model.chat.chat_share import (
+    ChatHistoryShareOut,
+    ChatShare,
+    ChatShareIn,
+)
+from app.model.chat.chat_step import ChatStep
+
+logger = logging.getLogger("server_chat_share")
 
 router = APIRouter(prefix="/chat", tags=["Chat Share"])
 
 
 @router.get("/share/info/{token}", name="Get shared chat info", response_model=ChatHistoryShareOut)
-@traceroot.trace()
 def get_share_info(token: str, session: Session = Depends(session)):
     """
     Get shared chat history info by token, excluding sensitive data.
@@ -42,7 +61,6 @@ def get_share_info(token: str, session: Session = Depends(session)):
 
 
 @router.get("/share/playback/{token}", name="Playback shared chat via SSE")
-@traceroot.trace()
 async def share_playback(token: str, session: Session = Depends(session), delay_time: float = 0):
     """
     Playbacks the chat history via a sharing token (SSE).
@@ -51,7 +69,7 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
     if delay_time > 5:
         logger.debug("Delay time capped", extra={"requested": delay_time, "capped": 5})
         delay_time = 5
-    
+
     try:
         task_id = ChatShare.verify_token(token, False)
     except SignatureExpired:
@@ -71,8 +89,11 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
                 yield f"data: {json.dumps({'error': 'No steps found for this task.'})}\n\n"
                 return
 
-            logger.info("Shared chat playback started", extra={"task_id": task_id, "step_count": len(steps), "delay_time": delay_time})
-            
+            logger.info(
+                "Shared chat playback started",
+                extra={"task_id": task_id, "step_count": len(steps), "delay_time": delay_time},
+            )
+
             for idx, step in enumerate(steps, start=1):
                 step_data = {
                     "id": step.id,
@@ -82,10 +103,10 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
                     "created_at": step.created_at.isoformat() if step.created_at else None,
                 }
                 yield f"data: {json.dumps(step_data)}\n\n"
-                
+
                 if delay_time > 0 and step.step != "create_agent":
                     await asyncio.sleep(delay_time)
-            
+
             logger.info("Shared chat playback completed", extra={"task_id": task_id, "step_count": len(steps)})
         except Exception as e:
             logger.error("Shared chat playback error", extra={"task_id": task_id, "error": str(e)}, exc_info=True)
@@ -95,7 +116,6 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
 
 
 @router.post("/share", name="Generate sharable link for a task(1 day expiration)")
-@traceroot.trace()
 def create_share_link(data: ChatShareIn):
     """Generate sharing token with 1-day expiration for task."""
     try:

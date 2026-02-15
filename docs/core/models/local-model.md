@@ -1,7 +1,6 @@
 ---
-title: "Models (Local Model)"
-description: "Configure and deploy your preferred LLM models with Eigent."
-icon: "server"
+title: Models (Local Model)
+description: Configure and deploy your preferred LLM models with Eigent.
 ---
 
 ## **Self-Host Model**
@@ -16,7 +15,7 @@ vllm serve Qwen/Qwen2.5-1.5B-Instruct
 ```
 
 ```python
-#Sglang https://docs.sglang.ai/backend/openai_api_completions.html
+#SGLang https://docs.sglang.ai/backend/openai_api_completions.html
 from sglang.test.test_utils import is_in_ci
 
 if is_in_ci():
