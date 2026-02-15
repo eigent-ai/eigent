@@ -461,7 +461,7 @@ export function TaskCard({
                         </div>
                         <div className="flex flex-1 flex-col items-start justify-center">
                           <div
-                            className={`w-full whitespace-pre-line break-words ${
+                            className={`w-full whitespace-pre-line break-words overflow-wrap-anywhere ${
                               task.status === TaskStatus.FAILED
                                 ? 'text-text-cuation-default'
                                 : task.status === TaskStatus.BLOCKED
