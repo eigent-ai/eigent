@@ -209,7 +209,9 @@ if (os.release().startsWith('6.1')) app.disableHardwareAcceleration();
 // Set application name for Windows 10+ notifications
 if (process.platform === 'win32') app.setAppUserModelId(app.getName());
 
-if (!app.requestSingleInstanceLock()) {
+// Only enforce single-instance in production. In dev, a second instance (e.g. second
+// npm run dev) would quit here and take its dev server down; skip so multiple dev instances work.
+if (!VITE_DEV_SERVER_URL && !app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
 }
@@ -303,6 +305,10 @@ function processQueuedProtocolUrls() {
 
 // ==================== single instance lock ====================
 const setupSingleInstanceLock = () => {
+  if (VITE_DEV_SERVER_URL) {
+    // Dev: allow multiple instances so a second npm run dev doesn't quit and kill its dev server
+    return;
+  }
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
     log.info('no-lock');
