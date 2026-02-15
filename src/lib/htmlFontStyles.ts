@@ -59,21 +59,61 @@ export function isHtmlDocument(text: string): boolean {
  */
 function isClassicInlineJs(attrs: string): boolean {
   const a = attrs.toLowerCase();
-  if (/type\s*=\s*["']?\s*module\s*["']?/.test(a)) return false;
-  if (/type\s*=\s*["']?\s*application\/ld\+json/.test(a)) return false;
-  return true;
+  const typeMatch = a.match(
+    /(?:^|\s)type\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
+  );
+  if (!typeMatch) return true;
+
+  const rawType = (typeMatch[1] ?? typeMatch[2] ?? typeMatch[3] ?? '').trim();
+  if (!rawType) return true;
+
+  const normalizedType = rawType.split(';', 1)[0].trim();
+  if (!normalizedType) return true;
+
+  if (normalizedType === 'module') return false;
+  if (normalizedType === 'application/ld+json') return false;
+
+  const jsMimeTypes = new Set([
+    'text/javascript',
+    'application/javascript',
+    'text/ecmascript',
+    'application/ecmascript',
+    'application/x-javascript',
+    'text/x-javascript',
+    'application/x-ecmascript',
+    'text/x-ecmascript',
+    'text/jscript',
+    'text/livescript',
+  ]);
+
+  return jsMimeTypes.has(normalizedType);
 }
 
-/** Defers inline classic-JS until DOMContentLoaded when external scripts exist; leaves type="module" and application/ld+json unchanged and preserves attributes. */
+/**
+ * Returns true when a script tag has a real src attribute.
+ * This intentionally excludes attributes like data-src.
+ */
+function hasScriptSrc(attrs: string): boolean {
+  return /(?:^|\s)src\s*=/.test(attrs.toLowerCase());
+}
+
+/**
+ * Defers inline classic-JS that appears after external scripts until window load.
+ * This keeps pre-library config scripts in place and preserves global scope by
+ * executing deferred code through dynamically-inserted script elements.
+ */
 export function deferInlineScriptsUntilLoad(html: string): string {
   const lower = html.toLowerCase();
   let idx = lower.indexOf('<script');
   let hasExternal = false;
   while (idx !== -1) {
     const end = html.indexOf('>', idx);
-    if (end !== -1 && /\bsrc\s*=/.test(html.slice(idx, end))) {
-      hasExternal = true;
-      break;
+    if (end !== -1) {
+      const attrs = html.slice(idx + '<script'.length, end);
+      if (hasScriptSrc(attrs)) {
+        hasExternal = true;
+        break;
+      }
     }
     idx = lower.indexOf('<script', idx + 1);
   }
@@ -81,6 +121,7 @@ export function deferInlineScriptsUntilLoad(html: string): string {
 
   let result = '';
   let i = 0;
+  let seenExternalScript = false;
   while (i < html.length) {
     const scriptStart = lower.indexOf('<script', i);
     if (scriptStart === -1) {
@@ -95,10 +136,10 @@ export function deferInlineScriptsUntilLoad(html: string): string {
       break;
     }
     const attrs = html.slice(afterOpen, attrEnd);
-    const hasSrc = /\bsrc\s*=/.test(attrs);
+    const hasSrc = hasScriptSrc(attrs);
     const contentStart = attrEnd + 1;
     const endTag = '</script>';
-    const contentEnd = html.toLowerCase().indexOf(endTag, contentStart);
+    const contentEnd = lower.indexOf(endTag, contentStart);
     if (contentEnd === -1) {
       result += html.slice(scriptStart);
       break;
@@ -106,9 +147,33 @@ export function deferInlineScriptsUntilLoad(html: string): string {
     const fullTag = html.slice(scriptStart, contentEnd + endTag.length);
     const content = html.slice(contentStart, contentEnd);
     const openTag = html.slice(scriptStart, attrEnd + 1);
-    if (!hasSrc && content.trim().length > 0 && isClassicInlineJs(attrs)) {
-      const escaped = content.replace(/<\/script>/gi, '<\\/script>');
-      result += `${openTag}window.addEventListener('DOMContentLoaded',function(){${escaped}});</script>`;
+
+    if (hasSrc) {
+      seenExternalScript = true;
+      result += fullTag;
+    } else if (
+      seenExternalScript &&
+      content.trim().length > 0 &&
+      isClassicInlineJs(attrs)
+    ) {
+      const serializedContent = JSON.stringify(content).replace(
+        /<\/script>/gi,
+        '<\\/script>'
+      );
+      const deferredRunner = [
+        '(function(){',
+        'var __eigentRun=function(){',
+        "var __eigentScript=document.createElement('script');",
+        'var __eigentCurrentScript=document.currentScript;',
+        'if(__eigentCurrentScript&&__eigentCurrentScript.nonce){__eigentScript.nonce=__eigentCurrentScript.nonce;}',
+        `__eigentScript.text=${serializedContent};`,
+        '(document.head||document.body||document.documentElement).appendChild(__eigentScript);',
+        '__eigentScript.remove();',
+        '};',
+        "if(document.readyState==='complete'){__eigentRun();}else{window.addEventListener('load',__eigentRun,{once:true});}",
+        '})();',
+      ].join('');
+      result += `${openTag}${deferredRunner}</script>`;
     } else {
       result += fullTag;
     }
