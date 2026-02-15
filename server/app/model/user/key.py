@@ -25,7 +25,13 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 class ModelType(StrEnum):
     gpt4_1 = "gpt-4.1"
     gpt4_mini = "gpt-4.1-mini"
+    gpt5 = "gpt-5"
+    gpt5_1 = "gpt-5.1"
+    gpt5_2 = "gpt-5.2"
+    gpt5_mini = "gpt-5-mini"
     gemini_3_pro = "gemini-3-pro-preview"
+    gemini_3_flash = "gemini-3-flash-preview"
+    claude_sonnet_4_5 = "claude-sonnet-4-5"
     minimax_m2_5 = "minimax_m2_5"
 
 
