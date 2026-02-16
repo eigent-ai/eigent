@@ -2,6 +2,12 @@
 uv run uvicorn main:api --port 5001
 ```
 
+### CORS
+
+CORS is restricted to avoid allowing arbitrary origins. Configure allowed browser origins in `~/.eigent/.env`:
+
+- **`CORS_ORIGINS`** (optional): Comma-separated list of origins, e.g. `http://localhost:5173,http://localhost:3000`. In development, if unset, common localhost origins are allowed; in production, no origins are allowed until you set this.
+
 i18n operation process: https://github.com/Anbarryprojects/fastapi-babel
 
 ```bash
