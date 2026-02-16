@@ -71,7 +71,10 @@ function parseSimpleYaml(text: string): Record<string, string> {
     if (match) {
       const value = match[2].trim();
       // Lowercase key so `Name:` / `name:` / `NAME:` all work
-      out[match[1].toLowerCase()] = value.replace(/^['"]|['"]$/g, '').trim();
+      out[match[1].toLowerCase()] = value
+        .replace(/^['"]|['"]$/g, '')
+        .replace(/\\"/g, '"')
+        .trim();
     }
   }
   return out;
@@ -106,7 +109,7 @@ export function buildSkillMd(
   const front = [
     FRONTMATTER_DELIM,
     `name: ${name}`,
-    `description: ${description}`,
+    `description: "${description.replace(/"/g, '\\"')}"`,
     FRONTMATTER_DELIM,
     '',
     body,
