@@ -28,6 +28,7 @@ from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.pptx_toolkit import PPTXToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
@@ -82,6 +83,12 @@ async def document_agent(options: Chat):
         options.project_id, options.get_bun_env()
     )
 
+    search_tools = SearchToolkit.get_can_use_tools(options.project_id)
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
@@ -93,6 +100,7 @@ async def document_agent(options: Chat):
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *google_drive_tools,
+        *search_tools,
     ]
     system_message = DOCUMENT_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -118,5 +126,6 @@ async def document_agent(options: Chat):
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
             GoogleDriveMCPToolkit.toolkit_name(),
+            SearchToolkit.toolkit_name(),
         ],
     )

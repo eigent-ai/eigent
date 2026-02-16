@@ -25,6 +25,7 @@ from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.agent.toolkit.reddit_toolkit import RedditToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.twitter_toolkit import TwitterToolkit
 from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
@@ -70,6 +71,7 @@ async def social_media_agent(options: Chat):
             Agents.social_media_agent,
             working_directory=working_directory,
         ).get_tools(),
+        *SearchToolkit.get_can_use_tools(options.project_id),
         # *DiscordToolkit(options.project_id).get_tools(),
         # *GoogleSuiteToolkit(options.project_id).get_tools(),
     ]
@@ -94,5 +96,6 @@ async def social_media_agent(options: Chat):
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
+            SearchToolkit.toolkit_name(),
         ],
     )

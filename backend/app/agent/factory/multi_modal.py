@@ -75,6 +75,13 @@ def multi_modal_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+
+    search_tools = SearchToolkit.get_can_use_tools(options.project_id)
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
@@ -83,6 +90,7 @@ def multi_modal_agent(options: Chat):
         ),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
+        *search_tools,
     ]
     if options.is_cloud():
         # TODO: check llm has this model
