@@ -17,6 +17,8 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.rate_limit import limiter
+
 logger = logging.getLogger("health_controller")
 
 router = APIRouter(tags=["Health"])
@@ -28,6 +30,7 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health", name="health check", response_model=HealthResponse)
+@limiter.exempt
 async def health_check():
     """Health check endpoint for verifying backend
     is ready to accept requests."""

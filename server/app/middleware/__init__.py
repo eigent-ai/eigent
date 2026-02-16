@@ -16,5 +16,7 @@ from fastapi_babel import BabelMiddleware
 
 from app import api
 from app.component.babel import babel_configs
+from app.rate_limit import setup_rate_limiting
 
 api.add_middleware(BabelMiddleware, babel_configs=babel_configs)
+setup_rate_limiting(api)

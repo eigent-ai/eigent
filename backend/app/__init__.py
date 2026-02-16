@@ -15,6 +15,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.rate_limit import setup_rate_limiting
+
 # Initialize FastAPI with title
 api = FastAPI(title="Eigent Multi-Agent System API")
 
@@ -26,3 +28,4 @@ api.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+setup_rate_limiting(api)
