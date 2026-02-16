@@ -1167,14 +1167,17 @@ function registerIpcHandlers() {
       _event,
       zipPathOrBuffer: string | Buffer | ArrayBuffer | Uint8Array
     ) => {
-      const isBufferLike =
-        Buffer.isBuffer(zipPathOrBuffer) ||
-        zipPathOrBuffer instanceof ArrayBuffer ||
-        zipPathOrBuffer instanceof Uint8Array;
+      // Use typeof check instead of instanceof to handle cross-realm objects
+      // from Electron IPC (instanceof can fail across context boundaries)
+      const isBufferLike = typeof zipPathOrBuffer !== 'string';
       if (isBufferLike) {
         const buf = Buffer.isBuffer(zipPathOrBuffer)
           ? zipPathOrBuffer
-          : Buffer.from(zipPathOrBuffer as ArrayBuffer);
+          : Buffer.from(
+              zipPathOrBuffer instanceof ArrayBuffer
+                ? zipPathOrBuffer
+                : (zipPathOrBuffer as any)
+            );
         const tempPath = path.join(
           os.tmpdir(),
           `eigent-skill-import-${Date.now()}.zip`
@@ -1835,6 +1838,10 @@ async function importSkillsFromZip(zipPath: string): Promise<{
   success: boolean;
   error?: string;
 }> {
+  // Extract to a temp directory, then find SKILL.md files and copy their
+  // parent skill directories into SKILLS_ROOT.  This handles any zip
+  // structure: wrapping directories, SKILL.md at root, or multiple skills.
+  const tempDir = path.join(os.tmpdir(), `eigent-skill-extract-${Date.now()}`);
   try {
     if (!existsSync(zipPath)) {
       return { success: false, error: 'Zip file does not exist' };
@@ -1846,20 +1853,111 @@ async function importSkillsFromZip(zipPath: string): Promise<{
     if (!existsSync(SKILLS_ROOT)) {
       await fsp.mkdir(SKILLS_ROOT, { recursive: true });
     }
+
+    // Step 1: Extract zip into temp directory
+    await fsp.mkdir(tempDir, { recursive: true });
     const directory = await unzipper.Open.file(zipPath);
     for (const file of directory.files as any[]) {
       if (file.type === 'Directory') continue;
-      const destPath = path.join(SKILLS_ROOT, file.path);
+      const destPath = path.join(tempDir, file.path);
       const destDir = path.dirname(destPath);
       await fsp.mkdir(destDir, { recursive: true });
       const content = await file.buffer();
       await fsp.writeFile(destPath, content);
     }
-    log.info('Imported skills from zip into ~/.eigent/skills:', zipPath);
+
+    // Step 2: Recursively find all SKILL.md files
+    const skillFiles: string[] = [];
+    async function findSkillMdFiles(dir: string) {
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await findSkillMdFiles(fullPath);
+        } else if (entry.name === SKILL_FILE) {
+          skillFiles.push(fullPath);
+        }
+      }
+    }
+    await findSkillMdFiles(tempDir);
+
+    if (skillFiles.length === 0) {
+      return {
+        success: false,
+        error: 'No SKILL.md files found in zip archive',
+      };
+    }
+
+    // Step 3: Copy each skill directory into SKILLS_ROOT
+    for (const skillFilePath of skillFiles) {
+      const skillDir = path.dirname(skillFilePath);
+
+      if (skillDir === tempDir) {
+        // SKILL.md is at the zip root (no parent skill folder).
+        // Derive a folder name from the SKILL.md frontmatter or zip filename.
+        let folderName = path.basename(zipPath, path.extname(zipPath));
+        try {
+          const raw = await fsp.readFile(skillFilePath, 'utf-8');
+          const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
+          const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
+          if (parsed) {
+            folderName =
+              parsed
+                .replace(/[\\/*?:"<>|\s]+/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '') || folderName;
+          }
+        } catch {
+          // Use zip filename fallback
+        }
+        const dest = path.join(SKILLS_ROOT, folderName);
+        await fsp.mkdir(dest, { recursive: true });
+        // Copy only root-level files into the new skill folder
+        const rootEntries = await fsp.readdir(tempDir, {
+          withFileTypes: true,
+        });
+        for (const entry of rootEntries) {
+          if (entry.isFile()) {
+            await fsp.copyFile(
+              path.join(tempDir, entry.name),
+              path.join(dest, entry.name)
+            );
+          }
+        }
+      } else {
+        // SKILL.md is inside a subdirectory — copy that directory to SKILLS_ROOT
+        const skillDirName = path.basename(skillDir);
+        const dest = path.join(SKILLS_ROOT, skillDirName);
+        await fsp.mkdir(dest, { recursive: true });
+        // Recursively copy the skill directory
+        async function copyDir(src: string, dst: string) {
+          const entries = await fsp.readdir(src, { withFileTypes: true });
+          for (const entry of entries) {
+            const srcPath = path.join(src, entry.name);
+            const dstPath = path.join(dst, entry.name);
+            if (entry.isDirectory()) {
+              await fsp.mkdir(dstPath, { recursive: true });
+              await copyDir(srcPath, dstPath);
+            } else {
+              await fsp.copyFile(srcPath, dstPath);
+            }
+          }
+        }
+        await copyDir(skillDir, dest);
+      }
+    }
+
+    log.info(
+      `Imported ${skillFiles.length} skill(s) from zip into ~/.eigent/skills:`,
+      zipPath
+    );
     return { success: true };
   } catch (error: any) {
     log.error('importSkillsFromZip failed', error);
     return { success: false, error: error?.message || String(error) };
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 

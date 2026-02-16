@@ -43,9 +43,7 @@ export default function SkillUploadDialog({
   const [_isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isZip, setIsZip] = useState(false);
-  const [uploadError, setUploadError] = useState<
-    'invalid_format' | 'invalid_yaml' | null
-  >(null);
+  const [uploadError, setUploadError] = useState<'invalid_format' | null>(null);
 
   const handleClose = useCallback(() => {
     setSelectedFile(null);
@@ -171,7 +169,23 @@ export default function SkillUploadDialog({
       try {
         setUploadError(null);
         setSelectedFile(file);
-        if (extension === '.zip') {
+
+        // Detect if file is a zip archive: .zip always, .skill by magic bytes
+        let treatAsZip = extension === '.zip';
+        if (extension === '.skill') {
+          const header = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+          // ZIP magic bytes: PK\x03\x04
+          if (
+            header[0] === 0x50 &&
+            header[1] === 0x4b &&
+            header[2] === 0x03 &&
+            header[3] === 0x04
+          ) {
+            treatAsZip = true;
+          }
+        }
+
+        if (treatAsZip) {
           setIsZip(true);
           setFileContent('');
           await handleUpload(file, {
@@ -182,12 +196,8 @@ export default function SkillUploadDialog({
           const content = await file.text();
           setIsZip(false);
           setFileContent(content);
-          // .skill / .md must have YAML frontmatter (name + description)
-          const meta = parseSkillMd(content);
-          if (!meta) {
-            setUploadError('invalid_yaml');
-            return;
-          }
+          // Let handleUpload's fallback logic handle files without frontmatter
+          // (it extracts name from # heading or filename)
           await handleUpload(file, {
             isZipOverride: false,
             contentOverride: content,
@@ -231,9 +241,7 @@ export default function SkillUploadDialog({
   const errorMessage =
     uploadError === 'invalid_format'
       ? t('agents.upload-error-invalid-format')
-      : uploadError === 'invalid_yaml'
-        ? t('agents.upload-error-invalid-yaml')
-        : null;
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
@@ -245,10 +253,10 @@ export default function SkillUploadDialog({
       >
         <DialogHeader title={t('agents.add-skill')} />
         <DialogContentSection>
-          <div className="flex flex-col gap-4">
+          <div className="gap-4 flex flex-col">
             {/* Drop Zone */}
             <div
-              className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-colors duration-300 ease-in ${
+              className={`rounded-xl p-8 ease-in relative cursor-pointer border-2 border-dashed transition-colors duration-300 ${
                 uploadError
                   ? 'border-border-cuation bg-surface-cuation'
                   : isDragging
@@ -269,10 +277,10 @@ export default function SkillUploadDialog({
               />
 
               {selectedFile ? (
-                <div className="flex flex-col items-center gap-6">
-                  <div className="flex items-center gap-2">
+                <div className="gap-6 flex flex-col items-center">
+                  <div className="gap-2 flex items-center">
                     <div
-                      className={`flex p-1 flex-shrink-0 items-center justify-center rounded-lg ${
+                      className={`p-1 rounded-lg flex flex-shrink-0 items-center justify-center ${
                         uploadError
                           ? 'bg-surface-cuation'
                           : 'bg-surface-tertiary'
@@ -286,9 +294,9 @@ export default function SkillUploadDialog({
                         }`}
                       />
                     </div>
-                    <div className="min-w-0 w-full flex flex-col">
+                    <div className="min-w-0 flex w-full flex-col">
                       <span
-                        className={`truncate text-body-sm font-medium ${
+                        className={`text-body-sm font-medium truncate ${
                           uploadError
                             ? 'text-text-cuation'
                             : 'text-text-heading'
@@ -320,11 +328,11 @@ export default function SkillUploadDialog({
                   </span>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex h-12 w-12 items-center justify-center">
+                <div className="gap-2 flex flex-col items-center">
+                  <div className="h-12 w-12 flex items-center justify-center">
                     <Upload className="h-6 w-6 text-icon-secondary" />
                   </div>
-                  <div className="text-center flex flex-col items-center gap-1">
+                  <div className="gap-1 flex flex-col items-center text-center">
                     <span className="text-body-sm font-medium text-text-heading">
                       {t('agents.drag-and-drop')}
                     </span>
@@ -339,10 +347,10 @@ export default function SkillUploadDialog({
             {/* Error notice */}
             {uploadError && errorMessage && (
               <div
-                className="flex items-center gap-4 rounded-xl border border-border-cuation bg-surface-cuation px-4 py-3"
+                className="gap-4 rounded-xl border-border-cuation bg-surface-cuation px-4 py-3 flex items-center border"
                 role="alert"
               >
-                <AlertCircle className="h-4 w-4 shrink-0 text-icon-cuation" />
+                <AlertCircle className="h-4 w-4 text-icon-cuation shrink-0" />
                 <span className="text-label-sm text-text-cuation">
                   {errorMessage}
                 </span>
@@ -354,11 +362,11 @@ export default function SkillUploadDialog({
               <span className="text-label-sm font-bold text-text-body">
                 {t('agents.file-requirements')}
               </span>
-              <span className="mt-2 flex items-start gap-2 text-label-sm text-text-label">
+              <span className="mt-2 gap-2 text-label-sm text-text-label flex items-start">
                 <span className="text-text-label">•</span>
                 <span>{t('agents.file-requirements-detail-1')}</span>
               </span>
-              <span className="mt-1 flex items-start gap-2 text-label-sm text-text-label">
+              <span className="mt-1 gap-2 text-label-sm text-text-label flex items-start">
                 <span className="text-text-label">•</span>
                 <span>{t('agents.file-requirements-detail-2')}</span>
               </span>
