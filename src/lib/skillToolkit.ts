@@ -106,10 +106,13 @@ export function buildSkillMd(
   description: string,
   body: string
 ): string {
+  const escapedDescription = description
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
   const front = [
     FRONTMATTER_DELIM,
     `name: ${name}`,
-    `description: "${description.replace(/"/g, '\\"')}"`,
+    `description: "${escapedDescription}"`,
     FRONTMATTER_DELIM,
     '',
     body,
