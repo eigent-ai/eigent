@@ -9,10 +9,10 @@ Analyze data and provide statistical insights.
 
 ## Workflow
 
-1. Load and inspect the data structure
-2. Compute basic statistics (mean, median, std, min, max)
-3. Identify patterns and anomalies
-4. Summarize key findings
+**1.** Load and inspect the data structure
+**2.** Compute basic statistics (mean, median, std, min, max)
+**3.** Identify patterns and anomalies
+**4.** Summarize key findings
 
 ## Output Format
 

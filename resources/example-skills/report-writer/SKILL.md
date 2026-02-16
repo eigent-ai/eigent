@@ -9,11 +9,11 @@ Transform analysis results into professional reports.
 
 ## Report Structure
 
-1. **Executive Summary** - Key findings in 2-3 sentences
-2. **Methodology** - How the analysis was performed
-3. **Results** - Detailed findings with visualizations
-4. **Recommendations** - Actionable next steps
-5. **Appendix** - Raw data and technical details
+**1.** **Executive Summary** - Key findings in 2-3 sentences
+**2.** **Methodology** - How the analysis was performed
+**3.** **Results** - Detailed findings with visualizations
+**4.** **Recommendations** - Actionable next steps
+**5.** **Appendix** - Raw data and technical details
 
 ## Formatting Guidelines
 
