@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useAuthHydration } from '@/hooks/useAuthHydration';
 import { useAuthStore } from '@/store/authStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
@@ -53,8 +54,11 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
   }
 };
 
-// Route guard: Check if user is logged in
+// Route guard: Check if user is logged in.
+// Waits for persisted auth store to hydrate before reading token to avoid
+// temporary redirect to /login or flicker when the user is actually logged in.
 const ProtectedRoute = () => {
+  const hasHydrated = useAuthHydration();
   const [state, dispatch] = useReducer(authReducer, {
     loading: false,
     isAuthenticated: false,
@@ -62,7 +66,10 @@ const ProtectedRoute = () => {
   });
 
   const { token, localProxyValue, logout } = useAuthStore();
+
   useEffect(() => {
+    if (!hasHydrated) return;
+
     // Check VITE_USE_LOCAL_PROXY value on app startup
     if (token) {
       const currentProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
@@ -78,9 +85,11 @@ const ProtectedRoute = () => {
     }
 
     dispatch({ type: 'INITIALIZE', payload: { isAuthenticated: !!token } });
-  }, [token, localProxyValue, logout]);
+  }, [hasHydrated, token, localProxyValue, logout]);
 
-  if (state.loading || !state.initialized) {
+  // Show loading until persisted auth is rehydrated so we don't redirect
+  // logged-in users to /login briefly
+  if (!hasHydrated || state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
