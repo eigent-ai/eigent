@@ -22,7 +22,7 @@ User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
 import json
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from camel.toolkits.function_tool import FunctionTool
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
@@ -198,10 +198,10 @@ class SkillToolkit(BaseSkillToolkit):
     def __init__(
         self,
         api_task_id: str,
-        agent_name: Optional[str] = None,
-        working_directory: Optional[str] = None,
-        user_id: Optional[str] = None,
-        timeout: Optional[float] = None,
+        agent_name: str | None = None,
+        working_directory: str | None = None,
+        user_id: str | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Initialize SkillToolkit with Eigent-specific context.
 
@@ -253,8 +253,7 @@ class SkillToolkit(BaseSkillToolkit):
         roots.append(("system", Path("/etc/camel/skills")))
 
         logger.debug(
-            f"Skill roots configured for {self.agent_name}: "
-            f"{len(roots)} paths"
+            f"Skill roots configured for {self.agent_name}: {len(roots)} paths"
         )
 
         return roots
@@ -271,9 +270,7 @@ class SkillToolkit(BaseSkillToolkit):
             Filtered dict of skills based on configuration
         """
         # Load merged config (user + project)
-        config = _get_merged_skill_config(
-            self.working_directory, self.user_id
-        )
+        config = _get_merged_skill_config(self.working_directory, self.user_id)
 
         if not config:
             # No config = all skills available
