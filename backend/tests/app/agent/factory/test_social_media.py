@@ -36,6 +36,9 @@ async def test_social_media_agent_creation(sample_chat_data):
     mod = "app.agent.factory.social_media"
     with (
         patch(f"{mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{mod}.WhatsAppToolkit") as mock_whatsapp_toolkit,
         patch(f"{mod}.TwitterToolkit") as mock_twitter_toolkit,

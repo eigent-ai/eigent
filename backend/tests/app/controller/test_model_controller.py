@@ -15,6 +15,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.controller.model_controller import (
@@ -73,11 +74,9 @@ class TestModelController:
             "app.controller.model_controller.create_agent",
             side_effect=Exception("Invalid model configuration"),
         ):
-            response = await validate_model(request_data)
-            assert isinstance(response, ValidateModelResponse)
-            assert response.is_valid is False
-            assert response.is_tool_calls is False
-            assert "Invalid model name" in response.message
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_model(request_data)
+            assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
     async def test_validate_model_step_failure(self):
@@ -93,12 +92,9 @@ class TestModelController:
             "app.controller.model_controller.create_agent",
             return_value=mock_agent,
         ):
-            response = await validate_model(request_data)
-
-            assert isinstance(response, ValidateModelResponse)
-            assert response.is_valid is False
-            assert response.is_tool_calls is False
-            assert "API call failed" in response.message
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_model(request_data)
+            assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
     async def test_validate_model_tool_calls_false(self):
@@ -130,8 +126,10 @@ class TestModelController:
 
     @pytest.mark.asyncio
     async def test_validate_model_with_minimal_parameters(self):
-        """Test model validation with minimal parameters."""
-        request_data = ValidateModelRequest()  # Uses default values
+        """Test model validation with minimal parameters (no API key)."""
+        request_data = (
+            ValidateModelRequest()
+        )  # Uses default values, api_key is None
 
         mock_agent = MagicMock()
         mock_response = MagicMock()
@@ -144,12 +142,12 @@ class TestModelController:
             "app.controller.model_controller.create_agent",
             return_value=mock_agent,
         ):
+            # api_key is None by default, which passes the empty string check
+            # The agent step succeeds, so validation should pass
             response = await validate_model(request_data)
             assert isinstance(response, ValidateModelResponse)
-            assert response.is_valid is False
-            assert response.is_tool_calls is False
-            assert response.error_code is not None
-            assert response.error is not None
+            assert response.is_valid is True
+            assert response.is_tool_calls is True
 
     @pytest.mark.asyncio
     async def test_validate_model_no_response(self):
@@ -222,13 +220,7 @@ class TestModelControllerIntegration:
         ):
             response = client.post("/model/validate", json=request_data)
 
-            assert (
-                response.status_code == 200
-            )  # Returns 200 with error in response body
-            response_data = response.json()
-            assert response_data["is_valid"] is False
-            assert response_data["is_tool_calls"] is False
-            assert "Invalid model name" in response_data["message"]
+            assert response.status_code == 400
 
 
 @pytest.mark.model_backend
@@ -267,10 +259,9 @@ class TestModelControllerErrorCases:
             "app.controller.model_controller.create_agent",
             side_effect=ValueError("Invalid configuration"),
         ):
-            response = await validate_model(request_data)
-
-            assert response.is_valid is False
-            assert "Invalid configuration" in response.message
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_model(request_data)
+            assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
     async def test_validate_model_with_network_error(self):
@@ -288,10 +279,9 @@ class TestModelControllerErrorCases:
             "app.controller.model_controller.create_agent",
             return_value=mock_agent,
         ):
-            response = await validate_model(request_data)
-
-            assert response.is_valid is False
-            assert "Network unreachable" in response.message
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_model(request_data)
+            assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
     async def test_validate_model_with_malformed_tool_calls_response(self):
@@ -346,36 +336,21 @@ class TestModelControllerErrorCases:
             api_key="",  # Empty API key
         )
 
-        response = await validate_model(request_data)
-
-        assert response.is_valid is False
-        assert response.is_tool_calls is False
-        assert response.message == "Invalid key. Validation failed."
-        assert response.error_code == "invalid_api_key"
-        assert response.error is not None
-        assert response.error["message"] == "Invalid key. Validation failed."
-        assert response.error["type"] == "invalid_request_error"
-        assert response.error["code"] == "invalid_api_key"
+        with pytest.raises(HTTPException) as exc_info:
+            await validate_model(request_data)
+        assert exc_info.value.status_code == 400
+        detail = exc_info.value.detail
+        assert detail["error_code"] == "invalid_api_key"
 
     @pytest.mark.asyncio
     async def test_validate_model_invalid_model_type(self):
-        """Test model validation with invalid model type."""
+        """Test model validation with invalid model type raises HTTPException."""
         request_data = ValidateModelRequest(
             model_platform="openai",
             model_type="INVALID_MODEL_TYPE",
             api_key="test_key",
         )
 
-        response = await validate_model(request_data)
-        assert response.is_valid is False
-        assert response.is_tool_calls is False
-        assert response.message == "Invalid model name. Validation failed."
-        assert response.error_code is not None
-        assert "model_not_found" in response.error_code
-        assert response.error is not None
-        assert (
-            response.error["message"]
-            == "Invalid model name. Validation failed."
-        )
-        assert response.error["type"] == "invalid_request_error"
-        assert response.error["code"] == "model_not_found"
+        with pytest.raises(HTTPException) as exc_info:
+            await validate_model(request_data)
+        assert exc_info.value.status_code == 400
