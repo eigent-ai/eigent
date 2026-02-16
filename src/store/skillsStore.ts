@@ -182,6 +182,9 @@ export const useSkillsStore = create<SkillsState>()(
         const current = get().skills.find((s) => s.id === id);
         if (!current) return;
 
+        // Example skills cannot be deleted, only enabled/disabled
+        if (current.isExample) return;
+
         // Delete from filesystem
         if (current.skillDirName && hasSkillsFsApi()) {
           window.electronAPI.skillDelete(current.skillDirName).catch(() => {

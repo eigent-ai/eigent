@@ -157,6 +157,14 @@ export default function Home() {
               </MenuToggleItem>
               <MenuToggleItem
                 size="xs"
+                value="agents"
+                iconAnimateOnHover="default"
+                icon={<Bot className="h-4 w-4" />}
+              >
+                {t('setting.agents')}
+              </MenuToggleItem>
+              <MenuToggleItem
+                size="xs"
                 value="mcp_tools"
                 iconAnimateOnHover="default"
                 icon={<Hammer />}
@@ -170,14 +178,6 @@ export default function Home() {
                 icon={<Compass />}
               >
                 {t('layout.browser')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="agents"
-                iconAnimateOnHover="default"
-                icon={<Bot className="h-4 w-4" />}
-              >
-                {t('setting.agents')}
               </MenuToggleItem>
               <MenuToggleItem
                 size="xs"

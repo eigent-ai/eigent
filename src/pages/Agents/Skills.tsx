@@ -88,7 +88,7 @@ export default function Skills() {
             <div className="sticky top-[84px] z-10 flex w-full items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary">
               <TabsList
                 variant="outline"
-                className="h-auto flex-1 justify-start bg-transparent border-0"
+                className="h-auto flex-1 justify-start border-0 bg-transparent"
               >
                 <TabsTrigger
                   value="your-skills"
@@ -96,12 +96,13 @@ export default function Skills() {
                 >
                   {t('agents.your-skills')}
                 </TabsTrigger>
-                <TabsTrigger
+                {/* TODO: Add example skills back in */}
+                {/* <TabsTrigger
                   value="example-skills"
                   className="data-[state=active]:bg-transparent"
                 >
                   {t('agents.example-skills')}
-                </TabsTrigger>
+                </TabsTrigger> */}
               </TabsList>
               <div className="flex items-center gap-2">
                 <SearchInput
@@ -164,7 +165,7 @@ export default function Skills() {
                     <SkillListItem
                       key={skill.id}
                       skill={skill}
-                      onDelete={() => handleDeleteClick(skill)}
+                      onDelete={undefined}
                     />
                   ))}
                 </div>

@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   getWorkflowAgentDisplay,
   WORKFLOW_AGENT_LIST,
@@ -43,7 +44,7 @@ import { useNavigate } from 'react-router-dom';
 interface SkillListItemDefaultProps {
   variant?: 'default';
   skill: Skill;
-  onDelete: () => void;
+  onDelete?: () => void;
   message?: never;
   addButtonText?: never;
   onAddClick?: never;
@@ -204,24 +205,31 @@ export default function SkillListItem(props: SkillListItemProps) {
                 <MessageSquare className="h-4 w-4" />
                 {t('agents.try-in-chat')}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={onDelete}
-                className="text-text-cuation focus:text-text-cuation"
-              >
-                <Trash2 className="h-4 w-4" />
-                {t('layout.delete')}
-              </DropdownMenuItem>
+              {!skill.isExample && onDelete && (
+                <DropdownMenuItem
+                  onClick={onDelete}
+                  className="text-text-cuation focus:text-text-cuation"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t('layout.delete')}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
 
-      {/* Row 2: Description full width / wrapped */}
-      <div className="max-h-[100px] w-full flex-1">
-        <p className="wrap overflow-hidden text-ellipsis text-body-sm text-text-label">
-          {skill.description}
-        </p>
-      </div>
+      {/* Row 2: Description - 5 lines max, hover shows full */}
+      <TooltipSimple
+        content={skill.description}
+        className="max-w-sm whitespace-pre-wrap break-words"
+      >
+        <div className="w-full cursor-default">
+          <p className="line-clamp-5 overflow-hidden break-words text-body-sm text-text-label">
+            {skill.description}
+          </p>
+        </div>
+      </TooltipSimple>
 
       {/* Row 3: Added time / Skill scope */}
       <div className="flex flex-col items-start gap-2">

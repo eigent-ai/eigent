@@ -20,26 +20,6 @@ import platform
 from pathlib import Path
 from typing import Any
 
-from app.agent.agent_model import agent_model
-from app.agent.factory import (browser_agent, developer_agent, document_agent,
-                               mcp_agent, multi_modal_agent,
-                               question_confirm_agent, task_summary_agent)
-from app.agent.listen_chat_agent import ListenChatAgent
-from app.agent.toolkit.human_toolkit import HumanToolkit
-from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.agent.toolkit.skill_toolkit import SkillToolkit
-from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.tools import get_mcp_tools, get_toolkits
-from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
-from app.service.task import (Action, ActionDecomposeProgressData,
-                              ActionDecomposeTextData, ActionImproveData,
-                              ActionInstallMcpData, ActionNewAgent, Agents,
-                              TaskLock, delete_task_lock, set_current_task_id)
-from app.utils.event_loop_utils import set_main_event_loop
-from app.utils.file_utils import get_working_directory
-from app.utils.server.sync_step import sync_step
-from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
-from app.utils.workforce import Workforce
 from camel.models import ModelProcessingError
 from camel.tasks import Task
 from camel.toolkits import ToolkitMessageIntegration
@@ -47,6 +27,41 @@ from camel.types import ModelPlatformType
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
+
+from app.agent.agent_model import agent_model
+from app.agent.factory import (
+    browser_agent,
+    developer_agent,
+    document_agent,
+    mcp_agent,
+    multi_modal_agent,
+    question_confirm_agent,
+    task_summary_agent,
+)
+from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.tools import get_mcp_tools, get_toolkits
+from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.service.task import (
+    Action,
+    ActionDecomposeProgressData,
+    ActionDecomposeTextData,
+    ActionImproveData,
+    ActionInstallMcpData,
+    ActionNewAgent,
+    Agents,
+    TaskLock,
+    delete_task_lock,
+    set_current_task_id,
+)
+from app.utils.event_loop_utils import set_main_event_loop
+from app.utils.file_utils import get_working_directory
+from app.utils.server.sync_step import sync_step
+from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
+from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
 
@@ -292,6 +307,7 @@ def build_conversation_context(
         context += "\n"
 
     return context
+
 
 def build_context_for_workforce(
     task_lock: TaskLock,
@@ -975,8 +991,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     logger.info("[LIFECYCLE] 🛑 Stopping workforce")
                     if workforce._running:
                         # Import correct BaseWorkforce from camel
-                        from camel.societies.workforce.workforce import \
-                            Workforce as BaseWorkforce
+                        from camel.societies.workforce.workforce import (
+                            Workforce as BaseWorkforce,
+                        )
 
                         BaseWorkforce.stop(workforce)
                         logger.info(
@@ -2245,6 +2262,12 @@ the current date.
                             working_directory=working_directory,
                         )
                     )
+                ).get_tools(),
+                *SkillToolkit(
+                    options.project_id,
+                    Agents.new_worker_agent,
+                    working_directory=working_directory,
+                    user_id=options.user_id,
                 ).get_tools(),
             ],
         )
