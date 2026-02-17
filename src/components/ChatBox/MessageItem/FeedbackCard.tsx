@@ -14,7 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Check, Copy } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -39,6 +39,7 @@ export function FeedbackCard({
 }: FeedbackCardProps) {
   const [_isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
   const { t } = useTranslation();
 
   const handleCopy = useCallback(async () => {
@@ -46,11 +47,25 @@ export function FeedbackCard({
       await navigator.clipboard.writeText(content);
       toast.success(t('setting.copied-to-clipboard'));
       setCopied(true);
-      setTimeout(() => setCopied(false), COPIED_RESET_MS);
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        setCopied(false);
+        timeoutRef.current = null;
+      }, COPIED_RESET_MS);
     } catch {
-      toast.error('Failed to copy to clipboard');
+      toast.error(t('setting.failed-to-copy-to-clipboard'));
     }
   }, [content, t]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div
