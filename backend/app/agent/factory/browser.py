@@ -116,8 +116,7 @@ class CdpBrowserPoolManager:
         released_ports = []
         with self._lock:
             sessions = [
-                s for s, t in self._session_to_task.items()
-                if t == task_id
+                s for s, t in self._session_to_task.items() if t == task_id
             ]
             for session_id in sessions:
                 port = self._session_to_port.get(session_id)
