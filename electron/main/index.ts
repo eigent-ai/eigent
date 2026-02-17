@@ -811,6 +811,41 @@ function registerIpcHandlers() {
     };
   });
 
+  // Handle drag-and-drop files - convert File objects to file paths
+  ipcMain.handle(
+    'process-dropped-files',
+    async (event, fileData: Array<{ name: string; path?: string }>) => {
+      try {
+        // In Electron with contextIsolation, we need to get file paths differently
+        // The renderer will send us file metadata, and we'll use webUtils if needed
+        const files = fileData
+          .filter((f) => f.path) // Only process files with valid paths
+          .map((f) => ({
+            filePath: fs.realpathSync(f.path!),
+            fileName: f.name,
+          }));
+
+        if (files.length === 0) {
+          return {
+            success: false,
+            error: 'No valid file paths found',
+          };
+        }
+
+        return {
+          success: true,
+          files,
+        };
+      } catch (error: any) {
+        log.error('Failed to process dropped files:', error);
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+    }
+  );
+
   ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
     try {
       const stats = await fs.promises

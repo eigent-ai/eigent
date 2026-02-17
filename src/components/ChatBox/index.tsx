@@ -1107,7 +1107,7 @@ export default function ChatBox(): JSX.Element {
                   placeholder: t('chat.ask-placeholder'),
                   disabled: isInputDisabled,
                   textareaRef: textareaRef,
-                  allowDragDrop: false,
+                  allowDragDrop: true,
                   privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
                 }}
