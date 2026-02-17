@@ -302,7 +302,7 @@ async def webhook_trigger(
                 "execution_id": execution_id,
                 "message": "Webhook trigger processed but WebSocket notification failed",
                 "delivered": False,
-                "reason": str(e)
+                "reason": "websocket_notification_error"
             }
         
     except HTTPException:
