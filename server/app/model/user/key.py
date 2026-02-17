@@ -26,6 +26,7 @@ class ModelType(StrEnum):
     gpt4_1 = "gpt-4.1"
     gpt4_mini = "gpt-4.1-mini"
     gemini_3_pro = "gemini-3-pro-preview"
+    minimax_m2_5 = "minimax_m2_5"
 
 
 class KeyStatus(IntEnum):

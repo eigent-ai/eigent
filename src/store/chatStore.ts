@@ -677,12 +677,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       }
 
-      let mcpLocal = {};
-      if (window.ipcRenderer) {
-        mcpLocal = await window.ipcRenderer.invoke('mcp-list');
-      }
-      console.log('mcpLocal', mcpLocal);
-
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
       if (modelType === 'custom') {
@@ -2529,18 +2523,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         onerror(err) {
           console.error('[fetchEventSource] Error:', err);
 
-          // Allow automatic retry for connection errors
-          // TypeError usually means network/connection issues
-          if (
+          // Do not retry if the task has already finished (avoids duplicate execution
+          // after ERR_NETWORK_CHANGED, ERR_INTERNET_DISCONNECTED, sleep/wake - see issue #1212)
+          const currentStore = getCurrentChatStore();
+          const lockedId = getCurrentTaskId();
+          const task = currentStore.tasks[lockedId];
+          if (task?.status === ChatTaskStatus.FINISHED) {
+            console.log(
+              `[fetchEventSource] Task ${lockedId} already finished, stopping retry to avoid duplicate execution`
+            );
+            try {
+              if (activeSSEControllers[newTaskId]) {
+                delete activeSSEControllers[newTaskId];
+              }
+            } catch (cleanupError) {
+              console.warn(
+                'Error cleaning up AbortController on finished task:',
+                cleanupError
+              );
+            }
+            throw err;
+          }
+
+          // Allow automatic retry for connection errors only when task is not finished
+          const isConnectionError =
             err instanceof TypeError ||
             err?.message?.includes('Failed to fetch') ||
             err?.message?.includes('ECONNREFUSED') ||
-            err?.message?.includes('NetworkError')
-          ) {
+            err?.message?.includes('NetworkError') ||
+            err?.message?.includes('ERR_NETWORK_CHANGED') ||
+            err?.message?.includes('ERR_INTERNET_DISCONNECTED');
+          if (isConnectionError) {
             console.warn(
               '[fetchEventSource] Connection error detected, will retry automatically...'
             );
-            // Don't throw - let fetchEventSource auto-retry
             return;
           }
 

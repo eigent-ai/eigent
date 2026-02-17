@@ -380,6 +380,7 @@ export function WorkSpaceMenu({
                             'developer_agent',
                             'browser_agent',
                             'document_agent',
+                            'multi_modal_agent',
                           ].includes(agent.type as AgentNameType) ||
                           agent.tasks.length === 0
                         }
