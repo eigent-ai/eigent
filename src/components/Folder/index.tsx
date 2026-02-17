@@ -768,11 +768,11 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   }, [selectedFile]);
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex w-full flex-col items-center gap-4 px-8">
       <p className="text-sm font-medium text-text-primary">
         {selectedFile.name}
       </p>
-      <audio controls src={src} className="w-full max-w-md">
+      <audio controls src={src} className="w-full">
         Your browser does not support audio playback.
       </audio>
     </div>
