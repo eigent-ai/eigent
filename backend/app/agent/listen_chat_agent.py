@@ -53,7 +53,9 @@ logger = logging.getLogger("agent")
 
 
 class ListenChatAgent(ChatAgent):
-    _cdp_clone_lock = threading.Lock()  # Protects CDP URL mutation during clone
+    _cdp_clone_lock = (
+        threading.Lock()
+    )  # Protects CDP URL mutation during clone
 
     def __init__(
         self,
@@ -715,7 +717,9 @@ class ListenChatAgent(ChatAgent):
 
                 new_cdp_session = str(_uuid.uuid4())[:8]
                 selected = _cdp_pool_manager.acquire_browser(
-                    cdp_browsers, new_cdp_session
+                    cdp_browsers,
+                    new_cdp_session,
+                    getattr(self, "_cdp_task_id", None),
                 )
                 from app.agent.factory.browser import _get_browser_port
 
@@ -737,9 +741,7 @@ class ListenChatAgent(ChatAgent):
                     f"http://localhost:{new_cdp_port}"
                 )
                 try:
-                    cloned_tools, toolkits_to_register = (
-                        self._clone_tools()
-                    )
+                    cloned_tools, toolkits_to_register = self._clone_tools()
                 except Exception:
                     _cdp_pool_manager.release_browser(
                         new_cdp_port, new_cdp_session
@@ -789,6 +791,8 @@ class ListenChatAgent(ChatAgent):
             new_agent._cdp_release_callback = self._cdp_release_callback
             if hasattr(self, "_cdp_options"):
                 new_agent._cdp_options = self._cdp_options
+            if hasattr(self, "_cdp_task_id"):
+                new_agent._cdp_task_id = self._cdp_task_id
 
             # Find and store the cloned browser toolkit on the new agent
             for tk in toolkits_to_register:

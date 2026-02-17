@@ -968,7 +968,42 @@ class Workforce(BaseWorkforce):
         try:
             from app.agent.factory.browser import _cdp_pool_manager
 
-            _cdp_pool_manager.clear_all()
+            task_ids = set()
+            if hasattr(self, "_children") and self._children:
+                for child in self._children:
+                    if hasattr(child, "worker_agent") and hasattr(
+                        child.worker_agent, "_cdp_task_id"
+                    ):
+                        task_ids.add(child.worker_agent._cdp_task_id)
+                    if hasattr(child, "agent_pool") and child.agent_pool:
+                        for agent in list(child.agent_pool._available_agents):
+                            if hasattr(agent, "_cdp_task_id"):
+                                task_ids.add(agent._cdp_task_id)
+            if (
+                hasattr(self, "coordinator_agent")
+                and self.coordinator_agent
+                and hasattr(self.coordinator_agent, "_cdp_task_id")
+            ):
+                task_ids.add(self.coordinator_agent._cdp_task_id)
+
+            if not task_ids:
+                logger.warning(
+                    "[WF-CLEANUP] No task_id found for CDP release; skipping pool cleanup"
+                )
+                return
+
+            logger.info(
+                f"[WF-CLEANUP] Force releasing CDP resources for task_ids: {sorted(task_ids)}"
+            )
+            released_ports = []
+            for task_id in task_ids:
+                released_ports.extend(
+                    _cdp_pool_manager.release_by_task(task_id)
+                )
+
+            logger.info(
+                f"[WF-CLEANUP] Released {len(released_ports)} CDP browser(s), remaining: {_cdp_pool_manager.get_occupied_ports()}"
+            )
         except Exception as e:
             logger.error(f"[WF-CLEANUP] Error clearing CDP pool: {e}")
 

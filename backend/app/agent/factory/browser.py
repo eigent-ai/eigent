@@ -47,16 +47,22 @@ class CdpBrowserPoolManager:
 
     def __init__(self):
         self._occupied_ports: dict[int, str] = {}
+        self._session_to_port: dict[str, int] = {}
+        self._session_to_task: dict[str, str | None] = {}
         self._lock = threading.Lock()
 
     def acquire_browser(
-        self, cdp_browsers: list[dict], session_id: str
+        self,
+        cdp_browsers: list[dict],
+        session_id: str,
+        task_id: str | None = None,
     ) -> dict | None:
         """Acquire an available browser from the pool.
 
         Args:
             cdp_browsers: List of browser configurations.
             session_id: Unique session identifier.
+            task_id: Optional task identifier for ownership tracking.
 
         Returns:
             Browser configuration dict or None if all occupied.
@@ -66,6 +72,8 @@ class CdpBrowserPoolManager:
                 port = browser.get("port")
                 if port and port not in self._occupied_ports:
                     self._occupied_ports[port] = session_id
+                    self._session_to_port[session_id] = port
+                    self._session_to_task[session_id] = task_id
                     logger.info(
                         f"Acquired browser on port {port} for session "
                         f"{session_id}. Occupied: "
@@ -86,11 +94,48 @@ class CdpBrowserPoolManager:
                 and self._occupied_ports[port] == session_id
             ):
                 del self._occupied_ports[port]
+                self._session_to_port.pop(session_id, None)
+                self._session_to_task.pop(session_id, None)
                 logger.info(
                     f"Released browser on port {port} from session "
                     f"{session_id}. Occupied: "
                     f"{list(self._occupied_ports.keys())}"
                 )
+            else:
+                logger.warning(
+                    f"Attempted to release browser on port {port} "
+                    f"but it was not occupied by {session_id}"
+                )
+
+    def release_by_task(self, task_id: str) -> list[int]:
+        """Release all browsers associated with a task_id.
+
+        Returns:
+            List of released ports.
+        """
+        released_ports = []
+        with self._lock:
+            sessions = [
+                s for s, t in self._session_to_task.items()
+                if t == task_id
+            ]
+            for session_id in sessions:
+                port = self._session_to_port.get(session_id)
+                if (
+                    port is not None
+                    and self._occupied_ports.get(port) == session_id
+                ):
+                    del self._occupied_ports[port]
+                    released_ports.append(port)
+                self._session_to_port.pop(session_id, None)
+                self._session_to_task.pop(session_id, None)
+            if released_ports:
+                logger.info(
+                    f"Released {len(released_ports)} browser(s) for "
+                    f"task {task_id}. Occupied: "
+                    f"{list(self._occupied_ports.keys())}"
+                )
+        return released_ports
 
     def clear_all(self):
         """Force-clear all occupied ports (safety net for task cleanup)."""
@@ -128,7 +173,7 @@ def browser_agent(options: Chat):
 
     if options.cdp_browsers:
         selected_browser = _cdp_pool_manager.acquire_browser(
-            options.cdp_browsers, toolkit_session_id
+            options.cdp_browsers, toolkit_session_id, options.task_id
         )
         if selected_browser:
             selected_port = _get_browser_port(selected_browser)
@@ -264,7 +309,7 @@ def browser_agent(options: Chat):
             return
         session_id = str(uuid.uuid4())[:8]
         selected = _cdp_pool_manager.acquire_browser(
-            options.cdp_browsers, session_id
+            options.cdp_browsers, session_id, options.task_id
         )
         if selected:
             agent_instance._cdp_port = _get_browser_port(selected)
@@ -293,6 +338,7 @@ def browser_agent(options: Chat):
     agent._cdp_release_callback = release_cdp_from_agent
     agent._cdp_port = selected_port
     agent._cdp_session_id = toolkit_session_id
+    agent._cdp_task_id = options.task_id
     agent._cdp_options = options
     agent._browser_toolkit = web_toolkit_for_agent_registration
 
