@@ -710,7 +710,9 @@ class ListenChatAgent(ChatAgent):
 
                 new_cdp_session = str(_uuid.uuid4())[:8]
                 selected = _cdp_pool_manager.acquire_browser(
-                    cdp_browsers, new_cdp_session
+                    cdp_browsers,
+                    new_cdp_session,
+                    getattr(self, "_cdp_task_id", None),
                 )
                 from app.component.environment import env
 
@@ -733,11 +735,16 @@ class ListenChatAgent(ChatAgent):
                 )
 
         # Clone tools and collect toolkits that need registration
-        cloned_tools, toolkits_to_register = self._clone_tools()
-
-        # Restore original CDP URL in parent toolkit
-        if new_cdp_port is not None and hasattr(self, "_browser_toolkit"):
-            self._browser_toolkit.config_loader.get_browser_config().cdp_url = original_cdp_url
+        try:
+            cloned_tools, toolkits_to_register = self._clone_tools()
+        except Exception:
+            if new_cdp_port is not None and new_cdp_session is not None:
+                _cdp_pool_manager.release_browser(new_cdp_port, new_cdp_session)
+            raise
+        finally:
+            # Restore original CDP URL in parent toolkit
+            if new_cdp_port is not None and hasattr(self, "_browser_toolkit"):
+                self._browser_toolkit.config_loader.get_browser_config().cdp_url = original_cdp_url
 
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
@@ -776,6 +783,8 @@ class ListenChatAgent(ChatAgent):
             new_agent._cdp_release_callback = self._cdp_release_callback
             if hasattr(self, "_cdp_options"):
                 new_agent._cdp_options = self._cdp_options
+            if hasattr(self, "_cdp_task_id"):
+                new_agent._cdp_task_id = self._cdp_task_id
 
             # Find and store the cloned browser toolkit on the new agent
             for tk in toolkits_to_register:
