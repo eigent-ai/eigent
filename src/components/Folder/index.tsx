@@ -45,17 +45,62 @@ const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
 
-function getExt(name: string) {
-  return name.split('.').pop()?.toLowerCase() || '';
+type FileTypeTarget = {
+  name?: string;
+  path?: string;
+  type?: string;
+};
+const loggedFileTypeWarnings = new Set<string>();
+
+function getExt(value?: string) {
+  if (!value) return '';
+  const normalized = value.split(/[?#]/)[0];
+  const lastSegment = normalized.split('/').pop() || normalized;
+  if (!lastSegment.includes('.')) return '';
+  return lastSegment.split('.').pop()?.toLowerCase() || '';
 }
-function isImageFile(name: string) {
-  return IMAGE_EXTENSIONS.includes(getExt(name));
+
+function getFileType(file: FileTypeTarget) {
+  const extFromNameOrPath = getExt(file.name) || getExt(file.path);
+  const normalizedType = (file.type || '').replace(/^\./, '').toLowerCase();
+  const fileId = file.path || file.name || 'unknown-file';
+
+  if (!extFromNameOrPath && normalizedType) {
+    const key = `missing-ext|${fileId}|${normalizedType}`;
+    if (!loggedFileTypeWarnings.has(key)) {
+      loggedFileTypeWarnings.add(key);
+      console.warn(
+        `[Folder getFileType] extension missing in name/path, file.type fallback disabled: ${fileId} (type=${normalizedType})`
+      );
+    }
+  }
+
+  if (
+    extFromNameOrPath &&
+    normalizedType &&
+    normalizedType !== 'folder' &&
+    extFromNameOrPath !== normalizedType
+  ) {
+    const key = `mismatch|${fileId}|${extFromNameOrPath}|${normalizedType}`;
+    if (!loggedFileTypeWarnings.has(key)) {
+      loggedFileTypeWarnings.add(key);
+      console.warn(
+        `[Folder getFileType] extension/type mismatch for ${fileId}: inferred=${extFromNameOrPath}, type=${normalizedType}`
+      );
+    }
+  }
+
+  return extFromNameOrPath;
 }
-function isAudioFile(name: string) {
-  return AUDIO_EXTENSIONS.includes(getExt(name));
+
+function isImageFile(file: FileTypeTarget) {
+  return IMAGE_EXTENSIONS.includes(getFileType(file));
 }
-function isVideoFile(name: string) {
-  return VIDEO_EXTENSIONS.includes(getExt(name));
+function isAudioFile(file: FileTypeTarget) {
+  return AUDIO_EXTENSIONS.includes(getFileType(file));
+}
+function isVideoFile(file: FileTypeTarget) {
+  return VIDEO_EXTENSIONS.includes(getFileType(file));
 }
 
 // Type definitions
@@ -262,7 +307,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     }
 
     // For audio/video files, skip open-file — loaders handle reading themselves
-    if (isAudioFile(file.name) || isVideoFile(file.name)) {
+    if (isAudioFile(file) || isVideoFile(file)) {
       setSelectedFile({ ...file });
       chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
       setLoading(false);
@@ -682,15 +727,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       </p>
                     </div>
                   </div>
-                ) : isAudioFile(selectedFile.name) ? (
+                ) : isAudioFile(selectedFile) ? (
                   <div className="flex h-full items-center justify-center">
                     <AudioLoader selectedFile={selectedFile} />
                   </div>
-                ) : isVideoFile(selectedFile.name) ? (
+                ) : isVideoFile(selectedFile) ? (
                   <div className="flex h-full items-center justify-center">
                     <VideoLoader selectedFile={selectedFile} />
                   </div>
-                ) : isImageFile(selectedFile.name) ? (
+                ) : isImageFile(selectedFile) ? (
                   <div className="flex h-full items-center justify-center">
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
@@ -753,6 +798,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
@@ -760,11 +806,17 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
     }
     window.electronAPI
       .readFileAsDataUrl(selectedFile.path)
-      .then(setSrc)
+      .then((dataUrl: string) => {
+        if (!cancelled) setSrc(dataUrl);
+      })
       .catch((err: any) => {
+        if (cancelled) return;
         console.error('Audio load error:', err);
         setSrc('');
       });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedFile]);
 
   return (
@@ -783,6 +835,7 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
@@ -790,11 +843,17 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
     }
     window.electronAPI
       .readFileAsDataUrl(selectedFile.path)
-      .then(setSrc)
+      .then((dataUrl: string) => {
+        if (!cancelled) setSrc(dataUrl);
+      })
       .catch((err: any) => {
+        if (cancelled) return;
         console.error('Video load error:', err);
         setSrc('');
       });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedFile]);
 
   return (
