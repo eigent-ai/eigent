@@ -399,6 +399,66 @@ class TestChatControllerWithLLM:
 
 
 @pytest.mark.unit
+class TestBackgroundTaskCancellation:
+    """Test that background_tasks are cancelled, not just cleared."""
+
+    def test_improve_cancels_background_tasks_when_done(self, mock_task_lock):
+        """When task is done, improve() should cancel running background tasks
+        before clearing the set, not just drop references."""
+        task_id = "test_task_123"
+        supplement_data = SupplementChat(question="Follow-up question")
+        mock_task_lock.status = Status.done
+
+        # Create mock background tasks - one running, one already done
+        running_task = MagicMock()
+        running_task.done.return_value = False
+        done_task = MagicMock()
+        done_task.done.return_value = True
+
+        mock_task_lock.background_tasks = {running_task, done_task}
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch("asyncio.run") as mock_run,
+        ):
+            response = improve(task_id, supplement_data)
+
+            assert response.status_code == 201
+            # The running task should have been cancelled
+            running_task.cancel.assert_called_once()
+            # The already-done task should NOT have been cancelled
+            done_task.cancel.assert_not_called()
+            # The set should be empty after clear()
+            assert len(mock_task_lock.background_tasks) == 0
+
+    def test_improve_handles_missing_background_tasks_attr(
+        self, mock_task_lock
+    ):
+        """improve() should handle task_lock without background_tasks attr."""
+        task_id = "test_task_123"
+        supplement_data = SupplementChat(question="Follow-up question")
+        mock_task_lock.status = Status.done
+
+        # Remove background_tasks attribute
+        if hasattr(mock_task_lock, "background_tasks"):
+            del mock_task_lock.background_tasks
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch("asyncio.run"),
+        ):
+            # Should not raise AttributeError
+            response = improve(task_id, supplement_data)
+            assert response.status_code == 201
+
+
+@pytest.mark.unit
 class TestChatControllerErrorCases:
     """Test error cases and edge conditions."""
 

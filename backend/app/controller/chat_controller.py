@@ -263,8 +263,11 @@ def improve(id: str, data: SupplementChat):
     if task_lock.status == Status.done:
         # Reset status to allow processing new messages
         task_lock.status = Status.confirming
-        # Clear any existing background tasks since workforce was stopped
+        # Cancel and clear any existing background tasks since workforce was stopped
         if hasattr(task_lock, "background_tasks"):
+            for bg_task in list(task_lock.background_tasks):
+                if not bg_task.done():
+                    bg_task.cancel()
             task_lock.background_tasks.clear()
         # Note: conversation_history and last_task_result are preserved
 
