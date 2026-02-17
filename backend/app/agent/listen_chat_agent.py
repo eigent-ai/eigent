@@ -46,6 +46,7 @@ from app.service.task import (
     set_process_task,
 )
 from app.utils.event_loop_utils import _schedule_async_task
+from app.utils.perf_timer import PerfTimer
 
 # Logger for agent tracking
 logger = logging.getLogger("agent")
@@ -249,7 +250,10 @@ class ListenChatAgent(ChatAgent):
             f"Agent {self.agent_name} starting step with message: {msg}"
         )
         try:
-            res = super().step(input_message, response_format)
+            with PerfTimer(
+                "agent_step", agent_name=self.agent_name, agent_id=self.agent_id
+            ):
+                res = super().step(input_message, response_format)
         except ModelProcessingError as e:
             res = None
             error_info = e
@@ -348,7 +352,12 @@ class ListenChatAgent(ChatAgent):
         )
 
         try:
-            res = await super().astep(input_message, response_format)
+            async with PerfTimer(
+                "agent_astep",
+                agent_name=self.agent_name,
+                agent_id=self.agent_id,
+            ):
+                res = await super().astep(input_message, response_format)
             if isinstance(res, AsyncStreamingChatAgentResponse):
                 # Use reusable async stream wrapper to send chunks to frontend
                 return AsyncStreamingChatAgentResponse(
@@ -474,7 +483,13 @@ class ListenChatAgent(ChatAgent):
                 )
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
-                raw_result = tool(**args)
+                with PerfTimer(
+                    "_execute_tool",
+                    tool_name=func_name,
+                    toolkit=toolkit_name,
+                    agent_name=self.agent_name,
+                ):
+                    raw_result = tool(**args)
             logger.debug(f"Tool {func_name} executed successfully")
             if self.mask_tool_output:
                 self._secure_result_store[tool_call_id] = raw_result
@@ -606,43 +621,51 @@ class ListenChatAgent(ChatAgent):
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
-                # Try different invocation paths in order of preference
-                if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
-                    # MCP FunctionTool: always use async_call (sync wrapper can timeout)
-                    result = await tool.func.async_call(**args)
+                async with PerfTimer(
+                    "_aexecute_tool",
+                    tool_name=func_name,
+                    toolkit=toolkit_name,
+                    agent_name=self.agent_name,
+                ):
+                    # Try different invocation paths in order of preference
+                    if hasattr(tool, "func") and hasattr(
+                        tool.func, "async_call"
+                    ):
+                        # MCP FunctionTool: always use async_call (sync wrapper can timeout)
+                        result = await tool.func.async_call(**args)
 
-                elif hasattr(tool, "async_call") and callable(tool.async_call):
-                    # Case: tool itself has async_call
-                    # Check if this is a sync tool to avoid run_in_executor
-                    # (which breaks ContextVar)
-                    if hasattr(tool, "is_async") and not tool.is_async:
-                        # Sync tool: call directly to preserve ContextVar
-                        # in same thread
+                    elif hasattr(tool, "async_call") and callable(tool.async_call):
+                        # Case: tool itself has async_call
+                        # Check if this is a sync tool to avoid run_in_executor
+                        # (which breaks ContextVar)
+                        if hasattr(tool, "is_async") and not tool.is_async:
+                            # Sync tool: call directly to preserve ContextVar
+                            # in same thread
+                            result = tool(**args)
+                            # Handle case where sync call returns a coroutine
+                            if asyncio.iscoroutine(result):
+                                result = await result
+                        else:
+                            # Async tool: use async_call
+                            result = await tool.async_call(**args)
+
+                    elif hasattr(tool, "func") and asyncio.iscoroutinefunction(
+                        tool.func
+                    ):
+                        # Case: tool wraps a direct async function
+                        result = await tool.func(**args)
+
+                    elif asyncio.iscoroutinefunction(tool):
+                        # Case: tool is itself a coroutine function
+                        result = await tool(**args)
+
+                    else:
+                        # Fallback: sync call - call directly in current context
+                        # DO NOT use run_in_executor to preserve ContextVar
                         result = tool(**args)
-                        # Handle case where sync call returns a coroutine
+                        # Handle case where synchronous call returns a coroutine
                         if asyncio.iscoroutine(result):
                             result = await result
-                    else:
-                        # Async tool: use async_call
-                        result = await tool.async_call(**args)
-
-                elif hasattr(tool, "func") and asyncio.iscoroutinefunction(
-                    tool.func
-                ):
-                    # Case: tool wraps a direct async function
-                    result = await tool.func(**args)
-
-                elif asyncio.iscoroutinefunction(tool):
-                    # Case: tool is itself a coroutine function
-                    result = await tool(**args)
-
-                else:
-                    # Fallback: sync call - call directly in current context
-                    # DO NOT use run_in_executor to preserve ContextVar
-                    result = tool(**args)
-                    # Handle case where synchronous call returns a coroutine
-                    if asyncio.iscoroutine(result):
-                        result = await result
 
         except Exception as e:
             # Capture the error message to prevent framework crash

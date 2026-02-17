@@ -44,6 +44,7 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.utils.perf_timer import PerfTimer
 from app.service.task import (
     Action,
     ActionDecomposeProgressData,
@@ -371,6 +372,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         "🚀 [LIFECYCLE] step_solve STARTED",
         extra={"project_id": options.project_id, "task_id": options.task_id},
     )
+    session_start_time = datetime.datetime.now().timestamp()
     logger.info("=" * 80)
     logger.debug(
         "Step solve options",
@@ -537,9 +539,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ", treating as complex task"
                     )
                 else:
-                    is_complex_task = await question_confirm(
-                        question_agent, question, task_lock
-                    )
+                    async with PerfTimer(
+                        "question_confirm",
+                        project_id=options.project_id,
+                        task_id=options.task_id,
+                    ):
+                        is_complex_task = await question_confirm(
+                            question_agent, question, task_lock
+                        )
                     logger.info(
                         "[NEW-QUESTION] question_confirm"
                         " result: is_complex="
@@ -664,7 +671,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(
                             "[NEW-QUESTION] Creating NEW workforce instance"
                         )
-                        (workforce, mcp) = await construct_workforce(options)
+                        async with PerfTimer(
+                            "construct_workforce",
+                            project_id=options.project_id,
+                            task_id=options.task_id,
+                        ):
+                            (workforce, mcp) = await construct_workforce(options)
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent),
@@ -747,13 +759,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     async def run_decomposition():
                         nonlocal summary_task_content
                         try:
-                            sub_tasks = await asyncio.to_thread(
-                                workforce.eigent_make_sub_tasks,
-                                camel_task,
-                                context_for_coordinator,
-                                on_stream_batch,
-                                on_stream_text,
-                            )
+                            with PerfTimer(
+                                "eigent_make_sub_tasks",
+                                project_id=options.project_id,
+                                task_id=options.task_id,
+                            ):
+                                sub_tasks = await asyncio.to_thread(
+                                    workforce.eigent_make_sub_tasks,
+                                    camel_task,
+                                    context_for_coordinator,
+                                    on_stream_batch,
+                                    on_stream_text,
+                                )
 
                             if stream_state["subtasks"]:
                                 sub_tasks = stream_state["subtasks"]
