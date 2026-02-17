@@ -41,6 +41,23 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ZoomControls } from './ZoomControls';
 
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
+
+function getExt(name: string) {
+  return name.split('.').pop()?.toLowerCase() || '';
+}
+function isImageFile(name: string) {
+  return IMAGE_EXTENSIONS.includes(getExt(name));
+}
+function isAudioFile(name: string) {
+  return AUDIO_EXTENSIONS.includes(getExt(name));
+}
+function isVideoFile(name: string) {
+  return VIDEO_EXTENSIONS.includes(getExt(name));
+}
+
 // Type definitions
 interface FileTreeNode {
   name: string;
@@ -241,6 +258,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           console.error('read-file-dataurl error:', error);
           setLoading(false);
         });
+      return;
+    }
+
+    // For audio/video files, skip open-file — loaders handle reading themselves
+    if (isAudioFile(file.name) || isVideoFile(file.name)) {
+      setSelectedFile({ ...file });
+      chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+      setLoading(false);
       return;
     }
 
@@ -657,15 +682,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       </p>
                     </div>
                   </div>
-                ) : [
-                    'png',
-                    'jpg',
-                    'jpeg',
-                    'gif',
-                    'bmp',
-                    'webp',
-                    'svg',
-                  ].includes(selectedFile.type.toLowerCase()) ? (
+                ) : isAudioFile(selectedFile.name) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <AudioLoader selectedFile={selectedFile} />
+                  </div>
+                ) : isVideoFile(selectedFile.name) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <VideoLoader selectedFile={selectedFile} />
+                  </div>
+                ) : isImageFile(selectedFile.name) ? (
                   <div className="flex h-full items-center justify-center">
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
@@ -721,6 +746,61 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
       alt={selectedFile.name}
       className="max-h-full max-w-full object-contain"
     />
+  );
+}
+
+function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc(selectedFile.content || selectedFile.path);
+      return;
+    }
+    window.electronAPI
+      .readFileAsDataUrl(selectedFile.path)
+      .then(setSrc)
+      .catch((err: any) => {
+        console.error('Audio load error:', err);
+        setSrc('');
+      });
+  }, [selectedFile]);
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <p className="text-sm font-medium text-text-primary">
+        {selectedFile.name}
+      </p>
+      <audio controls src={src} className="w-full max-w-md">
+        Your browser does not support audio playback.
+      </audio>
+    </div>
+  );
+}
+
+function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc(selectedFile.content || selectedFile.path);
+      return;
+    }
+    window.electronAPI
+      .readFileAsDataUrl(selectedFile.path)
+      .then(setSrc)
+      .catch((err: any) => {
+        console.error('Video load error:', err);
+        setSrc('');
+      });
+  }, [selectedFile]);
+
+  return (
+    <video controls src={src} className="max-h-full max-w-full object-contain">
+      Your browser does not support video playback.
+    </video>
   );
 }
 
