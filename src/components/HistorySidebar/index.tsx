@@ -144,9 +144,21 @@ export default function HistorySidebar() {
     close();
     // Get task IDs from the API response data in descending order (newest first)
     const project = historyTasks.find((p) => p.project_id === projectId);
-    const taskIdsList = project?.tasks.map(
-      (task: HistoryTask) => task.task_id
-    ) || [projectId];
+    const taskIdsList = project?.tasks
+      .map((task: HistoryTask) => task.task_id)
+      .filter((id): id is string => !!id);
+
+    // If no tasks to replay, create an empty project
+    if (!taskIdsList || taskIdsList.length === 0) {
+      projectStore.createProject(
+        project?.project_name || 'Project',
+        'Project with triggers but no tasks',
+        projectId
+      );
+      navigate('/');
+      return;
+    }
+
     await replayProject(
       projectStore,
       navigate,

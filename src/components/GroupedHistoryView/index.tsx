@@ -263,9 +263,14 @@ export default function GroupedHistoryView({
     projectStore.isEmptyProject(project)
   );
 
+  // Get IDs of projects already in filteredProjects to avoid duplicates
+  const filteredProjectIds = new Set(filteredProjects.map((p) => p.project_id));
+
   // Convert empty projects from projectStore format to ProjectGroup format
-  const emptyProjectGroups: ProjectGroupType[] = emptyProjects.map(
-    (project) => ({
+  // Filter out any that already exist in filteredProjects
+  const emptyProjectGroups: ProjectGroupType[] = emptyProjects
+    .filter((project) => !filteredProjectIds.has(project.id))
+    .map((project) => ({
       project_id: project.id,
       project_name: project.name,
       total_tokens: 0,
@@ -277,8 +282,7 @@ export default function GroupedHistoryView({
       total_triggers: 0,
       total_ongoing_tasks: 0,
       average_tokens_per_task: 0,
-    })
-  );
+    }));
 
   // Combine filtered projects with empty projects from store
   const allProjects = [...emptyProjectGroups, ...filteredProjects];

@@ -140,9 +140,13 @@ export default function ProjectGroup({
           taskIdsList
         );
       } else {
-        console.warn('No tasks found in project, cannot replay');
-        // Fallback: try to set as active anyway (may create a new project)
-        projectStore.setActiveProject(project.project_id);
+        // No tasks to replay - project has triggers but no tasks
+        // Create an empty project with this ID and navigate to it
+        projectStore.createProject(
+          project.project_name || 'Project',
+          'Project with triggers',
+          project.project_id
+        );
         navigate('/');
       }
     }
