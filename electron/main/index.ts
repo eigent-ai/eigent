@@ -100,6 +100,19 @@ let cdp_browser_pool: CdpBrowser[] = [];
 let cdp_browser_processes: Map<number, ChildProcessWithoutNullStreams> =
   new Map();
 
+/** Remove a non-external browser from the pool by port (used on process error/exit). */
+function removeFromPoolByPort(port: number, reason: string): void {
+  const idx = cdp_browser_pool.findIndex(
+    (b) => b.port === port && !b.isExternal
+  );
+  if (idx !== -1) {
+    const removed = cdp_browser_pool.splice(idx, 1)[0];
+    log.warn(
+      `[CDP POOL] Auto-removed port=${port} (${reason}), id=${removed.id}, pool_size=${cdp_browser_pool.length}`
+    );
+  }
+}
+
 // Protocol URL queue for handling URLs before window is ready
 let protocolUrlQueue: string[] = [];
 let isWindowReady = false;
@@ -424,56 +437,25 @@ function registerIpcHandlers() {
 
   // Get all browsers in the pool
   ipcMain.handle('get-cdp-browsers', () => {
-    log.info(`[CDP POOL GET] ========================================`);
-    log.info(
-      `[CDP POOL GET] Getting CDP browser pool at ${new Date().toISOString()}`
-    );
-    log.info(`[CDP POOL GET] Pool size: ${cdp_browser_pool.length}`);
-
-    if (cdp_browser_pool.length > 0) {
-      cdp_browser_pool.forEach((b, idx) => {
-        log.info(
-          `[CDP POOL GET]   Browser ${idx + 1}: port=${b.port}, isExternal=${b.isExternal}, name="${b.name}", id=${b.id}`
-        );
-      });
-    } else {
-      log.warn(`[CDP POOL GET]   ⚠️  Pool is EMPTY - no browsers configured`);
-    }
-
-    log.info(`[CDP POOL GET] ========================================`);
+    log.debug(`[CDP POOL] GET pool (size=${cdp_browser_pool.length})`);
     return cdp_browser_pool;
   });
 
   // Get running browser processes
   ipcMain.handle('get-running-browser-ports', () => {
-    const runningPorts = Array.from(cdp_browser_processes.keys());
-    log.info(`Getting running browser ports: ${runningPorts.join(', ')}`);
-    return runningPorts;
+    return Array.from(cdp_browser_processes.keys());
   });
 
   // Add browser to pool
   ipcMain.handle(
     'add-cdp-browser',
     (event, port: number, isExternal: boolean, name?: string) => {
-      log.info(`[CDP POOL ADD] ========================================`);
-      log.info(
-        `[CDP POOL ADD] Request to add browser at ${new Date().toISOString()}`
-      );
-      log.info(`[CDP POOL ADD] Port: ${port}`);
-      log.info(`[CDP POOL ADD] Is External: ${isExternal}`);
-      log.info(`[CDP POOL ADD] Name: "${name}"`);
-      log.info(`[CDP POOL ADD] Current pool size: ${cdp_browser_pool.length}`);
-
       // Check if browser with this port already exists
       const existing = cdp_browser_pool.find((b) => b.port === port);
       if (existing) {
         log.warn(
-          `[CDP POOL ADD] ❌ REJECTED - Browser with port ${port} already exists in pool`
+          `[CDP POOL] ADD rejected: port ${port} already exists (id=${existing.id})`
         );
-        log.warn(
-          `[CDP POOL ADD]    Existing browser: id=${existing.id}, name="${existing.name}"`
-        );
-        log.info(`[CDP POOL ADD] ========================================`);
         return {
           success: false,
           error: 'Browser with this port already exists',
@@ -489,13 +471,9 @@ function registerIpcHandlers() {
       };
 
       cdp_browser_pool.push(newBrowser);
-      log.info(`[CDP POOL ADD] ✅ SUCCESS - Browser added to pool`);
-      log.info(`[CDP POOL ADD]    Browser ID: ${newBrowser.id}`);
-      log.info(`[CDP POOL ADD]    New pool size: ${cdp_browser_pool.length}`);
       log.info(
-        `[CDP POOL ADD]    All ports in pool: [${cdp_browser_pool.map((b) => b.port).join(', ')}]`
+        `[CDP POOL] ADD: port=${port}, isExternal=${isExternal}, id=${newBrowser.id}, pool_size=${cdp_browser_pool.length}`
       );
-      log.info(`[CDP POOL ADD] ========================================`);
 
       return { success: true, browser: newBrowser };
     }
@@ -503,43 +481,30 @@ function registerIpcHandlers() {
 
   // Remove browser from pool
   ipcMain.handle('remove-cdp-browser', (event, browserId: string) => {
-    log.info(`[CDP POOL REMOVE] ========================================`);
-    log.info(`[CDP POOL REMOVE] Request to remove browser: ${browserId}`);
-
     const index = cdp_browser_pool.findIndex((b) => b.id === browserId);
     if (index === -1) {
-      log.warn(`[CDP POOL REMOVE] ❌ Browser not found: ${browserId}`);
-      log.info(`[CDP POOL REMOVE] ========================================`);
+      log.warn(`[CDP POOL] REMOVE: browser not found: ${browserId}`);
       return { success: false, error: 'Browser not found' };
     }
 
     const removed = cdp_browser_pool.splice(index, 1)[0];
-    log.info(
-      `[CDP POOL REMOVE] Removed browser: port=${removed.port}, name="${removed.name}"`
-    );
 
     // If it's a launched browser, kill the process
     if (!removed.isExternal && cdp_browser_processes.has(removed.port)) {
-      log.info(
-        `[CDP POOL REMOVE] Killing launched browser process on port ${removed.port}`
-      );
       try {
         const process = cdp_browser_processes.get(removed.port);
         process?.kill();
         cdp_browser_processes.delete(removed.port);
-        log.info(`[CDP POOL REMOVE] Browser process killed successfully`);
       } catch (error) {
         log.warn(
-          `[CDP POOL REMOVE] Failed to kill browser process on port ${removed.port}: ${error}`
+          `[CDP POOL] Failed to kill browser process on port ${removed.port}: ${error}`
         );
       }
     }
 
     log.info(
-      `[CDP POOL REMOVE] ✅ SUCCESS - Remaining pool size: ${cdp_browser_pool.length}`
+      `[CDP POOL] REMOVE: port=${removed.port}, id=${removed.id}, pool_size=${cdp_browser_pool.length}`
     );
-    log.info(`[CDP POOL REMOVE] ========================================`);
-
     return { success: true, browser: removed };
   });
 
@@ -595,11 +560,7 @@ function registerIpcHandlers() {
 
   // Launch CDP browser with custom port
   ipcMain.handle('launch-cdp-browser', async (event, port: number) => {
-    log.info(`[CDP LAUNCH] ========================================`);
-    log.info(
-      `[CDP LAUNCH] Request to launch browser at ${new Date().toISOString()}`
-    );
-    log.info(`[CDP LAUNCH] Target port: ${port}`);
+    log.info(`[CDP LAUNCH] Launching browser on port ${port}`);
 
     try {
       const platform = process.platform;
@@ -782,10 +743,7 @@ function registerIpcHandlers() {
 
       // Check if browser on this port is already running
       if (cdp_browser_processes.has(port)) {
-        log.warn(
-          `[CDP LAUNCH] ❌ Browser process already exists on port ${port}`
-        );
-        log.info(`[CDP LAUNCH] ========================================`);
+        log.warn(`[CDP LAUNCH] Browser process already exists on port ${port}`);
         return {
           success: false,
           error: `Browser already running on port ${port}`,
@@ -802,9 +760,7 @@ function registerIpcHandlers() {
         'about:blank',
       ];
 
-      log.info(`[CDP LAUNCH] Spawning Chrome process...`);
-      log.info(`[CDP LAUNCH] Executable: ${chromeExecutable}`);
-      log.info(`[CDP LAUNCH] Args: ${args.join(' ')}`);
+      log.info(`[CDP LAUNCH] Spawning: ${chromeExecutable} on port ${port}`);
 
       // Spawn Chrome process
       const browserProcess = spawn(chromeExecutable, args, {
@@ -817,21 +773,7 @@ function registerIpcHandlers() {
           `[CDP LAUNCH] Browser process error on port ${port}: ${error}`
         );
         cdp_browser_processes.delete(port);
-
-        // Also remove from pool if it was added
-        const browserInPool = cdp_browser_pool.find(
-          (b) => b.port === port && !b.isExternal
-        );
-        if (browserInPool) {
-          const index = cdp_browser_pool.indexOf(browserInPool);
-          cdp_browser_pool.splice(index, 1);
-          log.warn(
-            `[CDP POOL AUTO-REMOVE] Browser on port ${port} removed from pool due to process error`
-          );
-          log.info(
-            `[CDP POOL AUTO-REMOVE] New pool size: ${cdp_browser_pool.length}`
-          );
-        }
+        removeFromPoolByPort(port, 'process error');
       });
 
       browserProcess.on('exit', (code) => {
@@ -839,30 +781,7 @@ function registerIpcHandlers() {
           `[CDP LAUNCH] Browser process on port ${port} exited with code ${code}`
         );
         cdp_browser_processes.delete(port);
-
-        // Also remove from pool if it was added
-        const browserInPool = cdp_browser_pool.find(
-          (b) => b.port === port && !b.isExternal
-        );
-        if (browserInPool) {
-          const index = cdp_browser_pool.indexOf(browserInPool);
-          cdp_browser_pool.splice(index, 1);
-          log.warn(
-            `[CDP POOL AUTO-REMOVE] Browser on port ${port} removed from pool due to process exit`
-          );
-          log.info(`[CDP POOL AUTO-REMOVE] Exited with code: ${code}`);
-          log.info(
-            `[CDP POOL AUTO-REMOVE] Browser ID: ${browserInPool.id}, Name: "${browserInPool.name}"`
-          );
-          log.info(
-            `[CDP POOL AUTO-REMOVE] New pool size: ${cdp_browser_pool.length}`
-          );
-          if (cdp_browser_pool.length > 0) {
-            log.info(
-              `[CDP POOL AUTO-REMOVE] Remaining ports: [${cdp_browser_pool.map((b) => b.port).join(', ')}]`
-            );
-          }
-        }
+        removeFromPoolByPort(port, `exit code ${code}`);
       });
 
       // Store the process in the Map
@@ -905,10 +824,6 @@ function registerIpcHandlers() {
             log.info(
               `[CDP LAUNCH] ⚠️  NOTE: Browser launched but NOT added to pool yet`
             );
-            log.info(
-              `[CDP LAUNCH] ⚠️  The UI must call 'add-cdp-browser' to add it to the pool`
-            );
-            log.info(`[CDP LAUNCH] ========================================`);
             // This is our own launched browser, not external
             use_external_cdp = false;
             return {
@@ -932,21 +847,22 @@ function registerIpcHandlers() {
       }
 
       // If we get here, browser didn't respond within max wait time
+      // Kill the orphaned process to avoid resource leak
+      const proc = cdp_browser_processes.get(port);
+      if (proc) {
+        proc.kill();
+        cdp_browser_processes.delete(port);
+      }
       const totalTime = Date.now() - startTime;
       log.warn(
-        `[CDP LAUNCH] ❌ Verification failed after ${totalTime}ms (${attempt} attempts)`
+        `[CDP LAUNCH] Verification failed after ${totalTime}ms (${attempt} attempts), last error: ${lastError?.code || lastError?.message || 'Unknown'}`
       );
-      log.warn(
-        `[CDP LAUNCH] Last error: ${lastError?.code || lastError?.message || 'Unknown'}`
-      );
-      log.info(`[CDP LAUNCH] ========================================`);
       return {
         success: false,
         error: `Browser launched but not responding on CDP port after ${totalTime}ms`,
       };
     } catch (error: any) {
-      log.error(`[CDP LAUNCH] ❌ FAILED to launch browser: ${error}`);
-      log.info(`[CDP LAUNCH] ========================================`);
+      log.error(`[CDP LAUNCH] Failed to launch browser: ${error}`);
       return {
         success: false,
         error: error.message,

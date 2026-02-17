@@ -92,7 +92,7 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             if len(task.content) > 100
             else task.content
         )
-        logger.info(
+        logger.debug(
             f"[TASK REQUEST] Requesting agent for task_id={task.id}, content_preview='{task_content_preview}'"
         )
 

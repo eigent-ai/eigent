@@ -968,7 +968,7 @@ class Workforce(BaseWorkforce):
         try:
             from app.agent.factory.browser import _cdp_pool_manager
 
-            _cdp_pool_manager._occupied_ports.clear()
+            _cdp_pool_manager.clear_all()
         except Exception as e:
             logger.error(f"[WF-CLEANUP] Error clearing CDP pool: {e}")
 

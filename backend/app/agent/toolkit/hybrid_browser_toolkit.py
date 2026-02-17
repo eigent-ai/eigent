@@ -456,7 +456,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         page_stability_timeout: int | None = None,
         dom_content_loaded_timeout: int | None = None,
         viewport_limit: bool = False,
-        connect_over_cdp: bool = True,
+        connect_over_cdp: bool = True,  # Deprecated: auto-set to True when cdp_url is provided, kept for compatibility
         cdp_url: str | None = "http://localhost:9222",
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,

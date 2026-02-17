@@ -36,6 +36,11 @@ from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 
 
+def _get_browser_port(browser: dict) -> int:
+    """Extract port from a browser config dict, with fallback to env default."""
+    return int(browser.get("port", env("browser_port", "9222")))
+
+
 class CdpBrowserPoolManager:
     """Manages CDP browser pool occupation to ensure
     parallel tasks use different browsers."""
@@ -87,6 +92,13 @@ class CdpBrowserPoolManager:
                     f"{list(self._occupied_ports.keys())}"
                 )
 
+    def clear_all(self):
+        """Force-clear all occupied ports (safety net for task cleanup)."""
+        with self._lock:
+            count = len(self._occupied_ports)
+            self._occupied_ports.clear()
+            return count
+
     def get_occupied_ports(self) -> list[int]:
         """Get list of currently occupied ports."""
         with self._lock:
@@ -119,9 +131,7 @@ def browser_agent(options: Chat):
             options.cdp_browsers, toolkit_session_id
         )
         if selected_browser:
-            selected_port = selected_browser.get(
-                "port", env("browser_port", "9222")
-            )
+            selected_port = _get_browser_port(selected_browser)
             selected_is_external = selected_browser.get("isExternal", False)
             logger.info(
                 f"Acquired CDP browser from pool (initial): "
@@ -129,9 +139,7 @@ def browser_agent(options: Chat):
                 f"session_id={toolkit_session_id}"
             )
         else:
-            selected_port = options.cdp_browsers[0].get(
-                "port", env("browser_port", "9222")
-            )
+            selected_port = _get_browser_port(options.cdp_browsers[0])
             selected_is_external = options.cdp_browsers[0].get(
                 "isExternal", False
             )
@@ -259,12 +267,10 @@ def browser_agent(options: Chat):
             options.cdp_browsers, session_id
         )
         if selected:
-            agent_instance._cdp_port = selected.get(
-                "port", env("browser_port", "9222")
-            )
+            agent_instance._cdp_port = _get_browser_port(selected)
         else:
-            agent_instance._cdp_port = options.cdp_browsers[0].get(
-                "port", env("browser_port", "9222")
+            agent_instance._cdp_port = _get_browser_port(
+                options.cdp_browsers[0]
             )
         agent_instance._cdp_session_id = session_id
         logger.info(
