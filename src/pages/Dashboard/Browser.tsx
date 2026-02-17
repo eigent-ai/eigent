@@ -134,10 +134,9 @@ export default function Browser() {
   }, []);
 
   const loadCurrentBrowserPort = async () => {
-    if (window.ipcRenderer) {
-      const port = await window.ipcRenderer.invoke('get-browser-port');
+    if (window.electronAPI?.getBrowserPort) {
+      const port = await window.electronAPI.getBrowserPort();
       setCdpPort(port);
-      setCustomPort(String(port));
     }
   };
 
@@ -178,7 +177,7 @@ export default function Browser() {
     const portNumber = parseInt(customPort);
 
     if (isNaN(portNumber) || portNumber < 1 || portNumber > 65535) {
-      toast.error('Please enter a valid port number (1-65535)');
+      toast.error(t('layout.invalid-port'));
       return;
     }
 
@@ -186,7 +185,7 @@ export default function Browser() {
 
     try {
       if (!window.electronAPI?.checkCdpPort) {
-        toast.error('CDP port check not available');
+        toast.error(t('layout.cdp-port-check-not-available'));
         setPortStatus({
           checking: false,
           available: false,
@@ -222,7 +221,7 @@ export default function Browser() {
         available: false,
         error: error.message,
       });
-      toast.error(error.message || 'Failed to check port');
+      toast.error(error.message || t('layout.failed-to-check-port'));
     }
   };
 
@@ -238,15 +237,15 @@ export default function Browser() {
           );
           if (result.success) {
             toast.success(
-              `Added external browser on port ${pendingPort} to pool`
+              t('layout.added-browser-to-pool', { port: pendingPort })
             );
             await loadCdpBrowsers();
           } else {
-            toast.error(result.error || 'Failed to add browser to pool');
+            toast.error(result.error || t('layout.failed-to-add-browser'));
           }
         }
       } catch (error: any) {
-        toast.error(error.message || 'Failed to add browser to pool');
+        toast.error(error.message || t('layout.failed-to-add-browser'));
       }
     }
     setPendingPort(null);
@@ -264,18 +263,18 @@ export default function Browser() {
 
     try {
       if (!window.electronAPI?.launchCdpBrowser) {
-        toast.error('Launch CDP browser not available');
+        toast.error(t('layout.launch-not-available'));
         return;
       }
 
-      toast.loading(`Launching browser on port ${port}...`, {
+      toast.loading(t('layout.launching-browser', { port }), {
         id: 'launch-browser',
       });
 
       const result = await window.electronAPI.launchCdpBrowser(port);
 
       if (result.success) {
-        toast.success(`Browser launched successfully on port ${port}`, {
+        toast.success(t('layout.browser-launched', { port }), {
           id: 'launch-browser',
         });
 
@@ -289,7 +288,7 @@ export default function Browser() {
           if (addResult.success) {
             await loadCdpBrowsers();
           } else {
-            toast.error(addResult.error || 'Failed to add browser to pool');
+            toast.error(addResult.error || t('layout.failed-to-add-browser'));
           }
         }
 
@@ -300,12 +299,12 @@ export default function Browser() {
           data: result.data,
         });
       } else {
-        toast.error(result.error || 'Failed to launch browser', {
+        toast.error(result.error || t('layout.failed-to-launch-browser'), {
           id: 'launch-browser',
         });
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to launch browser', {
+      toast.error(error.message || t('layout.failed-to-launch-browser'), {
         id: 'launch-browser',
       });
     }
@@ -317,14 +316,14 @@ export default function Browser() {
       if (window.electronAPI?.removeCdpBrowser) {
         const result = await window.electronAPI.removeCdpBrowser(browserId);
         if (result.success) {
-          toast.success('Browser removed from pool');
+          toast.success(t('layout.browser-removed'));
           await loadCdpBrowsers();
         } else {
-          toast.error(result.error || 'Failed to remove browser');
+          toast.error(result.error || t('layout.failed-to-remove-browser'));
         }
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to remove browser');
+      toast.error(error.message || t('layout.failed-to-remove-browser'));
     } finally {
       setDeletingBrowser(null);
     }
@@ -332,10 +331,14 @@ export default function Browser() {
 
   const handleBrowserLogin = async () => {
     setLoginLoading(true);
+    const currentCookieCount = cookieDomains.reduce(
+      (sum, item) => sum + item.cookie_count,
+      0
+    );
     try {
       const response = await fetchPost('/browser/login');
       if (response) {
-        toast.success('Browser opened successfully for login');
+        toast.success(t('layout.browser-opened'));
         // Listen for browser close event to reload cookies
         const checkInterval = setInterval(async () => {
           try {
@@ -455,7 +458,7 @@ export default function Browser() {
     if (window.electronAPI && window.electronAPI.restartApp) {
       window.electronAPI.restartApp();
     } else {
-      toast.error('Restart function not available');
+      toast.error(t('layout.restart-not-available'));
     }
   };
 
@@ -486,10 +489,10 @@ export default function Browser() {
           setPendingPort(null);
         }}
         onConfirm={handleUseExistingBrowser}
-        title="Browser Found"
-        message={`A browser is running on port ${pendingPort}. Would you like to use it for browser operations?`}
-        confirmText="Yes, Use This Browser"
-        cancelText="Cancel"
+        title={t('layout.browser-found')}
+        message={t('layout.browser-found-description', { port: pendingPort })}
+        confirmText={t('layout.yes-use-browser')}
+        cancelText={t('layout.cancel')}
         confirmVariant="information"
       />
 
@@ -501,10 +504,12 @@ export default function Browser() {
           setPendingPort(null);
         }}
         onConfirm={handleLaunchNewBrowser}
-        title="No Browser Found"
-        message={`No browser is running on port ${pendingPort}. Would you like to launch a new Chrome browser with CDP enabled on this port?`}
-        confirmText="Yes, Launch Browser"
-        cancelText="Cancel"
+        title={t('layout.no-browser-found')}
+        message={t('layout.no-browser-found-description', {
+          port: pendingPort,
+        })}
+        confirmText={t('layout.yes-launch-browser')}
+        cancelText={t('layout.cancel')}
         confirmVariant="information"
       />
 
@@ -559,10 +564,10 @@ export default function Browser() {
               <div className="flex flex-row items-center justify-between py-2">
                 <div className="flex flex-col items-start">
                   <div className="text-body-base font-bold text-text-body">
-                    CDP Browser Connection
+                    {t('layout.cdp-browser-connection')}
                   </div>
                   <p className="mt-1 text-label-xs text-text-label">
-                    Connect to a Chrome browser with remote debugging enabled
+                    {t('layout.cdp-browser-connection-description')}
                   </p>
                 </div>
               </div>
@@ -570,20 +575,20 @@ export default function Browser() {
               <div className="flex flex-col gap-3 rounded-xl bg-surface-tertiary px-4 py-3">
                 <div className="flex flex-col gap-2">
                   <div className="text-label-sm font-medium text-text-body">
-                    Current Port:{' '}
+                    {t('layout.current-port')}{' '}
                     <span className="font-bold text-text-information">
                       {cdpPort}
                     </span>
                   </div>
                   <p className="text-label-xs text-text-label">
-                    Check if a browser is available on a specific port
+                    {t('layout.cdp-port-check-description')}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
-                    placeholder="Port number (e.g., 9222)"
+                    placeholder={t('layout.port-placeholder')}
                     value={customPort}
                     onChange={(e) => setCustomPort(e.target.value)}
                     className="flex-1"
@@ -600,10 +605,10 @@ export default function Browser() {
                     {portStatus.checking ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Checking
+                        {t('layout.checking')}
                       </>
                     ) : (
-                      'Check Port'
+                      t('layout.check-port')
                     )}
                   </Button>
                 </div>
@@ -621,7 +626,7 @@ export default function Browser() {
                         <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" />
                         <div className="flex flex-col gap-1">
                           <div className="text-label-sm font-bold">
-                            Browser Available
+                            {t('layout.browser-available')}
                           </div>
                           {portStatus.data && (
                             <div className="text-label-xs opacity-90">
@@ -636,7 +641,7 @@ export default function Browser() {
                         <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                         <div className="flex flex-col gap-1">
                           <div className="text-label-sm font-bold">
-                            Browser Not Available
+                            {t('layout.browser-not-available')}
                           </div>
                           <div className="text-label-xs opacity-90">
                             {portStatus.error}
@@ -655,14 +660,15 @@ export default function Browser() {
                 <div className="flex flex-col items-start">
                   <div className="flex items-center gap-2">
                     <div className="text-body-base font-bold text-text-body">
-                      CDP Browser Pool
+                      {t('layout.cdp-browser-pool')}
                     </div>
                     <span className="rounded bg-tag-fill-info px-2 py-0.5 text-label-xs text-text-information">
-                      {runningPorts.length} / {cdpBrowsers.length} Running
+                      {runningPorts.length} / {cdpBrowsers.length}{' '}
+                      {t('layout.running')}
                     </span>
                   </div>
                   <p className="mt-1 text-label-xs text-text-label">
-                    Manage multiple CDP browsers for task execution
+                    {t('layout.cdp-browser-pool-description')}
                   </p>
                 </div>
               </div>
@@ -686,25 +692,27 @@ export default function Browser() {
                                 : 'bg-tag-fill-success text-text-success'
                             }`}
                           >
-                            {browser.isExternal ? 'External' : 'Launched'}
+                            {browser.isExternal
+                              ? t('layout.external')
+                              : t('layout.launched')}
                           </span>
                           {/* Running status indicator */}
                           {runningPorts.includes(browser.port) ? (
                             <span className="flex items-center gap-1 rounded bg-tag-fill-success px-2 py-0.5 text-label-xs text-text-success">
                               <span className="h-2 w-2 animate-pulse rounded-full bg-text-success"></span>
-                              Running
+                              {t('layout.running')}
                             </span>
                           ) : (
                             !browser.isExternal && (
                               <span className="bg-tag-fill-error flex items-center gap-1 rounded px-2 py-0.5 text-label-xs text-text-cuation">
                                 <span className="h-2 w-2 rounded-full bg-text-cuation"></span>
-                                Stopped
+                                {t('layout.stopped')}
                               </span>
                             )
                           )}
                         </div>
                         <span className="mt-1 text-label-xs text-text-label">
-                          Port: {browser.port}
+                          {t('layout.port')} {browser.port}
                         </span>
                       </div>
                       <Button
@@ -723,10 +731,10 @@ export default function Browser() {
                 <div className="flex flex-col items-center justify-center rounded-xl bg-surface-tertiary px-4 py-8">
                   <Globe className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
                   <div className="text-body-base text-center font-bold text-text-label">
-                    No browsers in pool
+                    {t('layout.no-browsers-in-pool')}
                   </div>
                   <p className="mt-1 text-center text-label-xs font-medium text-text-label">
-                    Add browsers using the check port tool above
+                    {t('layout.add-browsers-hint')}
                   </p>
                 </div>
               )}
@@ -832,7 +840,7 @@ export default function Browser() {
           </div>
 
           <div className="w-full flex-1 items-center justify-center text-center text-label-xs text-text-label">
-            For more information, check out our
+            {t('layout.for-more-info')}
             <a
               href="https://www.eigent.ai/privacy-policy"
               target="_blank"

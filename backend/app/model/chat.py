@@ -63,7 +63,6 @@ class Chat(BaseModel):
     api_url: str | None = None
     language: str = "en"
     browser_port: int = 9222
-    use_external_cdp: bool = False
     cdp_browsers: list[dict] = Field(default_factory=list)
     max_retries: int = 3
     allow_local_system: bool = False

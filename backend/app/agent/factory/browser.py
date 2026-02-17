@@ -136,13 +136,6 @@ class CdpBrowserPoolManager:
                 )
         return released_ports
 
-    def clear_all(self):
-        """Force-clear all occupied ports (safety net for task cleanup)."""
-        with self._lock:
-            count = len(self._occupied_ports)
-            self._occupied_ports.clear()
-            return count
-
     def get_occupied_ports(self) -> list[int]:
         """Get list of currently occupied ports."""
         with self._lock:
