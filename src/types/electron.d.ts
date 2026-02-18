@@ -165,8 +165,13 @@ interface ElectronAPI {
     skillDirName: string
   ) => Promise<{ success: boolean; files?: string[]; error?: string }>;
   skillImportZip: (
-    zipPathOrBuffer: string | ArrayBuffer
-  ) => Promise<{ success: boolean; error?: string }>;
+    zipPathOrBuffer: string | ArrayBuffer,
+    replacements?: string[]
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    conflicts?: Array<{ folderName: string; skillName: string }>;
+  }>;
   openSkillFolder: (
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
