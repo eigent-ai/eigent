@@ -608,16 +608,8 @@ class ListenChatAgent(ChatAgent):
             with set_process_task(self.process_task_id):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
-                    # Case: FunctionTool wrapping an MCP tool
-                    # Check if wrapped tool is sync to avoid run_in_executor
-                    if hasattr(tool, "is_async") and not tool.is_async:
-                        # Sync tool: call directly to preserve ContextVar
-                        result = tool(**args)
-                        if asyncio.iscoroutine(result):
-                            result = await result
-                    else:
-                        # Async tool: use async_call
-                        result = await tool.func.async_call(**args)
+                    # MCP FunctionTool: always use async_call (sync wrapper can timeout)
+                    result = await tool.func.async_call(**args)
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
