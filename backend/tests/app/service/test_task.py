@@ -519,32 +519,29 @@ class TestPeriodicCleanup:
     @pytest.mark.asyncio
     async def test_periodic_cleanup_handles_exceptions(self):
         """Test that periodic cleanup handles exceptions gracefully."""
+        import app.service.task as task_module
+
         # Create a stale task lock
         task_lock = create_task_lock("test_task")
         task_lock.last_accessed = datetime.now() - timedelta(hours=3)
 
-        # Mock delete_task_lock to raise exception
+        # Mock delete_task_lock to raise exception and call through module
         with (
-            patch(
-                "app.service.task.delete_task_lock",
+            patch.object(
+                task_module,
+                "delete_task_lock",
                 side_effect=Exception("Test error"),
             ),
-            patch(
-                "app.service.task.logger.error",
-            ) as mock_logger,
+            patch.object(task_module, "logger") as mock_logger,
         ):
-            # Directly call the cleanup logic
-            # that should trigger the exception
+            # Simulate what _periodic_cleanup does when encountering an error
             try:
-                await delete_task_lock("test_task")
+                await task_module.delete_task_lock("test_task")
             except Exception as e:
-                import logging
-
-                task_logger = logging.getLogger("task_service")
-                task_logger.error(f"Error during task cleanup: {e}")
+                task_module.logger.error(f"Error in periodic cleanup: {e}")
 
             # Should have logged the error
-            mock_logger.assert_called()
+            mock_logger.error.assert_called()
 
 
 @pytest.mark.integration

@@ -31,32 +31,6 @@ jobs:
 
       - name: Run pre-commit
         run: |
-          uv run pre-commit run --files \
-            $(find \
-              app/agent \
-              app/controller \
-              app/exception \
-              app/middleware \
-              app/model \
-              app/service \
-              tests/app \
-              -type f ! -path '*__pycache__*') \
-            app/__init__.py \
-            app/router.py \
-            app/component/__init__.py \
-            app/component/pydantic/__init__.py \
-            app/utils/listen/__init__.py \
-            app/utils/server/__init__.py \
-            app/utils/toolkit/__init__.py \
-            app/utils/toolkit/google_calendar_toolkit.py \
-            app/utils/toolkit/google_gmail_mcp_toolkit.py \
-            app/utils/toolkit/linkedin_toolkit.py \
-            app/utils/toolkit/reddit_toolkit.py \
-            app/utils/toolkit/slack_toolkit.py \
-            app/utils/toolkit/twitter_toolkit.py \
-            app/utils/toolkit/whatsapp_toolkit.py \
-            app/utils/workforce.py \
-            app/utils/single_agent_worker.py \
-            tests/conftest.py
+          uv run pre-commit run --files $(git ls-files .)
         env:
           SKIP: no-commit-to-branch

@@ -243,7 +243,8 @@ export default function SettingModels() {
                 ...fi,
                 provider_id: found.id,
                 apiKey: found.api_key || '',
-                apiHost: found.endpoint_url || '',
+                // Fall back to provider's default API host if endpoint_url is empty
+                apiHost: found.endpoint_url || item.apiHost,
                 is_valid: !!found?.is_valid,
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
@@ -464,6 +465,7 @@ export default function SettingModels() {
     { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
+    { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
 
   // Local model options
@@ -587,7 +589,8 @@ export default function SettingModels() {
               ...fi,
               provider_id: found.id,
               apiKey: found.api_key || '',
-              apiHost: found.endpoint_url || '',
+              // Fall back to provider's default API host if endpoint_url is empty
+              apiHost: found.endpoint_url || item.apiHost,
               is_valid: !!found.is_valid,
               prefer: found.prefer ?? false,
               externalConfig: fi.externalConfig
@@ -918,7 +921,8 @@ export default function SettingModels() {
           const item = items[i];
           return {
             apiKey: '',
-            apiHost: '',
+            // Restore provider's default API host instead of clearing it
+            apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
             externalConfig: item.externalConfig
@@ -1247,6 +1251,9 @@ export default function SettingModels() {
                   </SelectItem>
                   <SelectItem value="claude-sonnet-4-5">
                     {t('setting.claude-sonnet-4-5-name')}
+                  </SelectItem>
+                  <SelectItem value="minimax_m2_5">
+                    {t('setting.minimax-m2-5-name')}
                   </SelectItem>
                 </SelectContent>
               </Select>
