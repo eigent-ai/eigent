@@ -102,6 +102,7 @@ def browser_agent(options: Chat):
         options.project_id,
         Agents.browser_agent,
         working_directory=working_directory,
+        user_id=options.skill_config_user_id(),
     )
     skill_toolkit = message_integration.register_toolkits(skill_toolkit)
 

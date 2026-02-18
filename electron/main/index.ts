@@ -878,6 +878,31 @@ function registerIpcHandlers() {
     return null;
   }
 
+  const normalizePathForCompare = (value: string) =>
+    process.platform === 'win32' ? value.toLowerCase() : value;
+
+  function assertPathUnderSkillsRoot(targetPath: string): string {
+    const resolvedRoot = path.resolve(SKILLS_ROOT);
+    const resolvedTarget = path.resolve(targetPath);
+    const rootCmp = normalizePathForCompare(resolvedRoot);
+    const targetCmp = normalizePathForCompare(resolvedTarget);
+    const rootWithSep = rootCmp.endsWith(path.sep)
+      ? rootCmp
+      : `${rootCmp}${path.sep}`;
+    if (targetCmp !== rootCmp && !targetCmp.startsWith(rootWithSep)) {
+      throw new Error('Path is outside skills directory');
+    }
+    return resolvedTarget;
+  }
+
+  function resolveSkillDirPath(skillDirName: string): string {
+    const name = String(skillDirName || '').trim();
+    if (!name) {
+      throw new Error('Skill folder name is required');
+    }
+    return assertPathUnderSkillsRoot(path.join(SKILLS_ROOT, name));
+  }
+
   ipcMain.handle('get-skills-dir', async () => {
     try {
       if (!existsSync(SKILLS_ROOT)) {
@@ -935,7 +960,7 @@ function registerIpcHandlers() {
     'skill-write',
     async (_event, skillDirName: string, content: string) => {
       try {
-        const dir = path.join(SKILLS_ROOT, skillDirName);
+        const dir = resolveSkillDirPath(skillDirName);
         await fsp.mkdir(dir, { recursive: true });
         await fsp.writeFile(path.join(dir, SKILL_FILE), content, 'utf-8');
         return { success: true };
@@ -948,7 +973,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('skill-delete', async (_event, skillDirName: string) => {
     try {
-      const dir = path.join(SKILLS_ROOT, skillDirName);
+      const dir = resolveSkillDirPath(skillDirName);
       if (!existsSync(dir)) return { success: true };
       await fsp.rm(dir, { recursive: true, force: true });
       return { success: true };
@@ -961,8 +986,10 @@ function registerIpcHandlers() {
   ipcMain.handle('skill-read', async (_event, filePath: string) => {
     try {
       const fullPath = path.isAbsolute(filePath)
-        ? filePath
-        : path.join(SKILLS_ROOT, filePath, SKILL_FILE);
+        ? assertPathUnderSkillsRoot(filePath)
+        : assertPathUnderSkillsRoot(
+            path.join(SKILLS_ROOT, filePath, SKILL_FILE)
+          );
       const content = await fsp.readFile(fullPath, 'utf-8');
       return { success: true, content };
     } catch (error: any) {
@@ -973,7 +1000,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('skill-list-files', async (_event, skillDirName: string) => {
     try {
-      const dir = path.join(SKILLS_ROOT, skillDirName);
+      const dir = resolveSkillDirPath(skillDirName);
       if (!existsSync(dir))
         return { success: false, error: 'Skill folder not found', files: [] };
       const entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -1940,9 +1967,28 @@ async function importSkillsFromZip(
     // Step 1: Extract zip into temp directory
     await fsp.mkdir(tempDir, { recursive: true });
     const directory = await unzipper.Open.file(zipPath);
+    const resolvedTempDir = path.resolve(tempDir);
+    const comparePath = (value: string) =>
+      process.platform === 'win32' ? value.toLowerCase() : value;
+    const resolvedTempDirCmp = comparePath(resolvedTempDir);
+    const resolvedTempDirWithSep = resolvedTempDirCmp.endsWith(path.sep)
+      ? resolvedTempDirCmp
+      : `${resolvedTempDirCmp}${path.sep}`;
     for (const file of directory.files as any[]) {
       if (file.type === 'Directory') continue;
-      const destPath = path.join(tempDir, file.path);
+      const normalizedArchivePath = path
+        .normalize(String(file.path))
+        .replace(/^([/\\])+/, '');
+      const destPath = path.join(tempDir, normalizedArchivePath);
+      const resolvedDestPathCmp = comparePath(path.resolve(destPath));
+      // Protect against zip-slip (e.g. entries containing ../)
+      if (
+        !normalizedArchivePath ||
+        (resolvedDestPathCmp !== resolvedTempDirCmp &&
+          !resolvedDestPathCmp.startsWith(resolvedTempDirWithSep))
+      ) {
+        return { success: false, error: 'Zip archive contains unsafe paths' };
+      }
       const destDir = path.dirname(destPath);
       await fsp.mkdir(destDir, { recursive: true });
       const content = await file.buffer();

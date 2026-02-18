@@ -2195,7 +2195,7 @@ async def construct_workforce(
                         options.project_id,
                         key,
                         working_directory=working_directory,
-                        user_id=options.user_id,
+                        user_id=options.skill_config_user_id(),
                     ).get_tools(),
                 ],
             )
@@ -2267,7 +2267,7 @@ the current date.
                     options.project_id,
                     Agents.new_worker_agent,
                     working_directory=working_directory,
-                    user_id=options.user_id,
+                    user_id=options.skill_config_user_id(),
                 ).get_tools(),
             ],
         )
