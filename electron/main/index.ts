@@ -1165,30 +1165,38 @@ function registerIpcHandlers() {
     'skill-import-zip',
     async (
       _event,
-      zipPathOrBuffer: string | Buffer | ArrayBuffer | Uint8Array
-    ) => {
-      const isBufferLike =
-        Buffer.isBuffer(zipPathOrBuffer) ||
-        zipPathOrBuffer instanceof ArrayBuffer ||
-        zipPathOrBuffer instanceof Uint8Array;
-      if (isBufferLike) {
-        const buf = Buffer.isBuffer(zipPathOrBuffer)
-          ? zipPathOrBuffer
-          : Buffer.from(zipPathOrBuffer as ArrayBuffer);
-        const tempPath = path.join(
-          os.tmpdir(),
-          `eigent-skill-import-${Date.now()}.zip`
-        );
-        try {
-          await fsp.writeFile(tempPath, buf);
-          const result = await importSkillsFromZip(tempPath);
-          return result;
-        } finally {
-          await fsp.unlink(tempPath).catch(() => {});
+      zipPathOrBuffer: string | Buffer | ArrayBuffer | Uint8Array,
+      replacements?: string[]
+    ) =>
+      withImportLock(async () => {
+        // Use typeof check instead of instanceof to handle cross-realm objects
+        // from Electron IPC (instanceof can fail across context boundaries)
+        const replacementsSet = replacements
+          ? new Set(replacements)
+          : undefined;
+        const isBufferLike = typeof zipPathOrBuffer !== 'string';
+        if (isBufferLike) {
+          const buf = Buffer.isBuffer(zipPathOrBuffer)
+            ? zipPathOrBuffer
+            : Buffer.from(
+                zipPathOrBuffer instanceof ArrayBuffer
+                  ? zipPathOrBuffer
+                  : (zipPathOrBuffer as any)
+              );
+          const tempPath = path.join(
+            os.tmpdir(),
+            `eigent-skill-import-${Date.now()}.zip`
+          );
+          try {
+            await fsp.writeFile(tempPath, buf);
+            const result = await importSkillsFromZip(tempPath, replacementsSet);
+            return result;
+          } finally {
+            await fsp.unlink(tempPath).catch(() => {});
+          }
         }
-      }
-      return importSkillsFromZip(zipPathOrBuffer as string);
-    }
+        return importSkillsFromZip(zipPathOrBuffer as string, replacementsSet);
+      })
   );
 
   // ==================== read file handler ====================
@@ -1806,6 +1814,22 @@ const getExampleSkillsSourceDir = (): string =>
     ? path.join(process.resourcesPath, 'example-skills')
     : path.join(app.getAppPath(), 'resources', 'example-skills');
 
+async function copyDirRecursive(src: string, dst: string): Promise<void> {
+  await fsp.mkdir(dst, { recursive: true });
+  const entries = await fsp.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    // Skip symlinks to prevent copying files from outside the source tree
+    if (entry.isSymbolicLink()) continue;
+    const srcPath = path.join(src, entry.name);
+    const dstPath = path.join(dst, entry.name);
+    if (entry.isDirectory()) {
+      await copyDirRecursive(srcPath, dstPath);
+    } else {
+      await fsp.copyFile(srcPath, dstPath);
+    }
+  }
+}
+
 async function seedDefaultSkillsIfEmpty(): Promise<void> {
   if (!existsSync(SKILLS_ROOT)) return;
   const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
@@ -1823,18 +1847,49 @@ async function seedDefaultSkillsIfEmpty(): Promise<void> {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
-    const content = await fsp.readFile(skillMd, 'utf-8');
+    const srcDir = path.join(exampleDir, e.name);
     const destDir = path.join(SKILLS_ROOT, e.name);
-    await fsp.mkdir(destDir, { recursive: true });
-    await fsp.writeFile(path.join(destDir, SKILL_FILE), content, 'utf-8');
+    await copyDirRecursive(srcDir, destDir);
   }
   log.info('Seeded default skills to ~/.eigent/skills from', exampleDir);
 }
 
-async function importSkillsFromZip(zipPath: string): Promise<{
+/** Truncate a single path component to fit within the 255-byte filesystem limit. */
+function safePathComponent(name: string, maxBytes = 200): string {
+  // 200 leaves headroom for suffixes the OS or future logic may add
+  if (Buffer.byteLength(name, 'utf-8') <= maxBytes) return name;
+  // Trim from the end, character by character, until it fits
+  let trimmed = name;
+  while (Buffer.byteLength(trimmed, 'utf-8') > maxBytes) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed.replace(/-+$/, '') || 'skill';
+}
+
+// Simple mutex to prevent concurrent skill imports
+let _importLock: Promise<void> = Promise.resolve();
+function withImportLock<T>(fn: () => Promise<T>): Promise<T> {
+  let release: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const prev = _importLock;
+  _importLock = next;
+  return prev.then(fn).finally(() => release!());
+}
+
+async function importSkillsFromZip(
+  zipPath: string,
+  replacements?: Set<string>
+): Promise<{
   success: boolean;
   error?: string;
+  conflicts?: Array<{ folderName: string; skillName: string }>;
 }> {
+  // Extract to a temp directory, then find SKILL.md files and copy their
+  // parent skill directories into SKILLS_ROOT.  This handles any zip
+  // structure: wrapping directories, SKILL.md at root, or multiple skills.
+  const tempDir = path.join(os.tmpdir(), `eigent-skill-extract-${Date.now()}`);
   try {
     if (!existsSync(zipPath)) {
       return { success: false, error: 'Zip file does not exist' };
@@ -1846,20 +1901,150 @@ async function importSkillsFromZip(zipPath: string): Promise<{
     if (!existsSync(SKILLS_ROOT)) {
       await fsp.mkdir(SKILLS_ROOT, { recursive: true });
     }
+
+    // Step 1: Extract zip into temp directory
+    await fsp.mkdir(tempDir, { recursive: true });
     const directory = await unzipper.Open.file(zipPath);
     for (const file of directory.files as any[]) {
       if (file.type === 'Directory') continue;
-      const destPath = path.join(SKILLS_ROOT, file.path);
+      const destPath = path.join(tempDir, file.path);
       const destDir = path.dirname(destPath);
       await fsp.mkdir(destDir, { recursive: true });
       const content = await file.buffer();
       await fsp.writeFile(destPath, content);
     }
-    log.info('Imported skills from zip into ~/.eigent/skills:', zipPath);
+
+    // Step 2: Recursively find all SKILL.md files
+    const skillFiles: string[] = [];
+    async function findSkillMdFiles(dir: string) {
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await findSkillMdFiles(fullPath);
+        } else if (entry.name === SKILL_FILE) {
+          skillFiles.push(fullPath);
+        }
+      }
+    }
+    await findSkillMdFiles(tempDir);
+
+    if (skillFiles.length === 0) {
+      return {
+        success: false,
+        error: 'No SKILL.md files found in zip archive',
+      };
+    }
+
+    // Step 3: Copy each skill directory into SKILLS_ROOT
+
+    // Helper function to extract skill name from SKILL.md
+    async function getSkillName(skillFilePath: string): Promise<string> {
+      try {
+        const raw = await fsp.readFile(skillFilePath, 'utf-8');
+        const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
+        const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
+        return parsed || path.basename(path.dirname(skillFilePath));
+      } catch {
+        return path.basename(path.dirname(skillFilePath));
+      }
+    }
+
+    // Collect conflicts if replacements not provided
+    const conflicts: Array<{ folderName: string; skillName: string }> = [];
+    const replacementsSet = replacements || new Set<string>();
+
+    for (const skillFilePath of skillFiles) {
+      const skillDir = path.dirname(skillFilePath);
+
+      if (skillDir === tempDir) {
+        // SKILL.md is at the zip root (no parent skill folder).
+        // Derive a folder name from the SKILL.md frontmatter or zip filename.
+        let folderName = safePathComponent(
+          path.basename(zipPath, path.extname(zipPath))
+        );
+        try {
+          const raw = await fsp.readFile(skillFilePath, 'utf-8');
+          const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
+          const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
+          if (parsed) {
+            folderName = safePathComponent(
+              parsed
+                .replace(/[\\/*?:"<>|\s]+/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '') || folderName
+            );
+          }
+        } catch {
+          // Use zip filename fallback
+        }
+        const dest = path.join(SKILLS_ROOT, folderName);
+
+        // Check if skill already exists
+        if (existsSync(dest)) {
+          const skillName = await getSkillName(skillFilePath);
+          // If replacements not provided, collect conflict and skip
+          if (!replacements) {
+            conflicts.push({ folderName, skillName });
+            continue;
+          }
+          // If user confirmed replacement, remove existing directory
+          if (replacementsSet.has(folderName)) {
+            await fsp.rm(dest, { recursive: true, force: true });
+          } else {
+            // User didn't confirm, skip this skill
+            continue;
+          }
+        }
+
+        // Import the skill (either no conflict, or conflict was resolved)
+        await fsp.mkdir(dest, { recursive: true });
+        // Recursively copy all root-level entries (files and subdirectories)
+        await copyDirRecursive(tempDir, dest);
+      } else {
+        // SKILL.md is inside a subdirectory — copy that directory to SKILLS_ROOT
+        const skillDirName = safePathComponent(path.basename(skillDir));
+        const dest = path.join(SKILLS_ROOT, skillDirName);
+
+        // Check if skill already exists
+        if (existsSync(dest)) {
+          const skillName = await getSkillName(skillFilePath);
+          // If replacements not provided, collect conflict and skip
+          if (!replacements) {
+            conflicts.push({ folderName: skillDirName, skillName });
+            continue;
+          }
+          // If user confirmed replacement, remove existing directory
+          if (replacementsSet.has(skillDirName)) {
+            await fsp.rm(dest, { recursive: true, force: true });
+          } else {
+            // User didn't confirm, skip this skill
+            continue;
+          }
+        }
+
+        // Import the skill (either no conflict, or conflict was resolved)
+        await fsp.mkdir(dest, { recursive: true });
+        await copyDirRecursive(skillDir, dest);
+      }
+    }
+
+    // Return conflicts if any were found and replacements not provided
+    if (conflicts.length > 0 && !replacements) {
+      return { success: false, conflicts };
+    }
+
+    log.info(
+      `Imported ${skillFiles.length} skill(s) from zip into ~/.eigent/skills:`,
+      zipPath
+    );
     return { success: true };
   } catch (error: any) {
     log.error('importSkillsFromZip failed', error);
     return { success: false, error: error?.message || String(error) };
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 

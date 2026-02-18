@@ -165,8 +165,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   skillRead: (filePath: string) => ipcRenderer.invoke('skill-read', filePath),
   skillListFiles: (skillDirName: string) =>
     ipcRenderer.invoke('skill-list-files', skillDirName),
-  skillImportZip: (zipPathOrBuffer: string | ArrayBuffer) =>
-    ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer),
+  skillImportZip: (
+    zipPathOrBuffer: string | ArrayBuffer,
+    replacements?: string[]
+  ) => ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer, replacements),
   openSkillFolder: (skillName: string) =>
     ipcRenderer.invoke('open-skill-folder', skillName),
   skillConfigInit: (userId: string) =>
