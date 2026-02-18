@@ -119,7 +119,7 @@ export default function ChatBox(): JSX.Element {
     };
   }, [checkModelConfig]);
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
   const skill_prompt = searchParams.get('skill_prompt');
 
