@@ -246,7 +246,7 @@ export default function SettingGeneral() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 flex flex-col gap-6">
+      <div className="mb-xl flex flex-col gap-6">
         {/* Profile Section */}
         <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex flex-col gap-2">
