@@ -42,7 +42,7 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Folder from '../Folder';
 import { TaskState, TaskStateType } from '../TaskState';
 import Terminal from '../Terminal';
@@ -121,11 +121,25 @@ export function Node({ id, data }: NodeProps) {
 
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
-  const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
+  const { getNode, setViewport, setNodes } = useReactFlow();
   const workerList = useWorkerList();
   const { setWorkerList } = useAuthStore();
   const nodeRef = useRef<HTMLDivElement>(null);
   const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
+  const onExpandChange = data.onExpandChange;
+  const agentTasks = useMemo(
+    () => data.agent?.tasks || [],
+    [data.agent?.tasks]
+  );
+  const runningTask = agentTasks.find(
+    (task) => task.status === TaskStatus.RUNNING
+  );
+  const runningTaskId = runningTask?.id;
+  const runningTaskToolkitsLength = runningTask?.toolkits?.length;
+  const activeTaskId = chatStore?.activeTaskId;
+  const activeAgent = activeTaskId
+    ? chatStore?.tasks?.[activeTaskId]?.activeAgent
+    : undefined;
 
   useEffect(() => {
     setIsExpanded(data.isExpanded);
@@ -133,7 +147,7 @@ export function Node({ id, data }: NodeProps) {
 
   // Auto-expand when a task is running with toolkits
   useEffect(() => {
-    const tasks = data.agent?.tasks || [];
+    const tasks = agentTasks;
 
     // Find running task with active toolkits
     const runningTaskWithToolkits = tasks.find(
@@ -162,20 +176,17 @@ export function Node({ id, data }: NodeProps) {
       // Expand if not already expanded
       if (!isExpanded) {
         setIsExpanded(true);
-        data.onExpandChange(id, true);
+        onExpandChange(id, true);
       }
 
       lastAutoExpandedTaskIdRef.current = runningTaskWithToolkits.id;
     }
   }, [
-    data.agent?.tasks,
-    // Add specific dependencies that actually change
-    data.agent?.tasks?.length,
-    data.agent?.tasks?.find((t) => t.status === TaskStatus.RUNNING)?.id,
-    data.agent?.tasks?.find((t) => t.status === TaskStatus.RUNNING)?.toolkits
-      ?.length,
+    agentTasks,
+    runningTaskId,
+    runningTaskToolkitsLength,
     id,
-    data.onExpandChange,
+    onExpandChange,
     isExpanded,
   ]);
 
@@ -211,40 +222,32 @@ export function Node({ id, data }: NodeProps) {
       );
     }
     setIsExpanded(!isExpanded);
-    data.onExpandChange(id, !isExpanded);
+    onExpandChange(id, !isExpanded);
   };
 
   useEffect(() => {
-    if (!chatStore || !chatStore.activeTaskId) {
+    if (activeAgent !== id) {
       return;
     }
 
-    if (chatStore.tasks[chatStore.activeTaskId as string]?.activeAgent === id) {
-      const node = getNode(id);
-      if (node) {
-        setTimeout(() => {
-          setViewport(
-            { x: -node.position.x, y: 0, zoom: 1 },
-            {
-              duration: 500,
-            }
-          );
-        }, 100);
-      }
+    const node = getNode(id);
+    if (!node) {
+      return;
     }
-  }, [chatStore, id, setCenter, getNode]);
+
+    setTimeout(() => {
+      setViewport(
+        { x: -node.position.x, y: 0, zoom: 1 },
+        {
+          duration: 500,
+        }
+      );
+    }, 100);
+  }, [activeAgent, id, getNode, setViewport]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
-  const [shouldScroll, setShouldScroll] = useState(false);
   const [toolsHeight, setToolsHeight] = useState(0);
-
-  useEffect(() => {
-    if (wrapperRef.current) {
-      const { scrollHeight, clientHeight } = wrapperRef.current;
-      setShouldScroll(scrollHeight > clientHeight);
-    }
-  }, [data.agent?.tasks, toolsHeight]);
 
   // dynamically calculate tool label height
   useEffect(() => {
@@ -281,12 +284,7 @@ export function Node({ id, data }: NodeProps) {
         log.removeEventListener('wheel', wheelHandler);
       }
     };
-  }, [
-    wheelHandler,
-    isExpanded,
-    selectedTask,
-    selectedTask?.report?.rePort?.content,
-  ]);
+  }, [wheelHandler, isExpanded, selectedTask, selectedTask?.report]);
 
   const agentMap = {
     developer_agent: {
@@ -365,6 +363,14 @@ export function Node({ id, data }: NodeProps) {
     });
     return idStr;
   };
+
+  const customToolkits =
+    data.agent?.tools
+      ?.map((tool) => (tool ? '# ' + tool.replace(/_/g, ' ') : ''))
+      .filter(Boolean) || [];
+  const toolkitLabels =
+    agentToolkits[data.agent?.type as keyof typeof agentToolkits] ||
+    (customToolkits.length > 0 ? customToolkits : ['No Toolkits']);
 
   return chatStore ? (
     <>
@@ -469,12 +475,7 @@ export function Node({ id, data }: NodeProps) {
             className="mb-sm flex min-h-4 flex-shrink-0 flex-wrap px-3 text-xs font-normal leading-tight text-text-label"
           >
             {/* {JSON.stringify(data.agent)} */}
-            {(
-              agentToolkits[data.agent?.type as keyof typeof agentToolkits] ||
-              data.agent?.tools
-                ?.map((tool) => (tool ? '# ' + tool.replace(/_/g, ' ') : ''))
-                .filter(Boolean) || ['No Toolkits']
-            ).map((toolkit, index) => (
+            {toolkitLabels.map((toolkit, index) => (
               <span key={index} className="mr-2">
                 {toolkit}
               </span>
@@ -619,13 +620,13 @@ export function Node({ id, data }: NodeProps) {
             }}
           >
             {data.agent?.tasks &&
-              filterTasks.map((task, index) => {
+              filterTasks.map((task) => {
                 return (
                   <div
                     onClick={() => {
                       setSelectedTask(task);
                       setIsExpanded(true);
-                      data.onExpandChange(id, true);
+                      onExpandChange(id, true);
                       if (task.agent) {
                         chatStore.setActiveWorkSpace(
                           chatStore.activeTaskId as string,
@@ -954,9 +955,16 @@ export function Node({ id, data }: NodeProps) {
                               size="xs"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (selectedTask?.report) {
+                                const reportText =
+                                  typeof selectedTask?.report === 'string'
+                                    ? selectedTask.report
+                                    : '';
+                                if (
+                                  reportText &&
+                                  navigator.clipboard?.writeText
+                                ) {
                                   navigator.clipboard
-                                    .writeText(selectedTask.report)
+                                    .writeText(reportText)
                                     .catch(() => {
                                       // silently fail if clipboard is unavailable
                                     });
