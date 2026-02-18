@@ -184,7 +184,7 @@
     --input-border-default: var(--border-secondary);
     --input-border-hover: var(--border-action-hover);
     --input-border-focus: var(--border-information);
-    --input-text-default: var(--text-primary);
+    --input-text-default: var(--text-secondary);
     --input-text-focus: var(--text-primary);
     --input-label-default: var(--text-secondary);
     --input-border-success: var(--border-success);
@@ -451,7 +451,7 @@
   [data-theme='transparent'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
-    --text-label: var(--colors-primary-7);
+    --text-label: var(--colors-primary-6);
     --text-action: var(--colors-primary-default);
     --text-action-hover: var(--colors-primary-10);
     --text-disabled: var(--colors-primary-3);
@@ -577,7 +577,7 @@
   [data-theme='light'] {
     --text-heading: var(--colors-primary-10);
     --text-body: var(--colors-primary-default);
-    --text-label: var(--colors-primary-7);
+    --text-label: var(--colors-primary-6);
     --text-action: var(--colors-primary-default);
     --text-action-hover: var(--colors-primary-10);
     --text-disabled: var(--colors-primary-3);
