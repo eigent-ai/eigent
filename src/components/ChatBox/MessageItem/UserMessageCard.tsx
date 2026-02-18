@@ -13,10 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { Copy, FileText, Image, Sparkles } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Check, Copy, FileText, Image, Sparkles } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { Button } from '../../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
+
+const COPIED_RESET_MS = 2000;
 
 const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
@@ -57,11 +61,20 @@ export function UserMessageCard({
 }: UserMessageCardProps) {
   const [_hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const hoverCloseTimerRef = useRef<number | null>(null);
+  const { t } = useTranslation();
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-  };
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success(t('setting.copied-to-clipboard'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPIED_RESET_MS);
+    } catch {
+      toast.error('Failed to copy to clipboard');
+    }
+  }, [content, t]);
 
   // Popover handles outside clicks; no manual listener needed
   const openRemainingPopover = () => {
@@ -104,7 +117,11 @@ export function UserMessageCard({
     >
       <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <Button onClick={handleCopy} variant="ghost" size="icon">
-          <Copy />
+          {copied ? (
+            <Check className="h-4 w-4 text-text-success" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
         </Button>
       </div>
       <div className="whitespace-pre-wrap break-words text-body-sm text-text-body">
