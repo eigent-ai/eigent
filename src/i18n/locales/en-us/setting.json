@@ -42,6 +42,7 @@
   "validate-failed": "Validate failed",
   "copy": "Copy",
   "copied-to-clipboard": "Copied to clipboard",
+  "failed-to-copy-to-clipboard": "Failed to copy to clipboard",
   "endpoint-url-can-not-be-empty": "Endpoint URL can not be empty!",
   "verification-failed-please-check-endpoint-url": "Verification failed, please check Endpoint URL",
   "eigent-cloud-version": "Eigent Cloud Version",
@@ -221,6 +222,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "account": "Account",
   "you-are-currently-signed-in-with": "You are currently signed in with {{email}}",
@@ -257,6 +259,7 @@
   "validate-failed": "Validate failed",
   "copy": "Copy",
   "copied-to-clipboard": "Copied to clipboard",
+  "failed-to-copy-to-clipboard": "Failed to copy to clipboard",
   "endpoint-url-can-not-be-empty": "Endpoint URL can not be empty!",
   "verification-failed-please-check-endpoint-url": "Verification failed, please check Endpoint URL",
   "eigent-cloud-version": "Eigent Cloud Version",

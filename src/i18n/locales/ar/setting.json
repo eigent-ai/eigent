@@ -42,6 +42,7 @@
   "validate-failed": "فشل التحقق",
   "copy": "نسخ",
   "copied-to-clipboard": "تم النسخ إلى الحافظة",
+  "failed-to-copy-to-clipboard": "فشل النسخ إلى الحافظة",
   "endpoint-url-can-not-be-empty": "!لا يمكن أن يكون عنوان يورل  لنقطة النهاية فارغًا",
   "verification-failed-please-check-endpoint-url": "فشل التحقق، يرجى المراجعة على النقطة النهائية يورل",
   "eigent-cloud-version": "إصدار أيجنت السحابي",
@@ -193,6 +194,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "account": "حساب",
   "you-are-currently-signed-in-with": "{{email}} أنت مسجل الدخول حاليًا باستخدام",

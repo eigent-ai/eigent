@@ -33,6 +33,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "worker_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker description",
@@ -57,6 +58,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "worker_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -123,6 +125,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "worker_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -178,6 +181,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -247,6 +251,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker", worker=mock_worker
@@ -280,6 +285,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -333,6 +339,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -382,6 +389,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -431,6 +439,7 @@ class TestSingleAgentWorker:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "test_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
 
         worker = SingleAgentWorker(
             description="Test worker",
@@ -476,6 +485,7 @@ class TestSingleAgentWorker:
 
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
         worker = SingleAgentWorker(description="Test", worker=mock_worker)
 
         assert isinstance(worker, BaseSingleAgentWorker)
@@ -491,6 +501,7 @@ class TestSingleAgentWorkerIntegration:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.role_name = "integration_worker"
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "integration_worker"
 
         worker = SingleAgentWorker(
             description="Integration test worker",
@@ -568,6 +579,7 @@ class TestSingleAgentWorkerErrorCases:
         """Test _process_task when agent returns None response."""
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
         worker = SingleAgentWorker(
             description="Test",
             worker=mock_worker,
@@ -600,6 +612,7 @@ class TestSingleAgentWorkerErrorCases:
         """Test _process_task with malformed response structure."""
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.agent_id = "test_agent_123"
+        mock_worker.agent_name = "test_worker"
         worker = SingleAgentWorker(
             description="Test",
             worker=mock_worker,
@@ -637,6 +650,7 @@ class TestSingleAgentWorkerErrorCases:
         mock_worker = MagicMock(spec=ListenChatAgent)
         mock_worker.agent_id = "test_agent_123"
         mock_worker.role_name = "test_worker"
+        mock_worker.agent_name = "test_worker"
         worker = SingleAgentWorker(
             description="Test",
             worker=mock_worker,
