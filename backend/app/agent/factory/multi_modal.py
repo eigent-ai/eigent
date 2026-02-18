@@ -57,9 +57,7 @@ def multi_modal_agent(options: Chat):
     )
     # Subscription models always route through cloud models
     if options.is_cloud() or options.use_image_analysis:
-        image_analysis_toolkit = ImageAnalysisToolkit(
-            options.project_id
-        )
+        image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
     else:
         image_model = ModelFactory.create(
             model_platform=options.model_platform,

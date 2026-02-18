@@ -76,7 +76,7 @@ class Chat(BaseModel):
     # User-specific search engine configurations
     # (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
     search_config: dict[str, str] | None = None
-    # Not all BYOK models support multi-modal capabilities, 
+    # Not all BYOK models support multi-modal capabilities,
     # indicates whether to use cloud image analysis toolkit
     use_image_analysis: bool = False
 
