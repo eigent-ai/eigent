@@ -65,6 +65,7 @@ class Action(str, Enum):
     resume = "resume"  # user -> backend  user take control
     new_agent = "new_agent"  # user -> backend
     budget_not_enough = "budget_not_enough"  # backend -> user
+    error = "error"  # backend -> user (model/runtime error)
     add_task = "add_task"  # user -> backend
     remove_task = "remove_task"  # user -> backend
     skip_task = "skip_task"  # user -> backend
@@ -255,6 +256,11 @@ class ActionNewAgent(BaseModel):
     custom_model_config: "AgentModelConfig | None" = None
 
 
+class ActionErrorData(BaseModel):
+    action: Literal[Action.error] = Action.error
+    data: dict
+
+
 class ActionBudgetNotEnough(BaseModel):
     action: Literal[Action.budget_not_enough] = Action.budget_not_enough
 
@@ -303,6 +309,7 @@ ActionData = (
     | ActionTakeControl
     | ActionNewAgent
     | ActionBudgetNotEnough
+    | ActionErrorData
     | ActionAddTaskData
     | ActionRemoveTaskData
     | ActionSkipTaskData

@@ -554,13 +554,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         )
                     except Exception as e:
                         logger.error(f"Error generating simple answer: {e}")
+                        message, error_code, _ = (
+                            normalize_error_to_openai_format(e)
+                        )
                         yield sse_json(
-                            "wait_confirm",
+                            "error",
                             {
-                                "content": "I encountered an error"
-                                " while processing "
-                                "your question.",
-                                "question": question,
+                                "message": message,
+                                "error_code": error_code,
                             },
                         )
 
@@ -1260,13 +1261,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     "Error generating simple "
                                     f"answer in multi-turn: {e}"
                                 )
+                                message, error_code, _ = (
+                                    normalize_error_to_openai_format(e)
+                                )
                                 yield sse_json(
-                                    "wait_confirm",
+                                    "error",
                                     {
-                                        "content": "I encountered an error "
-                                        "while processing your "
-                                        "question.",
-                                        "question": new_task_content,
+                                        "message": message,
+                                        "error_code": error_code,
                                     },
                                 )
 
@@ -1596,6 +1598,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "pending_tasks": pending,
                             "timeout_seconds": timeout_seconds,
                         },
+                    },
+                )
+
+            elif item.action == Action.error:
+                logger.error(
+                    "[LIFECYCLE] ERROR action received "
+                    f"for project {options.project_id}, "
+                    f"task {options.task_id}: "
+                    f"{item.data.get('message', 'Unknown error')}"
+                )
+                yield sse_json(
+                    "error",
+                    {
+                        "message": item.data.get("message", "Unknown error"),
+                        "error_code": item.data.get("error_code"),
                     },
                 )
 

@@ -528,6 +528,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         extra_params: {},
       };
       let preferredProviderId: number | null = null;
+      let preferredProvider: any = null;
       if (modelType === 'custom' || modelType === 'local') {
         const res = await proxyFetchGet('/api/providers', {
           prefer: true,
@@ -543,6 +544,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
 
         preferredProviderId = provider.id ?? null;
+        preferredProvider = provider;
         apiModel = {
           api_key: provider.api_key,
           model_type: provider.model_type,
@@ -1905,9 +1907,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (errorCode === 'invalid_api_key' && preferredProviderId) {
                 proxyFetchPatch(
                   `/api/provider/${preferredProviderId}/invalidate`
-                ).catch((err: unknown) =>
-                  console.error('Failed to invalidate provider:', err)
-                );
+                ).catch(() => {
+                  // Fallback: PATCH endpoint may not be deployed yet,
+                  // use PUT with full provider data to set is_vaild=1
+                  if (preferredProvider) {
+                    proxyFetchPut(`/api/provider/${preferredProviderId}`, {
+                      provider_name: preferredProvider.provider_name,
+                      model_type: preferredProvider.model_type,
+                      api_key: preferredProvider.api_key,
+                      endpoint_url: preferredProvider.endpoint_url || '',
+                      encrypted_config: preferredProvider.encrypted_config,
+                      is_vaild: 1,
+                      prefer: preferredProvider.prefer ?? false,
+                    }).catch((err: unknown) =>
+                      console.error('Failed to invalidate provider:', err)
+                    );
+                  }
+                });
               }
 
               // Mark all incomplete tasks as failed
