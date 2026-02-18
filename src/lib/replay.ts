@@ -59,17 +59,13 @@ export const replayActiveTask = async (
 			const timestamp = project.chatStoreTimestamps[chatStoreId] || 0;
 			const chatState = chatStoreData.getState();
 
-			if (chatState.tasks) {
-				Object.values(chatState.tasks).forEach((task: any) => {
-					// Check messages for user content
-					if (task.messages && task.messages.length > 0) {
-						const userMessage = task.messages.find((msg: any) => msg.role === 'user');
-						if (userMessage && userMessage.content && timestamp < earliestTimestamp) {
-							question = userMessage.content.trim();
-							earliestTimestamp = timestamp;
-						}
-					}
-				});
+			const task = chatState.task;
+			if (task && task.messages && task.messages.length > 0) {
+				const userMessage = task.messages.find((msg: any) => msg.role === 'user');
+				if (userMessage && userMessage.content && timestamp < earliestTimestamp) {
+					question = userMessage.content.trim();
+					earliestTimestamp = timestamp;
+				}
 			}
 		});
 	}

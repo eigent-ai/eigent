@@ -55,7 +55,7 @@ export interface ChatStore {
 	removeTask: () => void;
 	stopTask: () => void;
 	setStatus: (status: 'running' | 'finished' | 'pending' | 'pause') => void;
-	replay: (question: string, time: number) => Promise<void>;
+	replay: (taskId: string, question: string, time: number) => Promise<void>;
 	startTask: (type?: string, shareToken?: string, delayTime?: number, messageContent?: string, messageAttaches?: File[]) => Promise<void>;
 	handleConfirmTask: (project_id: string, type?: string) => void;
 	addMessages: (messages: Message) => void;
@@ -1889,7 +1889,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 
 		},
 
-		replay: async (question: string, time: number) => {
+		replay: async (taskId: string, question: string, time: number) => {
 			const { create, setHasMessages, addMessages, startTask, handleConfirmTask } = get();
 			//get project id
 			const project_id = useProjectStore.getState().activeProjectId
@@ -1898,7 +1898,7 @@ const chatStore = (initial?: Partial<ChatStore>) => createStore<ChatStore>()(
 				return;
 			}
 
-			create(undefined, "replay");
+			create(taskId, "replay");
 			setHasMessages(true);
 			addMessages({
 				id: generateUniqueId(),

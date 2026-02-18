@@ -195,7 +195,7 @@ export default function Project() {
 	};
 
 	const handleReplay = async (taskId: string, question: string) => {
-		chatStore.replay(question, 0);
+		chatStore.replay(taskId, question, 0);
 		navigate({ pathname: "/" });
 	};
 
