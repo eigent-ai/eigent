@@ -56,9 +56,12 @@ def multi_modal_agent(options: Chat):
         video_download_toolkit
     )
     # Subscription models always route through cloud models
-    if options.is_cloud() or options.use_image_analysis:
+    if options.is_cloud() or not options.use_image_analysis:
         image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
     else:
+        logger.info(
+            f"[MULTIMODAL] Using current model for image analysis: {options.model_platform}/{options.model_type}"
+        )
         image_model = ModelFactory.create(
             model_platform=options.model_platform,
             model_type=options.model_type,
