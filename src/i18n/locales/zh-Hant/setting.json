@@ -41,6 +41,7 @@
   "validate-failed": "驗證失敗",
   "copy": "複製",
   "copied-to-clipboard": "已複製到剪貼板",
+  "failed-to-copy-to-clipboard": "複製到剪貼板失敗",
   "endpoint-url-can-not-be-empty": "端點 URL 不可為空！",
   "verification-failed-please-check-endpoint-url": "驗證失敗，請檢查端點 URL",
   "eigent-cloud-version": "Eigent 雲端版本",
@@ -183,6 +184,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "network-proxy": "網路代理",
   "network-proxy-description": "設定網路請求的代理伺服器。如果您需要透過代理存取外部 API，這將非常有用。",

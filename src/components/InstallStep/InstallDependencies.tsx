@@ -45,7 +45,7 @@ export const InstallDependencies: React.FC = () => {
                   {isInstalling
                     ? 'System Installing ...'
                     : installationState === 'waiting-backend'
-                      ? 'Starting backend service...'
+                      ? 'Starting up... First launch may take a minute.'
                       : ''}
                 </div>
                 <div className="text-body-sm font-medium leading-normal text-text-heading">
@@ -65,8 +65,7 @@ export const InstallDependencies: React.FC = () => {
         </div>
         <div className="flex h-full w-2/3 rounded-2xl bg-surface-tertiary p-md">
           {initState === 'permissions' && <Permissions />}
-          {initState === 'carousel' &&
-            installationState !== 'waiting-backend' && <CarouselStep />}
+          {initState !== 'permissions' && <CarouselStep />}
         </div>
       </div>
     </div>

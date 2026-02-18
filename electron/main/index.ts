@@ -58,7 +58,11 @@ import {
 } from './utils/envUtil';
 import { zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
-import { getBackendPath, getVenvPath, isBinaryExists } from './utils/process';
+import {
+  checkVenvExistsForPreCheck,
+  getBackendPath,
+  isBinaryExists,
+} from './utils/process';
 import { WebViewManager } from './webview';
 
 const userData = app.getPath('userData');
@@ -806,6 +810,41 @@ function registerIpcHandlers() {
       canceled: result.canceled,
     };
   });
+
+  // Handle drag-and-drop files - convert File objects to file paths
+  ipcMain.handle(
+    'process-dropped-files',
+    async (event, fileData: Array<{ name: string; path?: string }>) => {
+      try {
+        // In Electron with contextIsolation, we need to get file paths differently
+        // The renderer will send us file metadata, and we'll use webUtils if needed
+        const files = fileData
+          .filter((f) => f.path) // Only process files with valid paths
+          .map((f) => ({
+            filePath: fs.realpathSync(f.path!),
+            fileName: f.name,
+          }));
+
+        if (files.length === 0) {
+          return {
+            success: false,
+            error: 'No valid file paths found',
+          };
+        }
+
+        return {
+          success: true,
+          files,
+        };
+      } catch (error: any) {
+        log.error('Failed to process dropped files:', error);
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+    }
+  );
 
   ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
     try {
@@ -1644,11 +1683,8 @@ async function createWindow() {
   let hasPrebuiltDeps = false;
   if (app.isPackaged) {
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
-    const prebuiltVenvDir = path.join(
-      process.resourcesPath,
-      'prebuilt',
-      'venv'
-    );
+    const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+    const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
@@ -1659,10 +1695,9 @@ async function createWindow() {
     );
     const pyvenvCfg = path.join(prebuiltVenvDir, 'pyvenv.cfg');
 
+    const hasVenv = fs.existsSync(pyvenvCfg);
     hasPrebuiltDeps =
-      fs.existsSync(uvPath) &&
-      fs.existsSync(bunPath) &&
-      fs.existsSync(pyvenvCfg);
+      fs.existsSync(uvPath) && fs.existsSync(bunPath) && hasVenv;
     if (hasPrebuiltDeps) {
       log.info(
         '[PRE-CHECK] Prebuilt dependencies found, skipping installation check'
@@ -1687,9 +1722,9 @@ async function createWindow() {
   const installedLockPath = path.join(backendPath, 'uv_installed.lock');
   const installationCompleted = fs.existsSync(installedLockPath);
 
-  // Check if venv path exists for current version
-  const venvPath = getVenvPath(currentVersion);
-  const venvExists = fs.existsSync(venvPath);
+  // Check venv existence WITHOUT triggering extraction (defers to startBackend when window is visible)
+  const { exists: venvExists, path: venvPath } =
+    checkVenvExistsForPreCheck(currentVersion);
 
   // If prebuilt deps are available, skip installation
   const needsInstallation = hasPrebuiltDeps

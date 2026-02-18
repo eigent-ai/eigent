@@ -98,9 +98,26 @@ type SidebarTab =
   | 'local-sglang'
   | 'local-lmstudio';
 
+// Provider logos that use dark fills (black or currentColor) and need inversion in dark mode
+const DARK_FILL_MODELS = new Set([
+  'openai',
+  'anthropic',
+  'moonshot',
+  'ollama',
+  'openrouter',
+  'lmstudio',
+  'z.ai',
+  'openai-compatible-model',
+]);
+
 export default function SettingModels() {
-  const { modelType, cloud_model_type, setModelType, setCloudModelType } =
-    useAuthStore();
+  const {
+    modelType,
+    cloud_model_type,
+    setModelType,
+    setCloudModelType,
+    appearance,
+  } = useAuthStore();
   const _navigate = useNavigate();
   const { t } = useTranslation();
   const getValidateMessage = (res: any) =>
@@ -227,7 +244,8 @@ export default function SettingModels() {
                 ...fi,
                 provider_id: found.id,
                 apiKey: found.api_key || '',
-                apiHost: found.endpoint_url || '',
+                // Fall back to provider's default API host if endpoint_url is empty
+                apiHost: found.endpoint_url || item.apiHost,
                 is_valid: !!found?.is_valid,
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
@@ -451,6 +469,7 @@ export default function SettingModels() {
     { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
+    { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
 
   // Local model options
@@ -574,7 +593,8 @@ export default function SettingModels() {
               ...fi,
               provider_id: found.id,
               apiKey: found.api_key || '',
-              apiHost: found.endpoint_url || '',
+              // Fall back to provider's default API host if endpoint_url is empty
+              apiHost: found.endpoint_url || item.apiHost,
               is_valid: !!found.is_valid,
               prefer: found.prefer ?? false,
               externalConfig: fi.externalConfig
@@ -910,7 +930,8 @@ export default function SettingModels() {
           const item = items[i];
           return {
             apiKey: '',
-            apiHost: '',
+            // Restore provider's default API host instead of clearing it
+            apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
             externalConfig: item.externalConfig
@@ -975,6 +996,16 @@ export default function SettingModels() {
     }
   };
 
+  // Check if a model logo needs inversion in dark mode
+  const needsInvert = (modelId: string | null): boolean => {
+    if (!modelId || appearance !== 'dark') return false;
+    // Strip 'local-' prefix for local model tab IDs
+    const key = modelId.startsWith('local-')
+      ? modelId.replace('local-', '')
+      : modelId;
+    return DARK_FILL_MODELS.has(key);
+  };
+
   // Helper to get model image based on model ID
   const getModelImage = (modelId: string | null): string | null => {
     if (!modelId) return null;
@@ -989,7 +1020,7 @@ export default function SettingModels() {
       'tongyi-qianwen': qwenImage,
       deepseek: deepseekImage,
       minimax: minimaxImage,
-      'Z.ai': zaiImage,
+      'z.ai': zaiImage,
       moonshot: moonshotImage,
       ModelArk: modelarkImage,
       'aws-bedrock': bedrockImage,
@@ -1042,7 +1073,12 @@ export default function SettingModels() {
       >
         <div className="flex items-center justify-center gap-3">
           {modelImage ? (
-            <img src={modelImage} alt={label} className="h-5 w-5" />
+            <img
+              src={modelImage}
+              alt={label}
+              className="h-5 w-5"
+              style={needsInvert(modelId) ? { filter: 'invert(1)' } : undefined}
+            />
           ) : (
             <span className={isActive ? 'text-text-body' : 'text-text-label'}>
               {fallbackIcon}
@@ -1228,6 +1264,9 @@ export default function SettingModels() {
                   </SelectItem>
                   <SelectItem value="claude-sonnet-4-5">
                     {t('setting.claude-sonnet-4-5-name')}
+                  </SelectItem>
+                  <SelectItem value="minimax_m2_5">
+                    {t('setting.minimax-m2-5-name')}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1779,6 +1818,11 @@ export default function SettingModels() {
                               src={modelImage}
                               alt={item.name}
                               className="h-4 w-4"
+                              style={
+                                needsInvert(item.id)
+                                  ? { filter: 'invert(1)' }
+                                  : undefined
+                              }
                             />
                           ) : (
                             <Key className="h-4 w-4 text-icon-secondary" />
@@ -1840,6 +1884,11 @@ export default function SettingModels() {
                               src={modelImage}
                               alt={model.name}
                               className="h-4 w-4"
+                              style={
+                                needsInvert(`local-${model.id}`)
+                                  ? { filter: 'invert(1)' }
+                                  : undefined
+                              }
                             />
                           ) : (
                             <Server className="h-4 w-4 text-icon-secondary" />

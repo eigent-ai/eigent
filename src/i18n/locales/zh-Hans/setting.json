@@ -44,6 +44,7 @@
   "validate-failed": "验证失败",
   "copy": "复制",
   "copied-to-clipboard": "复制到剪贴板",
+  "failed-to-copy-to-clipboard": "复制到剪贴板失败",
   "endpoint-url-can-not-be-empty": "Endpoint URL 不能为空！",
   "verification-failed-please-check-endpoint-url": "验证失败，请检查 Endpoint URL",
   "eigent-cloud-version": "Eigent 云端版本",
@@ -214,6 +215,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
