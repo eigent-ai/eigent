@@ -44,6 +44,7 @@
   "validate-failed": "验证失败",
   "copy": "复制",
   "copied-to-clipboard": "复制到剪贴板",
+  "failed-to-copy-to-clipboard": "复制到剪贴板失败",
   "endpoint-url-can-not-be-empty": "Endpoint URL 不能为空！",
   "verification-failed-please-check-endpoint-url": "验证失败，请检查 Endpoint URL",
   "eigent-cloud-version": "Eigent 云端版本",

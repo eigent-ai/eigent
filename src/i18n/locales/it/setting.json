@@ -42,6 +42,7 @@
   "validate-failed": "Validazione fallita",
   "copy": "Copia",
   "copied-to-clipboard": "Copiato negli appunti",
+  "failed-to-copy-to-clipboard": "Impossibile copiare negli appunti",
   "endpoint-url-can-not-be-empty": "L'URL dell'endpoint non può essere vuoto!",
   "verification-failed-please-check-endpoint-url": "Verifica fallita, controlla l'URL dell'endpoint",
   "eigent-cloud-version": "Versione cloud di Eigent",

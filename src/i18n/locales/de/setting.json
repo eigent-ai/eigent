@@ -42,6 +42,7 @@
   "validate-failed": "Validierung fehlgeschlagen",
   "copy": "Kopieren",
   "copied-to-clipboard": "In die Zwischenablage kopiert",
+  "failed-to-copy-to-clipboard": "Kopieren in die Zwischenablage fehlgeschlagen",
   "endpoint-url-can-not-be-empty": "Endpunkt-URL darf nicht leer sein!",
   "verification-failed-please-check-endpoint-url": "Verifizierung fehlgeschlagen, bitte überprüfen Sie die Endpunkt-URL",
   "eigent-cloud-version": "Eigent Cloud-Version",
