@@ -37,7 +37,7 @@ export const INIT_PROVODERS: Provider[] = [
     id: 'anthropic',
     name: 'Anthropic',
     apiKey: '',
-    apiHost: 'https://api.anthropic.com/v1/',
+    apiHost: 'https://api.anthropic.com',
     description: 'Anthropic Claude API configuration',
     is_valid: false,
     model_type: '',
