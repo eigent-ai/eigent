@@ -250,6 +250,9 @@
 
   "models-default-setting-title": "Configuración predeterminada",
   "models-default-setting-description": "Elige uno de tus modelos configurados como modelo predeterminado para Eigent. Se aplicará globalmente en tu espacio de trabajo.",
+  "image-analysis-title": "Usar modelo actual para comprensión de imágenes",
+  "image-analysis-description": "Habilita esto solo si tu modelo tiene capacidad multimodal. Esto envía los datos de la imagen a tu proveedor de modelos configurado junto con las indicaciones de texto. Por defecto utiliza un modelo cloud de Eigent.",
+  "multimodal-warning": "Advertencia: Si tu modelo no admite capacidades multimodales, puede producir respuestas inexactas o alucinadas al procesar imágenes.",
   "models-configuration": "Configuración",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",

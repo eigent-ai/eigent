@@ -250,6 +250,9 @@
 
   "models-default-setting-title": "デフォルト設定",
   "models-default-setting-description": "設定済みモデルの中から、Eigent のデフォルトモデルを1つ選択します。ワークスペース全体にグローバルに適用されます。",
+  "image-analysis-title": "現在のモデルを画像理解に使用",
+  "image-analysis-description": "モデルにマルチモーダル機能がある場合のみこの機能を有効にしてください。これにより、画像データがテキストプロンプトとともに設定されたモデルプロバイダーに送信されます。デフォルトでは Eigent クラウドモデルを使用します。",
+  "multimodal-warning": "警告：モデルがマルチモーダル機能をサポートしていない場合、画像処理時に不正確なレスポンスや幻覚が発生する可能性があります。",
   "models-configuration": "構成",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",

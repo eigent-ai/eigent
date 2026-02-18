@@ -250,6 +250,9 @@
 
   "models-default-setting-title": "기본 설정",
   "models-default-setting-description": "구성된 모델 중 하나를 Eigent의 기본 모델로 선택하세요. 워크스페이스 전체에 전역으로 적용됩니다.",
+  "image-analysis-title": "현재 모델을 이미지 이해에 사용",
+  "image-analysis-description": "모델에 멀티모달 기능이 있는 경우에만 이 기능을 활성화하세요. 이는 이미지 데이터를 구성된 모델 제공자에게 텍스트 프롬프트와 함께 전송합니다. 기본적으로 Eigent 클라우드 모델을 사용합니다.",
+  "multimodal-warning": "경고: 모델이 멀티모달 기능을 지원하지 않는 경우 이미지 처리 시 부정확하거나 환각적인 응답을 생성할 수 있습니다.",
   "models-configuration": "구성",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",

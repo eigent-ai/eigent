@@ -201,6 +201,9 @@
 
   "models-default-setting-title": "默认设置",
   "models-default-setting-description": "从已配置的模型中选择一个作为 Eigent 的默认模型，它将全局应用到您的工作区。",
+  "image-analysis-title": "使用当前模型进行图像理解",
+  "image-analysis-description": "仅当您的模型具有多模态功能时才启用此功能。这将图像数据发送到您配置的模型提供商，以及文本提示。默认情况下使用 Eigent 云模型。",
+  "multimodal-warning": "警告：如果您的模型不支持多模态功能，在处理图像时可能会产生不准确或幻觉的回复。",
   "models-configuration": "配置",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",

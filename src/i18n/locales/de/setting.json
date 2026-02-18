@@ -250,6 +250,9 @@
 
   "models-default-setting-title": "Standard-Einstellung",
   "models-default-setting-description": "Wähle eines deiner konfigurierten Modelle als Standardmodell für Eigent. Es wird global in deinem Arbeitsbereich angewendet.",
+  "image-analysis-title": "Aktuelles Modell für Bildverständnis verwenden",
+  "image-analysis-description": "Aktiviere dies nur, wenn dein Modell multimodale Fähigkeiten hat. Dies sendet Bilddaten an deinen konfigurierten Modellanbieter zusammen mit Text-Prompts. Standardmäßig wird ein Eigent Cloud-Modell verwendet.",
+  "multimodal-warning": "Warnung: Wenn dein Modell keine multimodalen Fähigkeiten unterstützt, kann es bei der Bildverarbeitung ungenaue oder halluzinierte Antworten erzeugen.",
   "models-configuration": "Konfiguration",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",

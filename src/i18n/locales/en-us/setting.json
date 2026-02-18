@@ -210,6 +210,9 @@
 
   "models-default-setting-title": "Default setting",
   "models-default-setting-description": "Pick one of your configured models as the default model for Eigent. It will be applied globally across your workspace.",
+  "image-analysis-title": "Use current model for image understanding",
+  "image-analysis-description": "Enable this only if your model has multimodal capability. This sends image data to your configured model provider along with text prompts. By default uses an Eigent cloud model.",
+  "multimodal-warning": "Warning: If your model doesn't support multimodal capabilities, it may produce inaccurate or hallucinated responses when processing images.",
   "models-configuration": "Configuration",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
