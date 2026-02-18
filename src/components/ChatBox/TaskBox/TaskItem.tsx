@@ -70,7 +70,7 @@ export function TaskItem({
         className={`group relative flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-sm hover:bg-task-fill-hover ${
           isFocus
             ? 'border-task-border-focus-default bg-task-fill-default'
-            : 'border-task-border-default border-transparent group-hover:border-transparent'
+            : 'border-task-border-default group-hover:border-transparent'
         }`}
       >
         <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-0.5">
