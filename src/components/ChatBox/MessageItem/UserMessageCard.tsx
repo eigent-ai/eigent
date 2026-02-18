@@ -82,7 +82,7 @@ export function UserMessageCard({
   return (
     <div
       key={id}
-      className={`relative w-full rounded-xl border bg-surface-primary px-sm py-2 ${className || ''} group overflow-visible`}
+      className={`relative w-full rounded-xl border bg-surface-tertiary px-sm py-2 ${className || ''} group overflow-visible`}
     >
       <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <Button onClick={handleCopy} variant="ghost" size="icon">
