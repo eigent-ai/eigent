@@ -42,6 +42,7 @@
   "validate-failed": "Проверка не удалась",
   "copy": "Копировать",
   "copied-to-clipboard": "Скопировано в буфер обмена",
+  "failed-to-copy-to-clipboard": "Не удалось скопировать в буфер обмена",
   "endpoint-url-can-not-be-empty": "URL конечной точки не может быть пустым!",
   "verification-failed-please-check-endpoint-url": "Проверка не удалась, проверьте URL конечной точки",
   "eigent-cloud-version": "Eigent Cloud Версия",
