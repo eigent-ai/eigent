@@ -44,6 +44,7 @@
   "validate-failed": "验证失败",
   "copy": "复制",
   "copied-to-clipboard": "复制到剪贴板",
+  "failed-to-copy-to-clipboard": "复制到剪贴板失败",
   "endpoint-url-can-not-be-empty": "Endpoint URL 不能为空！",
   "verification-failed-please-check-endpoint-url": "验证失败，请检查 Endpoint URL",
   "eigent-cloud-version": "Eigent 云端版本",
@@ -163,6 +164,8 @@
   "reset": "重置",
   "reset-success": "重置成功！",
   "reset-failed": "重置失败！",
+  "api-key-expired-or-invalid": "API 密钥已过期或无效，请重新配置。",
+  "model-disconnected-or-invalid": "模型已断开连接或无响应，请检查连接。",
 
   "browser-login": "浏览器登录",
   "browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
@@ -212,6 +215,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",

@@ -14,6 +14,10 @@
 
 import { proxyFetchDelete, proxyFetchGet, proxyFetchPost } from '@/api/http';
 import githubIcon from '@/assets/github.svg';
+import AnthropicIcon from '@/assets/mcp/Anthropic.svg?url';
+import CamelIcon from '@/assets/mcp/Camel.svg?url';
+import CommunityIcon from '@/assets/mcp/Community.svg?url';
+import OfficialIcon from '@/assets/mcp/Official.svg?url';
 import SearchInput from '@/components/SearchInput';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -38,14 +42,6 @@ interface MCPItem {
   };
   homepage?: string;
 }
-interface _EnvValue {
-  value: string;
-  required: boolean;
-  tip: string;
-}
-
-const _PAGE_SIZE = 10;
-const _STICKY_Z = 20;
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -55,7 +51,6 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
   return debounced;
 }
-
 // map category name to svg file name
 const categoryIconMap: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -64,12 +59,13 @@ const categoryIconMap: Record<string, string> = {
   camel: 'Camel',
 };
 
-// load all svg files dynamically
-const svgIcons = import.meta.glob('@/assets/mcp/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
+// load all svg files
+const svgIcons: Record<string, string> = {
+  Anthropic: AnthropicIcon,
+  Community: CommunityIcon,
+  Official: OfficialIcon,
+  Camel: CamelIcon,
+};
 
 type MCPMarketProps = {
   onBack?: () => void;
@@ -247,9 +243,17 @@ export default function MCPMarket({
     try {
       checkAgentTool(deleteTarget.name);
       console.log(userInstallMcp, deleteTarget);
-      const id = userInstallMcp.find(
+      const userMcpRecord = userInstallMcp.find(
         (item: any) => item.mcp_id === deleteTarget.id
-      )?.id;
+      );
+      const id = userMcpRecord?.id;
+      if (id === undefined || id === null) {
+        console.warn(
+          'No matching user MCP record found for delete target:',
+          deleteTarget
+        );
+        return;
+      }
       console.log('deleteTarget', deleteTarget);
       await proxyFetchDelete(`/api/mcp/users/${id}`);
       // notify main process
@@ -340,10 +344,11 @@ export default function MCPMarket({
             <div className="mr-4 flex items-center">
               {(() => {
                 const catName = item.category?.name;
-                const iconKey = catName ? categoryIconMap[catName] : undefined;
-                const iconUrl = iconKey
-                  ? (svgIcons[`/src/assets/mcp/${iconKey}.svg`] as string)
+                const normalizedName = catName?.toLowerCase() || '';
+                const iconKey = normalizedName
+                  ? categoryIconMap[normalizedName]
                   : undefined;
+                const iconUrl = iconKey ? svgIcons[iconKey] : undefined;
                 return iconUrl ? (
                   <img src={iconUrl} alt={catName} className="h-11 w-9" />
                 ) : (
