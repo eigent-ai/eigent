@@ -18,7 +18,6 @@ import {
   fetchPut,
   getBaseURL,
   proxyFetchGet,
-  proxyFetchPatch,
   proxyFetchPost,
   proxyFetchPut,
   uploadFile,
@@ -1904,26 +1903,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               showModelErrorToast(errorMessage, errorCode);
 
               // If API key is invalid, mark the provider as invalid on the server
-              if (errorCode === 'invalid_api_key' && preferredProviderId) {
-                proxyFetchPatch(
-                  `/api/provider/${preferredProviderId}/invalidate`
-                ).catch(() => {
-                  // Fallback: PATCH endpoint may not be deployed yet,
-                  // use PUT with full provider data to set is_vaild=1
-                  if (preferredProvider) {
-                    proxyFetchPut(`/api/provider/${preferredProviderId}`, {
-                      provider_name: preferredProvider.provider_name,
-                      model_type: preferredProvider.model_type,
-                      api_key: preferredProvider.api_key,
-                      endpoint_url: preferredProvider.endpoint_url || '',
-                      encrypted_config: preferredProvider.encrypted_config,
-                      is_vaild: 1,
-                      prefer: preferredProvider.prefer ?? false,
-                    }).catch((err: unknown) =>
-                      console.error('Failed to invalidate provider:', err)
-                    );
-                  }
-                });
+              if (
+                errorCode === 'invalid_api_key' &&
+                preferredProviderId &&
+                preferredProvider
+              ) {
+                proxyFetchPut(`/api/provider/${preferredProviderId}`, {
+                  provider_name: preferredProvider.provider_name,
+                  model_type: preferredProvider.model_type,
+                  api_key: preferredProvider.api_key,
+                  endpoint_url: preferredProvider.endpoint_url || '',
+                  encrypted_config: preferredProvider.encrypted_config || null,
+                  is_vaild: 1,
+                  prefer: preferredProvider.prefer ?? false,
+                }).catch((err: unknown) =>
+                  console.error('Failed to invalidate provider:', err)
+                );
               }
 
               // Mark all incomplete tasks as failed

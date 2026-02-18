@@ -265,17 +265,9 @@ class Workforce(BaseWorkforce):
             # Push error event to SSE queue so frontend receives notification
             try:
                 task_lock = get_task_lock(self.api_task_id)
-                logger.info(
-                    f"[WF-LIFECYCLE] Pushing error to SSE queue, "
-                    f"task_lock={'found' if task_lock else 'None'}"
-                )
                 if task_lock is not None:
                     message, error_code, _ = normalize_error_to_openai_format(
                         e
-                    )
-                    logger.info(
-                        f"[WF-LIFECYCLE] Error normalized: "
-                        f"error_code={error_code}, message={message[:100]}"
                     )
                     await task_lock.put_queue(
                         ActionErrorData(
@@ -284,9 +276,6 @@ class Workforce(BaseWorkforce):
                                 "error_code": error_code,
                             },
                         )
-                    )
-                    logger.info(
-                        "[WF-LIFECYCLE] Error event pushed to SSE queue"
                     )
             except Exception as queue_err:
                 logger.error(
