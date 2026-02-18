@@ -1167,33 +1167,36 @@ function registerIpcHandlers() {
       _event,
       zipPathOrBuffer: string | Buffer | ArrayBuffer | Uint8Array,
       replacements?: string[]
-    ) => {
-      // Use typeof check instead of instanceof to handle cross-realm objects
-      // from Electron IPC (instanceof can fail across context boundaries)
-      const replacementsSet = replacements ? new Set(replacements) : undefined;
-      const isBufferLike = typeof zipPathOrBuffer !== 'string';
-      if (isBufferLike) {
-        const buf = Buffer.isBuffer(zipPathOrBuffer)
-          ? zipPathOrBuffer
-          : Buffer.from(
-              zipPathOrBuffer instanceof ArrayBuffer
-                ? zipPathOrBuffer
-                : (zipPathOrBuffer as any)
-            );
-        const tempPath = path.join(
-          os.tmpdir(),
-          `eigent-skill-import-${Date.now()}.zip`
-        );
-        try {
-          await fsp.writeFile(tempPath, buf);
-          const result = await importSkillsFromZip(tempPath, replacementsSet);
-          return result;
-        } finally {
-          await fsp.unlink(tempPath).catch(() => {});
+    ) =>
+      withImportLock(async () => {
+        // Use typeof check instead of instanceof to handle cross-realm objects
+        // from Electron IPC (instanceof can fail across context boundaries)
+        const replacementsSet = replacements
+          ? new Set(replacements)
+          : undefined;
+        const isBufferLike = typeof zipPathOrBuffer !== 'string';
+        if (isBufferLike) {
+          const buf = Buffer.isBuffer(zipPathOrBuffer)
+            ? zipPathOrBuffer
+            : Buffer.from(
+                zipPathOrBuffer instanceof ArrayBuffer
+                  ? zipPathOrBuffer
+                  : (zipPathOrBuffer as any)
+              );
+          const tempPath = path.join(
+            os.tmpdir(),
+            `eigent-skill-import-${Date.now()}.zip`
+          );
+          try {
+            await fsp.writeFile(tempPath, buf);
+            const result = await importSkillsFromZip(tempPath, replacementsSet);
+            return result;
+          } finally {
+            await fsp.unlink(tempPath).catch(() => {});
+          }
         }
-      }
-      return importSkillsFromZip(zipPathOrBuffer as string, replacementsSet);
-    }
+        return importSkillsFromZip(zipPathOrBuffer as string, replacementsSet);
+      })
   );
 
   // ==================== read file handler ====================
@@ -1815,6 +1818,8 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
   await fsp.mkdir(dst, { recursive: true });
   const entries = await fsp.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
+    // Skip symlinks to prevent copying files from outside the source tree
+    if (entry.isSymbolicLink()) continue;
     const srcPath = path.join(src, entry.name);
     const dstPath = path.join(dst, entry.name);
     if (entry.isDirectory()) {
@@ -1847,6 +1852,30 @@ async function seedDefaultSkillsIfEmpty(): Promise<void> {
     await copyDirRecursive(srcDir, destDir);
   }
   log.info('Seeded default skills to ~/.eigent/skills from', exampleDir);
+}
+
+/** Truncate a single path component to fit within the 255-byte filesystem limit. */
+function safePathComponent(name: string, maxBytes = 200): string {
+  // 200 leaves headroom for suffixes the OS or future logic may add
+  if (Buffer.byteLength(name, 'utf-8') <= maxBytes) return name;
+  // Trim from the end, character by character, until it fits
+  let trimmed = name;
+  while (Buffer.byteLength(trimmed, 'utf-8') > maxBytes) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed.replace(/-+$/, '') || 'skill';
+}
+
+// Simple mutex to prevent concurrent skill imports
+let _importLock: Promise<void> = Promise.resolve();
+function withImportLock<T>(fn: () => Promise<T>): Promise<T> {
+  let release: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const prev = _importLock;
+  _importLock = next;
+  return prev.then(fn).finally(() => release!());
 }
 
 async function importSkillsFromZip(
@@ -1932,17 +1961,20 @@ async function importSkillsFromZip(
       if (skillDir === tempDir) {
         // SKILL.md is at the zip root (no parent skill folder).
         // Derive a folder name from the SKILL.md frontmatter or zip filename.
-        let folderName = path.basename(zipPath, path.extname(zipPath));
+        let folderName = safePathComponent(
+          path.basename(zipPath, path.extname(zipPath))
+        );
         try {
           const raw = await fsp.readFile(skillFilePath, 'utf-8');
           const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
           const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
           if (parsed) {
-            folderName =
+            folderName = safePathComponent(
               parsed
                 .replace(/[\\/*?:"<>|\s]+/g, '-')
                 .replace(/-+/g, '-')
-                .replace(/^-|-$/g, '') || folderName;
+                .replace(/^-|-$/g, '') || folderName
+            );
           }
         } catch {
           // Use zip filename fallback
@@ -1972,7 +2004,7 @@ async function importSkillsFromZip(
         await copyDirRecursive(tempDir, dest);
       } else {
         // SKILL.md is inside a subdirectory — copy that directory to SKILLS_ROOT
-        const skillDirName = path.basename(skillDir);
+        const skillDirName = safePathComponent(path.basename(skillDir));
         const dest = path.join(SKILLS_ROOT, skillDirName);
 
         // Check if skill already exists
