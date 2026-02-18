@@ -246,7 +246,7 @@ export default function MCPMarket({
         (item: any) => item.mcp_id === deleteTarget.id
       );
       const id = userMcpRecord?.id;
-      if (!id) {
+      if (id === undefined || id === null) {
         console.warn(
           'No matching user MCP record found for delete target:',
           deleteTarget

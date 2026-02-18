@@ -252,7 +252,11 @@ const ToolSelect = forwardRef<
                   };
                 } else {
                   onInstall = () =>
-                    (window.location.href = `${baseURL}/api/oauth/${key.toLowerCase()}/login`);
+                    window.open(
+                      `${baseURL}/api/oauth/${key.toLowerCase()}/login`,
+                      '_blank',
+                      'width=600,height=700'
+                    );
                 }
 
                 return {
