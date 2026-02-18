@@ -86,30 +86,30 @@ export const MarkDown = ({
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 className="text-primary mb-1 break-words text-xs font-bold">
+            <h1 className="text-primary mb-1 break-words text-label-sm font-bold">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-primary mb-1 break-words text-xs font-semibold">
+            <h2 className="text-primary mb-1 break-words text-label-sm font-semibold">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-primary mb-1 break-words text-xs font-medium">
+            <h3 className="text-primary mb-1 break-words text-label-sm font-medium">
               {children}
             </h3>
           ),
           p: ({ children }) => (
             <p
-              className={`m-0 ${pTextSize} text-primary whitespace-pre-line break-words font-inter text-xs font-medium leading-10`}
+              className={`m-0 ${pTextSize} text-primary whitespace-pre-line break-words font-inter text-label-xs font-medium`}
             >
               {children}
             </p>
           ),
           ul: ({ children }) => (
             <ul
-              className={`text-primary mb-1 list-inside list-disc text-xs ${olPadding}`}
+              className={`text-primary mb-1 list-disc pl-4 text-label-xs ${olPadding}`}
             >
               {children}
             </ul>
@@ -122,7 +122,7 @@ export const MarkDown = ({
           // 	</ol>
           // ),
           li: ({ children }) => (
-            <li className="mb-1 list-inside break-all">{children}</li>
+            <li className="mb-1 list-outside break-words">{children}</li>
           ),
           a: ({ children, href }) => (
             <a

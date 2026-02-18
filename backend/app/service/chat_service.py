@@ -41,6 +41,7 @@ from app.agent.factory import (
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
@@ -312,8 +313,14 @@ def build_conversation_context(
     return context
 
 
-def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
-    """Build context information for workforce."""
+def build_context_for_workforce(
+    task_lock: TaskLock,
+    options: Chat,
+    task_content: str | None = None,
+) -> str:
+    """Build context information for workforce.
+    Instructs coordinator to actively load skills using list_skills/load_skill tools.
+    """
     return build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
@@ -2187,7 +2194,13 @@ async def construct_workforce(
                                 working_directory=working_directory,
                             )
                         )
-                    ).get_tools()
+                    ).get_tools(),
+                    *SkillToolkit(
+                        options.project_id,
+                        key,
+                        working_directory=working_directory,
+                        user_id=options.skill_config_user_id(),
+                    ).get_tools(),
                 ],
             )
             for key, prompt in {
@@ -2253,6 +2266,12 @@ the current date.
                             working_directory=working_directory,
                         )
                     )
+                ).get_tools(),
+                *SkillToolkit(
+                    options.project_id,
+                    Agents.new_worker_agent,
+                    working_directory=working_directory,
+                    user_id=options.skill_config_user_id(),
                 ).get_tools(),
             ],
         )

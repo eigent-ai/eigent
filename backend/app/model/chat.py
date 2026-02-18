@@ -76,6 +76,8 @@ class Chat(BaseModel):
     # User-specific search engine configurations
     # (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
     search_config: dict[str, str] | None = None
+    # User identifier for user-specific skill configurations
+    user_id: str | None = None
 
     @field_validator("model_platform")
     @classmethod
@@ -91,6 +93,17 @@ class Chat(BaseModel):
             # raise ValueError("Invalid model type")
             logger.debug("model_type is invalid")
         return model_type
+
+    def skill_config_user_id(self) -> str | None:
+        """Return the filesystem user_id used by skills-config.
+
+        This must stay aligned with frontend `emailToUserId` so
+        `~/.eigent/<user_id>/skills-config.json` is shared consistently.
+        """
+        user_id = re.sub(
+            r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]
+        ).strip(".")
+        return user_id or None
 
     def get_bun_env(self) -> dict[str, str]:
         return (
