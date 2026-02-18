@@ -14,7 +14,7 @@
 import platform
 
 from camel.messages import BaseMessage
-from camel.models import OpenAIAudioModels
+from camel.models import ModelFactory, OpenAIAudioModels
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
 
@@ -55,7 +55,25 @@ def multi_modal_agent(options: Chat):
     video_download_toolkit = message_integration.register_toolkits(
         video_download_toolkit
     )
-    image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
+    # Subscription models always route through cloud models
+    if options.is_cloud() or options.use_image_analysis:
+        image_analysis_toolkit = ImageAnalysisToolkit(
+            options.project_id
+        )
+    else:
+        image_model = ModelFactory.create(
+            model_platform=options.model_platform,
+            model_type=options.model_type,
+            api_key=options.api_key,
+            url=options.api_url,
+            model_config_dict=None,
+            timeout=None,
+        )
+        image_analysis_toolkit = ImageAnalysisToolkit(
+            options.project_id,
+            model=image_model,
+        )
+
     image_analysis_toolkit = message_integration.register_toolkits(
         image_analysis_toolkit
     )

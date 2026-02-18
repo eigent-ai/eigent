@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
   TooltipContent,
@@ -116,6 +117,8 @@ export default function SettingModels() {
     setModelType,
     setCloudModelType,
     appearance,
+    use_image_analysis,
+    setUseImageAnalysis,
   } = useAuthStore();
   const _navigate = useNavigate();
   const { t } = useTranslation();
@@ -1874,6 +1877,24 @@ export default function SettingModels() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        {/* Image Analysis Switch - Only show for non-cloud models */}
+        {modelType !== 'cloud' && (
+          <div className="flex w-full flex-row items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+            <div className="flex w-full flex-col items-start justify-center gap-1">
+              <div className="text-body-base font-bold text-text-heading">
+                {t('setting.image-analysis-title')}
+              </div>
+              <div className="text-body-sm">
+                {t('setting.image-analysis-description')}
+              </div>
+            </div>
+            <Switch
+              checked={use_image_analysis}
+              onCheckedChange={setUseImageAnalysis}
+            />
+          </div>
+        )}
 
         {/* Content Section with Sidebar */}
         <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">

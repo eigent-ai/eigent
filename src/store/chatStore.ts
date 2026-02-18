@@ -730,6 +730,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               browser_port: browser_port,
               env_path: envPath,
               search_config: searchConfig,
+              // Subscription models always route through cloud models
+              use_image_analysis: getAuthStore().use_image_analysis,
             })
           : undefined,
 

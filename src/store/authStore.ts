@@ -54,6 +54,8 @@ interface AuthState {
   modelType: ModelType;
   cloud_model_type: CloudModelType;
   initState: InitState;
+  // Subscription models always route through cloud models
+  use_image_analysis: boolean;
 
   // IDE preference
   preferredIDE: PreferredIDE;
@@ -80,6 +82,7 @@ interface AuthState {
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
+  setUseImageAnalysis: (use_image_analysis: boolean) => void;
 
   // worker related methods
   setWorkerList: (workerList: Agent[]) => void;
@@ -108,6 +111,7 @@ const authStore = create<AuthState>()(
       cloud_model_type: getRandomDefaultModel(),
       preferredIDE: 'system',
       initState: 'permissions',
+      use_image_analysis: false,
       share_token: null,
       localProxyValue: null,
       workerListData: {},
@@ -143,6 +147,8 @@ const authStore = create<AuthState>()(
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
+
+      setUseImageAnalysis: (use_image_analysis) => set({ use_image_analysis }),
 
       setLocalProxyValue: (value) => set({ localProxyValue: value }),
 
