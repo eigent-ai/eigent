@@ -16,11 +16,12 @@ import { proxyFetchDelete } from '@/api/http';
 import { Sparkle } from '@/components/animate-ui/icons/sparkle';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { replayProject } from '@/lib';
+import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -45,7 +46,6 @@ import {
 import { Tag } from '../ui/tag';
 import { TooltipSimple } from '../ui/tooltip';
 import SearchInput from './SearchInput';
-import { ChatTaskStatus } from "@/types/constants";
 
 export default function HistorySidebar() {
   const { t } = useTranslation();
@@ -136,24 +136,24 @@ export default function HistorySidebar() {
     navigate('/');
   };
 
-  const handleReplay = async (
+  const handleLoadProject = async (
     projectId: string,
     question: string,
     historyId: string
   ) => {
     close();
-    // Get task IDs from the API response data in descending order (newest first)
     const project = historyTasks.find((p) => p.project_id === projectId);
     const taskIdsList = project?.tasks.map(
       (task: HistoryTask) => task.task_id
     ) || [projectId];
-    await replayProject(
+    await loadProjectFromHistory(
       projectStore,
       navigate,
       projectId,
       question,
       historyId,
-      taskIdsList
+      taskIdsList,
+      project?.project_name
     );
   };
 
@@ -285,8 +285,8 @@ export default function HistorySidebar() {
       navigate(`/`);
       close();
     } else {
-      // if there is no record, execute replay
-      handleReplay(projectId, question, historyId);
+      // if there is no record, load final state (no replay animation)
+      handleLoadProject(projectId, question, historyId);
     }
   };
 

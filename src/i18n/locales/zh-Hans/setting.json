@@ -7,8 +7,9 @@
   "eigent-cloud": "Eigent Cloud",
   "default": "默认",
   "profile": "个人资料",
+
   "account": "账户",
-  "you-are-currently-signed-in-with": "你当前使用的是 <email>{{email}}</email> 账户",
+  "you-are-currently-signed-in-with": "你当前使用的是 {{email}} 账户",
   "manage": "管理",
   "log-out": "退出",
   "language": "语言",
@@ -43,6 +44,7 @@
   "validate-failed": "验证失败",
   "copy": "复制",
   "copied-to-clipboard": "复制到剪贴板",
+  "failed-to-copy-to-clipboard": "复制到剪贴板失败",
   "endpoint-url-can-not-be-empty": "Endpoint URL 不能为空！",
   "verification-failed-please-check-endpoint-url": "验证失败，请检查 Endpoint URL",
   "eigent-cloud-version": "Eigent 云端版本",
@@ -102,7 +104,6 @@
   "save": "保存",
   "confirm-delete": "确认删除",
   "are-you-sure-you-want-to-delete": "你确定要删除",
-  "deleting": "删除中...",
   "delete": "删除",
   "configure {name} Toolkit": "配置 {{name}} 工具包",
   "get-it-from": "获取它来自",
@@ -163,7 +164,6 @@
   "reset": "重置",
   "reset-success": "重置成功！",
   "reset-failed": "重置失败！",
-  "select-default-model": "选择默认模型",
 
   "browser-login": "浏览器登录",
   "browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
@@ -192,14 +192,6 @@
   "all-cookies-deleted": "所有 Cookie 已成功删除。",
   "cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。",
 
-  "network-proxy": "网络代理",
-  "network-proxy-description": "配置网络请求的代理服务器。如果您需要通过代理访问外部 API，这将非常有用。",
-  "proxy-placeholder": "http://127.0.0.1:7890",
-  "proxy-saved-restart-required": "代理配置已保存。请重启应用以应用更改。",
-  "proxy-save-failed": "保存代理配置失败。",
-  "proxy-invalid-url": "无效的代理 URL。必须以 http://、https://、socks4:// 或 socks5:// 开头。",
-  "proxy-restart-hint": "需要重启应用以应用代理更改。",
-
   "cloud-not-available-in-local-proxy": "在本地代理模式下无法使用云端版本",
   "set-as-default": "设为默认",
   "api-key-setting": "API 密钥设置",
@@ -221,6 +213,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",

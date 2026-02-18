@@ -226,7 +226,8 @@ export default function MCPMarket({
           mcpItem.install_command
         );
       }
-    } catch (_e) {
+    } catch (e) {
+      console.error('Error installing MCP:', e);
     } finally {
       setInstalling((prev) => ({ ...prev, [id]: false }));
     }
@@ -264,8 +265,8 @@ export default function MCPMarket({
       );
       setInstalled((prev) => ({ ...prev, [deleteTarget.id]: false }));
       loadData(1, debouncedKeyword, categoryId, page * 20);
-    } catch (_e) {
-      console.log(_e);
+    } catch (e) {
+      console.log(e);
     }
   };
   return (

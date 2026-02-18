@@ -23,10 +23,6 @@
       "filter": ["**/*", "!.venv/**/*", "!workspace/.initial_env/**/*"]
     },
     {
-      "from": "utils",
-      "to": "utils"
-    },
-    {
       "from": "resources/prebuilt",
       "to": "prebuilt",
       "filter": [
@@ -36,7 +32,18 @@
         "!uv_python/**/*.pyc",
         "!uv_python/**/__pycache__",
         "!terminal_venv/**/*.pyc",
-        "!terminal_venv/**/__pycache__"
+        "!terminal_venv/**/__pycache__",
+        "!**/__pycache__/**",
+        "!**/*.pyc",
+        "!**/*.pyo",
+        "!venv/**/__pycache__/**",
+        "!venv/**/*.pyc",
+
+        "!venv/lib/python*/site-packages/yt_dlp/**",
+        "!venv/lib/python*/site-packages/yt_dlp-*.dist-info/**",
+        "!uv_python/**/site-packages/pip/**",
+        "!uv_python/**/site-packages/setuptools/**",
+        "!uv_python/**/site-packages/wheel/**"
       ]
     }
   ],
@@ -93,6 +100,18 @@
         }
       ]
     }
+  },
+  "dmg": {
+    "background": "src/assets/dmg-background.png",
+    "window": {
+      "width": 660,
+      "height": 400
+    },
+    "iconSize": 128,
+    "contents": [
+      { "x": 180, "y": 200, "type": "file" },
+      { "x": 480, "y": 200, "type": "link", "path": "/Applications" }
+    ]
   },
   "win": {
     "icon": "build/icon.ico",
