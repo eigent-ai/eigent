@@ -296,11 +296,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           task.status === TaskStatus.COMPLETED ||
           task.status === TaskStatus.FAILED
       ).length;
-      const taskProgress = (
-        ((finishedTask || 0) / (taskRunning?.length || 0)) *
-        100
-      ).toFixed(2);
-      setProgressValue(activeTaskId as string, Number(taskProgress));
+      const denominator = taskRunning?.length ?? 0;
+      const taskProgress =
+        denominator === 0
+          ? 0
+          : ((finishedTask || 0) / denominator) * 100;
+      setProgressValue(
+        activeTaskId as string,
+        Number(taskProgress.toFixed(2))
+      );
     },
     removeTask(taskId: string) {
       // Clean up any pending auto-confirm timers when removing a task

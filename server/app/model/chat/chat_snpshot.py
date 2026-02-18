@@ -14,6 +14,7 @@
 
 import base64
 import os
+import re
 import time
 
 from pydantic import BaseModel
@@ -60,8 +61,13 @@ class ChatSnapshotIn(BaseModel):
     def save_image(user_id: int, api_task_id: str, image_base64: str) -> str:
         if "," in image_base64:
             image_base64 = image_base64.split(",", 1)[1]
+        if not re.match(r'^[a-zA-Z0-9_-]+$', api_task_id):
+            raise ValueError("Invalid api_task_id: contains disallowed characters")
         user_dir = encode_user_id(user_id)
         folder = os.path.join("app", "public", "upload", user_dir, api_task_id)
+        base_dir = os.path.realpath(os.path.join("app", "public", "upload"))
+        if not os.path.realpath(folder).startswith(base_dir):
+            raise ValueError("Invalid api_task_id: path traversal detected")
         os.makedirs(folder, exist_ok=True)
         filename = f"{int(time.time() * 1000)}.jpg"
         file_path = os.path.join(folder, filename)
