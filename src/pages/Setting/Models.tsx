@@ -126,6 +126,12 @@ export default function SettingModels() {
     res?.detail?.error?.message ??
     res?.error?.message ??
     t('setting.validate-failed');
+  const apiKeyInvalidText = t('setting.api-key-expired-or-invalid', {
+    defaultValue: t('setting.validate-failed'),
+  });
+  const localModelInvalidText = t('setting.model-disconnected-or-invalid', {
+    defaultValue: t('setting.validate-failed'),
+  });
   const [items, _setItems] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
   );
@@ -390,10 +396,10 @@ export default function SettingModels() {
     }
     if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
-      return idx !== -1 && !!form[idx]?.provider_id;
+      return idx !== -1 && !!form[idx]?.provider_id && !!form[idx]?.is_valid;
     }
     if (category === 'local') {
-      return !!localProviderIds[modelId];
+      return !!localProviderIds[modelId] && !!localIsValid[modelId];
     }
     return false;
   };
@@ -564,7 +570,7 @@ export default function SettingModels() {
       provider_name: item.id,
       api_key: form[idx].apiKey,
       endpoint_url: form[idx].apiHost,
-      is_valid: form[idx].is_valid,
+      is_valid: true,
       model_type: form[idx].model_type,
     };
     if (externalConfig) {
@@ -1283,7 +1289,8 @@ export default function SettingModels() {
       if (idx === -1) return null;
 
       const item = items[idx];
-      const canSwitch = !!form[idx].provider_id;
+      const isConfigured = !!form[idx].provider_id;
+      const canSwitch = isConfigured && !!form[idx].is_valid;
 
       return (
         <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
@@ -1309,7 +1316,7 @@ export default function SettingModels() {
                         : 'inline-flex items-center gap-1.5'
                     }
                   >
-                    {!canSwitch
+                    {!isConfigured || !form[idx].is_valid
                       ? t('setting.not-configured')
                       : t('setting.set-as-default')}
                   </Button>
@@ -1322,7 +1329,7 @@ export default function SettingModels() {
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                      {t('setting.api-key-expired-or-invalid')}
+                      {apiKeyInvalidText}
                     </TooltipContent>
                   </Tooltip>
                 ) : form[idx].provider_id ? (
@@ -1514,6 +1521,7 @@ export default function SettingModels() {
       const currentEndpoint = localEndpoints[platform] || '';
       const currentType = localTypes[platform] || '';
       const isConfigured = !!localProviderIds[platform];
+      const canSwitch = isConfigured && !!localIsValid[platform];
       const isPreferred = localPrefer && localPlatform === platform;
 
       return (
@@ -1544,15 +1552,15 @@ export default function SettingModels() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    disabled={!isConfigured}
+                    disabled={!canSwitch}
                     onClick={() => handleLocalSwitch(true)}
                     className={
-                      isConfigured
+                      canSwitch
                         ? 'rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none'
                         : ''
                     }
                   >
-                    {!isConfigured
+                    {!canSwitch
                       ? t('setting.not-configured')
                       : t('setting.set-as-default')}
                   </Button>
@@ -1566,7 +1574,7 @@ export default function SettingModels() {
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="top">
-                    {t('setting.model-disconnected-or-invalid')}
+                    {localModelInvalidText}
                   </TooltipContent>
                 </Tooltip>
               ) : isConfigured ? (
