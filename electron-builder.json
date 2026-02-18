@@ -45,6 +45,10 @@
         "!uv_python/**/site-packages/setuptools/**",
         "!uv_python/**/site-packages/wheel/**"
       ]
+    },
+    {
+      "from": "resources/example-skills",
+      "to": "example-skills"
     }
   ],
   "protocols": [
