@@ -336,6 +336,13 @@ export default function SettingModels() {
     }
   }, [items, modelType]);
 
+  // Auto-disable use_image_analysis when cloud model is selected
+  useEffect(() => {
+    if (modelType === 'cloud' && use_image_analysis) {
+      setUseImageAnalysis(false);
+    }
+  }, [modelType, use_image_analysis, setUseImageAnalysis]);
+
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
     if (cloudPrefer) {

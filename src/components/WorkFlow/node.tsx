@@ -41,6 +41,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Folder from '../Folder';
 import { TaskState, TaskStateType } from '../TaskState';
 import Terminal from '../Terminal';
@@ -51,7 +52,12 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipSimple,
+  TooltipTrigger,
+} from '../ui/tooltip';
 import { MarkDown } from './MarkDown';
 
 interface NodeProps {
@@ -94,7 +100,8 @@ export function Node({ id, data }: NodeProps) {
 
   const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
   const workerList = useWorkerList();
-  const { setWorkerList } = useAuthStore();
+  const { setWorkerList, use_image_analysis } = useAuthStore();
+  const { t } = useTranslation();
 
   // Extract values for dependency arrays
   const agentTasks = data.agent?.tasks;
@@ -420,6 +427,11 @@ export function Node({ id, data }: NodeProps) {
               >
                 {agentMap[data.type]?.name || data.agent?.name}
               </div>
+              {data.type === 'multi_modal_agent' && use_image_analysis && (
+                <TooltipSimple content={t('setting.multimodal-warning')}>
+                  <TriangleAlert className="h-4 w-4 flex-shrink-0 text-yellow-500" />
+                </TooltipSimple>
+              )}
             </div>
             <div className="flex items-center gap-xs">
               <Button onClick={handleShowLog} variant="ghost" size="icon">
