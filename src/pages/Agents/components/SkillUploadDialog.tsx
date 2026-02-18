@@ -272,7 +272,7 @@ export default function SkillUploadDialog({
                 <div className="flex flex-col items-center gap-6">
                   <div className="flex items-center gap-2">
                     <div
-                      className={`flex p-1 flex-shrink-0 items-center justify-center rounded-lg ${
+                      className={`flex flex-shrink-0 items-center justify-center rounded-lg p-1 ${
                         uploadError
                           ? 'bg-surface-cuation'
                           : 'bg-surface-tertiary'
@@ -286,7 +286,7 @@ export default function SkillUploadDialog({
                         }`}
                       />
                     </div>
-                    <div className="min-w-0 w-full flex flex-col">
+                    <div className="flex w-full min-w-0 flex-col">
                       <span
                         className={`truncate text-body-sm font-medium ${
                           uploadError
@@ -324,7 +324,7 @@ export default function SkillUploadDialog({
                   <div className="flex h-12 w-12 items-center justify-center">
                     <Upload className="h-6 w-6 text-icon-secondary" />
                   </div>
-                  <div className="text-center flex flex-col items-center gap-1">
+                  <div className="flex flex-col items-center gap-1 text-center">
                     <span className="text-body-sm font-medium text-text-heading">
                       {t('agents.drag-and-drop')}
                     </span>

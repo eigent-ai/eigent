@@ -296,59 +296,87 @@ export const useSkillsStore = create<SkillsState>()(
             get().skills.map((s) => [s.skillDirName ?? s.id, s])
           );
 
-          const diskSkills: Skill[] = result.skills
-            .map(
-              (s: {
-                name: string;
-                description: string;
-                path: string;
-                scope: string;
-                skillDirName: string;
-              }) => {
-                const existing = prevByKey.get(s.skillDirName);
-                const isExample = (
-                  EXAMPLE_SKILL_DIR_NAMES as readonly string[]
-                ).includes(s.skillDirName);
+          const diskSkills: Skill[] = [];
+          for (const s of result.skills) {
+            const existing = prevByKey.get(s.skillDirName);
+            const isExample = (
+              EXAMPLE_SKILL_DIR_NAMES as readonly string[]
+            ).includes(s.skillDirName);
 
-                // Get config from global/project
-                const globalConfig = config.global?.skills?.[s.name];
-                const projectConfig = config.project?.skills?.[s.name];
-                const skillConfig = projectConfig ?? globalConfig;
+            // Get config from global/project (config key = skill name from SKILL.md)
+            const globalConfig = config.global?.skills?.[s.name];
+            const projectConfig = config.project?.skills?.[s.name];
+            const skillConfig = projectConfig ?? globalConfig;
 
-                const enabledFromConfig = skillConfig?.enabled ?? true;
-
-                let scopeFromConfig: SkillScope;
-                if (
-                  skillConfig?.scope &&
-                  typeof skillConfig.scope === 'object'
-                ) {
-                  scopeFromConfig = {
-                    isGlobal: skillConfig.scope.isGlobal ?? true,
-                    selectedAgents: skillConfig.scope.selectedAgents ?? [],
-                  };
-                } else {
-                  scopeFromConfig = {
-                    isGlobal: true,
-                    selectedAgents: [],
-                  };
-                }
-
-                return {
-                  id: `disk-${s.skillDirName}`,
-                  name: s.name,
-                  description: s.description,
-                  filePath: s.path,
-                  fileContent: existing?.fileContent ?? '',
-                  skillDirName: s.skillDirName,
-                  addedAt:
-                    skillConfig?.addedAt ?? existing?.addedAt ?? Date.now(),
-                  scope: scopeFromConfig,
-                  enabled: enabledFromConfig,
-                  isExample: skillConfig?.isExample ?? isExample,
+            // Register to config if not present (e.g. newly uploaded zip or single file)
+            const isNewSkill = !skillConfig;
+            if (isNewSkill && userId && hasSkillsFsApi()) {
+              try {
+                const addedAt = existing?.addedAt ?? Date.now();
+                const newSkillConfig = {
+                  enabled: true,
+                  scope: { isGlobal: true, selectedAgents: [] },
+                  addedAt,
+                  isExample,
                 };
+                await window.electronAPI.skillConfigUpdate(
+                  userId,
+                  s.name,
+                  newSkillConfig
+                );
+                // Update in-memory config so subsequent skills in same sync see it
+                if (!config.global) config.global = { skills: {} };
+                if (!config.global.skills) config.global.skills = {};
+                config.global.skills[s.name] = newSkillConfig;
+              } catch (error) {
+                console.warn(
+                  `[Skills] Failed to register skill ${s.name} to config:`,
+                  error
+                );
               }
-            )
-            .sort((a: Skill, b: Skill) => a.name.localeCompare(b.name));
+            }
+
+            const effectiveConfig = isNewSkill
+              ? {
+                  enabled: true,
+                  scope: { isGlobal: true, selectedAgents: [] },
+                  addedAt: existing?.addedAt ?? Date.now(),
+                  isExample,
+                }
+              : skillConfig;
+
+            const enabledFromConfig = effectiveConfig?.enabled ?? true;
+            let scopeFromConfig: SkillScope;
+            if (
+              effectiveConfig?.scope &&
+              typeof effectiveConfig.scope === 'object'
+            ) {
+              scopeFromConfig = {
+                isGlobal: effectiveConfig.scope.isGlobal ?? true,
+                selectedAgents: effectiveConfig.scope.selectedAgents ?? [],
+              };
+            } else {
+              scopeFromConfig = {
+                isGlobal: true,
+                selectedAgents: [],
+              };
+            }
+
+            diskSkills.push({
+              id: `disk-${s.skillDirName}`,
+              name: s.name,
+              description: s.description,
+              filePath: s.path,
+              fileContent: existing?.fileContent ?? '',
+              skillDirName: s.skillDirName,
+              addedAt:
+                effectiveConfig?.addedAt ?? existing?.addedAt ?? Date.now(),
+              scope: scopeFromConfig,
+              enabled: enabledFromConfig,
+              isExample: effectiveConfig?.isExample ?? isExample,
+            });
+          }
+          diskSkills.sort((a: Skill, b: Skill) => a.name.localeCompare(b.name));
 
           set({ skills: diskSkills });
         } catch {
