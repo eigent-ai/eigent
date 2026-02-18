@@ -406,5 +406,10 @@
   "proxy-invalid-url": "Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.",
   "proxy-restart-hint": "Restart required to apply proxy changes.",
 
-  "agents": "Agents"
+  "preferred-ide": "Preferred IDE",
+  "preferred-ide-description": "Choose which application to use when opening agent project folders.",
+  "system-file-manager": "System File Manager",
+  "agents": "Agents",
+  "help-improve-eigent": "Help Improve Eigent",
+  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
 }
