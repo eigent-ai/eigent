@@ -164,8 +164,6 @@
   "reset": "重置",
   "reset-success": "重置成功！",
   "reset-failed": "重置失败！",
-  "api-key-expired-or-invalid": "API 密钥已过期或无效，请重新配置。",
-  "model-disconnected-or-invalid": "模型已断开连接或无响应，请检查连接。",
 
   "browser-login": "浏览器登录",
   "browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
