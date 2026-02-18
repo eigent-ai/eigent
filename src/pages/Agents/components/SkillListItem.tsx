@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
+  agentMap,
   getWorkflowAgentDisplay,
   WORKFLOW_AGENT_LIST,
 } from '@/components/WorkFlow/agents';
@@ -80,7 +81,7 @@ export default function SkillListItem(props: SkillListItemProps) {
         combined.push(name);
       }
     });
-    return combined;
+    return combined.filter((name) => name !== agentMap.social_media_agent.name);
   }, [workerList]);
 
   if (props.variant === 'placeholder') {
