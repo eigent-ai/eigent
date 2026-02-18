@@ -310,6 +310,7 @@ export const Inputbox = ({
               'border-none shadow-none focus-visible:outline-none focus-visible:ring-0',
               'max-h-[200px] min-h-[40px] px-0 py-0',
               'scrollbar overflow-auto',
+              'placeholder:text-text-label',
               isActive ? 'text-input-text-focus' : 'text-input-text-default'
             )}
             style={{
@@ -477,8 +478,6 @@ export const Inputbox = ({
               value.trim().length > 0 && 'rotate-[-90deg]'
             )}
           />
-          {/* Inner shadow highlight (from Figma design) */}
-          <div className="pointer-events-none absolute inset-0 shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
         </Button>
       </div>
     </div>

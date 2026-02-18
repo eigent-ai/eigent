@@ -29,6 +29,7 @@ from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.agent.utils import NOW_STR
@@ -75,6 +76,14 @@ def multi_modal_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+
+    skill_toolkit = SkillToolkit(
+        options.project_id,
+        Agents.multi_modal_agent,
+        working_directory=working_directory,
+        user_id=options.skill_config_user_id(),
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
@@ -83,6 +92,7 @@ def multi_modal_agent(options: Chat):
         ),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
+        *skill_toolkit.get_tools(),
     ]
     if options.is_cloud():
         # TODO: check llm has this model
@@ -147,5 +157,6 @@ def multi_modal_agent(options: Chat):
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             SearchToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
         ],
     )
