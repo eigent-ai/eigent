@@ -94,6 +94,17 @@ class Chat(BaseModel):
             logger.debug("model_type is invalid")
         return model_type
 
+    def skill_config_user_id(self) -> str | None:
+        """Return the filesystem user_id used by skills-config.
+
+        This must stay aligned with frontend `emailToUserId` so
+        `~/.eigent/<user_id>/skills-config.json` is shared consistently.
+        """
+        user_id = re.sub(
+            r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]
+        ).strip(".")
+        return user_id or None
+
     def get_bun_env(self) -> dict[str, str]:
         return (
             {"NPM_CONFIG_REGISTRY": self.bun_mirror} if self.bun_mirror else {}
