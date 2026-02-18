@@ -1986,6 +1986,45 @@ async function importSkillsFromZip(
       }
     }
 
+    // Helper: derive a safe folder name from a skill display name
+    function folderNameFromSkillName(
+      skillName: string,
+      fallback: string
+    ): string {
+      return safePathComponent(
+        skillName
+          .replace(/[\\/*?:"<>|\s]+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '') || fallback
+      );
+    }
+
+    // Step 3a: Scan existing skills to build a name→folderName map for
+    //          name-based duplicate detection (case-insensitive).
+    const existingSkillNames = new Map<string, string>(); // lower-case name → folder name on disk
+    if (existsSync(SKILLS_ROOT)) {
+      const rootEntries = await fsp.readdir(SKILLS_ROOT, {
+        withFileTypes: true,
+      });
+      for (const entry of rootEntries) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        const existingSkillFile = path.join(
+          SKILLS_ROOT,
+          entry.name,
+          SKILL_FILE
+        );
+        if (!existsSync(existingSkillFile)) continue;
+        try {
+          const raw = await fsp.readFile(existingSkillFile, 'utf-8');
+          const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
+          const name = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
+          if (name) existingSkillNames.set(name.toLowerCase(), entry.name);
+        } catch {
+          // skip unreadable skill
+        }
+      }
+    }
+
     // Collect conflicts if replacements not provided
     const conflicts: Array<{ folderName: string; skillName: string }> = [];
     const replacementsSet = replacements || new Set<string>();
@@ -1993,74 +2032,55 @@ async function importSkillsFromZip(
     for (const skillFilePath of skillFiles) {
       const skillDir = path.dirname(skillFilePath);
 
+      // Read the incoming skill's display name from SKILL.md frontmatter.
+      const incomingName = await getSkillName(skillFilePath);
+      const incomingNameLower = incomingName.toLowerCase();
+
+      // Determine where this skill will be written on disk.
+      // Both root-level and nested skills use the skill name to derive the
+      // folder, so that detection and storage are consistent.
+      const fallbackFolderName =
+        skillDir === tempDir
+          ? path.basename(zipPath, path.extname(zipPath))
+          : path.basename(skillDir);
+      const destFolderName = folderNameFromSkillName(
+        incomingName,
+        fallbackFolderName
+      );
+      const dest = path.join(SKILLS_ROOT, destFolderName);
+
+      // Name-based duplicate detection: check if any existing skill already
+      // has this display name, regardless of what folder it lives in.
+      const existingFolder = existingSkillNames.get(incomingNameLower);
+      if (existingFolder) {
+        if (!replacements) {
+          // First pass — report conflict using the existing skill's folder as
+          // the key so the frontend can confirm the right replacement.
+          conflicts.push({
+            folderName: existingFolder,
+            skillName: incomingName,
+          });
+          continue;
+        }
+        if (replacementsSet.has(existingFolder)) {
+          // User confirmed — remove the existing skill folder before importing.
+          await fsp.rm(path.join(SKILLS_ROOT, existingFolder), {
+            recursive: true,
+            force: true,
+          });
+        } else {
+          // User cancelled for this skill — skip it.
+          continue;
+        }
+      }
+
+      // Import the skill (no conflict, or conflict was resolved).
+      await fsp.mkdir(dest, { recursive: true });
       if (skillDir === tempDir) {
-        // SKILL.md is at the zip root (no parent skill folder).
-        // Derive a folder name from the SKILL.md frontmatter or zip filename.
-        let folderName = safePathComponent(
-          path.basename(zipPath, path.extname(zipPath))
-        );
-        try {
-          const raw = await fsp.readFile(skillFilePath, 'utf-8');
-          const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
-          const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-          if (parsed) {
-            folderName = safePathComponent(
-              parsed
-                .replace(/[\\/*?:"<>|\s]+/g, '-')
-                .replace(/-+/g, '-')
-                .replace(/^-|-$/g, '') || folderName
-            );
-          }
-        } catch {
-          // Use zip filename fallback
-        }
-        const dest = path.join(SKILLS_ROOT, folderName);
-
-        // Check if skill already exists
-        if (existsSync(dest)) {
-          const skillName = await getSkillName(skillFilePath);
-          // If replacements not provided, collect conflict and skip
-          if (!replacements) {
-            conflicts.push({ folderName, skillName });
-            continue;
-          }
-          // If user confirmed replacement, remove existing directory
-          if (replacementsSet.has(folderName)) {
-            await fsp.rm(dest, { recursive: true, force: true });
-          } else {
-            // User didn't confirm, skip this skill
-            continue;
-          }
-        }
-
-        // Import the skill (either no conflict, or conflict was resolved)
-        await fsp.mkdir(dest, { recursive: true });
-        // Recursively copy all root-level entries (files and subdirectories)
+        // SKILL.md at zip root — copy all root-level entries.
         await copyDirRecursive(tempDir, dest);
       } else {
-        // SKILL.md is inside a subdirectory — copy that directory to SKILLS_ROOT
-        const skillDirName = safePathComponent(path.basename(skillDir));
-        const dest = path.join(SKILLS_ROOT, skillDirName);
-
-        // Check if skill already exists
-        if (existsSync(dest)) {
-          const skillName = await getSkillName(skillFilePath);
-          // If replacements not provided, collect conflict and skip
-          if (!replacements) {
-            conflicts.push({ folderName: skillDirName, skillName });
-            continue;
-          }
-          // If user confirmed replacement, remove existing directory
-          if (replacementsSet.has(skillDirName)) {
-            await fsp.rm(dest, { recursive: true, force: true });
-          } else {
-            // User didn't confirm, skip this skill
-            continue;
-          }
-        }
-
-        // Import the skill (either no conflict, or conflict was resolved)
-        await fsp.mkdir(dest, { recursive: true });
+        // SKILL.md inside a subdirectory — copy that directory.
         await copyDirRecursive(skillDir, dest);
       }
     }
