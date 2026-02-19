@@ -31,8 +31,10 @@
   "installation-failed": "فشل التثبيت",
   "projects": "المشاريع",
   "mcp-tools": "MCP والأدوات",
+  "connectors": "الموصلات",
   "browser": "المتصفح",
   "settings": "الإعدادات",
+  "general": "عام",
   "workers": "العمال",
   "triggers": "المحفزات",
   "new-project": "مشروع جديد",
@@ -166,5 +168,6 @@
   "days-ago": "أيام مضت",
   "delete-project": "حذف المشروع",
   "delete-project-confirmation": "هل أنت متأكد من أنك تريد حذف هذا المشروع وجميع مهامه؟ لا يمكن التراجع عن هذا الإجراء.",
-  "please-select-model": "يرجى اختيار نموذج في الإعدادات > النماذج للمتابعة."
+  "please-select-model": "يرجى اختيار نموذج في الإعدادات > النماذج للمتابعة.",
+  "capabilities": "القدرات"
 }

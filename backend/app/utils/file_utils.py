@@ -20,6 +20,10 @@ import platform
 from collections.abc import Callable
 from pathlib import Path
 
+import logging
+import shutil
+from pathlib import Path
+
 from app.component.environment import env
 from app.model.chat import Chat
 

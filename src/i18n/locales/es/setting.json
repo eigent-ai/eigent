@@ -42,6 +42,7 @@
   "validate-failed": "Validación fallida",
   "copy": "Copiar",
   "copied-to-clipboard": "Copiado al portapapeles",
+  "failed-to-copy-to-clipboard": "Error al copiar al portapapeles",
   "endpoint-url-can-not-be-empty": "Endpoint URL no puede estar vacío!",
   "verification-failed-please-check-endpoint-url": "Verificación fallida, por favor verifique Endpoint URL",
   "eigent-cloud-version": "Eigent Cloud Version",
