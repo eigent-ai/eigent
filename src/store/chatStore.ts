@@ -558,7 +558,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: cloud_model_type.includes('gpt')
             ? 'openai'
             : cloud_model_type.includes('claude')
-              ? 'anthropic'
+              ? 'aws-bedrock'
               : cloud_model_type.includes('gemini')
                 ? 'gemini'
                 : 'openai-compatible-model',
@@ -693,7 +693,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      fetchEventSource(api, {
+      const ssePromise = fetchEventSource(api, {
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
         signal: abortController.signal, // Add abort signal for proper cleanup
@@ -2400,6 +2400,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // Server closes connection
         onclose() {
           console.log('SSE connection closed');
+          // Abort to resolve fetchEventSource promise (for replay/load - allows awaiting completion)
+          try {
+            abortController.abort();
+          } catch (_e) {
+            // Ignore if already aborted
+          }
           // Clean up AbortController when connection closes with robust error handling
           try {
             if (activeSSEControllers[newTaskId]) {
@@ -2416,6 +2422,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         },
       });
+      if (type === 'replay') {
+        try {
+          await ssePromise;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            // Expected: stream closed normally, we aborted to resolve the promise
+            return;
+          }
+          // Unexpected: actual error during stream
+          console.error(`SSE stream failed for task ${newTaskId}:`, err);
+          throw err; // Let loadProjectFromHistory handle it
+        }
+      }
     },
 
     replay: async (taskId: string, question: string, time: number) => {

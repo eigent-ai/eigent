@@ -25,6 +25,7 @@ from app.agent.toolkit.human_toolkit import HumanToolkit
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.utils import NOW_STR
@@ -72,6 +73,14 @@ async def developer_agent(options: Chat):
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
+    skill_toolkit = SkillToolkit(
+        options.project_id,
+        Agents.developer_agent,
+        working_directory=working_directory,
+        user_id=options.skill_config_user_id(),
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
     tools = [
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.developer_agent
@@ -80,6 +89,7 @@ async def developer_agent(options: Chat):
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
+        *skill_toolkit.get_tools(),
     ]
     system_message = DEVELOPER_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -102,6 +112,7 @@ async def developer_agent(options: Chat):
             NoteTakingToolkit.toolkit_name(),
             WebDeployToolkit.toolkit_name(),
             ScreenshotToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
         ],
         toolkits_to_register_agent=[
             screenshot_toolkit_for_agent_registration,
