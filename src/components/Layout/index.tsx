@@ -73,10 +73,10 @@ const Layout = () => {
   const shouldShowOnboarding =
     initState === 'done' && isFirstLaunch && !isInstalling;
 
+  // Don't show install screen solely due to waiting-backend when already "done"
+  // (avoids race where setWaitingBackend() runs after content has rendered)
   const actualShouldShowInstallScreen =
-    shouldShowInstallScreen ||
-    initState !== 'done' ||
-    installationState === 'waiting-backend';
+    shouldShowInstallScreen || initState !== 'done';
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
   if (!chatStore) {
