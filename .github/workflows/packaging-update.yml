@@ -34,16 +34,17 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Eigent-${VERSION}.AppImage"
-          echo "Waiting for $URL..."
-          for i in {1..30}; do
+          echo "Waiting for AppImage at $URL..."
+          # Poll until the AppImage is uploaded (build workflow may still be running)
+          for i in {1..10}; do
             if curl -fsSL --head "$URL" >/dev/null 2>&1; then
               echo "Asset available!"
               exit 0
             fi
-            echo "Attempt $i/30 - waiting 30s..."
+            echo "Attempt $i/10 - waiting 30s..."
             sleep 30
           done
-          echo "Timeout waiting for release asset"
+          echo "::error::Timeout after 5 minutes waiting for release asset. Is the build workflow running?"
           exit 1
 
       - name: Update all packaging
