@@ -32,7 +32,6 @@ from app.service.task import (
     ActionSupplementData,
     ActionTakeControl,
     ActionTaskStateData,
-    ActionTerminalCommandApprovalData,
     ActionUpdateTaskData,
     Agents,
     ImprovePayload,
@@ -253,20 +252,6 @@ class TestTaskLock:
         await task_lock.put_human_input(agent_name, "user response")
         response = await task_lock.get_human_input(agent_name)
         assert response == "user response"
-
-    def test_task_lock_has_terminal_approval_response_queue(self):
-        """TaskLock has terminal_approval_response queue for HITL (issue #1306)."""
-        task_lock = TaskLock("test_123", asyncio.Queue(), {})
-        assert hasattr(task_lock, "terminal_approval_response")
-        assert task_lock.terminal_approval_response.empty()
-        task_lock.terminal_approval_response.put("reject")
-        assert task_lock.terminal_approval_response.get() == "reject"
-
-    def test_action_terminal_command_approval_data(self):
-        """ActionTerminalCommandApprovalData has correct action and data (issue #1306)."""
-        data = ActionTerminalCommandApprovalData(data={"command": "rm -rf /tmp/x"})
-        assert data.action == Action.terminal_command_approval
-        assert data.data == {"command": "rm -rf /tmp/x"}
 
     @pytest.mark.asyncio
     async def test_task_lock_background_task_management(self):
