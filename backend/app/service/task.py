@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+import threading
 import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -528,6 +529,7 @@ class TaskLock:
 
 
 task_locks = dict[str, TaskLock]()
+_task_locks_mutex = threading.Lock()
 # Cleanup task for removing stale task locks
 _cleanup_task: asyncio.Task | None = None
 task_index: dict[str, weakref.ref[Task]] = {}
@@ -557,35 +559,37 @@ def set_current_task_id(project_id: str, task_id: str) -> None:
 
 
 def create_task_lock(id: str) -> TaskLock:
-    if id in task_locks:
-        logger.warning(
-            "Attempting to create task lock that already exists",
-            extra={"task_id": id},
+    with _task_locks_mutex:
+        if id in task_locks:
+            logger.warning(
+                "Attempting to create task lock that already exists",
+                extra={"task_id": id},
+            )
+            raise ProgramException("Task already exists")
+
+        logger.info("Creating new task lock", extra={"task_id": id})
+        task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
+
+        logger.info(
+            "Task lock created successfully",
+            extra={"task_id": id, "total_task_locks": len(task_locks)},
         )
-        raise ProgramException("Task already exists")
-
-    logger.info("Creating new task lock", extra={"task_id": id})
-    task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
-
-    # Start cleanup task if not running
-    # global _cleanup_task
-    # if _cleanup_task is None or _cleanup_task.done():
-    #     _cleanup_task = asyncio.create_task(_periodic_cleanup())
-
-    logger.info(
-        "Task lock created successfully",
-        extra={"task_id": id, "total_task_locks": len(task_locks)},
-    )
-    return task_locks[id]
+        return task_locks[id]
 
 
 def get_or_create_task_lock(id: str) -> TaskLock:
     """Get existing task lock or create a new one if it doesn't exist"""
-    if id in task_locks:
-        logger.debug("Using existing task lock", extra={"task_id": id})
+    with _task_locks_mutex:
+        if id in task_locks:
+            logger.debug("Using existing task lock", extra={"task_id": id})
+            return task_locks[id]
+        logger.info("Task lock not found, creating new one", extra={"task_id": id})
+        task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
+        logger.info(
+            "Task lock created successfully",
+            extra={"task_id": id, "total_task_locks": len(task_locks)},
+        )
         return task_locks[id]
-    logger.info("Task lock not found, creating new one", extra={"task_id": id})
-    return create_task_lock(id)
 
 
 async def delete_task_lock(id: str):

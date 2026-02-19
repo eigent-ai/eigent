@@ -16,6 +16,7 @@ import logging
 import os
 import shutil
 import sqlite3
+import tempfile
 from datetime import datetime
 from typing import Any
 
@@ -60,7 +61,10 @@ class CookieManager:
             )
             return None
 
-        temp_db_path = self.cookies_db_path + ".tmp"
+        fd, temp_db_path = tempfile.mkstemp(
+            suffix=".tmp", dir=os.path.dirname(self.cookies_db_path)
+        )
+        os.close(fd)
         conn = None
         try:
             shutil.copy2(self.cookies_db_path, temp_db_path)

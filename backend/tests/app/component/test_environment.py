@@ -39,11 +39,13 @@ def test_valid_relative_path():
     assert result.endswith("project1.env")
 
 
-def test_valid_absolute_path_within_base_dir():
-    """Test that absolute path within base directory is accepted."""
+def test_absolute_path_within_base_dir_rejected():
+    """Test that absolute paths are always rejected for security."""
     valid_path = os.path.join(env_base_dir, "valid.env")
     result = sanitize_env_path(valid_path)
-    assert result == os.path.abspath(valid_path)
+    assert result is None, (
+        "Absolute paths should be rejected — callers must use relative paths"
+    )
 
 
 def test_path_traversal_attack_rejected():
