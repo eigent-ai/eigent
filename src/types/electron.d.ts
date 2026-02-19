@@ -145,6 +145,67 @@ interface ElectronAPI {
     folderPath: string,
     ide: string
   ) => Promise<{ success: boolean; error?: string }>;
+  // Skills (~/.eigent/skills)
+  getSkillsDir: () => Promise<{
+    success: boolean;
+    path?: string;
+    error?: string;
+  }>;
+  skillsScan: () => Promise<{
+    success: boolean;
+    skills?: Array<{
+      name: string;
+      description: string;
+      path: string;
+      scope: string;
+      skillDirName: string;
+    }>;
+    error?: string;
+  }>;
+  skillWrite: (
+    skillDirName: string,
+    content: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillDelete: (
+    skillDirName: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillRead: (
+    filePath: string
+  ) => Promise<{ success: boolean; content?: string; error?: string }>;
+  skillListFiles: (
+    skillDirName: string
+  ) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+  skillImportZip: (
+    zipPathOrBuffer: string | ArrayBuffer,
+    replacements?: string[]
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    conflicts?: Array<{ folderName: string; skillName: string }>;
+  }>;
+  openSkillFolder: (
+    skillName: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillConfigInit: (
+    userId: string
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigLoad: (
+    userId: string
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigToggle: (
+    userId: string,
+    skillName: string,
+    enabled: boolean
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigUpdate: (
+    userId: string,
+    skillName: string,
+    skillConfig: any
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillConfigDelete: (
+    userId: string,
+    skillName: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {
