@@ -16,6 +16,12 @@ import inspect
 
 import pytest
 
+from app.controller.chat.share_controller import (
+    create_share_link,
+    get_share_info,
+    share_playback,
+)
+
 
 class TestAuthMustNoneTokenHandling:
     """Tests for auth_must handling of None tokens.
@@ -119,34 +125,21 @@ class TestSnapshotEndpointAuthRequirements:
         assert "auth" in param_names
 
 
-class TestShareLinkAuthRequirement:
-    """Tests verifying that share link creation requires authentication.
+def test_create_share_link_requires_auth_dependency():
+    """POST /share must include auth_must as a dependency."""
+    sig = inspect.signature(create_share_link)
+    param_names = list(sig.parameters.keys())
+    assert "auth" in param_names, (
+        "create_share_link is missing the 'auth' parameter — "
+        "unauthenticated users can generate share tokens"
+    )
 
-    The create_share_link endpoint was previously open to unauthenticated
-    requests, allowing anyone to generate share tokens for arbitrary task_ids.
-    """
 
-    def test_create_share_link_requires_auth_dependency(self):
-        """POST /share must include auth_must as a dependency."""
-        from app.controller.chat.share_controller import create_share_link
-
-        sig = inspect.signature(create_share_link)
-        param_names = list(sig.parameters.keys())
-        assert "auth" in param_names, (
-            "create_share_link is missing the 'auth' parameter — "
-            "unauthenticated users can generate share tokens"
-        )
-
-    def test_share_read_endpoints_remain_public(self):
-        """GET /share/info and /share/playback should remain public
-        since they verify the share token itself."""
-        from app.controller.chat.share_controller import (
-            get_share_info,
-            share_playback,
-        )
-
-        # These endpoints use the share token for auth, not user auth
-        info_params = list(inspect.signature(get_share_info).parameters.keys())
-        playback_params = list(inspect.signature(share_playback).parameters.keys())
-        assert "token" in info_params
-        assert "token" in playback_params
+def test_share_read_endpoints_remain_public():
+    """GET /share/info and /share/playback should remain public
+    since they verify the share token itself."""
+    # These endpoints use the share token for auth, not user auth
+    info_params = list(inspect.signature(get_share_info).parameters.keys())
+    playback_params = list(inspect.signature(share_playback).parameters.keys())
+    assert "token" in info_params
+    assert "token" in playback_params
