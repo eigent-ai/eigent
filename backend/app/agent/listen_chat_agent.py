@@ -293,10 +293,9 @@ class ListenChatAgent(ChatAgent):
             )
 
         if message is None:
-            message = ""
-            logger.warning(
+            raise RuntimeError(
                 f"Agent {self.agent_name}: message is None after step "
-                f"completion, defaulting to empty string"
+                f"completion — this indicates a missing LLM response"
             )
 
         _schedule_async_task(
@@ -407,10 +406,9 @@ class ListenChatAgent(ChatAgent):
         # Send deactivation for all non-streaming cases (success or error)
         # Streaming responses handle deactivation in _astream_chunks
         if message is None:
-            message = ""
-            logger.warning(
+            raise RuntimeError(
                 f"Agent {self.agent_name}: message is None after astep "
-                f"completion, defaulting to empty string"
+                f"completion — this indicates a missing LLM response"
             )
 
         asyncio.create_task(

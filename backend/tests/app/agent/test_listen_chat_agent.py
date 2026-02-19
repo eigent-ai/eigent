@@ -481,132 +481,115 @@ class TestListenChatAgent:
 
 
 @pytest.mark.unit
-class TestAssertReplacedWithProperGuards:
-    """Verify that assert statements have been replaced with proper guards.
-
-    Python's assert statements are stripped when running with -O (optimized
-    mode). The original code used `assert message is not None` and
-    `assert res is not None` for runtime control flow, which would silently
-    produce None propagation in production builds.
-    """
-
-    def test_step_handles_none_message_without_assert(self, mock_task_lock):
-        """step() should not crash with AssertionError when message is None.
-
-        When super().step() raises an unexpected exception that doesn't set
-        message, the code should handle it gracefully instead of relying on
-        assert.
-        """
-        with (
-            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
-            patch("camel.models.ModelFactory.create") as mock_create_model,
-        ):
-            mock_backend = MagicMock()
-            mock_backend.model_type = "gpt-4"
-            mock_backend.current_model = MagicMock()
-            mock_backend.current_model.model_type = "gpt-4"
-            mock_create_model.return_value = mock_backend
-
-            agent = ListenChatAgent(
-                api_task_id="test_task",
-                agent_name="TestAgent",
-                model="gpt-4",
-            )
-            agent.process_task_id = "test_process"
-
-            # Simulate an exception that sets error_info but message remains
-            # from the except branch (message is set to error string)
-            error = Exception("Some unexpected error")
-            with patch.object(ChatAgent, "step", side_effect=error):
-                with pytest.raises(Exception, match="Some unexpected error"):
-                    agent.step("test input")
-
-            # The deactivation event should have been sent with the error
-            # message, not crashed with AssertionError
-            mock_task_lock.put_queue.assert_called()
-
-    def test_step_raises_runtime_error_when_res_is_none(self, mock_task_lock):
-        """step() raises RuntimeError (not AssertionError) when res is None
-        without error_info set."""
-        with (
-            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
-            patch("camel.models.ModelFactory.create") as mock_create_model,
-        ):
-            mock_backend = MagicMock()
-            mock_backend.model_type = "gpt-4"
-            mock_backend.current_model = MagicMock()
-            mock_backend.current_model.model_type = "gpt-4"
-            mock_create_model.return_value = mock_backend
-
-            agent = ListenChatAgent(
-                api_task_id="test_task",
-                agent_name="TestAgent",
-                model="gpt-4",
-            )
-            agent.process_task_id = "test_process"
-
-            # Force super().step() to return None without raising
-            with patch.object(ChatAgent, "step", return_value=None):
-                with pytest.raises(RuntimeError, match="returned None"):
-                    agent.step("test input")
-
-    @pytest.mark.asyncio
-    async def test_astep_handles_none_message_without_assert(
-        self, mock_task_lock
+def test_step_raises_runtime_error_on_none_message(mock_task_lock):
+    """step() raises RuntimeError (not AssertionError) when message is None."""
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+        patch("camel.models.ModelFactory.create") as mock_create_model,
     ):
-        """astep() should not crash with AssertionError when message is None."""
-        with (
-            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
-            patch("camel.models.ModelFactory.create") as mock_create_model,
-            patch("asyncio.create_task"),
-        ):
-            mock_backend = MagicMock()
-            mock_backend.model_type = "gpt-4"
-            mock_backend.current_model = MagicMock()
-            mock_backend.current_model.model_type = "gpt-4"
-            mock_create_model.return_value = mock_backend
+        mock_backend = MagicMock()
+        mock_backend.model_type = "gpt-4"
+        mock_backend.current_model = MagicMock()
+        mock_backend.current_model.model_type = "gpt-4"
+        mock_create_model.return_value = mock_backend
 
-            agent = ListenChatAgent(
-                api_task_id="test_task",
-                agent_name="TestAgent",
-                model="gpt-4",
-            )
-            agent.process_task_id = "test_process"
+        agent = ListenChatAgent(
+            api_task_id="test_task",
+            agent_name="TestAgent",
+            model="gpt-4",
+        )
+        agent.process_task_id = "test_process"
 
-            error = Exception("Async unexpected error")
-            with patch.object(ChatAgent, "astep", side_effect=error):
-                with pytest.raises(
-                    Exception, match="Async unexpected error"
-                ):
-                    await agent.astep("test input")
+        error = Exception("Some unexpected error")
+        with patch.object(ChatAgent, "step", side_effect=error):
+            with pytest.raises(Exception, match="Some unexpected error"):
+                agent.step("test input")
 
-    @pytest.mark.asyncio
-    async def test_astep_raises_runtime_error_when_res_is_none(
-        self, mock_task_lock
+        mock_task_lock.put_queue.assert_called()
+
+
+@pytest.mark.unit
+def test_step_raises_runtime_error_when_res_is_none(mock_task_lock):
+    """step() raises RuntimeError (not AssertionError) when res is None
+    without error_info set."""
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+        patch("camel.models.ModelFactory.create") as mock_create_model,
     ):
-        """astep() raises RuntimeError (not AssertionError) when res is None
-        without error_info set."""
-        with (
-            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
-            patch("camel.models.ModelFactory.create") as mock_create_model,
-            patch("asyncio.create_task"),
-        ):
-            mock_backend = MagicMock()
-            mock_backend.model_type = "gpt-4"
-            mock_backend.current_model = MagicMock()
-            mock_backend.current_model.model_type = "gpt-4"
-            mock_create_model.return_value = mock_backend
+        mock_backend = MagicMock()
+        mock_backend.model_type = "gpt-4"
+        mock_backend.current_model = MagicMock()
+        mock_backend.current_model.model_type = "gpt-4"
+        mock_create_model.return_value = mock_backend
 
-            agent = ListenChatAgent(
-                api_task_id="test_task",
-                agent_name="TestAgent",
-                model="gpt-4",
-            )
-            agent.process_task_id = "test_process"
+        agent = ListenChatAgent(
+            api_task_id="test_task",
+            agent_name="TestAgent",
+            model="gpt-4",
+        )
+        agent.process_task_id = "test_process"
 
-            with patch.object(ChatAgent, "astep", return_value=None):
-                with pytest.raises(RuntimeError, match="returned None"):
-                    await agent.astep("test input")
+        with patch.object(ChatAgent, "step", return_value=None):
+            with pytest.raises(RuntimeError, match="returned None"):
+                agent.step("test input")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_astep_raises_runtime_error_on_none_message(mock_task_lock):
+    """astep() raises RuntimeError (not AssertionError) when message is None."""
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+        patch("camel.models.ModelFactory.create") as mock_create_model,
+        patch("asyncio.create_task"),
+    ):
+        mock_backend = MagicMock()
+        mock_backend.model_type = "gpt-4"
+        mock_backend.current_model = MagicMock()
+        mock_backend.current_model.model_type = "gpt-4"
+        mock_create_model.return_value = mock_backend
+
+        agent = ListenChatAgent(
+            api_task_id="test_task",
+            agent_name="TestAgent",
+            model="gpt-4",
+        )
+        agent.process_task_id = "test_process"
+
+        error = Exception("Async unexpected error")
+        with patch.object(ChatAgent, "astep", side_effect=error):
+            with pytest.raises(
+                Exception, match="Async unexpected error"
+            ):
+                await agent.astep("test input")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_astep_raises_runtime_error_when_res_is_none(mock_task_lock):
+    """astep() raises RuntimeError (not AssertionError) when res is None
+    without error_info set."""
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+        patch("camel.models.ModelFactory.create") as mock_create_model,
+        patch("asyncio.create_task"),
+    ):
+        mock_backend = MagicMock()
+        mock_backend.model_type = "gpt-4"
+        mock_backend.current_model = MagicMock()
+        mock_backend.current_model.model_type = "gpt-4"
+        mock_create_model.return_value = mock_backend
+
+        agent = ListenChatAgent(
+            api_task_id="test_task",
+            agent_name="TestAgent",
+            model="gpt-4",
+        )
+        agent.process_task_id = "test_process"
+
+        with patch.object(ChatAgent, "astep", return_value=None):
+            with pytest.raises(RuntimeError, match="returned None"):
+                await agent.astep("test input")
 
 
 @pytest.mark.model_backend
