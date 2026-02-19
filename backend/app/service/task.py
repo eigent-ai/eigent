@@ -59,7 +59,9 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
-    terminal_command_approval = "terminal_command_approval"  # backend -> user (HITL)
+    terminal_command_approval = (
+        "terminal_command_approval"  # backend -> user (HITL)
+    )
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend

@@ -504,9 +504,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 )
                 coro = task_lock.put_queue(approval_data)
                 self._run_coro_in_thread(coro)
-                approval = task_lock.terminal_approval_response.get(
-                    block=True
-                )
+                approval = task_lock.terminal_approval_response.get(block=True)
                 if approval == "reject":
                     return "Command rejected by user."
                 if approval == "approve_all_in_task":
