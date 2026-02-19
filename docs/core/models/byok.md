@@ -77,7 +77,7 @@ Eigent supports the following BYOK providers:
 | Provider              | Default API Host                                           | Official Documentation                                                                        |
 | --------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | **OpenAI**            | `https://api.openai.com/v1`                                | [OpenAI API Docs](https://platform.openai.com/docs/api-reference)                             |
-| **Anthropic**         | `https://api.anthropic.com/v1/`                            | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
+| **Anthropic**         | `https://api.anthropic.com/`                               | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
 | **Google Gemini**     | `https://generativelanguage.googleapis.com/v1beta/openai/` | [Gemini API Docs](https://ai.google.dev/gemini-api/docs)                                      |
 | **OpenRouter**        | `https://openrouter.ai/api/v1`                             | [OpenRouter Docs](https://openrouter.ai/docs)                                                 |
 | **Qwen (Alibaba)**    | `https://dashscope.aliyuncs.com/compatible-mode/v1`        | [Qwen API Docs](https://help.aliyun.com/zh/dashscope/developer-reference/api-details)         |

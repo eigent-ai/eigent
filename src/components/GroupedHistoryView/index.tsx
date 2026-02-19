@@ -38,7 +38,8 @@ interface GroupedHistoryViewProps {
   onTaskSelect: (
     projectId: string,
     question: string,
-    historyId: string
+    historyId: string,
+    project?: ProjectGroupType
   ) => void;
   onTaskDelete: (historyId: string, callback: () => void) => void;
   onTaskShare: (taskId: string) => void;

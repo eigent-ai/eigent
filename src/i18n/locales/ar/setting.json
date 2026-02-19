@@ -42,6 +42,7 @@
   "validate-failed": "فشل التحقق",
   "copy": "نسخ",
   "copied-to-clipboard": "تم النسخ إلى الحافظة",
+  "failed-to-copy-to-clipboard": "فشل النسخ إلى الحافظة",
   "endpoint-url-can-not-be-empty": "!لا يمكن أن يكون عنوان يورل  لنقطة النهاية فارغًا",
   "verification-failed-please-check-endpoint-url": "فشل التحقق، يرجى المراجعة على النقطة النهائية يورل",
   "eigent-cloud-version": "إصدار أيجنت السحابي",

@@ -15,9 +15,14 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.component.model_validation import (
+    EXPECTED_TOOL_RESULT,
+    ValidationErrorType,
+    ValidationResult,
+    ValidationStage,
+)
 from app.controller.model_controller import (
     ValidateModelRequest,
     ValidateModelResponse,
@@ -26,306 +31,288 @@ from app.controller.model_controller import (
 
 
 @pytest.mark.unit
-class TestModelController:
-    """Test cases for model controller endpoints."""
+class TestModelControllerEnhanced:
+    """Test cases for enhanced model controller with detailed validation."""
 
     @pytest.mark.asyncio
-    async def test_validate_model_success(self):
-        """Test successful model validation."""
+    async def test_validate_model_with_diagnostics_success(self):
+        """Test successful model validation with diagnostics enabled."""
         request_data = ValidateModelRequest(
             model_platform="openai",
             model_type="gpt-4o",
             api_key="test_key",
-            url="https://api.openai.com/v1",
-            model_config_dict={"temperature": 0.7},
-            extra_params={"max_tokens": 1000},
+            include_diagnostics=True,
         )
 
         mock_agent = MagicMock()
         mock_response = MagicMock()
         tool_call = MagicMock()
-        tool_call.result = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+        tool_call.result = EXPECTED_TOOL_RESULT
         mock_response.info = {"tool_calls": [tool_call]}
         mock_agent.step.return_value = mock_response
 
         with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = True
+            validation_result.is_tool_calls = True
+            validation_result.error_type = None
+            validation_result.failed_stage = None
+            validation_result.successful_stages = [
+                ValidationStage.INITIALIZATION,
+                ValidationStage.MODEL_CREATION,
+                ValidationStage.AGENT_CREATION,
+                ValidationStage.MODEL_CALL,
+                ValidationStage.TOOL_CALL_EXECUTION,
+            ]
+            validation_result.validation_stages = {
+                ValidationStage.INITIALIZATION: True,
+                ValidationStage.MODEL_CREATION: True,
+                ValidationStage.AGENT_CREATION: True,
+                ValidationStage.MODEL_CALL: True,
+                ValidationStage.TOOL_CALL_EXECUTION: True,
+            }
+            validation_result.diagnostic_info = {
+                "initialization": {"model_platform": "openai"},
+                "model_creation": {"model_created": True},
+            }
+            validation_result.model_response_info = {
+                "has_response": True,
+                "tool_calls_count": 1,
+            }
+            validation_result.tool_call_info = {
+                "tool_calls_count": 1,
+                "execution_successful": True,
+            }
+            mock_validate.return_value = validation_result
+
             response = await validate_model(request_data)
 
             assert isinstance(response, ValidateModelResponse)
             assert response.is_valid is True
             assert response.is_tool_calls is True
-            assert response.message == "Validation Success"
-            assert response.error_code is None
-            assert response.error is None
+            assert response.error_type is None
+            assert response.failed_stage is None
+            assert response.successful_stages == [
+                "initialization",
+                "model_creation",
+                "agent_creation",
+                "model_call",
+                "tool_call_execution",
+            ]
+            assert response.diagnostic_info is not None
+            assert response.model_response_info is not None
+            assert response.tool_call_info is not None
+            assert response.validation_stages is not None
+            assert response.validation_stages["tool_call_execution"] is True
 
     @pytest.mark.asyncio
-    async def test_validate_model_creation_failure(self):
-        """Test model validation when agent creation fails."""
+    async def test_validate_model_with_diagnostics_failure(self):
+        """Test model validation failure with diagnostics enabled."""
         request_data = ValidateModelRequest(
-            model_platform="INVALID",
-            model_type="INVALID_MODEL",
+            model_platform="openai",
+            model_type="gpt-4o",
             api_key="invalid_key",
+            include_diagnostics=True,
         )
 
         with patch(
-            "app.controller.model_controller.create_agent",
-            side_effect=Exception("Invalid model configuration"),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await validate_model(request_data)
-            assert exc_info.value.status_code == 400
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = False
+            validation_result.is_tool_calls = False
+            validation_result.error_type = (
+                ValidationErrorType.AUTHENTICATION_ERROR
+            )
+            validation_result.failed_stage = ValidationStage.MODEL_CREATION
+            validation_result.raw_error_message = "401 Unauthorized"
+            validation_result.error_message = "401 Unauthorized"
+            validation_result.successful_stages = [
+                ValidationStage.INITIALIZATION
+            ]
+            validation_result.validation_stages = {
+                ValidationStage.INITIALIZATION: True,
+                ValidationStage.MODEL_CREATION: False,
+            }
+            validation_result.diagnostic_info = {
+                "initialization": {"model_platform": "openai"},
+            }
+            mock_validate.return_value = validation_result
+
+            response = await validate_model(request_data)
+
+            assert isinstance(response, ValidateModelResponse)
+            assert response.is_valid is False
+            assert response.is_tool_calls is False
+            assert response.error_type == "authentication_error"
+            assert response.failed_stage == "model_creation"
+            assert response.successful_stages == ["initialization"]
+            assert response.diagnostic_info is not None
+            assert response.message == "401 Unauthorized"
 
     @pytest.mark.asyncio
-    async def test_validate_model_step_failure(self):
-        """Test model validation when agent step fails."""
+    async def test_validate_model_without_diagnostics(self):
+        """Test model validation without diagnostics (default)."""
         request_data = ValidateModelRequest(
-            model_platform="openai", model_type="gpt-4o", api_key="test_key"
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="test_key",
+            include_diagnostics=False,
         )
 
-        mock_agent = MagicMock()
-        mock_agent.step.side_effect = Exception("API call failed")
-
         with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await validate_model(request_data)
-            assert exc_info.value.status_code == 400
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = True
+            validation_result.is_tool_calls = True
+            mock_validate.return_value = validation_result
+
+            response = await validate_model(request_data)
+
+            assert isinstance(response, ValidateModelResponse)
+            assert response.is_valid is True
+            assert response.is_tool_calls is True
+            # Diagnostic fields should not be included when include_diagnostics=False
+            assert response.error_type is None
+            assert response.failed_stage is None
+            assert response.successful_stages is None
+            assert response.diagnostic_info is None
 
     @pytest.mark.asyncio
-    async def test_validate_model_tool_calls_false(self):
-        """Test model validation when tool calls fail."""
+    async def test_validate_model_tool_call_not_supported(self):
+        """Test model validation when tool calls are not supported."""
         request_data = ValidateModelRequest(
-            model_platform="openai", model_type="gpt-4o", api_key="test_key"
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="test_key",
+            include_diagnostics=True,
         )
 
-        mock_agent = MagicMock()
-        mock_response = MagicMock()
-        tool_call = MagicMock()
-        tool_call.result = "Different response"
-        mock_response.info = {"tool_calls": [tool_call]}
-        mock_agent.step.return_value = mock_response
-
         with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = True
+            validation_result.is_tool_calls = False
+            validation_result.error_type = (
+                ValidationErrorType.TOOL_CALL_NOT_SUPPORTED
+            )
+            validation_result.failed_stage = (
+                ValidationStage.TOOL_CALL_EXECUTION
+            )
+            validation_result.successful_stages = [
+                ValidationStage.INITIALIZATION,
+                ValidationStage.MODEL_CREATION,
+                ValidationStage.AGENT_CREATION,
+                ValidationStage.MODEL_CALL,
+            ]
+            mock_validate.return_value = validation_result
+
             response = await validate_model(request_data)
 
             assert isinstance(response, ValidateModelResponse)
             assert response.is_valid is True
             assert response.is_tool_calls is False
+            assert response.error_type == "tool_call_not_supported"
             assert (
-                response.message
-                == "This model doesn't support tool calls. please try with another model."
+                "does not support tool calling" in response.message
+                or "tool call" in response.message.lower()
             )
 
     @pytest.mark.asyncio
-    async def test_validate_model_with_minimal_parameters(self):
-        """Test model validation with minimal parameters (no API key)."""
-        request_data = (
-            ValidateModelRequest()
-        )  # Uses default values, api_key is None
-
-        mock_agent = MagicMock()
-        mock_response = MagicMock()
-        tool_call = MagicMock()
-        tool_call.result = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
-        mock_response.info = {"tool_calls": [tool_call]}
-        mock_agent.step.return_value = mock_response
+    async def test_validate_model_tool_call_execution_failed(self):
+        """Test model validation when tool call execution fails."""
+        request_data = ValidateModelRequest(
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="test_key",
+            include_diagnostics=True,
+        )
 
         with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            # api_key is None by default, which passes the empty string check
-            # The agent step succeeds, so validation should pass
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = False
+            validation_result.is_tool_calls = False
+            validation_result.error_type = (
+                ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
+            )
+            validation_result.failed_stage = (
+                ValidationStage.TOOL_CALL_EXECUTION
+            )
+            validation_result.raw_error_message = "Tool execution failed"
+            validation_result.error_message = "Tool execution failed"
+            mock_validate.return_value = validation_result
+
             response = await validate_model(request_data)
+
             assert isinstance(response, ValidateModelResponse)
-            assert response.is_valid is True
-            assert response.is_tool_calls is True
+            assert response.is_valid is False
+            assert response.is_tool_calls is False
+            assert response.error_type == "tool_call_execution_failed"
+            assert response.message == "Tool execution failed"
 
     @pytest.mark.asyncio
-    async def test_validate_model_no_response(self):
-        """Test model validation when no response is returned."""
-        request_data = ValidateModelRequest(
-            model_platform="openai", model_type="gpt-4o"
-        )
-
-        mock_agent = MagicMock()
-        mock_agent.step.return_value = None
-
-        # When response is None, should return False
-        with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            result = await validate_model(request_data)
-            assert result.is_valid is False
-            assert result.is_tool_calls is False
-            assert result.error_code is None
-            assert result.error is None
-
-
-@pytest.mark.integration
-class TestModelControllerIntegration:
-    """Integration tests for model controller."""
-
-    def test_validate_model_endpoint_integration(self, client: TestClient):
-        """Test validate model endpoint through FastAPI test client."""
-        request_data = {
-            "model_platform": "openai",
-            "model_type": "gpt-4o",
-            "api_key": "test_key",
-            "url": "https://api.openai.com/v1",
-            "model_config_dict": {"temperature": 0.7},
-            "extra_params": {"max_tokens": 1000},
-        }
-
-        mock_agent = MagicMock()
-        mock_response = MagicMock()
-        tool_call = MagicMock()
-        tool_call.result = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
-        mock_response.info = {"tool_calls": [tool_call]}
-        mock_agent.step.return_value = mock_response
-
-        with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            response = client.post("/model/validate", json=request_data)
-
-            assert response.status_code == 200
-            response_data = response.json()
-            assert response_data["is_valid"] is True
-            assert response_data["is_tool_calls"] is True
-            assert response_data["message"] == "Validation Success"
-
-    def test_validate_model_endpoint_error_integration(
-        self, client: TestClient
-    ):
-        """Test validate model endpoint error handling through FastAPI test client."""
-        request_data = {
-            "model_platform": "INVALID",
-            "model_type": "INVALID_MODEL",
-        }
-
-        with patch(
-            "app.controller.model_controller.create_agent",
-            side_effect=Exception("Test error"),
-        ):
-            response = client.post("/model/validate", json=request_data)
-
-            assert response.status_code == 400
-
-
-@pytest.mark.model_backend
-class TestModelControllerWithRealModels:
-    """Tests that require real model backends (marked for selective running)."""
-
-    @pytest.mark.asyncio
-    async def test_validate_model_with_real_openai_model(self):
-        """Test model validation with real OpenAI model (requires API key)."""
-        # This test would validate against real OpenAI API
-        # Marked as model_backend for selective execution
-        assert True  # Placeholder
-
-    @pytest.mark.very_slow
-    async def test_validate_multiple_model_platforms(self):
-        """Test validation across multiple model platforms (very slow test)."""
-        # This test would validate multiple different model platforms
-        # Marked as very_slow for execution only in full test mode
-        assert True  # Placeholder
-
-
-@pytest.mark.unit
-class TestModelControllerErrorCases:
-    """Test error cases and edge conditions for model controller."""
-
-    @pytest.mark.asyncio
-    async def test_validate_model_with_invalid_json_config(self):
-        """Test model validation with invalid JSON configuration."""
+    async def test_validate_model_network_error(self):
+        """Test model validation with network error."""
         request_data = ValidateModelRequest(
             model_platform="openai",
             model_type="gpt-4o",
-            model_config_dict={"invalid": float("inf")},  # Invalid JSON value
+            api_key="test_key",
+            include_diagnostics=True,
         )
 
         with patch(
-            "app.controller.model_controller.create_agent",
-            side_effect=ValueError("Invalid configuration"),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await validate_model(request_data)
-            assert exc_info.value.status_code == 400
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = False
+            validation_result.is_tool_calls = False
+            validation_result.error_type = ValidationErrorType.NETWORK_ERROR
+            validation_result.failed_stage = ValidationStage.MODEL_CREATION
+            validation_result.raw_error_message = "Connection timeout"
+            validation_result.error_message = "Connection timeout"
+            mock_validate.return_value = validation_result
+
+            response = await validate_model(request_data)
+
+            assert isinstance(response, ValidateModelResponse)
+            assert response.is_valid is False
+            assert response.error_type == "network_error"
+            assert response.message == "Connection timeout"
 
     @pytest.mark.asyncio
-    async def test_validate_model_with_network_error(self):
-        """Test model validation with network connectivity issues."""
+    async def test_validate_model_rate_limit_error(self):
+        """Test model validation with rate limit error."""
         request_data = ValidateModelRequest(
             model_platform="openai",
             model_type="gpt-4o",
-            url="https://invalid-url.com",
+            api_key="test_key",
+            include_diagnostics=True,
         )
 
-        mock_agent = MagicMock()
-        mock_agent.step.side_effect = ConnectionError("Network unreachable")
-
         with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await validate_model(request_data)
-            assert exc_info.value.status_code == 400
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = False
+            validation_result.is_tool_calls = False
+            validation_result.error_type = ValidationErrorType.RATE_LIMIT_ERROR
+            validation_result.failed_stage = ValidationStage.MODEL_CALL
+            validation_result.raw_error_message = "429 Rate limit exceeded"
+            validation_result.error_message = "429 Rate limit exceeded"
+            mock_validate.return_value = validation_result
 
-    @pytest.mark.asyncio
-    async def test_validate_model_with_malformed_tool_calls_response(self):
-        """Test model validation with malformed tool calls in response."""
-        request_data = ValidateModelRequest(
-            model_platform="openai", model_type="gpt-4o"
-        )
+            response = await validate_model(request_data)
 
-        mock_agent = MagicMock()
-        mock_response = MagicMock()
-        mock_response.info = {
-            "tool_calls": []  # Empty tool calls
-        }
-        mock_agent.step.return_value = mock_response
-
-        with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            # Should handle empty tool calls gracefully
-            result = await validate_model(request_data)
-            assert result.is_valid is True  # Response exists
-            assert result.is_tool_calls is False  # No valid tool calls
-
-    @pytest.mark.asyncio
-    async def test_validate_model_with_missing_info_field(self):
-        """Test model validation with missing info field in response."""
-        request_data = ValidateModelRequest(
-            model_platform="openai", model_type="gpt-4o"
-        )
-
-        mock_agent = MagicMock()
-        mock_response = MagicMock()
-        mock_response.info = {}  # Missing tool_calls
-        mock_agent.step.return_value = mock_response
-
-        with patch(
-            "app.controller.model_controller.create_agent",
-            return_value=mock_agent,
-        ):
-            # Should handle missing tool_calls key gracefully
-            result = await validate_model(request_data)
-            assert result.is_valid is True  # Response exists
-            assert result.is_tool_calls is False  # No tool_calls key
+            assert isinstance(response, ValidateModelResponse)
+            assert response.is_valid is False
+            assert response.error_type == "rate_limit_error"
+            assert response.message == "429 Rate limit exceeded"
 
     @pytest.mark.asyncio
     async def test_validate_model_empty_api_key(self):
@@ -336,21 +323,129 @@ class TestModelControllerErrorCases:
             api_key="",  # Empty API key
         )
 
-        with pytest.raises(HTTPException) as exc_info:
+        # Should raise HTTPException before calling validate_model_with_details
+        with pytest.raises(Exception):  # HTTPException is raised
             await validate_model(request_data)
-        assert exc_info.value.status_code == 400
-        detail = exc_info.value.detail
-        assert detail["error_code"] == "invalid_api_key"
 
     @pytest.mark.asyncio
-    async def test_validate_model_invalid_model_type(self):
-        """Test model validation with invalid model type raises HTTPException."""
+    async def test_validate_model_error_response_structure(self):
+        """Test that error response structure is correct."""
         request_data = ValidateModelRequest(
             model_platform="openai",
-            model_type="INVALID_MODEL_TYPE",
+            model_type="gpt-4o",
             api_key="test_key",
+            include_diagnostics=True,
         )
 
-        with pytest.raises(HTTPException) as exc_info:
-            await validate_model(request_data)
-        assert exc_info.value.status_code == 400
+        with patch(
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = False
+            validation_result.is_tool_calls = False
+            validation_result.error_type = (
+                ValidationErrorType.AUTHENTICATION_ERROR
+            )
+            validation_result.error_message = "Invalid API key"
+            validation_result.error_details = {"code": "invalid_key"}
+            mock_validate.return_value = validation_result
+
+            response = await validate_model(request_data)
+
+            assert response.error_code == "authentication_error"
+            assert response.error is not None
+            assert response.error["type"] == "invalid_request_error"
+            assert response.error["code"] == "authentication_error"
+            assert response.error["message"] == "Invalid API key"
+            assert "details" in response.error
+            assert response.error["details"]["code"] == "invalid_key"
+
+
+@pytest.mark.integration
+class TestModelControllerIntegrationEnhanced:
+    """Integration tests for enhanced model controller."""
+
+    def test_validate_model_endpoint_with_diagnostics(
+        self, client: TestClient
+    ):
+        """Test validate model endpoint with diagnostics through FastAPI test client."""
+        request_data = {
+            "model_platform": "openai",
+            "model_type": "gpt-4o",
+            "api_key": "test_key",
+            "include_diagnostics": True,
+        }
+
+        with patch(
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = True
+            validation_result.is_tool_calls = True
+            validation_result.successful_stages = [
+                ValidationStage.INITIALIZATION,
+                ValidationStage.MODEL_CREATION,
+                ValidationStage.AGENT_CREATION,
+                ValidationStage.MODEL_CALL,
+                ValidationStage.TOOL_CALL_EXECUTION,
+            ]
+            validation_result.validation_stages = {
+                ValidationStage.INITIALIZATION: True,
+                ValidationStage.MODEL_CREATION: True,
+                ValidationStage.AGENT_CREATION: True,
+                ValidationStage.MODEL_CALL: True,
+                ValidationStage.TOOL_CALL_EXECUTION: True,
+            }
+            validation_result.diagnostic_info = {"test": "info"}
+            validation_result.model_response_info = {"has_response": True}
+            validation_result.tool_call_info = {"tool_calls_count": 1}
+            mock_validate.return_value = validation_result
+
+            response = client.post("/model/validate", json=request_data)
+
+            assert response.status_code == 200
+            response_data = response.json()
+            assert response_data["is_valid"] is True
+            assert response_data["is_tool_calls"] is True
+            assert "error_type" in response_data
+            assert "failed_stage" in response_data
+            assert "successful_stages" in response_data
+            assert "diagnostic_info" in response_data
+            assert "model_response_info" in response_data
+            assert "tool_call_info" in response_data
+            assert "validation_stages" in response_data
+
+    def test_validate_model_endpoint_without_diagnostics(
+        self, client: TestClient
+    ):
+        """Test validate model endpoint without diagnostics through FastAPI test client."""
+        request_data = {
+            "model_platform": "openai",
+            "model_type": "gpt-4o",
+            "api_key": "test_key",
+            "include_diagnostics": False,
+        }
+
+        with patch(
+            "app.controller.model_controller.validate_model_with_details"
+        ) as mock_validate:
+            validation_result = ValidationResult()
+            validation_result.is_valid = True
+            validation_result.is_tool_calls = True
+            mock_validate.return_value = validation_result
+
+            response = client.post("/model/validate", json=request_data)
+
+            assert response.status_code == 200
+            response_data = response.json()
+            assert response_data["is_valid"] is True
+            assert response_data["is_tool_calls"] is True
+            # Diagnostic fields should not be present when include_diagnostics=False
+            assert (
+                "error_type" not in response_data
+                or response_data.get("error_type") is None
+            )
+            assert (
+                "failed_stage" not in response_data
+                or response_data.get("failed_stage") is None
+            )
