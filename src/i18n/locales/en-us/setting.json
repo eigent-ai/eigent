@@ -1,6 +1,7 @@
 {
   "settings": "Settings",
   "general": "General",
+  "permissions": "Permissions",
   "privacy": "Privacy",
   "models": "Models",
   "mcp": "MCP & Tools",
@@ -18,6 +19,9 @@
   "dark": "Dark",
   "light": "Light",
   "transparent": "Transparent",
+
+  "safe-mode": "Safe Mode",
+  "safe-mode-hint": "With Safe Mode active, Eigent will pause and seek explicit approval whenever high-risk system operations are detected.",
 
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",
@@ -235,6 +239,9 @@
   "dark": "Dark",
   "light": "Light",
   "transparent": "Transparent",
+
+  "safe-mode": "Safe Mode",
+  "safe-mode-hint": "With Safe Mode active, Eigent will pause and seek explicit approval whenever high-risk system operations are detected.",
 
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",

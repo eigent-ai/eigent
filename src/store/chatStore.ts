@@ -73,6 +73,8 @@ interface Task {
   isTakeControl: boolean;
   isTaskEdit: boolean;
   isContextExceeded?: boolean;
+  // HITL: pending dangerous terminal command approval (no 30s timer)
+  activeTerminalApproval: { command: string } | null;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
 }
@@ -113,6 +115,11 @@ export interface ChatStore {
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
+  setActiveTerminalApproval: (
+    taskId: string,
+    payload: { command: string } | null
+  ) => void;
+  clearActiveTerminalApproval: (taskId: string) => void;
   addWebViewUrl: (
     taskId: string,
     webViewUrl: string,
@@ -282,6 +289,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshotsTemp: [],
             isTakeControl: false,
             isTaskEdit: false,
+            activeTerminalApproval: null,
             streamingDecomposeText: '',
           },
         },
@@ -720,6 +728,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               installed_mcp: { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
+              safe_mode: (() => {
+                try {
+                  return localStorage.getItem('eigent_safe_mode') === 'true';
+                } catch {
+                  return false;
+                }
+              })(),
               attaches: (
                 messageAttaches ||
                 targetChatStore.getState().tasks[newTaskId]?.attaches ||
@@ -950,6 +965,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             addFileList,
             setActiveAsk,
             setActiveAskList,
+            setActiveTerminalApproval,
             tasks,
             create: _create,
             setTaskTime,
@@ -1817,6 +1833,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               agentMessages.data.process_task_id as string,
               agentMessages.data.output as string
             );
+            return;
+          }
+          // Terminal command approval (HITL) - no 30s auto-skip
+          if (agentMessages.step === AgentStep.TERMINAL_COMMAND_APPROVAL) {
+            setActiveTerminalApproval(currentTaskId, {
+              command: agentMessages.data?.command ?? '',
+            });
             return;
           }
           // Write File
@@ -2785,6 +2808,33 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           [taskId]: {
             ...state.tasks[taskId],
             activeAsk: agentName,
+          },
+        },
+      }));
+    },
+    setActiveTerminalApproval(
+      taskId: string,
+      payload: { command: string } | null
+    ) {
+      set((state) => ({
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [taskId]: {
+            ...state.tasks[taskId],
+            activeTerminalApproval: payload,
+          },
+        },
+      }));
+    },
+    clearActiveTerminalApproval(taskId: string) {
+      set((state) => ({
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [taskId]: {
+            ...state.tasks[taskId],
+            activeTerminalApproval: null,
           },
         },
       }));

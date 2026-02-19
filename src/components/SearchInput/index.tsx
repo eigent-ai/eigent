@@ -51,7 +51,7 @@ export default function SearchInput({
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [userExpanded, setUserExpanded] = useState(false);
-  const isExpanded = userExpanded || value.length > 0;
+  const isExpanded = userExpanded || (value ?? '').length > 0;
 
   const expand = useCallback(() => {
     setUserExpanded(true);
@@ -79,7 +79,7 @@ export default function SearchInput({
     return (
       <motion.div
         className={cn(
-          'flex items-center justify-center py-0.5 overflow-hidden rounded-lg border border-solid border-transparent bg-transparent',
+          'flex items-center justify-center overflow-hidden rounded-lg border border-solid border-transparent bg-transparent py-0.5',
           'focus-within:border-input-border-focus focus-within:bg-input-bg-input',
           'hover:border-transparent hover:bg-surface-tertiary'
         )}

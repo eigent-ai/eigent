@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+import queue as stdlib_queue
 import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -58,6 +59,7 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
+    terminal_command_approval = "terminal_command_approval"  # backend -> user (HITL)
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -219,6 +221,15 @@ class ActionTerminalData(BaseModel):
     data: str
 
 
+class ActionTerminalCommandApprovalData(BaseModel):
+    """Request user approval for a dangerous terminal command (HITL)."""
+
+    action: Literal[Action.terminal_command_approval] = (
+        Action.terminal_command_approval
+    )
+    data: dict[Literal["command"], str]
+
+
 class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
 
@@ -296,6 +307,7 @@ ActionData = (
     | ActionSearchMcpData
     | ActionInstallMcpData
     | ActionTerminalData
+    | ActionTerminalCommandApprovalData
     | ActionStopData
     | ActionEndData
     | ActionTimeoutData
@@ -369,6 +381,13 @@ class TaskLock:
         self.last_task_summary = ""
         self.question_agent = None
         self.current_task_id = None
+
+        # HITL: queue for terminal dangerous-command approval (thread-safe)
+        self.terminal_approval_response: stdlib_queue.Queue[str] = (
+            stdlib_queue.Queue()
+        )
+        # HITL: "All Yes in this task" - skip further prompts for this task
+        self.approved_all_dangerous_commands: bool = False
 
         logger.info(
             "Task lock initialized",

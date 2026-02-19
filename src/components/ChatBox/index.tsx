@@ -1009,6 +1009,68 @@ export default function ChatBox(): JSX.Element {
             onSkip={handleSkip}
             isPauseResumeLoading={isPauseResumeLoading}
           />
+          {/* HITL: dangerous terminal command approval (no 30s auto-skip) */}
+          {chatStore.activeTaskId &&
+            chatStore.tasks[chatStore.activeTaskId]?.activeTerminalApproval && (
+              <div className="border-border-default mx-4 mb-2 flex flex-col gap-3 rounded-xl border bg-surface-secondary px-4 py-3">
+                <div className="text-body-sm font-medium text-text-heading">
+                  {t('chat.terminal-approval-prompt')}
+                </div>
+                <code className="break-all rounded bg-surface-tertiary px-2 py-1 text-body-sm text-text-secondary">
+                  {
+                    chatStore.tasks[chatStore.activeTaskId]
+                      .activeTerminalApproval?.command
+                  }
+                </code>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="bg-bg-fill-info-primary text-white rounded-lg px-3 py-1.5 text-body-sm font-medium hover:opacity-90"
+                    onClick={async () => {
+                      const taskId = chatStore.activeTaskId as string;
+                      const projectId = projectStore.activeProjectId;
+                      if (!projectId) return;
+                      await fetchPost(`/chat/${projectId}/terminal-approval`, {
+                        approval: 'approve_once',
+                      });
+                      chatStore.clearActiveTerminalApproval(taskId);
+                    }}
+                  >
+                    {t('chat.terminal-approval-yes')}
+                  </button>
+                  <button
+                    type="button"
+                    className="bg-bg-fill-info-primary text-white rounded-lg px-3 py-1.5 text-body-sm font-medium hover:opacity-90"
+                    onClick={async () => {
+                      const taskId = chatStore.activeTaskId as string;
+                      const projectId = projectStore.activeProjectId;
+                      if (!projectId) return;
+                      await fetchPost(`/chat/${projectId}/terminal-approval`, {
+                        approval: 'approve_all_in_task',
+                      });
+                      chatStore.clearActiveTerminalApproval(taskId);
+                    }}
+                  >
+                    {t('chat.terminal-approval-all-yes')}
+                  </button>
+                  <button
+                    type="button"
+                    className="border-border-default rounded-lg border px-3 py-1.5 text-body-sm font-medium text-text-secondary hover:bg-surface-tertiary"
+                    onClick={async () => {
+                      const taskId = chatStore.activeTaskId as string;
+                      const projectId = projectStore.activeProjectId;
+                      if (!projectId) return;
+                      await fetchPost(`/chat/${projectId}/terminal-approval`, {
+                        approval: 'reject',
+                      });
+                      chatStore.clearActiveTerminalApproval(taskId);
+                    }}
+                  >
+                    {t('chat.terminal-approval-no')}
+                  </button>
+                </div>
+              </div>
+            )}
           {chatStore.activeTaskId && (
             <BottomBox
               state={getBottomBoxState()}

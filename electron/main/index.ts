@@ -30,6 +30,7 @@ import fsp from 'fs/promises';
 import mime from 'mime';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
+import * as http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,9 +74,70 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAIN_DIST = path.join(__dirname, '../..');
 const RENDERER_DIST = path.join(MAIN_DIST, 'dist');
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+
+/** Use 127.0.0.1 instead of localhost so Node/Chromium use IPv4 (avoids connection refused when Vite listens on IPv4 only). */
+function getViteDevServerURL(): string | undefined {
+  if (!VITE_DEV_SERVER_URL) return undefined;
+  try {
+    const u = new URL(VITE_DEV_SERVER_URL);
+    if (u.hostname === 'localhost') {
+      u.hostname = '127.0.0.1';
+      return u.toString();
+    }
+    return VITE_DEV_SERVER_URL;
+  } catch {
+    return VITE_DEV_SERVER_URL;
+  }
+}
+
+const VITE_DEV_SERVER_URL_NORMALIZED = getViteDevServerURL();
+/** URL to use for loading the dev server (127.0.0.1 so IPv4 is used). */
+const DEV_SERVER_LOAD_URL =
+  VITE_DEV_SERVER_URL_NORMALIZED ?? VITE_DEV_SERVER_URL ?? undefined;
 const VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(MAIN_DIST, 'public')
   : RENDERER_DIST;
+
+/** Wait for Vite dev server to be reachable (avoids ERR_CONNECTION_REFUSED). */
+async function waitForViteDevServer(
+  maxAttempts = 60,
+  intervalMs = 500
+): Promise<void> {
+  const url = VITE_DEV_SERVER_URL_NORMALIZED ?? VITE_DEV_SERVER_URL;
+  if (!url) return;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const req = http.get(url, { timeout: 2000 }, (res) => {
+          res.destroy();
+          resolve();
+        });
+        req.on('error', () => reject(new Error('Connection refused')));
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Timeout'));
+        });
+      });
+      log.info(`Vite dev server ready at ${url} (attempt ${attempt})`);
+      return;
+    } catch {
+      if (attempt === 1 || attempt % 10 === 0 || attempt === maxAttempts) {
+        log.info(
+          `Waiting for Vite dev server at ${url}... (${attempt}/${maxAttempts})`
+        );
+      }
+      if (attempt === maxAttempts) {
+        log.warn(
+          `Vite dev server not reachable after ${maxAttempts} attempts. Start it with: npm run dev`
+        );
+        return;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+}
+
+let devLoadRetryCount = 0;
 
 // ==================== global variables ====================
 let win: BrowserWindow | null = null;
@@ -1617,8 +1679,8 @@ function registerIpcHandlers() {
       },
     });
 
-    if (VITE_DEV_SERVER_URL) {
-      childWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`);
+    if (DEV_SERVER_LOAD_URL) {
+      childWindow.loadURL(`${DEV_SERVER_LOAD_URL}#${arg}`);
     } else {
       childWindow.loadFile(indexHtml, { hash: arg });
     }
@@ -2244,8 +2306,8 @@ async function createWindow() {
       setTimeout(() => {
         if (win && !win.isDestroyed()) {
           log.info('[RENDERER] Attempting to reload after crash...');
-          if (VITE_DEV_SERVER_URL) {
-            win.loadURL(VITE_DEV_SERVER_URL);
+          if (DEV_SERVER_LOAD_URL) {
+            win.loadURL(DEV_SERVER_LOAD_URL);
           } else {
             win.loadFile(indexHtml);
           }
@@ -2260,14 +2322,30 @@ async function createWindow() {
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
-      // Retry loading after a delay
-      if (errorCode !== -3) {
-        // -3 is USER_CANCELLED, don't retry
+      if (errorCode === -3) return; // USER_CANCELLED, don't retry
+      // -102 = ERR_CONNECTION_REFUSED: wait for Vite then retry (up to 3 times)
+      const isConnectionRefused = errorCode === -102;
+      const canRetry =
+        isConnectionRefused && VITE_DEV_SERVER_URL && devLoadRetryCount < 3;
+      if (canRetry) {
+        devLoadRetryCount++;
+        log.info(
+          `[RENDERER] Waiting for Vite dev server before retry (${devLoadRetryCount}/3)...`
+        );
+        setTimeout(async () => {
+          if (!win || win.isDestroyed()) return;
+          await waitForViteDevServer();
+          if (win && !win.isDestroyed()) {
+            log.info('[RENDERER] Retrying load after failure...');
+            win.loadURL(DEV_SERVER_LOAD_URL!);
+          }
+        }, 2000);
+      } else if (!isConnectionRefused) {
         setTimeout(() => {
           if (win && !win.isDestroyed()) {
             log.info('[RENDERER] Retrying load after failure...');
-            if (VITE_DEV_SERVER_URL) {
-              win.loadURL(VITE_DEV_SERVER_URL);
+            if (DEV_SERVER_LOAD_URL) {
+              win.loadURL(DEV_SERVER_LOAD_URL);
             } else {
               win.loadFile(indexHtml);
             }
@@ -2514,7 +2592,8 @@ async function createWindow() {
 
   // Load content
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
+    await waitForViteDevServer();
+    win.loadURL(DEV_SERVER_LOAD_URL!);
     win.webContents.openDevTools();
   } else {
     win.loadFile(indexHtml);
@@ -2529,6 +2608,7 @@ async function createWindow() {
 
     win!.webContents.once('did-finish-load', () => {
       clearTimeout(loadTimeout);
+      devLoadRetryCount = 0;
       log.info(
         'Window content loaded, starting dependency check immediately...'
       );

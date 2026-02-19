@@ -65,6 +65,8 @@ class Chat(BaseModel):
     browser_port: int = 9222
     max_retries: int = 3
     allow_local_system: bool = False
+    safe_mode: bool = False
+    """When True, require explicit user approval for dangerous terminal commands (HITL)."""
     installed_mcp: McpServers = {"mcpServers": {}}
     bun_mirror: str = ""
     uvx_mirror: str = ""
@@ -151,6 +153,12 @@ class SupplementChat(BaseModel):
 class HumanReply(BaseModel):
     agent: str
     reply: str
+
+
+class TerminalApprovalRequest(BaseModel):
+    """User response for dangerous terminal command approval (HITL)."""
+
+    approval: Literal["approve_once", "approve_all_in_task", "reject"]
 
 
 class TaskContent(BaseModel):

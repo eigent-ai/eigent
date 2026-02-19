@@ -1,6 +1,7 @@
 {
   "settings": "설정",
   "general": "일반",
+  "permissions": "권한",
   "privacy": "개인정보",
   "models": "모델",
   "mcp": "MCP 및 도구",

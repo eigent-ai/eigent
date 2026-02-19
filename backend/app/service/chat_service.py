@@ -1071,6 +1071,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # questions (don't break, don't
                 # delete task_lock)
             elif item.action == Action.start:
+                # Reset HITL "approve all in task" for the new task (issue #1306)
+                if hasattr(task_lock, "approved_all_dangerous_commands"):
+                    task_lock.approved_all_dangerous_commands = False
                 # Check conversation history length before starting task
                 is_exceeded, total_length = check_conversation_history_length(
                     task_lock
@@ -1568,6 +1571,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "process_task_id": item.process_task_id,
                     },
                 )
+            elif item.action == Action.terminal_command_approval:
+                yield sse_json("terminal_command_approval", item.data)
             elif item.action == Action.pause:
                 if workforce is not None:
                     workforce.pause()
@@ -2422,11 +2427,12 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     for item in data.tools:
         tool_names.append(titleize(item))
     # Always include terminal_toolkit with proper working directory
+    safe_mode = getattr(options, "safe_mode", False)
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         agent_name=data.name,
         working_directory=working_directory,
-        safe_mode=True,
+        safe_mode=safe_mode,
         clone_current_env=True,
     )
     tools.extend(terminal_toolkit.get_tools())

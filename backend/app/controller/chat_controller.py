@@ -33,6 +33,7 @@ from app.model.chat import (
     McpServers,
     Status,
     SupplementChat,
+    TerminalApprovalRequest,
     sse_json,
 )
 from app.service.chat_service import step_solve
@@ -413,6 +414,19 @@ def human_reply(id: str, data: HumanReply):
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_human_input(data.agent, data.reply))
     chat_logger.debug("Human reply processed", extra={"task_id": id})
+    return Response(status_code=201)
+
+
+@router.post("/chat/{id}/terminal-approval")
+def terminal_approval(id: str, data: TerminalApprovalRequest):
+    """Accept user approval for a dangerous terminal command (HITL)."""
+    chat_logger.info(
+        "Terminal approval received",
+        extra={"task_id": id, "approval": data.approval},
+    )
+    task_lock = get_task_lock(id)
+    task_lock.terminal_approval_response.put(data.approval)
+    chat_logger.debug("Terminal approval processed", extra={"task_id": id})
     return Response(status_code=201)
 
 

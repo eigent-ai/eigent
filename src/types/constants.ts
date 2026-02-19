@@ -38,6 +38,7 @@ export const AgentStep = {
   REMOVE_TASK: 'remove_task',
   NOTICE: 'notice',
   ASK: 'ask',
+  TERMINAL_COMMAND_APPROVAL: 'terminal_command_approval',
   SYNC: 'sync',
   NOTICE_CARD: 'notice_card',
   FAILED: 'failed',
