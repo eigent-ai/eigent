@@ -55,7 +55,8 @@ export default function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="bg-white/5 z-100 alert-dialog fixed inset-0"
+            className="alert-dialog fixed inset-0 z-[99] bg-black/20"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
             onClick={onClose}
           />
 
@@ -64,9 +65,9 @@ export default function ConfirmModal({
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="alert-dialog-wrapper fixed max-w-md rounded-xl shadow-perfect"
+            className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] max-w-md rounded-xl -translate-x-1/2 -translate-y-1/2"
           >
-            <div className="p-6">
+            <div className="p-6 rounded-xl border border-popup-border bg-surface-tertiary shadow-perfect">
               <span className="mb-2 text-body-lg font-bold text-text-primary">
                 {title}
               </span>

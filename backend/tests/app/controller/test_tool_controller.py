@@ -15,6 +15,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.controller.tool_controller import install_tool
@@ -37,14 +38,18 @@ class TestToolController:
             return_value=mock_toolkit,
         ):
             result = await install_tool(tool_name)
-        assert result == ["create_page", "update_page"]
+        assert result["success"] is True
+        assert result["tools"] == ["create_page", "update_page"]
+        assert result["count"] == 2
+        assert result["toolkit_name"] == "NotionMCPToolkit"
         mock_toolkit.connect.assert_called_once()
         mock_toolkit.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_install_unknown_tool(self):
-        result = await install_tool("unknown_tool")
-        assert result == {"error": "Tool not found"}
+        with pytest.raises(HTTPException) as exc_info:
+            await install_tool("unknown_tool")
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_install_notion_tool_connection_failure(self):
@@ -54,8 +59,11 @@ class TestToolController:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=mock_toolkit,
         ):
-            with pytest.raises(Exception, match="Connection failed"):
-                await install_tool("notion")
+            result = await install_tool("notion")
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert result["count"] == 0
+        assert "warning" in result
 
     @pytest.mark.asyncio
     async def test_install_notion_tool_get_tools_failure(self):
@@ -67,8 +75,11 @@ class TestToolController:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=mock_toolkit,
         ):
-            with pytest.raises(Exception, match="Failed to get tools"):
-                await install_tool("notion")
+            result = await install_tool("notion")
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert result["count"] == 0
+        assert "warning" in result
 
     @pytest.mark.asyncio
     async def test_install_notion_tool_disconnect_failure(self):
@@ -81,8 +92,11 @@ class TestToolController:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=mock_toolkit,
         ):
-            with pytest.raises(Exception, match="Disconnect failed"):
-                await install_tool("notion")
+            result = await install_tool("notion")
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert result["count"] == 0
+        assert "warning" in result
 
     @pytest.mark.asyncio
     async def test_install_notion_tool_empty_tools(self):
@@ -93,7 +107,9 @@ class TestToolController:
             return_value=mock_toolkit,
         ):
             result = await install_tool("notion")
-        assert result == []
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert result["count"] == 0
         mock_toolkit.connect.assert_called_once()
         mock_toolkit.disconnect.assert_called_once()
 
@@ -117,7 +133,9 @@ class TestToolController:
             return_value=mock_toolkit,
         ):
             result = await install_tool("notion")
-        assert result == names
+        assert result["success"] is True
+        assert result["tools"] == names
+        assert result["count"] == 4
         mock_toolkit.connect.assert_called_once()
         mock_toolkit.disconnect.assert_called_once()
 
@@ -145,7 +163,10 @@ class TestToolControllerIntegration:
             response = client.post(f"/install/tool/{tool_name}")
 
             assert response.status_code == 200
-            assert response.json() == ["create_page", "update_page"]
+            data = response.json()
+            assert data["success"] is True
+            assert data["tools"] == ["create_page", "update_page"]
+            assert data["count"] == 2
 
     def test_install_unknown_tool_endpoint_integration(
         self, client: TestClient
@@ -155,8 +176,7 @@ class TestToolControllerIntegration:
 
         response = client.post(f"/install/tool/{tool_name}")
 
-        assert response.status_code == 200
-        assert response.json() == {"error": "Tool not found"}
+        assert response.status_code == 404
 
     def test_install_notion_tool_endpoint_with_connection_error(
         self, client: TestClient
@@ -171,9 +191,12 @@ class TestToolControllerIntegration:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=mock_toolkit,
         ):
-            # The exception should be raised by the endpoint since there's no error handling
-            with pytest.raises(Exception, match="Connection failed"):
-                client.post(f"/install/tool/{tool_name}")
+            response = client.post(f"/install/tool/{tool_name}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["tools"] == []
+            assert "warning" in data
 
 
 @pytest.mark.model_backend
@@ -211,8 +234,11 @@ class TestToolControllerErrorCases:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=mock_toolkit,
         ):
-            with pytest.raises(AttributeError):
-                await install_tool("notion")
+            # Inner except catches the AttributeError and returns success with empty tools
+            result = await install_tool("notion")
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert "warning" in result
 
     @pytest.mark.asyncio
     async def test_install_tool_with_none_toolkit(self):
@@ -220,23 +246,29 @@ class TestToolControllerErrorCases:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=None,
         ):
-            with pytest.raises(AttributeError):
-                await install_tool("notion")
+            # Inner except catches AttributeError on None.connect()
+            result = await install_tool("notion")
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert "warning" in result
 
     @pytest.mark.asyncio
     async def test_install_tool_with_special_characters_in_name(self):
-        result = await install_tool("notion@#$%")
-        assert result == {"error": "Tool not found"}
+        with pytest.raises(HTTPException) as exc_info:
+            await install_tool("notion@#$%")
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_install_tool_with_empty_string_name(self):
-        result = await install_tool("")
-        assert result == {"error": "Tool not found"}
+        with pytest.raises(HTTPException) as exc_info:
+            await install_tool("")
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_install_tool_with_none_name(self):
-        result = await install_tool(None)
-        assert result == {"error": "Tool not found"}
+        with pytest.raises(HTTPException) as exc_info:
+            await install_tool(None)
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_install_notion_tool_partial_failure(self):
@@ -252,5 +284,8 @@ class TestToolControllerErrorCases:
             "app.controller.tool_controller.NotionMCPToolkit",
             return_value=mock_toolkit,
         ):
-            with pytest.raises(AttributeError):
-                await install_tool("notion")
+            # Inner except catches the AttributeError from tools[2].func
+            result = await install_tool("notion")
+        assert result["success"] is True
+        assert result["tools"] == []
+        assert "warning" in result

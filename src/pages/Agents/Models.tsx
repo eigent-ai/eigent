@@ -242,7 +242,8 @@ export default function SettingModels() {
                 ...fi,
                 provider_id: found.id,
                 apiKey: found.api_key || '',
-                apiHost: found.endpoint_url || '',
+                // Fall back to provider's default API host if endpoint_url is empty
+                apiHost: found.endpoint_url || item.apiHost,
                 is_valid: !!found?.is_valid,
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
@@ -587,7 +588,8 @@ export default function SettingModels() {
               ...fi,
               provider_id: found.id,
               apiKey: found.api_key || '',
-              apiHost: found.endpoint_url || '',
+              // Fall back to provider's default API host if endpoint_url is empty
+              apiHost: found.endpoint_url || item.apiHost,
               is_valid: !!found.is_valid,
               prefer: found.prefer ?? false,
               externalConfig: fi.externalConfig
@@ -918,7 +920,8 @@ export default function SettingModels() {
           const item = items[i];
           return {
             apiKey: '',
-            apiHost: '',
+            // Restore provider's default API host instead of clearing it
+            apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
             externalConfig: item.externalConfig
