@@ -184,9 +184,9 @@ async def install(mcp_id: int, session: Session = Depends(session), auth: Auth =
             mcp_desc=mcp.description,
             type=mcp.type,
             status=Status.enable,
-            command=install_command["command"],
-            args=install_command["args"],
-            env=install_command["env"],
+            command=install_command.get("command"),
+            args=install_command.get("args", []),
+            env=install_command.get("env", {}),
             server_url=None,
         )
         mcp_user.save()

@@ -121,6 +121,7 @@ def list_grouped_chat_history(
             "tasks": [],
             "total_completed_tasks": 0,
             "total_ongoing_tasks": 0,
+            "total_failed_tasks": 0,
             "average_tokens_per_task": 0,
         }
     )

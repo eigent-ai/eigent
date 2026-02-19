@@ -53,6 +53,10 @@ async def by_password(data: LoginByPasswordIn, session: Session = Depends(sessio
         logger.warning("Login failed: invalid password", extra={"user_id": user.id, "email": email})
         raise UserException(code.password, _("Account or password error"))
 
+    if user.status == Status.Block:
+        logger.warning("Login failed: user is blocked", extra={"user_id": user.id, "email": email})
+        raise UserException(code.error, _("Your account has been blocked."))
+
     logger.info("User login successful", extra={"user_id": user.id, "email": email})
     return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
 
@@ -81,6 +85,10 @@ async def dev_login(
             extra={"user_id": user.id, "email": email},
         )
         raise HTTPException(status_code=401, detail="Incorrect username or password")
+
+    if user.status == Status.Block:
+        logger.warning("OAuth2 login failed: user is blocked", extra={"user_id": user.id, "email": email})
+        raise HTTPException(status_code=403, detail="Your account has been blocked.")
 
     token = Auth.create_access_token(user.id)
     logger.info("OAuth2 login successful", extra={"user_id": user.id, "email": email})
