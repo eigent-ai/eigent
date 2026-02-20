@@ -49,6 +49,13 @@ OPENAI_COMPATIBLE_PLATFORMS = {
     "modelark",
 }
 
+# Enum definition index for each model — newer models have higher indices.
+# CAMEL defines newer models after older ones within each provider family,
+# so the definition index serves as a natural recency proxy.
+CAMEL_MODEL_ORDER: dict[str, int] = {
+    mt.value: idx for idx, mt in enumerate(ModelType)
+}
+
 # Maps platform names to model name prefixes for filtering
 # Empty list means the platform can run any model
 MODEL_PREFIXES: dict[str, list[str]] = {
@@ -392,6 +399,9 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
         else:
             model_types = all_model_types
 
+        # Track creation timestamps from API for recency sorting
+        api_model_created: dict[str, int] = {}
+
         # For OpenAI-compatible platforms with an API key,
         # also fetch live models from the API
         if api_key and platform_lower in OPENAI_COMPATIBLE_PLATFORMS:
@@ -406,13 +416,16 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
                     )
                     if response.status_code == 200:
                         data = response.json()
-                        api_models = [
-                            model["id"]
-                            for model in data.get("data", [])
-                            if model.get("id")
-                        ]
-                        combined = list(set(model_types + api_models))
-                        model_types = sorted(combined)
+                        api_models: list[str] = []
+                        for model in data.get("data", []):
+                            model_id = model.get("id")
+                            if model_id:
+                                api_models.append(model_id)
+                                if model.get("created"):
+                                    api_model_created[model_id] = model[
+                                        "created"
+                                    ]
+                        model_types = list(set(model_types + api_models))
                         source = "camel+api"
                         logger.info(
                             f"Fetched {len(api_models)} models from API"
@@ -425,7 +438,17 @@ async def get_model_types(request: ModelTypeSuggestionRequest):
             except Exception as e:
                 logger.warning(f"Error fetching models from API: {e}")
 
-        model_types = sorted(set(model_types))
+        # Sort by recency: API timestamp (desc) → CAMEL enum index (desc)
+        def recency_key(name: str) -> tuple[int, int]:
+            created = api_model_created.get(name)
+            if created is not None:
+                return (1, created)
+            idx = CAMEL_MODEL_ORDER.get(name)
+            if idx is not None:
+                return (0, idx)
+            return (-1, 0)
+
+        model_types = sorted(set(model_types), key=recency_key, reverse=True)
         return ModelTypeSuggestionResponse(
             model_types=model_types, source=source
         )
