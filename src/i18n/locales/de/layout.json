@@ -169,5 +169,8 @@
   "delete-project": "Projekt löschen",
   "delete-project-confirmation": "Sind Sie sicher, dass Sie dieses Projekt und alle seine Aufgaben löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
   "please-select-model": "Bitte wählen Sie ein Modell unter Einstellungen > Modelle aus, um fortzufahren.",
-  "capabilities": "Fähigkeiten"
+  "capabilities": "Fähigkeiten",
+  "remember-me": "Angemeldet bleiben",
+  "saved-accounts": "Gespeicherte Konten",
+  "remove-account": "Entfernen"
 }

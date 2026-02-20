@@ -169,5 +169,8 @@
   "delete-project": "プロジェクトを削除",
   "delete-project-confirmation": "このプロジェクトとそのすべてのタスクを削除してもよろしいですか？この操作は元に戻せません。",
   "please-select-model": "続行するには、設定 > モデルでモデルを選択してください。",
-  "capabilities": "機能"
+  "capabilities": "機能",
+  "remember-me": "ログイン情報を保存",
+  "saved-accounts": "保存済みアカウント",
+  "remove-account": "削除"
 }

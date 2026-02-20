@@ -171,5 +171,8 @@
   "delete-project": "Delete Project",
   "delete-project-confirmation": "Are you sure you want to delete this project and all its tasks? This action cannot be undone.",
   "please-select-model": "Please select a model in Settings > Models to continue.",
-  "capabilities": "Capabilities"
+  "capabilities": "Capabilities",
+  "remember-me": "Remember me",
+  "saved-accounts": "Saved accounts",
+  "remove-account": "Remove"
 }

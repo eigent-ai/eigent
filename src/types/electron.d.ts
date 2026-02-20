@@ -206,6 +206,18 @@ interface ElectronAPI {
     userId: string,
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
+  // Saved credentials
+  credentialsSave: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  credentialsLoad: () => Promise<{
+    success: boolean;
+    credentials: Array<{ email: string; password: string }>;
+  }>;
+  credentialsRemove: (
+    email: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

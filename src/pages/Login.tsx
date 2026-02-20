@@ -15,7 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Input } from '@/components/ui/input';
@@ -55,6 +55,12 @@ export default function Login() {
   const [generalError, setGeneralError] = useState('');
   const titlebarRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<
+    Array<{ email: string; password: string }>
+  >([]);
+  const [showSavedAccounts, setShowSavedAccounts] = useState(false);
+  const savedAccountsRef = useRef<HTMLDivElement>(null);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -140,7 +146,69 @@ export default function Login() {
     }
   };
 
-  //
+  // Load saved credentials on mount
+  useEffect(() => {
+    window.electronAPI
+      .credentialsLoad()
+      .then(
+        (result: {
+          success: boolean;
+          credentials: Array<{ email: string; password: string }>;
+        }) => {
+          if (result.success && result.credentials.length > 0) {
+            setSavedAccounts(result.credentials);
+            setRememberMe(true);
+            // Auto-fill the most recent saved account
+            const latest = result.credentials[result.credentials.length - 1];
+            setFormData({ email: latest.email, password: latest.password });
+          }
+        }
+      );
+  }, []);
+
+  // Close saved accounts dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        savedAccountsRef.current &&
+        !savedAccountsRef.current.contains(e.target as Node)
+      ) {
+        setShowSavedAccounts(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectAccount = (account: {
+    email: string;
+    password: string;
+  }) => {
+    setFormData({ email: account.email, password: account.password });
+    setShowSavedAccounts(false);
+    setErrors({ email: '', password: '' });
+    setGeneralError('');
+  };
+
+  const handleRemoveAccount = async (e: React.MouseEvent, email: string) => {
+    e.stopPropagation();
+    await window.electronAPI.credentialsRemove(email);
+    const updated = savedAccounts.filter((a) => a.email !== email);
+    setSavedAccounts(updated);
+    if (formData.email === email) {
+      setFormData({ email: '', password: '' });
+    }
+  };
+
+  const maskedEmail = useMemo(() => {
+    return (email: string) => {
+      const [local, domain] = email.split('@');
+      if (!domain) return email;
+      const visible = local.slice(0, 2);
+      return `${visible}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
+    };
+  }, []);
+
   const handleLogin = async () => {
     if (!validateForm()) {
       return;
@@ -158,6 +226,13 @@ export default function Login() {
       if (errorMessage) {
         setGeneralError(errorMessage);
         return;
+      }
+
+      // Save or remove credentials based on remember me preference
+      if (rememberMe) {
+        window.electronAPI.credentialsSave(formData.email, formData.password);
+      } else {
+        window.electronAPI.credentialsRemove(formData.email);
       }
 
       setAuth({ email: formData.email, ...data });
@@ -440,19 +515,52 @@ export default function Login() {
                 </p>
               )}
               <div className="relative mb-4 flex w-full flex-col gap-4">
-                <Input
-                  id="email"
-                  type="email"
-                  size="default"
-                  title={t('layout.email')}
-                  placeholder={t('layout.enter-your-email')}
-                  required
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  state={errors.email ? 'error' : undefined}
-                  note={errors.email}
-                  onEnter={handleLogin}
-                />
+                <div className="relative" ref={savedAccountsRef}>
+                  <Input
+                    id="email"
+                    type="email"
+                    size="default"
+                    title={t('layout.email')}
+                    placeholder={t('layout.enter-your-email')}
+                    required
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    state={errors.email ? 'error' : undefined}
+                    note={errors.email}
+                    onEnter={handleLogin}
+                    onFocus={() => {
+                      if (savedAccounts.length > 0) {
+                        setShowSavedAccounts(true);
+                      }
+                    }}
+                  />
+                  {showSavedAccounts && savedAccounts.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border-tertiary bg-surface-primary shadow-lg">
+                      <div className="px-3 py-2 text-label-sm text-text-secondary">
+                        {t('layout.saved-accounts')}
+                      </div>
+                      {savedAccounts.map((account) => (
+                        <div
+                          key={account.email}
+                          className="flex cursor-pointer items-center justify-between px-3 py-2 hover:bg-surface-secondary"
+                          onClick={() => handleSelectAccount(account)}
+                        >
+                          <span className="text-label-md text-text-primary">
+                            {maskedEmail(account.email)}
+                          </span>
+                          <button
+                            className="text-label-sm text-text-secondary hover:text-text-primary"
+                            onClick={(e) =>
+                              handleRemoveAccount(e, account.email)
+                            }
+                          >
+                            {t('layout.remove-account')}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <Input
                   id="password"
@@ -471,6 +579,18 @@ export default function Login() {
                   onBackIconClick={() => setHidePassword(!hidePassword)}
                   onEnter={handleLogin}
                 />
+
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer rounded border-border-tertiary accent-[#0D0D0D]"
+                  />
+                  <span className="text-label-md text-text-secondary">
+                    {t('layout.remember-me')}
+                  </span>
+                </label>
               </div>
             </div>
             <Button

@@ -169,5 +169,8 @@
   "delete-project": "حذف المشروع",
   "delete-project-confirmation": "هل أنت متأكد من أنك تريد حذف هذا المشروع وجميع مهامه؟ لا يمكن التراجع عن هذا الإجراء.",
   "please-select-model": "يرجى اختيار نموذج في الإعدادات > النماذج للمتابعة.",
-  "capabilities": "القدرات"
+  "capabilities": "القدرات",
+  "remember-me": "تذكرني",
+  "saved-accounts": "الحسابات المحفوظة",
+  "remove-account": "إزالة"
 }

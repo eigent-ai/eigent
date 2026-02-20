@@ -21,6 +21,7 @@ import {
   Menu,
   nativeTheme,
   protocol,
+  safeStorage,
   session,
   shell,
 } from 'electron';
@@ -1836,6 +1837,93 @@ function registerIpcHandlers() {
         hasLockFile,
         timestamp: Date.now(),
       };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // ==================== saved credentials handler ====================
+  const CREDENTIALS_FILE = path.join(
+    os.homedir(),
+    '.eigent',
+    'saved_credentials.enc'
+  );
+
+  const readSavedCredentials = (): Array<{
+    email: string;
+    password: string;
+  }> => {
+    try {
+      if (
+        !fs.existsSync(CREDENTIALS_FILE) ||
+        !safeStorage.isEncryptionAvailable()
+      ) {
+        return [];
+      }
+      const encrypted = fs.readFileSync(CREDENTIALS_FILE);
+      const decrypted = safeStorage.decryptString(encrypted);
+      return JSON.parse(decrypted);
+    } catch {
+      return [];
+    }
+  };
+
+  const writeSavedCredentials = (
+    credentials: Array<{ email: string; password: string }>
+  ) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption not available');
+    }
+    const dir = path.dirname(CREDENTIALS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const encrypted = safeStorage.encryptString(JSON.stringify(credentials));
+    fs.writeFileSync(CREDENTIALS_FILE, encrypted);
+    fs.chmodSync(CREDENTIALS_FILE, 0o600);
+  };
+
+  ipcMain.handle(
+    'credentials-save',
+    async (_event, email: string, password: string) => {
+      try {
+        const credentials = readSavedCredentials();
+        const index = credentials.findIndex((c) => c.email === email);
+        if (index >= 0) {
+          credentials[index].password = password;
+        } else {
+          credentials.push({ email, password });
+        }
+        writeSavedCredentials(credentials);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
+  ipcMain.handle('credentials-load', async () => {
+    try {
+      const credentials = readSavedCredentials();
+      return {
+        success: true,
+        credentials: credentials.map((c) => ({
+          email: c.email,
+          password: c.password,
+        })),
+      };
+    } catch (error) {
+      return { success: false, credentials: [] };
+    }
+  });
+
+  ipcMain.handle('credentials-remove', async (_event, email: string) => {
+    try {
+      const credentials = readSavedCredentials().filter(
+        (c) => c.email !== email
+      );
+      writeSavedCredentials(credentials);
+      return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
