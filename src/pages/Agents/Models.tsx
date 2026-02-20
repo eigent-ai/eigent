@@ -37,11 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
@@ -52,7 +47,6 @@ import {
   Cloud,
   Eye,
   EyeOff,
-  Info,
   Key,
   Loader2,
   RotateCcw,
@@ -455,6 +449,7 @@ export default function SettingModels() {
 
   // Cloud model options
   const cloudModelOptions = [
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
@@ -1183,39 +1178,8 @@ export default function SettingModels() {
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
                 {t('setting.select-model-type')}
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1 inline-flex cursor-pointer items-center">
-                    <Info className="h-4 w-4 text-icon-secondary" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  className="flex min-h-[40px] min-w-[220px] items-center justify-center text-center"
-                >
-                  <span className="flex w-full items-center justify-center">
-                    {cloud_model_type === 'gpt-4.1-mini'
-                      ? t('setting.gpt-4.1-mini')
-                      : cloud_model_type === 'gpt-4.1'
-                        ? t('setting.gpt-4.1')
-                        : cloud_model_type === 'claude-sonnet-4-5'
-                          ? t('setting.claude-sonnet-4-5')
-                          : cloud_model_type === 'gemini-3-pro-preview'
-                            ? t('setting.gemini-3-pro-preview')
-                            : cloud_model_type === 'gpt-5'
-                              ? t('setting.gpt-5')
-                              : cloud_model_type === 'gpt-5.1'
-                                ? t('setting.gpt-5')
-                                : cloud_model_type === 'gpt-5.2'
-                                  ? t('setting.gpt-5')
-                                  : cloud_model_type === 'gpt-5-mini'
-                                    ? t('setting.gpt-5-mini')
-                                    : t('setting.gemini-3-flash-preview')}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
             </div>
-            <div className="flex-shrink-0">
+            <div className="ml-4 flex-shrink-0">
               <Select
                 value={cloud_model_type}
                 onValueChange={setCloudModelType}
@@ -1224,6 +1188,9 @@ export default function SettingModels() {
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini-3.1-pro-preview">
+                    {t('setting.gemini-3.1-pro-preview-name')}
+                  </SelectItem>
                   <SelectItem value="gemini-3-pro-preview">
                     {t('setting.gemini-3-pro-preview-name')}
                   </SelectItem>
