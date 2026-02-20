@@ -255,10 +255,58 @@ export function Node({ id, data }: NodeProps) {
 
   const logRef = useRef<HTMLDivElement>(null);
   const rePortRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef(true);
+  const scrollThresholdPx = 60;
 
   const wheelHandler = useCallback((e: WheelEvent) => {
     e.stopPropagation();
   }, []);
+
+  // Auto-scroll log panel to latest when toolkits update (only if user was already at bottom)
+  const scrollLogToBottom = useCallback(() => {
+    const el = logRef.current;
+    if (!el || !wasAtBottomRef.current) return;
+    const deadline = Date.now() + 150;
+    const scroll = () => {
+      if (Date.now() > deadline) return;
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: 'smooth',
+      });
+    };
+    setTimeout(scroll, 50);
+  }, []);
+
+  const lastToolkitMessage = useMemo(() => {
+    const toolkits = selectedTask?.toolkits;
+    if (!toolkits?.length) return undefined;
+    return toolkits[toolkits.length - 1]?.message;
+  }, [selectedTask?.toolkits]);
+
+  useEffect(() => {
+    if (!isExpanded || !selectedTask?.toolkits?.length) return;
+    wasAtBottomRef.current = true;
+    scrollLogToBottom();
+  }, [
+    isExpanded,
+    selectedTask?.id,
+    selectedTask?.toolkits?.length,
+    lastToolkitMessage,
+    scrollLogToBottom,
+  ]);
+
+  // Track whether user has scrolled up so we don't override manual reading
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el || !isExpanded) return;
+    const onScroll = () => {
+      const { scrollTop, clientHeight, scrollHeight } = el;
+      wasAtBottomRef.current =
+        scrollTop + clientHeight >= scrollHeight - scrollThresholdPx;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [isExpanded, selectedTask?.id]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
