@@ -455,6 +455,7 @@ export default function SettingModels() {
 
   // Cloud model options
   const cloudModelOptions = [
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
@@ -1200,17 +1201,19 @@ export default function SettingModels() {
                         ? t('setting.gpt-4.1')
                         : cloud_model_type === 'claude-sonnet-4-5'
                           ? t('setting.claude-sonnet-4-5')
-                          : cloud_model_type === 'gemini-3-pro-preview'
-                            ? t('setting.gemini-3-pro-preview')
-                            : cloud_model_type === 'gpt-5'
-                              ? t('setting.gpt-5')
-                              : cloud_model_type === 'gpt-5.1'
+                          : cloud_model_type === 'gemini-3.1-pro-preview'
+                            ? t('setting.gemini-3.1-pro-preview')
+                            : cloud_model_type === 'gemini-3-pro-preview'
+                              ? t('setting.gemini-3-pro-preview')
+                              : cloud_model_type === 'gpt-5'
                                 ? t('setting.gpt-5')
-                                : cloud_model_type === 'gpt-5.2'
+                                : cloud_model_type === 'gpt-5.1'
                                   ? t('setting.gpt-5')
-                                  : cloud_model_type === 'gpt-5-mini'
-                                    ? t('setting.gpt-5-mini')
-                                    : t('setting.gemini-3-flash-preview')}
+                                  : cloud_model_type === 'gpt-5.2'
+                                    ? t('setting.gpt-5')
+                                    : cloud_model_type === 'gpt-5-mini'
+                                      ? t('setting.gpt-5-mini')
+                                      : t('setting.gemini-3-flash-preview')}
                   </span>
                 </TooltipContent>
               </Tooltip>
@@ -1224,6 +1227,9 @@ export default function SettingModels() {
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini-3.1-pro-preview">
+                    {t('setting.gemini-3.1-pro-preview-name')}
+                  </SelectItem>
                   <SelectItem value="gemini-3-pro-preview">
                     {t('setting.gemini-3-pro-preview-name')}
                   </SelectItem>

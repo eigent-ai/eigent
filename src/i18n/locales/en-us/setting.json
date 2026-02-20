@@ -55,6 +55,7 @@
   "gpt-4.1": "GPT-4.1: Higher cost, slower responses, but superior quality and reasoning.",
   "claude-opus-4.1": "Claude Opus 4.1: Higher cost, slower responses, but superior quality and reasoning.",
   "gpt-5": "GPT-5: Higher cost, slower responses, but superior quality and reasoning.",
+  "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview: Higher cost, slower responses, but superior quality and reasoning.",
   "gpt-5-mini": "GPT-5 mini: Higher cost, slower responses, but superior quality and reasoning.",
   "gpt-5-nano": "GPT-5 nano: Higher cost, slower responses, but superior quality and reasoning.",
   "custom-model": "Custom Model",
@@ -214,6 +215,7 @@
   "models-configuration": "Configuration",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
   "gpt-4.1-mini-name": "GPT-4.1 Mini",
   "gpt-4.1-name": "GPT-4.1",

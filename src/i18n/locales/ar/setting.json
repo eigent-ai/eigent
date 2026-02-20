@@ -55,6 +55,7 @@
   "gpt-4.1": "GPT-4.1: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "claude-opus-4.1": "Claude Opus 4.1: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "gpt-5": "GPT-5: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
+  "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "gpt-5-mini": "GPT-5 mini: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "gpt-5-nano": "GPT-5 nano: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "custom-model": "نموذج مخصص",
@@ -186,6 +187,7 @@
   "models-configuration": "التكوين",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
   "gpt-4.1-mini-name": "GPT-4.1 Mini",
   "gpt-4.1-name": "GPT-4.1",

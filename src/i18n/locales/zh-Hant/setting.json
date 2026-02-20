@@ -54,6 +54,7 @@
   "gpt-4.1": "GPT-4.1: 更高成本，更慢回應，但更高品質和推理。",
   "claude-opus-4.1": "Claude Opus 4.1: 更高成本，更慢回應，但更高品質和推理。",
   "gpt-5": "GPT-5: 更高成本，更慢回應，但更高品質和推理。",
+  "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview: 更高成本，更慢回應，但更高品質和推理。",
   "gpt-5-mini": "GPT-5 mini: 更高成本，更慢回應，但更高品質和推理。",
   "gpt-5-nano": "GPT-5 nano: 更高成本，更慢回應，但更高品質和推理。",
   "custom-model": "自訂模型",
@@ -176,6 +177,7 @@
   "models-configuration": "配置",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
   "gpt-4.1-mini-name": "GPT-4.1 Mini",
   "gpt-4.1-name": "GPT-4.1",
