@@ -29,7 +29,9 @@ import FormData from 'form-data';
 import fsp from 'fs/promises';
 import mime from 'mime';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs, { existsSync } from 'node:fs';
+import http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -96,21 +98,195 @@ interface CdpBrowser {
   addedAt: number;
 }
 let cdp_browser_pool: CdpBrowser[] = [];
+let cdpHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-// Map to store multiple browser processes by port
-let cdp_browser_processes: Map<number, ChildProcessWithoutNullStreams> =
-  new Map();
+const CDP_POOL_FILE = path.join(os.homedir(), '.eigent', 'cdp-browsers.json');
 
-/** Remove a non-external browser from the pool by port (used on process error/exit). */
-function removeFromPoolByPort(port: number, reason: string): void {
-  const idx = cdp_browser_pool.findIndex(
-    (b) => b.port === port && !b.isExternal
-  );
-  if (idx !== -1) {
-    const removed = cdp_browser_pool.splice(idx, 1)[0];
-    log.warn(
-      `[CDP POOL] Auto-removed port=${port} (${reason}), id=${removed.id}, pool_size=${cdp_browser_pool.length}`
+/** Persist pool to disk. */
+function saveCdpPool(): void {
+  try {
+    fs.writeFileSync(CDP_POOL_FILE, JSON.stringify(cdp_browser_pool, null, 2));
+  } catch (e) {
+    log.error(`[CDP POOL] Failed to save pool: ${e}`);
+  }
+}
+
+/** Load pool from disk. Mark all as external (process handles are lost after restart). */
+function loadCdpPool(): void {
+  try {
+    if (fs.existsSync(CDP_POOL_FILE)) {
+      const data = JSON.parse(fs.readFileSync(CDP_POOL_FILE, 'utf-8'));
+      cdp_browser_pool = (data as CdpBrowser[]).map((b) => ({
+        ...b,
+        isExternal: true,
+      }));
+      log.info(
+        `[CDP POOL] Loaded ${cdp_browser_pool.length} browser(s) from disk`
+      );
+    }
+  } catch (e) {
+    log.error(`[CDP POOL] Failed to load pool: ${e}`);
+    cdp_browser_pool = [];
+  }
+}
+
+/** Push current pool to frontend. */
+function notifyCdpPoolChanged(): void {
+  if (win && !win.isDestroyed()) {
+    log.info(
+      `[CDP POOL] Pushing pool update to frontend (size=${cdp_browser_pool.length})`
     );
+    win.webContents.send('cdp-pool-changed', cdp_browser_pool);
+  } else {
+    log.warn('[CDP POOL] Cannot notify: win is null or destroyed');
+  }
+}
+
+/** Probe a CDP port. Returns true if alive. */
+async function isCdpPortAlive(port: number): Promise<boolean> {
+  try {
+    const resp = await axios.get(`http://localhost:${port}/json/version`, {
+      timeout: 1500,
+    });
+    return resp.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+/** Run one health-check cycle: remove dead browsers, persist & notify if changed. */
+async function runPoolHealthCheck(): Promise<void> {
+  if (cdp_browser_pool.length === 0) return;
+  const results = await Promise.all(
+    cdp_browser_pool.map((b) => isCdpPortAlive(b.port))
+  );
+  const deadPorts: number[] = [];
+  for (let i = results.length - 1; i >= 0; i--) {
+    if (!results[i]) {
+      deadPorts.push(cdp_browser_pool[i].port);
+      cdp_browser_pool.splice(i, 1);
+    }
+  }
+  if (deadPorts.length > 0) {
+    log.info(
+      `[CDP POOL] Health-check removed dead ports: ${deadPorts.join(', ')}. pool_size=${cdp_browser_pool.length}`
+    );
+    saveCdpPool();
+    notifyCdpPoolChanged();
+  }
+}
+
+/** Start periodic health check (call after window is created). */
+function startCdpHealthCheck(): void {
+  log.info('[CDP POOL] Starting health check (interval=3s)');
+  // Run once immediately
+  runPoolHealthCheck();
+  cdpHealthCheckTimer = setInterval(runPoolHealthCheck, 3000);
+}
+
+function stopCdpHealthCheck(): void {
+  if (cdpHealthCheckTimer) {
+    clearInterval(cdpHealthCheckTimer);
+    cdpHealthCheckTimer = null;
+  }
+}
+
+/** Close a browser via CDP Browser.close() WebSocket command. Best-effort.
+ *  Uses raw Node.js http upgrade (no external ws dependency needed).
+ *  IMPORTANT: Never close the Electron app's own CDP port. */
+async function closeBrowserViaCdp(port: number): Promise<void> {
+  // Guard: refuse to close the Electron app's own CDP port
+  if (port === browser_port) {
+    log.warn(
+      `[CDP CLOSE] Refusing to close port ${port} (Electron app's own CDP port)`
+    );
+    return;
+  }
+
+  try {
+    const resp = await axios.get(`http://localhost:${port}/json/version`, {
+      timeout: 2000,
+    });
+    const wsUrl: string | undefined = resp.data?.webSocketDebuggerUrl;
+    if (!wsUrl) {
+      log.warn(`[CDP CLOSE] No webSocketDebuggerUrl for port ${port}`);
+      return;
+    }
+
+    const url = new URL(wsUrl);
+    const key = crypto.randomBytes(16).toString('base64');
+
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+
+      const req = http.request(
+        {
+          hostname: url.hostname,
+          port: url.port,
+          path: url.pathname,
+          method: 'GET',
+          headers: {
+            Connection: 'Upgrade',
+            Upgrade: 'websocket',
+            'Sec-WebSocket-Version': '13',
+            'Sec-WebSocket-Key': key,
+          },
+        },
+        () => done()
+      );
+
+      const timer = setTimeout(() => {
+        req.destroy();
+        done();
+      }, 3000);
+
+      req.on('upgrade', (_res, socket) => {
+        // Handle socket errors to prevent uncaught exceptions
+        socket.on('error', () => {});
+
+        // Build a masked WebSocket text frame with Browser.close
+        const payload = Buffer.from(
+          JSON.stringify({ id: 1, method: 'Browser.close' })
+        );
+        const mask = crypto.randomBytes(4);
+        const header = Buffer.alloc(6);
+        header[0] = 0x81; // FIN + text opcode
+        header[1] = 0x80 | payload.length; // MASK bit + length (<126)
+        mask.copy(header, 2);
+
+        const masked = Buffer.alloc(payload.length);
+        for (let i = 0; i < payload.length; i++) {
+          masked[i] = payload[i] ^ mask[i & 3];
+        }
+
+        socket.write(Buffer.concat([header, masked]));
+        log.info(`[CDP CLOSE] Sent Browser.close to port ${port}`);
+
+        // Give Chrome a moment to process, then clean up
+        setTimeout(() => {
+          clearTimeout(timer);
+          socket.destroy();
+          done();
+        }, 500);
+      });
+
+      req.on('error', (err) => {
+        log.warn(`[CDP CLOSE] Request error for port ${port}: ${err.message}`);
+        clearTimeout(timer);
+        done();
+      });
+
+      req.end();
+    });
+    log.info(`[CDP CLOSE] Successfully closed browser on port ${port}`);
+  } catch (err) {
+    log.warn(`[CDP CLOSE] Best-effort close failed for port ${port}: ${err}`);
   }
 }
 
@@ -442,16 +618,10 @@ function registerIpcHandlers() {
     return cdp_browser_pool;
   });
 
-  // Get running browser processes
-  ipcMain.handle('get-running-browser-ports', () => {
-    return Array.from(cdp_browser_processes.keys());
-  });
-
   // Add browser to pool
   ipcMain.handle(
     'add-cdp-browser',
     (event, port: number, isExternal: boolean, name?: string) => {
-      // Check if browser with this port already exists
       const existing = cdp_browser_pool.find((b) => b.port === port);
       if (existing) {
         log.warn(
@@ -472,6 +642,8 @@ function registerIpcHandlers() {
       };
 
       cdp_browser_pool.push(newBrowser);
+      saveCdpPool();
+      notifyCdpPoolChanged();
       log.info(
         `[CDP POOL] ADD: port=${port}, isExternal=${isExternal}, id=${newBrowser.id}, pool_size=${cdp_browser_pool.length}`
       );
@@ -480,394 +652,119 @@ function registerIpcHandlers() {
     }
   );
 
-  // Remove browser from pool
-  ipcMain.handle('remove-cdp-browser', (event, browserId: string) => {
-    const index = cdp_browser_pool.findIndex((b) => b.id === browserId);
-    if (index === -1) {
-      log.warn(`[CDP POOL] REMOVE: browser not found: ${browserId}`);
-      return { success: false, error: 'Browser not found' };
-    }
-
-    const removed = cdp_browser_pool.splice(index, 1)[0];
-
-    // If it's a launched browser, kill the process
-    if (!removed.isExternal && cdp_browser_processes.has(removed.port)) {
-      try {
-        const process = cdp_browser_processes.get(removed.port);
-        process?.kill();
-        cdp_browser_processes.delete(removed.port);
-      } catch (error) {
-        log.warn(
-          `[CDP POOL] Failed to kill browser process on port ${removed.port}: ${error}`
-        );
-      }
-    }
-
-    log.info(
-      `[CDP POOL] REMOVE: port=${removed.port}, id=${removed.id}, pool_size=${cdp_browser_pool.length}`
-    );
-    return { success: true, browser: removed };
-  });
-
-  // Update browser in pool
+  // Remove browser from pool (also closes the browser via CDP)
   ipcMain.handle(
-    'update-cdp-browser',
-    (event, browserId: string, updates: Partial<CdpBrowser>) => {
-      log.info(`Updating CDP browser: ${browserId}`);
-
-      const browser = cdp_browser_pool.find((b) => b.id === browserId);
-      if (!browser) {
+    'remove-cdp-browser',
+    async (event, browserId: string, closeBrowser: boolean = true) => {
+      const index = cdp_browser_pool.findIndex((b) => b.id === browserId);
+      if (index === -1) {
+        log.warn(`[CDP POOL] REMOVE: browser not found: ${browserId}`);
         return { success: false, error: 'Browser not found' };
       }
 
-      // Update allowed fields
-      if (updates.name !== undefined) browser.name = updates.name;
+      const removed = cdp_browser_pool.splice(index, 1)[0];
 
-      log.info(`Browser updated in pool`);
-      return { success: true, browser };
+      // Close the browser via CDP (best-effort)
+      if (closeBrowser) {
+        await closeBrowserViaCdp(removed.port);
+      }
+
+      saveCdpPool();
+      notifyCdpPoolChanged();
+      log.info(
+        `[CDP POOL] REMOVE: port=${removed.port}, id=${removed.id}, closed=${closeBrowser}, pool_size=${cdp_browser_pool.length}`
+      );
+      return { success: true, browser: removed };
     }
   );
 
-  // Check if CDP port is available
-  ipcMain.handle('check-cdp-port', async (event, port: number) => {
-    log.info(`Checking CDP port availability: ${port}`);
+  // ==================== Chrome Profile Detection ====================
+  ipcMain.handle('get-chrome-profiles', async () => {
+    log.info('[CHROME PROFILES] Detecting Chrome profiles...');
     try {
-      const response = await axios.get(
-        `http://localhost:${port}/json/version`,
-        {
-          timeout: 3000,
-        }
-      );
-
-      if (response.status === 200 && response.data) {
-        log.info(`CDP port ${port} is available and responsive`);
-        return {
-          available: true,
-          data: response.data,
-        };
-      }
-      return { available: false, error: 'Invalid response from CDP' };
-    } catch (error: any) {
-      log.warn(`CDP port ${port} is not available: ${error.message}`);
-      return {
-        available: false,
-        error:
-          error.code === 'ECONNREFUSED'
-            ? 'Connection refused - no browser running on this port'
-            : error.message,
-      };
-    }
-  });
-
-  // Launch CDP browser with custom port
-  ipcMain.handle('launch-cdp-browser', async (event, port: number) => {
-    log.info(`[CDP LAUNCH] Launching browser on port ${port}`);
-
-    try {
+      let chromeUserDataDir: string;
       const platform = process.platform;
-      let chromeExecutable: string | null = null;
-
-      // Use Playwright's Chromium
-      let playwrightCacheDir: string;
 
       if (platform === 'darwin') {
-        playwrightCacheDir = path.join(
+        chromeUserDataDir = path.join(
           app.getPath('home'),
-          'Library/Caches/ms-playwright'
+          'Library',
+          'Application Support',
+          'Google',
+          'Chrome'
         );
       } else if (platform === 'win32') {
-        playwrightCacheDir = path.join(
-          app.getPath('home'),
-          'AppData/Local/ms-playwright'
+        chromeUserDataDir = path.join(
+          process.env.LOCALAPPDATA ||
+            path.join(app.getPath('home'), 'AppData', 'Local'),
+          'Google',
+          'Chrome',
+          'User Data'
         );
       } else if (platform === 'linux') {
-        playwrightCacheDir = path.join(
+        chromeUserDataDir = path.join(
           app.getPath('home'),
-          '.cache/ms-playwright'
+          '.config',
+          'google-chrome'
         );
       } else {
         return {
           success: false,
           error: `Unsupported platform: ${platform}`,
+          profiles: [],
         };
       }
 
-      log.info(`Looking for Playwright Chromium in: ${playwrightCacheDir}`);
-
-      // Find the latest chromium directory
-      try {
-        if (!existsSync(playwrightCacheDir)) {
-          return {
-            success: false,
-            error:
-              'Playwright Chromium not found. Please run: npx playwright install chromium',
-          };
-        }
-
-        const chromiumDirs = fs
-          .readdirSync(playwrightCacheDir)
-          .filter((dir) => dir.startsWith('chromium-'))
-          .sort()
-          .reverse();
-
-        if (chromiumDirs.length === 0) {
-          return {
-            success: false,
-            error:
-              'No Playwright Chromium installations found. Please run: npx playwright install chromium',
-          };
-        }
-
-        // Prioritize versions that have Chromium.app over Google Chrome for Testing
-        let selectedChromiumDir = chromiumDirs[0];
-        if (platform === 'darwin') {
-          for (const dir of chromiumDirs) {
-            const chromiumAppPaths = [
-              path.join(
-                playwrightCacheDir,
-                dir,
-                'chrome-mac-arm64',
-                'Chromium.app'
-              ),
-              path.join(playwrightCacheDir, dir, 'chrome-mac', 'Chromium.app'),
-            ];
-            if (chromiumAppPaths.some((p) => existsSync(p))) {
-              selectedChromiumDir = dir;
-              log.info(`Selected Chromium version with Chromium.app: ${dir}`);
-              break;
-            }
-          }
-        }
-
-        const latestChromiumDir = selectedChromiumDir;
-        log.info(`Using Playwright Chromium version: ${latestChromiumDir}`);
-
-        // Build path to Chromium executable based on platform
-        if (platform === 'darwin') {
-          // Try to find Chromium executable in both arm64 and regular directories
-          // Priority: Chromium.app (older versions) > Google Chrome for Testing (newer versions)
-          const possiblePaths = [
-            // ARM64 paths
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-mac-arm64',
-              'Chromium.app/Contents/MacOS/Chromium'
-            ),
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-mac-arm64',
-              'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
-            ),
-            // Intel/Universal paths
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-mac',
-              'Chromium.app/Contents/MacOS/Chromium'
-            ),
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-mac',
-              'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
-            ),
-          ];
-
-          // Find the first path that exists
-          chromeExecutable = possiblePaths.find((p) => existsSync(p)) || null;
-        } else if (platform === 'win32') {
-          // Windows: Try to find chrome.exe in possible directories
-          const possiblePaths = [
-            // 64-bit paths
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-win64',
-              'chrome.exe'
-            ),
-            // 32-bit or older versions
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-win',
-              'chrome.exe'
-            ),
-          ];
-
-          chromeExecutable = possiblePaths.find((p) => existsSync(p)) || null;
-        } else if (platform === 'linux') {
-          // Linux: Try to find chrome in possible directories
-          const possiblePaths = [
-            path.join(
-              playwrightCacheDir,
-              latestChromiumDir,
-              'chrome-linux',
-              'chrome'
-            ),
-          ];
-
-          chromeExecutable = possiblePaths.find((p) => existsSync(p)) || null;
-        }
-
-        if (!chromeExecutable || !existsSync(chromeExecutable)) {
-          return {
-            success: false,
-            error: `Chromium executable not found at: ${chromeExecutable}`,
-          };
-        }
-
-        log.info(`Using Chromium at: ${chromeExecutable}`);
-      } catch (error: any) {
-        log.error(`Error finding Playwright Chromium: ${error}`);
+      if (!existsSync(chromeUserDataDir)) {
+        log.warn(
+          `[CHROME PROFILES] Chrome user data directory not found: ${chromeUserDataDir}`
+        );
         return {
           success: false,
-          error: `Failed to locate Playwright Chromium: ${error.message}`,
+          error: 'Chrome is not installed or user data directory not found',
+          profiles: [],
         };
       }
 
-      // Create user data directory with port number in name
-      // This allows multiple browsers on different ports to maintain separate profiles
-      const userDataDir = path.join(
-        app.getPath('userData'),
-        `cdp_browser_profile_${port}`
-      );
-
-      // Create directory if it doesn't exist (preserve existing data)
-      if (!existsSync(userDataDir)) {
-        await fsp.mkdir(userDataDir, { recursive: true });
-        log.info(`Created new user data directory: ${userDataDir}`);
-      } else {
-        log.info(`Using existing user data directory: ${userDataDir}`);
-      }
-
-      // Check if browser on this port is already running
-      if (cdp_browser_processes.has(port)) {
-        log.warn(`[CDP LAUNCH] Browser process already exists on port ${port}`);
-        return {
-          success: false,
-          error: `Browser already running on port ${port}`,
-        };
-      }
-
-      // Chrome launch arguments
-      const args = [
-        `--remote-debugging-port=${port}`,
-        `--user-data-dir=${userDataDir}`,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-blink-features=AutomationControlled',
-        'about:blank',
-      ];
-
-      log.info(`[CDP LAUNCH] Spawning: ${chromeExecutable} on port ${port}`);
-
-      // Spawn Chrome process
-      const browserProcess = spawn(chromeExecutable, args, {
-        detached: false,
-        stdio: 'ignore',
+      // Read all directories that could be profiles
+      const entries = fs.readdirSync(chromeUserDataDir, {
+        withFileTypes: true,
       });
+      const profileDirs = entries
+        .filter((entry) => entry.isDirectory())
+        .filter(
+          (entry) =>
+            entry.name === 'Default' || entry.name.startsWith('Profile ')
+        )
+        .map((entry) => entry.name);
 
-      browserProcess.on('error', (error) => {
-        log.error(
-          `[CDP LAUNCH] Browser process error on port ${port}: ${error}`
-        );
-        cdp_browser_processes.delete(port);
-        removeFromPoolByPort(port, 'process error');
-      });
+      const profiles: { directory: string; name: string }[] = [];
 
-      browserProcess.on('exit', (code) => {
-        log.info(
-          `[CDP LAUNCH] Browser process on port ${port} exited with code ${code}`
-        );
-        cdp_browser_processes.delete(port);
-        removeFromPoolByPort(port, `exit code ${code}`);
-      });
-
-      // Store the process in the Map
-      cdp_browser_processes.set(port, browserProcess);
-      log.info(
-        `[CDP LAUNCH] Browser process stored in map, PID: ${browserProcess.pid}`
-      );
-
-      // Poll for browser to become ready (max 5 seconds)
-      log.info(
-        `[CDP LAUNCH] Polling for browser to become ready (max 5 seconds)...`
-      );
-      const maxWaitTime = 5000; // 5 seconds
-      const pollInterval = 300; // Check every 300ms
-      const startTime = Date.now();
-      let attempt = 0;
-      let lastError = null;
-
-      while (Date.now() - startTime < maxWaitTime) {
-        attempt++;
+      for (const dir of profileDirs) {
+        const prefsPath = path.join(chromeUserDataDir, dir, 'Preferences');
         try {
-          log.info(
-            `[CDP LAUNCH] Attempt ${attempt}: Checking http://localhost:${port}/json/version`
-          );
-          const response = await axios.get(
-            `http://localhost:${port}/json/version`,
-            {
-              timeout: 1000, // Short timeout for each attempt
-            }
-          );
-
-          if (response.status === 200 && response.data) {
-            const elapsedTime = Date.now() - startTime;
-            log.info(
-              `[CDP LAUNCH] ✅ SUCCESS - Browser ready on port ${port} after ${elapsedTime}ms (${attempt} attempts)`
-            );
-            log.info(
-              `[CDP LAUNCH] Browser info: ${JSON.stringify(response.data)}`
-            );
-            log.info(
-              `[CDP LAUNCH] ⚠️  NOTE: Browser launched but NOT added to pool yet`
-            );
-            // This is our own launched browser, not external
-            use_external_cdp = false;
-            return {
-              success: true,
-              port,
-              data: response.data,
-            };
+          if (existsSync(prefsPath)) {
+            const prefsContent = fs.readFileSync(prefsPath, 'utf-8');
+            const prefs = JSON.parse(prefsContent);
+            const profileName = prefs?.profile?.name || dir;
+            profiles.push({ directory: dir, name: profileName });
           }
-        } catch (pollError: any) {
-          lastError = pollError;
-          // Log only every 3rd attempt to avoid spam
-          if (attempt % 3 === 0) {
-            log.info(
-              `[CDP LAUNCH] Attempt ${attempt}: Not ready yet (${pollError.code || pollError.message})`
-            );
-          }
+        } catch (err) {
+          log.warn(
+            `[CHROME PROFILES] Failed to read preferences for ${dir}: ${err}`
+          );
+          // Still include the profile with directory name as fallback
+          profiles.push({ directory: dir, name: dir });
         }
-
-        // Wait before next attempt
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       }
 
-      // If we get here, browser didn't respond within max wait time
-      // Kill the orphaned process to avoid resource leak
-      const proc = cdp_browser_processes.get(port);
-      if (proc) {
-        proc.kill();
-        cdp_browser_processes.delete(port);
-      }
-      const totalTime = Date.now() - startTime;
-      log.warn(
-        `[CDP LAUNCH] Verification failed after ${totalTime}ms (${attempt} attempts), last error: ${lastError?.code || lastError?.message || 'Unknown'}`
+      log.info(
+        `[CHROME PROFILES] Found ${profiles.length} profile(s): ${JSON.stringify(profiles)}`
       );
-      return {
-        success: false,
-        error: `Browser launched but not responding on CDP port after ${totalTime}ms`,
-      };
+      return { success: true, profiles, chromeUserDataDir };
     } catch (error: any) {
-      log.error(`[CDP LAUNCH] Failed to launch browser: ${error}`);
-      return {
-        success: false,
-        error: error.message,
-      };
+      log.error(`[CHROME PROFILES] Failed to detect profiles: ${error}`);
+      return { success: false, error: error.message, profiles: [] };
     }
   });
 
@@ -2659,6 +2556,9 @@ async function createWindow() {
   ensureEigentDirectories();
   await seedDefaultSkillsIfEmpty();
 
+  // Load persisted CDP browser pool from disk
+  loadCdpPool();
+
   log.info(
     `[PROJECT BROWSER WINDOW] Creating BrowserWindow which will start Chrome with CDP on port ${browser_port}`
   );
@@ -2839,6 +2739,9 @@ async function createWindow() {
   setupDevToolsShortcuts();
   setupExternalLinkHandling();
   handleBeforeClose();
+
+  // Start CDP health-check polling (probes every 3s, removes dead browsers)
+  startCdpHealthCheck();
 
   // ==================== auto update ====================
   update(win);
@@ -3469,6 +3372,9 @@ app.on('activate', () => {
 app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
+
+  // Stop CDP health-check polling
+  stopCdpHealthCheck();
 
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();

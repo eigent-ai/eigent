@@ -721,12 +721,23 @@ class ListenChatAgent(ChatAgent):
                     new_cdp_session,
                     getattr(self, "_cdp_task_id", None),
                 )
-                from app.agent.factory.browser import _get_browser_port
+                from app.agent.factory.browser import (
+                    _get_browser_port,
+                    _is_cdp_port_alive,
+                )
 
                 if selected:
                     new_cdp_port = _get_browser_port(selected)
                 else:
-                    new_cdp_port = _get_browser_port(cdp_browsers[0])
+                    # Fallback: pick first alive browser
+                    fallback = None
+                    for b in cdp_browsers:
+                        p = b.get("port")
+                        if p and _is_cdp_port_alive(p):
+                            fallback = b
+                            break
+                    fallback = fallback or cdp_browsers[0]
+                    new_cdp_port = _get_browser_port(fallback)
 
         if need_cdp_clone:
             # Temporarily override the browser toolkit's CDP URL.

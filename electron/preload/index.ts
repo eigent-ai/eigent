@@ -158,20 +158,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-project-folder-path', email, projectId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
-  checkCdpPort: (port: number) => ipcRenderer.invoke('check-cdp-port', port),
-  launchCdpBrowser: (port: number) =>
-    ipcRenderer.invoke('launch-cdp-browser', port),
   setBrowserPort: (port: number, isExternal?: boolean) =>
     ipcRenderer.invoke('set-browser-port', port, isExternal),
   getBrowserPort: () => ipcRenderer.invoke('get-browser-port'),
   getCdpBrowsers: () => ipcRenderer.invoke('get-cdp-browsers'),
-  getRunningBrowserPorts: () => ipcRenderer.invoke('get-running-browser-ports'),
   addCdpBrowser: (port: number, isExternal: boolean, name?: string) =>
     ipcRenderer.invoke('add-cdp-browser', port, isExternal, name),
-  removeCdpBrowser: (browserId: string) =>
-    ipcRenderer.invoke('remove-cdp-browser', browserId),
-  updateCdpBrowser: (browserId: string, updates: any) =>
-    ipcRenderer.invoke('update-cdp-browser', browserId, updates),
+  removeCdpBrowser: (browserId: string, closeBrowser?: boolean) =>
+    ipcRenderer.invoke('remove-cdp-browser', browserId, closeBrowser ?? true),
+  onCdpPoolChanged: (callback: (browsers: any[]) => void) => {
+    const channel = 'cdp-pool-changed';
+    const listener = (_event: any, browsers: any[]) => callback(browsers);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  getChromeProfiles: () => ipcRenderer.invoke('get-chrome-profiles'),
   // Skills
   getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
   skillsScan: () => ipcRenderer.invoke('skills-scan'),
