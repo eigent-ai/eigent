@@ -71,7 +71,9 @@ async def document_agent(options: Chat):
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     screenshot_toolkit = ScreenshotToolkit(
-        options.project_id, working_directory=working_directory
+        options.project_id,
+        working_directory=working_directory,
+        agent_name=Agents.document_agent,
     )
     # Save reference before registering for toolkits_to_register_agent
     screenshot_toolkit_for_agent_registration = screenshot_toolkit

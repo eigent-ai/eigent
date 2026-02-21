@@ -18,6 +18,7 @@ import pytest
 
 from app.agent.factory import browser_agent
 from app.model.chat import Chat
+from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
 
@@ -71,6 +72,11 @@ def test_browser_agent_creation(sample_chat_data):
 
         assert result is mock_agent
         mock_agent_model.assert_called_once()
+        mock_screenshot_toolkit.assert_called_once_with(
+            options.project_id,
+            working_directory="/tmp/test_workdir",
+            agent_name=Agents.browser_agent,
+        )
 
         # Check that it was called with browser agent configuration
         call_args = mock_agent_model.call_args

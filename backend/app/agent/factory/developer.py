@@ -56,7 +56,9 @@ async def developer_agent(options: Chat):
         web_deploy_toolkit
     )
     screenshot_toolkit = ScreenshotToolkit(
-        options.project_id, working_directory=working_directory
+        options.project_id,
+        working_directory=working_directory,
+        agent_name=Agents.developer_agent,
     )
     # Save reference before registering for toolkits_to_register_agent
     screenshot_toolkit_for_agent_registration = screenshot_toolkit
