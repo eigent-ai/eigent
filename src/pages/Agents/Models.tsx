@@ -103,6 +103,12 @@ const DARK_FILL_MODELS = new Set([
   'openai-compatible-model',
 ]);
 
+const PROVIDER_AVATAR_URLS: Record<string, string> = {
+  'samba-nova': 'https://github.com/sambanova.png',
+  mistral: 'https://github.com/mistralai.png',
+  grok: 'https://github.com/xai-org.png',
+};
+
 export default function SettingModels() {
   const {
     modelType,
@@ -1008,6 +1014,9 @@ export default function SettingModels() {
       'z.ai': zaiImage,
       moonshot: moonshotImage,
       ModelArk: modelarkImage,
+      'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
+      grok: PROVIDER_AVATAR_URLS.grok,
+      mistral: PROVIDER_AVATAR_URLS.mistral,
       'aws-bedrock': bedrockImage,
       azure: azureImage,
       'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
