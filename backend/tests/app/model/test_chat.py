@@ -11,9 +11,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-"""Unit tests for AgentModelConfig and per-agent model configuration."""
+"""Unit tests for Chat and AgentModelConfig model configuration."""
 
-from app.model.chat import AgentModelConfig, NewAgent
+from app.model.chat import AgentModelConfig, Chat, NewAgent
 
 
 class TestAgentModelConfig:
@@ -118,3 +118,43 @@ class TestNewAgentWithModelConfig:
         assert "custom_model_config" in data
         assert data["custom_model_config"]["model_platform"] == "anthropic"
         assert data["custom_model_config"]["model_type"] == "claude-3-sonnet"
+
+
+class TestModelPlatformMapping:
+    """Tests for model platform aliases mapped in backend."""
+
+    def _create_chat(self, model_platform: str) -> Chat:
+        return Chat(
+            task_id="task-1",
+            project_id="project-1",
+            question="test question",
+            email="tester@example.com",
+            model_platform=model_platform,
+            model_type="gpt-4o",
+            api_key="test-key",
+            api_url="https://api.example.com/v1",
+        )
+
+    def test_chat_maps_grok_to_openai_compatible_model(self):
+        """Test Chat maps grok platform alias correctly."""
+        chat = self._create_chat("grok")
+        assert chat.model_platform == "openai-compatible-model"
+
+    def test_chat_keeps_supported_platforms_unchanged(self):
+        """Test Chat keeps native camel-ai platforms unchanged."""
+        chat = self._create_chat("mistral")
+        assert chat.model_platform == "mistral"
+        chat = self._create_chat("samba-nova")
+        assert chat.model_platform == "samba-nova"
+
+    def test_agent_model_config_maps_grok_alias(self):
+        """Test AgentModelConfig also maps grok alias for per-agent overrides."""
+        config = AgentModelConfig(model_platform="grok")
+        assert config.model_platform == "openai-compatible-model"
+
+    def test_agent_model_config_keeps_supported_platforms_unchanged(self):
+        """Test AgentModelConfig keeps native camel-ai platforms unchanged."""
+        config = AgentModelConfig(model_platform="mistral")
+        assert config.model_platform == "mistral"
+        config = AgentModelConfig(model_platform="samba-nova")
+        assert config.model_platform == "samba-nova"

@@ -22,6 +22,10 @@ from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
 from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
+from app.model.model_platform import (
+    NormalizedModelPlatform,
+    NormalizedOptionalModelPlatform,
+)
 
 logger = logging.getLogger("chat_model")
 
@@ -44,11 +48,6 @@ class QuestionAnalysisResult(BaseModel):
 
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
-PLATFORM_MAPPING = {
-    "z.ai": "openai-compatible-model",
-    "ModelArk": "openai-compatible-model",
-}
-
 
 class Chat(BaseModel):
     task_id: str
@@ -56,7 +55,7 @@ class Chat(BaseModel):
     question: str
     email: str
     attaches: list[str] = []
-    model_platform: str
+    model_platform: NormalizedModelPlatform
     model_type: str
     api_key: str
     # for cloud version, user don't need to set api_url
@@ -78,11 +77,6 @@ class Chat(BaseModel):
     search_config: dict[str, str] | None = None
     # User identifier for user-specific skill configurations
     user_id: str | None = None
-
-    @field_validator("model_platform")
-    @classmethod
-    def map_model_platform(cls, v: str) -> str:
-        return PLATFORM_MAPPING.get(v, v)
 
     @field_validator("model_type")
     @classmethod
@@ -166,7 +160,7 @@ class AgentModelConfig(BaseModel):
     """Optional per-agent model configuration
     to override the default task model."""
 
-    model_platform: str | None = None
+    model_platform: NormalizedOptionalModelPlatform = None
     model_type: str | None = None
     api_key: str | None = None
     api_url: str | None = None
