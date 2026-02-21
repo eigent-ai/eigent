@@ -34,6 +34,31 @@ from app.controller.model_controller import (
 class TestModelControllerEnhanced:
     """Test cases for enhanced model controller with detailed validation."""
 
+    def test_validate_model_request_maps_grok_alias(self):
+        """Test request model maps grok alias to openai-compatible-model."""
+        request_data = ValidateModelRequest(
+            model_platform="grok",
+            model_type="grok-3",
+            api_key="test_key",
+        )
+        assert request_data.model_platform == "openai-compatible-model"
+
+    def test_validate_model_request_keeps_supported_platforms_unchanged(self):
+        """Test request model keeps native camel-ai platforms unchanged."""
+        request_data = ValidateModelRequest(
+            model_platform="mistral",
+            model_type="mistral-large-latest",
+            api_key="test_key",
+        )
+        assert request_data.model_platform == "mistral"
+
+        request_data = ValidateModelRequest(
+            model_platform="samba-nova",
+            model_type="Meta-Llama-3.1-8B-Instruct",
+            api_key="test_key",
+        )
+        assert request_data.model_platform == "samba-nova"
+
     @pytest.mark.asyncio
     async def test_validate_model_with_diagnostics_success(self):
         """Test successful model validation with diagnostics enabled."""
