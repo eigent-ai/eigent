@@ -114,6 +114,7 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    error_code?: string | null;
   }
 
   interface AgentMessage {
