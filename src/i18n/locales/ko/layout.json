@@ -31,8 +31,10 @@
   "installation-failed": "설치 실패",
   "projects": "프로젝트",
   "mcp-tools": "MCP 및 도구",
+  "connectors": "커넥터",
   "browser": "브라우저",
   "settings": "설정",
+  "general": "일반",
   "workers": "작업자",
   "triggers": "트리거",
   "new-project": "새 프로젝트",
@@ -203,5 +205,6 @@
   "no-browser-found": "No Browser Found",
   "no-browser-found-description": "No browser is running on port {{port}}. Would you like to launch a new Chrome browser with CDP enabled on this port?",
   "yes-launch-browser": "Yes, Launch Browser",
-  "for-more-info": "For more information, check out our"
+  "for-more-info": "For more information, check out our",
+  "capabilities": "기능"
 }

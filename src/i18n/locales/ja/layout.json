@@ -31,8 +31,10 @@
   "installation-failed": "インストールに失敗しました",
   "projects": "プロジェクト",
   "mcp-tools": "MCP & ツール",
+  "connectors": "コネクタ",
   "browser": "ブラウザ",
   "settings": "設定",
+  "general": "一般",
   "workers": "ワーカー",
   "triggers": "トリガー",
   "new-project": "新規プロジェクト",
@@ -203,5 +205,6 @@
   "no-browser-found": "No Browser Found",
   "no-browser-found-description": "No browser is running on port {{port}}. Would you like to launch a new Chrome browser with CDP enabled on this port?",
   "yes-launch-browser": "Yes, Launch Browser",
-  "for-more-info": "For more information, check out our"
+  "for-more-info": "For more information, check out our",
+  "capabilities": "機能"
 }

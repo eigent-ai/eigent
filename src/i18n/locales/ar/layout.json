@@ -31,8 +31,10 @@
   "installation-failed": "فشل التثبيت",
   "projects": "المشاريع",
   "mcp-tools": "MCP والأدوات",
+  "connectors": "الموصلات",
   "browser": "المتصفح",
   "settings": "الإعدادات",
+  "general": "عام",
   "workers": "العمال",
   "triggers": "المحفزات",
   "new-project": "مشروع جديد",
@@ -203,5 +205,6 @@
   "no-browser-found": "No Browser Found",
   "no-browser-found-description": "No browser is running on port {{port}}. Would you like to launch a new Chrome browser with CDP enabled on this port?",
   "yes-launch-browser": "Yes, Launch Browser",
-  "for-more-info": "For more information, check out our"
+  "for-more-info": "For more information, check out our",
+  "capabilities": "القدرات"
 }

@@ -32,8 +32,10 @@
   "backend-startup-failed": "Backend Startup Failed",
   "projects": "Projects",
   "mcp-tools": "MCP & Tools",
+  "connectors": "Connectors",
   "browser": "Browser",
   "settings": "Settings",
+  "general": "General",
   "workers": "Workers",
   "triggers": "Triggers",
   "new-project": "New Project",
@@ -205,5 +207,6 @@
   "no-browser-found": "No Browser Found",
   "no-browser-found-description": "No browser is running on port {{port}}. Would you like to launch a new Chrome browser with CDP enabled on this port?",
   "yes-launch-browser": "Yes, Launch Browser",
-  "for-more-info": "For more information, check out our"
+  "for-more-info": "For more information, check out our",
+  "capabilities": "Capabilities"
 }

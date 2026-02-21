@@ -34,8 +34,10 @@
   "backend-startup-failed": "后端启动失败",
   "projects": "项目",
   "mcp-tools": "MCP & 工具",
+  "connectors": "连接器",
   "browser": "浏览器",
   "settings": "设置",
+  "general": "通用",
   "workers": "工作器",
   "triggers": "触发器",
   "new-project": "新项目",
@@ -205,5 +207,6 @@
   "no-browser-found": "No Browser Found",
   "no-browser-found-description": "No browser is running on port {{port}}. Would you like to launch a new Chrome browser with CDP enabled on this port?",
   "yes-launch-browser": "Yes, Launch Browser",
-  "for-more-info": "For more information, check out our"
+  "for-more-info": "For more information, check out our",
+  "capabilities": "能力"
 }
