@@ -21,8 +21,8 @@ export default function WindowControls() {
   const [platform, setPlatform] = useState<string>('');
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
-    setPlatform(p);
+    const p = window.electronAPI?.getPlatform();
+    if (p) setPlatform(p);
 
     // Hide custom controls on macOS (uses native traffic lights)
     // and on Windows (now uses native frame with native controls)

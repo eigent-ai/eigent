@@ -170,7 +170,7 @@ export default function Home() {
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      window.electronAPI.setSize({
+      window.electronAPI?.setSize({
         x: rect.left,
         y: rect.top,
         width: rect.width,

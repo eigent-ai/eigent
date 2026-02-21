@@ -96,7 +96,7 @@ export function WorkSpaceMenu() {
 
   useEffect(() => {
     if (!chatStore) return;
-    const cleanup = window.electronAPI.onWebviewNavigated(
+    const cleanup = window.electronAPI?.onWebviewNavigated(
       (id: string, url: string) => {
         if (!chatStore.activeTaskId) return;
         let webViewUrls = [

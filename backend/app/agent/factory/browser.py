@@ -49,7 +49,7 @@ def _is_cdp_port_alive(port: int, timeout: float = 1.0) -> bool:
     try:
         with socket.create_connection(("localhost", port), timeout=timeout):
             return True
-    except (ConnectionRefusedError, OSError, socket.timeout):
+    except (TimeoutError, ConnectionRefusedError, OSError):
         return False
 
 
@@ -234,7 +234,11 @@ def browser_agent(options: Chat):
         browser_log_to_file=True,
         stealth=True,
         session_id=toolkit_session_id,
-        **({"default_start_url": "about:blank"} if not use_pool_browser else {}),
+        **(
+            {"default_start_url": "about:blank"}
+            if not use_pool_browser
+            else {}
+        ),
         cdp_url=f"http://localhost:{selected_port}",
         cdp_keep_current_page=use_pool_browser,
         enabled_tools=[

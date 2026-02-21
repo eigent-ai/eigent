@@ -20,6 +20,7 @@ import {
   Chrome,
   Cookie,
   Globe,
+  Link2,
   Loader2,
   Plus,
   RefreshCw,
@@ -80,6 +81,12 @@ export default function Browser() {
   const [browserToRemove, setBrowserToRemove] = useState<CdpBrowser | null>(
     null
   );
+
+  // Connect Existing Browser dialog
+  const [showConnectDialog, setShowConnectDialog] = useState(false);
+  const [connectPort, setConnectPort] = useState('');
+  const [connectChecking, setConnectChecking] = useState(false);
+  const [connectError, setConnectError] = useState('');
 
   // Extract main domain (e.g., "aa.bb.cc" -> "bb.cc", "www.google.com" -> "google.com")
   const getMainDomain = (domain: string): string => {
@@ -279,6 +286,59 @@ export default function Browser() {
       toast.error(error.message || t('layout.failed-to-launch-browser'), {
         id: 'launch-browser',
       });
+    }
+  };
+  const handleConnectExistingBrowser = () => {
+    setConnectPort('');
+    setConnectError('');
+    setShowConnectDialog(true);
+  };
+
+  const handleCheckAndConnect = async () => {
+    const portNum = parseInt(connectPort, 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      setConnectError(t('layout.invalid-port'));
+      return;
+    }
+
+    // Check if port is already in the pool
+    if (cdpBrowsers.some((b) => b.port === portNum)) {
+      setConnectError(t('layout.port-already-in-use'));
+      return;
+    }
+
+    setConnectChecking(true);
+    setConnectError('');
+
+    try {
+      // Probe the port to check if a CDP browser is listening
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`http://localhost:${portNum}/json/version`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        setConnectError(t('layout.no-browser-on-port', { port: portNum }));
+        return;
+      }
+
+      // Port is alive — add to CDP pool
+      if (window.electronAPI?.addCdpBrowser) {
+        await window.electronAPI.addCdpBrowser(
+          portNum,
+          true,
+          `External Browser (${portNum})`
+        );
+      }
+
+      toast.success(t('layout.connected-browser', { port: portNum }));
+      setShowConnectDialog(false);
+    } catch {
+      setConnectError(t('layout.no-browser-on-port', { port: portNum }));
+    } finally {
+      setConnectChecking(false);
     }
   };
 
@@ -499,6 +559,59 @@ export default function Browser() {
           </div>
         </div>
       )}
+      {/* Connect Existing Browser Dialog */}
+      {showConnectDialog && (
+        <div className="bg-black/50 fixed inset-0 z-50 flex items-center justify-center">
+          <div className="w-full max-w-md rounded-xl bg-surface-primary p-6 shadow-lg">
+            <div className="text-body-base mb-2 font-bold text-text-heading">
+              {t('layout.connect-existing-browser')}
+            </div>
+            <p className="mb-4 text-label-xs text-text-label">
+              {t('layout.connect-existing-browser-description')}
+            </p>
+            <input
+              type="text"
+              value={connectPort}
+              onChange={(e) => {
+                setConnectPort(e.target.value);
+                setConnectError('');
+              }}
+              placeholder={t('layout.enter-port-number')}
+              className="w-full rounded-lg border border-border-disabled bg-surface-secondary px-4 py-2 text-body-sm text-text-body outline-none focus:border-border-focus"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCheckAndConnect();
+              }}
+            />
+            {connectError && (
+              <p className="mt-2 text-label-xs text-text-cuation">
+                {connectError}
+              </p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowConnectDialog(false)}
+              >
+                {t('layout.cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleCheckAndConnect}
+                disabled={connectChecking}
+              >
+                {connectChecking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Link2 className="h-4 w-4" />
+                )}
+                {t('layout.check-and-connect')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex h-auto w-full px-6">
         {/* Left Sidebar */}
@@ -561,6 +674,14 @@ export default function Browser() {
                   {launchingChrome
                     ? t('layout.launching-chrome')
                     : t('layout.open-my-chrome')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleConnectExistingBrowser}
+                >
+                  <Link2 className="h-4 w-4 text-button-tertiery-text-default" />
+                  {t('layout.connect-existing-browser')}
                 </Button>
               </div>
 

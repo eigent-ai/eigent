@@ -24,7 +24,7 @@ const Update = () => {
   const { t } = useTranslation();
 
   const checkUpdate = () => {
-    window.ipcRenderer.invoke('check-update');
+    window.ipcRenderer?.invoke('check-update');
   };
 
   const onUpdateCanAvailable = useCallback(

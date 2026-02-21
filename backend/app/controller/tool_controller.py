@@ -78,15 +78,11 @@ def _find_chromium_executable() -> str | None:
     system = pf.system()
 
     if system == "Darwin":
-        cache_dir = os.path.join(
-            home, "Library", "Caches", "ms-playwright"
-        )
+        cache_dir = os.path.join(home, "Library", "Caches", "ms-playwright")
     elif system == "Linux":
         cache_dir = os.path.join(home, ".cache", "ms-playwright")
     elif system == "Windows":
-        cache_dir = os.path.join(
-            home, "AppData", "Local", "ms-playwright"
-        )
+        cache_dir = os.path.join(home, "AppData", "Local", "ms-playwright")
     else:
         return None
 
@@ -138,9 +134,7 @@ def _find_chromium_executable() -> str | None:
                 ),
             ]
         elif system == "Linux":
-            candidates = [
-                os.path.join(base, "chrome-linux", "chrome")
-            ]
+            candidates = [os.path.join(base, "chrome-linux", "chrome")]
         else:  # Windows
             candidates = [
                 os.path.join(base, "chrome-win64", "chrome.exe"),
@@ -160,8 +154,7 @@ def _find_system_chrome() -> str | None:
 
     if system == "Darwin":
         chrome_path = (
-            "/Applications/Google Chrome.app"
-            "/Contents/MacOS/Google Chrome"
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         )
         if os.path.exists(chrome_path):
             return chrome_path
@@ -1007,9 +1000,7 @@ async def launch_cdp_browser():
                 ),
             )
 
-        logger.info(
-            f"[BROWSER LAUNCH] Found available port: {port}"
-        )
+        logger.info(f"[BROWSER LAUNCH] Found available port: {port}")
 
         # 2. Find Chromium executable
         chrome_executable = _find_chromium_executable()
@@ -1022,9 +1013,7 @@ async def launch_cdp_browser():
                 ),
             )
 
-        logger.info(
-            f"[BROWSER LAUNCH] Using Chromium: {chrome_executable}"
-        )
+        logger.info(f"[BROWSER LAUNCH] Using Chromium: {chrome_executable}")
 
         # 3. Create user data directory
         user_data_dir = os.path.join(
@@ -1044,10 +1033,7 @@ async def launch_cdp_browser():
             "about:blank",
         ]
 
-        logger.info(
-            "[BROWSER LAUNCH] Spawning Chromium"
-            f" on port {port}"
-        )
+        logger.info(f"[BROWSER LAUNCH] Spawning Chromium on port {port}")
 
         process = subprocess.Popen(
             args,
@@ -1056,10 +1042,7 @@ async def launch_cdp_browser():
         )
 
         _launched_browser_processes[port] = process
-        logger.info(
-            "[BROWSER LAUNCH] Chromium spawned,"
-            f" PID: {process.pid}"
-        )
+        logger.info(f"[BROWSER LAUNCH] Chromium spawned, PID: {process.pid}")
 
         # 5. Poll for browser readiness (max 5 seconds)
         max_wait = 5.0
@@ -1104,18 +1087,13 @@ async def launch_cdp_browser():
             "success": True,
             "port": port,
             "data": browser_info,
-            "message": (
-                "Browser launched successfully"
-                f" on port {port}"
-            ),
+            "message": (f"Browser launched successfully on port {port}"),
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"[BROWSER LAUNCH] Failed: {e}", exc_info=True
-        )
+        logger.error(f"[BROWSER LAUNCH] Failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to launch browser: {e!s}",
@@ -1171,10 +1149,7 @@ async def launch_chrome_with_profile(
         if not os.path.isdir(profile_path):
             raise HTTPException(
                 status_code=404,
-                detail=(
-                    f"Profile '{request.profile_directory}'"
-                    " not found"
-                ),
+                detail=(f"Profile '{request.profile_directory}' not found"),
             )
 
         # 4. Find available port
@@ -1203,9 +1178,7 @@ async def launch_chrome_with_profile(
         os.makedirs(wrapper_dir, exist_ok=True)
 
         # Symlink requested profile into wrapper
-        link_dst = os.path.join(
-            wrapper_dir, request.profile_directory
-        )
+        link_dst = os.path.join(wrapper_dir, request.profile_directory)
         real_profile = os.path.join(
             chrome_user_data_dir, request.profile_directory
         )
@@ -1216,12 +1189,8 @@ async def launch_chrome_with_profile(
         os.symlink(real_profile, link_dst)
 
         # Copy Local State (small JSON, needed by Chrome)
-        local_state_src = os.path.join(
-            chrome_user_data_dir, "Local State"
-        )
-        local_state_dst = os.path.join(
-            wrapper_dir, "Local State"
-        )
+        local_state_src = os.path.join(chrome_user_data_dir, "Local State")
+        local_state_dst = os.path.join(wrapper_dir, "Local State")
         if os.path.isfile(local_state_src):
             shutil.copy2(local_state_src, local_state_dst)
 
@@ -1241,10 +1210,7 @@ async def launch_chrome_with_profile(
         )
 
         _launched_browser_processes[port] = process
-        logger.info(
-            "[CHROME LAUNCH] Chrome spawned,"
-            f" PID: {process.pid}"
-        )
+        logger.info(f"[CHROME LAUNCH] Chrome spawned, PID: {process.pid}")
 
         # 6. Poll for browser readiness (max 8 seconds,
         #    real Chrome may be slower than Chromium)
@@ -1273,16 +1239,12 @@ async def launch_chrome_with_profile(
             elapsed = time.time() - start_time
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    "Chrome failed to start CDP"
-                    f" (waited {elapsed:.1f}s)"
-                ),
+                detail=(f"Chrome failed to start CDP (waited {elapsed:.1f}s)"),
             )
 
         elapsed = time.time() - start_time
         logger.info(
-            "[CHROME LAUNCH] Chrome ready on"
-            f" port {port} after {elapsed:.1f}s"
+            f"[CHROME LAUNCH] Chrome ready on port {port} after {elapsed:.1f}s"
         )
 
         return {
@@ -1300,9 +1262,7 @@ async def launch_chrome_with_profile(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"[CHROME LAUNCH] Failed: {e}", exc_info=True
-        )
+        logger.error(f"[CHROME LAUNCH] Failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to launch Chrome: {e!s}",
