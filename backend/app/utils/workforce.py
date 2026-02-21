@@ -936,8 +936,8 @@ class Workforce(BaseWorkforce):
         if hasattr(self, "_children") and self._children:
             for child in self._children:
                 # Cleanup base worker agent
-                if hasattr(child, "worker_agent"):
-                    agent = child.worker_agent
+                if hasattr(child, "worker"):
+                    agent = child.worker
                     cb = getattr(agent, "_cdp_release_callback", None)
                     if callable(cb):
                         try:
@@ -969,10 +969,14 @@ class Workforce(BaseWorkforce):
             from app.agent.factory.browser import _cdp_pool_manager
 
             task_ids: set[str] = set()
+            # Use workforce's own api_task_id as the primary source
+            if self.api_task_id:
+                task_ids.add(self.api_task_id)
+            # Also collect from child agents
             if hasattr(self, "_children") and self._children:
                 for child in self._children:
-                    if hasattr(child, "worker_agent"):
-                        tid = getattr(child.worker_agent, "_cdp_task_id", None)
+                    if hasattr(child, "worker"):
+                        tid = getattr(child.worker, "_cdp_task_id", None)
                         if tid is not None:
                             task_ids.add(tid)
                     if hasattr(child, "agent_pool") and child.agent_pool:
