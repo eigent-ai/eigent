@@ -227,6 +227,12 @@ def create_agent(
         raise ValueError(f"Invalid model_type: {model_type}")
     if platform is None:
         raise ValueError(f"Invalid model_platform: {model_platform}")
+    # Anthropic SDK adds /v1 to every endpoint path internally, so a user-
+    # provided base URL must NOT include /v1 (unlike OpenAI-compatible APIs).
+    if platform.lower() == "anthropic" and url:
+        stripped = url.rstrip("/")
+        if stripped.endswith("/v1"):
+            url = stripped[:-3]
     model = ModelFactory.create(
         model_platform=platform,
         model_type=mtype,
@@ -321,6 +327,12 @@ def validate_model_with_details(
 
     # Stage 2: Model Creation
     result.validation_stages[ValidationStage.MODEL_CREATION] = False
+    # Anthropic SDK adds /v1 to every endpoint path internally, so a user-
+    # provided base URL must NOT include /v1 (unlike OpenAI-compatible APIs).
+    if model_platform.lower() == "anthropic" and url:
+        stripped = url.rstrip("/")
+        if stripped.endswith("/v1"):
+            url = stripped[:-3]
     try:
         logger.debug(
             "Creating model",

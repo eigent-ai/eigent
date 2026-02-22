@@ -32,7 +32,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 
-export default function TerminalAgentWrokSpace() {
+export default function TerminalAgentWorkspace() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { t } = useTranslation();
