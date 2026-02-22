@@ -12,8 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import pytest
-
 from app.component.encrypt import password_hash, password_verify
 
 
@@ -62,9 +60,8 @@ def test_verify_none_hash():
     assert password_verify("any_password", None) is False
 
 
-def test_verify_empty_hash_raises():
-    with pytest.raises(Exception):
-        password_verify("password", "")
+def test_verify_empty_hash_returns_false():
+    assert password_verify("password", "") is False
 
 
 def test_verify_case_sensitive():

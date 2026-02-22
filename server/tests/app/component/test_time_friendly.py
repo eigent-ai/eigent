@@ -54,7 +54,7 @@ def test_to_date_wrong_format():
 
 def test_to_date_partial():
     result = to_date("2026-01")
-    assert result is None or isinstance(result, date)
+    assert result == date(2026, 1, 1)
 
 
 def test_monday_returns_datetime():
