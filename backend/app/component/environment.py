@@ -57,12 +57,10 @@ def sanitize_env_path(env_path: str | None) -> str | None:
         # Convert to Path object for safe manipulation
         user_path = Path(env_path)
 
-        # Reject absolute paths — they should always be relative to env_base_dir
+        # Resolve path: absolute paths are checked directly, relative paths
+        # are joined to env_base_dir. Both are validated against env_base_dir.
         if user_path.is_absolute():
-            logger.warning(
-                f"Security: Rejected absolute env_path. Path: {env_path}"
-            )
-            return None
+            resolved_path = user_path.resolve()
         else:
             # Join relative path to base directory
             resolved_path = (Path(env_base_dir) / user_path).resolve()

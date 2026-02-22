@@ -536,16 +536,18 @@ task_index: dict[str, weakref.ref[Task]] = {}
 
 
 def get_task_lock(id: str) -> TaskLock:
-    if id not in task_locks:
-        logger.error("Task lock not found", extra={"task_id": id})
-        raise ProgramException("Task not found")
-    logger.debug("Task lock retrieved", extra={"task_id": id})
-    return task_locks[id]
+    with _task_locks_mutex:
+        if id not in task_locks:
+            logger.error("Task lock not found", extra={"task_id": id})
+            raise ProgramException("Task not found")
+        logger.debug("Task lock retrieved", extra={"task_id": id})
+        return task_locks[id]
 
 
 def get_task_lock_if_exists(id: str) -> TaskLock | None:
     """Get task lock if it exists, otherwise return None"""
-    return task_locks.get(id)
+    with _task_locks_mutex:
+        return task_locks.get(id)
 
 
 def set_current_task_id(project_id: str, task_id: str) -> None:
@@ -593,29 +595,32 @@ def get_or_create_task_lock(id: str) -> TaskLock:
 
 
 async def delete_task_lock(id: str):
-    if id not in task_locks:
-        logger.warning(
-            "Attempting to delete non-existent task lock",
-            extra={"task_id": id},
-        )
-        raise ProgramException("Task not found")
+    with _task_locks_mutex:
+        if id not in task_locks:
+            logger.warning(
+                "Attempting to delete non-existent task lock",
+                extra={"task_id": id},
+            )
+            raise ProgramException("Task not found")
 
-    # Clean up background tasks before deletion
-    task_lock = task_locks[id]
-    logger.info(
-        "Cleaning up task lock",
-        extra={
-            "task_id": id,
-            "background_tasks": len(task_lock.background_tasks),
-        },
-    )
+        # Clean up background tasks before deletion
+        task_lock = task_locks[id]
+        logger.info(
+            "Cleaning up task lock",
+            extra={
+                "task_id": id,
+                "background_tasks": len(task_lock.background_tasks),
+            },
+        )
+
     await task_lock.cleanup()
 
-    del task_locks[id]
-    logger.info(
-        "Task lock deleted successfully",
-        extra={"task_id": id, "remaining_task_locks": len(task_locks)},
-    )
+    with _task_locks_mutex:
+        del task_locks[id]
+        logger.info(
+            "Task lock deleted successfully",
+            extra={"task_id": id, "remaining_task_locks": len(task_locks)},
+        )
 
 
 def get_camel_task(id: str, tasks: list[Task]) -> None | Task:
