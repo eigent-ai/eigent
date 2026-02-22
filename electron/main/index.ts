@@ -332,24 +332,22 @@ function processQueuedProtocolUrls() {
 
 // ==================== single instance lock ====================
 const setupSingleInstanceLock = () => {
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) {
-    log.info('no-lock');
-    app.quit();
-  } else {
-    app.on('second-instance', (event, argv) => {
-      log.info('second-instance', argv);
-      const url = argv.find((arg) => arg.startsWith('eigent://'));
-      if (url) handleProtocolUrl(url);
-      if (win) win.show();
-    });
+  // The lock is already acquired at module level (requestSingleInstanceLock
+  // above). Calling it again here would release and re-acquire the lock,
+  // creating a window where a second instance could start. We only need
+  // to register the event handlers.
+  app.on('second-instance', (event, argv) => {
+    log.info('second-instance', argv);
+    const url = argv.find((arg) => arg.startsWith('eigent://'));
+    if (url) handleProtocolUrl(url);
+    if (win) win.show();
+  });
 
-    app.on('open-url', (event, url) => {
-      log.info('open-url');
-      event.preventDefault();
-      handleProtocolUrl(url);
-    });
-  }
+  app.on('open-url', (event, url) => {
+    log.info('open-url');
+    event.preventDefault();
+    handleProtocolUrl(url);
+  });
 };
 
 // ==================== initialize config ====================
@@ -926,9 +924,7 @@ function registerIpcHandlers() {
       try {
         const { spawn } = await import('child_process');
 
-        // Add --host parameter
-        const commandWithHost = `${command} --debug --host dev.eigent.ai/api/oauth/notion/callback?code=1`;
-        // const commandWithHost = `${command}`;
+        const commandWithHost = command;
 
         log.info(' start execute command:', commandWithHost);
 
@@ -3352,10 +3348,34 @@ app.whenReady().then(async () => {
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
     const url = decodeURIComponent(request.url.replace('localfile://', ''));
-    const filePath = path.normalize(url);
+    const filePath = path.resolve(path.normalize(url));
 
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
-    log.info(`[PROTOCOL] Decoded path: ${filePath}`);
+    log.info(`[PROTOCOL] Resolved path: ${filePath}`);
+
+    // Security: Restrict file access to allowed directories only.
+    // Without this check, path traversal (e.g. /../../../etc/passwd)
+    // would allow reading arbitrary files on the filesystem.
+    const allowedBases = [
+      os.homedir(),
+      app.getPath('userData'),
+      app.getPath('temp'),
+    ];
+
+    const isPathAllowed = allowedBases.some((base) => {
+      const resolvedBase = path.resolve(base);
+      return (
+        filePath === resolvedBase ||
+        filePath.startsWith(resolvedBase + path.sep)
+      );
+    });
+
+    if (!isPathAllowed) {
+      log.error(
+        `[PROTOCOL] Security: Blocked access to path outside allowed directories: ${filePath}`
+      );
+      return new Response('Forbidden', { status: 403 });
+    }
 
     try {
       // Check if file exists
