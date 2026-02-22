@@ -178,26 +178,14 @@ export default function Browser() {
         id: 'launch-browser',
       });
 
-      // Call backend to auto-assign port and launch browser
-      const response = await fetchPost('/browser/launch');
+      const result = await window.electronAPI?.launchCdpBrowser();
 
-      if (response && response.success) {
-        const port = response.port;
-        toast.success(t('layout.browser-launched', { port }), {
+      if (result?.success) {
+        toast.success(t('layout.browser-launched', { port: result.port }), {
           id: 'launch-browser',
         });
-
-        // Add launched browser to Electron CDP pool
-        // Pool update will be pushed automatically via onCdpPoolChanged
-        if (window.electronAPI?.addCdpBrowser) {
-          await window.electronAPI.addCdpBrowser(
-            port,
-            false,
-            `Launched Browser (${port})`
-          );
-        }
       } else {
-        toast.error(response?.detail || t('layout.failed-to-launch-browser'), {
+        toast.error(result?.error || t('layout.failed-to-launch-browser'), {
           id: 'launch-browser',
         });
       }

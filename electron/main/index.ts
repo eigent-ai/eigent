@@ -676,6 +676,167 @@ function registerIpcHandlers() {
     }
   );
 
+  // Launch CDP browser with automatic port assignment
+  ipcMain.handle('launch-cdp-browser', async () => {
+    try {
+      // 1. Find available port (9223–9300) by checking no CDP browser is listening
+      let port: number | null = null;
+      for (let p = 9223; p < 9300; p++) {
+        if (
+          !cdp_browser_pool.some((b) => b.port === p) &&
+          !(await isCdpPortAlive(p))
+        ) {
+          port = p;
+          break;
+        }
+      }
+      if (port === null) {
+        return { success: false, error: 'No available port in 9223-9299' };
+      }
+
+      // 2. Find Playwright Chromium executable
+      const platform = process.platform;
+      let cacheDir: string;
+      if (platform === 'darwin')
+        cacheDir = path.join(homedir(), 'Library/Caches/ms-playwright');
+      else if (platform === 'linux')
+        cacheDir = path.join(homedir(), '.cache/ms-playwright');
+      else if (platform === 'win32')
+        cacheDir = path.join(homedir(), 'AppData/Local/ms-playwright');
+      else
+        return { success: false, error: `Unsupported platform: ${platform}` };
+
+      if (!existsSync(cacheDir)) {
+        return {
+          success: false,
+          error:
+            'Playwright Chromium not found. Please run: npx playwright install chromium',
+        };
+      }
+
+      const chromiumDirs = fs
+        .readdirSync(cacheDir)
+        .filter((d) => d.startsWith('chromium-'))
+        .sort()
+        .reverse();
+      if (chromiumDirs.length === 0) {
+        return {
+          success: false,
+          error:
+            'No Playwright Chromium found. Run: npx playwright install chromium',
+        };
+      }
+
+      const platformPaths: Record<string, (base: string) => string[]> = {
+        darwin: (base) => [
+          path.join(
+            base,
+            'chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium'
+          ),
+          path.join(
+            base,
+            'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+          ),
+          path.join(base, 'chrome-mac/Chromium.app/Contents/MacOS/Chromium'),
+          path.join(
+            base,
+            'chrome-mac/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+          ),
+        ],
+        linux: (base) => [path.join(base, 'chrome-linux/chrome')],
+        win32: (base) => [
+          path.join(base, 'chrome-win64/chrome.exe'),
+          path.join(base, 'chrome-win/chrome.exe'),
+        ],
+      };
+
+      let chromeExe: string | null = null;
+      for (const dir of chromiumDirs) {
+        const base = path.join(cacheDir, dir);
+        const candidates = platformPaths[platform](base);
+        const found = candidates.find((p) => existsSync(p));
+        if (found) {
+          chromeExe = found;
+          break;
+        }
+      }
+      if (!chromeExe) {
+        return { success: false, error: 'Chromium executable not found' };
+      }
+
+      // 3. Launch browser
+      const userDataDir = path.join(
+        app.getPath('userData'),
+        `cdp_browser_profile_${port}`
+      );
+      if (!existsSync(userDataDir)) {
+        await fsp.mkdir(userDataDir, { recursive: true });
+      }
+
+      const proc = spawn(
+        chromeExe,
+        [
+          `--remote-debugging-port=${port}`,
+          `--user-data-dir=${userDataDir}`,
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-blink-features=AutomationControlled',
+          'about:blank',
+        ],
+        { detached: false, stdio: 'ignore' }
+      );
+
+      proc.on('error', (err) =>
+        log.error(`[CDP LAUNCH] Process error port=${port}: ${err}`)
+      );
+
+      // 4. Poll for readiness (max 5s)
+      let data: any = null;
+      const start = Date.now();
+      while (Date.now() - start < 5000) {
+        try {
+          const resp = await axios.get(
+            `http://localhost:${port}/json/version`,
+            { timeout: 1000 }
+          );
+          if (resp.status === 200) {
+            data = resp.data;
+            break;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 300));
+      }
+
+      if (!data) {
+        proc.kill();
+        return {
+          success: false,
+          error: `Browser not responding on port ${port} after 5s`,
+        };
+      }
+
+      // 5. Add to pool automatically
+      const newBrowser: CdpBrowser = {
+        id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        port,
+        isExternal: false,
+        name: `Launched Browser (${port})`,
+        addedAt: Date.now(),
+      };
+      cdp_browser_pool.push(newBrowser);
+      saveCdpPool();
+      notifyCdpPoolChanged();
+
+      log.info(
+        `[CDP LAUNCH] Success: port=${port}, id=${newBrowser.id}, pool_size=${cdp_browser_pool.length}`
+      );
+      return { success: true, port, data };
+    } catch (err: any) {
+      log.error(`[CDP LAUNCH] Failed: ${err}`);
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
 

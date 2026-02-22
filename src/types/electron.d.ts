@@ -219,6 +219,12 @@ interface ElectronAPI {
     closeBrowser?: boolean
   ) => Promise<{ success: boolean; browser?: any; error?: string }>;
   onCdpPoolChanged: (callback: (browsers: any[]) => void) => () => void;
+  launchCdpBrowser: () => Promise<{
+    success: boolean;
+    port?: number;
+    data?: any;
+    error?: string;
+  }>;
 }
 
 declare global {

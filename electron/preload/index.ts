@@ -166,6 +166,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('add-cdp-browser', port, isExternal, name),
   removeCdpBrowser: (browserId: string, closeBrowser?: boolean) =>
     ipcRenderer.invoke('remove-cdp-browser', browserId, closeBrowser ?? true),
+  launchCdpBrowser: () => ipcRenderer.invoke('launch-cdp-browser'),
   onCdpPoolChanged: (callback: (browsers: any[]) => void) => {
     const channel = 'cdp-pool-changed';
     const listener = (_event: any, browsers: any[]) => callback(browsers);

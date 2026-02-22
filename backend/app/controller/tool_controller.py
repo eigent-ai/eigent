@@ -14,9 +14,6 @@
 
 import logging
 import os
-import platform as pf
-import socket
-import subprocess
 import time
 
 from fastapi import APIRouter, HTTPException
@@ -40,97 +37,6 @@ class LinkedInTokenRequest(BaseModel):
 
 logger = logging.getLogger("tool_controller")
 router = APIRouter()
-
-# Track browser processes launched by /browser/launch
-_launched_browser_processes: dict[int, subprocess.Popen] = {}
-
-_CDP_LAUNCH_PORT_START = 9223  # launch range for /browser/launch (skip 9222)
-_CDP_PORT_END = 9300
-
-
-def _find_available_cdp_port() -> int | None:
-    """Find an available port starting from 9223 by checking if port is in use."""
-    for port in range(_CDP_LAUNCH_PORT_START, _CDP_PORT_END):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(("localhost", port)) != 0:
-                return port
-    return None
-
-
-def _find_chromium_executable() -> str | None:
-    """Find Playwright's Chromium executable path across platforms."""
-    home = os.path.expanduser("~")
-    system = pf.system()
-
-    if system == "Darwin":
-        cache_dir = os.path.join(home, "Library", "Caches", "ms-playwright")
-    elif system == "Linux":
-        cache_dir = os.path.join(home, ".cache", "ms-playwright")
-    elif system == "Windows":
-        cache_dir = os.path.join(home, "AppData", "Local", "ms-playwright")
-    else:
-        return None
-
-    if not os.path.exists(cache_dir):
-        return None
-
-    chromium_dirs = sorted(
-        [d for d in os.listdir(cache_dir) if d.startswith("chromium-")],
-        reverse=True,
-    )
-    if not chromium_dirs:
-        return None
-
-    for chromium_dir in chromium_dirs:
-        base = os.path.join(cache_dir, chromium_dir)
-        if system == "Darwin":
-            candidates = [
-                os.path.join(
-                    base,
-                    "chrome-mac-arm64",
-                    "Chromium.app",
-                    "Contents",
-                    "MacOS",
-                    "Chromium",
-                ),
-                os.path.join(
-                    base,
-                    "chrome-mac-arm64",
-                    "Google Chrome for Testing.app",
-                    "Contents",
-                    "MacOS",
-                    "Google Chrome for Testing",
-                ),
-                os.path.join(
-                    base,
-                    "chrome-mac",
-                    "Chromium.app",
-                    "Contents",
-                    "MacOS",
-                    "Chromium",
-                ),
-                os.path.join(
-                    base,
-                    "chrome-mac",
-                    "Google Chrome for Testing.app",
-                    "Contents",
-                    "MacOS",
-                    "Google Chrome for Testing",
-                ),
-            ]
-        elif system == "Linux":
-            candidates = [os.path.join(base, "chrome-linux", "chrome")]
-        else:  # Windows
-            candidates = [
-                os.path.join(base, "chrome-win64", "chrome.exe"),
-                os.path.join(base, "chrome-win", "chrome.exe"),
-            ]
-
-        for p in candidates:
-            if os.path.exists(p):
-                return p
-
-    return None
 
 
 @router.post("/install/tool/{tool}", name="install tool")
@@ -753,6 +659,9 @@ async def open_browser_login():
         Browser session information
     """
     try:
+        import socket
+        import subprocess
+
         # Use fixed profile name for persistent logins (no port suffix)
         session_id = "user_login"
         cdp_port = 9223
@@ -881,136 +790,6 @@ async def open_browser_login():
         raise HTTPException(
             status_code=500,
             detail="Failed to open browser. Check server logs for details.",
-        )
-
-
-@router.post("/browser/launch", name="launch CDP browser with auto port")
-async def launch_cdp_browser():
-    """
-    Launch a CDP browser with automatic port assignment.
-
-    Automatically finds an available port starting from 9223
-    (incrementing), launches Playwright's Chromium with CDP
-    enabled on that port, and returns the actual port used.
-
-    Returns:
-        success: Whether the launch was successful
-        port: The assigned port number
-        data: Browser CDP info (from /json/version)
-    """
-    try:
-        import asyncio
-
-        import httpx
-
-        # 1. Find available port
-        port = _find_available_cdp_port()
-        if port is None:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "No available port found in range"
-                    f" {_CDP_LAUNCH_PORT_START}-{_CDP_PORT_END}"
-                ),
-            )
-
-        logger.info(f"[BROWSER LAUNCH] Found available port: {port}")
-
-        # 2. Find Chromium executable
-        chrome_executable = _find_chromium_executable()
-        if not chrome_executable:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "Playwright Chromium not found."
-                    " Please run: npx playwright install chromium"
-                ),
-            )
-
-        logger.info(f"[BROWSER LAUNCH] Using Chromium: {chrome_executable}")
-
-        # 3. Create user data directory
-        user_data_dir = os.path.join(
-            os.path.expanduser("~/.eigent/browser_profiles"),
-            f"cdp_browser_profile_{port}",
-        )
-        os.makedirs(user_data_dir, exist_ok=True)
-
-        # 4. Launch Chromium with CDP
-        args = [
-            chrome_executable,
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={user_data_dir}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-blink-features=AutomationControlled",
-            "about:blank",
-        ]
-
-        logger.info(f"[BROWSER LAUNCH] Spawning Chromium on port {port}")
-
-        process = subprocess.Popen(
-            args,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        _launched_browser_processes[port] = process
-        logger.info(f"[BROWSER LAUNCH] Chromium spawned, PID: {process.pid}")
-
-        # 5. Poll for browser readiness (max 5 seconds)
-        max_wait = 5.0
-        poll_interval = 0.3
-        start_time = time.time()
-        browser_info = None
-
-        async with httpx.AsyncClient() as client:
-            while time.time() - start_time < max_wait:
-                try:
-                    resp = await client.get(
-                        f"http://localhost:{port}/json/version",
-                        timeout=1.0,
-                    )
-                    if resp.status_code == 200:
-                        browser_info = resp.json()
-                        break
-                except Exception:
-                    pass
-                await asyncio.sleep(poll_interval)
-
-        if browser_info is None:
-            # Browser didn't respond, clean up
-            process.kill()
-            _launched_browser_processes.pop(port, None)
-            elapsed = time.time() - start_time
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "Browser launched but not responding"
-                    f" on port {port} after {elapsed:.1f}s"
-                ),
-            )
-
-        elapsed = time.time() - start_time
-        logger.info(
-            "[BROWSER LAUNCH] Browser ready on"
-            f" port {port} after {elapsed:.1f}s"
-        )
-
-        return {
-            "success": True,
-            "port": port,
-            "data": browser_info,
-            "message": (f"Browser launched successfully on port {port}"),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[BROWSER LAUNCH] Failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to launch browser: {e!s}",
         )
 
 

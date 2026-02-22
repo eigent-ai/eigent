@@ -932,17 +932,33 @@ class Workforce(BaseWorkforce):
     def _cleanup_all_agents(self) -> None:
         """Release CDP browser resources for all agents."""
         cleanup_count = 0
+        children_count = len(self._children) if hasattr(self, "_children") else 0
+        logger.info(
+            f"[WF-CLEANUP] Starting cleanup, "
+            f"children={children_count}, api_task_id={self.api_task_id}"
+        )
 
         if hasattr(self, "_children") and self._children:
             for child in self._children:
                 # Cleanup base worker agent
                 if hasattr(child, "worker"):
                     agent = child.worker
+                    has_cb = hasattr(agent, "_cdp_release_callback")
+                    port = getattr(agent, "_cdp_port", None)
+                    logger.info(
+                        f"[WF-CLEANUP] Child worker: "
+                        f"agent_id={getattr(agent, 'agent_id', '?')}, "
+                        f"has_release_cb={has_cb}, cdp_port={port}"
+                    )
                     cb = getattr(agent, "_cdp_release_callback", None)
                     if callable(cb):
                         try:
                             cb(agent)
                             cleanup_count += 1
+                            logger.info(
+                                f"[WF-CLEANUP] Released CDP via callback: "
+                                f"port={port}"
+                            )
                         except Exception as e:
                             logger.error(
                                 f"[WF-CLEANUP] Error releasing CDP for "
@@ -952,7 +968,11 @@ class Workforce(BaseWorkforce):
                 # Cleanup agents in AgentPool
                 if hasattr(child, "agent_pool") and child.agent_pool:
                     pool = child.agent_pool
-                    for agent in list(getattr(pool, "_available_agents", [])):
+                    available = list(getattr(pool, "_available_agents", []))
+                    logger.info(
+                        f"[WF-CLEANUP] AgentPool available_agents={len(available)}"
+                    )
+                    for agent in available:
                         cb = getattr(agent, "_cdp_release_callback", None)
                         if callable(cb):
                             try:
