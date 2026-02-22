@@ -490,7 +490,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   }
 
   const handleBack = () => {
-    chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, 'workflow');
+    chatStore.setActiveWorkspace(chatStore.activeTaskId as string, 'workflow');
   };
 
   return (
