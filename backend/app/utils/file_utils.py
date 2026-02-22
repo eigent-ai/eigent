@@ -17,6 +17,7 @@
 import logging
 import os
 import platform
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,9 +29,6 @@ logger = logging.getLogger("file_utils")
 # Windows has a 260-character path limit unless long path support is enabled
 MAX_PATH_LENGTH_WIN = 260
 MAX_PATH_LENGTH_UNIX = 4096
-DEFAULT_MAX_FILE_SIZE_READ = 10 * 1024 * 1024  # 10 MB
-DEFAULT_ENCODING = "utf-8"
-FALLBACK_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
 # Default directory names to skip when listing (safe_list_directory)
 DEFAULT_SKIP_DIRS = frozenset(
     {".git", "node_modules", "__pycache__", "venv", ".venv"}
@@ -57,8 +55,8 @@ def safe_join_path(base: str, *parts: str) -> str | None:
         return None
     try:
         base_resolved = Path(base).resolve()
-        if not base_resolved.is_dir() and not base_resolved.exists():
-            base_resolved = base_resolved.parent
+        if not base_resolved.is_dir():
+            return None
         combined = base_resolved
         for p in parts:
             if p is None or (isinstance(p, str) and ".." in p.split(os.sep)):
@@ -106,7 +104,7 @@ def is_safe_path(path: str, base: str) -> bool:
 def safe_resolve_path(path: str, base: str) -> str | None:
     """
     Resolve path relative to base. If path is absolute, ensure it is under base.
-    Returns None if path escapes base, does not exist, or exceeds path length.
+    Returns None if path escapes base or exceeds path length.
     """
     if not path or not path.strip():
         return None
@@ -203,21 +201,22 @@ def safe_list_directory(
         logger.warning("safe_list_directory: empty dir_path")
         return []
     resolve_base = base if base else os.getcwd()
-    # Validate dir_path is under base; do not use return value in path ops.
-    if safe_resolve_path(dir_path, resolve_base) is None:
+    # Validate dir_path is under base.
+    resolved_dir = safe_resolve_path(dir_path, resolve_base)
+    if resolved_dir is None:
         logger.debug(
             "safe_list_directory: dir_path not under base or invalid: %r",
             dir_path,
         )
         return []
-    # Use only trusted base for path operations (no user-derived path in sinks).
     base_real = os.path.realpath(resolve_base)
     try:
-        if not os.path.isdir(base_real):
+        if not os.path.isdir(resolved_dir):
             return []
     except OSError:
         return []
-    path_for_walk = base_real
+    # Walk the resolved dir_path, not base — so we list only the requested subtree.
+    path_for_walk = resolved_dir
     skip_dirs = skip_dirs or set(DEFAULT_SKIP_DIRS)
     result: list[str] = []
     try:
@@ -282,3 +281,36 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
         raw = Path(env("file_save_path", options.file_save_path()))
 
     return normalize_working_path(raw)
+
+
+def sync_eigent_skills_to_project(working_directory: str) -> None:
+    """
+    Copy skills from ~/.eigent/skills into the project's .eigent/skills
+    so the agent can load and execute them from the project working directory.
+    """
+    src = Path.home() / ".eigent" / "skills"
+    dst = Path(working_directory) / ".eigent" / "skills"
+    if not src.is_dir():
+        return
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        for skill_dir in src.iterdir():
+            if skill_dir.is_dir():
+                dest_skill = dst / skill_dir.name
+                if dest_skill.exists():
+                    shutil.rmtree(dest_skill)
+                shutil.copytree(skill_dir, dest_skill)
+        logger.debug(
+            "Synced eigent skills to project",
+            extra={
+                "working_directory": working_directory,
+                "destination": str(dst),
+            },
+        )
+    except OSError as e:
+        logger.warning(
+            "Failed to sync ~/.eigent/skills to project %s: %s",
+            working_directory,
+            e,
+            exc_info=True,
+        )

@@ -47,7 +47,7 @@ class TestNormalizeWorkingPath:
         result = normalize_working_path(str(temp_dir))
         assert os.path.isabs(result)
         assert os.path.isdir(result)
-        assert os.path.normpath(result) == os.path.normpath(str(temp_dir))
+        assert os.path.realpath(result) == os.path.realpath(str(temp_dir))
 
 
 @pytest.mark.unit
@@ -154,7 +154,7 @@ class TestGetWorkingDirectory:
         task_lock.new_folder_path = str(temp_dir)
         result = get_working_directory(options, task_lock)
         assert os.path.isdir(result)
-        assert os.path.normpath(result) == os.path.normpath(str(temp_dir))
+        assert os.path.realpath(result) == os.path.realpath(str(temp_dir))
 
     def test_falls_back_to_options_file_save_path(self):
         options = MagicMock()
