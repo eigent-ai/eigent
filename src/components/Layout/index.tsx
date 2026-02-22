@@ -58,14 +58,14 @@ const Layout = () => {
       if (['running', 'pause'].includes(currentStatus)) {
         setNoticeOpen(true);
       } else {
-        window.electronAPI?.closeWindow(true);
+        window.electronAPI.closeWindow(true);
       }
     };
 
-    window.ipcRenderer?.on('before-close', handleBeforeClose);
+    window.ipcRenderer.on('before-close', handleBeforeClose);
 
     return () => {
-      window.ipcRenderer?.removeAllListeners('before-close');
+      window.ipcRenderer.removeAllListeners('before-close');
     };
   }, [chatStore.tasks, chatStore.activeTaskId]);
 

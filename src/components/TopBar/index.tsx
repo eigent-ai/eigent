@@ -66,8 +66,8 @@ function HeaderWin() {
     isInstalling || installationState === 'waiting-backend';
 
   useEffect(() => {
-    const p = window.electronAPI?.getPlatform();
-    if (p) setPlatform(p);
+    const p = window.electronAPI.getPlatform();
+    setPlatform(p);
   }, []);
   const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
 
