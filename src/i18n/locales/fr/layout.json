@@ -31,8 +31,10 @@
   "installation-failed": "Échec de l'installation",
   "projects": "Projets",
   "mcp-tools": "MCP & Outils",
+  "connectors": "Connecteurs",
   "browser": "Navigateur",
   "settings": "Paramètres",
+  "general": "Général",
   "workers": "Travailleurs",
   "triggers": "Déclencheurs",
   "new-project": "Nouveau Projet",
@@ -166,5 +168,6 @@
   "days-ago": "jours auparavant",
   "delete-project": "Supprimer le Projet",
   "delete-project-confirmation": "Êtes-vous sûr de vouloir supprimer ce projet et toutes ses tâches ? Cette action ne peut pas être annulée.",
-  "please-select-model": "Veuillez sélectionner un modèle dans Paramètres > Modèles pour continuer."
+  "please-select-model": "Veuillez sélectionner un modèle dans Paramètres > Modèles pour continuer.",
+  "capabilities": "Capacités"
 }
