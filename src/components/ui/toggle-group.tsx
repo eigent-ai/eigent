@@ -59,7 +59,7 @@ const ToggleGroupItem = React.forwardRef<
           variant: context.variant || variant,
           size: context.size || size,
         }),
-        'bg-surface-primary border-border-disabled data-[state=on]:bg-surface-tertiary data-[state=on]:border-border-secondary',
+        'border-border-disabled bg-surface-primary data-[state=on]:border-border-secondary data-[state=on]:bg-surface-tertiary',
         className
       )}
       {...props}
