@@ -57,7 +57,7 @@ from app.service.task import (
     set_current_task_id,
 )
 from app.utils.event_loop_utils import set_main_event_loop
-from app.utils.file_utils import get_working_directory, safe_list_directory
+from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
@@ -93,7 +93,7 @@ def format_task_context(
         working_directory = task_data.get("working_directory")
         if working_directory:
             try:
-                generated_files = safe_list_directory(
+                generated_files = list_files(
                     working_directory,
                     base=working_directory,
                     skip_dirs={"node_modules", "__pycache__", "venv"},
@@ -156,7 +156,7 @@ def collect_previous_task_context(
 
     # Collect generated files from working directory (safe listing)
     try:
-        generated_files = safe_list_directory(
+        generated_files = list_files(
             working_directory,
             base=working_directory,
             skip_dirs={"node_modules", "__pycache__", "venv"},
@@ -246,7 +246,7 @@ def build_conversation_context(
             all_generated_files: set[str] = set()
             for working_directory in working_directories:
                 try:
-                    files_list = safe_list_directory(
+                    files_list = list_files(
                         working_directory,
                         base=working_directory,
                         skip_dirs={"node_modules", "__pycache__", "venv"},

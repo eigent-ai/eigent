@@ -52,7 +52,7 @@ class TestFormatTaskContext:
     def test_format_task_context_with_working_directory_and_files(
         self, temp_dir
     ):
-        """Test format_task_context lists generated files via safe_list_directory."""
+        """Test format_task_context lists generated files via list_files."""
         (temp_dir / "output.txt").write_text("content")
         task_data = {
             "task_content": "Create file",
@@ -268,7 +268,7 @@ class TestCollectPreviousTaskContext:
         """Test collect_previous_task_context handles file system errors gracefully."""
         working_directory = str(temp_dir)
 
-        # Mock os.walk to raise an exception (used inside safe_list_directory)
+        # Mock os.walk to raise an exception (used inside list_files)
         with patch("os.walk", side_effect=PermissionError("Access denied")):
             result = collect_previous_task_context(
                 working_directory=working_directory,
@@ -282,7 +282,7 @@ class TestCollectPreviousTaskContext:
             assert "Test task" in result
             assert "Generated Files from Previous Task:" not in result
 
-            # Warning is logged by file_utils.safe_list_directory
+            # Warning is logged by file_utils.list_files
             mock_logger.warning.assert_called_once()
 
     def test_collect_previous_task_context_relative_paths(self, temp_dir):
@@ -1019,7 +1019,7 @@ class TestChatServiceErrorCases:
                 # Should not include file listing
                 assert "Generated Files from Previous Task:" not in result
 
-                # Warning is logged by file_utils.safe_list_directory
+                # Warning is logged by file_utils.list_files
                 mock_logger.warning.assert_called_once()
 
     def test_collect_previous_task_context_abspath_used(self, temp_dir):

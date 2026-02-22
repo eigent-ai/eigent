@@ -18,10 +18,10 @@ import logging
 import os
 import platform
 import shutil
-from collections.abc import Callable
 from pathlib import Path
 
 from app.component.environment import env
+from app.exception.exception import PathEscapesBaseError
 from app.model.chat import Chat
 
 logger = logging.getLogger("file_utils")
@@ -29,11 +29,11 @@ logger = logging.getLogger("file_utils")
 # Windows has a 260-character path limit unless long path support is enabled
 MAX_PATH_LENGTH_WIN = 260
 MAX_PATH_LENGTH_UNIX = 4096
-# Default directory names to skip when listing (safe_list_directory)
+# Default directory names to skip when listing (list_files)
 DEFAULT_SKIP_DIRS = frozenset(
     {".git", "node_modules", "__pycache__", "venv", ".venv"}
 )
-# Default file extensions to skip when listing (safe_list_directory)
+# Default file extensions to skip when listing (list_files)
 DEFAULT_SKIP_EXTENSIONS: tuple[str, ...] = (".pyc", ".tmp", ".temp")
 
 
@@ -46,10 +46,32 @@ def _max_path_length() -> int:
     )
 
 
-def safe_join_path(base: str, *parts: str) -> str | None:
-    """
-    Join path parts to base and ensure the result is still under base (no traversal).
-    Returns None if the resolved path escapes base or is invalid.
+def _is_under_base(path_real: str, base_real: str) -> bool:
+    """Return True if path_real is at or under base_real (both already realpath'd)."""
+    base = base_real.rstrip(os.sep)
+    return path_real.startswith(base + os.sep) or path_real == base
+
+
+def _should_skip(
+    name: str,
+    skip_prefix: str,
+    skip_extensions: tuple[str, ...] = (),
+) -> bool:
+    """Return True if a file or directory name should be excluded from listing."""
+    if name.startswith(skip_prefix):
+        return True
+    return any(name.endswith(ext) for ext in skip_extensions)
+
+
+def join_under_base(base: str, *parts: str) -> str | None:
+    """Join path parts onto base, ensuring the result stays under base.
+
+    Args:
+        base (str): Base directory; must exist as a directory.
+        *parts (str): Path components to join onto base.
+
+    Returns:
+        str | None: Resolved absolute path if valid and under base, None otherwise.
     """
     if not base or not base.strip():
         return None
@@ -71,65 +93,64 @@ def safe_join_path(base: str, *parts: str) -> str | None:
             return None
         return str(resolved)
     except (OSError, RuntimeError) as e:
-        logger.debug("safe_join_path failed: %s", e)
+        logger.debug("join_under_base failed: %s", e)
         return None
 
 
 def is_safe_path(path: str, base: str) -> bool:
-    """
-    Return True if path is under base (realpath) and within path length limits.
-    Handles None/empty and symlinks by resolving.
+    """Return True if path is under base (realpath) and within path length limits.
 
     Args:
-        path: Path to validate (file or directory).
-        base: Base directory that path must be under.
+        path (str): Path to validate (file or directory).
+        base (str): Base directory that path must be under.
 
     Returns:
-        True if path resolves under base and within path length limits.
+        bool: True if path resolves under base and within path length limits.
     """
     if not path or not base:
         return False
     try:
         base_real = os.path.realpath(base)
         path_real = os.path.realpath(path)
-        if not path_real.startswith(
-            base_real.rstrip(os.sep) + os.sep
-        ) and path_real != base_real.rstrip(os.sep):
+        if not _is_under_base(path_real, base_real):
             return False
         return len(path_real) <= _max_path_length()
     except (OSError, RuntimeError):
         return False
 
 
-def safe_resolve_path(path: str, base: str) -> str | None:
-    """
-    Resolve path relative to base. If path is absolute, ensure it is under base.
-    Returns None if path escapes base or exceeds path length.
+def resolve_under_base(path: str, base: str) -> str:
+    """Resolve path and verify it stays under base. Raises if it escapes.
+
+    Args:
+        path (str): Path to resolve (relative or absolute).
+        base (str): Base directory that path must be confined to.
+
+    Returns:
+        str: Resolved real path.
+
+    Raises:
+        ValueError: If path is empty or whitespace.
+        PathEscapesBaseError: If path resolves outside base or exceeds path length.
+        OSError: If path resolution fails due to filesystem error.
     """
     if not path or not path.strip():
-        return None
-    try:
-        base_abs = os.path.abspath(base)
-        if not os.path.isdir(base_abs):
-            base_abs = os.path.dirname(base_abs)
-        if os.path.isabs(path):
-            resolved = os.path.normpath(path)
-        else:
-            resolved = os.path.normpath(os.path.join(base_abs, path))
-        resolved_real = os.path.realpath(resolved)
-        base_real = os.path.realpath(base_abs)
-        if not resolved_real.startswith(
-            base_real.rstrip(os.sep) + os.sep
-        ) and resolved_real != base_real.rstrip(os.sep):
-            logger.warning("Path escapes base: path=%r base=%r", path, base)
-            return None
-        if len(resolved_real) > _max_path_length():
-            logger.warning("Path exceeds max length: %d", len(resolved_real))
-            return None
-        return resolved_real
-    except (OSError, RuntimeError) as e:
-        logger.debug("safe_resolve_path failed: %s", e)
-        return None
+        raise ValueError(f"Path must be non-empty, got: {path!r}")
+    base_abs = os.path.abspath(base)
+    if not os.path.isdir(base_abs):
+        raise PathEscapesBaseError(f"Base is not a directory: {base!r}")
+    resolved = os.path.normpath(os.path.join(base_abs, path))
+    resolved_real = os.path.realpath(resolved)
+    base_real = os.path.realpath(base_abs)
+    if not _is_under_base(resolved_real, base_real):
+        raise PathEscapesBaseError(
+            f"Path escapes base: path={path!r} base={base!r}"
+        )
+    if len(resolved_real) > _max_path_length():
+        raise PathEscapesBaseError(
+            f"Path exceeds max length ({len(resolved_real)}): {resolved_real!r}"
+        )
+    return resolved_real
 
 
 def normalize_working_path(path: str | Path | None) -> str:
@@ -166,7 +187,7 @@ def normalize_working_path(path: str | Path | None) -> str:
         return str(Path.home())
 
 
-def safe_list_directory(
+def list_files(
     dir_path: str,
     base: str | None = None,
     *,
@@ -174,87 +195,69 @@ def safe_list_directory(
     skip_dirs: set[str] | None = None,
     skip_extensions: tuple[str, ...] = DEFAULT_SKIP_EXTENSIONS,
     skip_prefix: str = ".",
-    follow_symlinks: bool = False,
-    path_filter: Callable[[str], bool] | None = None,
 ) -> list[str]:
-    """
-    List files under dir_path with optional base confinement and filters.
+    """List files under dir_path with optional base confinement and filters.
     If base is set, only returns paths that resolve under base (no traversal).
-    For CodeQL: only the trusted base path is used in path operations; we
-    validate dir_path is under base then list base (same as dir_path when
-    base equals dir_path, as in chat_service).
 
     Args:
-        dir_path: Directory to list; must resolve under base when base is set.
-        base: Confinement base (default: cwd). Paths outside this are excluded.
-        max_entries: Maximum number of file paths to return.
-        skip_dirs: Directory names to skip (default: DEFAULT_SKIP_DIRS).
-        skip_extensions: File extensions to skip (default: DEFAULT_SKIP_EXTENSIONS).
-        skip_prefix: Skip dirs/files whose name starts with this prefix.
-        follow_symlinks: Whether to follow symlinks when walking.
-        path_filter: Optional predicate; only paths for which it returns True are included.
+        dir_path (str): Directory to list; must resolve under base when base is set.
+        base (str | None): Confinement base (default: cwd). Paths outside this are excluded.
+        max_entries (int): Maximum number of file paths to return.
+        skip_dirs (set[str] | None): Directory names to skip (default: DEFAULT_SKIP_DIRS).
+        skip_extensions (tuple[str, ...]): File extensions to skip (default: DEFAULT_SKIP_EXTENSIONS).
+        skip_prefix (str): Skip dirs/files whose name starts with this prefix.
 
     Returns:
-        List of absolute file paths under dir_path (subject to filters and max_entries).
+        List of real absolute file paths under dir_path (subject to filters and max_entries).
     """
     if not dir_path or not dir_path.strip():
-        logger.warning("safe_list_directory: empty dir_path")
+        logger.warning("list_files: empty dir_path")
         return []
     resolve_base = base if base else os.getcwd()
-    # Validate dir_path is under base.
-    resolved_dir = safe_resolve_path(dir_path, resolve_base)
-    if resolved_dir is None:
-        logger.debug(
-            "safe_list_directory: dir_path not under base or invalid: %r",
-            dir_path,
-        )
+    try:
+        resolved_dir = resolve_under_base(dir_path, resolve_base)
+    except PathEscapesBaseError as e:
+        logger.warning("list_files: %s", e)
         return []
-    base_real = os.path.realpath(resolve_base)
+    except (ValueError, OSError) as e:
+        logger.warning("list_files: invalid dir_path %r: %s", dir_path, e)
+        return []
     try:
         if not os.path.isdir(resolved_dir):
             return []
     except OSError:
         return []
-    # Walk the resolved dir_path, not base — so we list only the requested subtree.
-    path_for_walk = resolved_dir
-    skip_dirs = skip_dirs or set(DEFAULT_SKIP_DIRS)
+    base_real = os.path.realpath(resolve_base)
+    skip_dirs = set(DEFAULT_SKIP_DIRS) if skip_dirs is None else skip_dirs
     result: list[str] = []
     try:
-        for root, dirs, files in os.walk(
-            path_for_walk, followlinks=follow_symlinks
-        ):
+        for root, dirs, files in os.walk(resolved_dir, followlinks=False):
             dirs[:] = [
                 d
                 for d in dirs
-                if d not in skip_dirs and not d.startswith(skip_prefix)
+                if d not in skip_dirs and not _should_skip(d, skip_prefix)
             ]
             for name in files:
-                if name.startswith(skip_prefix):
+                if _should_skip(name, skip_prefix, skip_extensions):
                     continue
-                if any(name.endswith(ext) for ext in skip_extensions):
-                    continue
-                file_path = os.path.join(root, name)
                 try:
-                    abs_path = os.path.abspath(file_path)
+                    file_path = os.path.join(root, name)
                     real_path = os.path.realpath(file_path)
-                    if base_real and not (
-                        real_path.startswith(base_real.rstrip(os.sep) + os.sep)
-                        or real_path == base_real.rstrip(os.sep)
-                    ):
+                    if not _is_under_base(real_path, base_real):
+                        logger.debug(
+                            "list_files: skipping %r (escapes base)", file_path
+                        )
                         continue
-                    if path_filter and not path_filter(abs_path):
-                        continue
-                    result.append(abs_path)
+                    result.append(real_path)
                     if len(result) >= max_entries:
                         logger.debug(
-                            "safe_list_directory hit max_entries=%d",
-                            max_entries,
+                            "list_files hit max_entries=%d", max_entries
                         )
                         return result
                 except OSError:
                     continue
     except OSError as e:
-        logger.warning("safe_list_directory failed for %r: %s", dir_path, e)
+        logger.warning("list_files failed for %r: %s", dir_path, e)
     return result
 
 
