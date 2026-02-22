@@ -13,7 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import platform
-import socket
 import threading
 import uuid
 
@@ -44,15 +43,6 @@ def _get_browser_port(browser: dict) -> int:
     return int(browser.get("port", env("browser_port", "9222")))
 
 
-def _is_cdp_port_alive(port: int, timeout: float = 1.0) -> bool:
-    """Check if a CDP browser is actually responding on the given port."""
-    try:
-        with socket.create_connection(("localhost", port), timeout=timeout):
-            return True
-    except (TimeoutError, ConnectionRefusedError, OSError):
-        return False
-
-
 class CdpBrowserPoolManager:
     """Manages CDP browser pool occupation to ensure
     parallel tasks use different browsers."""
@@ -71,9 +61,6 @@ class CdpBrowserPoolManager:
     ) -> dict | None:
         """Acquire an available browser from the pool.
 
-        Performs a health check on each candidate port before acquiring.
-        Skips browsers that are not actually responding (stale pool entries).
-
         Args:
             cdp_browsers: List of browser configurations.
             session_id: Unique session identifier.
@@ -82,18 +69,10 @@ class CdpBrowserPoolManager:
         Returns:
             Browser configuration dict or None if all occupied.
         """
-        dead_ports: list[int] = []
         with self._lock:
             for browser in cdp_browsers:
                 port = browser.get("port")
                 if port and port not in self._occupied_ports:
-                    if not _is_cdp_port_alive(port):
-                        dead_ports.append(port)
-                        logger.warning(
-                            f"Browser on port {port} is not responding, "
-                            f"skipping (stale pool entry)"
-                        )
-                        continue
                     self._occupied_ports[port] = session_id
                     self._session_to_port[session_id] = port
                     self._session_to_task[session_id] = task_id
@@ -102,20 +81,11 @@ class CdpBrowserPoolManager:
                         f"{session_id}. Occupied: "
                         f"{list(self._occupied_ports.keys())}"
                     )
-                    if dead_ports:
-                        logger.info(
-                            f"Detected dead browser ports: {dead_ports}"
-                        )
                     return browser
             logger.warning(
                 f"No available browsers for session {session_id}. "
                 f"All occupied: {list(self._occupied_ports.keys())}"
             )
-            if dead_ports:
-                logger.warning(
-                    f"Dead browser ports detected: {dead_ports}. "
-                    f"Consider removing them from the pool."
-                )
             return None
 
     def release_browser(self, port: int, session_id: str):
@@ -194,7 +164,6 @@ def browser_agent(options: Chat):
     toolkit_session_id = str(uuid.uuid4())[:8]
     selected_port = None
     selected_is_external = False
-    use_pool_browser = False
 
     if options.cdp_browsers:
         selected_browser = _cdp_pool_manager.acquire_browser(
@@ -203,26 +172,18 @@ def browser_agent(options: Chat):
         if selected_browser:
             selected_port = _get_browser_port(selected_browser)
             selected_is_external = selected_browser.get("isExternal", False)
-            use_pool_browser = True
             logger.info(
                 f"Acquired CDP browser from pool (initial): "
                 f"port={selected_port}, isExternal={selected_is_external}, "
                 f"session_id={toolkit_session_id}"
             )
         else:
-            # All browsers occupied; pick first alive one as fallback
-            fallback = None
-            for b in options.cdp_browsers:
-                p = b.get("port")
-                if p and _is_cdp_port_alive(p):
-                    fallback = b
-                    break
-            fallback = fallback or options.cdp_browsers[0]
-            selected_port = _get_browser_port(fallback)
-            selected_is_external = fallback.get("isExternal", False)
-            use_pool_browser = True
+            selected_port = _get_browser_port(options.cdp_browsers[0])
+            selected_is_external = options.cdp_browsers[0].get(
+                "isExternal", False
+            )
             logger.warning(
-                f"No available browsers in pool (initial), using fallback: "
+                f"No available browsers in pool (initial), using first: "
                 f"port={selected_port}, session_id={toolkit_session_id}"
             )
     else:
@@ -234,13 +195,8 @@ def browser_agent(options: Chat):
         browser_log_to_file=True,
         stealth=True,
         session_id=toolkit_session_id,
-        **(
-            {"default_start_url": "about:blank"}
-            if not use_pool_browser
-            else {}
-        ),
+        default_start_url="about:blank",
         cdp_url=f"http://localhost:{selected_port}",
-        cdp_keep_current_page=use_pool_browser,
         enabled_tools=[
             "browser_click",
             "browser_type",
@@ -321,12 +277,12 @@ def browser_agent(options: Chat):
 
     # Build external browser notice
     external_browser_notice = ""
-    if use_pool_browser:
+    if selected_is_external:
         external_browser_notice = (
             "\n<external_browser_connection>\n"
-            "**IMPORTANT**: You are connected to an existing browser instance. "
-            "The browser may already be open with active sessions and pages. "
-            "When you use browser tools, you will connect to this "
+            "**IMPORTANT**: You are connected to an external browser instance. "
+            "The browser may already be open with active sessions and logged-in "
+            "websites. When you use browser tools, you will connect to this "
             "existing browser and can immediately access its current state and "
             "pages.\n"
             "</external_browser_connection>\n"
@@ -377,15 +333,9 @@ def browser_agent(options: Chat):
         if selected:
             agent_instance._cdp_port = _get_browser_port(selected)
         else:
-            # Fallback: pick first alive browser
-            fallback = None
-            for b in options.cdp_browsers:
-                p = b.get("port")
-                if p and _is_cdp_port_alive(p):
-                    fallback = b
-                    break
-            fallback = fallback or options.cdp_browsers[0]
-            agent_instance._cdp_port = _get_browser_port(fallback)
+            agent_instance._cdp_port = _get_browser_port(
+                options.cdp_browsers[0]
+            )
         agent_instance._cdp_session_id = session_id
         logger.info(
             f"Acquired CDP for cloned agent {agent_instance.agent_id}: "
