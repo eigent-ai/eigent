@@ -234,6 +234,9 @@
   "api-key-setting": "Настройка API-ключа",
   "api-host-setting": "Настройка API-хоста",
   "model-type-setting": "Настройка типа модели",
+  "search-model-types": "Поиск типов моделей...",
+  "no-model-types-found": "Типы моделей не найдены.",
+  "loading-suggestions": "Загрузка предложений...",
   "please-select": "Пожалуйста, выберите",
   "configuring": "Конфигурирование...",
 
