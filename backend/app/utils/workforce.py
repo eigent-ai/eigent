@@ -932,7 +932,9 @@ class Workforce(BaseWorkforce):
     def _cleanup_all_agents(self) -> None:
         """Release CDP browser resources for all agents."""
         cleanup_count = 0
-        children_count = len(self._children) if hasattr(self, "_children") else 0
+        children_count = (
+            len(self._children) if hasattr(self, "_children") else 0
+        )
         logger.info(
             f"[WF-CLEANUP] Starting cleanup, "
             f"children={children_count}, api_task_id={self.api_task_id}"
