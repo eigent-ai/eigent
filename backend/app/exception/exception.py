@@ -33,3 +33,7 @@ class NoPermissionException(Exception):
 class ProgramException(Exception):
     def __init__(self, text: str):
         self.text = text
+
+
+class PathEscapesBaseError(ValueError):
+    """Raised when a path resolves outside its allowed base directory."""
