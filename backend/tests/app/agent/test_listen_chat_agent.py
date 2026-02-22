@@ -558,9 +558,7 @@ async def test_astep_raises_runtime_error_on_none_message(mock_task_lock):
 
         error = Exception("Async unexpected error")
         with patch.object(ChatAgent, "astep", side_effect=error):
-            with pytest.raises(
-                Exception, match="Async unexpected error"
-            ):
+            with pytest.raises(Exception, match="Async unexpected error"):
                 await agent.astep("test input")
 
 
