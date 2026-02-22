@@ -31,8 +31,10 @@
   "installation-failed": "Installazione fallita",
   "projects": "Progetti",
   "mcp-tools": "MCP e Strumenti",
+  "connectors": "Connettori",
   "browser": "Navigatore",
   "settings": "Impostazioni",
+  "general": "Generale",
   "workers": "Lavoratori",
   "triggers": "Trigger",
   "new-project": "Nuovo Progetto",
@@ -166,5 +168,6 @@
   "days-ago": "giorni fa",
   "delete-project": "Elimina Progetto",
   "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata.",
-  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare."
+  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare.",
+  "capabilities": "Capacità"
 }
