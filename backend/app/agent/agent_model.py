@@ -135,11 +135,18 @@ def agent_model(
             )
             model_platform_enum = None
 
+    # Anthropic SDK adds /v1 to every endpoint path internally, so a user-
+    # provided base URL must NOT include /v1 (unlike OpenAI-compatible APIs).
+    model_url = effective_config["api_url"]
+    if effective_config["model_platform"].lower() == "anthropic" and model_url:
+        stripped = model_url.rstrip("/")
+        if stripped.endswith("/v1"):
+            model_url = stripped[:-3]
     model = ModelFactory.create(
         model_platform=effective_config["model_platform"],
         model_type=effective_config["model_type"],
         api_key=effective_config["api_key"],
-        url=effective_config["api_url"],
+        url=model_url,
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
         **init_params,
