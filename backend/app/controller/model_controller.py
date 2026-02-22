@@ -15,15 +15,16 @@
 import logging
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.component.error_format import normalize_error_to_openai_format
+from app.component.model_suggestions import get_model_type_suggestions
 from app.component.model_validation import (
     ValidationErrorType,
     ValidationStage,
     validate_model_with_details,
 )
-from app.model.chat import PLATFORM_MAPPING
+from app.model.model_platform import NormalizedModelPlatform
 
 logger = logging.getLogger("model_controller")
 
@@ -32,7 +33,9 @@ router = APIRouter()
 
 
 class ValidateModelRequest(BaseModel):
-    model_platform: str = Field("OPENAI", description="Model platform")
+    model_platform: NormalizedModelPlatform = Field(
+        "OPENAI", description="Model platform"
+    )
     model_type: str = Field("GPT_4O_MINI", description="Model type")
     api_key: str | None = Field(None, description="API key")
     url: str | None = Field(None, description="Model URL")
@@ -45,11 +48,6 @@ class ValidateModelRequest(BaseModel):
     include_diagnostics: bool = Field(
         False, description="Include detailed diagnostic information"
     )
-
-    @field_validator("model_platform")
-    @classmethod
-    def map_model_platform(cls, v: str) -> str:
-        return PLATFORM_MAPPING.get(v, v)
 
 
 class ValidateModelResponse(BaseModel):
@@ -291,4 +289,29 @@ async def validate_model(request: ValidateModelRequest):
                     "message": str(e),
                 },
             },
+        )
+
+
+class ModelTypeSuggestionRequest(BaseModel):
+    platform: str | None = Field(None, description="Model platform")
+
+
+class ModelTypeSuggestionResponse(BaseModel):
+    model_types: list[str] = Field(
+        ..., description="List of available model types"
+    )
+
+
+@router.post("/model/types")
+async def get_model_types(request: ModelTypeSuggestionRequest):
+    """Return CAMEL model types for the given platform, newest first."""
+    try:
+        return ModelTypeSuggestionResponse(
+            model_types=get_model_type_suggestions(request.platform)
+        )
+    except Exception as e:
+        logger.error("Error getting model types: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Failed to get model types: {e}"},
         )
