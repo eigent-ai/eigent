@@ -13,10 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkSpace from '@/components/BrowserAgentWorkSpace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
-import TerminalAgentWrokSpace from '@/components/TerminalAgentWrokSpace';
+import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -229,7 +229,7 @@ export default function Home() {
                         .activeWorkSpace
                   )?.type === 'browser_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                      <BrowserAgentWorkSpace />
+                      <BrowserAgentWorkspace />
                     </div>
                   )}
                   {chatStore.tasks[chatStore.activeTaskId as string]
@@ -258,7 +258,7 @@ export default function Home() {
                         .activeWorkSpace
                   )?.type === 'developer_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                      <TerminalAgentWrokSpace></TerminalAgentWrokSpace>
+                      <TerminalAgentWorkspace></TerminalAgentWorkspace>
                       {/* <Terminal content={[]} /> */}
                     </div>
                   )}

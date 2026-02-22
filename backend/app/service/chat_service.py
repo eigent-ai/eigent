@@ -15,7 +15,6 @@
 import asyncio
 import datetime
 import logging
-import os
 import platform
 from pathlib import Path
 from typing import Any
@@ -58,7 +57,7 @@ from app.service.task import (
     set_current_task_id,
 )
 from app.utils.event_loop_utils import set_main_event_loop
-from app.utils.file_utils import get_working_directory
+from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
@@ -92,41 +91,24 @@ def format_task_context(
     # Skip file listing if requested
     if not skip_files:
         working_directory = task_data.get("working_directory")
-        skip_ext = (".pyc", ".tmp")
         if working_directory:
             try:
-                if os.path.exists(working_directory):
-                    generated_files = []
-                    for root, dirs, files in os.walk(working_directory):
-                        dirs[:] = [
-                            d
-                            for d in dirs
-                            if not d.startswith(".")
-                            and d
-                            not in ["node_modules", "__pycache__", "venv"]
-                        ]
-                        for file in files:
-                            if not file.startswith(".") and not file.endswith(
-                                skip_ext
-                            ):
-                                file_path = os.path.join(root, file)
-                                absolute_path = os.path.abspath(file_path)
-
-                                # Only add if not seen before
-                                if (
-                                    seen_files is None
-                                    or absolute_path not in seen_files
-                                ):
-                                    generated_files.append(absolute_path)
-                                    if seen_files is not None:
-                                        seen_files.add(absolute_path)
-
-                    if generated_files:
-                        context_parts.append(
-                            "Generated Files from Previous Task:"
-                        )
-                        for file_path in sorted(generated_files):
-                            context_parts.append(f"  - {file_path}")
+                generated_files = list_files(
+                    working_directory,
+                    base=working_directory,
+                    skip_dirs={"node_modules", "__pycache__", "venv"},
+                    skip_extensions=(".pyc", ".tmp"),
+                    skip_prefix=".",
+                )
+                if seen_files is not None:
+                    generated_files = [
+                        p for p in generated_files if p not in seen_files
+                    ]
+                    seen_files.update(generated_files)
+                if generated_files:
+                    context_parts.append("Generated Files from Previous Task:")
+                    for file_path in sorted(generated_files):
+                        context_parts.append(f"  - {file_path}")
             except Exception as e:
                 logger.warning(f"Failed to collect generated files: {e}")
 
@@ -172,31 +154,20 @@ def collect_previous_task_context(
             f"Previous Task Result:\n{previous_task_result}\n"
         )
 
-    # Collect generated files from working directory
+    # Collect generated files from working directory (safe listing)
     try:
-        if os.path.exists(working_directory):
-            generated_files = []
-            for root, dirs, files in os.walk(working_directory):
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if not d.startswith(".")
-                    and d not in ["node_modules", "__pycache__", "venv"]
-                ]
-                skip_ext = (".pyc", ".tmp")
-                for file in files:
-                    if not file.startswith(".") and not file.endswith(
-                        skip_ext
-                    ):
-                        file_path = os.path.join(root, file)
-                        absolute_path = os.path.abspath(file_path)
-                        generated_files.append(absolute_path)
-
-            if generated_files:
-                context_parts.append("Generated Files from Previous Task:")
-                for file_path in sorted(generated_files):
-                    context_parts.append(f"  - {file_path}")
-                context_parts.append("")
+        generated_files = list_files(
+            working_directory,
+            base=working_directory,
+            skip_dirs={"node_modules", "__pycache__", "venv"},
+            skip_extensions=(".pyc", ".tmp"),
+            skip_prefix=".",
+        )
+        if generated_files:
+            context_parts.append("Generated Files from Previous Task:")
+            for file_path in sorted(generated_files):
+                context_parts.append(f"  - {file_path}")
+            context_parts.append("")
     except Exception as e:
         logger.warning(f"Failed to collect generated files: {e}")
 
@@ -272,30 +243,21 @@ def build_conversation_context(
                 context += f"Assistant: {entry['content']}\n\n"
 
         if working_directories:
-            all_generated_files = set()  # Use set to avoid duplicates
+            all_generated_files: set[str] = set()
             for working_directory in working_directories:
                 try:
-                    if os.path.exists(working_directory):
-                        for root, dirs, files in os.walk(working_directory):
-                            dirs[:] = [
-                                d
-                                for d in dirs
-                                if not d.startswith(".")
-                                and d
-                                not in ["node_modules", "__pycache__", "venv"]
-                            ]
-                            for file in files:
-                                if not file.startswith(
-                                    "."
-                                ) and not file.endswith((".pyc", ".tmp")):
-                                    file_path = os.path.join(root, file)
-                                    absolute_path = os.path.abspath(file_path)
-                                    all_generated_files.add(absolute_path)
+                    files_list = list_files(
+                        working_directory,
+                        base=working_directory,
+                        skip_dirs={"node_modules", "__pycache__", "venv"},
+                        skip_extensions=(".pyc", ".tmp"),
+                        skip_prefix=".",
+                    )
+                    all_generated_files.update(files_list)
                 except Exception as e:
                     logger.warning(
                         "Failed to collect generated "
-                        f"files from {working_directory}"
-                        f": {e}"
+                        f"files from {working_directory}: {e}"
                     )
 
             if all_generated_files:
@@ -379,12 +341,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         extra={"project_id": options.project_id, "task_id": options.task_id},
     )
     logger.info("=" * 80)
-    logger.debug(
-        "Step solve options",
-        extra={
-            "task_id": options.task_id,
-            "model_platform": options.model_platform,
-        },
+    logger.info(
+        "Step solve options: platform=%s type=%s",
+        options.model_platform,
+        options.model_type,
     )
 
     while True:

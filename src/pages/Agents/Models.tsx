@@ -19,6 +19,7 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
+import { ModelTypeCombobox } from '@/components/ModelTypeCombobox';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -37,11 +38,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
@@ -52,7 +48,6 @@ import {
   Cloud,
   Eye,
   EyeOff,
-  Info,
   Key,
   Loader2,
   RotateCcw,
@@ -85,6 +80,9 @@ import zaiImage from '@/assets/model/zai.svg';
 
 const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
 const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
+const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
+const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
+  'Added /v1 once. You can remove it if not needed.';
 
 // Sidebar tab types
 type SidebarTab =
@@ -108,6 +106,12 @@ const DARK_FILL_MODELS = new Set([
   'z.ai',
   'openai-compatible-model',
 ]);
+
+const PROVIDER_AVATAR_URLS: Record<string, string> = {
+  'samba-nova': 'https://github.com/sambanova.png',
+  mistral: 'https://github.com/mistralai.png',
+  grok: 'https://github.com/xai-org.png',
+};
 
 export default function SettingModels() {
   const {
@@ -179,6 +183,15 @@ export default function SettingModels() {
     {}
   );
   const [localTypes, setLocalTypes] = useState<Record<string, string>>({});
+  // Saved (persisted) model types — only updated after a successful Save, used for the display label
+  const [savedModelTypes, setSavedModelTypes] = useState<string[]>(() =>
+    INIT_PROVODERS.filter((p) => p.id !== 'local').map(
+      (p) => p.model_type ?? ''
+    )
+  );
+  const [savedLocalTypes, setSavedLocalTypes] = useState<
+    Record<string, string>
+  >({});
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
@@ -193,6 +206,8 @@ export default function SettingModels() {
   const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(
     null
   );
+  const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
+    useState(false);
 
   // Fetch available models from Ollama API
   const fetchOllamaModels = async (endpoint?: string) => {
@@ -263,6 +278,14 @@ export default function SettingModels() {
             return fi;
           })
         );
+        setSavedModelTypes(
+          items.map((item) => {
+            const found = providerList.find(
+              (p: any) => p.provider_name === item.id
+            );
+            return found?.model_type ?? '';
+          })
+        );
         // Handle local models - load all local providers per platform
         const localProviders = providerList.filter((p: any) =>
           LOCAL_PROVIDER_NAMES.includes(p.provider_name)
@@ -291,6 +314,7 @@ export default function SettingModels() {
 
         setLocalEndpoints(endpoints);
         setLocalTypes(types);
+        setSavedLocalTypes(types);
         setLocalProviderIds(providerIds);
 
         // Fetch Ollama models if ollama endpoint is set
@@ -352,7 +376,7 @@ export default function SettingModels() {
     const preferredIdx = form.findIndex((f) => f.prefer);
     if (preferredIdx !== -1) {
       const item = items[preferredIdx];
-      const modelType = form[preferredIdx].model_type || '';
+      const modelType = savedModelTypes[preferredIdx] || '';
       return `${t('setting.custom-model')} / ${item.name}${modelType ? ` (${modelType})` : ''}`;
     }
 
@@ -368,7 +392,7 @@ export default function SettingModels() {
             : localPlatform === 'sglang'
               ? 'SGLang'
               : 'LM Studio';
-      const modelType = localTypes[localPlatform] || '';
+      const modelType = savedLocalTypes[localPlatform] || '';
       return `${t('setting.local-model')} / ${platformName}${modelType ? ` (${modelType})` : ''}`;
     }
 
@@ -455,6 +479,7 @@ export default function SettingModels() {
 
   // Cloud model options
   const cloudModelOptions = [
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
@@ -608,6 +633,14 @@ export default function SettingModels() {
           return fi;
         })
       );
+      setSavedModelTypes(
+        items.map((item) => {
+          const found = providerList.find(
+            (p: any) => p.provider_name === item.id
+          );
+          return found?.model_type ?? '';
+        })
+      );
 
       // Check if this was a pending default model selection
       if (
@@ -626,12 +659,64 @@ export default function SettingModels() {
   };
 
   // Local Model verification
+  const isOllamaEndpointMissingV1 = (endpoint: string): boolean => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return false;
+    try {
+      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
+      return !normalizedPath.endsWith('/v1');
+    } catch {
+      return !trimmed.replace(/\/+$/, '').endsWith('/v1');
+    }
+  };
+  const canAutoFixOllamaEndpoint = (endpoint: string): boolean => {
+    const trimmed = endpoint.trim();
+    if (!trimmed || !isOllamaEndpointMissingV1(trimmed)) return false;
+    try {
+      // Auto-fix only when endpoint has no extra path, e.g. http://localhost:11434
+      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
+      return normalizedPath === '';
+    } catch {
+      const withoutQueryOrHash = trimmed.split(/[?#]/)[0] || '';
+      const normalized = withoutQueryOrHash.replace(/\/+$/, '');
+      return !normalized.includes('/');
+    }
+  };
+  const appendV1ToEndpoint = (endpoint: string): string => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return trimmed;
+    try {
+      const parsed = new URL(trimmed);
+      const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+      parsed.pathname = `${normalizedPath}/v1`.replace(/\/{2,}/g, '/');
+      return parsed.toString();
+    } catch {
+      return `${trimmed.replace(/\/+$/, '')}/v1`;
+    }
+  };
+
   const handleLocalVerify = async () => {
     setLocalVerifying(true);
     setLocalError(null);
     setLocalInputError(false);
-    const currentEndpoint = localEndpoints[localPlatform] || '';
+    let currentEndpoint = localEndpoints[localPlatform] || '';
     const currentType = localTypes[localPlatform] || '';
+
+    // Fallback guard for fast save interactions: ensure one-time auto-fix
+    // still applies even if blur state hasn't committed yet.
+    if (
+      localPlatform === 'ollama' &&
+      !ollamaEndpointAutoFixedOnce &&
+      canAutoFixOllamaEndpoint(currentEndpoint)
+    ) {
+      const fixedEndpoint = appendV1ToEndpoint(currentEndpoint);
+      currentEndpoint = fixedEndpoint;
+      setLocalEndpoints((prev) => ({
+        ...prev,
+        [localPlatform]: fixedEndpoint,
+      }));
+      setOllamaEndpointAutoFixedOnce(true);
+    }
 
     if (!currentEndpoint) {
       setLocalError(t('setting.endpoint-url-can-not-be-empty'));
@@ -760,6 +845,10 @@ export default function SettingModels() {
       if (local) {
         setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: local.id }));
         setLocalPrefer(local.prefer ?? false);
+        setSavedLocalTypes((prev) => ({
+          ...prev,
+          [localPlatform]: currentType,
+        }));
 
         // Check if this was a pending default model selection
         if (
@@ -898,6 +987,7 @@ export default function SettingModels() {
       setActiveModelIdx(null);
       // Re-fetch Ollama models after reset
       if (localPlatform === 'ollama') {
+        setOllamaEndpointAutoFixedOnce(false);
         setOllamaModelsError(null);
         fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
       }
@@ -1013,6 +1103,9 @@ export default function SettingModels() {
       'z.ai': zaiImage,
       moonshot: moonshotImage,
       ModelArk: modelarkImage,
+      'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
+      grok: PROVIDER_AVATAR_URLS.grok,
+      mistral: PROVIDER_AVATAR_URLS.mistral,
       'aws-bedrock': bedrockImage,
       azure: azureImage,
       'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
@@ -1183,39 +1276,8 @@ export default function SettingModels() {
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
                 {t('setting.select-model-type')}
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1 inline-flex cursor-pointer items-center">
-                    <Info className="h-4 w-4 text-icon-secondary" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  className="flex min-h-[40px] min-w-[220px] items-center justify-center text-center"
-                >
-                  <span className="flex w-full items-center justify-center">
-                    {cloud_model_type === 'gpt-4.1-mini'
-                      ? t('setting.gpt-4.1-mini')
-                      : cloud_model_type === 'gpt-4.1'
-                        ? t('setting.gpt-4.1')
-                        : cloud_model_type === 'claude-sonnet-4-5'
-                          ? t('setting.claude-sonnet-4-5')
-                          : cloud_model_type === 'gemini-3-pro-preview'
-                            ? t('setting.gemini-3-pro-preview')
-                            : cloud_model_type === 'gpt-5'
-                              ? t('setting.gpt-5')
-                              : cloud_model_type === 'gpt-5.1'
-                                ? t('setting.gpt-5')
-                                : cloud_model_type === 'gpt-5.2'
-                                  ? t('setting.gpt-5')
-                                  : cloud_model_type === 'gpt-5-mini'
-                                    ? t('setting.gpt-5-mini')
-                                    : t('setting.gemini-3-flash-preview')}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
             </div>
-            <div className="flex-shrink-0">
+            <div className="ml-4 flex-shrink-0">
               <Select
                 value={cloud_model_type}
                 onValueChange={setCloudModelType}
@@ -1224,6 +1286,9 @@ export default function SettingModels() {
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini-3.1-pro-preview">
+                    {t('setting.gemini-3.1-pro-preview-name')}
+                  </SelectItem>
                   <SelectItem value="gemini-3-pro-preview">
                     {t('setting.gemini-3-pro-preview-name')}
                   </SelectItem>
@@ -1366,18 +1431,10 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <Input
-              id={`modelType-${item.id}`}
-              size="default"
-              title={t('setting.model-type-setting')}
-              state={errors[idx]?.model_type ? 'error' : 'default'}
-              note={errors[idx]?.model_type ?? undefined}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
+            <ModelTypeCombobox
+              platform={item.id}
               value={form[idx].model_type}
-              onChange={(e) => {
-                const v = e.target.value;
+              onValueChange={(v) => {
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
                 );
@@ -1387,6 +1444,12 @@ export default function SettingModels() {
                   )
                 );
               }}
+              placeholder={`${t('setting.enter-your-model-type')} ${
+                item.name
+              } ${t('setting.model-type')}`}
+              disabled={loading === idx}
+              error={errors[idx]?.model_type}
+              title={t('setting.model-type-setting')}
             />
             {/* externalConfig render */}
             {item.externalConfig &&
@@ -1559,6 +1622,25 @@ export default function SettingModels() {
                   setOllamaModelsError(null);
                 }
               }}
+              onBlur={(e) => {
+                if (
+                  platform !== 'ollama' ||
+                  ollamaEndpointAutoFixedOnce ||
+                  !canAutoFixOllamaEndpoint(e.target.value)
+                ) {
+                  return;
+                }
+                const fixedEndpoint = appendV1ToEndpoint(e.target.value);
+                setLocalEndpoints((prev) => ({
+                  ...prev,
+                  [platform]: fixedEndpoint,
+                }));
+                setOllamaEndpointAutoFixedOnce(true);
+                toast(OLLAMA_ENDPOINT_AUTO_FIX_TITLE, {
+                  description: OLLAMA_ENDPOINT_AUTO_FIX_DESC,
+                  closeButton: true,
+                });
+              }}
               disabled={!localEnabled}
               placeholder={
                 platform === 'ollama'
@@ -1648,19 +1730,19 @@ export default function SettingModels() {
                 )}
               </div>
             ) : (
-              <Input
-                size="default"
-                title={t('setting.model-type')}
-                state={localInputError ? 'error' : 'default'}
-                placeholder={t('setting.enter-your-local-model-type')}
+              <ModelTypeCombobox
+                platform={platform}
                 value={currentType}
-                onChange={(e) =>
+                onValueChange={(v) =>
                   setLocalTypes((prev) => ({
                     ...prev,
-                    [platform]: e.target.value,
+                    [platform]: v,
                   }))
                 }
+                placeholder={t('setting.enter-your-local-model-type')}
                 disabled={!localEnabled}
+                error={localInputError ? localError || undefined : undefined}
+                title={t('setting.model-type')}
               />
             )}
           </div>

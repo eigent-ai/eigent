@@ -33,9 +33,11 @@ async def list_chat_snapshots(
     camel_task_id: str | None = None,
     browser_url: str | None = None,
     session: Session = Depends(session),
+    auth: Auth = Depends(auth_must),
 ):
     """List chat snapshots with optional filtering."""
-    query = select(ChatSnapshot)
+    user_id = auth.user.id
+    query = select(ChatSnapshot).where(ChatSnapshot.user_id == user_id)
     if api_task_id is not None:
         query = query.where(ChatSnapshot.api_task_id == api_task_id)
     if camel_task_id is not None:
@@ -45,7 +47,8 @@ async def list_chat_snapshots(
 
     snapshots = session.exec(query).all()
     logger.debug(
-        "Snapshots listed", extra={"api_task_id": api_task_id, "camel_task_id": camel_task_id, "count": len(snapshots)}
+        "Snapshots listed",
+        extra={"user_id": user_id, "api_task_id": api_task_id, "camel_task_id": camel_task_id, "count": len(snapshots)},
     )
     return snapshots
 
@@ -59,6 +62,13 @@ async def get_chat_snapshot(snapshot_id: int, session: Session = Depends(session
     if not snapshot:
         logger.warning("Snapshot not found", extra={"user_id": user_id, "snapshot_id": snapshot_id})
         raise HTTPException(status_code=404, detail=_("Chat snapshot not found"))
+
+    if snapshot.user_id != user_id:
+        logger.warning(
+            "Unauthorized snapshot access",
+            extra={"user_id": user_id, "snapshot_id": snapshot_id, "owner_id": snapshot.user_id},
+        )
+        raise HTTPException(status_code=403, detail=_("You are not allowed to view this snapshot"))
 
     logger.debug(
         "Snapshot retrieved",
