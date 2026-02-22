@@ -42,6 +42,7 @@
   "validate-failed": "فشل التحقق",
   "copy": "نسخ",
   "copied-to-clipboard": "تم النسخ إلى الحافظة",
+  "failed-to-copy-to-clipboard": "فشل النسخ إلى الحافظة",
   "endpoint-url-can-not-be-empty": "!لا يمكن أن يكون عنوان يورل  لنقطة النهاية فارغًا",
   "verification-failed-please-check-endpoint-url": "فشل التحقق، يرجى المراجعة على النقطة النهائية يورل",
   "eigent-cloud-version": "إصدار أيجنت السحابي",
@@ -50,12 +51,6 @@
   "pricing-options": "خيارات التسعير",
   "credits": "رصيد",
   "select-model-type": "اختر نوع النموذج",
-  "gpt-4.1-mini": "GPT-4.1 Mini: تكلفة أقل، استجابات أسرع، ولكن جودة مخرجات أقل",
-  "gpt-4.1": "GPT-4.1: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "claude-opus-4.1": "Claude Opus 4.1: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "gpt-5": "GPT-5: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "gpt-5-mini": "GPT-5 mini: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "gpt-5-nano": "GPT-5 nano: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "custom-model": "نموذج مخصص",
   "use-your-own-api-keys-or-set-up-a-local-model": ".استخدم مفاتيح واجهة برمجة التطبيقات الخاصة بك أو قم بإعداد نموذج محلي",
   "verify": "تحقق",
@@ -185,6 +180,7 @@
   "models-configuration": "التكوين",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
   "gpt-4.1-mini-name": "GPT-4.1 Mini",
   "gpt-4.1-name": "GPT-4.1",
@@ -193,6 +189,7 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
+  "minimax-m2-5-name": "Minimax M2.5",
 
   "account": "حساب",
   "you-are-currently-signed-in-with": "{{email}} أنت مسجل الدخول حاليًا باستخدام",
@@ -237,12 +234,6 @@
   "pricing-options": "خيارات التسعير",
   "credits": "رصيد",
   "select-model-type": "اختر نوع النموذج",
-  "gpt-4.1-mini": "GPT-4.1 Mini: تكلفة أقل، استجابات أسرع، ولكن جودة مخرجات أقل",
-  "gpt-4.1": "GPT-4.1: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "claude-opus-4.1": "Claude Opus 4.1: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "gpt-5": "GPT-5: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "gpt-5-mini": "GPT-5 mini: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
-  "gpt-5-nano": "GPT-5 nano: تكلفة أعلى، استجابات أبطأ، ولكن جودة واستدلال ممتازين",
   "custom-model": "نموذج مخصص",
   "use-your-own-api-keys-or-set-up-a-local-model": ".استخدم مفاتيح واجهة برمجة التطبيقات الخاصة بك أو قم بإعداد نموذج محلي",
   "verify": "تحقق",
@@ -357,5 +348,9 @@
   "proxy-saved-restart-required": "تم حفظ تكوين الوكيل. أعد تشغيل التطبيق لتطبيق التغييرات.",
   "proxy-save-failed": "فشل حفظ تكوين الوكيل.",
   "proxy-invalid-url": "عنوان URL للوكيل غير صالح. يجب أن يبدأ بـ http:// أو https:// أو socks4:// أو socks5://.",
-  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل."
+  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل.",
+
+  "preferred-ide": "IDE المفضل",
+  "preferred-ide-description": "اختر التطبيق الذي سيتم استخدامه عند فتح مجلدات مشاريع الوكيل.",
+  "system-file-manager": "مدير ملفات النظام"
 }

@@ -24,13 +24,16 @@ import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
 import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
+  ensureTerminalVenvAtUserPath,
+  findNodejsWheelBinPath,
+  findNodejsWheelNpmPath,
   getBackendPath,
   getBinaryPath,
   getCachePath,
   getPrebuiltPythonDir,
-  getPrebuiltVenvPath,
   getUvEnv,
   getVenvPath,
+  getVenvPythonPath,
   isBinaryExists,
   killProcessByName,
 } from './utils/process';
@@ -304,6 +307,23 @@ export async function startBackend(
     `Backend SERVER_URL resolved to: ${serverUrl} (source: ${resolvedSource})`
   );
 
+  // Ensure prebuilt terminal venv is copied to ~/.eigent/venvs for terminal toolkit
+  ensureTerminalVenvAtUserPath(currentVersion);
+
+  // Add nodejs-wheel paths for browser toolkit (needs npm, npx, and node)
+  const npmWrapperDir = findNodejsWheelNpmPath(venvPath);
+  const nodejsWheelBin = findNodejsWheelBinPath(venvPath);
+  const pathEnv = process.env.PATH || '';
+  const pathParts: string[] = [];
+  if (npmWrapperDir) pathParts.push(npmWrapperDir);
+  if (nodejsWheelBin && nodejsWheelBin !== npmWrapperDir) {
+    pathParts.push(nodejsWheelBin);
+  }
+  const updatedPath =
+    pathParts.length > 0
+      ? pathParts.join(path.delimiter) + path.delimiter + pathEnv
+      : pathEnv;
+
   const env = {
     ...process.env,
     ...uvEnv,
@@ -312,6 +332,7 @@ export async function startBackend(
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
+    PATH: updatedPath,
   };
 
   const displayFilteredLogs = (data: String) => {
@@ -332,21 +353,25 @@ export async function startBackend(
     }
   };
 
+  const pythonPath = getVenvPythonPath(venvPath);
+  // Dev mode: use uv run (ensures sync); Packaged: use venv's python directly (prebuilt has deps)
+  const useDirectPython = app.isPackaged;
+
   return new Promise(async (resolve, reject) => {
-    log.info(
-      `Spawning backend process: ${uv_path} run uvicorn main:api --port ${port} --loop asyncio`
-    );
+    const spawnCmd = useDirectPython
+      ? `${pythonPath} -m uvicorn main:api --port ${port} --loop asyncio`
+      : `${uv_path} run python -m uvicorn main:api --port ${port} --loop asyncio`;
+    log.info(`Spawning backend process: ${spawnCmd}`);
     log.info(`Backend working directory: ${backendPath}`);
-    log.info(`Using venv: ${venvPath}`);
 
     try {
-      const { stdout: uvVersion } = await execAsync(`${uv_path} --version`);
-      log.info(`UV version check: ${uvVersion.trim()}`);
-
-      const { stdout: pythonTest } = await execAsync(
-        `${uv_path} run python -c "print('Python OK')"`,
-        { cwd: backendPath, env: env }
-      );
+      const pythonTestCmd = useDirectPython
+        ? `"${pythonPath}" -c "print('Python OK')"`
+        : `"${uv_path}" run python -c "print('Python OK')"`;
+      const { stdout: pythonTest } = await execAsync(pythonTestCmd, {
+        cwd: backendPath,
+        env: env,
+      });
       log.info(`Python test output: ${pythonTest.trim()}`);
     } catch (testErr: any) {
       log.warn(`Pre-flight check failed, attempting repair: ${testErr}`);
@@ -392,18 +417,9 @@ export async function startBackend(
         }
 
         // Cleanup corrupted venv (pyvenv.cfg may reference non-existent Python version)
-        // This is especially important for prebuilt venvs with hardcoded paths from CI
-        const prebuiltVenvPath = getPrebuiltVenvPath();
         try {
-          // If the broken venv is the prebuilt venv, we need to remove it
-          // and let UV recreate it from the bundled Python
           if (fs.existsSync(venvPath)) {
             log.info(`Removing potentially corrupted venv: ${venvPath}`);
-            if (venvPath === prebuiltVenvPath) {
-              log.info(
-                `This is the prebuilt venv with hardcoded paths - will recreate from bundled Python`
-              );
-            }
             fs.rmSync(venvPath, { recursive: true, force: true });
           }
         } catch (e) {
@@ -439,10 +455,13 @@ export async function startBackend(
         });
 
         // Retry the check
-        const { stdout: pythonTest } = await execAsync(
-          `${uv_path} run python -c "print('Python OK')"`,
-          { cwd: backendPath, env: env }
-        );
+        const retryTestCmd = useDirectPython
+          ? `"${pythonPath}" -c "print('Python OK')"`
+          : `"${uv_path}" run python -c "print('Python OK')"`;
+        const { stdout: pythonTest } = await execAsync(retryTestCmd, {
+          cwd: backendPath,
+          env: env,
+        });
         log.info(`Python test output after repair: ${pythonTest.trim()}`);
       } catch (repairErr) {
         log.error(`Repair failed: ${repairErr}`);
@@ -455,24 +474,45 @@ export async function startBackend(
       }
     }
 
-    const node_process = spawn(
-      uv_path,
-      [
-        'run',
-        'uvicorn',
-        'main:api',
-        '--port',
-        port.toString(),
-        '--loop',
-        'asyncio',
-      ],
-      {
-        cwd: backendPath,
-        env: env,
-        detached: process.platform !== 'win32',
-        stdio: ['ignore', 'ignore', 'pipe'], // stdin=ignore, stdout=ignore, stderr=pipe (Python logs to stderr)
-      }
-    );
+    const node_process = useDirectPython
+      ? spawn(
+          pythonPath,
+          [
+            '-m',
+            'uvicorn',
+            'main:api',
+            '--port',
+            port.toString(),
+            '--loop',
+            'asyncio',
+          ],
+          {
+            cwd: backendPath,
+            env: env,
+            detached: process.platform !== 'win32',
+            stdio: ['ignore', 'ignore', 'pipe'],
+          }
+        )
+      : spawn(
+          uv_path,
+          [
+            'run',
+            'python',
+            '-m',
+            'uvicorn',
+            'main:api',
+            '--port',
+            port.toString(),
+            '--loop',
+            'asyncio',
+          ],
+          {
+            cwd: backendPath,
+            env: env,
+            detached: process.platform !== 'win32',
+            stdio: ['ignore', 'ignore', 'pipe'],
+          }
+        );
 
     // NOTE: Do NOT use unref() - we need to maintain the process reference
     // to properly capture stdout/stderr and manage the process lifecycle

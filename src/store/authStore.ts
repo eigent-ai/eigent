@@ -18,7 +18,9 @@ import { persist } from 'zustand/middleware';
 // type definition
 type InitState = 'permissions' | 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
+type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type CloudModelType =
+  | 'gemini-3.1-pro-preview'
   | 'gemini-3-pro-preview'
   | 'gemini-3-flash-preview'
   | 'gpt-4.1-mini'
@@ -27,7 +29,8 @@ type CloudModelType =
   | 'gpt-5'
   | 'gpt-5.1'
   | 'gpt-5.2'
-  | 'gpt-5-mini';
+  | 'gpt-5-mini'
+  | 'minimax_m2_5';
 
 // auth info interface
 interface AuthInfo {
@@ -53,6 +56,9 @@ interface AuthState {
   cloud_model_type: CloudModelType;
   initState: InitState;
 
+  // IDE preference
+  preferredIDE: PreferredIDE;
+
   // shared token
   share_token?: string | null;
 
@@ -74,6 +80,7 @@ interface AuthState {
   setModelType: (modelType: ModelType) => void;
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
+  setPreferredIDE: (ide: PreferredIDE) => void;
 
   // worker related methods
   setWorkerList: (workerList: Agent[]) => void;
@@ -100,6 +107,7 @@ const authStore = create<AuthState>()(
       isFirstLaunch: true,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
+      preferredIDE: 'system',
       initState: 'permissions',
       share_token: null,
       localProxyValue: null,
@@ -134,6 +142,8 @@ const authStore = create<AuthState>()(
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
+
+      setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
 
       setLocalProxyValue: (value) => set({ localProxyValue: value }),
 
@@ -191,6 +201,7 @@ const authStore = create<AuthState>()(
         cloud_model_type: state.cloud_model_type,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
+        preferredIDE: state.preferredIDE,
         localProxyValue: state.localProxyValue,
         workerListData: state.workerListData,
       }),

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "pip>=23.0",
-    "camel-ai[eigent]==0.2.85a0",
+    "camel-ai[eigent]==0.2.90a3",
     "fastapi>=0.115.12",
     "fastapi-babel>=1.0.0",
     "uvicorn[standard]>=0.34.2",
@@ -21,7 +21,6 @@ dependencies = [
     "numpy>=1.23.0,<2.0.0",
     "debugpy>=1.8.17",
     "qdrant-client>=1.16.2",
-    "unstructured>=0.18.27",
     "opentelemetry-api>=1.34.1",
     "opentelemetry-sdk>=1.34.1",
     "opentelemetry-exporter-otlp-proto-http>=1.34.1",
@@ -39,6 +38,7 @@ dev = [
 [tool.ruff]
 line-length = 79
 target-version = "py311"
+exclude = ["benchmark/answer"]
 
 [tool.ruff.lint]
 select = [
@@ -71,7 +71,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.bandit]
-exclude_dirs = ["tests", ".venv", "venv"]
+exclude_dirs = ["tests", ".venv", "venv", "benchmark/answer"]
 skips = [
     "B101",  # assert_used - OK in non-production code
     "B105",  # hardcoded_password_string - false positive on env var names

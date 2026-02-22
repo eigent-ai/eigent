@@ -31,8 +31,10 @@
   "installation-failed": "Installazione fallita",
   "projects": "Progetti",
   "mcp-tools": "MCP e Strumenti",
+  "connectors": "Connettori",
   "browser": "Navigatore",
   "settings": "Impostazioni",
+  "general": "Generale",
   "workers": "Lavoratori",
   "triggers": "Trigger",
   "new-project": "Nuovo Progetto",
@@ -123,7 +125,7 @@
   "terms-of-use": "Termini di Utilizzo",
   "and": "e",
   "it-ticket-creation": "Aiutami a compilare un modulo online",
-  "it-ticket-creation-message": "Accedi al sistema di gestione ticket su (https://eiti.eigent.ai/) e aggiungi tutti questi nuovi ticket al nostro sistema con l'Agente Browser: '' Utente Interessato: Alice Johnson Gruppo di Assegnazione: Team Servizi Software Assegnato a: Michael Brown Priorità: 4 – Bassa | Urgenza: 3 – Media | Impatto: 4 – Basso Servizio Interessato: Servizi Software Problema: Degradazione delle Prestazioni dell'Applicazione Descrizione: L'utente interessato segnala tempi di risposta lenti e timeout intermittenti durante l'accesso alle applicazioni software interne durante il normale orario lavorativo. '' Una volta completato, controlla i ticket in arrivo e genera un report statistico dettagliato che analizzi quali aree IT hanno più problemi e il maggiore impatto finanziario. Il report deve includere grafici e diagrammi per la visualizzazione.",
+  "it-ticket-creation-message": "Accedi al sistema di gestione ticket su https://eiti.eigent.ai/ e aggiungi un nuovo ticket al nostro sistema con l'Agente Browser:\n\nUtente Interessato: Alice Johnson\nGruppo di Assegnazione: Team Servizi Software\nAssegnato a: Michael Brown\nPriorità: 4 – Bassa | Urgenza: 3 – Media | Impatto: 4 – Basso\nServizio Interessato: Servizi Software\nProblema: Degradazione delle Prestazioni dell'Applicazione\nDescrizione:\nL'utente interessato segnala tempi di risposta lenti e timeout intermittenti durante l'accesso alle applicazioni software interne durante il normale orario lavorativo.\n\nUna volta completato, naviga alla vista elenco ticket \"In Corso\" ed estrai i dati dei ticket visibili dall'elenco (colonne: Numero, Utente, Priorità, Stato, Problema). Usa JavaScript della console del browser per catturare i dati della tabella se non è disponibile un pulsante di esportazione. Salva i dati estratti come file CSV.\n\nInfine, genera un report statistico basato sui dati estratti:\n1. Analizza la distribuzione dei ticket per livello di priorità (Critico/Alto/Moderato/Basso)\n2. Analizza qualsiasi importo in dollari menzionato nel testo del problema (ad es. \"$50M\", \"$3.2M\") come impatto finanziario stimato\n3. Crea un report HTML con grafici a barre che mostrano:\n   - Conteggio ticket per priorità\n   - Impatto finanziario stimato per priorità (analizzato dal testo del problema)\nIncludi una sezione \"Note sui Dati\" che spiega che i valori dell'impatto finanziario sono stati analizzati dal testo della descrizione del problema poiché nel sistema non esiste un campo finanziario dedicato.",
   "bank-transfer-csv-analysis": "Analisi e Visualizzazione CSV Trasferimenti Bancari",
   "bank-transfer-csv-analysis-message": "Analizza il mio file CSV trasferimenti bancari e crea visualizzazioni che mostrano modelli di spesa",
   "find-duplicate-files": "Trova File Duplicati nella Cartella Download",
@@ -166,5 +168,6 @@
   "days-ago": "giorni fa",
   "delete-project": "Elimina Progetto",
   "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata.",
-  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare."
+  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare.",
+  "capabilities": "Capacità"
 }

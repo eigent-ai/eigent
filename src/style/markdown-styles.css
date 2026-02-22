@@ -41,6 +41,8 @@
 .markdown-body p {
   margin-bottom: 0.75em;
   margin-top: 0;
+  font-size: var(--fontSize-sm, 13px);
+  line-height: var(--lineHeight-14, 20px);
 }
 
 /* Code blocks styling */
@@ -215,7 +217,7 @@
 
 /* Ensure compatibility with your app's theme */
 .markdown-body {
-  background-color: transparent !important;
+  background-color: inherit;
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica,
     Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji' !important;

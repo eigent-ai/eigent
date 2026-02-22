@@ -17,6 +17,9 @@ jobs:
           - os: macos-latest
             arch: arm64
             artifact_name: macos-arm64
+          - os: macos-15-intel
+            arch: x64
+            artifact_name: macos-intel
           - os: windows-latest
             arch: x64
             artifact_name: windows-latest
@@ -81,16 +84,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
+      # Install LLVM 20 for macOS Intel - llvmlite 0.46.0 only supports LLVM 20 (not 21)
+      - name: Install LLVM 20 (macOS Intel)
+        if: runner.os == 'macOS' && matrix.arch == 'x64'
+        run: |
+          brew install llvm@20
+          echo "LLVM_DIR=$(brew --prefix llvm@20)/lib/cmake/llvm" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm@20)/lib/cmake/llvm" >> $GITHUB_ENV
+
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
         timeout-minutes: 90
         run: |
-          # Increase file descriptor limit to prevent EMFILE errors during signing
-          # This is needed because electron-builder signs all files recursively,
-          # and Python venvs contain thousands of files
-          ulimit -n 65536 || ulimit -n 10240
-          echo "File descriptor limit set to: $(ulimit -n)"
+          # Set file descriptor limit to system maximum (hard limit) to prevent EMFILE during signing
+          HARD=$(ulimit -Hn 2>/dev/null)
+          if [ -n "$HARD" ] && [ "$HARD" != "unlimited" ]; then
+            ulimit -n "$HARD" 2>/dev/null || true
+          fi
+          ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
+          echo "File descriptor limit: $(ulimit -n) (hard: $(ulimit -Hn 2>/dev/null || echo 'N/A'))"
           npm run build -- --arch ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,13 +199,19 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
+          mkdir -p release/mac-arm64 release/mac-intel release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
           name: release-macos-arm64-arm64
           path: temp-mac-arm64
+
+      - name: Download mac-intel artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: release-macos-intel-x64
+          path: temp-mac-intel
 
       - name: Download win-x64 artifact
         uses: actions/download-artifact@v7
@@ -215,6 +234,13 @@ jobs:
             find temp-mac-arm64/release -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
           else
             find temp-mac-arm64 -name "*.dmg" -exec mv {} release/mac-arm64/ \; || true
+          fi
+
+          # mac-intel - only move dmg files
+          if [ -d "temp-mac-intel/release" ]; then
+            find temp-mac-intel/release -name "*.dmg" -exec mv {} release/mac-intel/ \; || true
+          else
+            find temp-mac-intel -name "*.dmg" -exec mv {} release/mac-intel/ \; || true
           fi
 
           # win-x64 - only move exe files

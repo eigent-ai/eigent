@@ -33,8 +33,10 @@
   "installation-failed": "安装失败",
   "projects": "專案",
   "mcp-tools": "MCP & 工具",
+  "connectors": "連接器",
   "browser": "瀏覽器",
   "settings": "設定",
+  "general": "一般",
   "workers": "工作器",
   "triggers": "觸發器",
   "new-project": "新專案",
@@ -126,7 +128,7 @@
   "terms-of-use": "使用條款",
   "and": "和",
   "it-ticket-creation": "幫我完成一個線上表單",
-  "it-ticket-creation-message": "存取 (https://eiti.eigent.ai/) 的工單管理系統，使用瀏覽器代理將所有這些新工單新增到我們的系統中：'' 受影響使用者：Alice Johnson 分配群組：軟體服務團隊 分配給：Michael Brown 優先順序：4 – 低 | 緊急程度：3 – 中 | 影響：4 – 低 受影響服務：軟體服務 問題：應用程式效能下降 描述：受影響使用者報告在正常工作時間存取內部軟體應用程式時回應時間慢和間歇性逾時。'' 完成後，檢查收到的工單並產生詳細的統計報告，分析哪些IT領域問題最多、財務影響最大。報告應包含圖表和圖形以進行視覺化。",
+  "it-ticket-creation-message": "存取 https://eiti.eigent.ai/ 的工單管理系統，使用瀏覽器代理將新工單新增到我們的系統中：\n\n受影響使用者：Alice Johnson\n分配群組：軟體服務團隊\n分配給：Michael Brown\n優先順序：4 – 低 | 緊急程度：3 – 中 | 影響：4 – 低\n受影響服務：軟體服務\n問題：應用程式效能下降\n描述：\n受影響使用者報告在正常工作時間存取內部軟體應用程式時回應時間慢和間歇性逾時。\n\n完成後，導航到「進行中」工單列表視圖，從列表中提取可見的工單資料（編號、使用者、優先順序、狀態、問題欄位）。如果沒有匯出按鈕，請使用瀏覽器控制台 JavaScript 擷取表格資料。將提取的資料儲存為 CSV 檔案。\n\n最後，根據提取的資料產生統計報告：\n1. 按優先順序級別（緊急/高/中等/低）分析工單分佈\n2. 解析問題文字中提到的任何金額（例如「$50M」、「$3.2M」）作為預估財務影響\n3. 建立包含長條圖的 HTML 報告，顯示：\n   - 按優先順序分類的工單數量\n   - 按優先順序分類的預估財務影響（從問題文字中解析）\n包含「資料說明」部分，解釋財務影響值是從問題描述文字中解析的，因為系統中沒有專門的財務欄位。",
   "bank-transfer-csv-analysis": "銀行轉帳 CSV 分析和視覺化",
   "bank-transfer-csv-analysis-message": "分析我的銀行轉帳 CSV 檔案並建立顯示支出模式的可視化",
   "find-duplicate-files": "在下載資料夾中查找重複檔案",
@@ -168,5 +170,6 @@
   "days-ago": "天前",
   "delete-project": "刪除專案",
   "delete-project-confirmation": "您確定要刪除此專案及其所有任務嗎？此操作無法撤銷。",
-  "please-select-model": "請在設定 > 模型中選擇一個模型以繼續。"
+  "please-select-model": "請在設定 > 模型中選擇一個模型以繼續。",
+  "capabilities": "能力"
 }

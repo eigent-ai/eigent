@@ -19,20 +19,22 @@ from camel.toolkits import ToolkitMessageIntegration
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DOCUMENT_SYS_PROMPT
+from app.agent.toolkit.excel_toolkit import ExcelToolkit
+from app.agent.toolkit.file_write_toolkit import FileToolkit
+from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
+from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
+
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.pptx_toolkit import PPTXToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.excel_toolkit import ExcelToolkit
-from app.utils.toolkit.file_write_toolkit import FileToolkit
-from app.utils.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
-from app.utils.toolkit.human_toolkit import HumanToolkit
-from app.utils.toolkit.markitdown_toolkit import MarkItDownToolkit
-
-# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.pptx_toolkit import PPTXToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 
 
 async def document_agent(options: Chat):
@@ -68,6 +70,16 @@ async def document_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id,
+        working_directory=working_directory,
+        agent_name=Agents.document_agent,
+    )
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -82,6 +94,14 @@ async def document_agent(options: Chat):
         options.project_id, options.get_bun_env()
     )
 
+    skill_toolkit = SkillToolkit(
+        options.project_id,
+        Agents.document_agent,
+        working_directory=working_directory,
+        user_id=options.skill_config_user_id(),
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
@@ -92,7 +112,9 @@ async def document_agent(options: Chat):
         *excel_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
+        *screenshot_toolkit.get_tools(),
         *google_drive_tools,
+        *skill_toolkit.get_tools(),
     ]
     system_message = DOCUMENT_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -117,6 +139,11 @@ async def document_agent(options: Chat):
             ExcelToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
             GoogleDriveMCPToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
+        ],
+        toolkits_to_register_agent=[
+            screenshot_toolkit_for_agent_registration,
         ],
     )

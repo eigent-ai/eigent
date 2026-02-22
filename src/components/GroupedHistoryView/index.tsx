@@ -38,7 +38,8 @@ interface GroupedHistoryViewProps {
   onTaskSelect: (
     projectId: string,
     question: string,
-    historyId: string
+    historyId: string,
+    project?: ProjectGroupType
   ) => void;
   onTaskDelete: (historyId: string, callback: () => void) => void;
   onTaskShare: (taskId: string) => void;
@@ -293,7 +294,7 @@ export default function GroupedHistoryView({
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="h-6 w-6 animate-spin text-icon-secondary" />
-        <span className="text-text-secondary ml-2">{t('layout.loading')}</span>
+        <span className="ml-2 text-text-secondary">{t('layout.loading')}</span>
       </div>
     );
   }
@@ -302,13 +303,13 @@ export default function GroupedHistoryView({
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <FolderOpen className="text-icon-tertiary mb-4 h-12 w-12" />
-        <div className="text-text-secondary text-sm">
+        <div className="text-sm text-text-secondary">
           {searchValue
             ? t('dashboard.no-projects-match-search')
             : t('dashboard.no-projects-found')}
         </div>
         {searchValue && (
-          <div className="text-text-tertiary mt-1 text-xs">
+          <div className="mt-1 text-xs text-text-tertiary">
             {t('dashboard.try-different-search')}
           </div>
         )}
