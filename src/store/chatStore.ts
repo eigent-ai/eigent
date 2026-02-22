@@ -55,7 +55,7 @@ interface Task {
   askList: Message[];
   progressValue: number;
   isPending: boolean;
-  activeWorkSpace: string | null;
+  activeWorkspace: string | null;
   hasMessages: boolean;
   activeAgent: string;
   status: ChatTaskStatusType;
@@ -147,7 +147,7 @@ export interface ChatStore {
     processTaskId: string,
     fileList: FileInfo[]
   ) => void;
-  setActiveWorkSpace: (taskId: string, activeWorkSpace: string) => void;
+  setActiveWorkspace: (taskId: string, activeWorkspace: string) => void;
   setActiveAgent: (taskId: string, agentName: string) => void;
   setHasMessages: (taskId: string, hasMessages: boolean) => void;
   getLastUserMessage: () => Message | null;
@@ -272,7 +272,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             askList: [],
             progressValue: 0,
             isPending: false,
-            activeWorkSpace: 'workflow',
+            activeWorkspace: 'workflow',
             hasMessages: false,
             activeAgent: '',
             status: ChatTaskStatus.PENDING,
@@ -2703,7 +2703,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const {
         tasks,
         setMessages,
-        setActiveWorkSpace,
+        setActiveWorkspace,
         setStatus,
         setTaskTime,
         setTaskInfo,
@@ -2759,7 +2759,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         await fetchPost(`/task/${project_id}/start`, {});
 
-        setActiveWorkSpace(taskId, 'workflow');
+        setActiveWorkspace(taskId, 'workflow');
         setStatus(taskId, ChatTaskStatus.RUNNING);
       }
 
@@ -2863,14 +2863,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setActiveWorkSpace(taskId: string, activeWorkSpace: string) {
+    setActiveWorkspace(taskId: string, activeWorkspace: string) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeWorkSpace,
+            activeWorkspace,
           },
         },
       }));

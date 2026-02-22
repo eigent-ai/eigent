@@ -211,6 +211,9 @@
   "api-key-setting": "Paramètre de clé API",
   "api-host-setting": "Paramètre d'hôte API",
   "model-type-setting": "Paramètre de type de modèle",
+  "search-model-types": "Rechercher des types de modèles...",
+  "no-model-types-found": "Aucun type de modèle trouvé.",
+  "loading-suggestions": "Chargement des suggestions...",
   "please-select": "Veuillez sélectionner",
   "configuring": "Configuration...",
 
