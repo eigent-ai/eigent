@@ -293,7 +293,7 @@ export default function Browser() {
                   // Cookies were added, show success toast and restart dialog
                   const addedCount = newCookieCount - currentCookieCount;
                   toast.success(
-                    `Added ${addedCount} cookie${addedCount !== 1 ? 's' : ''}`
+                    t('layout.cookies-added', { count: addedCount })
                   );
                   setShowRestartDialog(true);
                 } else if (newCookieCount < currentCookieCount) {
@@ -309,7 +309,7 @@ export default function Browser() {
         }, 500);
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to open browser');
+      toast.error(error?.message || t('layout.failed-to-open-browser'));
     } finally {
       setLoginLoading(false);
     }
@@ -326,7 +326,7 @@ export default function Browser() {
         setCookieDomains([]);
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to load cookies');
+      toast.error(error?.message || t('layout.failed-to-load-cookies'));
       setCookieDomains([]);
     } finally {
       setCookiesLoading(false);
@@ -345,7 +345,9 @@ export default function Browser() {
       );
       await Promise.all(deletePromises);
 
-      toast.success(`Deleted cookies for ${mainDomain} and all subdomains`);
+      toast.success(
+        t('layout.deleted-cookies-for-domain', { domain: mainDomain })
+      );
       // Remove from local state
       const domainsToRemove = new Set(subdomains.map((item) => item.domain));
       setCookieDomains((prev) =>
@@ -356,7 +358,10 @@ export default function Browser() {
       setShowRestartDialog(true);
     } catch (error: any) {
       toast.error(
-        error?.message || `Failed to delete cookies for ${mainDomain}`
+        error?.message ||
+          t('layout.failed-to-delete-cookies-for-domain', {
+            domain: mainDomain,
+          })
       );
     } finally {
       setDeletingDomain(null);
@@ -367,13 +372,13 @@ export default function Browser() {
     setDeletingAll(true);
     try {
       await fetchDelete('/browser/cookies');
-      toast.success('Deleted all cookies');
+      toast.success(t('layout.deleted-all-cookies'));
       setCookieDomains([]);
 
       // Show restart dialog after successful deletion
       setShowRestartDialog(true);
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to delete all cookies');
+      toast.error(error?.message || t('layout.failed-to-delete-all-cookies'));
     } finally {
       setDeletingAll(false);
     }
@@ -399,10 +404,10 @@ export default function Browser() {
         isOpen={showRestartDialog}
         onClose={() => setShowRestartDialog(false)}
         onConfirm={handleConfirmRestart}
-        title="Cookies Updated"
-        message="Cookies have been updated. Would you like to restart the application to use the new cookies?"
-        confirmText="Yes, Restart"
-        cancelText="No, Add More"
+        title={t('layout.cookies-updated')}
+        message={t('layout.cookies-updated-message')}
+        confirmText={t('layout.yes-restart')}
+        cancelText={t('layout.no-add-more')}
         confirmVariant="information"
       />
 
@@ -414,9 +419,9 @@ export default function Browser() {
           setShowCookieRestartDialog(false);
           handleRestartApp();
         }}
-        title="Restart Required"
-        message="Restart the application to enable your cookie domain changes."
-        confirmText="Restart"
+        title={t('layout.restart-required')}
+        message={t('layout.restart-required-message')}
+        confirmText={t('layout.restart')}
         cancelText={t('layout.cancel')}
         confirmVariant="information"
       />
@@ -658,6 +663,7 @@ export default function Browser() {
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowCookieRestartDialog(true)}
+                      title={t('layout.restart-to-enable-cookies-tooltip')}
                     >
                       <RefreshCw className="h-4 w-4 text-text-information" />
                     </Button>
@@ -676,8 +682,9 @@ export default function Browser() {
                             {group.mainDomain}
                           </span>
                           <span className="mt-1 text-label-xs text-text-label">
-                            {group.totalCookies} Cookie
-                            {group.totalCookies !== 1 ? 's' : ''}
+                            {t('layout.cookie-count', {
+                              count: group.totalCookies,
+                            })}
                           </span>
                         </div>
                         <Button
@@ -711,19 +718,6 @@ export default function Browser() {
               </div>
             </div>
           )}
-
-          {/* Footer */}
-          <div className="mt-auto pt-8 text-center text-label-xs text-text-label">
-            {t('layout.for-more-info')}
-            <a
-              href="https://www.eigent.ai/privacy-policy"
-              target="_blank"
-              className="ml-1 text-text-information underline"
-              rel="noreferrer"
-            >
-              {t('layout.privacy-policy')}
-            </a>
-          </div>
         </div>
       </div>
     </div>

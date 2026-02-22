@@ -20,7 +20,7 @@ import subprocess
 import time
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
@@ -38,20 +38,12 @@ class LinkedInTokenRequest(BaseModel):
     scope: str | None = None
 
 
-class BrowserConnectRequest(BaseModel):
-    r"""Request model for scanning unconnected CDP browsers."""
-
-    connected_ports: list[int] = Field(default_factory=list)
-
-
-
 logger = logging.getLogger("tool_controller")
 router = APIRouter()
 
 # Track browser processes launched by /browser/launch
 _launched_browser_processes: dict[int, subprocess.Popen] = {}
 
-_CDP_SCAN_PORT_START = 9222  # reserved for Electron's built-in browser
 _CDP_LAUNCH_PORT_START = 9223  # launch range for /browser/launch (skip 9222)
 _CDP_PORT_END = 9300
 
