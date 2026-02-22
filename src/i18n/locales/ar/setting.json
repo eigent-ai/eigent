@@ -172,6 +172,9 @@
   "api-key-setting": "إعداد مفتاح API",
   "api-host-setting": "إعداد مضيف API",
   "model-type-setting": "إعداد نوع النموذج",
+  "search-model-types": "البحث في أنواع النماذج...",
+  "no-model-types-found": "لم يتم العثور على أنواع النماذج.",
+  "loading-suggestions": "تحميل الاقتراحات...",
   "please-select": "يرجى الاختيار",
   "configuring": "جارٍ التكوين...",
 

@@ -11,29 +11,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+"""Pytest configuration and shared fixtures for Eigent backend tests."""
+
+import sys
+from pathlib import Path
+
+import pytest
+
+# Add server directory to Python path so imports work correctly
+server_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(server_dir))
 
 
-class UserException(Exception):
-    def __init__(self, code: int, description: str):
-        self.code = code
-        self.description = description
-
-
-class TokenException(Exception):
-    def __init__(self, code: int, text: str):
-        self.code = code
-        self.text = text
-
-
-class NoPermissionException(Exception):
-    def __init__(self, text: str):
-        self.text = text
-
-
-class ProgramException(Exception):
-    def __init__(self, text: str):
-        self.text = text
-
-
-class PathEscapesBaseError(ValueError):
-    """Raised when a path resolves outside its allowed base directory."""
+@pytest.fixture(scope="session")
+def server_root() -> Path:
+    """Return the path to the server root directory."""
+    return server_dir
