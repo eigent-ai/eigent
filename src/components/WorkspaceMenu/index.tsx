@@ -31,7 +31,7 @@ import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '../ui/badge';
 
-export function WorkSpaceMenu() {
+export function WorkspaceMenu() {
   const { t } = useTranslation();
   const { chatStore } = useChatStoreAdapter();
   const workerList = useWorkerList();

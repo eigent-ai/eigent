@@ -80,6 +80,9 @@ import zaiImage from '@/assets/model/zai.svg';
 
 const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
 const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
+const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
+const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
+  'Added /v1 once. You can remove it if not needed.';
 
 // Sidebar tab types
 type SidebarTab =
@@ -103,6 +106,12 @@ const DARK_FILL_MODELS = new Set([
   'z.ai',
   'openai-compatible-model',
 ]);
+
+const PROVIDER_AVATAR_URLS: Record<string, string> = {
+  'samba-nova': 'https://github.com/sambanova.png',
+  mistral: 'https://github.com/mistralai.png',
+  grok: 'https://github.com/xai-org.png',
+};
 
 export default function SettingModels() {
   const {
@@ -197,6 +206,8 @@ export default function SettingModels() {
   const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(
     null
   );
+  const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
+    useState(false);
 
   // Fetch available models from Ollama API
   const fetchOllamaModels = async (endpoint?: string) => {
@@ -648,12 +659,64 @@ export default function SettingModels() {
   };
 
   // Local Model verification
+  const isOllamaEndpointMissingV1 = (endpoint: string): boolean => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return false;
+    try {
+      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
+      return !normalizedPath.endsWith('/v1');
+    } catch {
+      return !trimmed.replace(/\/+$/, '').endsWith('/v1');
+    }
+  };
+  const canAutoFixOllamaEndpoint = (endpoint: string): boolean => {
+    const trimmed = endpoint.trim();
+    if (!trimmed || !isOllamaEndpointMissingV1(trimmed)) return false;
+    try {
+      // Auto-fix only when endpoint has no extra path, e.g. http://localhost:11434
+      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
+      return normalizedPath === '';
+    } catch {
+      const withoutQueryOrHash = trimmed.split(/[?#]/)[0] || '';
+      const normalized = withoutQueryOrHash.replace(/\/+$/, '');
+      return !normalized.includes('/');
+    }
+  };
+  const appendV1ToEndpoint = (endpoint: string): string => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return trimmed;
+    try {
+      const parsed = new URL(trimmed);
+      const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+      parsed.pathname = `${normalizedPath}/v1`.replace(/\/{2,}/g, '/');
+      return parsed.toString();
+    } catch {
+      return `${trimmed.replace(/\/+$/, '')}/v1`;
+    }
+  };
+
   const handleLocalVerify = async () => {
     setLocalVerifying(true);
     setLocalError(null);
     setLocalInputError(false);
-    const currentEndpoint = localEndpoints[localPlatform] || '';
+    let currentEndpoint = localEndpoints[localPlatform] || '';
     const currentType = localTypes[localPlatform] || '';
+
+    // Fallback guard for fast save interactions: ensure one-time auto-fix
+    // still applies even if blur state hasn't committed yet.
+    if (
+      localPlatform === 'ollama' &&
+      !ollamaEndpointAutoFixedOnce &&
+      canAutoFixOllamaEndpoint(currentEndpoint)
+    ) {
+      const fixedEndpoint = appendV1ToEndpoint(currentEndpoint);
+      currentEndpoint = fixedEndpoint;
+      setLocalEndpoints((prev) => ({
+        ...prev,
+        [localPlatform]: fixedEndpoint,
+      }));
+      setOllamaEndpointAutoFixedOnce(true);
+    }
 
     if (!currentEndpoint) {
       setLocalError(t('setting.endpoint-url-can-not-be-empty'));
@@ -924,6 +987,7 @@ export default function SettingModels() {
       setActiveModelIdx(null);
       // Re-fetch Ollama models after reset
       if (localPlatform === 'ollama') {
+        setOllamaEndpointAutoFixedOnce(false);
         setOllamaModelsError(null);
         fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
       }
@@ -1039,6 +1103,9 @@ export default function SettingModels() {
       'z.ai': zaiImage,
       moonshot: moonshotImage,
       ModelArk: modelarkImage,
+      'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
+      grok: PROVIDER_AVATAR_URLS.grok,
+      mistral: PROVIDER_AVATAR_URLS.mistral,
       'aws-bedrock': bedrockImage,
       azure: azureImage,
       'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
@@ -1554,6 +1621,25 @@ export default function SettingModels() {
                 if (platform === 'ollama') {
                   setOllamaModelsError(null);
                 }
+              }}
+              onBlur={(e) => {
+                if (
+                  platform !== 'ollama' ||
+                  ollamaEndpointAutoFixedOnce ||
+                  !canAutoFixOllamaEndpoint(e.target.value)
+                ) {
+                  return;
+                }
+                const fixedEndpoint = appendV1ToEndpoint(e.target.value);
+                setLocalEndpoints((prev) => ({
+                  ...prev,
+                  [platform]: fixedEndpoint,
+                }));
+                setOllamaEndpointAutoFixedOnce(true);
+                toast(OLLAMA_ENDPOINT_AUTO_FIX_TITLE, {
+                  description: OLLAMA_ENDPOINT_AUTO_FIX_DESC,
+                  closeButton: true,
+                });
               }}
               disabled={!localEnabled}
               placeholder={

@@ -21,6 +21,7 @@ from itsdangerous import BadTimeSignature, SignatureExpired
 from sqlmodel import Session, asc, select
 from starlette.responses import StreamingResponse
 
+from app.component.auth import Auth, auth_must
 from app.component.database import session
 from app.model.chat.chat_history import ChatHistory
 from app.model.chat.chat_share import (
@@ -116,12 +117,20 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
 
 
 @router.post("/share", name="Generate sharable link for a task(1 day expiration)")
-def create_share_link(data: ChatShareIn):
+def create_share_link(data: ChatShareIn, auth: Auth = Depends(auth_must)):
     """Generate sharing token with 1-day expiration for task."""
+    user_id = auth.user.id
     try:
         share_token = ChatShare.generate_token(data.task_id)
-        logger.info("Share link created", extra={"task_id": data.task_id, "token_prefix": share_token[:10]})
+        logger.info(
+            "Share link created",
+            extra={"user_id": user_id, "task_id": data.task_id, "token_prefix": share_token[:10]},
+        )
         return {"share_token": share_token}
     except Exception as e:
-        logger.error("Share link creation failed", extra={"task_id": data.task_id, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Share link creation failed",
+            extra={"user_id": user_id, "task_id": data.task_id, "error": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
