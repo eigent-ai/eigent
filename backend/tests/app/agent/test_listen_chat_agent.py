@@ -510,8 +510,11 @@ def test_step_raises_runtime_error_on_none_message(mock_task_lock):
 
 @pytest.mark.unit
 def test_step_raises_runtime_error_when_res_is_none(mock_task_lock):
-    """step() raises RuntimeError (not AssertionError) when res is None
-    without error_info set."""
+    """step() raises RuntimeError (not AssertionError) when res is None.
+
+    When ChatAgent.step returns None, message also remains None,
+    so the message-is-None guard fires first.
+    """
     with (
         patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
         patch("camel.models.ModelFactory.create") as mock_create_model,
@@ -530,7 +533,7 @@ def test_step_raises_runtime_error_when_res_is_none(mock_task_lock):
         agent.process_task_id = "test_process"
 
         with patch.object(ChatAgent, "step", return_value=None):
-            with pytest.raises(RuntimeError, match="returned None"):
+            with pytest.raises(RuntimeError, match="message is None"):
                 agent.step("test input")
 
 
@@ -565,8 +568,11 @@ async def test_astep_raises_runtime_error_on_none_message(mock_task_lock):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_astep_raises_runtime_error_when_res_is_none(mock_task_lock):
-    """astep() raises RuntimeError (not AssertionError) when res is None
-    without error_info set."""
+    """astep() raises RuntimeError (not AssertionError) when res is None.
+
+    When ChatAgent.astep returns None, message also remains None,
+    so the message-is-None guard fires first.
+    """
     with (
         patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
         patch("camel.models.ModelFactory.create") as mock_create_model,
@@ -586,7 +592,7 @@ async def test_astep_raises_runtime_error_when_res_is_none(mock_task_lock):
         agent.process_task_id = "test_process"
 
         with patch.object(ChatAgent, "astep", return_value=None):
-            with pytest.raises(RuntimeError, match="returned None"):
+            with pytest.raises(RuntimeError, match="message is None"):
                 await agent.astep("test input")
 
 
