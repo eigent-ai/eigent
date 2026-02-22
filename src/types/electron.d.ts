@@ -219,11 +219,6 @@ interface ElectronAPI {
     closeBrowser?: boolean
   ) => Promise<{ success: boolean; browser?: any; error?: string }>;
   onCdpPoolChanged: (callback: (browsers: any[]) => void) => () => void;
-  getChromeProfiles: () => Promise<{
-    success: boolean;
-    profiles?: Array<{ directory: string; name: string }>;
-    error?: string;
-  }>;
 }
 
 declare global {

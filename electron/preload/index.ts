@@ -174,7 +174,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.off(channel, listener);
     };
   },
-  getChromeProfiles: () => ipcRenderer.invoke('get-chrome-profiles'),
   // Skills
   getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
   skillsScan: () => ipcRenderer.invoke('skills-scan'),

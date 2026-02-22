@@ -17,7 +17,6 @@ import VerticalNavigation from '@/components/Navigation';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import {
-  Chrome,
   Cookie,
   Globe,
   Link2,
@@ -25,7 +24,6 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  User,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,11 +49,6 @@ interface CdpBrowser {
   addedAt: number;
 }
 
-interface ChromeProfile {
-  directory: string;
-  name: string;
-}
-
 export default function Browser() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('connection');
@@ -69,11 +62,6 @@ export default function Browser() {
 
   // CDP port configuration
   const [cdpPort, setCdpPort] = useState<number>(9223);
-
-  // Chrome profile picker
-  const [chromeProfiles, setChromeProfiles] = useState<ChromeProfile[]>([]);
-  const [showProfilePicker, setShowProfilePicker] = useState(false);
-  const [launchingChrome, setLaunchingChrome] = useState(false);
 
   // CDP Browser Pool
   const [cdpBrowsers, setCdpBrowsers] = useState<CdpBrowser[]>([]);
@@ -162,75 +150,6 @@ export default function Browser() {
       } catch (error) {
         console.error('Failed to load CDP browsers:', error);
       }
-    }
-  };
-
-  const handleOpenMyChrome = async () => {
-    try {
-      if (!window.electronAPI?.getChromeProfiles) {
-        toast.error(t('layout.chrome-not-installed'));
-        return;
-      }
-
-      const result = await window.electronAPI.getChromeProfiles();
-
-      if (!result.success) {
-        toast.error(result.error || t('layout.chrome-not-installed'));
-        return;
-      }
-
-      if (!result.profiles || result.profiles.length === 0) {
-        toast.error(t('layout.no-chrome-profiles'));
-        return;
-      }
-
-      setChromeProfiles(result.profiles);
-      setShowProfilePicker(true);
-    } catch (error: any) {
-      toast.error(error.message || t('layout.chrome-not-installed'));
-    }
-  };
-
-  const handleSelectProfile = async (profile: ChromeProfile) => {
-    setShowProfilePicker(false);
-    setLaunchingChrome(true);
-
-    try {
-      const response = await fetchPost('/browser/launch-chrome', {
-        profile_directory: profile.directory,
-      });
-
-      if (response && response.success) {
-        const port = response.port;
-        toast.success(
-          t('layout.chrome-launched-with-profile', {
-            profileName: profile.name,
-            port,
-          })
-        );
-
-        // Add to Electron CDP pool as external (isExternal: true)
-        // Pool update will be pushed automatically via onCdpPoolChanged
-        if (window.electronAPI?.addCdpBrowser) {
-          await window.electronAPI.addCdpBrowser(
-            port,
-            true,
-            `My Chrome - ${profile.name} (${port})`
-          );
-        }
-      } else {
-        toast.error(response?.detail || t('layout.failed-to-launch-chrome'));
-      }
-    } catch (error: any) {
-      // Check if error message hints at profile-in-use
-      const msg = error?.message || '';
-      if (msg.includes('already in use') || msg.includes('409')) {
-        toast.error(t('layout.profile-in-use'));
-      } else {
-        toast.error(msg || t('layout.failed-to-launch-chrome'));
-      }
-    } finally {
-      setLaunchingChrome(false);
     }
   };
 
@@ -521,44 +440,6 @@ export default function Browser() {
         confirmVariant="cuation"
       />
 
-      {/* Chrome Profile Picker Dialog */}
-      {showProfilePicker && (
-        <div className="bg-black/50 fixed inset-0 z-50 flex items-center justify-center">
-          <div className="w-full max-w-md rounded-xl bg-surface-primary p-6 shadow-lg">
-            <div className="text-body-base mb-4 font-bold text-text-heading">
-              {t('layout.select-chrome-profile')}
-            </div>
-            <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">
-              {chromeProfiles.map((profile) => (
-                <button
-                  key={profile.directory}
-                  className="flex items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-surface-secondary"
-                  onClick={() => handleSelectProfile(profile)}
-                >
-                  <User className="h-5 w-5 shrink-0 text-icon-secondary" />
-                  <div className="flex flex-col">
-                    <span className="text-body-sm font-bold text-text-body">
-                      {profile.name}
-                    </span>
-                    <span className="text-label-xs text-text-label">
-                      {profile.directory}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 flex justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowProfilePicker(false)}
-              >
-                {t('layout.cancel')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Connect Existing Browser Dialog */}
       {showConnectDialog && (
         <div className="bg-black/50 fixed inset-0 z-50 flex items-center justify-center">
@@ -659,21 +540,6 @@ export default function Browser() {
                 >
                   <Plus className="h-4 w-4" />
                   {t('layout.open-new-browser')}
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleOpenMyChrome}
-                  disabled={launchingChrome}
-                >
-                  {launchingChrome ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Chrome className="h-4 w-4" />
-                  )}
-                  {launchingChrome
-                    ? t('layout.launching-chrome')
-                    : t('layout.open-my-chrome')}
                 </Button>
                 <Button
                   variant="outline"
