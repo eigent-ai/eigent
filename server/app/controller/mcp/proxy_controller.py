@@ -14,6 +14,7 @@
 
 import logging
 from typing import Any, cast
+from urllib.parse import quote_plus
 
 import requests
 from exa_py import Exa
@@ -129,7 +130,7 @@ def google_search(query: str, search_type: str = "web", key: Key = Depends(key_m
     # Doc: https://developers.google.com/custom-search/v1/using_rest
     base_url = (
         f"https://www.googleapis.com/customsearch/v1?"
-        f"key={GOOGLE_API_KEY}&cx={SEARCH_ENGINE_ID}&q={query}&start="
+        f"key={GOOGLE_API_KEY}&cx={SEARCH_ENGINE_ID}&q={quote_plus(query)}&start="
         f"{start_page_idx}&lr={search_language}&num={num_result_pages}"
     )
 

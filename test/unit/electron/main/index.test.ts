@@ -1283,6 +1283,70 @@ describe('Electron Main Index Functions', () => {
     });
   });
 
+  describe('localfile:// Protocol Path Traversal Prevention', () => {
+    /**
+     * Tests for the path validation logic in the localfile:// protocol handler.
+     * Without validation, path.normalize() does NOT prevent directory traversal,
+     * allowing requests like localfile:///../../../etc/passwd to read arbitrary files.
+     */
+    const path = require('node:path');
+
+    const isPathAllowed = (filePath: string, allowedBases: string[]): boolean => {
+      const resolvedPath = path.resolve(filePath);
+      return allowedBases.some((base: string) => {
+        const resolvedBase = path.resolve(base);
+        return (
+          resolvedPath === resolvedBase ||
+          resolvedPath.startsWith(resolvedBase + path.sep)
+        );
+      });
+    };
+
+    const ALLOWED_BASES = ['/home/user', '/mock/user/data', '/tmp'];
+
+    it('should allow files within home directory', () => {
+      expect(isPathAllowed('/home/user/documents/file.pdf', ALLOWED_BASES)).toBe(true);
+    });
+
+    it('should allow files within userData directory', () => {
+      expect(isPathAllowed('/mock/user/data/cache/image.png', ALLOWED_BASES)).toBe(true);
+    });
+
+    it('should allow files within temp directory', () => {
+      expect(isPathAllowed('/tmp/upload-123.txt', ALLOWED_BASES)).toBe(true);
+    });
+
+    it('should block path traversal to /etc/passwd', () => {
+      const traversalPath = path.resolve(
+        path.normalize('/home/user/.eigent/data/../../../etc/passwd')
+      );
+      expect(isPathAllowed(traversalPath, ALLOWED_BASES)).toBe(false);
+    });
+
+    it('should block absolute paths outside allowed directories', () => {
+      expect(isPathAllowed('/etc/shadow', ALLOWED_BASES)).toBe(false);
+      expect(isPathAllowed('/var/log/syslog', ALLOWED_BASES)).toBe(false);
+      expect(isPathAllowed('/root/.ssh/id_rsa', ALLOWED_BASES)).toBe(false);
+    });
+
+    it('should block encoded traversal after normalize', () => {
+      // Simulate what happens after decodeURIComponent + normalize
+      const decodedUrl = '/home/user/data/../../../../etc/passwd';
+      const normalized = path.normalize(decodedUrl);
+      const resolved = path.resolve(normalized);
+      expect(isPathAllowed(resolved, ALLOWED_BASES)).toBe(false);
+    });
+
+    it('should allow exact base directory path', () => {
+      expect(isPathAllowed('/home/user', ALLOWED_BASES)).toBe(true);
+    });
+
+    it('should block paths that are prefixes but not subdirectories', () => {
+      // /home/user-evil should NOT match /home/user
+      expect(isPathAllowed('/home/user-evil/file.txt', ALLOWED_BASES)).toBe(false);
+    });
+  });
+
   describe('Application Lifecycle', () => {
     it('should quit on window-all-closed for non-darwin platforms', () => {
       const originalPlatform = process.platform;
