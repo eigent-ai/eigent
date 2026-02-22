@@ -12,8 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import html
 import json
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -26,7 +26,7 @@ def redirect_callback(code: str, request: Request):
     cookies = request.cookies
     cookies_json = json.dumps(cookies)
 
-    safe_code = html.escape(code, quote=True)
+    safe_code = quote(code, safe='')
 
     html_content = f"""
     <!DOCTYPE html>
