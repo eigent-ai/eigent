@@ -62,6 +62,12 @@ class TestOAuthStateManager:
         """to_dict should include all expected keys."""
         state = self.manager.create_state("test")
         d = state.to_dict()
-        assert set(d.keys()) == {"provider", "status", "error", "started_at", "completed_at"}
+        assert set(d.keys()) == {
+            "provider",
+            "status",
+            "error",
+            "started_at",
+            "completed_at",
+        }
         assert d["provider"] == "test"
         assert d["status"] == "pending"

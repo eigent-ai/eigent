@@ -585,7 +585,9 @@ def get_or_create_task_lock(id: str) -> TaskLock:
         if id in task_locks:
             logger.debug("Using existing task lock", extra={"task_id": id})
             return task_locks[id]
-        logger.info("Task lock not found, creating new one", extra={"task_id": id})
+        logger.info(
+            "Task lock not found, creating new one", extra={"task_id": id}
+        )
         task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
         logger.info(
             "Task lock created successfully",
