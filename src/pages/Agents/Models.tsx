@@ -1336,8 +1336,6 @@ export default function SettingModels() {
             {/* Model Type Setting */}
             <ModelTypeCombobox
               platform={item.id}
-              apiKey={form[idx].apiKey}
-              apiUrl={form[idx].apiHost}
               value={form[idx].model_type}
               onValueChange={(v) => {
                 setForm((f) =>
@@ -1618,8 +1616,6 @@ export default function SettingModels() {
             ) : (
               <ModelTypeCombobox
                 platform={platform}
-                apiKey={undefined}
-                apiUrl={currentEndpoint}
                 value={currentType}
                 onValueChange={(v) =>
                   setLocalTypes((prev) => ({

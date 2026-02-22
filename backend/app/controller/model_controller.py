@@ -14,12 +14,11 @@
 
 import logging
 
-import httpx
-from camel.types import ModelType
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from app.component.error_format import normalize_error_to_openai_format
+from app.component.model_suggestions import get_model_type_suggestions
 from app.component.model_validation import (
     ValidationErrorType,
     ValidationStage,
@@ -31,53 +30,6 @@ logger = logging.getLogger("model_controller")
 
 
 router = APIRouter()
-
-# Constants
-DEFAULT_OPENAI_API_URL = "https://api.openai.com/v1"
-
-# Platform names that support OpenAI-compatible API endpoints
-# Note: Platform names are normalized (lowercase, hyphens → underscores)
-OPENAI_COMPATIBLE_PLATFORMS = {
-    "openai",
-    "openai_compatible_model",
-    "azure",
-    "openrouter",
-    "lmstudio",
-    "vllm",
-    "sglang",
-    "zai",
-    "modelark",
-}
-
-# Enum definition index for each model — newer models have higher indices.
-# CAMEL defines newer models after older ones within each provider family,
-# so the definition index serves as a natural recency proxy.
-CAMEL_MODEL_ORDER: dict[str, int] = {
-    mt.value: idx for idx, mt in enumerate(ModelType)
-}
-
-# Maps platform names to model name prefixes for filtering
-# Empty list means the platform can run any model
-MODEL_PREFIXES: dict[str, list[str]] = {
-    "openai": ["gpt-", "o1", "o3", "o4", "chatgpt-"],
-    "anthropic": ["claude-"],
-    "gemini": ["gemini-"],
-    "deepseek": ["deepseek"],
-    "qwen": ["qwen"],
-    "minimax": ["minimax"],
-    "moonshot": ["moonshot", "kimi"],
-    "azure": ["gpt-", "o1", "o3", "o4"],
-    # These platforms can run any model → return all
-    "openai_compatible_model": [],
-    "openrouter": [],
-    "bedrock": [],
-    "ollama": [],
-    "vllm": [],
-    "sglang": [],
-    "lmstudio": [],
-    "modelark": [],
-    "zai": [],
-}
 
 
 class ValidateModelRequest(BaseModel):
@@ -345,117 +297,24 @@ async def validate_model(request: ValidateModelRequest):
 
 class ModelTypeSuggestionRequest(BaseModel):
     platform: str | None = Field(None, description="Model platform")
-    api_key: str | None = Field(
-        None, description="Optional API key for OpenAI"
-    )
-    api_url: str | None = Field(None, description="Optional API URL")
 
 
 class ModelTypeSuggestionResponse(BaseModel):
     model_types: list[str] = Field(
         ..., description="List of available model types"
     )
-    source: str = Field(
-        ..., description="Source of suggestions: 'camel' or 'openai'"
-    )
 
 
 @router.post("/model/types")
 async def get_model_types(request: ModelTypeSuggestionRequest):
-    """Get available model types for a given platform.
-
-    Returns model types from CAMEL enum filtered by platform.
-    If api_key is provided for OpenAI-compatible platforms,
-    also fetches available models from the API.
-    """
-    platform = request.platform
-    api_key = request.api_key
-    api_url = request.api_url
-
-    model_types: list[str] = []
-    source = "camel"
-
-    # Normalize platform name once: lowercase and replace hyphens with underscores
-    # This is needed because some platforms use hyphens (e.g., "openai-compatible-model")
-    # but Python dict keys use underscores for consistency
-    platform_lower = (platform or "").lower().replace("-", "_")
-
+    """Return CAMEL model types for the given platform, newest first."""
     try:
-        all_model_types = [mt.value for mt in ModelType]
-
-        if platform_lower:
-            prefixes = MODEL_PREFIXES.get(platform_lower)
-
-            if prefixes is not None and len(prefixes) > 0:
-                # Filter model types by known prefixes for this platform
-                model_types = [
-                    mt
-                    for mt in all_model_types
-                    if any(mt.lower().startswith(p) for p in prefixes)
-                ]
-            else:
-                # Unknown platform or open platform → return all
-                model_types = all_model_types
-        else:
-            model_types = all_model_types
-
-        # Track creation timestamps from API for recency sorting
-        api_model_created: dict[str, int] = {}
-
-        # For OpenAI-compatible platforms with an API key,
-        # also fetch live models from the API
-        if api_key and platform_lower in OPENAI_COMPATIBLE_PLATFORMS:
-            try:
-                api_base_url = (api_url or DEFAULT_OPENAI_API_URL).rstrip("/")
-                headers = {"Authorization": f"Bearer {api_key}"}
-
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get(
-                        f"{api_base_url}/models",
-                        headers=headers,
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        api_models: list[str] = []
-                        for model in data.get("data", []):
-                            model_id = model.get("id")
-                            if model_id:
-                                api_models.append(model_id)
-                                if model.get("created"):
-                                    api_model_created[model_id] = model[
-                                        "created"
-                                    ]
-                        model_types = list(set(model_types + api_models))
-                        source = "camel+api"
-                        logger.info(
-                            f"Fetched {len(api_models)} models from API"
-                        )
-                    else:
-                        logger.warning(
-                            f"Failed to fetch models from API: "
-                            f"{response.status_code}"
-                        )
-            except Exception as e:
-                logger.warning(f"Error fetching models from API: {e}")
-
-        # Sort by recency: API timestamp (desc) → CAMEL enum index (desc)
-        def recency_key(name: str) -> tuple[int, int]:
-            created = api_model_created.get(name)
-            if created is not None:
-                return (1, created)
-            idx = CAMEL_MODEL_ORDER.get(name)
-            if idx is not None:
-                return (0, idx)
-            return (-1, 0)
-
-        model_types = sorted(set(model_types), key=recency_key, reverse=True)
         return ModelTypeSuggestionResponse(
-            model_types=model_types, source=source
+            model_types=get_model_type_suggestions(request.platform)
         )
-
     except Exception as e:
-        logger.error(f"Error getting model types: {e}", exc_info=True)
+        logger.error("Error getting model types: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"message": f"Failed to get model types: {str(e)}"},
+            detail={"message": f"Failed to get model types: {e}"},
         )

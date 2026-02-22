@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -142,13 +142,13 @@ export function Combobox({
                 !selectedOption && !value && 'text-input-label-default/50'
               )}
             >
-              {loading
-                ? 'Loading...'
-                : selectedOption
-                  ? selectedOption.label
-                  : value || placeholder}
+              {selectedOption ? selectedOption.label : value || placeholder}
             </span>
-            <ChevronDown className="h-4 w-4 shrink-0 text-icon-primary" />
+            {loading ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-icon-primary" />
+            ) : (
+              <ChevronDown className="h-4 w-4 shrink-0 text-icon-primary" />
+            )}
           </button>
         </PopoverTrigger>
         <PopoverContent
@@ -169,7 +169,7 @@ export function Combobox({
               onValueChange={setSearchValue}
             />
             <CommandList>
-              <CommandEmpty>{loading ? 'Loading...' : emptyText}</CommandEmpty>
+              <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
                 {options.map((option) => (
                   <CommandItem

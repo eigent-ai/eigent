@@ -380,11 +380,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     )
     logger.info("=" * 80)
     logger.debug(
-        "Step solve options",
-        extra={
-            "task_id": options.task_id,
-            "model_platform": options.model_platform,
-        },
+        "Step solve options: platform=%s type=%s",
+        options.model_platform,
+        options.model_type,
     )
 
     while True:

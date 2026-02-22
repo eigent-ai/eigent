@@ -23,8 +23,6 @@ const suggestionsCache: Record<string, ComboboxOption[]> = {};
 
 interface ModelTypeComboboxProps {
   platform: string;
-  apiKey?: string;
-  apiUrl?: string;
   value: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
@@ -35,8 +33,6 @@ interface ModelTypeComboboxProps {
 
 export function ModelTypeCombobox({
   platform,
-  apiKey,
-  apiUrl,
   value,
   onValueChange,
   placeholder,
@@ -50,7 +46,7 @@ export function ModelTypeCombobox({
   // Track which cache key we last fetched to avoid redundant fetches
   const fetchedKeyRef = useRef<string>('');
 
-  const cacheKey = `${platform}-${apiKey || ''}-${apiUrl || ''}`;
+  const cacheKey = platform;
 
   useEffect(() => {
     // If we already have cached results for this key, use them
@@ -72,11 +68,7 @@ export function ModelTypeCombobox({
     fetchedKeyRef.current = cacheKey;
     setLoading(true);
 
-    const params: Record<string, string> = { platform };
-    if (apiKey) params.api_key = apiKey;
-    if (apiUrl) params.api_url = apiUrl;
-
-    fetchPost('/model/types', params)
+    fetchPost('/model/types', { platform })
       .then((res) => {
         if (res && res.model_types && Array.isArray(res.model_types)) {
           const opts: ComboboxOption[] = res.model_types.map(
@@ -91,13 +83,14 @@ export function ModelTypeCombobox({
       })
       .catch((err) => {
         console.error('Failed to fetch model type suggestions:', err);
-        // Don't cache errors to allow retry on next render
+        // Reset so the next render can retry
+        fetchedKeyRef.current = '';
         setOptions([]);
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [cacheKey, platform, apiKey, apiUrl]);
+  }, [cacheKey]);
 
   return (
     <Combobox
