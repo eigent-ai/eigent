@@ -42,28 +42,186 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/**
- * Extract text from a single shape by paragraph (a:p).
- * Each a:p can have multiple runs (a:r -> a:t); we concatenate runs within
- * a paragraph so "Test " + "PPT" + " Title" becomes "Test PPT Title".
- */
-function getShapeParagraphs(shape: Element): string[] {
-  const txBody = shape.getElementsByTagNameNS(PRESENTATION_NS, 'txBody')[0];
-  if (!txBody) return [];
-  const paragraphs = txBody.getElementsByTagNameNS(DRAWINGML_NS, 'p');
-  const result: string[] = [];
-  for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
-    const para = paragraphs[pIdx];
-    const runs = para.getElementsByTagNameNS(DRAWINGML_NS, 't');
-    let line = '';
-    for (let rIdx = 0; rIdx < runs.length; rIdx++) {
-      const t = runs[rIdx].textContent;
-      if (t) line += t;
+/** Run-level rich text: color, bold, italic from a:r / a:rPr. */
+export type TextRun = {
+  text: string;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+};
+
+/** Paragraph with runs and alignment (a:p -> a:pPr @algn, a:r). */
+export type RichParagraph = { runs: TextRun[]; align?: string };
+
+/** Default hex for theme color names (when schemeClr is used without theme part). */
+const THEME_COLOR_MAP: Record<string, string> = {
+  accent1: '#4472C4',
+  accent2: '#ED7D31',
+  accent3: '#A5A5A5',
+  accent4: '#FFC000',
+  accent5: '#5B9BD5',
+  accent6: '#70AD47',
+  dk1: '#000000',
+  lt1: '#FFFFFF',
+  dk2: '#1F2E4D',
+  lt2: '#EEEDF0',
+};
+
+/** First element by NS or by local name (avoids missing due to namespace). */
+function firstByNsOrLocal(
+  parent: Element,
+  ns: string,
+  tag: string
+): Element | null {
+  const byNs = parent.getElementsByTagNameNS(ns, tag)[0];
+  if (byNs) return byNs;
+  const list = getElementsByLocalName(parent, tag);
+  return list.length > 0 ? list[0] : null;
+}
+
+/** Get run properties from a:r (a:rPr: color, @b, @i). */
+function getRunProps(run: Element): {
+  color: string | null;
+  bold: boolean;
+  italic: boolean;
+} {
+  let rPr = run.getElementsByTagNameNS(DRAWINGML_NS, 'rPr')[0];
+  if (!rPr && run.children) {
+    for (let i = 0; i < run.children.length; i++) {
+      if (run.children[i].localName === 'rPr') {
+        rPr = run.children[i];
+        break;
+      }
     }
-    const trimmed = line.trim();
-    if (trimmed) result.push(trimmed);
+  }
+  let color: string | null = null;
+  let bold = false;
+  let italic = false;
+  if (rPr) {
+    const solid = firstByNsOrLocal(rPr, DRAWINGML_NS, 'solidFill');
+    if (solid) {
+      const srgb = firstByNsOrLocal(solid, DRAWINGML_NS, 'srgbClr');
+      const val = srgb?.getAttribute('val');
+      if (val) color = `#${val}`;
+      else {
+        const scheme = firstByNsOrLocal(solid, DRAWINGML_NS, 'schemeClr');
+        const schemeVal = scheme?.getAttribute('val');
+        if (schemeVal) color = THEME_COLOR_MAP[schemeVal] ?? `#${schemeVal}`;
+      }
+    }
+    bold = rPr.getAttribute('b') === '1';
+    italic = rPr.getAttribute('i') === '1';
+  }
+  return { color, bold, italic };
+}
+
+/** Normalize algn attribute value to our alignment string. */
+function parseAlgnValue(algn: string | null): string | undefined {
+  if (!algn) return undefined;
+  const v = algn.toLowerCase();
+  if (v === 'ctr') return 'center';
+  if (v === 'r') return 'right';
+  if (v === 'just' || v === 'dist') return 'left';
+  return 'left';
+}
+
+/** Get paragraph alignment from a:p (a:pPr @algn). If not set, use lstStyle default for paragraph level (a:lstStyle -> a:lvlNpPr @algn). */
+function getParagraphAlign(
+  para: Element,
+  lstStyle: Element | null
+): string | undefined {
+  let pPr = para.getElementsByTagNameNS(DRAWINGML_NS, 'pPr')[0];
+  if (!pPr && para.children) {
+    for (let i = 0; i < para.children.length; i++) {
+      if (para.children[i].localName === 'pPr') {
+        pPr = para.children[i];
+        break;
+      }
+    }
+  }
+  const directAlgn = pPr?.getAttribute?.('algn');
+  if (directAlgn) return parseAlgnValue(directAlgn);
+  if (!lstStyle) return undefined;
+  const lvl = Math.max(0, parseInt(pPr?.getAttribute?.('lvl') ?? '0', 10));
+  const lvlTag = `lvl${lvl + 1}pPr`;
+  let lvlPPr =
+    lstStyle.getElementsByTagNameNS(DRAWINGML_NS, lvlTag)[0] ??
+    getElementsByLocalName(lstStyle, lvlTag)[0];
+  const defaultAlgn = lvlPPr?.getAttribute?.('algn');
+  return parseAlgnValue(defaultAlgn ?? null);
+}
+
+/** Get direct or nested elements by local name (namespace-agnostic). */
+function getElementsByLocalName(parent: Element, localName: string): Element[] {
+  const out: Element[] = [];
+  const walk = (el: Element) => {
+    if (el.localName === localName) out.push(el);
+    for (let i = 0; i < el.children.length; i++) walk(el.children[i]);
+  };
+  walk(parent);
+  return out;
+}
+
+/**
+ * Extract text from a single shape by paragraph (a:p), with run colors and alignment.
+ * Uses XML alignment only (no hard-coded default). Falls back to localName when NS lookup misses.
+ */
+function getShapeParagraphs(shape: Element): RichParagraph[] {
+  let txBody =
+    shape.getElementsByTagNameNS(PRESENTATION_NS, 'txBody')[0] ||
+    shape.getElementsByTagNameNS(DRAWINGML_NS, 'txBody')[0];
+  if (!txBody && shape.children) {
+    for (let i = 0; i < shape.children.length; i++) {
+      if (shape.children[i].localName === 'txBody') {
+        txBody = shape.children[i];
+        break;
+      }
+    }
+  }
+  if (!txBody) return [];
+  const lstStyle =
+    txBody.getElementsByTagNameNS(DRAWINGML_NS, 'lstStyle')[0] ??
+    getElementsByLocalName(txBody, 'lstStyle')[0] ??
+    null;
+  const byNsP = txBody.getElementsByTagNameNS(DRAWINGML_NS, 'p');
+  const paragraphList =
+    byNsP.length > 0 ? Array.from(byNsP) : getElementsByLocalName(txBody, 'p');
+  const result: RichParagraph[] = [];
+  for (const para of paragraphList) {
+    const align = getParagraphAlign(para, lstStyle ?? null);
+    const byNsR = para.getElementsByTagNameNS(DRAWINGML_NS, 'r');
+    const runList =
+      byNsR.length > 0 ? Array.from(byNsR) : getElementsByLocalName(para, 'r');
+    const runs: TextRun[] = [];
+    for (const run of runList) {
+      const byNsT = run.getElementsByTagNameNS(DRAWINGML_NS, 't');
+      const tList =
+        byNsT.length > 0 ? Array.from(byNsT) : getElementsByLocalName(run, 't');
+      let text = '';
+      for (const t of tList) text += t.textContent ?? '';
+      if (!text) continue;
+      const { color, bold, italic } = getRunProps(run);
+      runs.push({
+        text,
+        ...(color && { color }),
+        ...(bold && { bold: true }),
+        ...(italic && { italic: true }),
+      });
+    }
+    if (runs.length > 0) {
+      const joined = runs.map((r) => r.text).join('');
+      if (joined.trim()) result.push({ runs, align });
+    }
   }
   return result;
+}
+
+/** Plain text from a rich paragraph (for shape blocks and backward compat). */
+function richParagraphToPlain(p: RichParagraph): string {
+  return p.runs
+    .map((r) => r.text)
+    .join('')
+    .trim();
 }
 
 /** Get text from any element that has a:txBody (e.g. shape or table cell). */
@@ -124,28 +282,55 @@ function getShapePreset(sp: Element): string | null {
   return geom?.getAttribute('prst') ?? null;
 }
 
+/** Get position in EMUs from a:xfrm -> a:off (@x, @y). Used for ordering. */
+function getShapePosition(shape: Element): { x: number; y: number } {
+  let xfrm: Element | null = null;
+  const spPr =
+    shape.getElementsByTagNameNS(PRESENTATION_NS, 'spPr')[0] ||
+    shape.getElementsByTagNameNS(DRAWINGML_NS, 'spPr')[0];
+  if (spPr) xfrm = spPr.getElementsByTagNameNS(DRAWINGML_NS, 'xfrm')[0];
+  if (!xfrm)
+    xfrm =
+      shape.getElementsByTagNameNS(PRESENTATION_NS, 'xfrm')[0] ||
+      shape.getElementsByTagNameNS(DRAWINGML_NS, 'xfrm')[0];
+  if (!xfrm) return { x: 0, y: 0 };
+  const off = xfrm.getElementsByTagNameNS(DRAWINGML_NS, 'off')[0];
+  if (!off) return { x: 0, y: 0 };
+  const x = parseInt(off.getAttribute('x') ?? '0', 10) || 0;
+  const y = parseInt(off.getAttribute('y') ?? '0', 10) || 0;
+  return { x, y };
+}
+
 type SlideBlock =
-  | { type: 'title'; text: string }
-  | { type: 'paragraph'; text: string }
+  | { type: 'title'; content: RichParagraph }
+  | { type: 'paragraph'; content: RichParagraph }
   | { type: 'table'; rows: string[][] }
   | { type: 'shape'; text: string; fill: string; rounded: boolean };
 
+type PositionedItem =
+  | { kind: 'text'; content: RichParagraph; y: number; x: number }
+  | { kind: 'table'; rows: string[][]; y: number; x: number }
+  | {
+      kind: 'shape';
+      text: string;
+      fill: string;
+      rounded: boolean;
+      y: number;
+      x: number;
+    };
+
 /**
- * Walk content tree in document order and collect title, paragraphs, tables, shapes.
- * Tables from p:graphicFrame (a:tbl). Shapes with fill rendered as colored blocks.
+ * Walk content tree, collect items with position (a:xfrm a:off), then sort by (y, x)
+ * so the topmost-leftmost text is the title and the rest follow in visual order.
  */
-function walkSlideContent(
-  parent: Element,
-  blocks: SlideBlock[],
-  state: { firstText: boolean }
-): void {
+function walkSlideContent(parent: Element, items: PositionedItem[]): void {
   for (let i = 0; i < parent.children.length; i++) {
     const el = parent.children[i];
     const local = el.localName;
     const ns = el.namespaceURI;
     if (ns !== PRESENTATION_NS) continue;
     if (local === 'grpSp') {
-      walkSlideContent(el, blocks, state);
+      walkSlideContent(el, items);
       continue;
     }
     if (local === 'sp') {
@@ -153,26 +338,27 @@ function walkSlideContent(
       const fill = getShapeFill(el);
       const preset = getShapePreset(el);
       const rounded = preset === 'roundRect';
+      const pos = getShapePosition(el);
       if (fill && paras.length > 0) {
-        blocks.push({
-          type: 'shape',
-          text: paras.join(' '),
+        items.push({
+          kind: 'shape',
+          text: paras.map(richParagraphToPlain).join(' '),
           fill,
           rounded,
+          y: pos.y,
+          x: pos.x,
         });
       } else {
         for (const p of paras) {
-          if (state.firstText) {
-            blocks.push({ type: 'title', text: p });
-            state.firstText = false;
-          } else {
-            blocks.push({ type: 'paragraph', text: p });
-          }
+          items.push({ kind: 'text', content: p, y: pos.y, x: pos.x });
         }
       }
     } else if (local === 'graphicFrame') {
       const grid = getTableFromGraphicFrame(el);
-      if (grid) blocks.push({ type: 'table', rows: grid });
+      if (grid) {
+        const pos = getShapePosition(el);
+        items.push({ kind: 'table', rows: grid, y: pos.y, x: pos.x });
+      }
     }
   }
 }
@@ -182,9 +368,67 @@ function extractSlideContent(xmlString: string): SlideBlock[] {
   const doc = parser.parseFromString(xmlString, 'text/xml');
   const spTree = doc.getElementsByTagNameNS(PRESENTATION_NS, 'spTree')[0];
   if (!spTree) return [];
+  const items: PositionedItem[] = [];
+  walkSlideContent(spTree, items);
+  items.sort((a, b) => {
+    const dy = a.y - b.y;
+    if (dy !== 0) return dy;
+    return a.x - b.x;
+  });
   const blocks: SlideBlock[] = [];
-  walkSlideContent(spTree, blocks, { firstText: true });
+  let firstText = true;
+  for (const it of items) {
+    if (it.kind === 'text') {
+      blocks.push({
+        type: firstText ? 'title' : 'paragraph',
+        content: it.content,
+      });
+      firstText = false;
+    } else if (it.kind === 'table') {
+      blocks.push({ type: 'table', rows: it.rows });
+    } else {
+      blocks.push({
+        type: 'shape',
+        text: it.text,
+        fill: it.fill,
+        rounded: it.rounded,
+      });
+    }
+  }
   return blocks;
+}
+
+/** Render a rich paragraph to HTML with run colors and alignment. */
+function renderRichParagraph(
+  content: RichParagraph,
+  tag: 'h2' | 'p',
+  baseClass: string
+): string {
+  const alignClass =
+    content.align === 'center'
+      ? ' text-center'
+      : content.align === 'right'
+        ? ' text-right'
+        : '';
+  const alignStyle =
+    content.align === 'center'
+      ? ' text-align:center'
+      : content.align === 'right'
+        ? ' text-align:right'
+        : '';
+  const styleAttr = alignStyle ? ` style="${alignStyle}"` : '';
+  const inner = content.runs
+    .map((r) => {
+      const escaped = escapeHtml(r.text);
+      let html = r.color
+        ? `<span style="color:${escapeHtml(r.color)}">${escaped}</span>`
+        : escaped;
+      if (r.bold) html = `<strong>${html}</strong>`;
+      if (r.italic) html = `<em>${html}</em>`;
+      return html;
+    })
+    .join('');
+  return `<${tag} class="${baseClass}${alignClass}"${styleAttr}>${inner}</${tag}>`;
 }
 
 function renderBlocksToHtml(blocks: SlideBlock[], slideNum: number): string {
@@ -194,11 +438,15 @@ function renderBlocksToHtml(blocks: SlideBlock[], slideNum: number): string {
   for (const b of blocks) {
     if (b.type === 'title') {
       parts.push(
-        `<h2 class="text-xl font-semibold text-text-primary mb-3">${escapeHtml(b.text)}</h2>`
+        renderRichParagraph(
+          b.content,
+          'h2',
+          'text-xl font-semibold mb-3 text-text-primary'
+        )
       );
     } else if (b.type === 'paragraph') {
       parts.push(
-        `<p class="text-text-primary text-sm">${escapeHtml(b.text)}</p>`
+        renderRichParagraph(b.content, 'p', 'text-text-primary text-sm')
       );
     } else if (b.type === 'table') {
       const headerRow = b.rows[0] || [];
@@ -281,7 +529,13 @@ export default function PptxViewer({
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to parse PPTX');
+          const message =
+            e instanceof Error ? e.message : 'Failed to parse PPTX';
+          const friendlyMessage =
+            message.includes('central directory') || message.includes('zip')
+              ? 'Invalid or corrupted file. Add a valid .pptx to public/sample.pptx for mock testing.'
+              : message;
+          setError(friendlyMessage);
           setLoading(false);
         }
       }
