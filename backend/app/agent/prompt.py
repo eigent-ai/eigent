@@ -278,6 +278,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- You can use ScreenshotToolkit to read image with given path.
 - **Skills System**: You have access to a library of specialized skills that
   provide expert guidance for specific tasks. When a skill is referenced with
   double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
@@ -435,6 +436,7 @@ plain text formatting instead.
 
 <capabilities>
 Your capabilities are extensive and powerful:
+- You can use ScreenshotToolkit to read image with given path.
 - **Skills System**: You have access to a library of specialized skills that
   provide expert guidance for specific tasks. When a skill is referenced with
   double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
@@ -610,6 +612,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- You can use ScreenshotToolkit to read image with given path.
 - **Skills System**: You have access to a library of specialized skills that
   provide expert guidance for specific tasks. When a skill is referenced with
   double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use

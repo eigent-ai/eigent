@@ -71,7 +71,7 @@ export function TaskCard({
   const activeTaskId = chatStore?.activeTaskId as string;
   const activeTask = chatStore?.tasks?.[activeTaskId];
   const activeTaskStatus = activeTask?.status;
-  const activeWorkSpace = activeTask?.activeWorkSpace;
+  const activeWorkspace = activeTask?.activeWorkspace;
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -116,12 +116,12 @@ export function TaskCard({
   }, [activeTaskStatus]);
 
   useEffect(() => {
-    if (activeWorkSpace === 'workflow') {
+    if (activeWorkspace === 'workflow') {
       setIsExpanded(false);
     } else {
       setIsExpanded(true);
     }
-  }, [activeWorkSpace]);
+  }, [activeWorkspace]);
 
   // Improved height calculation logic
   useEffect(() => {
@@ -387,7 +387,7 @@ export function TaskCard({
                             }
 
                             // Set the active workspace and agent
-                            chatStore.setActiveWorkSpace(
+                            chatStore.setActiveWorkspace(
                               chatStore.activeTaskId as string,
                               'workflow'
                             );
