@@ -1611,6 +1611,88 @@ function registerIpcHandlers() {
     }
   );
 
+  // ======================== agent-templates (global Worker Agent templates) ========================
+  const AGENT_TEMPLATES_FILE = 'agent-templates.json';
+
+  function getAgentTemplatesPath(userId: string): string {
+    return path.join(os.homedir(), '.eigent', userId, AGENT_TEMPLATES_FILE);
+  }
+
+  async function loadAgentTemplates(userId: string): Promise<{
+    version: number;
+    templates: Array<{
+      id: string;
+      name: string;
+      description: string;
+      tools: string[];
+      mcp_tools: any;
+      custom_model_config?: any;
+      updatedAt: number;
+    }>;
+  }> {
+    const configPath = getAgentTemplatesPath(userId);
+    const defaultData = { version: 1, templates: [] };
+    if (!existsSync(configPath)) {
+      try {
+        await fsp.mkdir(path.dirname(configPath), { recursive: true });
+        await fsp.writeFile(
+          configPath,
+          JSON.stringify(defaultData, null, 2),
+          'utf-8'
+        );
+        return defaultData;
+      } catch (error: any) {
+        log.error('Failed to create default agent-templates', error);
+        return defaultData;
+      }
+    }
+    try {
+      const content = await fsp.readFile(configPath, 'utf-8');
+      const data = JSON.parse(content);
+      if (!Array.isArray(data.templates)) data.templates = [];
+      return { version: data.version ?? 1, templates: data.templates };
+    } catch (error: any) {
+      log.error('Failed to load agent-templates', error);
+      return defaultData;
+    }
+  }
+
+  async function saveAgentTemplates(
+    userId: string,
+    data: { version: number; templates: any[] }
+  ): Promise<void> {
+    const configPath = getAgentTemplatesPath(userId);
+    await fsp.mkdir(path.dirname(configPath), { recursive: true });
+    await fsp.writeFile(configPath, JSON.stringify(data, null, 2), 'utf-8');
+  }
+
+  ipcMain.handle('agent-templates-load', async (_event, userId: string) => {
+    try {
+      const data = await loadAgentTemplates(userId);
+      return { success: true, templates: data.templates };
+    } catch (error: any) {
+      log.error('agent-templates-load failed', error);
+      return { success: false, error: error?.message, templates: [] };
+    }
+  });
+
+  ipcMain.handle(
+    'agent-templates-save',
+    async (_event, userId: string, templates: any[]) => {
+      try {
+        const current = await loadAgentTemplates(userId);
+        await saveAgentTemplates(userId, {
+          version: current.version,
+          templates,
+        });
+        return { success: true };
+      } catch (error: any) {
+        log.error('agent-templates-save failed', error);
+        return { success: false, error: error?.message };
+      }
+    }
+  );
+
   // Initialize skills config for a user (ensures config file exists)
   ipcMain.handle('skill-config-init', async (_event, userId: string) => {
     try {

@@ -399,6 +399,45 @@ export function Node({ id, data }: NodeProps) {
                             className="w-full justify-start gap-2"
                             onClick={(e) => {
                               e.stopPropagation();
+                              const base = data.agent as Agent;
+                              const copyName = `${base.workerInfo?.name ?? base.name} (copy)`;
+                              const newWorker: Agent = {
+                                tasks: [],
+                                agent_id: copyName,
+                                name: copyName,
+                                type: copyName as AgentNameType,
+                                log: [],
+                                tools: base.tools ?? [],
+                                activeWebviewIds: [],
+                                workerInfo: {
+                                  name: copyName,
+                                  description:
+                                    base.workerInfo?.description ?? '',
+                                  tools: base.workerInfo?.tools ?? [],
+                                  mcp_tools: base.workerInfo?.mcp_tools ?? {
+                                    mcpServers: {},
+                                  },
+                                  selectedTools:
+                                    base.workerInfo?.selectedTools ?? [],
+                                },
+                              };
+                              setWorkerList([...workerList, newWorker]);
+                            }}
+                          >
+                            <Copy
+                              size={16}
+                              className="text-icon-primary group-hover:text-icon-cuation"
+                            />
+                            Duplicate
+                          </Button>
+                        </PopoverClose>
+                        <PopoverClose asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start gap-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               const newWorkerList = workerList.filter(
                                 (worker) => worker.type !== data.workerInfo.name
                               );

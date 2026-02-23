@@ -36,16 +36,23 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
+  hasGlobalAgentTemplatesApi,
+  useGlobalAgentTemplatesStore,
+} from '@/store/globalAgentTemplatesStore';
+import {
   Bot,
   ChevronDown,
   ChevronUp,
+  Download,
   Edit,
   Eye,
   EyeOff,
+  FileUp,
   Plus,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import ToolSelect from './ToolSelect';
 
 interface EnvValue {
@@ -109,6 +116,121 @@ export function AddWorker({
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [customModelPlatform, setCustomModelPlatform] = useState('');
   const [customModelType, setCustomModelType] = useState('');
+
+  // Global template and export/import
+  const [saveAsGlobalTemplate, setSaveAsGlobalTemplate] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const {
+    templates: globalTemplates,
+    loadTemplates: loadGlobalTemplates,
+    addTemplate: addGlobalTemplate,
+    getTemplate: getGlobalTemplate,
+  } = useGlobalAgentTemplatesStore();
+  const hasGlobalTemplatesApi = hasGlobalAgentTemplatesApi();
+
+  useEffect(() => {
+    if (hasGlobalTemplatesApi && dialogOpen) loadGlobalTemplates();
+  }, [hasGlobalTemplatesApi, dialogOpen, loadGlobalTemplates]);
+
+  useEffect(() => {
+    if (selectedTemplateId && dialogOpen) {
+      const tpl = getGlobalTemplate(selectedTemplateId);
+      if (tpl) {
+        setWorkerName(tpl.name);
+        setWorkerDescription(tpl.description);
+        if (tpl.custom_model_config) {
+          setUseCustomModel(true);
+          setShowModelConfig(true);
+          setCustomModelPlatform(tpl.custom_model_config.model_platform ?? '');
+          setCustomModelType(tpl.custom_model_config.model_type ?? '');
+        }
+      }
+    }
+  }, [selectedTemplateId, dialogOpen, getGlobalTemplate]);
+
+  const handleExportConfig = useCallback(() => {
+    const localTool: string[] = [];
+    const mcpList: string[] = [];
+    selectedTools.forEach((tool: McpItem) => {
+      if (tool.isLocal) {
+        localTool.push(tool.toolkit as string);
+      } else {
+        mcpList.push(tool?.key || tool?.mcp_name);
+      }
+    });
+    let mcpLocal: Record<string, unknown> = { mcpServers: {} };
+    selectedTools.forEach((tool: McpItem) => {
+      if (!tool.isLocal && tool.key) {
+        (mcpLocal.mcpServers as Record<string, unknown>)[tool.key] = {};
+      }
+    });
+    const custom_model_config =
+      useCustomModel && customModelPlatform
+        ? {
+            model_platform: customModelPlatform,
+            model_type: customModelType || undefined,
+          }
+        : undefined;
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            name: workerName,
+            description: workerDescription,
+            tools: localTool,
+            mcp_tools: mcpLocal,
+            custom_model_config,
+          },
+          null,
+          2
+        ),
+      ],
+      { type: 'application/json' }
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent-${workerName || 'config'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(t('workforce.save-changes'));
+  }, [
+    selectedTools,
+    workerName,
+    workerDescription,
+    useCustomModel,
+    customModelPlatform,
+    customModelType,
+    t,
+  ]);
+
+  const handleImportConfig = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      file.text().then((text) => {
+        try {
+          const data = JSON.parse(text);
+          setWorkerName(data.name ?? '');
+          setWorkerDescription(data.description ?? '');
+          if (data.custom_model_config) {
+            setUseCustomModel(true);
+            setShowModelConfig(true);
+            setCustomModelPlatform(
+              data.custom_model_config.model_platform ?? ''
+            );
+            setCustomModelType(data.custom_model_config.model_type ?? '');
+          }
+          toast.success(t('workforce.save-changes'));
+        } catch {
+          toast.error(t('agents.skill-add-error'));
+        }
+      });
+    },
+    [t]
+  );
 
   // environment variable management
   const initializeEnvValues = (mcp: McpItem) => {
@@ -261,6 +383,8 @@ export function AddWorker({
     setUseCustomModel(false);
     setCustomModelPlatform('');
     setCustomModelType('');
+    setSaveAsGlobalTemplate(false);
+    setSelectedTemplateId('');
   };
 
   // tool function
@@ -399,6 +523,24 @@ export function AddWorker({
         },
       };
       setWorkerList([...workerList, worker]);
+    }
+
+    if (saveAsGlobalTemplate && hasGlobalTemplatesApi) {
+      const customModelConfig =
+        useCustomModel && customModelPlatform
+          ? {
+              model_platform: customModelPlatform,
+              model_type: customModelType || undefined,
+            }
+          : undefined;
+      await addGlobalTemplate({
+        name: workerName,
+        description: workerDescription,
+        tools: localTool,
+        mcp_tools: mcpLocal,
+        custom_model_config: customModelConfig,
+      });
+      toast.success(t('agents.skill-added-success'));
     }
 
     setDialogOpen(false);
@@ -568,6 +710,34 @@ export function AddWorker({
             // default add interface
             <>
               <DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
+                {hasGlobalTemplatesApi &&
+                  globalTemplates.length > 0 &&
+                  !edit && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-text-body">
+                        {t('agents.global-agent-create-from-template')}
+                      </label>
+                      <Select
+                        value={selectedTemplateId}
+                        onValueChange={setSelectedTemplateId}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={t('agents.no-templates')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">
+                            {t('agents.no-templates')}
+                          </SelectItem>
+                          {globalTemplates.map((tpl) => (
+                            <SelectItem key={tpl.id} value={tpl.id}>
+                              {tpl.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-sm">
                     <div className="flex h-16 w-16 items-center justify-center">
@@ -597,7 +767,36 @@ export function AddWorker({
                   placeholder={t('layout.im-an-agent-specially-designed-for')}
                   value={workerDescription}
                   onChange={(e) => setWorkerDescription(e.target.value)}
+                  className="min-h-[120px] resize-y"
                 />
+
+                <div className="flex flex-row flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleExportConfig}
+                  >
+                    <Download className="mr-1 h-4 w-4" />
+                    {t('workforce.export-agent')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => importFileRef.current?.click()}
+                  >
+                    <FileUp className="mr-1 h-4 w-4" />
+                    {t('workforce.import-agent')}
+                  </Button>
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={handleImportConfig}
+                  />
+                </div>
 
                 <ToolSelect
                   onShowEnvConfig={handleShowEnvConfig}
@@ -605,6 +804,42 @@ export function AddWorker({
                   initialSelectedTools={selectedTools}
                   ref={toolSelectRef}
                 />
+
+                {selectedTools.length > 0 && (
+                  <div className="rounded-lg border border-border-subtle-strong bg-surface-tertiary-subtle px-3 py-2">
+                    <div className="text-body-xs font-medium text-text-body">
+                      {t('workforce.agent-tool')} ({selectedTools.length})
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {selectedTools.map((tool, idx) => (
+                        <span
+                          key={idx}
+                          className="rounded bg-surface-primary px-1.5 py-0.5 text-body-xs text-text-body"
+                          title={tool.description || tool.name || tool.key}
+                        >
+                          {tool.name ||
+                            tool.mcp_name ||
+                            tool.key ||
+                            `Tool ${idx + 1}`}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {hasGlobalTemplatesApi && (
+                  <label className="flex cursor-pointer items-center gap-2 text-body-sm text-text-body">
+                    <input
+                      type="checkbox"
+                      checked={saveAsGlobalTemplate}
+                      onChange={(e) =>
+                        setSaveAsGlobalTemplate(e.target.checked)
+                      }
+                      className="rounded border-border-subtle-strong"
+                    />
+                    {t('agents.global-agent-save-as-template')}
+                  </label>
+                )}
 
                 {/* Model Configuration Section */}
                 <div className="mt-2 flex flex-col gap-2">
