@@ -66,26 +66,157 @@ function getShapeParagraphs(shape: Element): string[] {
   return result;
 }
 
+/** Get text from any element that has a:txBody (e.g. shape or table cell). */
+function getTextFromTxBody(container: Element): string {
+  const txBody =
+    container.getElementsByTagNameNS(PRESENTATION_NS, 'txBody')[0] ||
+    container.getElementsByTagNameNS(DRAWINGML_NS, 'txBody')[0];
+  if (!txBody) return '';
+  const paragraphs = txBody.getElementsByTagNameNS(DRAWINGML_NS, 'p');
+  let out = '';
+  for (let i = 0; i < paragraphs.length; i++) {
+    const runs = paragraphs[i].getElementsByTagNameNS(DRAWINGML_NS, 't');
+    for (let j = 0; j < runs.length; j++) {
+      const t = runs[j].textContent;
+      if (t) out += t;
+    }
+  }
+  return out.trim();
+}
+
+/** Extract table from p:graphicFrame (a:graphic -> a:graphicData -> a:tbl). */
+function getTableFromGraphicFrame(gf: Element): string[][] | null {
+  const tbl = gf.getElementsByTagNameNS(DRAWINGML_NS, 'tbl')[0];
+  if (!tbl) return null;
+  const rows = tbl.getElementsByTagNameNS(DRAWINGML_NS, 'tr');
+  const grid: string[][] = [];
+  for (let r = 0; r < rows.length; r++) {
+    const cells = rows[r].getElementsByTagNameNS(DRAWINGML_NS, 'tc');
+    const row: string[] = [];
+    for (let c = 0; c < cells.length; c++) {
+      row.push(getTextFromTxBody(cells[c]));
+    }
+    if (row.length > 0) grid.push(row);
+  }
+  return grid.length > 0 ? grid : null;
+}
+
+/** Get solid fill color from shape (p:spPr or a:spPr -> a:solidFill -> a:srgbClr @val). */
+function getShapeFill(sp: Element): string | null {
+  const spPr =
+    sp.getElementsByTagNameNS(PRESENTATION_NS, 'spPr')[0] ||
+    sp.getElementsByTagNameNS(DRAWINGML_NS, 'spPr')[0];
+  if (!spPr) return null;
+  const solid = spPr.getElementsByTagNameNS(DRAWINGML_NS, 'solidFill')[0];
+  if (!solid) return null;
+  const srgb = solid.getElementsByTagNameNS(DRAWINGML_NS, 'srgbClr')[0];
+  const val = srgb?.getAttribute('val');
+  return val ? `#${val}` : null;
+}
+
+/** Get preset geometry (e.g. roundRect) from shape. */
+function getShapePreset(sp: Element): string | null {
+  const spPr =
+    sp.getElementsByTagNameNS(PRESENTATION_NS, 'spPr')[0] ||
+    sp.getElementsByTagNameNS(DRAWINGML_NS, 'spPr')[0];
+  if (!spPr) return null;
+  const geom = spPr.getElementsByTagNameNS(DRAWINGML_NS, 'prstGeom')[0];
+  return geom?.getAttribute('prst') ?? null;
+}
+
+type SlideBlock =
+  | { type: 'title'; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'table'; rows: string[][] }
+  | { type: 'shape'; text: string; fill: string; rounded: boolean };
+
 /**
- * Extract slide content by shape: first shape = title + body, then rest = body.
- * Text is grouped by paragraph so runs (e.g. "Test ", "PPT", " Title") become one line.
+ * Walk content tree in document order and collect title, paragraphs, tables, shapes.
+ * Tables from p:graphicFrame (a:tbl). Shapes with fill rendered as colored blocks.
  */
-function extractSlideContent(xmlString: string): {
-  title: string;
-  body: string[];
-} {
+function walkSlideContent(
+  parent: Element,
+  blocks: SlideBlock[],
+  state: { firstText: boolean }
+): void {
+  for (let i = 0; i < parent.children.length; i++) {
+    const el = parent.children[i];
+    const local = el.localName;
+    const ns = el.namespaceURI;
+    if (ns !== PRESENTATION_NS) continue;
+    if (local === 'grpSp') {
+      walkSlideContent(el, blocks, state);
+      continue;
+    }
+    if (local === 'sp') {
+      const paras = getShapeParagraphs(el);
+      const fill = getShapeFill(el);
+      const preset = getShapePreset(el);
+      const rounded = preset === 'roundRect';
+      if (fill && paras.length > 0) {
+        blocks.push({
+          type: 'shape',
+          text: paras.join(' '),
+          fill,
+          rounded,
+        });
+      } else {
+        for (const p of paras) {
+          if (state.firstText) {
+            blocks.push({ type: 'title', text: p });
+            state.firstText = false;
+          } else {
+            blocks.push({ type: 'paragraph', text: p });
+          }
+        }
+      }
+    } else if (local === 'graphicFrame') {
+      const grid = getTableFromGraphicFrame(el);
+      if (grid) blocks.push({ type: 'table', rows: grid });
+    }
+  }
+}
+
+function extractSlideContent(xmlString: string): SlideBlock[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlString, 'text/xml');
-  const shapes = doc.getElementsByTagNameNS(PRESENTATION_NS, 'sp');
-  const allParagraphs: string[] = [];
-  for (let i = 0; i < shapes.length; i++) {
-    const paras = getShapeParagraphs(shapes[i]);
-    for (const p of paras) allParagraphs.push(p);
+  const spTree = doc.getElementsByTagNameNS(PRESENTATION_NS, 'spTree')[0];
+  if (!spTree) return [];
+  const blocks: SlideBlock[] = [];
+  walkSlideContent(spTree, blocks, { firstText: true });
+  return blocks;
+}
+
+function renderBlocksToHtml(blocks: SlideBlock[], slideNum: number): string {
+  const parts: string[] = [
+    `<div class="mb-2 text-xs font-medium text-text-tertiary">Slide ${slideNum}</div>`,
+  ];
+  for (const b of blocks) {
+    if (b.type === 'title') {
+      parts.push(
+        `<h2 class="text-xl font-semibold text-text-primary mb-3">${escapeHtml(b.text)}</h2>`
+      );
+    } else if (b.type === 'paragraph') {
+      parts.push(
+        `<p class="text-text-primary text-sm">${escapeHtml(b.text)}</p>`
+      );
+    } else if (b.type === 'table') {
+      const headerRow = b.rows[0] || [];
+      const bodyRows = b.rows.slice(1);
+      parts.push(
+        `<div class="my-3 overflow-x-auto"><table class="w-full border-collapse border border-border-subtle text-sm text-text-primary">`,
+        `<thead><tr>${headerRow.map((c) => `<th class="border border-border-subtle bg-muted px-3 py-2 text-left font-medium">${escapeHtml(c)}</th>`).join('')}</tr></thead>`,
+        `<tbody>${bodyRows.map((row) => `<tr>${row.map((c) => `<td class="border border-border-subtle px-3 py-2">${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody>`,
+        `</table></div>`
+      );
+    } else if (b.type === 'shape') {
+      const rounded = b.rounded ? 'rounded-lg' : '';
+      parts.push(
+        `<div class="my-2 inline-block px-4 py-2 text-sm font-medium text-white ${rounded}" style="background-color:${escapeHtml(b.fill)}">${escapeHtml(b.text)}</div>`
+      );
+    }
   }
-  if (allParagraphs.length === 0) return { title: '', body: [] };
-  const title = allParagraphs[0];
-  const body = allParagraphs.slice(1);
-  return { title, body };
+  return `<div class="pptx-slide-content">${parts.join('')}</div>`;
 }
 
 async function parsePptxInBrowser(
@@ -104,21 +235,8 @@ async function parsePptxInBrowser(
   for (let i = 0; i < slideEntries.length; i++) {
     const entry = zip.files[slideEntries[i]];
     const xmlString = await entry.async('string');
-    const { title, body } = extractSlideContent(xmlString);
-    const titleHtml = title
-      ? `<h2 class="text-xl font-semibold text-text-primary mb-3">${escapeHtml(title)}</h2>`
-      : '';
-    const bodyHtml =
-      body.length > 0
-        ? `<div class="text-text-primary space-y-2">${body
-            .map((line) => `<p class="text-sm">${escapeHtml(line)}</p>`)
-            .join('')}</div>`
-        : '';
-    const html = `<div class="pptx-slide-content">
-      <div class="mb-2 text-xs font-medium text-text-tertiary">Slide ${i + 1}</div>
-      ${titleHtml}
-      ${bodyHtml}
-    </div>`;
+    const blocks = extractSlideContent(xmlString);
+    const html = renderBlocksToHtml(blocks, i + 1);
     slides.push({ index: i, html });
   }
   return slides;
