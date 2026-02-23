@@ -157,16 +157,22 @@ async function isCdpPortAlive(port: number): Promise<boolean> {
 /** Run one health-check cycle: remove dead browsers, persist & notify if changed. */
 async function runPoolHealthCheck(): Promise<void> {
   if (cdp_browser_pool.length === 0) return;
+  // Probe a snapshot so add/remove IPC handlers can run safely in parallel.
+  const snapshot = [...cdp_browser_pool];
   const results = await Promise.all(
-    cdp_browser_pool.map((b) => isCdpPortAlive(b.port))
+    snapshot.map((b) => isCdpPortAlive(b.port))
   );
-  const deadPorts: number[] = [];
-  for (let i = results.length - 1; i >= 0; i--) {
-    if (!results[i]) {
-      deadPorts.push(cdp_browser_pool[i].port);
-      cdp_browser_pool.splice(i, 1);
-    }
-  }
+  const deadIds = snapshot
+    .filter((_, idx) => !results[idx])
+    .map((browser) => browser.id);
+  if (deadIds.length === 0) return;
+
+  const deadIdSet = new Set(deadIds);
+  const removedBrowsers = cdp_browser_pool.filter((b) => deadIdSet.has(b.id));
+  if (removedBrowsers.length === 0) return;
+
+  cdp_browser_pool = cdp_browser_pool.filter((b) => !deadIdSet.has(b.id));
+  const deadPorts = removedBrowsers.map((b) => b.port);
   if (deadPorts.length > 0) {
     log.info(
       `[CDP POOL] Health-check removed dead ports: ${deadPorts.join(', ')}. pool_size=${cdp_browser_pool.length}`
@@ -178,6 +184,10 @@ async function runPoolHealthCheck(): Promise<void> {
 
 /** Start periodic health check (call after window is created). */
 function startCdpHealthCheck(): void {
+  if (cdpHealthCheckTimer) {
+    clearInterval(cdpHealthCheckTimer);
+    cdpHealthCheckTimer = null;
+  }
   log.info('[CDP POOL] Starting health check (interval=3s)');
   // Run once immediately
   runPoolHealthCheck();
@@ -3429,6 +3439,9 @@ app.whenReady().then(async () => {
 // ==================== window close event ====================
 app.on('window-all-closed', () => {
   log.info('window-all-closed');
+
+  // Stop polling when no window is open (important on macOS reopen flow).
+  stopCdpHealthCheck();
 
   // Clean up WebView manager
   if (webViewManager) {
