@@ -320,7 +320,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                             activeTaskId as string,
                             file
                           );
-                          chatState.setActiveWorkSpace(
+                          chatState.setActiveWorkspace(
                             activeTaskId as string,
                             'documentWorkSpace'
                           );
@@ -400,7 +400,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       transition={{ delay: 0.3 }}
                       onClick={() => {
                         chatState.setSelectedFile(activeTaskId as string, file);
-                        chatState.setActiveWorkSpace(
+                        chatState.setActiveWorkspace(
                           activeTaskId as string,
                           'documentWorkSpace'
                         );
