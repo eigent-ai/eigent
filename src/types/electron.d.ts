@@ -207,6 +207,25 @@ interface ElectronAPI {
     userId: string,
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
+  setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
+  getBrowserPort: () => Promise<number>;
+  getCdpBrowsers: () => Promise<any[]>;
+  addCdpBrowser: (
+    port: number,
+    isExternal: boolean,
+    name?: string
+  ) => Promise<{ success: boolean; browser?: any; error?: string }>;
+  removeCdpBrowser: (
+    browserId: string,
+    closeBrowser?: boolean
+  ) => Promise<{ success: boolean; browser?: any; error?: string }>;
+  onCdpPoolChanged: (callback: (browsers: any[]) => void) => () => void;
+  launchCdpBrowser: () => Promise<{
+    success: boolean;
+    port?: number;
+    data?: any;
+    error?: string;
+  }>;
 }
 
 declare global {
