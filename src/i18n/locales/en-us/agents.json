@@ -46,5 +46,20 @@
   "custom-skill": "Custom skill",
   "delete-skill": "Delete Skill",
   "delete-skill-confirmation": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
-  "skill-deleted-success": "Skill deleted successfully!"
+  "skill-deleted-success": "Skill deleted successfully!",
+  "global-agents": "Global Agents",
+  "global-agents-description": "Reusable Worker Agent templates available to all projects. Create once, use everywhere.",
+  "global-agents-empty": "No global agent templates yet. Create one when adding a Worker Agent by checking \"Save as global template\", or import from a file.",
+  "global-agent-export": "Export",
+  "global-agent-import": "Import",
+  "global-agent-duplicate": "Duplicate",
+  "global-agent-delete": "Delete",
+  "global-agent-last-edited": "Last edited",
+  "global-agent-tools": "Tools",
+  "global-agent-save-as-template": "Save as global template (available to all projects)",
+  "global-agent-create-from-template": "Create from template",
+  "global-agent-import-file": "Import from file",
+  "global-agent-export-file": "Export to file",
+  "global-agent-tools-count": "{{count}} tool(s)",
+  "no-templates": "No templates"
 }
