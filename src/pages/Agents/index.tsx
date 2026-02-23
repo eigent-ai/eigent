@@ -17,6 +17,7 @@ import VerticalNavigation, {
 } from '@/components/Navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import GlobalAgents from './GlobalAgents';
 import Memory from './Memory';
 import Models from './Models';
 import Skills from './Skills';
@@ -26,6 +27,10 @@ export default function Capabilities() {
   const [activeTab, setActiveTab] = useState('models');
 
   const menuItems = [
+    {
+      id: 'global-agents',
+      name: t('agents.global-agents'),
+    },
     {
       id: 'models',
       name: t('setting.models'),
@@ -66,7 +71,8 @@ export default function Capabilities() {
         </div>
 
         <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="gap-4 flex flex-col">
+          <div className="flex flex-col gap-4">
+            {activeTab === 'global-agents' && <GlobalAgents />}
             {activeTab === 'models' && <Models />}
             {activeTab === 'skills' && <Skills />}
             {activeTab === 'memory' && <Memory />}

@@ -201,6 +201,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('skill-config-update', userId, skillName, skillConfig),
   skillConfigDelete: (userId: string, skillName: string) =>
     ipcRenderer.invoke('skill-config-delete', userId, skillName),
+  // Global Agent Templates (~/.eigent/<userId>/agent-templates.json)
+  agentTemplatesLoad: (userId: string) =>
+    ipcRenderer.invoke('agent-templates-load', userId),
+  agentTemplatesSave: (userId: string, templates: any[]) =>
+    ipcRenderer.invoke('agent-templates-save', userId, templates),
 });
 
 // --------- Preload scripts loading ---------
