@@ -480,7 +480,7 @@ export function Node({ id, data }: NodeProps) {
           <div
             className="max-h-[180px]"
             onClick={() => {
-              chatStore.setActiveWorkSpace(
+              chatStore.setActiveWorkspace(
                 chatStore.activeTaskId as string,
                 data.agent?.agent_id as string
               );
@@ -624,7 +624,7 @@ export function Node({ id, data }: NodeProps) {
                       setIsExpanded(true);
                       onExpandChange(id, true);
                       if (task.agent) {
-                        chatStore.setActiveWorkSpace(
+                        chatStore.setActiveWorkspace(
                           chatStore.activeTaskId as string,
                           'workflow'
                         );
@@ -776,7 +776,7 @@ export function Node({ id, data }: NodeProps) {
                                   className={`${
                                     chatStore.tasks[
                                       chatStore.activeTaskId as string
-                                    ].activeWorkSpace
+                                    ].activeWorkspace
                                       ? '!w-[100px]'
                                       : '!w-[500px]'
                                   } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
@@ -852,7 +852,7 @@ export function Node({ id, data }: NodeProps) {
                                         ) {
                                           chatStore.tasks[
                                             chatStore.activeTaskId as string
-                                          ].activeWorkSpace =
+                                          ].activeWorkspace =
                                             'documentWorkSpace';
                                         } else if (
                                           toolkit.toolkitMethods ===
