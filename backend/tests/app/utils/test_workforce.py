@@ -20,11 +20,11 @@ from camel.societies.workforce.utils import (
     TaskAssignment,
     TaskAssignResult,
 )
-from camel.societies.workforce.workforce_metrics import WorkforceMetrics
 from camel.societies.workforce.workforce import (
     Workforce as BaseWorkforce,
     WorkforceState,
 )
+from camel.societies.workforce.workforce_metrics import WorkforceMetrics
 from camel.tasks import Task
 from camel.tasks.task import TaskState
 
@@ -456,6 +456,13 @@ async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
 
     callback_one = DummyMetrics()
     callback_two = DummyMetrics()
+    callback_two.log_entries = [
+        {
+            "event_type": "task_failed",
+            "task_id": "failed_123",
+            "error_message": "Failure from callback two",
+        }
+    ]
     workforce._callbacks = [callback_one, callback_two]
 
     with (
@@ -471,8 +478,14 @@ async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
     ):
         await workforce._handle_failed_task(task)
 
+    mock_task_lock.put_queue.assert_called_once()
+    call_args = mock_task_lock.put_queue.call_args[0][0]
+    assert call_args.data["result"] == "Failure from callback two"
+
     callback_one.log_task_failed.assert_called_once()
     callback_two.log_task_failed.assert_called_once()
+    failed_event = callback_one.log_task_failed.call_args[0][0]
+    assert failed_event.error_message == "Failure from callback two"
 
 
 @pytest.mark.unit
