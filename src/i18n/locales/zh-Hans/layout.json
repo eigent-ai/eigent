@@ -33,6 +33,7 @@
   "installation-failed": "安装失败",
   "backend-startup-failed": "后端启动失败",
   "projects": "项目",
+  "agents": "智能体",
   "mcp-tools": "MCP & 工具",
   "connectors": "连接器",
   "connectors-description": "管理搜索引擎、MCP 工具和浏览器集成。",

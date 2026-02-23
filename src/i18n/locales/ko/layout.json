@@ -30,6 +30,7 @@
   "continue-with-github-login": "Github로 로그인",
   "installation-failed": "설치 실패",
   "projects": "프로젝트",
+  "agents": "에이전트",
   "mcp-tools": "MCP 및 도구",
   "connectors": "커넥터",
   "connectors-description": "검색 엔진, MCP 도구 및 브라우저 통합을 관리합니다.",

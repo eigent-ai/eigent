@@ -30,6 +30,7 @@
   "continue-with-github-login": "Githubでログイン",
   "installation-failed": "インストールに失敗しました",
   "projects": "プロジェクト",
+  "agents": "エージェント",
   "mcp-tools": "MCP & ツール",
   "connectors": "コネクタ",
   "connectors-description": "検索エンジン、MCPツール、ブラウザ連携を管理します。",

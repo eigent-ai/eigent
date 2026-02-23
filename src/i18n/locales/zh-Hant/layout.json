@@ -32,6 +32,7 @@
   "continue-with-github-login": "使用 Github 登录",
   "installation-failed": "安装失败",
   "projects": "專案",
+  "agents": "智能體",
   "mcp-tools": "MCP & 工具",
   "connectors": "連接器",
   "connectors-description": "管理搜尋引擎、MCP 工具與瀏覽器整合。",

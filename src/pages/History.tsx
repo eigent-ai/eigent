@@ -162,7 +162,7 @@ export default function Home() {
                 iconAnimateOnHover="default"
                 icon={<Bot className="h-4 w-4" />}
               >
-                {t('setting.agents')}
+                {t('layout.agents')}
               </MenuToggleItem>
               <MenuToggleItem
                 size="xs"

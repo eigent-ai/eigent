@@ -30,6 +30,7 @@
   "continue-with-github-login": "Продолжить с Github",
   "installation-failed": "Установка не удалась",
   "projects": "Проекты",
+  "agents": "Агенты",
   "mcp-tools": "MCP и Инструменты",
   "connectors": "Коннекторы",
   "connectors-description": "Управление поисковыми системами, инструментами MCP и интеграциями браузера.",

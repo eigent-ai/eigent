@@ -30,6 +30,7 @@
   "continue-with-github-login": "Continuar con Github",
   "installation-failed": "Error al instalar",
   "projects": "Proyectos",
+  "agents": "Agentes",
   "mcp-tools": "MCP & Herramientas",
   "connectors": "Conectores",
   "connectors-description": "Gestionar motores de búsqueda, herramientas MCP e integraciones del navegador.",
