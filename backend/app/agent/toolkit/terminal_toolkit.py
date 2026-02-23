@@ -21,27 +21,20 @@ import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from camel.toolkits.terminal_toolkit import (
-    TerminalToolkit as BaseTerminalToolkit,
-)
-from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
-
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
-from app.service.task import (
-    Action,
-    ActionTerminalData,
-    Agents,
-    get_task_lock,
-    process_task,
-)
+from app.service.task import (Action, ActionTerminalData, Agents,
+                              get_task_lock, process_task)
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
+from camel.toolkits.terminal_toolkit import \
+    TerminalToolkit as BaseTerminalToolkit
+from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "0.0.84"
+APP_VERSION = "0.0.85"
 
 
 def get_terminal_base_venv_path() -> str:
