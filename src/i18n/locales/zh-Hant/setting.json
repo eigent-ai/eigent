@@ -162,9 +162,6 @@
   "api-key-setting": "API 金鑰設定",
   "api-host-setting": "API 主機設定",
   "model-type-setting": "模型類型設定",
-  "search-model-types": "搜尋模型類型...",
-  "no-model-types-found": "未找到模型類型。",
-  "loading-suggestions": "正在載入建議...",
   "please-select": "請選擇",
   "configuring": "正在配置...",
 
