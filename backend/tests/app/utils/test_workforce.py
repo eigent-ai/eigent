@@ -455,6 +455,7 @@ async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
             return {}
 
     callback_one = DummyMetrics()
+    callback_one.log_entries = [object()]
     callback_two = DummyMetrics()
     callback_two.log_entries = [
         {

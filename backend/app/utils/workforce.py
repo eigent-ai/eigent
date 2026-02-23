@@ -14,7 +14,7 @@
 
 import asyncio
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 
 from camel.agents import ChatAgent
 from camel.societies.workforce.base import BaseNode
@@ -801,6 +801,8 @@ class Workforce(BaseWorkforce):
                 continue
 
             for entry in reversed(log_entries):
+                if not isinstance(entry, Mapping):
+                    continue
                 if (
                     entry.get("event_type") == "task_failed"
                     and entry.get("task_id") == task.id
