@@ -235,9 +235,6 @@
   "api-key-setting": "APIキー設定",
   "api-host-setting": "APIホスト設定",
   "model-type-setting": "モデルタイプ設定",
-  "search-model-types": "モデルタイプを検索...",
-  "no-model-types-found": "モデルタイプが見つかりません。",
-  "loading-suggestions": "候補を読み込み中...",
   "please-select": "選択してください",
   "configuring": "設定中...",
 
