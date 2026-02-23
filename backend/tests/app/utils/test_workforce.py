@@ -20,6 +20,7 @@ from camel.societies.workforce.utils import (
     TaskAssignment,
     TaskAssignResult,
 )
+from camel.societies.workforce.workforce_metrics import WorkforceMetrics
 from camel.societies.workforce.workforce import (
     Workforce as BaseWorkforce,
     WorkforceState,
@@ -420,6 +421,58 @@ async def test_handle_failed_task(mock_task_lock):
         assert call_args.data["failure_count"] == 3
 
         mock_super_handle.assert_called_once_with(task)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
+    """Test _handle_failed_task broadcasts failure event to callbacks."""
+    api_task_id = "test_api_task_123"
+    workforce = Workforce(
+        api_task_id=api_task_id, description="Test workforce"
+    )
+
+    task = Task(content="Failed task", id="failed_123")
+    task.state = TaskState.FAILED
+    task.failure_count = workforce.failure_handling_config.max_retries
+    task.result = "Test failure"
+
+    class DummyMetrics(WorkforceMetrics):
+        def __init__(self):
+            self.log_entries = []
+            self.log_task_failed = MagicMock()
+
+        def reset_task_data(self) -> None:
+            return None
+
+        def dump_to_json(self, file_path: str) -> None:
+            return None
+
+        def get_ascii_tree_representation(self) -> str:
+            return ""
+
+        def get_kpis(self):
+            return {}
+
+    callback_one = DummyMetrics()
+    callback_two = DummyMetrics()
+    workforce._callbacks = [callback_one, callback_two]
+
+    with (
+        patch(
+            "app.utils.workforce.get_task_lock",
+            return_value=mock_task_lock,
+        ),
+        patch.object(
+            workforce.__class__.__bases__[0],
+            "_handle_failed_task",
+            return_value=True,
+        ),
+    ):
+        await workforce._handle_failed_task(task)
+
+    callback_one.log_task_failed.assert_called_once()
+    callback_two.log_task_failed.assert_called_once()
 
 
 @pytest.mark.unit

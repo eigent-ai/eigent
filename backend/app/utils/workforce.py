@@ -819,19 +819,17 @@ class Workforce(BaseWorkforce):
 
         if metrics_callbacks:
             error_msg = error_message or str(task.result or "Unknown error")
-            # Pass all values during construction since TaskFailedEvent is frozen
-            worker_id = (
-                task.assigned_worker_id
-                if hasattr(task, "assigned_worker_id")
-                else None
-            )
+            worker_id = getattr(task, "assigned_worker_id", None)
             event = TaskFailedEvent(
                 task_id=task.id,
                 error_message=error_msg,
                 worker_id=worker_id,
                 metadata={"failure_count": task.failure_count},
             )
-            metrics_callbacks[0].log_task_failed(event)
+            for callback in metrics_callbacks:
+                log_task_failed = getattr(callback, "log_task_failed", None)
+                if callable(log_task_failed):
+                    log_task_failed(event)
 
         return result
 
