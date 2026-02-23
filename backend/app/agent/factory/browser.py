@@ -212,7 +212,7 @@ def browser_agent(options: Chat):
             "browser_sheet_read",
             "browser_sheet_input",
             "browser_get_page_snapshot",
-            "browser_open"
+            "browser_open",
         ],
     )
 
