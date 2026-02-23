@@ -15,6 +15,7 @@
 import { Bot } from '@/components/animate-ui/icons/bot';
 import { Compass } from '@/components/animate-ui/icons/compass';
 import { Hammer } from '@/components/animate-ui/icons/hammer';
+import { Radio } from '@/components/animate-ui/icons/radio';
 import { Settings } from '@/components/animate-ui/icons/settings';
 import { Sparkle } from '@/components/animate-ui/icons/sparkle';
 import {
@@ -25,7 +26,7 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import WordCarousel from '@/components/ui/WordCarousel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import Project from '@/pages/Dashboard/Project';
+import Project from '@/pages/Projects/Project';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
 import { Plus } from 'lucide-react';
@@ -33,17 +34,17 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Agents from './Agents';
-import Browser from './Dashboard/Browser';
-import MCP from './Setting/MCP';
+import Browser from './Browser';
+import Channels from './Channels';
+import Connectors from './Connectors';
 
 const VALID_TABS = [
   'projects',
-  'workers',
-  'trigger',
-  'settings',
-  'mcp_tools',
-  'browser',
   'agents',
+  'channels',
+  'connectors',
+  'browser',
+  'settings',
 ] as const;
 
 type TabType = (typeof VALID_TABS)[number];
@@ -119,7 +120,7 @@ export default function Home() {
         cancelText={t('layout.cancel')}
       />
       {/* welcome text */}
-      <div className="flex w-full flex-row bg-gradient-to-b from-surface-primary to-surface-primary px-20 pt-16">
+      <div className="from-surface-primary to-surface-primary px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
         <WordCarousel
           words={[`${t('layout.welcome')}, ${welcomeName} !`]}
           className="text-heading-xl font-bold tracking-tight"
@@ -137,10 +138,10 @@ export default function Home() {
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
-        className={`sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-border-disabled bg-bg-page-default px-20 pb-4 pt-10`}
+        className={`border-border-disabled bg-bg-page-default px-20 pb-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid`}
       >
         <div className="mx-auto flex w-full flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="gap-2 flex items-center">
             <MenuToggleGroup
               type="single"
               value={activeTab}
@@ -165,7 +166,15 @@ export default function Home() {
               </MenuToggleItem>
               <MenuToggleItem
                 size="xs"
-                value="mcp_tools"
+                value="channels"
+                iconAnimateOnHover="default"
+                icon={<Radio className="h-4 w-4" />}
+              >
+                {t('layout.channels')}
+              </MenuToggleItem>
+              <MenuToggleItem
+                size="xs"
+                value="connectors"
                 iconAnimateOnHover="default"
                 icon={<Hammer />}
               >
@@ -175,7 +184,7 @@ export default function Home() {
                 size="xs"
                 value="browser"
                 iconAnimateOnHover="default"
-                icon={<Compass />}
+                icon={<Compass className="h-4 w-4" />}
               >
                 {t('layout.browser')}
               </MenuToggleItem>
@@ -185,7 +194,7 @@ export default function Home() {
                 iconAnimateOnHover="default"
                 icon={<Settings />}
               >
-                {t('layout.general')}
+                {t('layout.settings')}
               </MenuToggleItem>
             </MenuToggleGroup>
           </div>
@@ -196,10 +205,11 @@ export default function Home() {
         </div>
       </div>
       {activeTab === 'projects' && <Project />}
-      {activeTab === 'mcp_tools' && <MCP />}
+      {activeTab === 'agents' && <Agents />}
+      {activeTab === 'channels' && <Channels />}
+      {activeTab === 'connectors' && <Connectors />}
       {activeTab === 'browser' && <Browser />}
       {activeTab === 'settings' && <Setting />}
-      {activeTab === 'agents' && <Agents />}
     </div>
   );
 }

@@ -17,26 +17,21 @@ import VerticalNavigation, {
 } from '@/components/Navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Memory from './Memory';
-import Models from './Models';
-import Skills from './Skills';
+import MCP from './MCP';
+import Search from './Search';
 
-export default function Capabilities() {
+export default function Connectors() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('models');
+  const [activeTab, setActiveTab] = useState('mcp');
 
-  const menuItems = [
+  const menuItems: Array<{ id: string; name: string }> = [
     {
-      id: 'models',
-      name: t('setting.models'),
+      id: 'search',
+      name: t('layout.search'),
     },
     {
-      id: 'skills',
-      name: t('agents.skills'),
-    },
-    {
-      id: 'memory',
-      name: t('agents.memory'),
+      id: 'mcp',
+      name: t('setting.mcp'),
     },
   ];
 
@@ -67,9 +62,8 @@ export default function Capabilities() {
 
         <div className="flex h-auto w-full flex-1 flex-col">
           <div className="gap-4 flex flex-col">
-            {activeTab === 'models' && <Models />}
-            {activeTab === 'skills' && <Skills />}
-            {activeTab === 'memory' && <Memory />}
+            {activeTab === 'search' && <Search />}
+            {activeTab === 'mcp' && <MCP />}
           </div>
         </div>
       </div>
