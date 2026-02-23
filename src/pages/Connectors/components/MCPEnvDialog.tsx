@@ -307,8 +307,8 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
             })}
           />
 
-          <div className="flex flex-col gap-3 p-md">
-            <div className="flex items-center gap-md">
+          <div className="gap-3 p-md flex flex-col">
+            <div className="gap-md flex items-center">
               {getCategoryIcon(activeMcp?.category?.name)}
               <div>
                 <div className="text-base font-bold leading-9 text-text-action">
@@ -328,7 +328,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
                           verticalAlign: 'middle',
                         }}
                       />
-                      <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                      <span className="text-xs font-medium leading-normal line-clamp-1 items-center justify-center self-stretch overflow-hidden break-words text-ellipsis">
                         {getGithubRepoName(activeMcp?.home_page)}
                       </span>
                     </div>
@@ -336,7 +336,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
                 </div>
               </div>
             </div>
-            <div className="flex flex-col gap-md">
+            <div className="gap-md flex flex-col">
               {Object.keys(activeMcp?.install_command?.env || {}).map((key) => {
                 const getNoteContent = () => {
                   let noteContent = envValues[key]?.tip || '';
