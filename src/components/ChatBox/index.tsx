@@ -162,6 +162,7 @@ export default function ChatBox(): JSX.Element {
 
   const [loading, setLoading] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
+  const [showFullCommand, setShowFullCommand] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
   const handleSendRef = useRef<
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
@@ -1012,58 +1013,109 @@ export default function ChatBox(): JSX.Element {
           {/* Dangerous command approval (no 30s auto-skip) */}
           {chatStore.activeTaskId &&
             chatStore.tasks[chatStore.activeTaskId]?.activeApproval && (
-              <div className="border-border-default mx-4 mb-2 flex flex-col gap-3 rounded-xl border bg-surface-secondary px-4 py-3">
+              <div className="mx-4 mb-2 flex flex-col gap-3 rounded-xl border border-border-secondary bg-surface-tertiary px-4 py-3">
                 <div className="text-body-sm font-medium text-text-heading">
                   {t('chat.approval-prompt')}
                 </div>
-                <code className="break-all rounded bg-surface-tertiary px-2 py-1 text-body-sm text-text-secondary">
-                  {
+                {(() => {
+                  const cmd =
                     chatStore.tasks[chatStore.activeTaskId].activeApproval
-                      ?.command
-                  }
-                </code>
+                      ?.command || '';
+                  const isLong = cmd.length > 100;
+                  return (
+                    <code
+                      className="break-all rounded bg-surface-secondary px-2 py-1 text-body-sm text-text-secondary"
+                      style={
+                        isLong && showFullCommand
+                          ? {
+                              maxHeight: '200px',
+                              overflowY: 'auto',
+                              display: 'block',
+                            }
+                          : undefined
+                      }
+                    >
+                      {!isLong || showFullCommand
+                        ? cmd
+                        : cmd.slice(0, 100) + '...'}
+                      {isLong && (
+                        <>
+                          {' '}
+                          <span
+                            className="cursor-pointer text-text-link underline"
+                            onClick={() => setShowFullCommand((v) => !v)}
+                          >
+                            {showFullCommand
+                              ? t('chat.show-less')
+                              : t('chat.show-more')}
+                          </span>
+                        </>
+                      )}
+                    </code>
+                  );
+                })()}
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="bg-bg-fill-info-primary text-white rounded-lg px-3 py-1.5 text-body-sm font-medium hover:opacity-90"
+                    className="rounded-lg bg-surface-tertiary px-3 py-1.5 text-body-sm font-medium text-text-heading"
+                    style={{ border: '1px solid var(--border-secondary)' }}
                     onClick={async () => {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
+                      const agent =
+                        chatStore.tasks[taskId]?.activeApproval?.agent ?? '';
                       if (!projectId) return;
                       await fetchPost(`/chat/${projectId}/approval`, {
                         approval: ApprovalAction.APPROVE_ONCE,
+                        agent,
                       });
                       chatStore.clearActiveApproval(taskId);
+                      setShowFullCommand(false);
                     }}
                   >
                     {t('chat.approval-yes')}
                   </button>
                   <button
                     type="button"
-                    className="bg-bg-fill-info-primary text-white rounded-lg px-3 py-1.5 text-body-sm font-medium hover:opacity-90"
+                    className="rounded-lg bg-surface-tertiary px-3 py-1.5 text-body-sm font-medium text-text-heading"
+                    style={{ border: '1px solid var(--border-secondary)' }}
                     onClick={async () => {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
+                      const agent =
+                        chatStore.tasks[taskId]?.activeApproval?.agent ?? '';
                       if (!projectId) return;
                       await fetchPost(`/chat/${projectId}/approval`, {
                         approval: ApprovalAction.AUTO_APPROVE,
+                        agent,
                       });
                       chatStore.clearActiveApproval(taskId);
+                      setShowFullCommand(false);
                     }}
                   >
                     {t('chat.approval-all-yes')}
                   </button>
                   <button
                     type="button"
-                    className="border-border-default rounded-lg border px-3 py-1.5 text-body-sm font-medium text-text-secondary hover:bg-surface-tertiary"
+                    className="rounded-lg bg-surface-tertiary px-3 py-1.5 text-body-sm font-medium text-text-heading"
+                    style={{ border: '1px solid var(--border-secondary)' }}
                     onClick={async () => {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
+                      const agent =
+                        chatStore.tasks[taskId]?.activeApproval?.agent ?? '';
                       if (!projectId) return;
+                      // Send rejection first so the backend await unblocks
                       await fetchPost(`/chat/${projectId}/approval`, {
                         approval: ApprovalAction.REJECT,
+                        agent,
                       });
                       chatStore.clearActiveApproval(taskId);
+                      setShowFullCommand(false);
+                      // Also stop the task — rejection means fail/stop entirely
+                      await fetchPost(`/chat/${projectId}/skip-task`, {
+                        project_id: projectId,
+                      });
                     }}
                   >
                     {t('chat.approval-no')}

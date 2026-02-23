@@ -6,6 +6,8 @@
   "approval-yes": "はい",
   "approval-all-yes": "このタスクで自動承認",
   "approval-no": "いいえ",
+  "show-more": "もっと見る",
+  "show-less": "折りたたむ",
   "select-file": "ファイルを選択",
   "all-files": "すべてのファイル",
   "token": "トークン",

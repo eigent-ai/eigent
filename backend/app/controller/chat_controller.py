@@ -177,6 +177,7 @@ async def post(data: Chat, request: Request):
     )
 
     task_lock = get_or_create_task_lock(data.project_id)
+    task_lock.hitl_options = data.hitl_options
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -422,10 +423,10 @@ def approval(id: str, data: ApprovalRequest):
     """Accept user approval for a dangerous command."""
     chat_logger.info(
         "Approval received",
-        extra={"task_id": id, "approval": data.approval},
+        extra={"task_id": id, "agent": data.agent, "approval": data.approval},
     )
     task_lock = get_task_lock(id)
-    task_lock.approval_response.put(data.approval)
+    asyncio.run(task_lock.put_approval_input(data.agent, data.approval))
     chat_logger.debug("Approval processed", extra={"task_id": id})
     return Response(status_code=201)
 

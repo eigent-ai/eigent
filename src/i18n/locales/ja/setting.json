@@ -2,6 +2,7 @@
   "settings": "設定",
   "general": "一般",
   "human-in-the-loop": "人間参加型",
+  "human-in-the-loop-title": "人間参加型",
   "terminal-approval": "ターミナルコマンド承認",
   "terminal-approval-hint": "有効にすると、危険なターミナルコマンド（rm、sudo、kill など）の実行前に承認を求めます。",
   "privacy": "プライバシー",

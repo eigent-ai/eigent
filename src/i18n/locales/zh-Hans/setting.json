@@ -2,6 +2,7 @@
   "settings": "设置",
   "general": "通用",
   "human-in-the-loop": "人机协作",
+  "human-in-the-loop-title": "人机协作",
   "terminal-approval": "终端命令审批",
   "terminal-approval-hint": "启用后，执行危险的终端命令（如 rm、sudo、kill 等）前需要您的确认。",
   "privacy": "隐私",

@@ -93,10 +93,42 @@ _WRAPPER_COMMANDS = frozenset(
 # Regex to split on shell operators: &&, ||, ;, |
 # Note: this is intentionally naive about quoted strings — false positives
 # (flagging safe commands) are acceptable for a safety check.
-_SHELL_OPERATOR_RE = re.compile(r"\s*(?:&&|\|\||[;|])\s*")
+_SHELL_OPERATOR_RE = re.compile(r"\s*(?:&&|\|\||[;|\n])\s*")
+
+# Regex to detect heredoc start:  <<DELIM  <<'DELIM'  <<"DELIM"  <<-DELIM
+_HEREDOC_START_RE = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
 
 # Pattern for KEY=VALUE environment variable assignments (e.g. after `env`)
 _ENV_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _strip_heredoc_bodies(command: str) -> str:
+    """Remove heredoc body content from a command string.
+
+    Heredoc bodies are stdin data, not shell commands, so they should
+    not be scanned for dangerous tokens.  Only the shell command line
+    (before the ``<<DELIM`` operator) is kept.
+    """
+    lines = command.split("\n")
+    result_lines: list[str] = []
+    heredoc_delim: str | None = None
+
+    for line in lines:
+        if heredoc_delim is not None:
+            # Inside heredoc body — skip until closing delimiter
+            if line.strip() == heredoc_delim:
+                heredoc_delim = None
+            continue
+
+        match = _HEREDOC_START_RE.search(line)
+        if match:
+            heredoc_delim = match.group(1)
+            # Keep the command portion before the heredoc operator
+            result_lines.append(line[: match.start()])
+        else:
+            result_lines.append(line)
+
+    return "\n".join(result_lines)
 
 
 def split_compound_command(command: str) -> list[str]:
@@ -156,18 +188,16 @@ def is_dangerous_command(command: str) -> bool:
     """Return True if any sub-command in a (possibly compound) command
     is considered dangerous and requires user approval.
 
-    Scans ALL tokens in each sub-command for dangerous command names.
-    This is intentionally conservative — false positives (e.g. ``echo rm``)
-    are acceptable because the user simply clicks "approve", whereas false
-    negatives would let dangerous commands run without approval.
+    Only the *effective command* (the actual executable after stripping
+    wrapper commands like ``env``, ``nohup``, etc.) of each sub-command
+    is checked.  Heredoc bodies are stripped first so that arbitrary
+    stdin data does not trigger false positives.
     """
+    command = _strip_heredoc_bodies(command)
     for sub_cmd in split_compound_command(command):
-        for token in sub_cmd.strip().split():
-            # Strip quotes and path prefix
-            cleaned = token.strip("\"'")
-            basename = cleaned.rsplit("/", 1)[-1]
-            if basename in DANGEROUS_COMMAND_TOKENS:
-                return True
+        effective = extract_effective_command(sub_cmd)
+        if effective and effective in DANGEROUS_COMMAND_TOKENS:
+            return True
     return False
 
 

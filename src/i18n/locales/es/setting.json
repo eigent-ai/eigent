@@ -2,6 +2,7 @@
   "settings": "Ajustes",
   "general": "Generales",
   "human-in-the-loop": "Supervisión",
+  "human-in-the-loop-title": "Supervisión",
   "terminal-approval": "Aprobación de comandos",
   "terminal-approval-hint": "Solicitar aprobación antes de ejecutar comandos de terminal potencialmente peligrosos (p. ej., rm, sudo, kill).",
   "privacy": "Privacidad",

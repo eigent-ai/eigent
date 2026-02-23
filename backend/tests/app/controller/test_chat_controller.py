@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.controller.chat_controller import (
+    approval,
     human_reply,
     improve,
     install_mcp,
@@ -30,7 +31,15 @@ from app.controller.chat_controller import (
     supplement,
 )
 from app.exception.exception import UserException
-from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
+from app.model.chat import (
+    ApprovalRequest,
+    Chat,
+    HumanReply,
+    McpServers,
+    Status,
+    SupplementChat,
+)
+from app.model.enums import ApprovalAction
 
 
 @pytest.mark.unit
@@ -238,6 +247,69 @@ class TestChatController:
             assert response.status_code == 201
             mock_run.assert_called_once()
 
+    def test_approval_success(self, mock_task_lock):
+        """Test successful approval endpoint."""
+        task_id = "test_task_123"
+        mock_task_lock.put_approval_input = AsyncMock()
+        request_data = ApprovalRequest(
+            approval=ApprovalAction.approve_once, agent="dev_agent"
+        )
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch("asyncio.run") as mock_run,
+        ):
+            response = approval(task_id, request_data)
+
+            assert isinstance(response, Response)
+            assert response.status_code == 201
+            mock_run.assert_called_once()
+
+    def test_approval_reject(self, mock_task_lock):
+        """Test approval endpoint with reject."""
+        task_id = "test_task_123"
+        mock_task_lock.put_approval_input = AsyncMock()
+        request_data = ApprovalRequest(
+            approval=ApprovalAction.reject, agent="dev_agent"
+        )
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch("asyncio.run") as mock_run,
+        ):
+            response = approval(task_id, request_data)
+
+            assert isinstance(response, Response)
+            assert response.status_code == 201
+            mock_run.assert_called_once()
+
+    def test_approval_auto_approve(self, mock_task_lock):
+        """Test approval endpoint with auto_approve."""
+        task_id = "test_task_123"
+        mock_task_lock.put_approval_input = AsyncMock()
+        request_data = ApprovalRequest(
+            approval=ApprovalAction.auto_approve, agent="dev_agent"
+        )
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch("asyncio.run") as mock_run,
+        ):
+            response = approval(task_id, request_data)
+
+            assert isinstance(response, Response)
+            assert response.status_code == 201
+            mock_run.assert_called_once()
+
 
 @pytest.mark.integration
 class TestChatControllerIntegration:
@@ -367,6 +439,46 @@ class TestChatControllerIntegration:
 
             response = client.post(
                 f"/chat/{task_id}/install-mcp", json=mcp_data
+            )
+
+            assert response.status_code == 201
+
+    def test_approval_endpoint_integration(self, client: TestClient):
+        """Test approval endpoint through FastAPI test client."""
+        task_id = "test_task_123"
+        approval_data = {"approval": "approve_once", "agent": "dev_agent"}
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock"
+            ) as mock_get_lock,
+            patch("asyncio.run"),
+        ):
+            mock_task_lock = MagicMock()
+            mock_get_lock.return_value = mock_task_lock
+
+            response = client.post(
+                f"/chat/{task_id}/approval", json=approval_data
+            )
+
+            assert response.status_code == 201
+
+    def test_approval_endpoint_reject_integration(self, client: TestClient):
+        """Test approval endpoint with reject through FastAPI test client."""
+        task_id = "test_task_123"
+        approval_data = {"approval": "reject", "agent": "dev_agent"}
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock"
+            ) as mock_get_lock,
+            patch("asyncio.run"),
+        ):
+            mock_task_lock = MagicMock()
+            mock_get_lock.return_value = mock_task_lock
+
+            response = client.post(
+                f"/chat/{task_id}/approval", json=approval_data
             )
 
             assert response.status_code == 201

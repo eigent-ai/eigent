@@ -14,7 +14,6 @@
 
 import asyncio
 import logging
-import queue as stdlib_queue
 import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -29,6 +28,7 @@ from typing_extensions import TypedDict
 from app.exception.exception import ProgramException
 from app.model.chat import (
     AgentModelConfig,
+    HitlOptions,
     McpServers,
     SupplementChat,
     UpdateData,
@@ -225,7 +225,7 @@ class ActionCommandApprovalData(BaseModel):
     """Request user approval for a dangerous command."""
 
     action: Literal[Action.command_approval] = Action.command_approval
-    data: dict[Literal["command"], str]
+    data: dict[Literal["command", "agent"], str]
 
 
 class ActionStopData(BaseModel):
@@ -380,10 +380,13 @@ class TaskLock:
         self.question_agent = None
         self.current_task_id = None
 
-        # Queue for user approval responses (thread-safe)
-        self.approval_response: stdlib_queue.Queue[str] = stdlib_queue.Queue()
-        # Auto-approve: skip further approval prompts for this task
-        self.auto_approve: bool = False
+        # Human-in-the-loop settings (e.g. terminal command approval)
+        self.hitl_options: HitlOptions = HitlOptions()
+
+        # Per-agent queues for user approval responses (mirrors human_input)
+        self.approval_input: dict[str, asyncio.Queue[str]] = {}
+        # Per-agent auto-approve: skip further prompts for this agent
+        self.auto_approve: dict[str, bool] = {}
 
         logger.info(
             "Task lock initialized",
@@ -422,6 +425,27 @@ class TaskLock:
         )
         return await self.human_input[agent].get()
 
+    async def put_approval_input(self, agent: str, data: str):
+        logger.debug(
+            "Adding approval input",
+            extra={"task_id": self.id, "agent": agent, "approval": data},
+        )
+        await self.approval_input[agent].put(data)
+
+    async def get_approval_input(self, agent: str) -> str:
+        logger.debug(
+            "Getting approval input",
+            extra={"task_id": self.id, "agent": agent},
+        )
+        return await self.approval_input[agent].get()
+
+    def add_approval_input_listen(self, agent: str):
+        logger.debug(
+            "Adding approval input listener",
+            extra={"task_id": self.id, "agent": agent},
+        )
+        self.approval_input[agent] = asyncio.Queue(1)
+
     def add_human_input_listen(self, agent: str):
         logger.debug(
             "Adding human input listener",
@@ -450,6 +474,17 @@ class TaskLock:
                 "background_tasks_count": len(self.background_tasks),
             },
         )
+
+        # Unblock any coroutine awaiting approval (e.g. shell_exec
+        # waiting on get_approval_input) by injecting a "reject".
+        # This lets _request_user_approval return gracefully instead
+        # of hanging forever after the task is stopped.
+        for _agent, queue in self.approval_input.items():
+            try:
+                queue.put_nowait("reject")
+            except asyncio.QueueFull:
+                pass
+
         for task in list(self.background_tasks):
             if not task.done():
                 task.cancel()

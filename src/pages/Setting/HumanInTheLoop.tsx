@@ -16,51 +16,61 @@ import { Switch } from '@/components/ui/switch';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const SAFE_MODE_STORAGE_KEY = 'eigent_safe_mode';
+const TERMINAL_APPROVAL_STORAGE_KEY = 'eigent_terminal_approval';
 
 export default function SettingHumanInTheLoop() {
   const { t } = useTranslation();
 
-  // Safe Mode (user approval for high-risk operations) - disabled by default
-  const [safeMode, setSafeMode] = useState(() => {
+  // Terminal Command Approval - disabled by default
+  const [terminalApproval, setTerminalApproval] = useState(() => {
     try {
-      return localStorage.getItem(SAFE_MODE_STORAGE_KEY) === 'true';
+      return localStorage.getItem(TERMINAL_APPROVAL_STORAGE_KEY) === 'true';
     } catch {
       return false;
     }
   });
 
-  const handleSafeModeChange = (checked: boolean) => {
-    setSafeMode(checked);
+  const handleTerminalApprovalChange = (checked: boolean) => {
+    setTerminalApproval(checked);
     try {
-      localStorage.setItem(SAFE_MODE_STORAGE_KEY, String(checked));
+      localStorage.setItem(TERMINAL_APPROVAL_STORAGE_KEY, String(checked));
     } catch {
       // ignore
     }
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="text-body-lg font-bold text-text-heading">
-        {t('setting.human-in-the-loop')}
-      </div>
-
-      {/* Terminal Command Approval: Human-in-the-Loop for dangerous terminal commands */}
-      <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-        <div className="flex flex-row items-center justify-between gap-4">
-          <div className="flex flex-1 flex-col gap-1">
-            <div className="text-body-base font-bold text-text-heading">
-              {t('setting.terminal-approval')}
-            </div>
-            <div className="text-body-sm text-text-secondary">
-              {t('setting.terminal-approval-hint')}
+    <div className="m-auto h-auto w-full flex-1">
+      {/* Header Section */}
+      <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-6 pt-8">
+        <div className="flex w-full flex-row items-center justify-between gap-4">
+          <div className="flex flex-col">
+            <div className="text-heading-sm font-bold text-text-heading">
+              {t('setting.human-in-the-loop-title')}
             </div>
           </div>
-          <Switch
-            checked={safeMode}
-            onCheckedChange={handleSafeModeChange}
-            aria-label={t('setting.terminal-approval')}
-          />
+        </div>
+      </div>
+
+      {/* Content Section */}
+      <div className="mb-8 flex flex-col gap-6">
+        {/* Terminal Command Approval */}
+        <div className="rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex flex-row items-center justify-between gap-4">
+            <div className="flex flex-1 flex-col gap-1">
+              <div className="text-body-base font-bold text-text-heading">
+                {t('setting.terminal-approval')}
+              </div>
+              <div className="text-body-sm text-text-secondary">
+                {t('setting.terminal-approval-hint')}
+              </div>
+            </div>
+            <Switch
+              checked={terminalApproval}
+              onCheckedChange={handleTerminalApprovalChange}
+              aria-label={t('setting.terminal-approval')}
+            />
+          </div>
         </div>
       </div>
     </div>

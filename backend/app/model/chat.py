@@ -53,6 +53,13 @@ class QuestionAnalysisResult(BaseModel):
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 
+class HitlOptions(BaseModel):
+    """Human-in-the-loop settings sent from the frontend."""
+
+    terminal_approval: bool = False
+    """Require user approval before executing dangerous terminal commands."""
+
+
 class Chat(BaseModel):
     task_id: str
     project_id: str
@@ -68,8 +75,8 @@ class Chat(BaseModel):
     browser_port: int = 9222
     max_retries: int = 3
     allow_local_system: bool = False
-    safe_mode: bool = False
-    """When True, require explicit user approval for dangerous terminal commands."""
+    hitl_options: HitlOptions = HitlOptions()
+    """Human-in-the-loop settings (e.g. terminal command approval)."""
     installed_mcp: McpServers = {"mcpServers": {}}
     bun_mirror: str = ""
     uvx_mirror: str = ""
@@ -157,6 +164,7 @@ class ApprovalRequest(BaseModel):
     """User response for dangerous operation approval."""
 
     approval: ApprovalAction
+    agent: str
 
 
 class TaskContent(BaseModel):

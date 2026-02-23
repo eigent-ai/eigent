@@ -37,6 +37,7 @@ from app.service.task import (
     ActionTerminalData,
     Agents,
     get_task_lock,
+    get_task_lock_if_exists,
     process_task,
 )
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
@@ -73,7 +74,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         use_docker_backend: bool = False,
         docker_container_name: str | None = None,
         session_logs_dir: str | None = None,
-        safe_mode: bool = True,
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = True,
     ):
@@ -104,14 +104,20 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 max_workers=1, thread_name_prefix="terminal_toolkit"
             )
 
-        self._safe_mode = safe_mode
         self._use_docker_backend = use_docker_backend
         self._working_directory = working_directory
-        # When safe mode is ON, we handle dangerous commands ourselves via
-        # user approval prompts. Camel's safe_mode would hard-block them
-        # instead, so we disable it. Our is_dangerous_command() covers the
-        # same command set and scans across shell operators and wrappers.
-        camel_safe_mode = not safe_mode
+
+        # Read terminal_approval from the project-level TaskLock so every
+        # agent factory does not need to thread the setting through.
+        task_lock = get_task_lock_if_exists(api_task_id)
+        self._terminal_approval = (
+            task_lock.hitl_options.terminal_approval if task_lock else False
+        )
+
+        # When terminal_approval is ON we handle dangerous commands via
+        # user approval prompts.  Camel's safe_mode would hard-block them
+        # instead, so we invert it.
+        camel_safe_mode = not self._terminal_approval
         super().__init__(
             timeout=timeout,
             working_directory=working_directory,
@@ -125,11 +131,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         )
 
         # Auto-register with TaskLock for cleanup when task ends
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(api_task_id)
         if task_lock:
             task_lock.register_toolkit(self)
+            task_lock.add_approval_input_listen(self.agent_name)
             logger.info(
                 "TerminalToolkit registered for cleanup",
                 extra={
@@ -361,7 +365,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 exc_info=True,
             )
 
-    def shell_exec(
+    async def shell_exec(
         self,
         command: str,
         id: str | None = None,
@@ -373,6 +377,22 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         When Safe Mode is on, dangerous commands (e.g. rm) trigger user
         approval before execution.
 
+        .. note:: Async override of a sync base method
+
+            Camel's ``BaseTerminalToolkit.shell_exec`` is **sync-only** (no
+            async variant exists in the upstream library).  We override it
+            as ``async def`` so the HITL approval flow can ``await`` the
+            SSE queue and the approval-response queue — following the same
+            asyncio.Queue pattern used by ``HumanToolkit.ask_human_via_gui``.
+
+            Because the base method is sync and this override is async, the
+            ``listen_toolkit`` decorator applies a ``__wrapped__`` fix (see
+            ``toolkit_listen.py``) to ensure Camel's ``FunctionTool``
+            dispatches this method via ``async_call`` on the **main** event
+            loop, rather than via the sync ``__call__`` path which would run
+            it on a background loop where cross-loop ``asyncio.Queue`` awaits
+            silently fail.
+
         Args:
             command (str): The shell command to execute.
             id (str, optional): A unique identifier for the command's session.
@@ -383,6 +403,22 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Returns:
             str: The output of the command execution.
         """
+        import sys
+
+        print(
+            f"[APPROVAL-PRINT] shell_exec ENTERED, id={id}, terminal_approval={self._terminal_approval}",
+            flush=True,
+        )
+        print(
+            f"[APPROVAL-PRINT] command={command[:120]!r}",
+            flush=True,
+            file=sys.stderr,
+        )
+        logger.info(
+            "[APPROVAL] async shell_exec called, id=%s, terminal_approval=%s",
+            id,
+            self._terminal_approval,
+        )
         # Auto-generate ID if not provided
         if id is None:
             import time
@@ -397,11 +433,33 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             if not ok:
                 return err or "cd not allowed."
 
-        if self._safe_mode and is_dangerous_command(command):
-            approval_data = ActionCommandApprovalData(
-                data={"command": command}
+        is_dangerous = (
+            is_dangerous_command(command) if self._terminal_approval else False
+        )
+        print(
+            f"[APPROVAL-PRINT] terminal_approval={self._terminal_approval}, is_dangerous={is_dangerous}",
+            flush=True,
+        )
+        logger.info(
+            "[APPROVAL] terminal_approval=%s, is_dangerous=%s, command=%r",
+            self._terminal_approval,
+            is_dangerous,
+            command[:120],
+        )
+        if self._terminal_approval and is_dangerous:
+            print("[APPROVAL-PRINT] ENTERING approval flow!", flush=True)
+            logger.info(
+                "[APPROVAL] Entering approval flow for dangerous command"
             )
-            rejection = self._request_user_approval(approval_data)
+            approval_data = ActionCommandApprovalData(
+                data={"command": command, "agent": self.agent_name}
+            )
+            rejection = await self._request_user_approval(approval_data)
+            print(
+                f"[APPROVAL-PRINT] Approval result: rejection={rejection}",
+                flush=True,
+            )
+            logger.info("[APPROVAL] Approval result: rejection=%s", rejection)
             if rejection is not None:
                 return rejection
 

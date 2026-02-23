@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
+from inspect import iscoroutinefunction, unwrap
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -379,3 +381,117 @@ def test_listen_toolkit_with_custom_return_msg_formatter():
         mock_format.assert_called_once()
         call_args = mock_format.call_args
         assert call_args[0][2] == custom_return_msg
+
+
+# =============================================================================
+# __wrapped__ fix tests — async override of sync base via wrap_method
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_wrapped_points_to_async_func_when_wrap_method_is_sync():
+    """When wrap_method is a sync base and func is an async override,
+    __wrapped__ should point to the async func so that
+    inspect.unwrap() → iscoroutinefunction() returns True.
+
+    This is critical for Camel's FunctionTool dispatch: if __wrapped__
+    points to the sync base, Camel dispatches on a persistent background
+    loop instead of the main loop, breaking asyncio.Queue awaits.
+    """
+
+    def sync_base(self, cmd: str) -> str:
+        return cmd
+
+    @listen_toolkit(wrap_method=sync_base)
+    async def async_override(self, cmd: str) -> str:
+        return cmd
+
+    # The wrapper itself should be a coroutine function
+    assert iscoroutinefunction(async_override)
+
+    # inspect.unwrap should resolve to the async override, NOT the sync base
+    unwrapped = unwrap(async_override)
+    assert iscoroutinefunction(unwrapped), (
+        "__wrapped__ should point to the async func, not the sync base. "
+        "Without the fix, Camel dispatches this on the wrong event loop."
+    )
+    assert unwrapped is async_override or unwrapped is not sync_base
+
+
+@pytest.mark.unit
+def test_wrapped_unchanged_when_no_wrap_method():
+    """When no wrap_method is provided (func == wrap), __wrapped__ should
+    follow the standard @wraps behavior — pointing back to func itself.
+    """
+
+    @listen_toolkit()
+    async def some_method(self) -> str:
+        return "ok"
+
+    unwrapped = unwrap(some_method)
+    assert iscoroutinefunction(unwrapped)
+
+
+@pytest.mark.unit
+def test_wrapped_unchanged_for_sync_func_with_sync_wrap():
+    """When both wrap_method and func are sync, __wrapped__ should be normal."""
+
+    def sync_base(self) -> str:
+        return "base"
+
+    @listen_toolkit(wrap_method=sync_base)
+    def sync_override(self) -> str:
+        return "override"
+
+    # sync wrapper should not have the async __wrapped__ override
+    assert not iscoroutinefunction(sync_override)
+    unwrapped = unwrap(sync_override)
+    assert not iscoroutinefunction(unwrapped)
+
+
+@pytest.mark.unit
+def test_wrapper_preserves_metadata_from_wrap_method():
+    """Even with the __wrapped__ fix, the wrapper should preserve
+    the name/signature from wrap_method (the sync base), which is
+    what Camel's FunctionTool reads for parameter introspection.
+    """
+
+    def sync_base(self, command: str, timeout: int = 30) -> str:
+        """Execute a shell command."""
+        return command
+
+    @listen_toolkit(wrap_method=sync_base)
+    async def async_override(self, command: str, timeout: int = 30) -> str:
+        return command
+
+    # Name should come from the sync base
+    assert async_override.__name__ == "sync_base"
+    # But unwrap should still resolve to async
+    assert iscoroutinefunction(unwrap(async_override))
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_async_override_with_sync_wrap_executes_correctly():
+    """The async override wrapped with a sync base should still
+    execute correctly as an async function.
+    """
+    mock_toolkit = _create_mock_toolkit()
+    mock_task_lock = MagicMock()
+    mock_task_lock.put_queue = AsyncMock()
+
+    def sync_base(self, value: int) -> int:
+        return value
+
+    with patch(
+        "app.utils.listen.toolkit_listen.get_task_lock",
+        return_value=mock_task_lock,
+    ):
+
+        @listen_toolkit(wrap_method=sync_base)
+        async def async_override(self, value: int) -> int:
+            await asyncio.sleep(0)  # prove we're truly async
+            return value * 2
+
+        result = await async_override(mock_toolkit, 21)
+        assert result == 42

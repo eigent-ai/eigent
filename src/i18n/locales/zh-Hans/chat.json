@@ -6,6 +6,8 @@
   "approval-yes": "是",
   "approval-all-yes": "本任务自动批准",
   "approval-no": "否",
+  "show-more": "显示更多",
+  "show-less": "显示较少",
   "select-file": "选择文件",
   "all-files": "所有文件",
   "token": "Token",

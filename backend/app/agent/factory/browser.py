@@ -85,7 +85,6 @@ def browser_agent(options: Chat):
         options.project_id,
         Agents.browser_agent,
         working_directory=working_directory,
-        safe_mode=True,
         clone_current_env=True,
     )
     terminal_toolkit = message_integration.register_functions(

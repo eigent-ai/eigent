@@ -6,6 +6,8 @@
   "approval-yes": "Sì",
   "approval-all-yes": "Approva automaticamente per questa attività",
   "approval-no": "No",
+  "show-more": "Mostra di più",
+  "show-less": "Mostra meno",
   "select-file": "Seleziona File",
   "all-files": "Tutti i File",
   "token": "Token",

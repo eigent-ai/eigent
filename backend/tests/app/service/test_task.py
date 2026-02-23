@@ -25,6 +25,7 @@ from app.model.chat import Status, SupplementChat, TaskContent, UpdateData
 from app.service.task import (
     Action,
     ActionAskData,
+    ActionCommandApprovalData,
     ActionCreateAgentData,
     ActionImproveData,
     ActionNewAgent,
@@ -299,6 +300,82 @@ class TestTaskLock:
         assert len(task_lock.background_tasks) == 0
         assert task1.cancelled()
         assert task2.cancelled()
+
+    def test_task_lock_has_approval_input_dict(self):
+        """TaskLock should have an approval_input dict (per-agent queues)."""
+        task_lock = TaskLock("test_approval", asyncio.Queue(), {})
+        assert hasattr(task_lock, "approval_input")
+        assert isinstance(task_lock.approval_input, dict)
+
+    def test_task_lock_has_auto_approve_dict(self):
+        """TaskLock should have auto_approve dict defaulting to empty."""
+        task_lock = TaskLock("test_auto", asyncio.Queue(), {})
+        assert isinstance(task_lock.auto_approve, dict)
+        assert len(task_lock.auto_approve) == 0
+
+    @pytest.mark.asyncio
+    async def test_put_and_get_approval_input(self):
+        """put_approval_input / get_approval_input should round-trip per agent."""
+        task_lock = TaskLock("test_approval_io", asyncio.Queue(), {})
+        task_lock.add_approval_input_listen("agent_x")
+
+        await task_lock.put_approval_input("agent_x", "approve_once")
+        result = await task_lock.get_approval_input("agent_x")
+        assert result == "approve_once"
+
+    @pytest.mark.asyncio
+    async def test_approval_input_queue_capacity_one(self):
+        """Each agent's approval_input queue has maxsize=1."""
+        task_lock = TaskLock("test_cap", asyncio.Queue(), {})
+        task_lock.add_approval_input_listen("agent_y")
+
+        await task_lock.put_approval_input("agent_y", "first")
+
+        # Second put should not complete immediately (queue full)
+        with pytest.raises(asyncio.QueueFull):
+            task_lock.approval_input["agent_y"].put_nowait("second")
+
+    @pytest.mark.asyncio
+    async def test_cleanup_injects_reject_into_approval_queues(self):
+        """cleanup() should inject 'reject' into all agent approval queues."""
+        task_lock = TaskLock("test_cleanup_reject", asyncio.Queue(), {})
+        task_lock.add_approval_input_listen("agent_a")
+        task_lock.add_approval_input_listen("agent_b")
+
+        # Queues are empty before cleanup
+        assert task_lock.approval_input["agent_a"].empty()
+        assert task_lock.approval_input["agent_b"].empty()
+
+        await task_lock.cleanup()
+
+        # After cleanup, 'reject' should be in both queues
+        assert task_lock.approval_input["agent_a"].get_nowait() == "reject"
+        assert task_lock.approval_input["agent_b"].get_nowait() == "reject"
+
+    @pytest.mark.asyncio
+    async def test_cleanup_does_not_fail_if_approval_queue_full(self):
+        """cleanup() should not raise if an agent's approval_input is already full."""
+        task_lock = TaskLock("test_cleanup_full", asyncio.Queue(), {})
+        task_lock.add_approval_input_listen("agent_z")
+
+        # Pre-fill the queue
+        await task_lock.put_approval_input("agent_z", "already_here")
+
+        # cleanup should not raise
+        await task_lock.cleanup()
+
+        # The original value should still be there (put_nowait was skipped)
+        result = task_lock.approval_input["agent_z"].get_nowait()
+        assert result == "already_here"
+
+    def test_command_approval_data_model(self):
+        """ActionCommandApprovalData should have correct action and data shape."""
+        data = ActionCommandApprovalData(
+            data={"command": "rm -rf /", "agent": "dev_agent"}
+        )
+        assert data.action == Action.command_approval
+        assert data.data["command"] == "rm -rf /"
+        assert data.data["agent"] == "dev_agent"
 
 
 @pytest.mark.unit

@@ -74,7 +74,7 @@ interface Task {
   isTaskEdit: boolean;
   isContextExceeded?: boolean;
   // Pending dangerous operation approval (no 30s timer)
-  activeApproval: { command: string } | null;
+  activeApproval: { command: string; agent: string } | null;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
 }
@@ -117,7 +117,7 @@ export interface ChatStore {
   setActiveAskList: (taskId: string, message: Message[]) => void;
   setActiveApproval: (
     taskId: string,
-    payload: { command: string } | null
+    payload: { command: string; agent: string } | null
   ) => void;
   clearActiveApproval: (taskId: string) => void;
   addWebViewUrl: (
@@ -728,13 +728,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               installed_mcp: { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
-              safe_mode: (() => {
-                try {
-                  return localStorage.getItem('eigent_safe_mode') === 'true';
-                } catch {
-                  return false;
-                }
-              })(),
+              hitl_options: {
+                terminal_approval: (() => {
+                  try {
+                    return (
+                      localStorage.getItem('eigent_terminal_approval') ===
+                      'true'
+                    );
+                  } catch {
+                    return false;
+                  }
+                })(),
+              },
               attaches: (
                 messageAttaches ||
                 targetChatStore.getState().tasks[newTaskId]?.attaches ||
@@ -966,6 +971,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setActiveAsk,
             setActiveAskList,
             setActiveApproval,
+            clearActiveApproval,
             tasks,
             create: _create,
             setTaskTime,
@@ -1839,6 +1845,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.COMMAND_APPROVAL) {
             setActiveApproval(currentTaskId, {
               command: agentMessages.data?.command ?? '',
+              agent: agentMessages.data?.agent ?? '',
             });
             return;
           }
@@ -2256,6 +2263,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             setIsPending(currentTaskId, false);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
+            // Clear any pending approval prompt so it doesn't
+            // persist when the user re-enters the project.
+            clearActiveApproval(currentTaskId);
             // completed tasks move to history
             setUpdateCount();
 
@@ -2812,7 +2822,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setActiveApproval(taskId: string, payload: { command: string } | null) {
+    setActiveApproval(
+      taskId: string,
+      payload: { command: string; agent: string } | null
+    ) {
       set((state) => ({
         ...state,
         tasks: {

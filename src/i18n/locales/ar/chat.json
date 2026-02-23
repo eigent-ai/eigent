@@ -6,6 +6,8 @@
   "approval-yes": "نعم",
   "approval-all-yes": "موافقة تلقائية لهذه المهمة",
   "approval-no": "لا",
+  "show-more": "عرض المزيد",
+  "show-less": "عرض أقل",
   "select-file": "اختر ملف",
   "all-files": "كل الملفات",
   "token": "رمز",

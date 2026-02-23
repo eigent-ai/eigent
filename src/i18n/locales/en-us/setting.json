@@ -1,7 +1,8 @@
 {
   "settings": "Settings",
   "general": "General",
-  "human-in-the-loop": "Human",
+  "human-in-the-loop": "HITL",
+  "human-in-the-loop-title": "Human in the Loop",
   "privacy": "Privacy",
   "models": "Models",
   "mcp": "MCP & Tools",
