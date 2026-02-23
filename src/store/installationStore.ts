@@ -41,6 +41,7 @@ interface InstallationStoreState {
   error?: string;
   backendError?: string; // Separate error for backend startup failures
   isVisible: boolean;
+  isBackendReady: boolean; // Non-persisted, defaults to false on each app launch
   needsBackendRestart: boolean; // Flag to indicate backend is restarting after logout
 
   // Actions
@@ -50,6 +51,7 @@ interface InstallationStoreState {
   setError: (error: string) => void;
   setBackendError: (error: string) => void;
   setWaitingBackend: () => void;
+  setBackendReadyFlag: (ready: boolean) => void;
   setNeedsBackendRestart: (needs: boolean) => void;
   retryInstallation: () => void;
   retryBackend: () => Promise<void>;
@@ -71,6 +73,7 @@ const initialState = {
   error: undefined,
   backendError: undefined,
   isVisible: false,
+  isBackendReady: false,
   needsBackendRestart: false,
 };
 
@@ -103,6 +106,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
       set({
         state: 'completed',
         progress: 100,
+        isBackendReady: true,
       }),
 
     setError: (error: string) =>
@@ -124,6 +128,11 @@ export const useInstallationStore = create<InstallationStoreState>()(
         state: 'waiting-backend',
         progress: 80,
         isVisible: true,
+      }),
+
+    setBackendReadyFlag: (ready: boolean) =>
+      set({
+        isBackendReady: ready,
       }),
 
     setNeedsBackendRestart: (needs: boolean) =>
@@ -260,6 +269,7 @@ export const useInstallationUI = () => {
   const error = useInstallationStore((state) => state.error);
   const backendError = useInstallationStore((state) => state.backendError);
   const isVisible = useInstallationStore((state) => state.isVisible);
+  const isBackendReady = useInstallationStore((state) => state.isBackendReady);
   const performInstallation = useInstallationStore(
     (state) => state.performInstallation
   );
@@ -276,6 +286,7 @@ export const useInstallationUI = () => {
     error,
     backendError,
     isInstalling: state === 'installing',
+    isBackendReady,
     shouldShowInstallScreen: isVisible && state !== 'completed',
     canRetry: state === 'error',
     performInstallation,
