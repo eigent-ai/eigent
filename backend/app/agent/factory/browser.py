@@ -191,11 +191,11 @@ def browser_agent(options: Chat):
 
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
+        cdp_keep_current_page=True,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
         session_id=toolkit_session_id,
-        default_start_url="about:blank",
         cdp_url=f"http://localhost:{selected_port}",
         enabled_tools=[
             "browser_click",
@@ -212,6 +212,7 @@ def browser_agent(options: Chat):
             "browser_sheet_read",
             "browser_sheet_input",
             "browser_get_page_snapshot",
+            "browser_open"
         ],
     )
 
@@ -282,7 +283,7 @@ def browser_agent(options: Chat):
             "\n<external_browser_connection>\n"
             "**IMPORTANT**: You are connected to an external browser instance. "
             "The browser may already be open with active sessions and logged-in "
-            "websites. When you use browser tools, you will connect to this "
+            "websites. When you use browser_open, you will connect to this "
             "existing browser and can immediately access its current state and "
             "pages.\n"
             "</external_browser_connection>\n"
