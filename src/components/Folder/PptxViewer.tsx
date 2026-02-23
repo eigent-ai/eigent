@@ -16,6 +16,8 @@ import JSZip from 'jszip';
 import { useCallback, useEffect, useState } from 'react';
 
 const DRAWINGML_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const PRESENTATION_NS =
+  'http://schemas.openxmlformats.org/presentationml/2006/main';
 
 export type PptxSlide = {
   index: number;
@@ -40,16 +42,40 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function extractTextFromSlideXml(xmlString: string): string[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlString, 'text/xml');
-  const textNodes = doc.getElementsByTagNameNS(DRAWINGML_NS, 't');
+/** Extract text from a single shape (p:sp) via its p:txBody -> a:t nodes. */
+function getShapeTexts(shape: Element): string[] {
+  const txBody = shape.getElementsByTagNameNS(PRESENTATION_NS, 'txBody')[0];
+  if (!txBody) return [];
+  const textNodes = txBody.getElementsByTagNameNS(DRAWINGML_NS, 't');
   const texts: string[] = [];
   for (let i = 0; i < textNodes.length; i++) {
     const t = textNodes[i].textContent?.trim();
     if (t) texts.push(t);
   }
   return texts;
+}
+
+/**
+ * Extract slide content by shape: first shape = title, rest = body.
+ * Renders actual file content with title/body structure (not placeholder).
+ */
+function extractSlideContent(xmlString: string): {
+  title: string;
+  body: string[];
+} {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlString, 'text/xml');
+  const shapes = doc.getElementsByTagNameNS(PRESENTATION_NS, 'sp');
+  const allTexts: string[][] = [];
+  for (let i = 0; i < shapes.length; i++) {
+    const texts = getShapeTexts(shapes[i]);
+    if (texts.length > 0) allTexts.push(texts);
+  }
+  const flat = allTexts.flat();
+  if (flat.length === 0) return { title: '', body: [] };
+  const title = flat[0];
+  const body = flat.slice(1);
+  return { title, body };
 }
 
 async function parsePptxInBrowser(
@@ -68,12 +94,20 @@ async function parsePptxInBrowser(
   for (let i = 0; i < slideEntries.length; i++) {
     const entry = zip.files[slideEntries[i]];
     const xmlString = await entry.async('string');
-    const texts = extractTextFromSlideXml(xmlString);
+    const { title, body } = extractSlideContent(xmlString);
+    const titleHtml = title
+      ? `<h2 class="text-xl font-semibold text-text-primary mb-3">${escapeHtml(title)}</h2>`
+      : '';
+    const bodyHtml =
+      body.length > 0
+        ? `<div class="text-text-primary space-y-2">${body
+            .map((line) => `<p class="text-sm">${escapeHtml(line)}</p>`)
+            .join('')}</div>`
+        : '';
     const html = `<div class="pptx-slide-content">
-      <h3 class="text-lg font-semibold text-text-primary mb-2">Slide ${i + 1}</h3>
-      <ul class="list-disc list-inside space-y-1 text-text-primary">
-        ${texts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}
-      </ul>
+      <div class="mb-2 text-xs font-medium text-text-tertiary">Slide ${i + 1}</div>
+      ${titleHtml}
+      ${bodyHtml}
     </div>`;
     slides.push({ index: i, html });
   }
