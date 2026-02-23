@@ -1,7 +1,9 @@
 {
   "settings": "إعدادات",
   "general": "عام",
-  "permissions": "أذونات",
+  "human-in-the-loop": "تدخل بشري",
+  "terminal-approval": "موافقة على أوامر الطرفية",
+  "terminal-approval-hint": "طلب موافقتك قبل تنفيذ أوامر طرفية قد تكون خطيرة (مثل rm وsudo وkill).",
   "privacy": "خصوصية",
   "models": "نماذج",
   "mcp": "MCP الأدوات",

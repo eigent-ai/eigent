@@ -1031,9 +1031,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # questions (don't break, don't
                 # delete task_lock)
             elif item.action == Action.start:
-                # Reset HITL "approve all in task" for the new task (issue #1306)
-                if hasattr(task_lock, "approved_all_dangerous_commands"):
-                    task_lock.approved_all_dangerous_commands = False
+                # Reset auto-approve for the new task (issue #1306)
+                if hasattr(task_lock, "auto_approve"):
+                    task_lock.auto_approve = False
                 # Check conversation history length before starting task
                 is_exceeded, total_length = check_conversation_history_length(
                     task_lock
@@ -1531,8 +1531,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "process_task_id": item.process_task_id,
                     },
                 )
-            elif item.action == Action.terminal_command_approval:
-                yield sse_json("terminal_command_approval", item.data)
+            elif item.action == Action.command_approval:
+                yield sse_json("command_approval", item.data)
             elif item.action == Action.pause:
                 if workforce is not None:
                     workforce.pause()

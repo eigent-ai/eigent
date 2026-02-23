@@ -1,7 +1,9 @@
 {
   "settings": "설정",
   "general": "일반",
-  "permissions": "권한",
+  "human-in-the-loop": "사람 개입",
+  "terminal-approval": "터미널 명령 승인",
+  "terminal-approval-hint": "활성화하면 위험한 터미널 명령(예: rm, sudo, kill) 실행 전 승인을 요청합니다.",
   "privacy": "개인정보",
   "models": "모델",
   "mcp": "MCP 및 도구",

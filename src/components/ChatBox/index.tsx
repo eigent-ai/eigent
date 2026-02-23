@@ -23,7 +23,7 @@ import {
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { AgentStep, ApprovalAction, ChatTaskStatus } from '@/types/constants';
 import { Square, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -1009,17 +1009,17 @@ export default function ChatBox(): JSX.Element {
             onSkip={handleSkip}
             isPauseResumeLoading={isPauseResumeLoading}
           />
-          {/* HITL: dangerous terminal command approval (no 30s auto-skip) */}
+          {/* Dangerous command approval (no 30s auto-skip) */}
           {chatStore.activeTaskId &&
-            chatStore.tasks[chatStore.activeTaskId]?.activeTerminalApproval && (
+            chatStore.tasks[chatStore.activeTaskId]?.activeApproval && (
               <div className="border-border-default mx-4 mb-2 flex flex-col gap-3 rounded-xl border bg-surface-secondary px-4 py-3">
                 <div className="text-body-sm font-medium text-text-heading">
-                  {t('chat.terminal-approval-prompt')}
+                  {t('chat.approval-prompt')}
                 </div>
                 <code className="break-all rounded bg-surface-tertiary px-2 py-1 text-body-sm text-text-secondary">
                   {
-                    chatStore.tasks[chatStore.activeTaskId]
-                      .activeTerminalApproval?.command
+                    chatStore.tasks[chatStore.activeTaskId].activeApproval
+                      ?.command
                   }
                 </code>
                 <div className="flex flex-wrap gap-2">
@@ -1030,13 +1030,13 @@ export default function ChatBox(): JSX.Element {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
                       if (!projectId) return;
-                      await fetchPost(`/chat/${projectId}/terminal-approval`, {
-                        approval: 'approve_once',
+                      await fetchPost(`/chat/${projectId}/approval`, {
+                        approval: ApprovalAction.APPROVE_ONCE,
                       });
-                      chatStore.clearActiveTerminalApproval(taskId);
+                      chatStore.clearActiveApproval(taskId);
                     }}
                   >
-                    {t('chat.terminal-approval-yes')}
+                    {t('chat.approval-yes')}
                   </button>
                   <button
                     type="button"
@@ -1045,13 +1045,13 @@ export default function ChatBox(): JSX.Element {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
                       if (!projectId) return;
-                      await fetchPost(`/chat/${projectId}/terminal-approval`, {
-                        approval: 'approve_all_in_task',
+                      await fetchPost(`/chat/${projectId}/approval`, {
+                        approval: ApprovalAction.AUTO_APPROVE,
                       });
-                      chatStore.clearActiveTerminalApproval(taskId);
+                      chatStore.clearActiveApproval(taskId);
                     }}
                   >
-                    {t('chat.terminal-approval-all-yes')}
+                    {t('chat.approval-all-yes')}
                   </button>
                   <button
                     type="button"
@@ -1060,13 +1060,13 @@ export default function ChatBox(): JSX.Element {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
                       if (!projectId) return;
-                      await fetchPost(`/chat/${projectId}/terminal-approval`, {
-                        approval: 'reject',
+                      await fetchPost(`/chat/${projectId}/approval`, {
+                        approval: ApprovalAction.REJECT,
                       });
-                      chatStore.clearActiveTerminalApproval(taskId);
+                      chatStore.clearActiveApproval(taskId);
                     }}
                   >
-                    {t('chat.terminal-approval-no')}
+                    {t('chat.approval-no')}
                   </button>
                 </div>
               </div>

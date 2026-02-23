@@ -38,7 +38,7 @@ export const AgentStep = {
   REMOVE_TASK: 'remove_task',
   NOTICE: 'notice',
   ASK: 'ask',
-  TERMINAL_COMMAND_APPROVAL: 'terminal_command_approval',
+  COMMAND_APPROVAL: 'command_approval',
   SYNC: 'sync',
   NOTICE_CARD: 'notice_card',
   FAILED: 'failed',
@@ -46,6 +46,19 @@ export const AgentStep = {
 } as const;
 
 export type AgentStepType = (typeof AgentStep)[keyof typeof AgentStep];
+
+/**
+ * User responses for dangerous operation approval.
+ * Mirrors backend ApprovalAction enum in app/model/enums.py.
+ */
+export const ApprovalAction = {
+  APPROVE_ONCE: 'approve_once',
+  AUTO_APPROVE: 'auto_approve',
+  REJECT: 'reject',
+} as const;
+
+export type ApprovalActionType =
+  (typeof ApprovalAction)[keyof typeof ApprovalAction];
 
 /**
  * Status values on AgentMessage.status (SSE message lifecycle).

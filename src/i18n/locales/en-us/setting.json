@@ -1,7 +1,7 @@
 {
   "settings": "Settings",
   "general": "General",
-  "permissions": "Permissions",
+  "human-in-the-loop": "Human",
   "privacy": "Privacy",
   "models": "Models",
   "mcp": "MCP & Tools",
@@ -20,8 +20,8 @@
   "light": "Light",
   "transparent": "Transparent",
 
-  "safe-mode": "Safe Mode",
-  "safe-mode-hint": "With Safe Mode active, Eigent will pause and seek explicit approval whenever high-risk system operations are detected.",
+  "terminal-approval": "Terminal Command Approval",
+  "terminal-approval-hint": "Require your approval before executing potentially dangerous terminal commands (e.g. rm, sudo, kill).",
 
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",
@@ -238,8 +238,8 @@
   "light": "Light",
   "transparent": "Transparent",
 
-  "safe-mode": "Safe Mode",
-  "safe-mode-hint": "With Safe Mode active, Eigent will pause and seek explicit approval whenever high-risk system operations are detected.",
+  "terminal-approval": "Terminal Command Approval",
+  "terminal-approval-hint": "Require your approval before executing potentially dangerous terminal commands (e.g. rm, sudo, kill).",
 
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",

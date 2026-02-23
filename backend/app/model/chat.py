@@ -21,7 +21,11 @@ from typing import Literal
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
-from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
+from app.model.enums import (  # noqa: F401
+    DEFAULT_SUMMARY_PROMPT,
+    ApprovalAction,
+    Status,
+)
 from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
@@ -65,7 +69,7 @@ class Chat(BaseModel):
     max_retries: int = 3
     allow_local_system: bool = False
     safe_mode: bool = False
-    """When True, require explicit user approval for dangerous terminal commands (HITL)."""
+    """When True, require explicit user approval for dangerous terminal commands."""
     installed_mcp: McpServers = {"mcpServers": {}}
     bun_mirror: str = ""
     uvx_mirror: str = ""
@@ -149,10 +153,10 @@ class HumanReply(BaseModel):
     reply: str
 
 
-class TerminalApprovalRequest(BaseModel):
-    """User response for dangerous terminal command approval (HITL)."""
+class ApprovalRequest(BaseModel):
+    """User response for dangerous operation approval."""
 
-    approval: Literal["approve_once", "approve_all_in_task", "reject"]
+    approval: ApprovalAction
 
 
 class TaskContent(BaseModel):

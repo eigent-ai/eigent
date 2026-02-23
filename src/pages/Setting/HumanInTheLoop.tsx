@@ -18,10 +18,10 @@ import { useTranslation } from 'react-i18next';
 
 const SAFE_MODE_STORAGE_KEY = 'eigent_safe_mode';
 
-export default function SettingPermissions() {
+export default function SettingHumanInTheLoop() {
   const { t } = useTranslation();
 
-  // Safe Mode (HITL for high-risk operations) - disabled by default
+  // Safe Mode (user approval for high-risk operations) - disabled by default
   const [safeMode, setSafeMode] = useState(() => {
     try {
       return localStorage.getItem(SAFE_MODE_STORAGE_KEY) === 'true';
@@ -42,24 +42,24 @@ export default function SettingPermissions() {
   return (
     <div className="flex flex-col gap-6">
       <div className="text-body-lg font-bold text-text-heading">
-        {t('setting.permissions')}
+        {t('setting.human-in-the-loop')}
       </div>
 
-      {/* Safe Mode: Human-in-the-Loop for high-risk system operations */}
+      {/* Terminal Command Approval: Human-in-the-Loop for dangerous terminal commands */}
       <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
         <div className="flex flex-row items-center justify-between gap-4">
           <div className="flex flex-1 flex-col gap-1">
             <div className="text-body-base font-bold text-text-heading">
-              {t('setting.safe-mode')}
+              {t('setting.terminal-approval')}
             </div>
             <div className="text-body-sm text-text-secondary">
-              {t('setting.safe-mode-hint')}
+              {t('setting.terminal-approval-hint')}
             </div>
           </div>
           <Switch
             checked={safeMode}
             onCheckedChange={handleSafeModeChange}
-            aria-label={t('setting.safe-mode')}
+            aria-label={t('setting.terminal-approval')}
           />
         </div>
       </div>

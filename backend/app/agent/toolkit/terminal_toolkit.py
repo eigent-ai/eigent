@@ -18,7 +18,6 @@ import os
 import platform
 import shutil
 import subprocess
-import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from camel.toolkits.terminal_toolkit import (
@@ -28,9 +27,13 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
+from app.hitl.terminal_command import (
+    is_dangerous_command,
+    validate_cd_within_working_dir,
+)
 from app.service.task import (
     Action,
-    ActionTerminalCommandApprovalData,
+    ActionCommandApprovalData,
     ActionTerminalData,
     Agents,
     get_task_lock,
@@ -39,108 +42,6 @@ from app.service.task import (
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 logger = logging.getLogger("terminal_toolkit")
-
-# Full dangerous-command set for HITL (issue #1306)
-_DANGEROUS_COMMAND_TOKENS = frozenset(
-    {
-        # System Administration
-        "sudo",
-        "su",
-        "reboot",
-        "shutdown",
-        "halt",
-        "poweroff",
-        "init",
-        # File System
-        "rm",
-        "chown",
-        "chgrp",
-        "umount",
-        "mount",
-        # Disk Operations
-        "dd",
-        "mkfs",
-        "fdisk",
-        "parted",
-        "fsck",
-        "mkswap",
-        "swapon",
-        "swapoff",
-        # Process Management
-        "service",
-        "systemctl",
-        "systemd",
-        # Network Configuration
-        "iptables",
-        "ip6tables",
-        "ifconfig",
-        "route",
-        "iptables-save",
-        # Cron/Scheduling
-        "crontab",
-        "at",
-        "batch",
-        # User/Kernel Management
-        "useradd",
-        "userdel",
-        "usermod",
-        "passwd",
-        "chpasswd",
-        "newgrp",
-        "modprobe",
-        "rmmod",
-        "insmod",
-        "lsmod",
-    }
-)
-
-
-def _is_dangerous_command(command: str) -> bool:
-    """Return True if the command is considered dangerous and requires HITL."""
-    parts = command.strip().split()
-    if not parts:
-        return False
-    token = parts[0]
-    # Strip path prefix (e.g. /usr/bin/sudo -> sudo)
-    if "/" in token:
-        token = token.split("/")[-1]
-    return token in _DANGEROUS_COMMAND_TOKENS
-
-
-def _validate_cd_within_working_dir(
-    command: str, working_directory: str
-) -> tuple[bool, str | None]:
-    """Validate that a cd command does not escape working_directory.
-
-    Returns (True, None) if allowed, (False, error_message) if not.
-    """
-    parts = command.strip().split()
-    if not parts or parts[0].split("/")[-1] != "cd":
-        return True, None
-    target = parts[1] if len(parts) > 1 else ""
-    # cd with no args or "cd ~" -> home; we treat as potential escape
-    if not target or target == "~":
-        target = os.path.expanduser("~")
-    elif target == "-":
-        # "cd -" is previous dir; we cannot validate, allow base to run it
-        return True, None
-    try:
-        work_real = os.path.realpath(os.path.abspath(working_directory))
-        if os.path.isabs(target):
-            resolved = os.path.realpath(os.path.abspath(target))
-        else:
-            resolved = os.path.realpath(
-                os.path.abspath(os.path.join(work_real, target))
-            )
-        if os.path.commonpath([resolved, work_real]) != work_real:
-            return (
-                False,
-                f"cd not allowed: path would escape working directory "
-                f"({working_directory}).",
-            )
-    except (OSError, ValueError):
-        return False, "cd not allowed: invalid path."
-    return True, None
 
 
 # App version - should match electron app version
@@ -162,7 +63,6 @@ def get_terminal_base_venv_path() -> str:
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
     _thread_pool: ThreadPoolExecutor | None = None
-    _thread_local = threading.local()
 
     def __init__(
         self,
@@ -207,7 +107,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self._safe_mode = safe_mode
         self._use_docker_backend = use_docker_backend
         self._working_directory = working_directory
-        # When user enables Safe Mode (HITL), we intercept; don't let Camel block.
+        # When safe mode is ON, we handle dangerous commands ourselves via
+        # user approval prompts. Camel's safe_mode would hard-block them
+        # instead, so we disable it. Our is_dangerous_command() covers the
+        # same command set and scans across shell operators and wrappers.
         camel_safe_mode = not safe_mode
         super().__init__(
             timeout=timeout,
@@ -435,17 +338,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         """
         Execute coro in the thread pool, with each thread bound to a long-term event loop
         """
-        if not hasattr(TerminalToolkit._thread_local, "loop"):
+        if not hasattr(AbstractToolkit._thread_local, "loop"):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            TerminalToolkit._thread_local.loop = loop
+            AbstractToolkit._thread_local.loop = loop
         else:
-            loop = TerminalToolkit._thread_local.loop
+            loop = AbstractToolkit._thread_local.loop
 
         if loop.is_closed():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            TerminalToolkit._thread_local.loop = loop
+            AbstractToolkit._thread_local.loop = loop
 
         try:
             task = loop.create_task(coro)
@@ -467,7 +370,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
 
-        When Safe Mode is on, dangerous commands (e.g. rm) trigger HITL
+        When Safe Mode is on, dangerous commands (e.g. rm) trigger user
         approval before execution.
 
         Args:
@@ -488,27 +391,19 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         # Non-Docker: validate cd does not escape working_directory (issue #1306)
         if not self._use_docker_backend:
-            ok, err = _validate_cd_within_working_dir(
+            ok, err = validate_cd_within_working_dir(
                 command, self._working_directory
             )
             if not ok:
                 return err or "cd not allowed."
 
-        if self._safe_mode and _is_dangerous_command(command):
-            task_lock = get_task_lock(self.api_task_id)
-            if getattr(task_lock, "approved_all_dangerous_commands", False):
-                pass
-            else:
-                approval_data = ActionTerminalCommandApprovalData(
-                    data={"command": command}
-                )
-                coro = task_lock.put_queue(approval_data)
-                self._run_coro_in_thread(coro)
-                approval = task_lock.terminal_approval_response.get(block=True)
-                if approval == "reject":
-                    return "Command rejected by user."
-                if approval == "approve_all_in_task":
-                    task_lock.approved_all_dangerous_commands = True
+        if self._safe_mode and is_dangerous_command(command):
+            approval_data = ActionCommandApprovalData(
+                data={"command": command}
+            )
+            rejection = self._request_user_approval(approval_data)
+            if rejection is not None:
+                return rejection
 
         result = super().shell_exec(
             id=id, command=command, block=block, timeout=timeout

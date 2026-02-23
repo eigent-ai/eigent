@@ -73,8 +73,8 @@ interface Task {
   isTakeControl: boolean;
   isTaskEdit: boolean;
   isContextExceeded?: boolean;
-  // HITL: pending dangerous terminal command approval (no 30s timer)
-  activeTerminalApproval: { command: string } | null;
+  // Pending dangerous operation approval (no 30s timer)
+  activeApproval: { command: string } | null;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
 }
@@ -115,11 +115,11 @@ export interface ChatStore {
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
-  setActiveTerminalApproval: (
+  setActiveApproval: (
     taskId: string,
     payload: { command: string } | null
   ) => void;
-  clearActiveTerminalApproval: (taskId: string) => void;
+  clearActiveApproval: (taskId: string) => void;
   addWebViewUrl: (
     taskId: string,
     webViewUrl: string,
@@ -289,7 +289,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshotsTemp: [],
             isTakeControl: false,
             isTaskEdit: false,
-            activeTerminalApproval: null,
+            activeApproval: null,
             streamingDecomposeText: '',
           },
         },
@@ -965,7 +965,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             addFileList,
             setActiveAsk,
             setActiveAskList,
-            setActiveTerminalApproval,
+            setActiveApproval,
             tasks,
             create: _create,
             setTaskTime,
@@ -1835,9 +1835,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             return;
           }
-          // Terminal command approval (HITL) - no 30s auto-skip
-          if (agentMessages.step === AgentStep.TERMINAL_COMMAND_APPROVAL) {
-            setActiveTerminalApproval(currentTaskId, {
+          // Terminal command approval - no 30s auto-skip
+          if (agentMessages.step === AgentStep.COMMAND_APPROVAL) {
+            setActiveApproval(currentTaskId, {
               command: agentMessages.data?.command ?? '',
             });
             return;
@@ -2812,29 +2812,26 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setActiveTerminalApproval(
-      taskId: string,
-      payload: { command: string } | null
-    ) {
+    setActiveApproval(taskId: string, payload: { command: string } | null) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeTerminalApproval: payload,
+            activeApproval: payload,
           },
         },
       }));
     },
-    clearActiveTerminalApproval(taskId: string) {
+    clearActiveApproval(taskId: string) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeTerminalApproval: null,
+            activeApproval: null,
           },
         },
       }));
