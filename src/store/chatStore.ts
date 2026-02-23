@@ -659,6 +659,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
       }
       const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
@@ -748,6 +749,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               summary_prompt: ``,
               new_agents: [...addWorkers],
               browser_port: browser_port,
+              cdp_browsers: cdp_browsers,
               env_path: envPath,
               search_config: searchConfig,
             })
