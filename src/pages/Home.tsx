@@ -200,6 +200,14 @@ export default function Home() {
     }
   }, [chatStore, projectStore, getSize]);
 
+  const activeWorkspaceAgentType = chatStore?.tasks[
+    chatStore?.activeTaskId as string
+  ]?.taskAssigning?.find(
+    (agent) =>
+      agent.agent_id ===
+      chatStore?.tasks[chatStore?.activeTaskId as string]?.activeWorkspace
+  )?.type;
+
   if (!chatStore) {
     return <div>Loading...</div>;
   }
@@ -220,14 +228,7 @@ export default function Home() {
               {chatStore.tasks[chatStore.activeTaskId as string]
                 ?.activeWorkspace && (
                 <div className="flex h-full w-full flex-1 flex-col pr-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                  {chatStore.tasks[
-                    chatStore.activeTaskId as string
-                  ]?.taskAssigning?.find(
-                    (agent) =>
-                      agent.agent_id ===
-                      chatStore.tasks[chatStore.activeTaskId as string]
-                        .activeWorkspace
-                  )?.type === 'browser_agent' && (
+                  {activeWorkspaceAgentType === 'browser_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
                       <BrowserAgentWorkspace />
                     </div>
@@ -249,14 +250,9 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  {chatStore.tasks[
-                    chatStore.activeTaskId as string
-                  ]?.taskAssigning?.find(
-                    (agent) =>
-                      agent.agent_id ===
-                      chatStore.tasks[chatStore.activeTaskId as string]
-                        .activeWorkspace
-                  )?.type === 'developer_agent' && (
+                  {activeWorkspaceAgentType &&
+                    activeWorkspaceAgentType !== 'browser_agent' &&
+                    activeWorkspaceAgentType !== 'document_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
                       <TerminalAgentWorkspace></TerminalAgentWorkspace>
                       {/* <Terminal content={[]} /> */}
@@ -274,14 +270,7 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  {chatStore.tasks[
-                    chatStore.activeTaskId as string
-                  ]?.taskAssigning?.find(
-                    (agent) =>
-                      agent.agent_id ===
-                      chatStore.tasks[chatStore.activeTaskId as string]
-                        .activeWorkspace
-                  )?.type === 'document_agent' && (
+                  {activeWorkspaceAgentType === 'document_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
                       <div className="relative flex h-[calc(100vh-104px)] w-full flex-col rounded-2xl border border-solid border-border-subtle-strong">
                         {/*filter blur */}
