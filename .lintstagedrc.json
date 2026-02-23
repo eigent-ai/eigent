@@ -5,6 +5,6 @@
     "node licenses/update_license.js"
   ],
   "*.{js,jsx}": ["eslint --fix --no-warn-ignored", "prettier --write"],
-  "*.{json,css,md}": ["prettier --write"],
+  "*.{json,css}": ["prettier --write"],
   "*.py": ["node licenses/update_license.js"]
 }

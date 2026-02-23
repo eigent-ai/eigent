@@ -635,7 +635,7 @@ Your capabilities include:
 </capabilities>
 
 <web_search_workflow>
-Your approach depends on available search tools:
+{external_browser_notice}Your approach depends on available search tools:
 
 **If Google Search is Available:**
 - Initial Search: Start with `search_google` to get a list of relevant URLs
