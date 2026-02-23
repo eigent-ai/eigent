@@ -13,10 +13,38 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { Copy, FileText, Image } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Check, Copy, FileText, Image, Sparkles } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { Button } from '../../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
+
+const COPIED_RESET_MS = 2000;
+
+const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
+
+function parseContentWithSkillTags(
+  content: string
+): Array<{ type: 'text'; value: string } | { type: 'skill'; name: string }> {
+  const nodes: Array<
+    { type: 'text'; value: string } | { type: 'skill'; name: string }
+  > = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  SKILL_TAG_REGEX.lastIndex = 0;
+  while ((m = SKILL_TAG_REGEX.exec(content)) !== null) {
+    if (m.index > lastIndex) {
+      nodes.push({ type: 'text', value: content.slice(lastIndex, m.index) });
+    }
+    nodes.push({ type: 'skill', name: m[1].trim() });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < content.length) {
+    nodes.push({ type: 'text', value: content.slice(lastIndex) });
+  }
+  return nodes.length > 0 ? nodes : [{ type: 'text', value: content }];
+}
 
 interface UserMessageCardProps {
   id: string;
@@ -33,11 +61,20 @@ export function UserMessageCard({
 }: UserMessageCardProps) {
   const [_hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const hoverCloseTimerRef = useRef<number | null>(null);
+  const { t } = useTranslation();
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-  };
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success(t('setting.copied-to-clipboard'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPIED_RESET_MS);
+    } catch {
+      toast.error('Failed to copy to clipboard');
+    }
+  }, [content, t]);
 
   // Popover handles outside clicks; no manual listener needed
   const openRemainingPopover = () => {
@@ -66,18 +103,49 @@ export function UserMessageCard({
     return <FileText className="h-4 w-4 text-icon-primary" />;
   };
 
+  const handleOpenSkillFolder = (skillName: string) => {
+    window.electronAPI?.openSkillFolder?.(skillName);
+  };
+
+  const contentNodes = parseContentWithSkillTags(content);
+  const hasSkillTags = contentNodes.some((n) => n.type === 'skill');
+
   return (
     <div
       key={id}
-      className={`relative w-full rounded-xl border bg-surface-primary px-sm py-2 ${className || ''} group overflow-visible`}
+      className={`relative w-full rounded-xl border bg-surface-tertiary px-sm py-2 ${className || ''} group overflow-visible`}
     >
       <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <Button onClick={handleCopy} variant="ghost" size="icon">
-          <Copy />
+          {copied ? (
+            <Check className="h-4 w-4 text-text-success" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
         </Button>
       </div>
       <div className="whitespace-pre-wrap break-words text-body-sm text-text-body">
-        {content}
+        {hasSkillTags
+          ? contentNodes.map((node, i) =>
+              node.type === 'text' ? (
+                <span key={i}>{node.value}</span>
+              ) : (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenSkillFolder(node.name);
+                  }}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border-primary bg-surface-secondary px-1.5 py-0.5 font-medium text-text-body transition-colors hover:bg-surface-tertiary hover:underline"
+                  title="Open skill folder"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-icon-primary" />
+                  {node.name}
+                </button>
+              )
+            )
+          : content}
       </div>
       {attaches && attaches.length > 0 && (
         <div className="relative mt-2 box-border flex w-full flex-wrap items-start gap-1">

@@ -43,7 +43,8 @@ interface ProjectDialogProps {
   onTaskSelect: (
     projectId: string,
     question: string,
-    historyId: string
+    historyId: string,
+    project?: ProjectGroup
   ) => void;
   onTaskDelete: (taskId: string) => void;
   onTaskShare: (taskId: string) => void;
@@ -251,7 +252,8 @@ export default function ProjectDialog({
                       onTaskSelect(
                         project.project_id,
                         task.question,
-                        task.id.toString()
+                        task.id.toString(),
+                        project
                       )
                     }
                     onDelete={() => onTaskDelete(task.id.toString())}

@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
-export default function Home() {
+export default function BrowserAgentWorkspace() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
@@ -88,15 +88,15 @@ export default function Home() {
   // Extract complex expressions to avoid lint error in dependency array
   const activeTaskId = chatStore?.activeTaskId as string;
   const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
-  const activeWorkSpace = chatStore?.tasks[activeTaskId]?.activeWorkSpace;
+  const activeWorkspace = chatStore?.tasks[activeTaskId]?.activeWorkspace;
 
-  // Derive activeAgent from taskAssigning and activeWorkSpace (no setState in effect)
+  // Derive activeAgent from taskAssigning and activeWorkspace (no setState in effect)
   const activeAgent = useMemo(() => {
     if (!taskAssigning) return null;
     return (
-      taskAssigning.find((item) => item.agent_id === activeWorkSpace) ?? null
+      taskAssigning.find((item) => item.agent_id === activeWorkspace) ?? null
     );
-  }, [taskAssigning, activeWorkSpace]);
+  }, [taskAssigning, activeWorkspace]);
 
   const [isTakeControl, setIsTakeControl] = useState(false);
 
@@ -201,7 +201,7 @@ export default function Home() {
               size="icon"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkSpace(
+                chatStore.setActiveWorkspace(
                   chatStore.activeTaskId as string,
                   'workflow'
                 );
