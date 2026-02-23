@@ -23,20 +23,20 @@ import Extension from './Extension';
 
 export default function Browser() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('cookies');
+  const [activeTab, setActiveTab] = useState('cdp');
 
   const menuItems = [
     {
-      id: 'cookies',
-      name: t('layout.browser-cookie'),
-    },
-    {
       id: 'cdp',
-      name: t('layout.browser-cdp'),
+      name: t('layout.browser-connections'),
     },
     {
       id: 'extension',
-      name: t('layout.browser-extension'),
+      name: t('layout.browser-plugins'),
+    },
+    {
+      id: 'cookies',
+      name: t('layout.browser-cookie'),
     },
   ];
 

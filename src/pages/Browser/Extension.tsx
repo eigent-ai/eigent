@@ -22,7 +22,7 @@ export default function Extension() {
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
         <div className="text-heading-sm font-bold text-text-heading">
-          {t('layout.browser-extension')}
+          {t('layout.browser-plugins')}
         </div>
       </div>
       <div className="gap-4 px-6 flex flex-col">
@@ -32,7 +32,7 @@ export default function Extension() {
             {t('layout.coming-soon')}
           </div>
           <p className="mt-2 text-label-sm text-text-label text-center">
-            {t('layout.browser-extension-description')}
+            {t('layout.browser-plugins-description')}
           </p>
         </div>
       </div>

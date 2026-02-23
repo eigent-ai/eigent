@@ -22,7 +22,7 @@ export default function CDP() {
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
         <div className="text-heading-sm font-bold text-text-heading">
-          {t('layout.browser-cdp')}
+          {t('layout.browser-connections')}
         </div>
       </div>
       <div className="gap-4 px-6 flex flex-col">
@@ -32,7 +32,7 @@ export default function CDP() {
             {t('layout.coming-soon')}
           </div>
           <p className="mt-2 text-label-sm text-text-label text-center">
-            {t('layout.browser-cdp-description')}
+            {t('layout.browser-connections-description')}
           </p>
         </div>
       </div>
