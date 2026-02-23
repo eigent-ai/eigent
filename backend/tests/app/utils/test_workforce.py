@@ -425,8 +425,10 @@ async def test_handle_failed_task(mock_task_lock):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
-    """Test _handle_failed_task broadcasts failure event to callbacks."""
+async def test_handle_failed_task_avoids_duplicate_callback_logs(
+    mock_task_lock,
+):
+    """Test _handle_failed_task does not double-log failed events."""
     api_task_id = "test_api_task_123"
     workforce = Workforce(
         api_task_id=api_task_id, description="Test workforce"
@@ -466,6 +468,11 @@ async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
     ]
     workforce._callbacks = [callback_one, callback_two]
 
+    async def fake_super_handle_failed(_task):
+        for callback in workforce._callbacks:
+            callback.log_task_failed(MagicMock())
+        return True
+
     with (
         patch(
             "app.utils.workforce.get_task_lock",
@@ -474,7 +481,7 @@ async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
         patch.object(
             workforce.__class__.__bases__[0],
             "_handle_failed_task",
-            return_value=True,
+            side_effect=fake_super_handle_failed,
         ),
     ):
         await workforce._handle_failed_task(task)
@@ -485,8 +492,6 @@ async def test_handle_failed_task_logs_all_metrics_callbacks(mock_task_lock):
 
     callback_one.log_task_failed.assert_called_once()
     callback_two.log_task_failed.assert_called_once()
-    failed_event = callback_one.log_task_failed.call_args[0][0]
-    assert failed_event.error_message == "Failure from callback two"
 
 
 @pytest.mark.unit

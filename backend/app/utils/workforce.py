@@ -22,7 +22,6 @@ from camel.societies.workforce.events import (
     TaskAssignedEvent,
     TaskCompletedEvent,
     TaskCreatedEvent,
-    TaskFailedEvent,
     WorkerCreatedEvent,
 )
 from camel.societies.workforce.prompts import TASK_DECOMPOSE_PROMPT
@@ -829,19 +828,6 @@ class Workforce(BaseWorkforce):
                 }
             )
         )
-
-        if metrics_callbacks:
-            worker_id = getattr(task, "assigned_worker_id", None)
-            event = TaskFailedEvent(
-                task_id=task.id,
-                error_message=resolved_error_message,
-                worker_id=worker_id,
-                metadata={"failure_count": task.failure_count},
-            )
-            for callback in metrics_callbacks:
-                log_task_failed = getattr(callback, "log_task_failed", None)
-                if callable(log_task_failed):
-                    log_task_failed(event)
 
         return result
 
