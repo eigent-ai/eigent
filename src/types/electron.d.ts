@@ -82,6 +82,7 @@ interface ElectronAPI {
   }>;
   readFile: (filePath: string) => Promise<any>;
   readFileAsDataUrl: (path: string) => Promise<string>;
+  getFileAsDataUrl: (path: string, type?: string) => Promise<string>;
   deleteFolder: (email: string) => Promise<any>;
   getMcpConfigPath: (email: string) => Promise<string>;
   uploadLog: (

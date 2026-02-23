@@ -17,6 +17,7 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import mammoth from 'mammoth';
+import mime from 'mime';
 import Papa from 'papaparse';
 import path from 'path';
 import * as unzipper from 'unzipper';
@@ -557,6 +558,29 @@ export class FileReader {
         reject(error);
       }
     });
+  }
+
+  /**
+   * Get file contents as a data URL (supports local paths and remote URLs).
+   * For remote URLs, downloads to temp first then reads. Used for client-side
+   * rendering (e.g. PPTX viewer, PDF) so the renderer receives raw bytes.
+   */
+  public async getFileAsDataUrl(
+    filePath: string,
+    type?: string
+  ): Promise<string> {
+    let resolvedPath = filePath;
+    if (!this.isLocalFile(filePath)) {
+      const ext =
+        type || path.extname(new URL(filePath).pathname).slice(1) || 'pptx';
+      const tempPath = this.getTempFilePath(filePath, ext);
+      await this.downloadFile(filePath, tempPath);
+      resolvedPath = tempPath;
+    }
+    const data = fs.readFileSync(resolvedPath);
+    const mimeType =
+      mime.getType(path.extname(resolvedPath)) || 'application/octet-stream';
+    return `data:${mimeType};base64,${data.toString('base64')}`;
   }
 
   // Folders to hide in the Agent Folder view
