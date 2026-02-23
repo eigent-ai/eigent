@@ -90,7 +90,9 @@ export const useInstallationStore = create<InstallationStoreState>()(
         progress: 20,
         logs: [],
         error: undefined,
+        backendError: undefined,
         isVisible: true,
+        isBackendReady: false,
       }),
 
     addLog: (log: InstallationLog) =>
@@ -106,6 +108,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
       set({
         state: 'completed',
         progress: 100,
+        backendError: undefined,
         isBackendReady: true,
       }),
 
@@ -127,7 +130,9 @@ export const useInstallationStore = create<InstallationStoreState>()(
       set({
         state: 'waiting-backend',
         progress: 80,
+        backendError: undefined,
         isVisible: true,
+        isBackendReady: false,
       }),
 
     setBackendReadyFlag: (ready: boolean) =>
@@ -162,6 +167,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           backendError: undefined,
           state: 'waiting-backend',
           progress: 80,
+          isBackendReady: false,
         });
 
         // Call restart-backend via electronAPI

@@ -16,6 +16,9 @@ import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { useCallback, useEffect, useRef } from 'react';
 
+const BACKEND_POLL_INTERVAL_MS = 2000;
+const BACKEND_POLL_TIMEOUT_MS = 60000;
+
 /**
  * Hook that sets up Electron IPC listeners and handles installation state synchronization
  * This should be called once in your App component or Layout component
@@ -115,6 +118,7 @@ export const useInstallationSetup = () => {
             if (response && response.ok) {
               console.log('[useInstallationSetup] Backend health check passed');
               clearInterval(pollInterval);
+              clearTimeout(timeoutHandle);
 
               if (!backendReady.current) {
                 backendReady.current = true;
@@ -131,14 +135,20 @@ export const useInstallationSetup = () => {
             error
           );
         }
-      }, 2000);
+      }, BACKEND_POLL_INTERVAL_MS);
 
-      // Clear polling after 30 seconds to prevent infinite polling
-      setTimeout(() => {
+      // Surface timeout as backend error so users can retry instead of hanging forever.
+      const timeoutHandle = setTimeout(() => {
         clearInterval(pollInterval);
-      }, 30000);
+        if (!backendReady.current) {
+          console.error(
+            '[useInstallationSetup] Backend health check timed out'
+          );
+          setBackendError('Backend startup timeout. Please retry.');
+        }
+      }, BACKEND_POLL_TIMEOUT_MS);
     });
-  }, [setSuccess, setInitState, setNeedsBackendRestart]);
+  }, [setSuccess, setInitState, setNeedsBackendRestart, setBackendError]);
 
   // Monitor for backend restart after logout
   useEffect(() => {
@@ -169,6 +179,12 @@ export const useInstallationSetup = () => {
     hasCheckedOnMount.current = true;
 
     const checkToolInstalled = async () => {
+      const waitForBackendReadiness = () => {
+        installationCompleted.current = true;
+        setWaitingBackend();
+        startBackendPolling();
+      };
+
       try {
         const result = await window.ipcRenderer.invoke('check-tool-installed');
 
@@ -177,11 +193,7 @@ export const useInstallationSetup = () => {
             console.log(
               '[useInstallationSetup] Tools already installed, waiting for backend'
             );
-            installationCompleted.current = true;
-            setWaitingBackend();
-
-            // Start polling for backend when tools are already installed
-            startBackendPolling();
+            waitForBackendReadiness();
           }
 
           if (initState !== 'done') {
@@ -192,6 +204,11 @@ export const useInstallationSetup = () => {
               setInitState('carousel');
             }
           }
+        } else if (initState === 'done') {
+          console.warn(
+            '[useInstallationSetup] Tool check failed but initState is done; fallback to backend health polling'
+          );
+          waitForBackendReadiness();
         }
         return result;
       } catch (error) {
@@ -199,6 +216,12 @@ export const useInstallationSetup = () => {
           '[useInstallationSetup] Tool installation check failed:',
           error
         );
+        if (initState === 'done') {
+          console.warn(
+            '[useInstallationSetup] Tool check threw while initState is done; fallback to backend health polling'
+          );
+          waitForBackendReadiness();
+        }
         return { success: false, error };
       }
     };
