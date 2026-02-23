@@ -437,9 +437,13 @@ function renderBlocksToHtml(blocks: SlideBlock[], slideNum: number): string {
   ];
   for (const b of blocks) {
     if (b.type === 'title') {
+      const titleContent: RichParagraph = {
+        ...b.content,
+        align: b.content.align ?? 'center',
+      };
       parts.push(
         renderRichParagraph(
-          b.content,
+          titleContent,
           'h2',
           'text-xl font-semibold mb-3 text-text-primary'
         )
