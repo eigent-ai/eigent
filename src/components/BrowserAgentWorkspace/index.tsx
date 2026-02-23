@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
-export default function Home() {
+export default function BrowserAgentWorkspace() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 

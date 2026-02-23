@@ -18,6 +18,7 @@ import pytest
 
 from app.agent.factory import browser_agent
 from app.model.chat import Chat
+from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
 
@@ -43,6 +44,7 @@ def test_browser_agent_creation(sample_chat_data):
         patch(f"{_mod}.HybridBrowserToolkit") as mock_browser_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
+        patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.SearchToolkit") as mock_search_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
         patch("uuid.uuid4") as mock_uuid,
@@ -57,6 +59,7 @@ def test_browser_agent_creation(sample_chat_data):
         mock_terminal_toolkit.return_value = mock_terminal_instance
 
         mock_note_toolkit.return_value.get_tools.return_value = []
+        mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_search_instance = MagicMock()
         mock_search_instance.search_google = MagicMock()
         mock_search_toolkit.return_value = mock_search_instance
@@ -69,6 +72,11 @@ def test_browser_agent_creation(sample_chat_data):
 
         assert result is mock_agent
         mock_agent_model.assert_called_once()
+        mock_screenshot_toolkit.assert_called_once_with(
+            options.project_id,
+            working_directory="/tmp/test_workdir",
+            agent_name=Agents.browser_agent,
+        )
 
         # Check that it was called with browser agent configuration
         call_args = mock_agent_model.call_args
