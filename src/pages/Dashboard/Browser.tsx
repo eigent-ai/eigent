@@ -233,11 +233,20 @@ export default function Browser() {
 
       // Port is alive — add to CDP pool
       if (window.electronAPI?.addCdpBrowser) {
-        await window.electronAPI.addCdpBrowser(
+        const addResult = await window.electronAPI.addCdpBrowser(
           portNum,
           true,
           `External Browser (${portNum})`
         );
+        if (!addResult?.success) {
+          setConnectError(
+            addResult?.error || t('layout.failed-to-add-browser')
+          );
+          return;
+        }
+      } else {
+        setConnectError(t('layout.failed-to-add-browser'));
+        return;
       }
 
       toast.success(t('layout.connected-browser', { port: portNum }));
