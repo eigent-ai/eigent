@@ -42,22 +42,33 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/** Extract text from a single shape (p:sp) via its p:txBody -> a:t nodes. */
-function getShapeTexts(shape: Element): string[] {
+/**
+ * Extract text from a single shape by paragraph (a:p).
+ * Each a:p can have multiple runs (a:r -> a:t); we concatenate runs within
+ * a paragraph so "Test " + "PPT" + " Title" becomes "Test PPT Title".
+ */
+function getShapeParagraphs(shape: Element): string[] {
   const txBody = shape.getElementsByTagNameNS(PRESENTATION_NS, 'txBody')[0];
   if (!txBody) return [];
-  const textNodes = txBody.getElementsByTagNameNS(DRAWINGML_NS, 't');
-  const texts: string[] = [];
-  for (let i = 0; i < textNodes.length; i++) {
-    const t = textNodes[i].textContent?.trim();
-    if (t) texts.push(t);
+  const paragraphs = txBody.getElementsByTagNameNS(DRAWINGML_NS, 'p');
+  const result: string[] = [];
+  for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
+    const para = paragraphs[pIdx];
+    const runs = para.getElementsByTagNameNS(DRAWINGML_NS, 't');
+    let line = '';
+    for (let rIdx = 0; rIdx < runs.length; rIdx++) {
+      const t = runs[rIdx].textContent;
+      if (t) line += t;
+    }
+    const trimmed = line.trim();
+    if (trimmed) result.push(trimmed);
   }
-  return texts;
+  return result;
 }
 
 /**
- * Extract slide content by shape: first shape = title, rest = body.
- * Renders actual file content with title/body structure (not placeholder).
+ * Extract slide content by shape: first shape = title + body, then rest = body.
+ * Text is grouped by paragraph so runs (e.g. "Test ", "PPT", " Title") become one line.
  */
 function extractSlideContent(xmlString: string): {
   title: string;
@@ -66,15 +77,14 @@ function extractSlideContent(xmlString: string): {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlString, 'text/xml');
   const shapes = doc.getElementsByTagNameNS(PRESENTATION_NS, 'sp');
-  const allTexts: string[][] = [];
+  const allParagraphs: string[] = [];
   for (let i = 0; i < shapes.length; i++) {
-    const texts = getShapeTexts(shapes[i]);
-    if (texts.length > 0) allTexts.push(texts);
+    const paras = getShapeParagraphs(shapes[i]);
+    for (const p of paras) allParagraphs.push(p);
   }
-  const flat = allTexts.flat();
-  if (flat.length === 0) return { title: '', body: [] };
-  const title = flat[0];
-  const body = flat.slice(1);
+  if (allParagraphs.length === 0) return { title: '', body: [] };
+  const title = allParagraphs[0];
+  const body = allParagraphs.slice(1);
   return { title, body };
 }
 
