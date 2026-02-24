@@ -14,8 +14,22 @@
 
 import { fetchPost } from '@/api/http';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
+import { Input } from '@/components/ui/input';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+// Platforms where model names are arbitrary — show a plain text input instead
+// of a suggestion dropdown.
+const FREE_TEXT_PLATFORMS = new Set([
+  'openrouter',
+  'aws-bedrock',
+  'openai-compatible-model',
+  'azure',
+  'ollama',
+  'vllm',
+  'sglang',
+  'lmstudio',
+]);
 
 // Module-level cache so suggestions persist across component instances
 // and don't re-fetch when navigating between tabs
@@ -91,6 +105,21 @@ export function ModelTypeCombobox({
         setLoading(false);
       });
   }, [cacheKey]);
+
+  if (FREE_TEXT_PLATFORMS.has(platform)) {
+    return (
+      <Input
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        state={error ? 'error' : undefined}
+        note={error}
+        title={title}
+        className="placeholder:text-text-body/40"
+      />
+    );
+  }
 
   return (
     <Combobox

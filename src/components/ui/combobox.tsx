@@ -167,6 +167,20 @@ export function Combobox({
               placeholder={searchPlaceholder}
               value={searchValue}
               onValueChange={setSearchValue}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && allowCustomValue && searchValue) {
+                  const exactMatch = options.some(
+                    (opt) =>
+                      opt.value.toLowerCase() === searchValue.toLowerCase()
+                  );
+                  if (!exactMatch) {
+                    onValueChange?.(searchValue);
+                    setSearchValue('');
+                    setOpen(false);
+                    e.preventDefault();
+                  }
+                }
+              }}
             />
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>

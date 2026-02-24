@@ -1385,7 +1385,7 @@ export default function SettingModels() {
               title={t('setting.api-key-setting')}
               state={errors[idx]?.apiKey ? 'error' : 'default'}
               note={errors[idx]?.apiKey ?? undefined}
-              placeholder={` ${t('setting.enter-your-api-key')} ${
+              placeholder={`${t('setting.enter-your-api-key')} ${
                 item.name
               } ${t('setting.key')}`}
               backIcon={
@@ -1444,9 +1444,7 @@ export default function SettingModels() {
                   )
                 );
               }}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
+              placeholder={t('setting.enter-your-model-type')}
               disabled={loading === idx}
               error={errors[idx]?.model_type}
               title={t('setting.model-type-setting')}

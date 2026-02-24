@@ -21,10 +21,14 @@ MODEL_PREFIXES: dict[str, list[str]] = {
     "anthropic": ["claude-"],
     "gemini": ["gemini-"],
     "deepseek": ["deepseek"],
-    "qwen": ["qwen"],
+    "tongyi-qianwen": ["qwen"],
     "minimax": ["minimax"],
     "moonshot": ["moonshot", "kimi"],
     "azure": ["gpt-", "o1", "o3", "o4"],
+    "grok": ["grok-"],
+    "mistral": ["mistral-", "open-mistral-", "open-mixtral-", "mistralai/"],
+    "samba-nova": ["llama3", "meta-llama-"],
+    "modelark": ["doubao", "yi-", "llm-research/", "paddlepaddle/"],
     "openai-compatible-model": [],
     "openrouter": [],
     "bedrock": [],
@@ -32,8 +36,7 @@ MODEL_PREFIXES: dict[str, list[str]] = {
     "vllm": [],
     "sglang": [],
     "lmstudio": [],
-    "modelark": [],
-    "zai": [],
+    "z.ai": ["glm-", "zai-org/"],
 }
 
 
