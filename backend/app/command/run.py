@@ -91,6 +91,7 @@ async def _run_task(chat_data) -> None:
     from app.service.chat_service import step_solve
     from app.service.task import (
         ActionImproveData,
+        ActionStartData,
         ActionStopData,
         get_or_create_task_lock,
         set_current_task_id,
@@ -116,6 +117,12 @@ async def _run_task(chat_data) -> None:
             payload = json.loads(chunk[len("data:") :].strip())
             step = payload.get("step", "")
             data = payload.get("data", "")
+
+            # Complex task: auto-start execution after task decomposition
+            if step == "to_sub_tasks":
+                await task_lock.put_queue(ActionStartData())
+                _print_event(step, data)
+                continue
 
             # Simple question: wait_confirm is the final answer, stop the loop
             if step == "wait_confirm":
