@@ -460,6 +460,12 @@ class TaskLock:
             SSE event.  Only the one Future that matches is resolved; all
             other concurrent approvals for the same agent remain pending and
             will surface as the next item in the frontend queue.
+
+        Args:
+            approval_id (str): Unique ID of the approval to resolve
+                (format: ``{agent}_{hex}``).
+            action (str): The approval action string (e.g.
+                ``ApprovalAction.approve_once``).
         """
         future = self.pending_approvals.pop(approval_id, None)
         if future and not future.done():
@@ -490,6 +496,12 @@ class TaskLock:
               between the two calls.
 
         The ``approval_id`` format ``{agent}_{hex}`` lets us filter by prefix.
+
+        Args:
+            agent (str): Agent name whose pending approvals should all be
+                resolved (e.g. ``"developer_agent"``).
+            action (str): The approval action string to set on every matched
+                Future (e.g. ``ApprovalAction.auto_approve``).
         """
         to_remove = [
             aid

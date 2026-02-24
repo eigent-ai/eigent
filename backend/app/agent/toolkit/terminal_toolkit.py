@@ -381,6 +381,35 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         return enabled
 
     async def _request_user_approval(self, action_data) -> str | None:
+        """Send a command approval request to the frontend and wait.
+
+        Flow::
+
+            _request_user_approval (agent coroutine)
+              1. create_approval(approval_id)  → Future stored, agent will await it
+              2. put_queue(action_data)         → drops SSE event into shared queue
+              3. await future                   → agent suspends
+
+            SSE generator in chat_service.py (independently)
+              4. get_queue()                    → picks up the event
+              5. yield sse_json(...)            → sends command_approval to frontend
+
+            Frontend
+              6. shows approval card
+
+            User clicks "Approve Once" / "Auto Approve" / "Reject"
+              7. POST /approval → resolve_approval() or resolve_all_approvals_for_agent()
+              8. future.set_result(...)         → agent resumes at step 3
+
+        Args:
+            action_data (ActionCommandApprovalData): SSE payload containing
+                the command and agent name.  ``approval_id`` is injected into
+                ``action_data.data`` before the event is queued.
+
+        Returns:
+            None if the command is approved (approve_once or auto_approve).
+            An error string if the command is rejected.
+        """
         task_lock = get_task_lock(self.api_task_id)
         if task_lock.auto_approve.get(self.agent_name, False):
             return None
@@ -435,8 +464,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
 
-        When HITL terminal approval is on, dangerous commands (e.g. rm)
-        trigger user approval before execution.
+        When HITL terminal approval is on, commands that require user
+        confirmation trigger an approval request before execution.
 
         .. note:: Async override of a sync base method
 

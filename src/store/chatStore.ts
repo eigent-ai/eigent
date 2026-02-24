@@ -74,7 +74,7 @@ interface Task {
   isTakeControl: boolean;
   isTaskEdit: boolean;
   isContextExceeded?: boolean;
-  // Queue of pending dangerous-command approvals (supports concurrent requests)
+  // Queue of pending command approvals (supports concurrent requests)
   approvalQueue: { command: string; agent: string; approvalId: string }[];
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;

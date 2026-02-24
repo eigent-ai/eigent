@@ -48,7 +48,7 @@ export const AgentStep = {
 export type AgentStepType = (typeof AgentStep)[keyof typeof AgentStep];
 
 /**
- * User responses for dangerous operation approval.
+ * User responses for terminal command approval.
  * Mirrors backend ApprovalAction enum in app/model/enums.py.
  */
 export const ApprovalAction = {
