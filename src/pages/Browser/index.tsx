@@ -17,26 +17,26 @@ import VerticalNavigation, {
 } from '@/components/Navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Memory from './Memory';
-import Models from './Models';
-import Skills from './Skills';
+import CDP from './CDP';
+import Cookies from './Cookies';
+import Extension from './Extension';
 
-export default function Capabilities() {
+export default function Browser() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('models');
+  const [activeTab, setActiveTab] = useState('cdp');
 
   const menuItems = [
     {
-      id: 'models',
-      name: t('setting.models'),
+      id: 'cdp',
+      name: t('layout.browser-connections'),
     },
     {
-      id: 'skills',
-      name: t('agents.skills'),
+      id: 'extension',
+      name: t('layout.browser-plugins'),
     },
     {
-      id: 'memory',
-      name: t('agents.memory'),
+      id: 'cookies',
+      name: t('layout.browser-cookie'),
     },
   ];
 
@@ -67,9 +67,9 @@ export default function Capabilities() {
 
         <div className="flex h-auto w-full flex-1 flex-col">
           <div className="gap-4 flex flex-col">
-            {activeTab === 'models' && <Models />}
-            {activeTab === 'skills' && <Skills />}
-            {activeTab === 'memory' && <Memory />}
+            {activeTab === 'cdp' && <CDP />}
+            {activeTab === 'extension' && <Extension />}
+            {activeTab === 'cookies' && <Cookies />}
           </div>
         </div>
       </div>

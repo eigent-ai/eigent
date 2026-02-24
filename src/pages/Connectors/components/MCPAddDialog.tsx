@@ -128,7 +128,7 @@ export default function MCPAddDialog({
               {jsonError}
             </div>
           )}
-          <div className="overflow-hidden rounded-xl border border-border-primary">
+          <div className="rounded-xl border-border-primary overflow-hidden border">
             <MonacoEditor
               height="300px"
               width="100%"
