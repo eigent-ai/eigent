@@ -15,6 +15,7 @@
 import { Bot } from '@/components/animate-ui/icons/bot';
 import { Compass } from '@/components/animate-ui/icons/compass';
 import { Hammer } from '@/components/animate-ui/icons/hammer';
+import { Radio } from '@/components/animate-ui/icons/radio';
 import { Settings } from '@/components/animate-ui/icons/settings';
 import { Sparkle } from '@/components/animate-ui/icons/sparkle';
 import {
@@ -25,7 +26,7 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import WordCarousel from '@/components/ui/WordCarousel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import Project from '@/pages/Dashboard/Project';
+import Project from '@/pages/Projects/Project';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
 import { Plus } from 'lucide-react';
@@ -33,20 +34,24 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Agents from './Agents';
-import Browser from './Dashboard/Browser';
-import MCP from './Setting/MCP';
+import Browser from './Browser';
+import Channels from './Channels';
+import Connectors from './Connectors';
 
 const VALID_TABS = [
   'projects',
-  'workers',
-  'trigger',
-  'settings',
-  'mcp_tools',
-  'browser',
   'agents',
+  'channels',
+  'connectors',
+  'browser',
+  'settings',
 ] as const;
 
 type TabType = (typeof VALID_TABS)[number];
+
+const TAB_ALIASES: Record<string, TabType> = {
+  mcp_tools: 'connectors',
+};
 
 export default function Home() {
   const { t } = useTranslation();
@@ -61,8 +66,11 @@ export default function Home() {
   // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
   const activeTab = useMemo(() => {
     const tabFromUrl = searchParams.get('tab');
-    if (tabFromUrl && VALID_TABS.includes(tabFromUrl as TabType)) {
-      return tabFromUrl as TabType;
+    if (tabFromUrl) {
+      const normalizedTab = TAB_ALIASES[tabFromUrl] ?? tabFromUrl;
+      if (VALID_TABS.includes(normalizedTab as TabType)) {
+        return normalizedTab as TabType;
+      }
     }
     return 'projects' as TabType;
   }, [searchParams]);
@@ -161,11 +169,19 @@ export default function Home() {
                 iconAnimateOnHover="default"
                 icon={<Bot className="h-4 w-4" />}
               >
-                {t('setting.agents')}
+                {t('layout.agents')}
               </MenuToggleItem>
               <MenuToggleItem
                 size="xs"
-                value="mcp_tools"
+                value="channels"
+                iconAnimateOnHover="default"
+                icon={<Radio className="h-4 w-4" />}
+              >
+                {t('layout.channels')}
+              </MenuToggleItem>
+              <MenuToggleItem
+                size="xs"
+                value="connectors"
                 iconAnimateOnHover="default"
                 icon={<Hammer />}
               >
@@ -175,7 +191,7 @@ export default function Home() {
                 size="xs"
                 value="browser"
                 iconAnimateOnHover="default"
-                icon={<Compass />}
+                icon={<Compass className="h-4 w-4" />}
               >
                 {t('layout.browser')}
               </MenuToggleItem>
@@ -185,7 +201,7 @@ export default function Home() {
                 iconAnimateOnHover="default"
                 icon={<Settings />}
               >
-                {t('layout.general')}
+                {t('layout.settings')}
               </MenuToggleItem>
             </MenuToggleGroup>
           </div>
@@ -196,10 +212,11 @@ export default function Home() {
         </div>
       </div>
       {activeTab === 'projects' && <Project />}
-      {activeTab === 'mcp_tools' && <MCP />}
+      {activeTab === 'agents' && <Agents />}
+      {activeTab === 'channels' && <Channels />}
+      {activeTab === 'connectors' && <Connectors />}
       {activeTab === 'browser' && <Browser />}
       {activeTab === 'settings' && <Setting />}
-      {activeTab === 'agents' && <Agents />}
     </div>
   );
 }

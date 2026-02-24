@@ -15,30 +15,20 @@
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Navigation';
+import { MessageSquare } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Memory from './Memory';
-import Models from './Models';
-import Skills from './Skills';
 
-export default function Capabilities() {
+const VISIBLE_CHANNELS = ['overview', 'whatsapp', 'lark'] as const;
+
+export default function Channels() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('models');
+  const [activeTab, setActiveTab] = useState<string>('overview');
 
-  const menuItems = [
-    {
-      id: 'models',
-      name: t('setting.models'),
-    },
-    {
-      id: 'skills',
-      name: t('agents.skills'),
-    },
-    {
-      id: 'memory',
-      name: t('agents.memory'),
-    },
-  ];
+  const menuItems = VISIBLE_CHANNELS.map((id) => ({
+    id,
+    name: t(`layout.channels-${id}`),
+  }));
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -66,10 +56,30 @@ export default function Capabilities() {
         </div>
 
         <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="flex flex-col gap-4">
-            {activeTab === 'models' && <Models />}
-            {activeTab === 'skills' && <Skills />}
-            {activeTab === 'memory' && <Memory />}
+          <div className="m-auto flex h-auto w-full flex-1 flex-col">
+            {/* Header Section */}
+            <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
+              <div className="text-heading-sm font-bold text-text-heading">
+                {menuItems.find((m) => m.id === activeTab)?.name ?? ''}
+              </div>
+            </div>
+
+            {/* Content Section */}
+            <div className="mb-12 flex flex-col gap-6">
+              <div className="flex w-full flex-col items-center justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+                <div className="flex h-16 w-16 items-center justify-center">
+                  <MessageSquare className="h-8 w-8 text-icon-secondary" />
+                </div>
+                <h2 className="mb-2 text-body-md font-bold text-text-heading">
+                  {t('layout.coming-soon')}
+                </h2>
+                <p className="max-w-md text-center text-body-sm text-text-label">
+                  {activeTab === 'overview'
+                    ? t('layout.channels-overview-coming-soon-description')
+                    : t('layout.channels-coming-soon-description')}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

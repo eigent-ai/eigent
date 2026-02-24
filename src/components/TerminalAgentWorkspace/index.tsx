@@ -42,16 +42,16 @@ export default function TerminalAgentWorkspace() {
 
   const activeTaskId = chatStore?.activeTaskId;
   const taskAssigning = chatStore?.tasks[activeTaskId as string]?.taskAssigning;
-  const activeWorkSpace =
-    chatStore?.tasks[activeTaskId as string]?.activeWorkSpace;
+  const activeWorkspace =
+    chatStore?.tasks[activeTaskId as string]?.activeWorkspace;
 
-  // Use useMemo to derive activeAgent from taskAssigning and activeWorkSpace
+  // Use useMemo to derive activeAgent from taskAssigning and activeWorkspace
   const activeAgent = useMemo(() => {
     if (!chatStore || !taskAssigning) return null;
     return (
-      taskAssigning.find((item) => item.agent_id === activeWorkSpace) || null
+      taskAssigning.find((item) => item.agent_id === activeWorkspace) || null
     );
-  }, [chatStore, taskAssigning, activeWorkSpace]);
+  }, [chatStore, taskAssigning, activeWorkspace]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -148,7 +148,7 @@ export default function TerminalAgentWorkspace() {
               size="icon"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkSpace(
+                chatStore.setActiveWorkspace(
                   chatStore.activeTaskId as string,
                   'workflow'
                 );

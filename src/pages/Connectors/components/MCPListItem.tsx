@@ -37,7 +37,7 @@ export default function MCPListItem({
   const [_showMenu, setShowMenu] = useState(false);
   const { t } = useTranslation();
   return (
-    <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-surface-secondary p-4">
+    <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-surface-tertiary p-4">
       <div className="flex items-center gap-xs">
         <div className="mx-xs h-3 w-3 rounded-full bg-green-500"></div>
         <div className="text-base font-bold leading-9 text-text-primary">
