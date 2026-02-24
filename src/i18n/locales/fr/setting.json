@@ -31,9 +31,6 @@
   "how-we-handle-your-data-line-3": "Credentials are stored locally, encrypted, and used only for approved steps.",
   "how-we-handle-your-data-line-4": "Your data is never used to train our AI models without your explicit consent.",
   "how-we-handle-your-data-line-5": "We don’t sell your data to third parties.",
-  "enable-privacy-permissions-settings": "Enable Privacy Permissions Settings",
-  "enable-privacy-permissions-settings-description": "By turning this on, you acknowledge that you have read and agree to our Privacy Policy regarding how your task data is collected, processed, and protected.",
-
   "api-key-can-not-be-empty": "API Key can not be empty!",
   "api-host-can-not-be-empty": "API Host can not be empty!",
   "model-type-can-not-be-empty": "Model Type can not be empty!",
@@ -94,9 +91,6 @@
   "how-we-handle-your-data-line-3": "Credentials are stored locally, encrypted, and used only for approved steps.",
   "how-we-handle-your-data-line-4": "Your data is never used to train our AI models without your explicit consent.",
   "how-we-handle-your-data-line-5": "We don’t sell your data to third parties.",
-  "enable-privacy-permissions-settings": "Enable Privacy Permissions Settings",
-  "enable-privacy-permissions-settings-description": "By turning this on, you acknowledge that you have read and agree to our Privacy Policy regarding how your task data is collected, processed, and protected.",
-
   "api-key-can-not-be-empty": "API Key can not be empty!",
   "api-host-can-not-be-empty": "API Host can not be empty!",
   "model-type-can-not-be-empty": "Model Type can not be empty!",
