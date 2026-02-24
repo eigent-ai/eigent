@@ -1,5 +1,5 @@
 ---
-title: Installation
+title: Installation-test
 description: Getting Eigent set up on your computer is simple. Follow these steps to begin.
 icon: wrench
 ---
