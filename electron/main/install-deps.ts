@@ -28,6 +28,7 @@ import {
   getTerminalVenvPath,
   getUvEnv,
   getVenvPath,
+  getVenvPythonPath,
   isBinaryExists,
   runInstallScript,
   TERMINAL_BASE_PACKAGES,
@@ -60,11 +61,8 @@ export const checkAndInstallDepsOnUpdate = async ({
       return false;
     }
     const prebuiltBinDir = path.join(process.resourcesPath, 'prebuilt', 'bin');
-    const prebuiltVenvDir = path.join(
-      process.resourcesPath,
-      'prebuilt',
-      'venv'
-    );
+    const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+    const prebuiltVenvDir = path.join(prebuiltDir, 'venv');
     const uvPath = path.join(
       prebuiltBinDir,
       process.platform === 'win32' ? 'uv.exe' : 'uv'
@@ -753,13 +751,15 @@ export async function installDependencies(
         `Install Dependencies completed ${message} for version ${version}`
       );
       console.log(`Virtual environment path: ${venvPath}`);
-      spawn(uv_path, ['run', 'task', 'babel'], {
-        cwd: backendPath,
-        env: {
-          ...process.env,
-          UV_PROJECT_ENVIRONMENT: venvPath,
-        },
-      });
+      const pythonPath = getVenvPythonPath(venvPath);
+      spawn(
+        pythonPath,
+        ['-m', 'babel.messages.frontend', 'compile', '-d', 'lang'],
+        {
+          cwd: backendPath,
+          env: { ...process.env },
+        }
+      );
     },
     notifyInstallDependenciesPage: (): boolean => {
       const success = safeMainWindowSend('install-dependencies-start');

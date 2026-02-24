@@ -15,7 +15,6 @@
 import asyncio
 import datetime
 import logging
-import os
 import platform
 from pathlib import Path
 from typing import Any
@@ -39,6 +38,10 @@ from app.agent.factory import (
     task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
@@ -54,12 +57,9 @@ from app.service.task import (
     set_current_task_id,
 )
 from app.utils.event_loop_utils import set_main_event_loop
-from app.utils.file_utils import get_working_directory
+from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
-from app.utils.toolkit.human_toolkit import HumanToolkit
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
 from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
@@ -91,41 +91,24 @@ def format_task_context(
     # Skip file listing if requested
     if not skip_files:
         working_directory = task_data.get("working_directory")
-        skip_ext = (".pyc", ".tmp")
         if working_directory:
             try:
-                if os.path.exists(working_directory):
-                    generated_files = []
-                    for root, dirs, files in os.walk(working_directory):
-                        dirs[:] = [
-                            d
-                            for d in dirs
-                            if not d.startswith(".")
-                            and d
-                            not in ["node_modules", "__pycache__", "venv"]
-                        ]
-                        for file in files:
-                            if not file.startswith(".") and not file.endswith(
-                                skip_ext
-                            ):
-                                file_path = os.path.join(root, file)
-                                absolute_path = os.path.abspath(file_path)
-
-                                # Only add if not seen before
-                                if (
-                                    seen_files is None
-                                    or absolute_path not in seen_files
-                                ):
-                                    generated_files.append(absolute_path)
-                                    if seen_files is not None:
-                                        seen_files.add(absolute_path)
-
-                    if generated_files:
-                        context_parts.append(
-                            "Generated Files from Previous Task:"
-                        )
-                        for file_path in sorted(generated_files):
-                            context_parts.append(f"  - {file_path}")
+                generated_files = list_files(
+                    working_directory,
+                    base=working_directory,
+                    skip_dirs={"node_modules", "__pycache__", "venv"},
+                    skip_extensions=(".pyc", ".tmp"),
+                    skip_prefix=".",
+                )
+                if seen_files is not None:
+                    generated_files = [
+                        p for p in generated_files if p not in seen_files
+                    ]
+                    seen_files.update(generated_files)
+                if generated_files:
+                    context_parts.append("Generated Files from Previous Task:")
+                    for file_path in sorted(generated_files):
+                        context_parts.append(f"  - {file_path}")
             except Exception as e:
                 logger.warning(f"Failed to collect generated files: {e}")
 
@@ -171,31 +154,20 @@ def collect_previous_task_context(
             f"Previous Task Result:\n{previous_task_result}\n"
         )
 
-    # Collect generated files from working directory
+    # Collect generated files from working directory (safe listing)
     try:
-        if os.path.exists(working_directory):
-            generated_files = []
-            for root, dirs, files in os.walk(working_directory):
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if not d.startswith(".")
-                    and d not in ["node_modules", "__pycache__", "venv"]
-                ]
-                skip_ext = (".pyc", ".tmp")
-                for file in files:
-                    if not file.startswith(".") and not file.endswith(
-                        skip_ext
-                    ):
-                        file_path = os.path.join(root, file)
-                        absolute_path = os.path.abspath(file_path)
-                        generated_files.append(absolute_path)
-
-            if generated_files:
-                context_parts.append("Generated Files from Previous Task:")
-                for file_path in sorted(generated_files):
-                    context_parts.append(f"  - {file_path}")
-                context_parts.append("")
+        generated_files = list_files(
+            working_directory,
+            base=working_directory,
+            skip_dirs={"node_modules", "__pycache__", "venv"},
+            skip_extensions=(".pyc", ".tmp"),
+            skip_prefix=".",
+        )
+        if generated_files:
+            context_parts.append("Generated Files from Previous Task:")
+            for file_path in sorted(generated_files):
+                context_parts.append(f"  - {file_path}")
+            context_parts.append("")
     except Exception as e:
         logger.warning(f"Failed to collect generated files: {e}")
 
@@ -271,30 +243,21 @@ def build_conversation_context(
                 context += f"Assistant: {entry['content']}\n\n"
 
         if working_directories:
-            all_generated_files = set()  # Use set to avoid duplicates
+            all_generated_files: set[str] = set()
             for working_directory in working_directories:
                 try:
-                    if os.path.exists(working_directory):
-                        for root, dirs, files in os.walk(working_directory):
-                            dirs[:] = [
-                                d
-                                for d in dirs
-                                if not d.startswith(".")
-                                and d
-                                not in ["node_modules", "__pycache__", "venv"]
-                            ]
-                            for file in files:
-                                if not file.startswith(
-                                    "."
-                                ) and not file.endswith((".pyc", ".tmp")):
-                                    file_path = os.path.join(root, file)
-                                    absolute_path = os.path.abspath(file_path)
-                                    all_generated_files.add(absolute_path)
+                    files_list = list_files(
+                        working_directory,
+                        base=working_directory,
+                        skip_dirs={"node_modules", "__pycache__", "venv"},
+                        skip_extensions=(".pyc", ".tmp"),
+                        skip_prefix=".",
+                    )
+                    all_generated_files.update(files_list)
                 except Exception as e:
                     logger.warning(
                         "Failed to collect generated "
-                        f"files from {working_directory}"
-                        f": {e}"
+                        f"files from {working_directory}: {e}"
                     )
 
             if all_generated_files:
@@ -308,8 +271,14 @@ def build_conversation_context(
     return context
 
 
-def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
-    """Build context information for workforce."""
+def build_context_for_workforce(
+    task_lock: TaskLock,
+    options: Chat,
+    task_content: str | None = None,
+) -> str:
+    """Build context information for workforce.
+    Instructs coordinator to actively load skills using list_skills/load_skill tools.
+    """
     return build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
@@ -317,6 +286,22 @@ def build_context_for_workforce(task_lock: TaskLock, options: Chat) -> str:
 
 @sync_step
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
+    """Main task execution loop. Called when POST /chat endpoint
+    is hit to start a new chat session.
+
+    Processes task queue, manages workforce lifecycle, and streams
+    responses back to the client via SSE.
+
+    Args:
+        options (Chat): Chat configuration containing task details and
+            model settings.
+        request (Request): FastAPI request object for client connection
+            management.
+        task_lock (TaskLock): Shared task state and queue for the project.
+
+    Yields:
+        SSE formatted responses for task progress, errors, and results
+    """
     start_event_loop = True
 
     # Initialize task_lock attributes
@@ -462,6 +447,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # tracer.start()
                 if start_event_loop is True:
                     question = options.question
+                    attaches_to_use = options.attaches
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
@@ -470,7 +456,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     start_event_loop = False
                 else:
                     assert isinstance(item, ActionImproveData)
-                    question = item.data
+                    question = item.data.question
+                    attaches_to_use = (
+                        item.data.attaches
+                        if item.data.attaches
+                        else options.attaches
+                    )
                     logger.info(
                         "[NEW-QUESTION] Follow-up "
                         "question from "
@@ -508,7 +499,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Determine task complexity: attachments
                 # mean workforce, otherwise let agent decide
                 is_complex_task: bool
-                if len(options.attaches) > 0:
+                if len(attaches_to_use) > 0:
                     is_complex_task = True
                     logger.info(
                         "[NEW-QUESTION] Has attachments"
@@ -655,10 +646,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     camel_task = Task(
                         content=clean_task_content, id=options.task_id
                     )
-                    if len(options.attaches) > 0:
+                    if len(attaches_to_use) > 0:
                         camel_task.additional_info = {
                             Path(file_path).name: file_path
-                            for file_path in options.attaches
+                            for file_path in attaches_to_use
                         }
 
                     # Stream decomposition in background
@@ -1995,7 +1986,7 @@ Is this a complex task? (yes/no):"""
 
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")
-        return True
+        raise
 
 
 async def summary_task(agent: ListenChatAgent, task: Task) -> str:
@@ -2161,7 +2152,13 @@ async def construct_workforce(
                                 working_directory=working_directory,
                             )
                         )
-                    ).get_tools()
+                    ).get_tools(),
+                    *SkillToolkit(
+                        options.project_id,
+                        key,
+                        working_directory=working_directory,
+                        user_id=options.skill_config_user_id(),
+                    ).get_tools(),
                 ],
             )
             for key, prompt in {
@@ -2227,6 +2224,12 @@ the current date.
                             working_directory=working_directory,
                         )
                     )
+                ).get_tools(),
+                *SkillToolkit(
+                    options.project_id,
+                    Agents.new_worker_agent,
+                    working_directory=working_directory,
+                    user_id=options.skill_config_user_id(),
                 ).get_tools(),
             ],
         )

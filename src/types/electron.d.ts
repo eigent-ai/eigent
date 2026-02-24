@@ -36,6 +36,17 @@ interface ElectronAPI {
     fileCount?: number;
     canceled?: boolean;
   }>;
+  processDroppedFiles: (
+    fileData: Array<{ name: string; path?: string }>
+  ) => Promise<{
+    success: boolean;
+    files?: Array<{
+      filePath: string;
+      fileName: string;
+    }>;
+    error?: string;
+  }>;
+  getPathForFile: (file: File) => string;
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;
@@ -129,6 +140,91 @@ interface ElectronAPI {
   }>;
   restartApp: () => Promise<void>;
   readGlobalEnv: (key: string) => Promise<{ value: string | null }>;
+  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  openInIDE: (
+    folderPath: string,
+    ide: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  // Skills (~/.eigent/skills)
+  getSkillsDir: () => Promise<{
+    success: boolean;
+    path?: string;
+    error?: string;
+  }>;
+  skillsScan: () => Promise<{
+    success: boolean;
+    skills?: Array<{
+      name: string;
+      description: string;
+      path: string;
+      scope: string;
+      skillDirName: string;
+    }>;
+    error?: string;
+  }>;
+  skillWrite: (
+    skillDirName: string,
+    content: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillDelete: (
+    skillDirName: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillRead: (
+    filePath: string
+  ) => Promise<{ success: boolean; content?: string; error?: string }>;
+  skillListFiles: (
+    skillDirName: string
+  ) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+  skillImportZip: (
+    zipPathOrBuffer: string | ArrayBuffer,
+    replacements?: string[]
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    conflicts?: Array<{ folderName: string; skillName: string }>;
+  }>;
+  openSkillFolder: (
+    skillName: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillConfigInit: (
+    userId: string
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigLoad: (
+    userId: string
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigToggle: (
+    userId: string,
+    skillName: string,
+    enabled: boolean
+  ) => Promise<{ success: boolean; config?: any; error?: string }>;
+  skillConfigUpdate: (
+    userId: string,
+    skillName: string,
+    skillConfig: any
+  ) => Promise<{ success: boolean; error?: string }>;
+  skillConfigDelete: (
+    userId: string,
+    skillName: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
+  getBrowserPort: () => Promise<number>;
+  getCdpBrowsers: () => Promise<any[]>;
+  addCdpBrowser: (
+    port: number,
+    isExternal: boolean,
+    name?: string
+  ) => Promise<{ success: boolean; browser?: any; error?: string }>;
+  removeCdpBrowser: (
+    browserId: string,
+    closeBrowser?: boolean
+  ) => Promise<{ success: boolean; browser?: any; error?: string }>;
+  onCdpPoolChanged: (callback: (browsers: any[]) => void) => () => void;
+  launchCdpBrowser: () => Promise<{
+    success: boolean;
+    port?: number;
+    data?: any;
+    error?: string;
+  }>;
 }
 
 declare global {

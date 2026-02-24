@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { app } from 'electron';
 import log from 'electron-log';
 import fs from 'fs';
@@ -152,34 +152,302 @@ export function getCachePath(folder: string): string {
 }
 
 /**
+ * Fix pyvenv.cfg by replacing placeholder with actual Python path
+ * This makes prebuilt venvs portable across different machines
+ */
+function fixPyvenvCfgPlaceholder(pyvenvCfgPath: string): boolean {
+  try {
+    let content = fs.readFileSync(pyvenvCfgPath, 'utf-8');
+
+    if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+      const prebuiltPythonDir = getPrebuiltPythonDir();
+      if (!prebuiltPythonDir) {
+        log.warn(
+          '[VENV] Cannot fix pyvenv.cfg: prebuilt Python directory not found'
+        );
+        return false;
+      }
+
+      content = content.replace(
+        /\{\{PREBUILT_PYTHON_DIR\}\}/g,
+        prebuiltPythonDir
+      );
+
+      const homeMatch = content.match(/^home\s*=\s*(.+)$/m);
+      if (homeMatch) {
+        const finalHomePath = homeMatch[1].trim();
+        log.info(`[VENV] pyvenv.cfg home path set to: ${finalHomePath}`);
+
+        // Verify the path exists
+        if (!fs.existsSync(finalHomePath)) {
+          log.warn(
+            `[VENV] WARNING: home path does not exist: ${finalHomePath}`
+          );
+        } else {
+          log.info(`[VENV] home path verified successfully`);
+        }
+      }
+
+      fs.writeFileSync(pyvenvCfgPath, content);
+      log.info(
+        `[VENV] Fixed pyvenv.cfg placeholder with: ${prebuiltPythonDir}`
+      );
+      return true;
+    }
+
+    const homeMatch = content.match(/^home\s*=\s*(.+)$/m);
+    if (homeMatch) {
+      const homePath = homeMatch[1].trim();
+      if (!fs.existsSync(homePath)) {
+        log.warn(`[VENV] pyvenv.cfg home path does not exist: ${homePath}`);
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    log.warn(`[VENV] Failed to fix pyvenv.cfg: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Get the actual Python interpreter path from venv's pyvenv.cfg (home points to Python's bin dir).
+ * Used to fix shebangs when venv is in userData but Python is in app bundle.
+ */
+function getActualPythonPathFromPyvenvCfg(venvPath: string): string | null {
+  const pyvenvCfgPath = path.join(venvPath, 'pyvenv.cfg');
+  if (!fs.existsSync(pyvenvCfgPath)) return null;
+
+  const content = fs.readFileSync(pyvenvCfgPath, 'utf-8');
+  const homeMatch = content.match(/^home\s*=\s*(.+)$/m);
+  if (!homeMatch) return null;
+
+  const home = homeMatch[1].trim();
+  if (!path.isAbsolute(home) || !fs.existsSync(home)) return null;
+
+  // home is Python's bin dir; find python3.X or python3
+  try {
+    const entries = fs.readdirSync(home);
+    const py = entries.find(
+      (e) => e === 'python3' || (e.startsWith('python3.') && !e.endsWith('.py'))
+    );
+    if (py) {
+      const fullPath = path.join(home, py);
+      if (fs.existsSync(fullPath)) return fullPath;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Fix shebang lines in venv scripts by replacing placeholder or broken relative path with actual Python path.
+ * The venv/bin/python script was previously skipped but must be fixed when venv is extracted to userData
+ * (relative paths like ../../uv_python/... break because Python lives in the app bundle).
+ */
+function fixVenvScriptShebangs(venvPath: string): boolean {
+  const isWindows = process.platform === 'win32';
+
+  if (isWindows) {
+    log.info(`[VENV] Skipping shebang fixes on Windows (not needed)`);
+    return true;
+  }
+
+  const binDir = path.join(venvPath, 'bin');
+  if (!fs.existsSync(binDir)) return false;
+
+  const pythonExe = path.join(binDir, 'python');
+  if (!fs.existsSync(pythonExe)) {
+    log.warn(`[VENV] Python executable not found: ${pythonExe}`);
+    return false;
+  }
+
+  const actualPythonPath =
+    getActualPythonPathFromPyvenvCfg(venvPath) ?? findPythonForTerminalVenv();
+
+  try {
+    const entries = fs.readdirSync(binDir);
+    let fixedCount = 0;
+
+    for (const entry of entries) {
+      const filePath = path.join(binDir, entry);
+
+      try {
+        const stat = fs.lstatSync(filePath);
+        if (stat.isDirectory() || stat.isSymbolicLink()) continue;
+        if (
+          entry.endsWith('.exe') ||
+          entry.endsWith('.dll') ||
+          entry.endsWith('.pyd')
+        ) {
+          continue;
+        }
+        // Include python/activate scripts - they were previously skipped but need shebang fix
+        // when venv is in userData with relative paths
+      } catch {
+        continue;
+      }
+
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const firstLine = content.split('\n')[0];
+        if (!firstLine?.startsWith('#!')) continue;
+
+        const shebangPath = firstLine.slice(2).trim();
+        let newContent = content;
+
+        // Replace placeholders
+        if (content.includes('{{PREBUILT_VENV_PYTHON}}')) {
+          newContent = newContent.replace(
+            /\{\{PREBUILT_VENV_PYTHON\}\}/g,
+            actualPythonPath ?? pythonExe
+          );
+        }
+        if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+          const prebuiltPythonDir = getPrebuiltPythonDir();
+          if (prebuiltPythonDir) {
+            newContent = newContent.replace(
+              /\{\{PREBUILT_PYTHON_DIR\}\}/g,
+              prebuiltPythonDir
+            );
+          }
+        }
+
+        if (actualPythonPath && shebangPath && !shebangPath.startsWith('{{')) {
+          const resolved = path.resolve(path.dirname(filePath), shebangPath);
+          if (!fs.existsSync(resolved)) {
+            newContent = newContent.replace(/^#!.*$/m, `#!${actualPythonPath}`);
+          }
+        }
+
+        if (newContent !== content) {
+          fs.writeFileSync(filePath, newContent, 'utf-8');
+          if (process.platform !== 'win32') {
+            fs.chmodSync(filePath, 0o755);
+          }
+          fixedCount++;
+        }
+      } catch {
+        // Silently skip files that can't be processed
+      }
+    }
+
+    if (fixedCount > 0) {
+      log.info(`[VENV] Fixed shebangs in ${fixedCount} script(s)`);
+    }
+    return true;
+  } catch (error) {
+    log.warn(`[VENV] Failed to fix script shebangs: ${error}`);
+    return false;
+  }
+}
+
+const PREBUILT_FIXED_MARKER = '.prebuilt_fixed';
+
+/**
+ * Ensure venv/bin/python exists - create symlink if missing or broken.
+ */
+function ensureVenvPythonSymlink(venvPath: string): boolean {
+  if (process.platform === 'win32') return true;
+
+  const binDir = path.join(venvPath, 'bin');
+  const pythonPath = path.join(binDir, 'python');
+  if (!fs.existsSync(binDir)) return false;
+
+  try {
+    fs.accessSync(pythonPath, fs.constants.X_OK);
+    return true;
+  } catch {
+    // python missing or broken symlink - create/fix below
+    log.info(
+      `[VENV] python not found or broken at ${pythonPath}, creating symlink...`
+    );
+  }
+
+  const actualPython = getActualPythonPathFromPyvenvCfg(venvPath);
+
+  // Find python3.X in venv/bin as fallback (e.g. python3.10)
+  const entries = fs.readdirSync(binDir, { withFileTypes: true });
+  const py3 = entries.find(
+    (e) =>
+      !e.isDirectory() &&
+      (e.name === 'python3' ||
+        (e.name.startsWith('python3.') && !e.name.endsWith('.py')))
+  );
+  const targetInBin = py3 ? path.join(binDir, py3.name) : null;
+
+  try {
+    // Remove existing file/symlink (existsSync is false for broken symlinks, so use lstat)
+    try {
+      fs.lstatSync(pythonPath);
+      fs.unlinkSync(pythonPath);
+    } catch {
+      // ENOENT = path doesn't exist, that's fine
+    }
+
+    // Prefer actual Python from pyvenv.cfg (absolute path to app bundle);
+    // fallback to python3.X in same dir (relative symlink)
+    let target: string | null = null;
+    if (actualPython && fs.existsSync(actualPython)) {
+      target = actualPython;
+    } else if (targetInBin && fs.existsSync(targetInBin)) {
+      // Use relative name for symlink within same directory
+      target = py3!.name;
+    }
+
+    if (!target) {
+      log.warn(`[VENV] No valid Python target found for symlink`);
+      return false;
+    }
+
+    fs.symlinkSync(target, pythonPath);
+    try {
+      fs.chmodSync(pythonPath, 0o755);
+    } catch {}
+    log.info(`[VENV] Created python symlink -> ${target}`);
+    return true;
+  } catch (error) {
+    log.warn(`[VENV] Failed to create python symlink: ${error}`);
+    return false;
+  }
+}
+
+/**
  * Get path to prebuilt venv (if available in packaged app)
+ * All platforms use prebuilt/venv directory.
  */
 export function getPrebuiltVenvPath(): string | null {
   if (!app.isPackaged) {
     return null;
   }
 
-  const prebuiltVenvPath = path.join(process.resourcesPath, 'prebuilt', 'venv');
-  if (fs.existsSync(prebuiltVenvPath)) {
-    const pyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
-    if (fs.existsSync(pyvenvCfg)) {
-      // Verify Python executable exists (Windows: Scripts/python.exe, Unix: bin/python)
-      const isWindows = process.platform === 'win32';
-      const pythonExePath = isWindows
-        ? path.join(prebuiltVenvPath, 'Scripts', 'python.exe')
-        : path.join(prebuiltVenvPath, 'bin', 'python');
+  const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+  const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
+  const pyvenvCfgPath = path.join(prebuiltVenvPath, 'pyvenv.cfg');
+  const fixedMarkerPath = path.join(prebuiltDir, PREBUILT_FIXED_MARKER);
+  const currentVersion = app.getVersion();
 
-      if (fs.existsSync(pythonExePath)) {
-        log.info(`Using prebuilt venv: ${prebuiltVenvPath}`);
-        return prebuiltVenvPath;
-      } else {
-        log.warn(
-          `Prebuilt venv found but Python executable missing at: ${pythonExePath}. ` +
-            `Falling back to user venv.`
-        );
-      }
+  if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(pyvenvCfgPath)) {
+    const needsFix =
+      !fs.existsSync(fixedMarkerPath) ||
+      fs.readFileSync(fixedMarkerPath, 'utf-8').trim() !== currentVersion;
+
+    if (needsFix) {
+      fixPyvenvCfgPlaceholder(pyvenvCfgPath);
+      ensureVenvPythonSymlink(prebuiltVenvPath);
+      fixVenvScriptShebangs(prebuiltVenvPath);
+      fs.writeFileSync(fixedMarkerPath, currentVersion, 'utf-8');
     }
+
+    const pythonExePath = getVenvPythonPath(prebuiltVenvPath);
+    if (fs.existsSync(pythonExePath)) {
+      return prebuiltVenvPath;
+    }
+    log.warn(`[VENV] Prebuilt venv Python missing at: ${pythonExePath}`);
   }
+
   return null;
 }
 
@@ -235,6 +503,236 @@ function findPythonForTerminalVenv(): string | null {
   return null;
 }
 
+const TERMINAL_VENV_VERSION_FILE = '.terminal_venv_version';
+const BACKEND_VENV_VERSION_FILE = '.backend_venv_version';
+
+/**
+ * Copy prebuilt backend venv to ~/.eigent/venvs/backend-{version} for unified management.
+ * The copied venv is the one actually used by the backend (via getVenvPath()).
+ * The source venv (prebuilt/extracted) is kept as-is for re-copying on version changes.
+ *
+ * @param version App version (used for version-specific venv directory)
+ */
+export function ensureBackendVenvAtUserPath(version: string): void {
+  if (!app.isPackaged) return;
+
+  const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+  const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
+  const prebuiltUvPython = path.join(prebuiltDir, 'uv_python');
+
+  if (
+    !fs.existsSync(prebuiltVenvPath) ||
+    !fs.existsSync(path.join(prebuiltVenvPath, 'pyvenv.cfg'))
+  ) {
+    return;
+  }
+
+  const sourceVenvPath = prebuiltVenvPath;
+
+  const userVenvsDir = path.join(os.homedir(), '.eigent', 'venvs');
+  const userBackendVenv = path.join(userVenvsDir, `backend-${version}`);
+  const pyvenvCfgPath = path.join(userBackendVenv, 'pyvenv.cfg');
+  const versionFile = path.join(userVenvsDir, BACKEND_VENV_VERSION_FILE);
+
+  // Ensure uv_python symlink exists (needed even if venv already copied)
+  const userUvPython = path.join(os.homedir(), '.eigent', 'uv_python');
+  if (!fs.existsSync(userUvPython) && fs.existsSync(prebuiltUvPython)) {
+    try {
+      fs.mkdirSync(path.dirname(userUvPython), { recursive: true });
+      fs.symlinkSync(prebuiltUvPython, userUvPython);
+      log.info(`[VENV] Created uv_python symlink: ${userUvPython}`);
+    } catch (e) {
+      log.warn(`[VENV] Failed to create uv_python symlink: ${e}`);
+    }
+  }
+
+  if (fs.existsSync(pyvenvCfgPath)) {
+    const storedVersion = fs.existsSync(versionFile)
+      ? fs.readFileSync(versionFile, 'utf-8').trim()
+      : null;
+    if (storedVersion === version) {
+      log.info(
+        `[VENV] Backend venv already at ${userBackendVenv} (v${version})`
+      );
+      return;
+    }
+  }
+
+  log.info(`[VENV] Copying prebuilt backend venv to ${userBackendVenv}...`);
+
+  try {
+    fs.mkdirSync(userVenvsDir, { recursive: true });
+
+    if (fs.existsSync(userBackendVenv)) {
+      fs.rmSync(userBackendVenv, { recursive: true, force: true });
+    }
+
+    fs.cpSync(sourceVenvPath, userBackendVenv, {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+
+    // Fix paths after copying (source venv paths don't match user venv location)
+    // - pyvenv.cfg: update home path to point to correct Python location
+    // - shebangs: update #! paths in bin/* scripts to point to correct Python
+    // - python symlink: ensure bin/python exists and points to correct Python
+    fixPyvenvCfgPlaceholder(pyvenvCfgPath);
+    fixVenvScriptShebangs(userBackendVenv);
+    ensureVenvPythonSymlink(userBackendVenv);
+
+    if (process.platform === 'darwin') {
+      try {
+        execSync(`xattr -cr "${userBackendVenv}"`, { stdio: 'ignore' });
+      } catch {
+        // ignore
+      }
+    }
+
+    fs.writeFileSync(versionFile, version, 'utf-8');
+    log.info(`[VENV] Backend venv copied successfully`);
+
+    // Sync optional deps from backend/uv.lock into user venv (e.g. yt_dlp if excluded from app bundle).
+    // Runs in background so app startup is not blocked; uses China mirror when timezone is Asia/Shanghai.
+    const uvPath = getPrebuiltBinaryPath('uv');
+    const backendPath = getBackendPath();
+    const uvLockPath = path.join(backendPath, 'uv.lock');
+    if (
+      uvPath &&
+      fs.existsSync(uvLockPath) &&
+      fs.existsSync(path.join(backendPath, 'pyproject.toml'))
+    ) {
+      const prebuiltPython = getPrebuiltPythonDir();
+      const uvEnv = {
+        ...process.env,
+        UV_PROJECT_ENVIRONMENT: userBackendVenv,
+        UV_PYTHON_INSTALL_DIR: prebuiltPython || getCachePath('uv_python'),
+        UV_TOOL_DIR: getCachePath('uv_tool'),
+        UV_HTTP_TIMEOUT: '300',
+      } as NodeJS.ProcessEnv;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const syncArgs =
+        timezone === 'Asia/Shanghai'
+          ? [
+              'sync',
+              '--no-dev',
+              '--default-index',
+              'https://mirrors.aliyun.com/pypi/simple/',
+              '--index',
+              'https://pypi.org/simple/',
+            ]
+          : ['sync', '--no-dev'];
+      log.info(
+        '[VENV] Starting background uv sync to install optional deps (e.g. yt_dlp); app will not wait.'
+      );
+      const child = spawn(uvPath, syncArgs, {
+        cwd: backendPath,
+        env: uvEnv,
+        stdio: 'ignore',
+        detached: true,
+      });
+      child.unref();
+      child.on('error', (err) => {
+        log.warn(`[VENV] Background uv sync error: ${err.message}`);
+      });
+      child.on('exit', (code) => {
+        if (code === 0) {
+          log.info('[VENV] Background uv sync completed');
+        } else {
+          log.warn(
+            `[VENV] Background uv sync exited with code ${code} (optional deps may be missing)`
+          );
+        }
+      });
+    }
+  } catch (error) {
+    log.error(`[VENV] Failed to copy backend venv: ${error}`);
+  }
+}
+
+/**
+ * Copy prebuilt terminal venv to ~/.eigent/venvs/terminal_base-{version}.
+ * @param version App version (used for version-specific venv directory)
+ */
+export function ensureTerminalVenvAtUserPath(version: string): void {
+  if (!app.isPackaged) return;
+
+  const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+  const prebuiltTerminalVenv = path.join(prebuiltDir, 'terminal_venv');
+  const prebuiltUvPython = path.join(prebuiltDir, 'uv_python');
+
+  if (!fs.existsSync(prebuiltTerminalVenv)) return;
+  const installedMarker = path.join(
+    prebuiltTerminalVenv,
+    '.packages_installed'
+  );
+  if (!fs.existsSync(installedMarker)) return;
+
+  const userVenvsDir = path.join(os.homedir(), '.eigent', 'venvs');
+  const userTerminalVenv = path.join(userVenvsDir, `terminal_base-${version}`);
+  const userVenvMarker = path.join(userTerminalVenv, '.packages_installed');
+  const versionFile = path.join(userVenvsDir, TERMINAL_VENV_VERSION_FILE);
+
+  // Ensure uv_python symlink exists (needed even if venv already copied)
+  const userUvPython = path.join(os.homedir(), '.eigent', 'uv_python');
+  if (!fs.existsSync(userUvPython) && fs.existsSync(prebuiltUvPython)) {
+    try {
+      fs.mkdirSync(path.dirname(userUvPython), { recursive: true });
+      fs.symlinkSync(prebuiltUvPython, userUvPython);
+      log.info(`[VENV] Created uv_python symlink: ${userUvPython}`);
+    } catch (e) {
+      log.warn(`[VENV] Failed to create uv_python symlink: ${e}`);
+    }
+  }
+
+  if (fs.existsSync(userVenvMarker)) {
+    const storedVersion = fs.existsSync(versionFile)
+      ? fs.readFileSync(versionFile, 'utf-8').trim()
+      : null;
+    if (storedVersion === version) {
+      log.info(
+        `[VENV] Terminal venv already at ${userTerminalVenv} (v${version})`
+      );
+      return;
+    }
+  }
+
+  log.info(`[VENV] Copying prebuilt terminal venv to ${userTerminalVenv}...`);
+
+  try {
+    fs.mkdirSync(userVenvsDir, { recursive: true });
+
+    if (fs.existsSync(userTerminalVenv)) {
+      fs.rmSync(userTerminalVenv, { recursive: true, force: true });
+    }
+
+    fs.cpSync(prebuiltTerminalVenv, userTerminalVenv, {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+
+    // Fix paths after copying (source venv paths don't match user venv location)
+    // - pyvenv.cfg: update home path to point to correct Python location
+    // - shebangs: update #! paths in bin/* scripts to point to correct Python
+    // - python symlink: ensure bin/python exists and points to correct Python
+    fixPyvenvCfgPlaceholder(path.join(userTerminalVenv, 'pyvenv.cfg'));
+    fixVenvScriptShebangs(userTerminalVenv);
+    ensureVenvPythonSymlink(userTerminalVenv);
+
+    if (process.platform === 'darwin') {
+      try {
+        execSync(`xattr -cr "${userTerminalVenv}"`, { stdio: 'ignore' });
+      } catch {
+        // ignore
+      }
+    }
+
+    fs.writeFileSync(versionFile, version, 'utf-8');
+    log.info(`[VENV] Terminal venv copied successfully`);
+  } catch (error) {
+    log.error(`[VENV] Failed to copy terminal venv: ${error}`);
+  }
+}
+
 /**
  * Get path to prebuilt terminal venv (if available in packaged app)
  */
@@ -248,69 +746,154 @@ export function getPrebuiltTerminalVenvPath(): string | null {
     'prebuilt',
     'terminal_venv'
   );
-  if (fs.existsSync(prebuiltTerminalVenvPath)) {
-    const pyvenvCfg = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
-    const installedMarker = path.join(
-      prebuiltTerminalVenvPath,
-      '.packages_installed'
-    );
-    if (fs.existsSync(pyvenvCfg) && fs.existsSync(installedMarker)) {
-      const isWindows = process.platform === 'win32';
-      const pythonExePath = isWindows
-        ? path.join(prebuiltTerminalVenvPath, 'Scripts', 'python.exe')
-        : path.join(prebuiltTerminalVenvPath, 'bin', 'python');
+  if (!fs.existsSync(prebuiltTerminalVenvPath)) {
+    return null;
+  }
+
+  const pyvenvCfgPath = path.join(prebuiltTerminalVenvPath, 'pyvenv.cfg');
+  const installedMarker = path.join(
+    prebuiltTerminalVenvPath,
+    '.packages_installed'
+  );
+  if (!fs.existsSync(pyvenvCfgPath) || !fs.existsSync(installedMarker)) {
+    return null;
+  }
+
+  // Check if already fixed for this version (avoid repeated fixes)
+  const fixedMarkerPath = path.join(
+    process.resourcesPath,
+    'prebuilt',
+    '.terminal_venv_fixed'
+  );
+  const currentVersion = app.getVersion();
+  const needsFix =
+    !fs.existsSync(fixedMarkerPath) ||
+    fs.readFileSync(fixedMarkerPath, 'utf-8').trim() !== currentVersion;
+
+  if (needsFix) {
+    fixPyvenvCfgPlaceholder(pyvenvCfgPath);
+    ensureVenvPythonSymlink(prebuiltTerminalVenvPath);
+    fixVenvScriptShebangs(prebuiltTerminalVenvPath);
+    fs.writeFileSync(fixedMarkerPath, currentVersion, 'utf-8');
+  }
+
+  const pythonExePath = getVenvPythonPath(prebuiltTerminalVenvPath);
+
+  if (fs.existsSync(pythonExePath)) {
+    return prebuiltTerminalVenvPath;
+  }
+
+  // Try to fix the missing Python executable by creating a symlink to prebuilt Python
+  const prebuiltPython = findPythonForTerminalVenv();
+  if (prebuiltPython && fs.existsSync(prebuiltPython)) {
+    try {
+      const binDir = path.join(
+        prebuiltTerminalVenvPath,
+        process.platform === 'win32' ? 'Scripts' : 'bin'
+      );
+
+      if (!fs.existsSync(binDir)) {
+        fs.mkdirSync(binDir, { recursive: true });
+      }
 
       if (fs.existsSync(pythonExePath)) {
-        log.info(`Using prebuilt terminal venv: ${prebuiltTerminalVenvPath}`);
-        return prebuiltTerminalVenvPath;
-      } else {
-        // Try to fix the missing Python executable by creating a symlink to prebuilt Python
-        log.warn(
-          `Prebuilt terminal venv found but Python executable missing at: ${pythonExePath}. ` +
-            `Attempting to fix...`
-        );
-
-        const prebuiltPython = findPythonForTerminalVenv();
-        if (prebuiltPython && fs.existsSync(prebuiltPython)) {
-          try {
-            const binDir = isWindows
-              ? path.join(prebuiltTerminalVenvPath, 'Scripts')
-              : path.join(prebuiltTerminalVenvPath, 'bin');
-
-            // Ensure bin directory exists
-            if (!fs.existsSync(binDir)) {
-              fs.mkdirSync(binDir, { recursive: true });
-            }
-
-            // Create symlink to prebuilt Python
-            if (fs.existsSync(pythonExePath)) {
-              // Remove existing broken symlink or file
-              fs.unlinkSync(pythonExePath);
-            }
-
-            // Calculate relative path for symlink
-            const relativePath = path.relative(binDir, prebuiltPython);
-            fs.symlinkSync(relativePath, pythonExePath);
-
-            log.info(
-              `Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`
-            );
-            return prebuiltTerminalVenvPath;
-          } catch (error) {
-            log.warn(`Failed to fix terminal venv Python symlink: ${error}`);
-          }
-        }
-
-        log.warn(`Falling back to user terminal venv.`);
+        fs.unlinkSync(pythonExePath);
       }
+
+      const relativePath = path.relative(binDir, prebuiltPython);
+      fs.symlinkSync(relativePath, pythonExePath);
+      log.info(
+        `[VENV] Fixed terminal venv Python symlink: ${pythonExePath} -> ${prebuiltPython}`
+      );
+      return prebuiltTerminalVenvPath;
+    } catch (error) {
+      log.warn(`[VENV] Failed to fix terminal venv Python symlink: ${error}`);
     }
   }
+
+  log.warn(
+    `[VENV] Prebuilt terminal venv Python missing, falling back to user venv`
+  );
   return null;
 }
 
+/**
+ * Get the Python executable path from a venv directory.
+ * Use this to directly invoke venv's python, avoiding uv/launcher placeholder issues.
+ */
+export function getVenvPythonPath(venvPath: string): string {
+  const isWindows = process.platform === 'win32';
+  return isWindows
+    ? path.join(venvPath, 'Scripts', 'python.exe')
+    : path.join(venvPath, 'bin', 'python');
+}
+
+/**
+ * Check venv existence for pre-check WITHOUT triggering extraction.
+ * Used to avoid blocking app launch - extraction is deferred to startBackend when window is already visible.
+ */
+export function checkVenvExistsForPreCheck(version: string): {
+  exists: boolean;
+  path: string;
+} {
+  if (!app.isPackaged) {
+    const venvDir = path.join(
+      os.homedir(),
+      '.eigent',
+      'venvs',
+      `backend-${version}`
+    );
+    const pyvenvCfg = path.join(venvDir, 'pyvenv.cfg');
+    return {
+      exists: fs.existsSync(pyvenvCfg),
+      path: venvDir,
+    };
+  }
+
+  const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
+  const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
+  const prebuiltPyvenvCfg = path.join(prebuiltVenvPath, 'pyvenv.cfg');
+
+  if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(prebuiltPyvenvCfg)) {
+    return { exists: true, path: prebuiltVenvPath };
+  }
+
+  const venvDir = path.join(
+    os.homedir(),
+    '.eigent',
+    'venvs',
+    `backend-${version}`
+  );
+  const pyvenvCfg = path.join(venvDir, 'pyvenv.cfg');
+  return {
+    exists: fs.existsSync(pyvenvCfg),
+    path: venvDir,
+  };
+}
+
+/**
+ * Get path to backend venv for the given version.
+ * @param version App version
+ * @returns Path to backend venv
+ */
 export function getVenvPath(version: string): string {
-  // First check for prebuilt venv in packaged app
+  // For packaged apps, ensure venv is copied to ~/.eigent/venvs first
   if (app.isPackaged) {
+    ensureBackendVenvAtUserPath(version);
+
+    // Check if user venv exists (after ensuring copy)
+    const userVenvDir = path.join(
+      os.homedir(),
+      '.eigent',
+      'venvs',
+      `backend-${version}`
+    );
+    const pyvenvCfgPath = path.join(userVenvDir, 'pyvenv.cfg');
+    if (fs.existsSync(pyvenvCfgPath)) {
+      return userVenvDir;
+    }
+
+    // Fallback to prebuilt venv if copy failed (shouldn't happen normally)
     const prebuiltVenv = getPrebuiltVenvPath();
     if (prebuiltVenv) {
       return prebuiltVenv;
@@ -333,6 +916,138 @@ export function getVenvPath(version: string): string {
   return venvDir;
 }
 
+/**
+ * Create npm/npx wrapper scripts that use nodejs_wheel Python API.
+ * The bin/npm from nodejs_wheel can fail with "Cannot find module '../lib/cli.js'"
+ * when invoked directly. Using the Python API avoids this.
+ */
+export function ensureNpmWrappersForBrowserToolkit(
+  venvPath: string
+): string | null {
+  const pythonPath = getVenvPythonPath(venvPath);
+  if (!fs.existsSync(pythonPath)) return null;
+
+  const eigentBinDir = path.join(os.homedir(), '.eigent', 'bin');
+  fs.mkdirSync(eigentBinDir, { recursive: true });
+
+  const wrapperVersion = '1';
+  const versionFile = path.join(eigentBinDir, '.npm_wrapper_version');
+  const storedVersion = fs.existsSync(versionFile)
+    ? fs.readFileSync(versionFile, 'utf-8').trim()
+    : '';
+
+  const npmWrapper = path.join(
+    eigentBinDir,
+    process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  );
+  const npxWrapper = path.join(
+    eigentBinDir,
+    process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  );
+
+  const needsUpdate =
+    storedVersion !== wrapperVersion ||
+    !fs.existsSync(npmWrapper) ||
+    !fs.existsSync(npxWrapper);
+
+  if (needsUpdate) {
+    try {
+      if (process.platform === 'win32') {
+        const npmContent = `@echo off
+"${pythonPath.replace(/\//g, '\\')}" -c "import sys; from nodejs_wheel import npm; sys.exit(npm(sys.argv[1:]))" %*
+`;
+        const npxContent = `@echo off
+"${pythonPath.replace(/\//g, '\\')}" -c "import sys; from nodejs_wheel import npx; sys.exit(npx(sys.argv[1:]))" %*
+`;
+        fs.writeFileSync(npmWrapper, npmContent, 'utf-8');
+        fs.writeFileSync(npxWrapper, npxContent, 'utf-8');
+      } else {
+        const shebang = `#!${pythonPath}\n`;
+        const npmContent =
+          shebang +
+          `import sys
+from nodejs_wheel import npm
+sys.exit(npm(sys.argv[1:]))
+`;
+        const npxContent =
+          shebang +
+          `import sys
+from nodejs_wheel import npx
+sys.exit(npx(sys.argv[1:]))
+`;
+        fs.writeFileSync(npmWrapper, npmContent, 'utf-8');
+        fs.writeFileSync(npxWrapper, npxContent, 'utf-8');
+        fs.chmodSync(npmWrapper, 0o755);
+        fs.chmodSync(npxWrapper, 0o755);
+      }
+      fs.writeFileSync(versionFile, wrapperVersion, 'utf-8');
+      log.info(`[VENV] Created npm/npx wrappers at ${eigentBinDir}`);
+    } catch (error) {
+      log.warn(`[VENV] Failed to create npm wrappers: ${error}`);
+      return null;
+    }
+  }
+
+  return eigentBinDir;
+}
+
+/**
+ * Find nodejs-wheel npm path in venv for browser toolkit.
+ * Prefer Python API wrappers over direct bin (which can fail with cli.js error).
+ */
+export function findNodejsWheelNpmPath(venvPath: string): string | null {
+  // Prefer wrapper scripts that use Python API (avoids bin/npm "../lib/cli.js" error)
+  const wrapperDir = ensureNpmWrappersForBrowserToolkit(venvPath);
+  if (wrapperDir) {
+    const npmWrapper = path.join(
+      wrapperDir,
+      process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    );
+    const npxWrapper = path.join(
+      wrapperDir,
+      process.platform === 'win32' ? 'npx.cmd' : 'npx'
+    );
+    if (fs.existsSync(npmWrapper) && fs.existsSync(npxWrapper)) {
+      return wrapperDir;
+    }
+  }
+
+  // Fallback to nodejs_wheel/bin (may fail with cli.js error)
+  return findNodejsWheelBinPath(venvPath);
+}
+
+/**
+ * Find nodejs_wheel/bin directory for the node executable.
+ * Browser toolkit needs node in PATH (npm/npx use our wrappers from ~/.eigent/bin).
+ */
+export function findNodejsWheelBinPath(venvPath: string): string | null {
+  try {
+    const libPath = path.join(venvPath, 'lib');
+    if (!fs.existsSync(libPath)) return null;
+
+    const pythonDirs = fs
+      .readdirSync(libPath)
+      .filter((n) => n.startsWith('python'));
+    if (pythonDirs.length === 0) return null;
+
+    for (const pythonDir of pythonDirs) {
+      const sitePackages = path.join(libPath, pythonDir, 'site-packages');
+      const nodejsWheelBin = path.join(sitePackages, 'nodejs_wheel', 'bin');
+      const nodePath = path.join(
+        nodejsWheelBin,
+        process.platform === 'win32' ? 'node.exe' : 'node'
+      );
+
+      if (fs.existsSync(nodePath)) {
+        return nodejsWheelBin;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export function getVenvsBaseDir(): string {
   return path.join(os.homedir(), '.eigent', 'venvs');
 }
@@ -350,6 +1065,7 @@ export const TERMINAL_BASE_PACKAGES = [
   'openpyxl',
   'beautifulsoup4',
   'pillow',
+  'plotly',
 ];
 
 /**
@@ -446,7 +1162,7 @@ export function getPrebuiltPythonDir(): string | null {
     'uv_python'
   );
   if (fs.existsSync(prebuiltPythonDir)) {
-    log.info(`Using prebuilt Python: ${prebuiltPythonDir}`);
+    log.info(`[VENV] Using prebuilt Python: ${prebuiltPythonDir}`);
     return prebuiltPythonDir;
   }
 

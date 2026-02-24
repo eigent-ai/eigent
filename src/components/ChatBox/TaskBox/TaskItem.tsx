@@ -25,6 +25,7 @@ interface TaskItemProps {
   };
   taskIndex: number;
   onUpdate: (content: string) => void;
+  onSave: () => void;
   onDelete: () => void;
 }
 
@@ -32,6 +33,7 @@ export function TaskItem({
   taskInfo,
   taskIndex,
   onUpdate,
+  onSave,
   onDelete,
 }: TaskItemProps) {
   const { t } = useTranslation();
@@ -62,33 +64,34 @@ export function TaskItem({
   }, [taskInfo.content]);
 
   return (
-    <div key={`task-item-${taskIndex}`}>
+    <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group relative flex min-h-2 items-start rounded-lg border border-solid border-transparent p-sm hover:bg-task-fill-hover ${
-          isFocus ? 'border-task-border-focus-default bg-task-fill-default' : ''
+        className={`group relative flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-sm hover:bg-task-fill-hover ${
+          isFocus
+            ? 'border-task-border-focus-default bg-task-fill-default'
+            : 'border-task-border-default group-hover:border-transparent'
         }`}
       >
-        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-1">
+        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-0.5">
           {taskInfo.id === '' ? (
             <CircleDashed size={13} className="text-icon-secondary" />
           ) : (
             <div className="h-2 w-2 rounded-full bg-icon-information"></div>
           )}
         </div>
-        <div
-          className={`relative flex min-h-4 w-full items-start border-[0px] border-b border-solid border-task-border-default pb-2 transition-all duration-300 group-hover:border-transparent`}
-        >
+        <div className="relative flex min-h-4 min-w-0 flex-1 items-center self-stretch overflow-hidden py-0.5 transition-all duration-300">
           <Textarea
             ref={textareaRef}
             placeholder={t('layout.add-new-task')}
             className={`${
               isFocus && 'w-[calc(100%-52px)]'
-            } min-h-2 resize-none overflow-hidden rounded-none border-none bg-transparent p-0 text-xs leading-[20px] shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
+            } min-h-2 min-w-0 resize-none overflow-hidden break-words rounded-none border-none bg-transparent p-0 text-xs leading-[20px] shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
             value={taskInfo.content}
             onChange={(e) => onUpdate(e.target.value)}
             onBlur={() => {
               setTimeout(() => {
+                onSave();
                 setIsFocus(false);
               }, 100);
             }}
@@ -114,7 +117,10 @@ export function TaskItem({
             </Button>
           ) : (
             <Button
-              onClick={(e) => handleFocus(e, false)}
+              onClick={(e) => {
+                onSave();
+                handleFocus(e, false);
+              }}
               className="rounded-full"
               variant="success"
               size="icon"

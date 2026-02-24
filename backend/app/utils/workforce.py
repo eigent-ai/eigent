@@ -57,6 +57,8 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 
 logger = logging.getLogger("workforce")
 
+_ANALYZE_TASK_MAX_RETRIES = 3
+
 
 class Workforce(BaseWorkforce):
     def __init__(
@@ -110,56 +112,64 @@ class Workforce(BaseWorkforce):
         for_failure: bool,
         error_message: str | None = None,
     ) -> TaskAnalysisResult:
-        """Override to add debugging for None return issue.
+        """Override to retry when the base class returns None.
 
-        The base class should never return None, but we're seeing it happen.
-        This override adds logging to help diagnose the root cause.
+        The base class can return None when the LLM fails to produce
+        valid structured output. We retry up to _ANALYZE_TASK_MAX_RETRIES
+        times before falling back.
         """
-        logger.debug(
-            f"[WF-DEBUG] _analyze_task called: task_id={task.id}, "
-            f"for_failure={for_failure}, "
-            f"use_structured_output_handler={self.use_structured_output_handler}"
+        last_exception: Exception | None = None
+
+        for attempt in range(1, _ANALYZE_TASK_MAX_RETRIES + 1):
+            try:
+                result = super()._analyze_task(
+                    task,
+                    for_failure=for_failure,
+                    error_message=error_message,
+                )
+
+                if result is not None:
+                    return result
+
+                logger.warning(
+                    f"[WF-RETRY] _analyze_task returned None "
+                    f"(attempt {attempt}/{_ANALYZE_TASK_MAX_RETRIES}), "
+                    f"task_id={task.id}, for_failure={for_failure}"
+                )
+
+            except Exception as e:
+                last_exception = e
+                logger.warning(
+                    f"[WF-RETRY] _analyze_task raised "
+                    f"{type(e).__name__}: {e} "
+                    f"(attempt {attempt}/{_ANALYZE_TASK_MAX_RETRIES}), "
+                    f"task_id={task.id}, for_failure={for_failure}"
+                )
+
+        # All retries exhausted
+        logger.error(
+            f"[WF-BUG] _analyze_task failed after "
+            f"{_ANALYZE_TASK_MAX_RETRIES} retries, "
+            f"task_id={task.id}, for_failure={for_failure}"
         )
 
-        try:
-            result = super()._analyze_task(
-                task, for_failure=for_failure, error_message=error_message
-            )
+        if for_failure:
+            # Task already failed + analysis failed — raise to halt
+            raise RuntimeError(
+                f"_analyze_task returned None after "
+                f"{_ANALYZE_TASK_MAX_RETRIES} retries for "
+                f"failed task {task.id}"
+            ) from last_exception
 
-            logger.debug(
-                f"[WF-DEBUG] _analyze_task result: type={type(result)}, "
-                f"value={result}"
-            )
-
-            if result is None:
-                # This should never happen - log detailed info
-                logger.error(
-                    f"[WF-BUG] _analyze_task returned None unexpectedly! "
-                    f"task_id={task.id}, for_failure={for_failure}, "
-                    f"use_structured_output_handler="
-                    f"{self.use_structured_output_handler}"
-                )
-                # Return fallback to prevent crash
-                if for_failure:
-                    return TaskAnalysisResult(
-                        reasoning="BUG: _analyze_task returned None",
-                        recovery_strategy="retry",
-                        issues=[error_message] if error_message else [],
-                    )
-                else:
-                    return TaskAnalysisResult(
-                        reasoning="BUG: _analyze_task returned None",
-                        quality_score=80,
-                    )
-
-            return result
-
-        except Exception as e:
-            logger.error(
-                f"[WF-DEBUG] _analyze_task exception: {type(e).__name__}: {e}",
-                exc_info=True,
-            )
-            raise
+        # Quality evaluation failed — accept the task result as-is
+        return TaskAnalysisResult(
+            reasoning=(
+                f"_analyze_task returned None after "
+                f"{_ANALYZE_TASK_MAX_RETRIES} retries, "
+                f"accepting task result"
+            ),
+            quality_score=80,
+        )
 
     def eigent_make_sub_tasks(
         self,
@@ -809,14 +819,17 @@ class Workforce(BaseWorkforce):
 
         if metrics_callbacks:
             error_msg = error_message or str(task.result or "Unknown error")
+            # Pass all values during construction since TaskFailedEvent is frozen
+            worker_id = (
+                task.assigned_worker_id
+                if hasattr(task, "assigned_worker_id")
+                else None
+            )
             event = TaskFailedEvent(
                 task_id=task.id,
                 error_message=error_msg,
+                worker_id=worker_id,
             )
-            # Add failure details if available
-            if hasattr(task, "assigned_worker_id"):
-                event.worker_id = task.assigned_worker_id
-            event.failure_count = task.failure_count
             metrics_callbacks[0].log_task_failed(event)
 
         return result
@@ -909,10 +922,118 @@ class Workforce(BaseWorkforce):
             f"{self._state.name}, _running: {self._running}"
         )
         logger.info("=" * 80)
+        self._cleanup_all_agents()
         super().stop_gracefully()
         logger.info(
             f"[WF-LIFECYCLE] ✅ super().stop_gracefully() completed, "
             f"new state: {self._state.name}, _running: {self._running}"
+        )
+
+    def _cleanup_all_agents(self) -> None:
+        """Release CDP browser resources for all agents."""
+        cleanup_count = 0
+        children_count = (
+            len(self._children) if hasattr(self, "_children") else 0
+        )
+        logger.info(
+            f"[WF-CLEANUP] Starting cleanup, "
+            f"children={children_count}, api_task_id={self.api_task_id}"
+        )
+
+        if hasattr(self, "_children") and self._children:
+            for child in self._children:
+                # Cleanup base worker agent
+                if hasattr(child, "worker"):
+                    agent = child.worker
+                    has_cb = hasattr(agent, "_cdp_release_callback")
+                    port = getattr(agent, "_cdp_port", None)
+                    logger.info(
+                        f"[WF-CLEANUP] Child worker: "
+                        f"agent_id={getattr(agent, 'agent_id', '?')}, "
+                        f"has_release_cb={has_cb}, cdp_port={port}"
+                    )
+                    cb = getattr(agent, "_cdp_release_callback", None)
+                    if callable(cb):
+                        try:
+                            cb(agent)
+                            cleanup_count += 1
+                            logger.info(
+                                f"[WF-CLEANUP] Released CDP via callback: "
+                                f"port={port}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"[WF-CLEANUP] Error releasing CDP for "
+                                f"agent: {e}"
+                            )
+
+                # Cleanup agents in AgentPool
+                if hasattr(child, "agent_pool") and child.agent_pool:
+                    pool = child.agent_pool
+                    available = list(getattr(pool, "_available_agents", []))
+                    logger.info(
+                        f"[WF-CLEANUP] AgentPool available_agents={len(available)}"
+                    )
+                    for agent in available:
+                        cb = getattr(agent, "_cdp_release_callback", None)
+                        if callable(cb):
+                            try:
+                                cb(agent)
+                                cleanup_count += 1
+                            except Exception as e:
+                                logger.error(
+                                    f"[WF-CLEANUP] Error releasing CDP for "
+                                    f"pooled agent: {e}"
+                                )
+
+        # Force-clear all occupied ports as a safety net
+        try:
+            from app.agent.factory.browser import _cdp_pool_manager
+
+            task_ids: set[str] = set()
+            # Use workforce's own api_task_id as the primary source
+            if self.api_task_id:
+                task_ids.add(self.api_task_id)
+            # Also collect from child agents
+            if hasattr(self, "_children") and self._children:
+                for child in self._children:
+                    if hasattr(child, "worker"):
+                        tid = getattr(child.worker, "_cdp_task_id", None)
+                        if tid is not None:
+                            task_ids.add(tid)
+                    if hasattr(child, "agent_pool") and child.agent_pool:
+                        for agent in list(child.agent_pool._available_agents):
+                            tid = getattr(agent, "_cdp_task_id", None)
+                            if tid is not None:
+                                task_ids.add(tid)
+            if hasattr(self, "coordinator_agent") and self.coordinator_agent:
+                tid = getattr(self.coordinator_agent, "_cdp_task_id", None)
+                if tid is not None:
+                    task_ids.add(tid)
+
+            if not task_ids:
+                logger.debug(
+                    "[WF-CLEANUP] No task_id found for CDP release; skipping pool cleanup"
+                )
+            else:
+                logger.info(
+                    f"[WF-CLEANUP] Force releasing CDP resources for task_ids: {sorted(task_ids)}"
+                )
+            released_ports = []
+            for task_id in task_ids:
+                released_ports.extend(
+                    _cdp_pool_manager.release_by_task(task_id)
+                )
+
+            logger.info(
+                f"[WF-CLEANUP] Released {len(released_ports)} CDP browser(s), remaining: {_cdp_pool_manager.get_occupied_ports()}"
+            )
+        except Exception as e:
+            logger.error(f"[WF-CLEANUP] Error clearing CDP pool: {e}")
+
+        logger.info(
+            f"[WF-CLEANUP] Cleanup completed, "
+            f"{cleanup_count} agent(s) released"
         )
 
     def skip_gracefully(self) -> None:

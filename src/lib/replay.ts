@@ -17,8 +17,42 @@ import { ProjectStore } from '@/store/projectStore';
 import { NavigateFunction } from 'react-router-dom';
 
 /**
+ * Load project from history with final state (no animation).
+ * Waits for loading to complete before navigating.
+ * Use when entering a project - shows final state immediately.
+ *
+ * @param projectStore - The project store instance
+ * @param navigate - The navigate function from useNavigate hook
+ * @param projectId - The project ID to load
+ * @param question - The question/content for the task
+ * @param historyId - The history ID
+ * @param taskIdsList - Optional list of task IDs (defaults to [projectId])
+ * @param projectName - Optional project display name
+ */
+export const loadProjectFromHistory = async (
+  projectStore: ProjectStore,
+  navigate: NavigateFunction,
+  projectId: string,
+  question: string,
+  historyId: string,
+  taskIdsList?: string[],
+  projectName?: string
+) => {
+  const taskIds = taskIdsList || [projectId];
+  await projectStore.loadProjectFromHistory(
+    taskIds,
+    question,
+    projectId,
+    historyId,
+    projectName
+  );
+  navigate({ pathname: '/' });
+};
+
+/**
  * Reusable replay function that can be used across different components
  * This function replays a project using projectStore.replayProject
+ * Use when user explicitly clicks Replay button - shows animation.
  *
  * @param projectStore - The project store instance
  * @param navigate - The navigate function from useNavigate hook

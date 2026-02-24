@@ -45,6 +45,7 @@ from app.service.task import (
     ActionSkipTaskData,
     ActionStopData,
     ActionSupplementData,
+    ImprovePayload,
     delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
@@ -224,7 +225,13 @@ async def post(data: Chat, request: Request):
 
     # Put initial action in queue to start processing
     await task_lock.put_queue(
-        ActionImproveData(data=data.question, new_task_id=data.task_id)
+        ActionImproveData(
+            data=ImprovePayload(
+                question=data.question,
+                attaches=data.attaches or [],
+            ),
+            new_task_id=data.task_id,
+        )
     )
 
     chat_logger.info(
@@ -331,7 +338,13 @@ def improve(id: str, data: SupplementChat):
 
     asyncio.run(
         task_lock.put_queue(
-            ActionImproveData(data=data.question, new_task_id=data.task_id)
+            ActionImproveData(
+                data=ImprovePayload(
+                    question=data.question,
+                    attaches=data.attaches or [],
+                ),
+                new_task_id=data.task_id,
+            )
         )
     )
     chat_logger.info(

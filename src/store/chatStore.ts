@@ -55,7 +55,7 @@ interface Task {
   askList: Message[];
   progressValue: number;
   isPending: boolean;
-  activeWorkSpace: string | null;
+  activeWorkspace: string | null;
   hasMessages: boolean;
   activeAgent: string;
   status: ChatTaskStatusType;
@@ -140,12 +140,13 @@ export interface ChatStore {
     processTaskId: string,
     fileList: FileInfo[]
   ) => void;
-  setActiveWorkSpace: (taskId: string, activeWorkSpace: string) => void;
+  setActiveWorkspace: (taskId: string, activeWorkspace: string) => void;
   setActiveAgent: (taskId: string, agentName: string) => void;
   setHasMessages: (taskId: string, hasMessages: boolean) => void;
   getLastUserMessage: () => Message | null;
   addTaskInfo: () => void;
   updateTaskInfo: (index: number, content: string) => void;
+  saveTaskInfo: () => void;
   deleteTaskInfo: (index: number) => void;
   setTaskTime: (taskId: string, taskTime: number) => void;
   setElapsed: (taskId: string, taskTime: number) => void;
@@ -189,6 +190,17 @@ const normalizeToolkitMessage = (value: unknown) => {
   } catch {
     return String(value);
   }
+};
+
+/** Persist subtask edits to backend via PUT /task/{project_id}. */
+const persistSubtaskEdits = (taskInfo: TaskInfo[]) => {
+  const projectId = useProjectStore.getState().activeProjectId;
+  if (!projectId) return;
+
+  const nonEmpty = taskInfo.filter((t) => t.content !== '');
+  fetchPut(`/task/${projectId}`, { task: nonEmpty }).catch((err) =>
+    console.error('Failed to persist subtask edits:', err)
+  );
 };
 
 const resolveProcessTaskIdForToolkitEvent = (
@@ -253,7 +265,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             askList: [],
             progressValue: 0,
             isPending: false,
-            activeWorkSpace: 'workflow',
+            activeWorkspace: 'workflow',
             hasMessages: false,
             activeAgent: '',
             status: ChatTaskStatus.PENDING,
@@ -546,7 +558,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: cloud_model_type.includes('gpt')
             ? 'openai'
             : cloud_model_type.includes('claude')
-              ? 'anthropic'
+              ? 'aws-bedrock'
               : cloud_model_type.includes('gemini')
                 ? 'gemini'
                 : 'openai-compatible-model',
@@ -554,12 +566,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           extra_params: {},
         };
       }
-
-      let mcpLocal = {};
-      if (window.ipcRenderer) {
-        mcpLocal = await window.ipcRenderer.invoke('mcp-list');
-      }
-      console.log('mcpLocal', mcpLocal);
 
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
@@ -645,6 +651,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
       }
       const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
@@ -687,7 +694,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      fetchEventSource(api, {
+      const ssePromise = fetchEventSource(api, {
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
         signal: abortController.signal, // Add abort signal for proper cleanup
@@ -722,6 +729,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               summary_prompt: ``,
               new_agents: [...addWorkers],
               browser_port: browser_port,
+              cdp_browsers: cdp_browsers,
               env_path: envPath,
               search_config: searchConfig,
             })
@@ -845,17 +853,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   );
                 }
 
+                const attachesForNewMessage =
+                  lastMessage?.role === 'user' && lastMessage?.attaches?.length
+                    ? lastMessage.attaches
+                    : [
+                        ...(previousChatStore.tasks[currentTaskId]?.attaches ||
+                          []),
+                        ...(messageAttaches || []),
+                      ];
+
                 //Trick: by the time the question is retrieved from event,
                 //the last message from previous chatStore is at display
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',
                   content: question || (messageContent as string),
-                  //TODO: The attaches that reach here (when Improve API is called) doesn't reach the backend
-                  attaches: [
-                    ...(previousChatStore.tasks[currentTaskId]?.attaches || []),
-                    ...(messageAttaches || []),
-                  ],
+                  attaches: attachesForNewMessage,
                 });
                 console.log('[NEW CHATSTORE] Created for ', project_id);
 
@@ -1398,7 +1411,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   setTaskAssigning(currentTaskId, [...taskAssigning]);
                 }
               }
-              const taskIndex = taskRunning.findIndex((task) => task.id === process_task_id);
+              const taskIndex = taskRunning.findIndex(
+                (task) => task.id === process_task_id
+              );
               if (taskIndex !== -1 && taskRunning[taskIndex].agent) {
                 taskRunning[taskIndex].agent!.status = 'completed';
               }
@@ -2324,18 +2339,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         onerror(err) {
           console.error('[fetchEventSource] Error:', err);
 
-          // Allow automatic retry for connection errors
-          // TypeError usually means network/connection issues
-          if (
+          // Do not retry if the task has already finished (avoids duplicate execution
+          // after ERR_NETWORK_CHANGED, ERR_INTERNET_DISCONNECTED, sleep/wake - see issue #1212)
+          const currentStore = getCurrentChatStore();
+          const lockedId = getCurrentTaskId();
+          const task = currentStore.tasks[lockedId];
+          if (task?.status === ChatTaskStatus.FINISHED) {
+            console.log(
+              `[fetchEventSource] Task ${lockedId} already finished, stopping retry to avoid duplicate execution`
+            );
+            try {
+              if (activeSSEControllers[newTaskId]) {
+                delete activeSSEControllers[newTaskId];
+              }
+            } catch (cleanupError) {
+              console.warn(
+                'Error cleaning up AbortController on finished task:',
+                cleanupError
+              );
+            }
+            throw err;
+          }
+
+          // Allow automatic retry for connection errors only when task is not finished
+          const isConnectionError =
             err instanceof TypeError ||
             err?.message?.includes('Failed to fetch') ||
             err?.message?.includes('ECONNREFUSED') ||
-            err?.message?.includes('NetworkError')
-          ) {
+            err?.message?.includes('NetworkError') ||
+            err?.message?.includes('ERR_NETWORK_CHANGED') ||
+            err?.message?.includes('ERR_INTERNET_DISCONNECTED');
+          if (isConnectionError) {
             console.warn(
               '[fetchEventSource] Connection error detected, will retry automatically...'
             );
-            // Don't throw - let fetchEventSource auto-retry
             return;
           }
 
@@ -2365,6 +2402,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // Server closes connection
         onclose() {
           console.log('SSE connection closed');
+          // Abort to resolve fetchEventSource promise (for replay/load - allows awaiting completion)
+          try {
+            abortController.abort();
+          } catch (_e) {
+            // Ignore if already aborted
+          }
           // Clean up AbortController when connection closes with robust error handling
           try {
             if (activeSSEControllers[newTaskId]) {
@@ -2381,6 +2424,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         },
       });
+      if (type === 'replay') {
+        try {
+          await ssePromise;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            // Expected: stream closed normally, we aborted to resolve the promise
+            return;
+          }
+          // Unexpected: actual error during stream
+          console.error(`SSE stream failed for task ${newTaskId}:`, err);
+          throw err; // Let loadProjectFromHistory handle it
+        }
+      }
     },
 
     replay: async (taskId: string, question: string, time: number) => {
@@ -2626,7 +2682,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const {
         tasks,
         setMessages,
-        setActiveWorkSpace,
+        setActiveWorkspace,
         setStatus,
         setTaskTime,
         setTaskInfo,
@@ -2682,7 +2738,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         await fetchPost(`/task/${project_id}/start`, {});
 
-        setActiveWorkSpace(taskId, 'workflow');
+        setActiveWorkspace(taskId, 'workflow');
         setStatus(taskId, ChatTaskStatus.RUNNING);
       }
 
@@ -2699,6 +2755,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       };
       targetTaskInfo.push(newTaskInfo);
       setTaskInfo(activeTaskId, targetTaskInfo);
+      // No backend persist here — the new task is empty, so it gets filtered out.
+      // It will be persisted once the user types content (via updateTaskInfo).
     },
     addTerminal(taskId, processTaskId, terminal) {
       if (!processTaskId) return;
@@ -2757,14 +2815,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setActiveWorkSpace(taskId: string, activeWorkSpace: string) {
+    setActiveWorkspace(taskId: string, activeWorkspace: string) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeWorkSpace,
+            activeWorkspace,
           },
         },
       }));
@@ -2858,21 +2916,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     updateTaskInfo(index: number, content: string) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
-      // Deep copy the array with updated item to ensure React detects the change
       const targetTaskInfo = tasks[activeTaskId].taskInfo.map((item, i) =>
         i === index ? { ...item, content } : item
       );
       setTaskInfo(activeTaskId, targetTaskInfo);
     },
+    saveTaskInfo() {
+      const { tasks, activeTaskId } = get();
+      if (!activeTaskId) return;
+      persistSubtaskEdits(tasks[activeTaskId].taskInfo);
+    },
     deleteTaskInfo(index: number) {
       const { tasks, activeTaskId, setTaskInfo } = get();
       if (!activeTaskId) return;
-      let targetTaskInfo = [...tasks[activeTaskId].taskInfo];
-
-      if (targetTaskInfo) {
-        targetTaskInfo.splice(index, 1);
-      }
+      const targetTaskInfo = [...tasks[activeTaskId].taskInfo];
+      targetTaskInfo.splice(index, 1);
       setTaskInfo(activeTaskId, targetTaskInfo);
+      persistSubtaskEdits(targetTaskInfo);
     },
     getLastUserMessage() {
       const { activeTaskId, tasks } = get();

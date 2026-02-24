@@ -13,11 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { VanillaChatStore } from '@/store/chatStore';
+import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { FloatingAction } from './FloatingAction';
 import { UserQueryGroup } from './UserQueryGroup';
-import { AgentStep } from '@/types/constants';
 
 interface ProjectSectionProps {
   chatId: string;

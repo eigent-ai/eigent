@@ -48,6 +48,7 @@ const TERMINAL_BASE_PACKAGES = [
   'openpyxl',
   'beautifulsoup4',
   'pillow',
+  'plotly',
 ];
 
 console.log('🚀 Starting pre-installation of dependencies...');
@@ -822,8 +823,25 @@ async function installPythonDeps(uvPath) {
   };
 
   const pyvenvCfg = path.join(venvPath, 'pyvenv.cfg');
+
+  // Check if venv contains placeholder
+  // If so, remove it to force recreation
   if (fs.existsSync(pyvenvCfg)) {
-    console.log('✅ Python venv exists, syncing...');
+    try {
+      const content = fs.readFileSync(pyvenvCfg, 'utf-8');
+      if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+        console.log(
+          '⚠️  Venv contains placeholder from previous build, removing...'
+        );
+        fs.rmSync(venvPath, { recursive: true, force: true });
+        console.log('📦 Creating fresh Python venv...');
+      } else {
+        console.log('✅ Python venv exists, syncing...');
+      }
+    } catch (error) {
+      console.error(`Error checking venv: ${error}`);
+      console.log('⚠️  Failed to check venv, will try to sync anyway...');
+    }
   } else {
     console.log('📦 Creating Python venv...');
   }
@@ -895,9 +913,10 @@ async function installPythonDeps(uvPath) {
   console.log('✅ Python dependencies installed');
 
   console.log('📝 Compiling babel...');
-  execSync(`"${uvPath}" run pybabel compile -d lang`, {
+
+  execSync(`"${pythonExePath}" -m babel.messages.frontend compile -d lang`, {
     cwd: BACKEND_DIR,
-    env: env,
+    env: { ...env },
     stdio: 'inherit',
   });
 
@@ -922,6 +941,24 @@ async function installTerminalBaseVenv(uvPath) {
     ? path.join(TERMINAL_VENV_DIR, 'Scripts', 'python.exe')
     : path.join(TERMINAL_VENV_DIR, 'bin', 'python');
   const installedMarker = path.join(TERMINAL_VENV_DIR, '.packages_installed');
+  const pyvenvCfg = path.join(TERMINAL_VENV_DIR, 'pyvenv.cfg');
+
+  // Check if venv contains placeholder (from previous build)
+  // If so, remove it to force recreation
+  if (fs.existsSync(pyvenvCfg)) {
+    try {
+      const content = fs.readFileSync(pyvenvCfg, 'utf-8');
+      if (content.includes('{{PREBUILT_PYTHON_DIR}}')) {
+        console.log(
+          '⚠️  Terminal venv contains placeholder from previous build, removing...'
+        );
+        fs.rmSync(TERMINAL_VENV_DIR, { recursive: true, force: true });
+      }
+    } catch (error) {
+      console.error(`Error checking terminal venv: ${error}`);
+      console.log('⚠️  Failed to check terminal venv, will continue...');
+    }
+  }
 
   // Check if already fully installed
   if (fs.existsSync(pythonPath) && fs.existsSync(installedMarker)) {

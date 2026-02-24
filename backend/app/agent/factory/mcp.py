@@ -18,10 +18,10 @@ from camel.models import ModelFactory
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
+from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
-from app.utils.toolkit.mcp_search_toolkit import McpSearchToolkit
 
 
 async def mcp_agent(options: Chat):

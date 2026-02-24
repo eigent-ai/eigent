@@ -36,7 +36,7 @@ import {
 } from '@/hooks/useIntegrationManagement';
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
-import { MCPEnvDialog } from '@/pages/Setting/components/MCPEnvDialog';
+import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -53,6 +53,7 @@ interface IntegrationListProps {
   // Manage mode props (Setting)
   showSelect?: boolean;
   selectPlaceholder?: string;
+  selectValue?: string;
   selectContent?: React.ReactNode;
   onSelectChange?: (value: string, item: IntegrationItem) => void;
   showConfigButton?: boolean;
@@ -73,6 +74,7 @@ export default function IntegrationList({
   onShowEnvConfig,
   showSelect = false,
   selectPlaceholder = 'Select...',
+  selectValue,
   selectContent,
   onSelectChange,
   showConfigButton = true,
@@ -103,8 +105,11 @@ export default function IntegrationList({
       console.log(item);
       const searchKey = isSelectMode ? 'EXA Search' : 'Search';
 
-      if (item.key === searchKey || item.key === 'Lark') {
-        const mcp = createMcpFromItem(item, item.key === 'Lark' ? 15 : 13);
+      if (item.key === searchKey || item.key === 'Lark' || item.key === 'RAG') {
+        const mcp = createMcpFromItem(
+          item,
+          item.key === 'Lark' ? 15 : item.key === 'RAG' ? 16 : 13
+        );
         if (isSelectMode) {
           onShowEnvConfig?.(mcp);
         } else {
@@ -264,7 +269,6 @@ export default function IntegrationList({
 
   const COMING_SOON_ITEMS = useMemo(
     () => [
-      'Slack',
       'X(Twitter)',
       'WhatsApp',
       // "LinkedIn", // LinkedIn OAuth is now supported
@@ -291,7 +295,7 @@ export default function IntegrationList({
 
   const itemClassName = isSelectMode
     ? 'cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between'
-    : 'w-full px-6 py-4 bg-surface-secondary rounded-2xl';
+    : 'w-full px-6 py-4 bg-surface-tertiary rounded-2xl';
 
   const titleClassName = isSelectMode
     ? 'text-base leading-snug font-bold text-text-action'
@@ -336,7 +340,7 @@ export default function IntegrationList({
               }
             >
               {isSelectMode ? (
-                <div className="flex items-center gap-xs">
+                <div className="gap-xs flex items-center">
                   {(isSelectMode || showStatusDot) && (
                     <img
                       src={ellipseIcon}
@@ -357,8 +361,8 @@ export default function IntegrationList({
                   </div>
                 </div>
               ) : (
-                <div className="flex w-full flex-row items-center justify-between gap-xs">
-                  <div className="flex flex-row items-center gap-xs">
+                <div className="gap-xs flex w-full flex-row items-center justify-between">
+                  <div className="gap-xs flex flex-row items-center">
                     {showStatusDot && (
                       <img
                         src={ellipseIcon}
@@ -383,7 +387,7 @@ export default function IntegrationList({
                       </Tooltip>
                     </div>
                   </div>
-                  <div className="flex flex-row items-center gap-md">
+                  <div className="gap-md flex flex-row items-center">
                     {showConfigButton && (
                       <Button
                         type="button"
@@ -451,28 +455,29 @@ export default function IntegrationList({
             </div>
 
             {!isSelectMode && showSelect && (
-              <div className="mt-6 flex w-full flex-row items-center gap-md border-x-0 border-b-0 border-solid border-border-secondary pt-6">
-                <div className="flex w-full flex-row items-center justify-between gap-md">
+              <div className="mt-6 gap-md border-border-secondary pt-6 flex w-full flex-row items-center border-x-0 border-b-0 border-solid">
+                <div className="gap-md flex w-full flex-row items-center justify-between">
                   <div className="text-body-md text-text-body">
                     {' '}
                     Default {item.name}
                   </div>
-                  <div className="max-w-[300px] flex-1">
-                    <Select onValueChange={(v) => onSelectChange?.(v, item)}>
-                      <SelectTrigger size="default">
-                        <SelectValue placeholder={selectPlaceholder} />
-                      </SelectTrigger>
-                      <SelectContent className="z-100">
-                        {selectContent ?? (
-                          <>
-                            <SelectItem value="more">
-                              More integrations
-                            </SelectItem>
-                          </>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select
+                    {...(selectValue !== undefined && { value: selectValue })}
+                    onValueChange={(v) => onSelectChange?.(v, item)}
+                  >
+                    <SelectTrigger size="default" className="w-[240px]">
+                      <SelectValue placeholder={selectPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent className="z-100">
+                      {selectContent ?? (
+                        <>
+                          <SelectItem value="more">
+                            More integrations
+                          </SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}
