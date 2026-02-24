@@ -6,6 +6,7 @@
   "approval-yes": "Да",
   "approval-all-yes": "Автоматически одобрять для этой задачи",
   "approval-no": "Нет",
+  "approval-pending": "ожидает",
   "show-more": "Показать больше",
   "show-less": "Показать меньше",
   "select-file": "Выбрать файл",

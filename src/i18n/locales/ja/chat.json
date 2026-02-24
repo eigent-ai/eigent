@@ -6,6 +6,7 @@
   "approval-yes": "はい",
   "approval-all-yes": "このタスクで自動承認",
   "approval-no": "いいえ",
+  "approval-pending": "保留中",
   "show-more": "もっと見る",
   "show-less": "折りたたむ",
   "select-file": "ファイルを選択",

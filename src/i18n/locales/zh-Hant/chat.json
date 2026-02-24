@@ -6,6 +6,7 @@
   "approval-yes": "是",
   "approval-all-yes": "本任務自動批准",
   "approval-no": "否",
+  "approval-pending": "待處理",
   "show-more": "顯示更多",
   "show-less": "顯示較少",
   "select-file": "選擇文件",

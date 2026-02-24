@@ -6,6 +6,7 @@
   "approval-yes": "예",
   "approval-all-yes": "이 작업에서 자동 승인",
   "approval-no": "아니요",
+  "approval-pending": "대기 중",
   "show-more": "더 보기",
   "show-less": "접기",
   "select-file": "파일 선택",
