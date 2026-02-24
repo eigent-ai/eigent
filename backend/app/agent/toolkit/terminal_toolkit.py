@@ -41,7 +41,7 @@ logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "0.0.84"
+APP_VERSION = "0.0.87"
 
 
 def get_terminal_base_venv_path() -> str:

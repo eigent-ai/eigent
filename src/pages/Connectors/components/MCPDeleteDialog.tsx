@@ -33,8 +33,8 @@ export default function MCPDeleteDialog({
   const { t } = useTranslation();
   if (!open || !target) return null;
   return (
-    <div className="bg-black/30 fixed inset-0 z-30 flex items-center justify-center">
-      <div className="min-w-[320px] max-w-[90vw] rounded-lg bg-white-100% p-6 shadow-lg">
+    <div className="bg-black/30 inset-0 fixed z-30 flex items-center justify-center">
+      <div className="rounded-lg bg-white-100% p-6 shadow-lg max-w-[90vw] min-w-[320px]">
         <div className="mb-2 font-bold text-red-600">
           {t('setting.confirm-delete')}
         </div>
@@ -42,7 +42,7 @@ export default function MCPDeleteDialog({
           {t('setting.are-you-sure-you-want-to-delete')}{' '}
           <b>{target.mcp_name}</b>?
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="gap-2 flex justify-end">
           <Button variant="outline" onClick={onCancel} disabled={loading}>
             {t('setting.cancel')}
           </Button>
