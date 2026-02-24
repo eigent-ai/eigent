@@ -12,12 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import logging
-
 from camel.toolkits.function_tool import FunctionTool
 from inflection import titleize
-
-logger = logging.getLogger("abstract_toolkit")
 
 
 class AbstractToolkit:

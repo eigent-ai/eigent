@@ -33,7 +33,7 @@ from app.model.chat import (
     SupplementChat,
     UpdateData,
 )
-from app.model.enums import Status
+from app.model.enums import ApprovalAction, Status
 
 logger = logging.getLogger("task_service")
 
@@ -222,7 +222,13 @@ class ActionTerminalData(BaseModel):
 
 
 class ActionCommandApprovalData(BaseModel):
-    """Request user approval for a dangerous command."""
+    """SSE payload sent to the frontend to prompt for command approval.
+
+    Args:
+        action: SSE event type (currently ``command_approval``).
+        data: Contains ``command`` (the shell command) and ``agent``
+            (the agent name requesting approval).
+    """
 
     action: Literal[Action.command_approval] = Action.command_approval
     data: dict[Literal["command", "agent"], str]
@@ -385,7 +391,8 @@ class TaskLock:
 
         # Per-agent queues for user approval responses (mirrors human_input)
         self.approval_input: dict[str, asyncio.Queue[str]] = {}
-        # Per-agent auto-approve: skip further prompts for this agent
+        # Per-agent auto-approve: skip further prompts for this agent.
+        # Reset at each task start (Action.start) in chat_service.
         self.auto_approve: dict[str, bool] = {}
 
         logger.info(
@@ -481,7 +488,7 @@ class TaskLock:
         # of hanging forever after the task is stopped.
         for _agent, queue in self.approval_input.items():
             try:
-                queue.put_nowait("reject")
+                queue.put_nowait(ApprovalAction.reject)
             except asyncio.QueueFull:
                 pass
 

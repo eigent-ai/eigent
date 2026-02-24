@@ -106,6 +106,12 @@ def _strip_heredoc_bodies(command: str) -> str:
     Heredoc bodies are stdin data, not shell commands, so they should
     not be scanned for dangerous tokens.  Only the shell command line
     (before the ``<<DELIM`` operator) is kept.
+
+    Args:
+        command: Full shell command string, possibly containing heredocs.
+
+    Returns:
+        The command with heredoc bodies removed.
     """
     lines = command.split("\n")
     result_lines: list[str] = []
@@ -132,7 +138,11 @@ def _strip_heredoc_bodies(command: str) -> str:
 def split_compound_command(command: str) -> list[str]:
     """Split a command string on shell operators (&&, ||, ;, |).
 
-    Returns a list of individual simple commands.
+    Args:
+        command: Shell command string, possibly compound.
+
+    Returns:
+        List of individual simple commands.
     """
     return [
         part.strip()
@@ -142,10 +152,16 @@ def split_compound_command(command: str) -> list[str]:
 
 
 def extract_effective_command(simple_command: str) -> str | None:
-    """Given a single (non-compound) command string, strip through wrapper
-    commands and path prefixes to find the effective command token.
+    """Find the effective executable in a simple command.
 
-    Returns the basename of the effective command, or None if empty.
+    Strips wrapper commands (env, nohup, bash …) and path prefixes
+    to return the first real command token.
+
+    Args:
+        simple_command: A single (non-compound) command string.
+
+    Returns:
+        Basename of the effective command, or None if empty.
     """
     parts = simple_command.strip().split()
     if not parts:
@@ -183,13 +199,16 @@ def extract_effective_command(simple_command: str) -> str | None:
 
 
 def is_dangerous_command(command: str) -> bool:
-    """Return True if any sub-command in a (possibly compound) command
-    is considered dangerous and requires user approval.
+    """Check whether any sub-command is dangerous and requires approval.
 
-    Only the *effective command* (the actual executable after stripping
-    wrapper commands like ``env``, ``nohup``, etc.) of each sub-command
-    is checked.  Heredoc bodies are stripped first so that arbitrary
-    stdin data does not trigger false positives.
+    Splits on shell operators, strips heredoc bodies, then checks the
+    effective executable of each sub-command against DANGEROUS_COMMAND_TOKENS.
+
+    Args:
+        command: Full shell command string, possibly compound.
+
+    Returns:
+        True if at least one sub-command is dangerous.
     """
     command = _strip_heredoc_bodies(command)
     for sub_cmd in split_compound_command(command):
@@ -203,10 +222,14 @@ def is_dangerous_command(command: str) -> bool:
 def validate_cd_within_working_dir(
     command: str, working_directory: str
 ) -> tuple[bool, str | None]:
-    """Validate that no cd sub-command in a (possibly compound) command
-    escapes working_directory.
+    """Validate that no ``cd`` sub-command escapes working_directory.
 
-    Returns (True, None) if allowed, (False, error_message) if not.
+    Args:
+        command: Full shell command string, possibly compound.
+        working_directory: Allowed root directory.
+
+    Returns:
+        (True, None) if allowed, (False, error_message) if not.
     """
     for sub_cmd in split_compound_command(command):
         parts = sub_cmd.strip().split()

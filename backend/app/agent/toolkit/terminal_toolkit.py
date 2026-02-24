@@ -18,6 +18,7 @@ import os
 import platform
 import shutil
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -66,6 +67,7 @@ def get_terminal_base_venv_path() -> str:
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
     _thread_pool: ThreadPoolExecutor | None = None
+    _thread_local: threading.local = threading.local()
 
     def __init__(
         self,
@@ -344,17 +346,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         """
         Execute coro in the thread pool, with each thread bound to a long-term event loop
         """
-        if not hasattr(AbstractToolkit._thread_local, "loop"):
+        if not hasattr(TerminalToolkit._thread_local, "loop"):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            AbstractToolkit._thread_local.loop = loop
+            TerminalToolkit._thread_local.loop = loop
         else:
-            loop = AbstractToolkit._thread_local.loop
+            loop = TerminalToolkit._thread_local.loop
 
         if loop.is_closed():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            AbstractToolkit._thread_local.loop = loop
+            TerminalToolkit._thread_local.loop = loop
 
         try:
             task = loop.create_task(coro)

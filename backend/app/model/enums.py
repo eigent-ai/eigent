@@ -23,7 +23,7 @@ class Status(str, Enum):
 
 
 class ApprovalAction(str, Enum):
-    """User responses for dangerous operation approval."""
+    """User response choices for HITL command approval prompts."""
 
     approve_once = "approve_once"
     auto_approve = "auto_approve"

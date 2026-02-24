@@ -1033,6 +1033,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # questions (don't break, don't
                 # delete task_lock)
             elif item.action == Action.start:
+                # Reset per-agent auto-approve flags for the new task
                 task_lock.auto_approve = {}
                 # Check conversation history length before starting task
                 is_exceeded, total_length = check_conversation_history_length(
