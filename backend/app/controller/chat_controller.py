@@ -175,7 +175,10 @@ async def post(data: Chat, request: Request):
         },
     )
 
-    task_lock = get_or_create_task_lock(data.project_id)
+    # Use task_id for task_lock when execution_id present (trigger task) to isolate
+    # from user chat; otherwise use project_id for backward compatibility with improve flow
+    lock_key = data.task_id if data.execution_id else data.project_id
+    task_lock = get_or_create_task_lock(lock_key)
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -220,8 +223,8 @@ async def post(data: Chat, request: Request):
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
 
-    # Set the initial current_task_id in task_lock
-    set_current_task_id(data.project_id, data.task_id)
+    # Set the initial current_task_id in task_lock (use lock_key for set_current_task_id lookup)
+    set_current_task_id(lock_key, data.task_id)
 
     # Put initial action in queue to start processing
     await task_lock.put_queue(

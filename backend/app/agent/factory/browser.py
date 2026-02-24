@@ -38,17 +38,17 @@ from app.utils.file_utils import get_working_directory
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
-        f"Creating browser agent for project: {options.project_id} "
+        f"Creating browser agent for project: {options.task_lock_id} "
         f"in directory: {working_directory}"
     )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.browser_agent
+            options.task_lock_id, Agents.browser_agent
         ).send_message_to_user
     )
 
     web_toolkit_custom = HybridBrowserToolkit(
-        options.project_id,
+        options.task_lock_id,
         headless=False,
         browser_log_to_file=True,
         stealth=True,
@@ -80,7 +80,7 @@ def browser_agent(options: Chat):
     )
 
     terminal_toolkit = TerminalToolkit(
-        options.project_id,
+        options.task_lock_id,
         Agents.browser_agent,
         working_directory=working_directory,
         safe_mode=True,
@@ -91,13 +91,13 @@ def browser_agent(options: Chat):
     )
 
     note_toolkit = NoteTakingToolkit(
-        options.project_id,
+        options.task_lock_id,
         Agents.browser_agent,
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
-    search_tools = SearchToolkit.get_can_use_tools(options.project_id)
+    search_tools = SearchToolkit.get_can_use_tools(options.task_lock_id)
     if search_tools:
         search_tools = message_integration.register_functions(search_tools)
     else:
@@ -105,7 +105,7 @@ def browser_agent(options: Chat):
 
     tools = [
         *HumanToolkit.get_can_use_tools(
-            options.project_id, Agents.browser_agent
+            options.task_lock_id, Agents.browser_agent
         ),
         *web_toolkit_custom.get_tools(),
         *terminal_toolkit,

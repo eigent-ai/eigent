@@ -22,12 +22,7 @@ export enum ProjectType {
   REPLAY = 'replay',
 }
 
-interface TaskQueue {
-  task_id: string;
-  content: string;
-  timestamp: number;
-  attaches: File[];
-}
+export type ChatViewTab = 'chat' | 'triggers';
 
 interface Project {
   id: string;
@@ -37,8 +32,20 @@ interface Project {
   updatedAt: number;
   chatStores: { [chatId: string]: VanillaChatStore }; // Multiple chat stores for this project
   chatStoreTimestamps: { [chatId: string]: number }; // Track creation time of each chat store
-  activeChatId: string | null; // ID of the currently active chat store
-  queuedMessages: Array<TaskQueue>; // Project-level queued messages
+  chatStoreMetadata?: { [chatId: string]: { isTrigger?: boolean } };
+  activeChatId: string | null; // ID of the currently active chat store (for Chat tab)
+  activeTriggerChatId?: string | null; // ID of the active trigger chat (for Triggers tab)
+  activeViewTab?: ChatViewTab; // Which tab is active: 'chat' | 'triggers'
+  queuedMessages: Array<{
+    task_id: string;
+    content: string;
+    timestamp: number;
+    attaches: File[];
+    executionId?: string;
+    triggerTaskId?: string;
+    triggerId?: number;
+    triggerName?: string;
+  }>; // Project-level queued messages
   metadata?: {
     tags?: string[];
     priority?: 'low' | 'medium' | 'high';
@@ -70,7 +77,8 @@ interface ProjectStore {
     description?: string,
     projectId?: string,
     type?: ProjectType,
-    historyId?: string
+    historyId?: string,
+    options?: { setAsActive?: boolean }
   ) => string;
   setActiveProject: (projectId: string) => void;
   removeProject: (projectId: string) => void;
@@ -84,26 +92,57 @@ interface ProjectStore {
     projectId?: string,
     historyId?: string
   ) => string;
+  loadProjectFromHistory: (
+    taskIds: string[],
+    question: string,
+    projectId: string,
+    historyId?: string,
+    projectName?: string
+  ) => Promise<string>;
 
   // Project-level queued messages management
   addQueuedMessage: (
     projectId: string,
     content: string,
     attaches: File[],
-    task_id?: string
+    options?: {
+      task_id?: string;
+      executionId?: string;
+      triggerTaskId?: string;
+      triggerId?: number;
+      triggerName?: string;
+    }
   ) => string | null;
-  removeQueuedMessage: (projectId: string, taskId: string) => TaskQueue;
-  restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => void;
+  removeQueuedMessage: (projectId: string, taskId: string) => void;
+  restoreQueuedMessage: (
+    projectId: string,
+    messageData: {
+      task_id: string;
+      content: string;
+      timestamp: number;
+      attaches: File[];
+      executionId?: string;
+      triggerTaskId?: string;
+    }
+  ) => void;
   clearQueuedMessages: (projectId: string) => void;
 
   // Chat store state management
-  createChatStore: (projectId: string, chatName?: string) => string | null;
+  createChatStore: (
+    projectId: string,
+    chatName?: string,
+    setAsActive?: boolean,
+    isTrigger?: boolean
+  ) => string | null;
   appendInitChatStore: (
     projectId: string,
     customTaskId?: string,
-    chatName?: string
+    chatName?: string,
+    options?: { preserveActiveChat?: boolean; isTrigger?: boolean }
   ) => { taskId: string; chatStore: VanillaChatStore } | null;
   setActiveChatStore: (projectId: string, chatId: string) => void;
+  setActiveViewTab: (projectId: string, tab: ChatViewTab) => void;
+  setActiveTriggerChatStore: (projectId: string, chatId: string | null) => void;
   removeChatStore: (projectId: string, chatId: string) => void;
   saveChatStore: (
     projectId: string,
@@ -118,12 +157,14 @@ interface ProjectStore {
   getAllChatStores: (
     projectId: string
   ) => Array<{ chatId: string; chatStore: VanillaChatStore }>;
+  isTriggerChatStore: (projectId: string, chatId: string) => boolean;
 
   // Utility methods
   getAllProjects: () => Project[];
   getProjectById: (projectId: string) => Project | null;
   getProjectTotalTokens: (projectId: string) => number;
   isEmptyProject: (project: Project) => boolean;
+  hasProjectRunningTask: (projectId: string) => boolean;
 
   //History ID
   setHistoryId: (projectId: string, historyId: string) => void;
@@ -191,12 +232,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     description?: string,
     projectId?: string,
     type?: ProjectType,
-    historyId?: string
+    historyId?: string,
+    options?: { setAsActive?: boolean }
   ) => {
     const { projects } = get();
+    const setAsActive = options?.setAsActive !== false;
 
     //Replay doesn't need to use an empty project container
-    if (type !== ProjectType.REPLAY && !projectId) {
+    if (type !== ProjectType.REPLAY) {
       // First, check if there are any existing empty projects
       const existingEmptyProject = Object.values(projects).find((project) =>
         isEmptyProject(project)
@@ -224,7 +267,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               updatedAt: now,
             },
           },
-          activeProjectId: existingEmptyProject.id,
+          ...(setAsActive && { activeProjectId: existingEmptyProject.id }),
         }));
 
         return existingEmptyProject.id;
@@ -270,7 +313,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         ...state.projects,
         [targetProjectId]: newProject,
       },
-      activeProjectId: targetProjectId,
+      ...(setAsActive && { activeProjectId: targetProjectId }),
     }));
 
     return targetProjectId;
@@ -298,7 +341,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     }));
   },
 
-  createChatStore: (projectId: string, _chatName?: string) => {
+  createChatStore: (
+    projectId: string,
+    _chatName?: string,
+    setAsActive: boolean = true,
+    isTrigger: boolean = false
+  ) => {
     const { projects } = get();
 
     if (!projects[projectId]) {
@@ -309,6 +357,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const chatId = generateUniqueId();
     const newChatStore = createChatStoreInstance();
     const now = Date.now();
+    const project = projects[projectId];
 
     set((state) => ({
       projects: {
@@ -323,7 +372,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             ...state.projects[projectId].chatStoreTimestamps,
             [chatId]: now,
           },
-          activeChatId: chatId,
+          chatStoreMetadata: {
+            ...(state.projects[projectId].chatStoreMetadata || {}),
+            [chatId]: { isTrigger },
+          },
+          activeChatId:
+            setAsActive && !isTrigger ? chatId : project.activeChatId,
+          activeTriggerChatId:
+            isTrigger && setAsActive ? chatId : project.activeTriggerChatId,
           updatedAt: now,
         },
       },
@@ -342,7 +398,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   appendInitChatStore: (
     projectId: string,
     customTaskId?: string,
-    chatName?: string
+    chatName?: string,
+    options?: { preserveActiveChat?: boolean; isTrigger?: boolean }
   ) => {
     const {
       projects,
@@ -362,8 +419,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return null;
     }
 
+    // When preserveActiveChat (e.g. trigger tasks): run in background, don't steal user's view
+    const setAsActive = !options?.preserveActiveChat;
+    const isTrigger = options?.isTrigger ?? false;
+
     // Create new chat store & append in the current project
-    const newChatId = createChatStore(projectId, chatName);
+    const newChatId = createChatStore(
+      projectId,
+      chatName,
+      setAsActive,
+      isTrigger
+    );
 
     if (!newChatId) {
       console.error('Failed to create new chat store');
@@ -406,6 +472,44 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         [projectId]: {
           ...state.projects[projectId],
           activeChatId: chatId,
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+  },
+
+  setActiveViewTab: (projectId: string, tab: ChatViewTab) => {
+    const { projects, isTriggerChatStore } = get();
+    const project = projects[projectId];
+    if (!project) return;
+    let updates: Partial<Project> = { activeViewTab: tab };
+    if (tab === 'triggers') {
+      const firstTrigger = Object.keys(project.chatStores).find((cid) =>
+        isTriggerChatStore(projectId, cid)
+      );
+      if (firstTrigger) updates.activeTriggerChatId = firstTrigger;
+    }
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          ...updates,
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+  },
+
+  setActiveTriggerChatStore: (projectId: string, chatId: string | null) => {
+    const { projects } = get();
+    if (!projects[projectId]) return;
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          activeTriggerChatId: chatId,
           updatedAt: Date.now(),
         },
       },
@@ -523,17 +627,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     //TODO: For now handle the question as unique identifier to avoid duplicate
     if (!projectId) projectId = 'Replay: ' + question;
 
-    if (!taskIds || taskIds.length === 0) {
-      console.warn('[ProjectStore] No taskIds provided for replayProject');
-      return createProject(
-        `Replay Project ${question}`,
-        `No tasks to replay`,
-        projectId,
-        ProjectType.NORMAL,
-        historyId
-      );
-    }
-
     // If projectId is provided, reset that project
     if (projectId) {
       if (projects[projectId]) {
@@ -565,7 +658,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
     // For each taskId, create a chat store within the project and call replay
     (async () => {
+      set({ activeProjectId: replayProjectId });
+      let cancelled = false;
       for (let index = 0; index < taskIds.length; index++) {
+        if (get().activeProjectId !== replayProjectId) {
+          console.log(
+            `[ProjectStore] Cancelled replay: active project changed from ${replayProjectId}`
+          );
+          cancelled = true;
+          break;
+        }
         const taskId = taskIds[index];
         console.log(
           `[ProjectStore] Creating replay for task ${index + 1}/${taskIds.length}: ${taskId}`
@@ -579,7 +681,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           const chatStore = project.chatStores[chatId];
 
           if (chatStore) {
-            // Call replay on the chat store with the taskId, question, and 0 delay
             try {
               await chatStore.getState().replay(taskId, question, 0.2);
               console.log(`[ProjectStore] Started replay for task ${taskId}`);
@@ -592,12 +693,81 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           }
         }
       }
-      console.log(
-        `[ProjectStore] Completed replay setup for ${taskIds.length} tasks`
-      );
+      if (!cancelled) {
+        console.log(
+          `[ProjectStore] Completed replay setup for ${taskIds.length} tasks`
+        );
+      }
     })();
 
     return replayProjectId;
+  },
+
+  loadProjectFromHistory: async (
+    taskIds: string[],
+    question: string,
+    projectId: string,
+    historyId?: string,
+    projectName?: string
+  ) => {
+    const { projects, removeProject, createProject, createChatStore } = get();
+
+    if (projects[projectId]) {
+      console.log(
+        `[ProjectStore] Overwriting existing project ${projectId} for load`
+      );
+      removeProject(projectId);
+    }
+
+    const displayName = projectName || question.slice(0, 50) || 'Project';
+    const loadProjectId = createProject(
+      displayName,
+      `Loaded from history`,
+      projectId,
+      ProjectType.REPLAY,
+      historyId
+    );
+
+    set({ activeProjectId: loadProjectId });
+    console.log(
+      `[ProjectStore] Loading project ${loadProjectId} with ${taskIds.length} tasks (final state, no replay)`
+    );
+
+    let cancelled = false;
+    for (let index = 0; index < taskIds.length; index++) {
+      if (get().activeProjectId !== loadProjectId) {
+        console.log(
+          `[ProjectStore] Cancelled loading: active project changed from ${loadProjectId}`
+        );
+        cancelled = true;
+        break;
+      }
+      const taskId = taskIds[index];
+      console.log(
+        `[ProjectStore] Loading task ${index + 1}/${taskIds.length}: ${taskId}`
+      );
+      const chatId = createChatStore(loadProjectId, `Task ${taskId}`);
+      if (chatId) {
+        const project = get().projects[loadProjectId];
+        const chatStore = project.chatStores[chatId];
+        if (chatStore) {
+          try {
+            await chatStore.getState().replay(taskId, question, 0);
+            console.log(`[ProjectStore] Loaded task ${taskId}`);
+          } catch (error) {
+            console.error(
+              `[ProjectStore] Failed to load task ${taskId}:`,
+              error
+            );
+          }
+        }
+      }
+    }
+
+    if (!cancelled) {
+      console.log(`[ProjectStore] Completed loading project ${loadProjectId}`);
+    }
+    return loadProjectId;
   },
 
   saveChatStore: (
@@ -669,6 +839,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     return null;
   },
 
+  isTriggerChatStore: (projectId: string, chatId: string) => {
+    const { projects } = get();
+    const project = projects[projectId];
+    if (!project?.chatStores[chatId]) return false;
+    const meta = project.chatStoreMetadata?.[chatId];
+    if (meta?.isTrigger != null) return meta.isTrigger;
+    // Fallback: check if any task has executionId (legacy trigger chats)
+    const state = project.chatStores[chatId].getState();
+    return Object.values(state.tasks || {}).some((t) => !!t?.executionId);
+  },
+
   getActiveChatStore: (projectId?: string) => {
     const { projects, activeProjectId, createProject, createChatStore } = get();
 
@@ -677,41 +858,51 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     if (targetProjectId && projects[targetProjectId]) {
       const project = projects[targetProjectId];
 
-      if (project.activeChatId && project.chatStores[project.activeChatId]) {
-        return project.chatStores[project.activeChatId];
-      }
-
-      // If project exists but has no chat stores, create one
-      const chatStoreKeys = Object.keys(project.chatStores);
-      if (chatStoreKeys.length === 0) {
-        console.log(
-          '[ProjectStore] Project exists but no chat stores found, creating new chat store'
-        );
-        const newChatId = createChatStore(targetProjectId);
-        if (newChatId) {
-          const updatedState = get();
-          return updatedState.projects[targetProjectId].chatStores[newChatId];
+      const repairChatStore = (chatStore: VanillaChatStore) => {
+        const state = chatStore.getState();
+        if (state.activeTaskId && !state.tasks[state.activeTaskId]) {
+          const remaining = Object.keys(state.tasks);
+          if (remaining.length > 0) {
+            state.setActiveTaskId(remaining[0]);
+          } else {
+            state.create();
+          }
         }
-      }
+      };
 
-      // If there are chat stores but no active one, return the first available
-      if (chatStoreKeys.length > 0) {
-        return project.chatStores[chatStoreKeys[0]];
+      // Unified chat: use activeChatId (can be user or trigger chat)
+      if (project.activeChatId && project.chatStores[project.activeChatId]) {
+        const chatStore = project.chatStores[project.activeChatId];
+        repairChatStore(chatStore);
+        return chatStore;
+      }
+      // Fallback: first chat store (any type)
+      const chatStoreEntries = Object.entries(project.chatStores);
+      if (chatStoreEntries.length > 0) {
+        const [, cs] = chatStoreEntries[0];
+        repairChatStore(cs);
+        return cs;
+      }
+      // No chat: create one
+      const newChatId = createChatStore(
+        targetProjectId,
+        undefined,
+        true,
+        false
+      );
+      if (newChatId) {
+        const updatedState = get();
+        return updatedState.projects[targetProjectId].chatStores[newChatId];
       }
     }
 
     // If no active project exists or no targetProjectId, create a new project
     if (!targetProjectId || !projects[targetProjectId]) {
-      console.log(
-        '[ProjectStore] No active project found, creating new project'
-      );
       const newProjectId = createProject('New Project', 'Auto-created project');
-      // Get updated state after project creation
       const updatedState = get();
       const newProject = updatedState.projects[newProjectId];
       if (
-        newProject &&
-        newProject.activeChatId &&
+        newProject?.activeChatId &&
         newProject.chatStores[newProject.activeChatId]
       ) {
         return newProject.chatStores[newProject.activeChatId];
@@ -726,7 +917,13 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     projectId: string,
     content: string,
     attaches: File[],
-    task_id?: string
+    options?: {
+      task_id?: string;
+      executionId?: string;
+      triggerTaskId?: string;
+      triggerId?: number;
+      triggerName?: string;
+    }
   ) => {
     const { projects } = get();
 
@@ -735,8 +932,20 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return null;
     }
 
-    const new_task_id = generateUniqueId();
-    const actual_task_id = task_id || new_task_id;
+    // Prevent duplicate queueing of same execution (e.g. one-time trigger)
+    if (options?.executionId) {
+      const existing = projects[projectId].queuedMessages?.find(
+        (m) => m.executionId === options.executionId
+      );
+      if (existing) {
+        console.warn(
+          `[ProjectStore] Duplicate executionId ${options.executionId} already in queue, skipping`
+        );
+        return existing.task_id;
+      }
+    }
+
+    const new_task_id = options?.task_id ?? generateUniqueId();
 
     set((state) => ({
       projects: {
@@ -746,10 +955,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           queuedMessages: [
             ...state.projects[projectId].queuedMessages,
             {
-              task_id: actual_task_id,
+              task_id: new_task_id,
               content,
               timestamp: Date.now(),
               attaches: [...attaches],
+              ...(options?.executionId && { executionId: options.executionId }),
+              ...(options?.triggerTaskId && {
+                triggerTaskId: options.triggerTaskId,
+              }),
+              ...(options?.triggerId != null && {
+                triggerId: options.triggerId,
+              }),
+              ...(options?.triggerName && { triggerName: options.triggerName }),
             },
           ],
           updatedAt: Date.now(),
@@ -757,7 +974,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       },
     }));
 
-    return actual_task_id;
+    return new_task_id;
   },
 
   removeQueuedMessage: (projectId: string, task_id: string) => {
@@ -765,12 +982,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
     if (!projects[projectId]) {
       console.warn(`Project ${projectId} not found`);
-      return { task_id: '', content: '', timestamp: 0, attaches: [] };
+      return;
     }
-
-    const messageToRemove = projects[projectId].queuedMessages.find(
-      (m) => m.task_id === task_id
-    );
 
     set((state) => ({
       projects: {
@@ -784,15 +997,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         },
       },
     }));
-
-    return (
-      messageToRemove || {
-        task_id: '',
-        content: '',
-        timestamp: 0,
-        attaches: [],
-      }
-    );
   },
 
   // Method to restore a queued message (for error handling)
@@ -865,7 +1069,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       const project = projects[projectId];
       const chatStoreEntries = Object.entries(project.chatStores);
 
-      // Sort by creation timestamp (oldest first)
       return chatStoreEntries
         .map(([chatId, chatStore]) => ({
           chatId,
@@ -885,6 +1088,26 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   getAllProjects: () => {
     const { projects } = get();
     return Object.values(projects).sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+
+  hasProjectRunningTask: (projectId: string) => {
+    const { projects } = get();
+    const project = projects[projectId];
+    if (!project?.chatStores) return false;
+
+    for (const chatStore of Object.values(project.chatStores)) {
+      const state = chatStore.getState();
+      const tasks = state.tasks || {};
+      for (const task of Object.values(tasks)) {
+        if (
+          task?.status === ChatTaskStatus.RUNNING ||
+          task?.status === ChatTaskStatus.PAUSE
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
   },
 
   getProjectById: (projectId: string) => {

@@ -38,39 +38,39 @@ from app.utils.file_utils import get_working_directory
 async def document_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
-        f"Creating document agent for project: {options.project_id} "
+        f"Creating document agent for project: {options.task_lock_id} "
         f"in directory: {working_directory}"
     )
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.task_agent
+            options.task_lock_id, Agents.task_agent
         ).send_message_to_user
     )
     file_write_toolkit = FileToolkit(
-        options.project_id, working_directory=working_directory
+        options.task_lock_id, working_directory=working_directory
     )
     pptx_toolkit = PPTXToolkit(
-        options.project_id, working_directory=working_directory
+        options.task_lock_id, working_directory=working_directory
     )
     pptx_toolkit = message_integration.register_toolkits(pptx_toolkit)
-    mark_it_down_toolkit = MarkItDownToolkit(options.project_id)
+    mark_it_down_toolkit = MarkItDownToolkit(options.task_lock_id)
     mark_it_down_toolkit = message_integration.register_toolkits(
         mark_it_down_toolkit
     )
     excel_toolkit = ExcelToolkit(
-        options.project_id, working_directory=working_directory
+        options.task_lock_id, working_directory=working_directory
     )
     excel_toolkit = message_integration.register_toolkits(excel_toolkit)
     note_toolkit = NoteTakingToolkit(
-        options.project_id,
+        options.task_lock_id,
         Agents.document_agent,
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
 
     terminal_toolkit = TerminalToolkit(
-        options.project_id,
+        options.task_lock_id,
         Agents.document_agent,
         working_directory=working_directory,
         safe_mode=True,
@@ -79,14 +79,14 @@ async def document_agent(options: Chat):
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     google_drive_tools = await GoogleDriveMCPToolkit.get_can_use_tools(
-        options.project_id, options.get_bun_env()
+        options.task_lock_id, options.get_bun_env()
     )
 
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
         *HumanToolkit.get_can_use_tools(
-            options.project_id, Agents.document_agent
+            options.task_lock_id, Agents.document_agent
         ),
         *mark_it_down_toolkit.get_tools(),
         *excel_toolkit.get_tools(),

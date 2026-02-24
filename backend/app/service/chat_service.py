@@ -642,7 +642,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     # Update the sync_step with new task_id
                     if hasattr(item, "new_task_id") and item.new_task_id:
                         set_current_task_id(
-                            options.project_id, item.new_task_id
+                            options.task_lock_id, item.new_task_id
                         )
                         task_lock.summary_generated = False
 
@@ -664,7 +664,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(
                             "[NEW-QUESTION] Creating NEW workforce instance"
                         )
-                        (workforce, mcp) = await construct_workforce(options)
+                        (workforce, mcp) = await construct_workforce(
+                            options, task_lock.id
+                        )
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent),
@@ -1324,7 +1326,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "task is complex, setting "
                             f"new task_id={task_id}"
                         )
-                        set_current_task_id(options.project_id, task_id)
+                        set_current_task_id(options.task_lock_id, task_id)
 
                         yield sse_json(
                             "confirmed", {"question": new_task_content}
@@ -1675,10 +1677,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "END actions or improper "
                         "task lifecycle management."
                     )
-                    # Use item data as final result
-                    # if camel_task is None
+                    # Use item data as final result if available (ActionEndData has no data)
                     final_result: str = (
-                        str(item.data) if item.data else "Task completed"
+                        str(item.data)
+                        if getattr(item, "data", None)
+                        else "Task completed"
                     )
                 else:
                     get_result = get_task_result_with_optional_summary
@@ -2141,6 +2144,7 @@ async def get_task_result_with_optional_summary(
 
 async def construct_workforce(
     options: Chat,
+    task_lock_id: str,
 ) -> tuple[Workforce, ListenChatAgent]:
     """Construct a workforce with all required agents.
 
@@ -2175,11 +2179,11 @@ async def construct_workforce(
                     *(
                         ToolkitMessageIntegration(
                             message_handler=HumanToolkit(
-                                options.project_id, key
+                                options.task_lock_id, key
                             ).send_message_to_user
                         ).register_toolkits(
                             NoteTakingToolkit(
-                                options.project_id,
+                                options.task_lock_id,
                                 working_directory=working_directory,
                             )
                         )
@@ -2236,16 +2240,16 @@ the current date.
             options,
             [
                 *HumanToolkit.get_can_use_tools(
-                    options.project_id, Agents.new_worker_agent
+                    options.task_lock_id, Agents.new_worker_agent
                 ),
                 *(
                     ToolkitMessageIntegration(
                         message_handler=HumanToolkit(
-                            options.project_id, Agents.new_worker_agent
+                            options.task_lock_id, Agents.new_worker_agent
                         ).send_message_to_user
                     ).register_toolkits(
                         NoteTakingToolkit(
-                            options.project_id,
+                            options.task_lock_id,
                             working_directory=working_directory,
                         )
                     )
@@ -2310,7 +2314,7 @@ the current date.
     )
 
     workforce = Workforce(
-        options.project_id,
+        task_lock_id,
         "A workforce",
         graceful_shutdown_timeout=3,
         share_memory=False,
@@ -2399,12 +2403,12 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     )
     working_directory = get_working_directory(options)
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
+    tools = [*await get_toolkits(data.tools, data.name, options.task_lock_id)]
     for item in data.tools:
         tool_names.append(titleize(item))
     # Always include terminal_toolkit with proper working directory
     terminal_toolkit = TerminalToolkit(
-        options.project_id,
+        options.task_lock_id,
         agent_name=data.name,
         working_directory=working_directory,
         safe_mode=True,

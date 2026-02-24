@@ -1,4 +1,19 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { proxyFetchGet } from '@/api/http';
+import { proxyFetchListExecutions } from '@/service/triggerApi';
 import { ProjectType, useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import {
@@ -6,6 +21,7 @@ import {
   formatTriggeredTaskMessage,
   useTriggerTaskStore,
 } from '@/store/triggerTaskStore';
+import { ExecutionStatus } from '@/types';
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
@@ -17,8 +33,8 @@ import { toast } from 'sonner';
  * - Scheduled triggers
  * - Future: per-project triggers
  *
- * The actual execution is handled by ChatBox's handleSend via the
- * project's queuedMessages system.
+ * Tasks are added directly to projectStore.queuedMessages (per-project queue).
+ * Background execution is handled by useBackgroundTaskProcessor.
  */
 export function useTriggerTaskExecutor() {
   const projectStore = useProjectStore();
@@ -30,12 +46,10 @@ export function useTriggerTaskExecutor() {
     (state) => state.clearWebSocketEvent
   );
 
-  // Track if we're currently processing to avoid race conditions
-  const isProcessingRef = useRef(false);
-
-  // Keep stable references to store states
   const projectStoreRef = useRef(projectStore);
   const triggerTaskStoreRef = useRef(triggerTaskStore);
+  const emitWebSocketEvent = useTriggerStore((s) => s.emitWebSocketEvent);
+  const triggers = useTriggerStore((s) => s.triggers);
 
   useEffect(() => {
     projectStoreRef.current = projectStore;
@@ -44,7 +58,6 @@ export function useTriggerTaskExecutor() {
 
   /**
    * Helper function to load a project from history if it doesn't exist locally.
-   * Similar to handleSetActive in HistorySidebar.
    */
   const loadProjectFromHistory = useCallback(
     async (
@@ -57,7 +70,6 @@ export function useTriggerTaskExecutor() {
           projectId
         );
 
-        // Fetch grouped history to find the project
         const historyProject = await proxyFetchGet(
           `/api/chat/histories/grouped/${projectId}?include_tasks=true`
         );
@@ -70,24 +82,12 @@ export function useTriggerTaskExecutor() {
           return false;
         }
 
-        // Get task IDs and question from history
-        const taskIdsList = historyProject.tasks.map(
-          (task: any) => task.task_id
-        );
         const question =
           historyProject.last_prompt ||
           historyProject.tasks[0]?.question ||
           'Triggered task';
         const historyId = String(historyProject.tasks[0]?.id || '');
 
-        console.log('[TriggerTaskExecutor] Loading project from history:', {
-          projectId,
-          taskCount: taskIdsList.length,
-          historyId,
-        });
-
-        // Use replayProject to load the project from history
-        // store.replayProject(taskIdsList, question, projectId, historyId);
         store.createProject(
           `Trigger Project ${question}`,
           `No tasks to replay`,
@@ -109,10 +109,8 @@ export function useTriggerTaskExecutor() {
   );
 
   /**
-   * Execute a triggered task by:
-   * 1. Creating or selecting a project (loading from history if needed)
-   * 2. Adding the message to the project's queue via addQueuedMessage
-   * 3. ChatBox will consume and process the queued message via handleSend
+   * Add a triggered task directly to projectStore.queuedMessages.
+   * No intermediate queue - projectStore.queuedMessages is the single source of truth.
    */
   const executeTask = useCallback(
     async (task: TriggeredTask) => {
@@ -122,7 +120,6 @@ export function useTriggerTaskExecutor() {
         task.triggerName
       );
 
-      // Show toast when execution starts
       toast.info(`Execution started: ${task.triggerName}`, {
         description: 'Processing trigger task...',
       });
@@ -131,71 +128,55 @@ export function useTriggerTaskExecutor() {
         const store = projectStoreRef.current;
         let targetProjectId = task.projectId;
 
-        // If no project specified, create a new project for this trigger
         if (!targetProjectId) {
-          // Create a new project for this triggered task
           const projectName = `Trigger: ${task.triggerName}`;
           const projectDescription = `Auto-created project for ${task.triggerType} trigger execution`;
           targetProjectId = store.createProject(
             projectName,
-            projectDescription
-          );
-          console.log(
-            '[TriggerTaskExecutor] Created new project:',
-            targetProjectId
+            projectDescription,
+            undefined,
+            undefined,
+            undefined,
+            { setAsActive: false }
           );
         } else {
-          // Project ID is specified, check if it exists locally
           const existingProject = store.getProjectById(targetProjectId);
 
           if (!existingProject) {
-            // Project doesn't exist locally, try to load from history
             const loaded = await loadProjectFromHistory(targetProjectId, store);
 
             if (!loaded) {
-              // Could not load from history, create a new project with the same ID
-              console.log(
-                '[TriggerTaskExecutor] Creating new project for specified ID:',
-                targetProjectId
-              );
               const projectName = `Trigger: ${task.triggerName}`;
               const projectDescription = `Auto-created project for ${task.triggerType} trigger execution`;
               targetProjectId = store.createProject(
                 projectName,
                 projectDescription,
-                targetProjectId
+                targetProjectId,
+                undefined,
+                undefined,
+                { setAsActive: false }
               );
             }
           }
         }
 
-        // Set this project as active so ChatBox will process the queue
-        store.setActiveProject(targetProjectId);
-
-        // Format the message with all context (uses task.taskPrompt from the server)
         const formattedMessage = formatTriggeredTaskMessage(task);
 
-        console.log(
-          '[TriggerTaskExecutor] Adding message to project queue:',
-          formattedMessage.substring(0, 100) + '...'
-        );
-
-        // Add message to the project's queue - ChatBox will process it via handleSend
         const queuedTaskId = store.addQueuedMessage(
           targetProjectId,
           formattedMessage,
           [],
-          task.executionId
+          {
+            executionId: task.executionId,
+            triggerTaskId: task.id,
+            triggerId: task.triggerId,
+            triggerName: task.triggerName,
+          }
         );
 
         if (!queuedTaskId) {
           throw new Error('Failed to add message to project queue');
         }
-
-        // NOTE: We don't mark the trigger task as completed here.
-        // The task remains in triggerTaskStore.currentTask until the chat task actually completes.
-        // This allows us to track the execution status properly.
-        // The execution mapping will be registered in ChatBox when we know the actual chat task ID.
 
         toast.success(`Queued: ${task.triggerName}`, {
           description: 'Task has been added to the project queue',
@@ -211,7 +192,8 @@ export function useTriggerTaskExecutor() {
         console.error('[TriggerTaskExecutor] Task queueing failed:', error);
         triggerTaskStoreRef.current.failTask(
           task.id,
-          error?.message || 'Queueing failed'
+          error?.message || 'Queueing failed',
+          { triggerName: task.triggerName }
         );
         toast.error(`Trigger failed: ${task.triggerName}`, {
           description: error?.message || 'Unknown error',
@@ -221,118 +203,143 @@ export function useTriggerTaskExecutor() {
     [loadProjectFromHistory]
   );
 
-  /**
-   * Process the next task in the queue
-   */
-  const processNextTask = useCallback(async () => {
-    if (isProcessingRef.current) {
-      console.log('[TriggerTaskExecutor] Already processing, skipping');
-      return;
-    }
-
-    // Use getState() to get the latest Zustand state directly
-    // This is important because the React-subscribed state may be stale
-    // when this function is called immediately after enqueueTask
-    const store = useTriggerTaskStore.getState();
-
-    // Check if there's a current task running
-    if (store.currentTask) {
-      console.log('[TriggerTaskExecutor] Task already running, waiting');
-      return;
-    }
-
-    // Dequeue the next pending task
-    const nextTask = store.dequeueTask();
-    if (!nextTask) {
-      console.log('[TriggerTaskExecutor] No pending tasks to dequeue');
-      return; // No pending tasks
-    }
-
-    isProcessingRef.current = true;
-    try {
-      await executeTask(nextTask);
-    } finally {
-      isProcessingRef.current = false;
-
-      // Check if there are more tasks to process
-      // Small delay to avoid overwhelming the system
-      setTimeout(() => {
-        const currentState = useTriggerTaskStore.getState();
-        const remaining = currentState.taskQueue.filter(
-          (t) => t.status === 'pending'
-        );
-        if (remaining.length > 0) {
-          processNextTask();
-        }
-      }, 1000);
-    }
-  }, [executeTask]);
-
-  // Watch for new tasks added to the queue via WebSocket events
+  // Watch for new tasks added via WebSocket events
   useEffect(() => {
-    if (webSocketEvent) {
-      console.log(
-        '[TriggerTaskExecutor] WebSocket event received:',
-        webSocketEvent
+    if (!webSocketEvent) return;
+
+    console.log(
+      '[TriggerTaskExecutor] WebSocket event received:',
+      webSocketEvent
+    );
+
+    const triggerTaskStore = useTriggerTaskStore.getState();
+
+    const triggerTaskId = `triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Check for duplicate event_id (Slack deduplication)
+    const eventId = webSocketEvent.inputData?.event_id;
+    if (eventId && triggerTaskStore.hasEventIdProcessed(eventId)) {
+      console.warn(
+        '[TriggerTaskExecutor] Duplicate event_id detected:',
+        eventId
       );
-
-      // Format the message before enqueuing
-      const formattedMessage = formatTriggeredTaskMessage({
-        id: '', // Will be assigned by enqueueTask
-        triggerId: webSocketEvent.triggerId,
-        triggerName: webSocketEvent.triggerName,
-        taskPrompt: webSocketEvent.taskPrompt,
-        executionId: webSocketEvent.executionId,
-        triggerType: webSocketEvent.triggerType,
-        projectId: webSocketEvent.projectId,
-        inputData: webSocketEvent.inputData,
-        timestamp: Date.now(),
-        status: 'pending' as import('@/types').ExecutionStatus,
-      });
-
-      // Enqueue the task using getState() to ensure we're using the same store reference
-      // as processNextTask, avoiding timing issues with React-subscribed state
-      useTriggerTaskStore.getState().enqueueTask({
-        triggerId: webSocketEvent.triggerId,
-        triggerName: webSocketEvent.triggerName,
-        taskPrompt: webSocketEvent.taskPrompt,
-        executionId: webSocketEvent.executionId,
-        triggerType: webSocketEvent.triggerType,
-        projectId: webSocketEvent.projectId,
-        inputData: webSocketEvent.inputData,
-        formattedMessage,
-      });
-
-      // Clear the event after processing
+      triggerTaskStore.recordFailedTask(
+        triggerTaskId,
+        webSocketEvent.triggerName,
+        `Duplicate event_id: ${eventId}`,
+        ExecutionStatus.Missed
+      );
       clearWebSocketEvent();
-
-      // Start processing using queueMicrotask to ensure state is fully committed
-      queueMicrotask(() => {
-        processNextTask();
-      });
+      return;
     }
-  }, [webSocketEvent, clearWebSocketEvent, processNextTask]);
+    if (eventId) {
+      triggerTaskStore.registerEventId(eventId);
+    }
 
-  // Also process on mount if there are pending tasks
-  // useEffect(() => {
-  //     const pending = triggerTaskStore.taskQueue.filter(t => t.status === 'pending');
-  //     if (pending.length > 0) {
-  //         processNextTask();
-  //     }
-  // }, []);
+    const task: TriggeredTask = {
+      id: triggerTaskId,
+      triggerId: webSocketEvent.triggerId,
+      triggerName: webSocketEvent.triggerName,
+      taskPrompt: webSocketEvent.taskPrompt,
+      executionId: webSocketEvent.executionId,
+      triggerType: webSocketEvent.triggerType,
+      projectId: webSocketEvent.projectId,
+      inputData: webSocketEvent.inputData ?? {},
+      timestamp: Date.now(),
+      status: 'pending' as any,
+      formattedMessage: formatTriggeredTaskMessage({
+        id: triggerTaskId,
+        triggerId: webSocketEvent.triggerId,
+        triggerName: webSocketEvent.triggerName,
+        taskPrompt: webSocketEvent.taskPrompt,
+        executionId: webSocketEvent.executionId,
+        triggerType: webSocketEvent.triggerType,
+        projectId: webSocketEvent.projectId,
+        inputData: webSocketEvent.inputData ?? {},
+        timestamp: Date.now(),
+        status: 'pending' as any,
+      }),
+    };
+
+    clearWebSocketEvent();
+
+    queueMicrotask(() => {
+      executeTask(task);
+    });
+  }, [webSocketEvent, clearWebSocketEvent, executeTask]);
+
+  // Polling fallback: fetch pending executions when WebSocket may have missed them
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 15_000; // 15 seconds
+    let timer: ReturnType<typeof setTimeout>;
+
+    const pollPendingExecutions = async () => {
+      try {
+        const res = await proxyFetchListExecutions({
+          status: 'pending',
+          page: 1,
+          size: 20,
+        });
+        const items = res?.items ?? [];
+        if (items.length === 0) return;
+
+        const projectState = useProjectStore.getState();
+        const triggerStore = useTriggerTaskStore.getState();
+        for (const exec of items) {
+          const executionId = exec.execution_id;
+          const triggerId = exec.trigger_id;
+
+          // Skip if already queued or running
+          const alreadyQueued = Object.values(projectState.projects ?? {}).some(
+            (p) => p?.queuedMessages?.some((m) => m.executionId === executionId)
+          );
+          const alreadyMapped =
+            triggerStore.getExecutionMappingByExecutionId(executionId);
+          if (alreadyQueued || alreadyMapped) continue;
+
+          const trigger = triggers.find((t) => t.id === triggerId);
+          const triggerName =
+            trigger?.name ?? exec.trigger_name ?? `Trigger #${triggerId}`;
+          const taskPrompt =
+            exec.task_prompt ?? trigger?.task_prompt ?? 'Triggered task';
+          const projectId = exec.project_id ?? trigger?.project_id ?? null;
+
+          console.log(
+            '[TriggerTaskExecutor] Polling fallback: queueing pending execution',
+            executionId
+          );
+          emitWebSocketEvent({
+            triggerId,
+            triggerName,
+            taskPrompt,
+            executionId,
+            timestamp: Date.now(),
+            triggerType: (exec.trigger_type ??
+              exec.execution_type ??
+              'schedule') as any,
+            projectId: projectId ? String(projectId) : null,
+            inputData: exec.input_data ?? {},
+          });
+          break; // Process one at a time
+        }
+      } catch (err) {
+        console.warn(
+          '[TriggerTaskExecutor] Polling pending executions failed:',
+          err
+        );
+      }
+    };
+
+    timer = setTimeout(function run() {
+      pollPendingExecutions();
+      timer = setTimeout(run, POLL_INTERVAL_MS);
+    }, 5000); // First poll after 5s
+
+    return () => clearTimeout(timer);
+  }, [triggers, emitWebSocketEvent]);
 
   return {
-    /** Manually trigger a task execution (useful for testing) */
     executeTask,
-    /** Process pending tasks */
-    processNextTask,
-    /** Current task being executed */
-    currentTask: triggerTaskStore.currentTask,
-    /** Pending tasks in queue */
-    pendingTasks: triggerTaskStore.taskQueue.filter(
-      (t) => t.status === 'pending'
-    ),
-    /** Task execution history */
     taskHistory: triggerTaskStore.taskHistory,
   };
 }

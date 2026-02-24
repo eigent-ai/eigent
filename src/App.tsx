@@ -20,6 +20,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
 import { useTriggerTaskExecutor } from './hooks/useTriggerTaskExecutor';
 import { hasStackKeys } from './lib';
@@ -39,6 +40,9 @@ function App() {
 
   // Execute triggered tasks automatically when WebSocket events are received
   useTriggerTaskExecutor();
+
+  // Process background tasks (triggers) - run at App level so it's always active when authenticated
+  useBackgroundTaskProcessor();
 
   useEffect(() => {
     const handleShareCode = (event: any, share_token: string) => {

@@ -101,7 +101,8 @@ export interface ChatStore {
     delayTime?: number,
     messageContent?: string,
     messageAttaches?: File[],
-    executionId?: string
+    executionId?: string,
+    projectId?: string
   ) => Promise<void>;
   handleConfirmTask: (
     project_id: string,
@@ -296,6 +297,9 @@ const updateTriggerExecutionStatus = async (
     reportedExecutionIds.add(executionId);
 
     // Call the API to update execution status
+    const triggerTaskStore = useTriggerTaskStore.getState();
+    const mapping =
+      triggerTaskStore.getExecutionMappingByExecutionId?.(executionId);
     await proxyUpdateTriggerExecution(
       executionId,
       {
@@ -304,7 +308,11 @@ const updateTriggerExecutionStatus = async (
         ...(errorMessage && { error_message: errorMessage }),
         tokens_used: tokens,
       },
-      { projectId: projectId || undefined }
+      {
+        projectId: projectId || undefined,
+        triggerId: mapping?.triggerId,
+        triggerName: mapping?.triggerName,
+      }
     );
 
     console.log(
@@ -314,21 +322,17 @@ const updateTriggerExecutionStatus = async (
       status
     );
 
-    // Complete or fail the current trigger task in triggerTaskStore
-    const triggerTaskStore = useTriggerTaskStore.getState();
-    const currentTask = triggerTaskStore.currentTask;
+    // Complete or fail the trigger task in triggerTaskStore (look up by executionId)
+    const triggerTaskId = mapping?.triggerTaskId ?? null;
 
-    if (currentTask && currentTask.executionId === executionId) {
+    if (triggerTaskId) {
       if (status === ExecutionStatus.Completed) {
-        triggerTaskStore.completeTask(currentTask.id);
+        triggerTaskStore.completeTask(triggerTaskId);
       } else if (
         status === ExecutionStatus.Failed ||
         status === ExecutionStatus.Cancelled
       ) {
-        triggerTaskStore.failTask(
-          currentTask.id,
-          errorMessage || 'Task failed'
-        );
+        triggerTaskStore.failTask(triggerTaskId, errorMessage || 'Task failed');
       }
     }
   } catch (err) {
@@ -522,7 +526,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       delayTime?: number,
       messageContent?: string,
       messageAttaches?: File[],
-      executionId?: string
+      executionId?: string,
+      projectId?: string
     ) => {
       // ✅ Wait for backend to be ready before starting task (except for replay/share)
       if (!type || type === 'normal') {
@@ -563,14 +568,31 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       //ProjectStore must exist as chatStore is already
       const projectStore = useProjectStore.getState();
-      const project_id = projectStore.activeProjectId;
+      const project_id = projectId ?? projectStore.activeProjectId;
       //Create a new chatStore on Start
       let newTaskId = taskId;
       let targetChatStore = { getState: () => get() }; // Default to current store
       /**
        * Replay creates its own chatStore for each task with replayProject
        */
-      if (project_id && type !== 'replay') {
+      if (executionId) {
+        // Trigger mode: use current store (already created by useBackgroundTaskProcessor
+        // with preserveActiveChat). Do NOT call appendInitChatStore - that would create
+        // another chat and switch to it, mixing trigger content into user's view.
+        targetChatStore = { getState: () => get() };
+        newTaskId = taskId;
+        get().setIsPending(taskId, true);
+        get().setExecutionId(taskId, executionId);
+        if (messageContent) {
+          get().addMessages(taskId, {
+            id: generateUniqueId(),
+            role: 'user',
+            content: messageContent,
+            attaches: messageAttaches || [],
+          });
+          get().setHasMessages(taskId, true);
+        }
+      } else if (project_id && type !== 'replay') {
         console.log('Creating a new Chat Instance for current project on end');
         const newChatResult = projectStore.appendInitChatStore(project_id);
 
@@ -578,11 +600,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           newTaskId = newChatResult.taskId;
           targetChatStore = newChatResult.chatStore;
           targetChatStore.getState().setIsPending(newTaskId, true);
-
-          // Set executionId if this is a trigger-initiated task
-          if (executionId) {
-            targetChatStore.getState().setExecutionId(newTaskId, executionId);
-          }
 
           //From handleSend if message is given
           // Add the message to the new chatStore if provided
@@ -818,6 +835,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? JSON.stringify({
               project_id: project_id,
               task_id: newTaskId,
+              ...(executionId && { execution_id: executionId }),
               question:
                 messageContent ||
                 targetChatStore.getState().getLastUserMessage()?.content,
@@ -2432,15 +2450,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
               const assigneeAgentIndex = taskAssigning!.findIndex(
                 (agent: Agent) =>
-                  agent.tasks.find(
+                  agent.tasks?.find(
                     (task: TaskInfo) =>
                       task.id === agentMessages.data.process_task_id
                   )
               );
-              const task = taskAssigning[assigneeAgentIndex].tasks.find(
-                (task: TaskInfo) =>
-                  task.id === agentMessages.data.process_task_id
-              );
+              const task =
+                assigneeAgentIndex !== -1
+                  ? taskAssigning[assigneeAgentIndex]?.tasks?.find(
+                      (t: TaskInfo) =>
+                        t.id === agentMessages.data.process_task_id
+                    )
+                  : undefined;
               const toolkit = {
                 toolkitId: generateUniqueId(),
                 toolkitName: 'notice',

@@ -12,12 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
+import { fetchDelete, fetchPut, proxyFetchGet } from '@/api/http';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
 import folderIconBlack from '@/assets/logo/icon_black.svg';
@@ -59,8 +54,11 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { toggle } = useSidebarStore();
-  const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const {
+    chatPanelPosition: _chatPanelPosition,
+    setChatPanelPosition: _setChatPanelPosition,
+  } = usePageTabStore();
+  const [isFullscreen, _setIsFullscreen] = useState(false);
   const appearance = useAuthStore((state) => state.appearance);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
@@ -72,7 +70,7 @@ function HeaderWin() {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
-  const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
+  const _logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
 
   const exportLog = async () => {
     try {
@@ -134,52 +132,36 @@ function HeaderWin() {
     const taskId = chatStore.activeTaskId;
     const projectId = projectStore.activeProjectId;
 
-    if (!taskId) {
+    if (!projectId) {
       toast.error(t('layout.no-active-project-to-end'));
       return;
     }
 
-    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
+    const task = taskId ? chatStore.tasks[taskId] : undefined;
 
     setEndProjectLoading(true);
     try {
-      const task = chatStore.tasks[taskId];
-
-      // Stop the task if it's running
-      if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
-          action: 'stop',
-        });
+      projectStore.createProject('new project');
+      navigate('/', { replace: true });
+      const oldChatStore = projectStore.getChatStore(projectId);
+      if (taskId && oldChatStore) {
+        oldChatStore.getState().removeTask(taskId);
       }
 
-      // Stop Workforce
+      if (task && task.status === ChatTaskStatus.RUNNING) {
+        try {
+          await fetchPut(`/task/${taskId}/take-control`, {
+            action: 'stop',
+          });
+        } catch (err) {
+          console.warn('Failed to stop task on backend:', err);
+        }
+      }
       try {
         await fetchDelete(`/chat/${projectId}`);
       } catch (error) {
         console.log('Task may not exist on backend:', error);
       }
-
-      // Delete from history using historyId
-      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
-        try {
-          await proxyFetchDelete(`/api/chat/history/${historyId}`);
-          // Remove from local store
-          chatStore.removeTask(taskId);
-        } catch (error) {
-          console.log('History may not exist:', error);
-        }
-      } else {
-        console.warn(
-          'No historyId found for project or task finished, skipping history deletion'
-        );
-      }
-
-      // Create a completely new project instead of just a new task
-      // This ensures we start fresh without any residual state
-      projectStore.createProject('new project');
-
-      // Navigate to home with replace to force refresh
-      navigate('/', { replace: true });
 
       toast.success(t('layout.project-ended-successfully'), {
         closeButton: true,

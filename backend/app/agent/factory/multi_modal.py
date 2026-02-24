@@ -40,28 +40,28 @@ from app.utils.file_utils import get_working_directory
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
-        f"Creating multi-modal agent for project: {options.project_id} "
+        f"Creating multi-modal agent for project: {options.task_lock_id} "
         f"in directory: {working_directory}"
     )
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.multi_modal_agent
+            options.task_lock_id, Agents.multi_modal_agent
         ).send_message_to_user
     )
     video_download_toolkit = VideoDownloaderToolkit(
-        options.project_id, working_directory=working_directory
+        options.task_lock_id, working_directory=working_directory
     )
     video_download_toolkit = message_integration.register_toolkits(
         video_download_toolkit
     )
-    image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
+    image_analysis_toolkit = ImageAnalysisToolkit(options.task_lock_id)
     image_analysis_toolkit = message_integration.register_toolkits(
         image_analysis_toolkit
     )
 
     terminal_toolkit = TerminalToolkit(
-        options.project_id,
+        options.task_lock_id,
         agent_name=Agents.multi_modal_agent,
         working_directory=working_directory,
         safe_mode=True,
@@ -70,7 +70,7 @@ def multi_modal_agent(options: Chat):
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     note_toolkit = NoteTakingToolkit(
-        options.project_id,
+        options.task_lock_id,
         Agents.multi_modal_agent,
         working_directory=working_directory,
     )
@@ -79,7 +79,7 @@ def multi_modal_agent(options: Chat):
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
         *HumanToolkit.get_can_use_tools(
-            options.project_id, Agents.multi_modal_agent
+            options.task_lock_id, Agents.multi_modal_agent
         ),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
@@ -87,7 +87,7 @@ def multi_modal_agent(options: Chat):
     if options.is_cloud():
         # TODO: check llm has this model
         open_ai_image_toolkit = OpenAIImageToolkit(
-            options.project_id,
+            options.task_lock_id,
             model="dall-e-3",
             response_format="b64_json",
             size="1024x1024",
@@ -111,7 +111,7 @@ def multi_modal_agent(options: Chat):
 
     if model_platform_enum == ModelPlatformType.OPENAI:
         audio_analysis_toolkit = AudioAnalysisToolkit(
-            options.project_id,
+            options.task_lock_id,
             working_directory,
             OpenAIAudioModels(
                 api_key=options.api_key,

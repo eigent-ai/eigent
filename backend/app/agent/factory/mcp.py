@@ -26,18 +26,18 @@ from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 async def mcp_agent(options: Chat):
     logger.info(
-        f"Creating MCP agent for project: {options.project_id} "
+        f"Creating MCP agent for project: {options.task_lock_id} "
         f"with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
     tools = [
-        *McpSearchToolkit(options.project_id).get_tools(),
+        *McpSearchToolkit(options.task_lock_id).get_tools(),
     ]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
             logger.info(
                 f"Retrieved {len(mcp_tools)} MCP tools "
-                f"for task {options.project_id}"
+                f"for task {options.task_lock_id}"
             )
             if mcp_tools:
                 tool_names = [
@@ -53,11 +53,11 @@ async def mcp_agent(options: Chat):
         except Exception as e:
             logger.debug(repr(e))
 
-    task_lock = get_task_lock(options.project_id)
+    task_lock = get_task_lock(options.task_lock_id)
     agent_id = str(uuid.uuid4())
     logger.info(
         f"Creating MCP agent: {Agents.mcp_agent} with id: "
-        f"{agent_id} for task: {options.project_id}"
+        f"{agent_id} for task: {options.task_lock_id}"
     )
     asyncio.create_task(
         task_lock.put_queue(
@@ -74,7 +74,7 @@ async def mcp_agent(options: Chat):
         )
     )
     return ListenChatAgent(
-        options.project_id,
+        options.task_lock_id,
         Agents.mcp_agent,
         system_message=MCP_SYS_PROMPT,
         model=ModelFactory.create(
@@ -84,7 +84,7 @@ async def mcp_agent(options: Chat):
             url=options.api_url,
             model_config_dict=(
                 {
-                    "user": str(options.project_id),
+                    "user": str(options.task_lock_id),
                 }
                 if options.is_cloud()
                 else None

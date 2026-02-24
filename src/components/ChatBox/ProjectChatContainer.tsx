@@ -42,13 +42,19 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
   const [lastMessageCount, setLastMessageCount] = useState(0);
 
-  // Get all chat stores for the active project
+  // Get all chat stores for the active project (user + trigger in same chat history)
   const activeProjectId = projectStore.activeProjectId;
-  const chatStores = useMemo(
-    () =>
-      activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
-    [activeProjectId, projectStore]
-  );
+  const project = activeProjectId
+    ? projectStore.getProjectById(activeProjectId)
+    : null;
+  const chatStoreIds = project
+    ? Object.keys(project.chatStores || {}).join(',')
+    : '';
+  const chatStoresToRender = useMemo(() => {
+    if (!activeProjectId) return [];
+    return projectStore.getAllChatStores(activeProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId, projectStore, chatStoreIds]);
 
   // Extract messages array to avoid complex expression in dependency array
   const activeTaskId = chatStore?.activeTaskId as string;
@@ -144,7 +150,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     return () => {
       queryGroups.forEach((group) => observer.unobserve(group));
     };
-  }, [chatStores]);
+  }, [chatStoresToRender]);
 
   // Handle scrollbar visibility on scroll
   useEffect(() => {
@@ -182,7 +188,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       className={`scrollbar-always-visible relative z-10 flex flex-1 flex-col overflow-y-scroll ${className}`}
     >
       <AnimatePresence mode="popLayout">
-        {chatStores.map(({ chatId, chatStore }) => {
+        {chatStoresToRender.map(({ chatId, chatStore }) => {
           const chatState = chatStore.getState();
           const activeTaskId = chatState.activeTaskId;
 
@@ -209,7 +215,6 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
               chatStore={chatStore}
               activeQueryId={activeQueryId}
               onQueryActive={setActiveQueryId}
-              // onPauseResume={onPauseResume}  // Commented out - temporary not needed
               onSkip={onSkip}
               isPauseResumeLoading={isPauseResumeLoading}
             />

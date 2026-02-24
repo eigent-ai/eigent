@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import {
   proxyFetchDelete,
   proxyFetchGet,
@@ -26,7 +40,7 @@ const updateExecutionLog = (
   },
   metadata?: Record<string, any>
 ) => {
-  const { addLog, modifyLog } = useActivityLogStore.getState();
+  const { modifyLog } = useActivityLogStore.getState();
 
   const logData = {
     type: activityType,
@@ -37,14 +51,21 @@ const updateExecutionLog = (
     metadata,
   };
 
-  const updated = modifyLog(executionId, logData);
-
-  if (!updated) {
-    addLog({
-      ...logData,
-      executionId,
+  if (
+    activityType === ActivityType.ExecutionSuccess ||
+    activityType === ActivityType.ExecutionFailed
+  ) {
+    modifyLog(executionId, logData, {
+      matchTypes: [ActivityType.ExecutionSuccess, ActivityType.ExecutionFailed],
+      addIfNotFound: true,
     });
+    return;
   }
+
+  modifyLog(executionId, logData, {
+    matchTypes: [ActivityType.TriggerExecuted],
+    addIfNotFound: true,
+  });
 };
 
 // ==== Proxy API calls (for server) ====
@@ -210,6 +231,20 @@ export const proxyFetchTriggerExecutions = async (
     return res;
   } catch (error) {
     console.error('Failed to fetch trigger executions:', error);
+    throw error;
+  }
+};
+
+export const proxyFetchListExecutions = async (params?: {
+  status?: string;
+  page?: number;
+  size?: number;
+}) => {
+  try {
+    const res = await proxyFetchGet('/api/execution/', params ?? {});
+    return res;
+  } catch (error) {
+    console.error('Failed to fetch executions:', error);
     throw error;
   }
 };

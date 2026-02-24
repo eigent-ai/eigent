@@ -24,7 +24,6 @@ interface ProjectSectionProps {
   chatStore: VanillaChatStore;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
-  // onPauseResume: () => void;  // Commented out - temporary not needed
   onSkip: () => void;
   isPauseResumeLoading: boolean;
 }
@@ -39,7 +38,6 @@ export const ProjectSection = React.forwardRef<
       chatStore,
       activeQueryId,
       onQueryActive,
-      // onPauseResume,  // Commented out - temporary not needed
       onSkip,
       isPauseResumeLoading,
     },

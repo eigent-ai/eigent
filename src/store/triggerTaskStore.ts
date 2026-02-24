@@ -67,8 +67,23 @@ interface ExecutionMapping {
   triggerTaskId: string;
   /** Project ID where the task is running */
   projectId: string;
+  /** Numeric trigger ID for activity log display */
+  triggerId?: number;
+  /** Trigger name for task history */
+  triggerName?: string;
   /** Whether the status has been reported */
   reported: boolean;
+}
+
+/**
+ * Minimal task info for recording in history when we don't have full task (e.g. cancel from UI)
+ */
+export interface TriggerTaskHistoryEntry {
+  id: string;
+  triggerName: string;
+  status: ExecutionStatus;
+  timestamp: number;
+  errorMessage?: string;
 }
 
 /**
@@ -179,229 +194,166 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
   return parts.join('\n');
 }
 
+/**
+ * Trigger execution store - tracks trigger task lifecycle and status.
+ *
+ * Responsibilities:
+ * - executionMappings: links chat task completion to trigger status updates
+ * - taskHistory: audit log of completed/failed/cancelled trigger tasks
+ *
+ * The actual queue of pending tasks lives in projectStore.queuedMessages (per-project).
+ */
 interface TriggerTaskStore {
-  /** Queue of triggered tasks waiting to be executed */
-  taskQueue: TriggeredTask[];
-  /** Currently running triggered task (if any) */
-  currentTask: TriggeredTask | null;
-  /** History of completed/failed tasks */
-  taskHistory: TriggeredTask[];
+  /** History of completed/failed/cancelled tasks */
+  taskHistory: TriggerTaskHistoryEntry[];
   /** Maps chat task IDs to execution IDs for status reporting */
   executionMappings: Map<string, ExecutionMapping>;
+  /** Processed event_ids for Slack deduplication */
+  processedEventIds: Set<string>;
+  /** Processed execution_ids to prevent duplicate queueing (schedule/webhook) */
+  processedExecutionIds: Set<string>;
 
-  // Actions
-  /** Add a new triggered task to the queue */
-  enqueueTask: (
-    task: Omit<TriggeredTask, 'id' | 'status' | 'timestamp'>
-  ) => string;
-  /** Get the next pending task from the queue */
-  dequeueTask: () => TriggeredTask | null;
-  /** Mark current task as running */
-  setCurrentTask: (task: TriggeredTask | null) => void;
-  /** Mark a task as completed */
-  completeTask: (taskId: string) => void;
-  /** Mark a task as failed */
-  failTask: (taskId: string, errorMessage: string) => void;
-  /** Cancel a pending task (user-initiated removal from queue) */
-  cancelTask: (taskId: string, reason?: string) => void;
-  /** Get task by ID */
-  getTaskById: (taskId: string) => TriggeredTask | undefined;
-  /** Get all pending tasks for a specific project */
-  getTasksForProject: (projectId: string) => TriggeredTask[];
+  /** Mark a task as completed (from execution mapping) */
+  completeTask: (triggerTaskId: string) => void;
+  /** Mark a task as failed (optionally with taskInfo when not in mapping, e.g. cancel) */
+  failTask: (
+    triggerTaskId: string,
+    errorMessage: string,
+    taskInfo?: { triggerName: string }
+  ) => void;
+  /** Record a failed task for history (e.g. duplicate event_id) */
+  recordFailedTask: (
+    triggerTaskId: string,
+    triggerName: string,
+    errorMessage: string,
+    status?: ExecutionStatus
+  ) => void;
+  /** Register event_id for deduplication (Slack) */
+  registerEventId: (eventId: string) => void;
+  /** Check if event_id was already processed (for Slack deduplication) */
+  hasEventIdProcessed: (eventId: string) => boolean;
+  /** Register execution_id to prevent duplicate queueing */
+  registerExecutionId: (executionId: string) => void;
+  /** Check if execution_id was already queued */
+  hasExecutionIdProcessed: (executionId: string) => boolean;
   /** Clear completed tasks from history */
   clearHistory: () => void;
 
   // Execution status tracking
-  /** Register a mapping between chat task ID and execution ID */
   registerExecutionMapping: (
     chatTaskId: string,
     executionId: string,
     triggerTaskId: string,
-    projectId: string
+    projectId: string,
+    triggerName?: string,
+    triggerId?: number
   ) => void;
-  /** Get execution mapping by chat task ID */
   getExecutionMapping: (chatTaskId: string) => ExecutionMapping | undefined;
-  /** Remove execution mapping */
+  getExecutionMappingByExecutionId: (
+    executionId: string
+  ) => ExecutionMapping | undefined;
   removeExecutionMapping: (chatTaskId: string) => void;
 }
 
 export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
-  taskQueue: [],
-  currentTask: null,
   taskHistory: [],
   executionMappings: new Map(),
+  processedEventIds: new Set(),
+  processedExecutionIds: new Set(),
 
-  enqueueTask: (taskData) => {
-    const id = `triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Check for duplicate event_id (Slack deduplication)
-    const eventId = taskData.inputData?.event_id;
-    if (eventId) {
-      const { taskQueue, taskHistory, currentTask } = get();
-
-      // Check if event_id exists in queue, current task, or history
-      const isDuplicate =
-        taskQueue.some((t) => t.inputData?.event_id === eventId) ||
-        currentTask?.inputData?.event_id === eventId ||
-        taskHistory.some((t) => t.inputData?.event_id === eventId);
-
-      if (isDuplicate) {
-        console.warn(
-          '[TriggerTaskStore] Duplicate event_id detected, marking as missed:',
-          eventId
-        );
-
-        const failedTask: TriggeredTask = {
-          ...taskData,
-          id,
-          status: ExecutionStatus.Missed,
-          timestamp: Date.now(),
-          errorMessage: `Duplicate event_id: ${eventId}`,
-        };
-
-        // Add to history as failed
-        set((state) => ({
-          taskHistory: [...state.taskHistory, failedTask],
-        }));
-
-        return id;
-      }
-    }
-
-    const newTask: TriggeredTask = {
-      ...taskData,
-      id,
-      status: ExecutionStatus.Pending,
-      timestamp: Date.now(),
-    };
+  completeTask: (triggerTaskId) => {
+    const mapping = [...get().executionMappings.values()].find(
+      (m) => m.triggerTaskId === triggerTaskId
+    );
+    const triggerName = mapping?.triggerName ?? 'Unknown';
 
     set((state) => ({
-      taskQueue: [...state.taskQueue, newTask],
+      taskHistory: [
+        {
+          id: triggerTaskId,
+          triggerName,
+          status: ExecutionStatus.Completed,
+          timestamp: Date.now(),
+        },
+        ...state.taskHistory,
+      ].slice(0, 50),
     }));
-
-    console.log('[TriggerTaskStore] Task enqueued:', id, taskData.triggerName);
-    return id;
+    console.log('[TriggerTaskStore] Task completed:', triggerTaskId);
   },
 
-  dequeueTask: () => {
-    const { taskQueue } = get();
-    const nextTask = taskQueue.find(
-      (t) => t.status === ExecutionStatus.Pending
+  failTask: (triggerTaskId, errorMessage, taskInfo) => {
+    const mapping = [...get().executionMappings.values()].find(
+      (m) => m.triggerTaskId === triggerTaskId
     );
+    const triggerName =
+      taskInfo?.triggerName ?? mapping?.triggerName ?? 'Unknown';
 
-    if (nextTask) {
-      // Mark as running and move to current
-      set((state) => ({
-        taskQueue: state.taskQueue.filter((t) => t.id !== nextTask.id),
-        currentTask: { ...nextTask, status: ExecutionStatus.Running },
-      }));
-      console.log('[TriggerTaskStore] Task dequeued:', nextTask.id);
-      return { ...nextTask, status: ExecutionStatus.Running };
-    }
-    return null;
+    set((state) => ({
+      taskHistory: [
+        {
+          id: triggerTaskId,
+          triggerName,
+          status: ExecutionStatus.Failed,
+          timestamp: Date.now(),
+          errorMessage,
+        },
+        ...state.taskHistory,
+      ].slice(0, 50),
+    }));
+    console.log('[TriggerTaskStore] Task failed:', triggerTaskId, errorMessage);
   },
 
-  setCurrentTask: (task) => {
-    set({ currentTask: task });
+  recordFailedTask: (triggerTaskId, triggerName, errorMessage, status) => {
+    const s = status ?? ExecutionStatus.Failed;
+    set((state) => ({
+      taskHistory: [
+        {
+          id: triggerTaskId,
+          triggerName,
+          status: s,
+          timestamp: Date.now(),
+          errorMessage,
+        },
+        ...state.taskHistory,
+      ].slice(0, 50),
+    }));
   },
 
-  completeTask: (taskId) => {
+  registerEventId: (eventId) => {
     set((state) => {
-      const completedTask =
-        state.currentTask?.id === taskId
-          ? { ...state.currentTask, status: ExecutionStatus.Completed as const }
-          : state.taskQueue.find((t) => t.id === taskId);
-
-      if (!completedTask) return state;
-
-      return {
-        currentTask:
-          state.currentTask?.id === taskId ? null : state.currentTask,
-        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
-        taskHistory: [
-          { ...completedTask, status: ExecutionStatus.Completed as const },
-          ...state.taskHistory,
-        ].slice(0, 50),
-      };
+      const next = new Set(state.processedEventIds);
+      next.add(eventId);
+      return { processedEventIds: next };
     });
-    console.log('[TriggerTaskStore] Task completed:', taskId);
   },
 
-  failTask: (taskId, errorMessage) => {
+  hasEventIdProcessed: (eventId) => {
+    return get().processedEventIds.has(eventId);
+  },
+
+  registerExecutionId: (executionId) => {
     set((state) => {
-      const failedTask =
-        state.currentTask?.id === taskId
-          ? {
-              ...state.currentTask,
-              status: ExecutionStatus.Failed as const,
-              errorMessage,
-            }
-          : state.taskQueue.find((t) => t.id === taskId);
-
-      if (!failedTask) return state;
-
-      return {
-        currentTask:
-          state.currentTask?.id === taskId ? null : state.currentTask,
-        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
-        taskHistory: [
-          {
-            ...failedTask,
-            status: ExecutionStatus.Failed as const,
-            errorMessage,
-          },
-          ...state.taskHistory,
-        ].slice(0, 50),
-      };
+      const next = new Set(state.processedExecutionIds);
+      next.add(executionId);
+      return { processedExecutionIds: next };
     });
-    console.log('[TriggerTaskStore] Task failed:', taskId, errorMessage);
   },
 
-  cancelTask: (taskId, reason) => {
-    set((state) => {
-      const cancelledTask = state.taskQueue.find((t) => t.id === taskId);
-
-      if (!cancelledTask) return state;
-
-      return {
-        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
-        taskHistory: [
-          {
-            ...cancelledTask,
-            status: ExecutionStatus.Cancelled as const,
-            errorMessage: reason || 'Task cancelled by user',
-          },
-          ...state.taskHistory,
-        ].slice(0, 50),
-      };
-    });
-    console.log('[TriggerTaskStore] Task cancelled:', taskId, reason);
-  },
-
-  getTaskById: (taskId) => {
-    const { taskQueue, currentTask, taskHistory } = get();
-    return (
-      taskQueue.find((t) => t.id === taskId) ||
-      (currentTask?.id === taskId ? currentTask : undefined) ||
-      taskHistory.find((t) => t.id === taskId)
-    );
-  },
-
-  getTasksForProject: (projectId) => {
-    const { taskQueue } = get();
-    return taskQueue.filter((t) => t.projectId === projectId);
+  hasExecutionIdProcessed: (executionId) => {
+    return get().processedExecutionIds.has(executionId);
   },
 
   clearHistory: () => {
     set({ taskHistory: [] });
   },
 
-  // Execution status tracking methods
   registerExecutionMapping: (
     chatTaskId: string,
     executionId: string,
     triggerTaskId: string,
-    projectId: string
+    projectId: string,
+    triggerName?: string,
+    triggerId?: number
   ) => {
     set((state) => {
       const newMappings = new Map(state.executionMappings);
@@ -410,6 +362,8 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
         executionId,
         triggerTaskId,
         projectId,
+        triggerName,
+        triggerId,
         reported: false,
       });
       return { executionMappings: newMappings };
@@ -424,6 +378,13 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
 
   getExecutionMapping: (chatTaskId: string) => {
     return get().executionMappings.get(chatTaskId);
+  },
+
+  getExecutionMappingByExecutionId: (executionId: string) => {
+    for (const mapping of get().executionMappings.values()) {
+      if (mapping.executionId === executionId) return mapping;
+    }
+    return undefined;
   },
 
   removeExecutionMapping: (chatTaskId: string) => {

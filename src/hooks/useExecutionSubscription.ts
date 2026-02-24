@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { queryClient, queryKeys } from '@/lib/queryClient';
-import { proxyFetchTriggerConfig } from '@/service/triggerApi';
+import {
+  proxyFetchTriggerConfig,
+  proxyUpdateTriggerExecution,
+} from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { useAuthStore } from '@/store/authStore';
 import { useTriggerStore } from '@/store/triggerStore';
@@ -126,7 +129,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
   const baseReconnectDelay = 1000;
 
   const { token } = useAuthStore();
-  const { addLog } = useActivityLogStore();
+  const { modifyLog } = useActivityLogStore();
   const {
     emitWebSocketEvent,
     triggers,
@@ -137,15 +140,35 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
   // Store latest values in refs to avoid recreating connect function
   const triggersRef = useRef(triggers);
-  const addLogRef = useRef(addLog);
+  const modifyLogRef = useRef(modifyLog);
   const emitWebSocketEventRef = useRef(emitWebSocketEvent);
   const setWsConnectionStatusRef = useRef(setWsConnectionStatus);
   const setLastPongTimestampRef = useRef(setLastPongTimestamp);
 
+  const markExecutionRunningRef = useRef(
+    (
+      executionId: string,
+      projectId?: string,
+      triggerName?: string,
+      triggerId?: number
+    ) => {
+      proxyUpdateTriggerExecution(
+        executionId,
+        { status: 'running' },
+        { projectId, triggerId, triggerName }
+      ).catch((err) =>
+        console.warn(
+          '[ExecutionSubscription] Failed to mark execution running:',
+          err
+        )
+      );
+    }
+  );
+
   // Update refs on every render
   useEffect(() => {
     triggersRef.current = triggers;
-    addLogRef.current = addLog;
+    modifyLogRef.current = modifyLog;
     emitWebSocketEventRef.current = emitWebSocketEvent;
     setWsConnectionStatusRef.current = setWsConnectionStatus;
     setLastPongTimestampRef.current = setLastPongTimestamp;
@@ -294,13 +317,27 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 );
               }
 
-              addLogRef.current({
-                type: ActivityType.TriggerExecuted,
-                message: `"${triggerName}" execution started`,
-                triggerId: message.trigger_id,
-                triggerName: triggerName,
-                executionId: message.execution_id,
-              });
+              modifyLogRef.current(
+                message.execution_id,
+                {
+                  type: ActivityType.TriggerExecuted,
+                  message: `"${triggerName}" execution started`,
+                  triggerId: message.trigger_id,
+                  triggerName: triggerName,
+                  ...(message.project_id && { projectId: message.project_id }),
+                },
+                {
+                  matchTypes: [ActivityType.TriggerExecuted],
+                  addIfNotFound: true,
+                }
+              );
+
+              markExecutionRunningRef.current(
+                message.execution_id,
+                message.project_id,
+                triggerName,
+                message.trigger_id
+              );
 
               // Emit WebSocket event with full context for task execution
               // server provides task_prompt
@@ -336,23 +373,33 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 `[ExecutionSubscription] Execution updated: ${message.execution_id} - ${message.status}`
               );
 
-              if (message.status === 'completed') {
-                addLogRef.current({
-                  type: ActivityType.ExecutionSuccess,
-                  message: `"${triggerName}" execution completed`,
+              modifyLogRef.current(
+                message.execution_id,
+                {
+                  type:
+                    message.status === 'completed'
+                      ? ActivityType.ExecutionSuccess
+                      : ActivityType.ExecutionFailed,
+                  message:
+                    message.status === 'completed'
+                      ? `"${triggerName}" execution completed`
+                      : `"${triggerName}" execution failed`,
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
-                  executionId: message.execution_id,
-                });
+                  ...(message.project_id && { projectId: message.project_id }),
+                },
+                {
+                  matchTypes: [
+                    ActivityType.ExecutionSuccess,
+                    ActivityType.ExecutionFailed,
+                  ],
+                  addIfNotFound: true,
+                }
+              );
+
+              if (message.status === 'completed') {
                 toast.success(`Execution completed: ${triggerName}`);
               } else if (message.status === 'failed') {
-                addLogRef.current({
-                  type: ActivityType.ExecutionFailed,
-                  message: `"${triggerName}" execution failed`,
-                  triggerId: message.trigger_id,
-                  triggerName: triggerName,
-                  executionId: message.execution_id,
-                });
                 toast.error(`Execution failed: ${triggerName}`);
               }
               break;

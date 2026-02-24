@@ -148,15 +148,20 @@ def _get_task_id(args):
         return None
 
     chat = args[0]
-    task_lock = get_task_lock_if_exists(chat.project_id)
+    # Trigger tasks use task_id as lock key; user tasks use project_id
+    lock_key = (
+        chat.task_id
+        if getattr(chat, "execution_id", None)
+        else chat.project_id
+    )
+    task_lock = get_task_lock_if_exists(lock_key)
 
     if task_lock and getattr(task_lock, "current_task_id", None):
         return task_lock.current_task_id
 
     if not task_lock:
         logger.warning(
-            f"Task lock not found for project_id {chat.project_id}, "
-            f"using chat.task_id"
+            f"Task lock not found for lock_key {lock_key}, using chat.task_id"
         )
 
     return chat.task_id

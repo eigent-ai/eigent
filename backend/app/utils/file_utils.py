@@ -26,7 +26,7 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
     if not task_lock:
         from app.service.task import get_task_lock_if_exists
 
-        task_lock = get_task_lock_if_exists(options.project_id)
+        task_lock = get_task_lock_if_exists(options.task_lock_id)
 
     if (
         task_lock

@@ -53,6 +53,8 @@ PLATFORM_MAPPING = {
 class Chat(BaseModel):
     task_id: str
     project_id: str
+    """When set, indicates trigger-initiated task; use task_id for task_lock to isolate from user chat."""
+    execution_id: str | None = None
     question: str
     email: str
     attaches: list[str] = []
@@ -76,6 +78,11 @@ class Chat(BaseModel):
     # User-specific search engine configurations
     # (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
     search_config: dict[str, str] | None = None
+
+    @property
+    def task_lock_id(self) -> str:
+        """ID used for task_lock: task_id when trigger, else project_id."""
+        return self.task_id if self.execution_id else self.project_id
 
     @field_validator("model_platform")
     @classmethod

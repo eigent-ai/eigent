@@ -39,7 +39,7 @@ def agent_model(
     enable_snapshot_clean: bool = False,
     custom_model_config: AgentModelConfig | None = None,
 ):
-    task_lock = get_task_lock(options.project_id)
+    task_lock = get_task_lock(options.task_lock_id)
     agent_id = str(uuid.uuid4())
     logger.info(
         f"Creating agent: {agent_name} with id: {agent_id} "
@@ -146,7 +146,7 @@ def agent_model(
     )
 
     return ListenChatAgent(
-        options.project_id,
+        options.task_lock_id,
         agent_name,
         system_message,
         model=model,

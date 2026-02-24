@@ -42,36 +42,36 @@ async def social_media_agent(options: Chat):
     """
     working_directory = get_working_directory(options)
     logger.info(
-        f"Creating social media agent for project: {options.project_id} "
+        f"Creating social media agent for project: {options.task_lock_id} "
         f"in directory: {working_directory}"
     )
     tools = [
-        *WhatsAppToolkit.get_can_use_tools(options.project_id),
-        *TwitterToolkit.get_can_use_tools(options.project_id),
-        *LinkedInToolkit.get_can_use_tools(options.project_id),
-        *RedditToolkit.get_can_use_tools(options.project_id),
-        *await NotionMCPToolkit.get_can_use_tools(options.project_id),
-        # *SlackToolkit.get_can_use_tools(options.project_id),
+        *WhatsAppToolkit.get_can_use_tools(options.task_lock_id),
+        *TwitterToolkit.get_can_use_tools(options.task_lock_id),
+        *LinkedInToolkit.get_can_use_tools(options.task_lock_id),
+        *RedditToolkit.get_can_use_tools(options.task_lock_id),
+        *await NotionMCPToolkit.get_can_use_tools(options.task_lock_id),
+        # *SlackToolkit.get_can_use_tools(options.task_lock_id),
         *await GoogleGmailMCPToolkit.get_can_use_tools(
-            options.project_id, options.get_bun_env()
+            options.task_lock_id, options.get_bun_env()
         ),
-        *GoogleCalendarToolkit.get_can_use_tools(options.project_id),
+        *GoogleCalendarToolkit.get_can_use_tools(options.task_lock_id),
         *HumanToolkit.get_can_use_tools(
-            options.project_id, Agents.social_media_agent
+            options.task_lock_id, Agents.social_media_agent
         ),
         *TerminalToolkit(
-            options.project_id,
+            options.task_lock_id,
             agent_name=Agents.social_media_agent,
             working_directory=working_directory,
             clone_current_env=True,
         ).get_tools(),
         *NoteTakingToolkit(
-            options.project_id,
+            options.task_lock_id,
             Agents.social_media_agent,
             working_directory=working_directory,
         ).get_tools(),
-        # *DiscordToolkit(options.project_id).get_tools(),
-        # *GoogleSuiteToolkit(options.project_id).get_tools(),
+        # *DiscordToolkit(options.task_lock_id).get_tools(),
+        # *GoogleSuiteToolkit(options.task_lock_id).get_tools(),
     ]
     return agent_model(
         Agents.social_media_agent,

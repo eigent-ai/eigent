@@ -41,28 +41,28 @@ async def developer_agent(options: Chat):
     )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.developer_agent
+            options.task_lock_id, Agents.developer_agent
         ).send_message_to_user
     )
     note_toolkit = NoteTakingToolkit(
-        api_task_id=options.project_id,
+        api_task_id=options.task_lock_id,
         agent_name=Agents.developer_agent,
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
+    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.task_lock_id)
     web_deploy_toolkit = message_integration.register_toolkits(
         web_deploy_toolkit
     )
     screenshot_toolkit = ScreenshotToolkit(
-        options.project_id, working_directory=working_directory
+        options.task_lock_id, working_directory=working_directory
     )
     screenshot_toolkit = message_integration.register_toolkits(
         screenshot_toolkit
     )
 
     terminal_toolkit = TerminalToolkit(
-        options.project_id,
+        options.task_lock_id,
         Agents.developer_agent,
         working_directory=working_directory,
         safe_mode=True,
@@ -72,7 +72,7 @@ async def developer_agent(options: Chat):
 
     tools = [
         *HumanToolkit.get_can_use_tools(
-            options.project_id, Agents.developer_agent
+            options.task_lock_id, Agents.developer_agent
         ),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
