@@ -69,7 +69,7 @@ def config_set(api_key, platform, model, api_url, email):
     if email:
         cfg["email"] = email
     save_config(cfg)
-    click.echo("✓ Config saved to ~/.eigent/cli-config.json")
+    click.echo("Config saved to ~/.eigent/cli-config.json")
 
 
 @config.command("show")
@@ -96,6 +96,6 @@ def config_clear():
     """Remove all saved configuration."""
     if CONFIG_PATH.exists():
         CONFIG_PATH.unlink()
-        click.echo("✓ Config cleared.")
+        click.echo("Config cleared.")
     else:
         click.echo("No config file found.")

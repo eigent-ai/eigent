@@ -49,19 +49,19 @@ def _print_event(step: str, data) -> None:
 
     elif step == "activate_agent":
         name = data.get("name", "") if isinstance(data, dict) else data
-        click.secho(f"\n▶ Agent: {name}", fg="cyan", bold=True)
+        click.secho(f"\n[Agent] {name}", fg="cyan", bold=True)
 
     elif step == "activate_toolkit":
         name = data.get("name", "") if isinstance(data, dict) else data
-        click.echo(f"  🔧 Tool: {name}")
+        click.echo(f"  [Tool] {name}")
 
     elif step == "assign_task":
         content = data.get("content", "") if isinstance(data, dict) else data
-        click.echo(f"  → {content}")
+        click.echo(f"  -> {content}")
 
     elif step == "end":
         result = data.get("result", data) if isinstance(data, dict) else data
-        click.secho("\n── Result ──────────────────────────────", fg="green")
+        click.secho("\n[Result] ----------------------------------------", fg="green")
         click.echo(str(result))
 
     elif step == "error":
@@ -70,7 +70,7 @@ def _print_event(step: str, data) -> None:
             if isinstance(data, dict)
             else str(data)
         )
-        click.secho(f"\n✗ Error: {msg}", fg="red")
+        click.secho(f"\n[Error] {msg}", fg="red")
 
     else:
         # Generic fallback
@@ -91,7 +91,7 @@ async def _run_task(chat_data) -> None:
     from app.service.chat_service import step_solve
     from app.service.task import (
         ActionImproveData,
-        ImprovePayload,
+        ActionStopData,
         get_or_create_task_lock,
         set_current_task_id,
     )
@@ -101,10 +101,7 @@ async def _run_task(chat_data) -> None:
 
     await task_lock.put_queue(
         ActionImproveData(
-            data=ImprovePayload(
-                question=chat_data["question"],
-                attaches=[],
-            ),
+            data=chat_data["question"],
             new_task_id=chat_data["task_id"],
         )
     )
@@ -117,7 +114,18 @@ async def _run_task(chat_data) -> None:
             continue
         try:
             payload = json.loads(chunk[len("data:") :].strip())
-            _print_event(payload.get("step", ""), payload.get("data", ""))
+            step = payload.get("step", "")
+            data = payload.get("data", "")
+
+            # Simple question: wait_confirm is the final answer, stop the loop
+            if step == "wait_confirm":
+                content = data.get("content", "") if isinstance(data, dict) else str(data)
+                click.secho("\n[Answer]", fg="green", bold=True)
+                click.echo(content)
+                await task_lock.put_queue(ActionStopData())
+                continue
+
+            _print_event(step, data)
         except json.JSONDecodeError:
             pass
 
@@ -161,6 +169,7 @@ def run(question, api_key, platform, model, api_url, email, project_id):
             "✗ No API key found. Set one with:\n"
             "  uv run python cli.py config set --api-key <YOUR_KEY>",
             fg="red",
+
         )
         raise SystemExit(1)
 
@@ -179,7 +188,7 @@ def run(question, api_key, platform, model, api_url, email, project_id):
         "api_url": resolved_api_url,
     }
 
-    click.secho(f"\nEigent ▸ {question}", fg="bright_white", bold=True)
+    click.secho(f"\nEigent > {question}", fg="bright_white", bold=True)
     click.echo(f"Model : {resolved_platform}/{resolved_model}")
     click.echo("─" * 50)
 
