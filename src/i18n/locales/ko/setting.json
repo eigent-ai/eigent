@@ -239,9 +239,6 @@
   "api-key-setting": "API 키 설정",
   "api-host-setting": "API 호스트 설정",
   "model-type-setting": "모델 타입 설정",
-  "search-model-types": "모델 유형 검색...",
-  "no-model-types-found": "모델 유형을 찾을 수 없습니다.",
-  "loading-suggestions": "제안 로딩 중...",
   "please-select": "선택하세요",
   "configuring": "구성 중...",
 

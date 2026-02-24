@@ -238,9 +238,6 @@
   "api-key-setting": "API-Schlüssel-Einstellung",
   "api-host-setting": "API-Host-Einstellung",
   "model-type-setting": "Modelltyp-Einstellung",
-  "search-model-types": "Modelltypen suchen...",
-  "no-model-types-found": "Keine Modelltypen gefunden.",
-  "loading-suggestions": "Vorschläge werden geladen...",
   "please-select": "Bitte auswählen",
   "configuring": "Wird konfiguriert...",
 

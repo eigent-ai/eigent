@@ -205,9 +205,6 @@
   "api-key-setting": "API Key Setting",
   "api-host-setting": "API Host Setting",
   "model-type-setting": "Model Type Setting",
-  "search-model-types": "Search model types...",
-  "no-model-types-found": "No model types found.",
-  "loading-suggestions": "Loading suggestions...",
   "please-select": "Please select",
   "configuring": "Configuring...",
 

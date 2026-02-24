@@ -76,8 +76,8 @@ export default function Setting() {
 
   return (
     <div className="m-auto flex h-auto max-w-[940px] flex-col">
-      <div className="flex h-auto w-full px-6">
-        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
+      <div className="px-6 flex h-auto w-full">
+        <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
           <VerticalNavigation
             items={
               settingMenus.map((menu) => {
@@ -91,11 +91,11 @@ export default function Setting() {
             }
             value={activeTab}
             onValueChange={handleTabChange}
-            className="h-full min-h-0 w-full flex-1 gap-0"
+            className="min-h-0 gap-0 h-full w-full flex-1"
             listClassName="w-full h-full overflow-y-auto"
             contentClassName="hidden"
           />
-          <div className="mt-4 flex w-full flex-shrink-0 flex-grow-0 flex-col items-center justify-center gap-4 border-x-0 border-b-0 border-t-[0.5px] border-solid border-border-secondary py-4">
+          <div className="mt-4 gap-4 border-border-secondary py-4 flex w-full flex-shrink-0 flex-grow-0 flex-col items-center justify-center border-x-0 border-t-[0.5px] border-b-0 border-solid">
             <button
               onClick={() =>
                 window.open(
@@ -104,7 +104,7 @@ export default function Setting() {
                   'noopener,noreferrer'
                 )
               }
-              className="flex w-full cursor-pointer flex-row items-center justify-center gap-2 rounded-lg bg-surface-tertiary px-6 py-1.5 transition-opacity duration-200 hover:opacity-60"
+              className="gap-2 rounded-lg bg-surface-tertiary px-6 py-1.5 flex w-full cursor-pointer flex-row items-center justify-center transition-opacity duration-200 hover:opacity-60"
             >
               <TagIcon className="h-4 w-4 text-text-success" />
               <div className="text-label-sm font-semibold text-text-body">
@@ -127,7 +127,7 @@ export default function Setting() {
         </div>
 
         <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="flex flex-col gap-4">
+          <div className="gap-4 flex flex-col">
             {activeTab === 'general' && <General />}
             {activeTab === 'human-in-the-loop' && <HumanInTheLoop />}
             {activeTab === 'privacy' && <Privacy />}
