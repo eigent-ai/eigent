@@ -353,6 +353,6 @@
   "preferred-ide": "IDE المفضل",
   "preferred-ide-description": "اختر التطبيق الذي سيتم استخدامه عند فتح مجلدات مشاريع الوكيل.",
   "system-file-manager": "مدير ملفات النظام",
-  "help-improve-eigent": "Help Improve Eigent",
-  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
+  "help-improve-eigent": "ساعد في تحسين Eigent",
+  "help-improve-eigent-description": "اسمح لـ Eigent بجمع سجلات الأخطاء المجهولة وبيانات الاستخدام لتحسين الخدمة. هذا اختياري ويمكن تغييره في أي وقت."
 }

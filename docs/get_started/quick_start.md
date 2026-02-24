@@ -153,12 +153,6 @@ Click the gear icon in the top-right corner to open Settings. Here’s a brief o
 
 ![General](/docs/images/quickstart_settings_general.png)
 
-### **Privacy**
-
-Your privacy is important to us! Because Eigent agents operate on your desktop, they may need permissions to take screenshots or access local files to complete tasks. You can enable and manage all these permissions here.
-
-![Privacy](/docs/images/quickstart_settings_privacy.png)
-
 ### **Models**
 
 <aside>

@@ -263,6 +263,6 @@
   "preferred-ide": "Предпочитаемая IDE",
   "preferred-ide-description": "Выберите приложение для открытия папок проектов агента.",
   "system-file-manager": "Системный файловый менеджер",
-  "help-improve-eigent": "Help Improve Eigent",
-  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
+  "help-improve-eigent": "Помогите улучшить Eigent",
+  "help-improve-eigent-description": "Разрешите Eigent собирать анонимные журналы ошибок и данные об использовании для улучшения сервиса. Это необязательно и может быть изменено в любое время."
 }
