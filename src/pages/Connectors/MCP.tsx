@@ -529,21 +529,21 @@ export default function SettingMCP() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
+      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('setting.mcp-and-tools')}
         </div>
       </div>
 
       {/* Content Section */}
-      <div className="mb-12 flex flex-col gap-6">
-        <div className="flex w-full flex-col items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+      <div className="mb-12 gap-6 flex flex-col">
+        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
           <Tabs
             value={activeTab}
             onValueChange={(v) => setActiveTab(v as 'mcp-tools' | 'your-mcp')}
             className="w-full"
           >
-            <div className="sticky top-[84px] z-10 flex w-full items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary">
+            <div className="gap-4 border-border-secondary bg-surface-secondary sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
                 variant="outline"
                 className="h-auto flex-1 justify-start border-0 bg-transparent"
@@ -561,7 +561,7 @@ export default function SettingMCP() {
                   {t('setting.your-own-mcps')}
                 </TabsTrigger>
               </TabsList>
-              <div className="flex items-center gap-2">
+              <div className="gap-2 flex items-center">
                 <SearchInput
                   variant="icon"
                   value={searchQuery}
@@ -580,22 +580,22 @@ export default function SettingMCP() {
             </div>
             <TabsContent value="mcp-tools" className="mt-4">
               {isLoadingIntegrations ? (
-                <div className="flex w-full flex-col items-start justify-start gap-4">
+                <div className="gap-4 flex w-full flex-col items-start justify-start">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="relative w-full overflow-hidden rounded-2xl bg-surface-tertiary px-6 py-4"
+                      className="rounded-2xl bg-surface-tertiary px-6 py-4 relative w-full overflow-hidden"
                     >
-                      <div className="flex w-full flex-row items-center justify-between gap-xs">
-                        <div className="flex flex-row items-center gap-xs">
-                          <div className="mr-2 h-3 w-3 rounded-full bg-surface-hover-subtle" />
+                      <div className="gap-xs flex w-full flex-row items-center justify-between">
+                        <div className="gap-xs flex flex-row items-center">
+                          <div className="mr-2 h-3 w-3 bg-surface-hover-subtle rounded-full" />
                           <div className="h-5 w-32 rounded-md bg-surface-hover-subtle" />
                           <div className="h-4 w-4 rounded bg-surface-hover-subtle" />
                         </div>
                         <div className="h-9 w-20 rounded-lg bg-surface-hover-subtle" />
                       </div>
                       <motion.div
-                        className="via-white/20 absolute inset-0 w-1/2 bg-gradient-to-r from-transparent to-transparent"
+                        className="inset-0 via-white/20 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
                         initial={{ x: '-100%' }}
                         animate={{ x: '200%' }}
                         transition={{
@@ -608,7 +608,7 @@ export default function SettingMCP() {
                   ))}
                 </div>
               ) : filteredIntegrations.length === 0 ? (
-                <div className="py-8 text-center text-text-label">
+                <div className="py-8 text-text-label text-center">
                   {searchQuery.trim()
                     ? t('dashboard.no-results')
                     : t('setting.no-mcp-servers')}
@@ -625,15 +625,15 @@ export default function SettingMCP() {
             </TabsContent>
             <TabsContent value="your-mcp" className="mt-4">
               {isLoading && (
-                <div className="py-8 text-center text-text-label">
+                <div className="py-8 text-text-label text-center">
                   {t('setting.loading')}
                 </div>
               )}
               {error && (
-                <div className="py-8 text-center text-text-error">{error}</div>
+                <div className="py-8 text-text-error text-center">{error}</div>
               )}
               {!isLoading && !error && items.length === 0 && (
-                <div className="flex flex-col items-center justify-center gap-4 py-12">
+                <div className="gap-4 py-12 flex flex-col items-center justify-center">
                   <p className="text-body-md text-text-label">
                     {t('setting.no-mcp-servers')}
                   </p>
@@ -651,7 +651,7 @@ export default function SettingMCP() {
                 !error &&
                 items.length > 0 &&
                 filteredItems.length === 0 && (
-                  <div className="py-8 text-center text-text-label">
+                  <div className="py-8 text-text-label text-center">
                     {t('dashboard.no-results')}
                   </div>
                 )}
