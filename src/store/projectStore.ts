@@ -78,14 +78,14 @@ interface ProjectStore {
   ) => void;
   replayProject: (
     taskIds: string[],
-    question?: string,
+    questions?: string[],
     projectId?: string,
     historyId?: string
   ) => string;
   /** Load project from history with final state (no animation). Resolves when loading completes. */
   loadProjectFromHistory: (
     taskIds: string[],
-    question: string,
+    questions: string[],
     projectId: string,
     historyId?: string,
     projectName?: string
@@ -525,16 +525,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
    */
   replayProject: (
     taskIds: string[],
-    question: string = 'Replay task',
+    questions: string[] = [],
     projectId?: string,
     historyId?: string
   ) => {
     const { projects, removeProject, createProject, createChatStore } = get();
 
+    const firstQuestion = questions[0] ?? 'Replay task';
     let replayProjectId: string;
 
     //TODO: For now handle the question as unique identifier to avoid duplicate
-    if (!projectId) projectId = 'Replay: ' + question;
+    if (!projectId) projectId = 'Replay: ' + firstQuestion;
 
     // If projectId is provided, reset that project
     if (projectId) {
@@ -544,8 +545,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       }
       // Create project with the specific naming
       replayProjectId = createProject(
-        `Replay Project ${question}`,
-        `Replayed project from ${question}`,
+        `Replay Project ${firstQuestion}`,
+        `Replayed project from ${firstQuestion}`,
         projectId,
         ProjectType.REPLAY,
         historyId
@@ -553,7 +554,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     } else {
       // Create a new project only once
       replayProjectId = createProject(
-        `Replay Project ${question}`,
+        `Replay Project ${firstQuestion}`,
         `Replayed project with ${taskIds.length} tasks`,
         projectId,
         ProjectType.REPLAY,
@@ -591,7 +592,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
           if (chatStore) {
             try {
-              await chatStore.getState().replay(taskId, question, 0.2);
+              await chatStore
+                .getState()
+                .replay(taskId, questions[index] ?? firstQuestion, 0.2);
               console.log(`[ProjectStore] Started replay for task ${taskId}`);
             } catch (error) {
               console.error(
@@ -614,7 +617,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
   loadProjectFromHistory: async (
     taskIds: string[],
-    question: string,
+    questions: string[],
     projectId: string,
     historyId?: string,
     projectName?: string
@@ -628,7 +631,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       removeProject(projectId);
     }
 
-    const displayName = projectName || question.slice(0, 50) || 'Project';
+    const displayName = projectName || questions[0]?.slice(0, 50) || 'Project';
     const loadProjectId = createProject(
       displayName,
       `Loaded from history`,
@@ -661,7 +664,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const chatStore = project.chatStores[chatId];
         if (chatStore) {
           try {
-            await chatStore.getState().replay(taskId, question, 0);
+            await chatStore
+              .getState()
+              .replay(taskId, questions[index] ?? questions[0] ?? '', 0);
             console.log(`[ProjectStore] Loaded task ${taskId}`);
           } catch (error) {
             console.error(

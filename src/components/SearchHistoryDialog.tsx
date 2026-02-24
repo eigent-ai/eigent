@@ -50,7 +50,10 @@ export function SearchHistoryDialog() {
     projectId: string,
     question: string,
     historyId: string,
-    project?: { tasks: { task_id: string }[]; project_name?: string }
+    project?: {
+      tasks: { task_id: string; question?: string }[];
+      project_name?: string;
+    }
   ) => {
     const existingProject = projectStore.getProjectById(projectId);
     if (existingProject) {
@@ -63,11 +66,14 @@ export function SearchHistoryDialog() {
       const taskIdsList = project?.tasks
         ?.map((t) => t.task_id)
         .filter(Boolean) || [projectId];
+      const questions = project?.tasks?.map((t) => t.question || question) || [
+        question,
+      ];
       await loadProjectFromHistory(
         projectStore,
         navigate,
         projectId,
-        question,
+        questions,
         historyId,
         taskIdsList,
         project?.project_name

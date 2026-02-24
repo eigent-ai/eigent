@@ -128,11 +128,16 @@ export default function ProjectGroup({
       // Project doesn't exist, load final state (no replay animation)
       const firstTask = project.tasks?.[0];
       if (firstTask) {
-        const question = firstTask.question || project.last_prompt || '';
         const historyId = firstTask.id?.toString() || '';
-        const taskIdsList = project.tasks
-          ?.map((t) => t.task_id)
-          .filter(Boolean) || [project.project_id];
+        const taskPairs = (project.tasks || [])
+          .filter((t) => t.task_id)
+          .map((t) => ({ taskId: t.task_id!, question: t.question || '' }));
+        const taskIdsList = taskPairs.length
+          ? taskPairs.map((p) => p.taskId)
+          : [project.project_id];
+        const questions = taskPairs.length
+          ? taskPairs.map((p) => p.question)
+          : [project.last_prompt || ''];
 
         setIsLoadingProject(true);
         try {
@@ -140,7 +145,7 @@ export default function ProjectGroup({
             projectStore,
             navigate,
             project.project_id,
-            question,
+            questions,
             historyId,
             taskIdsList,
             project.project_name

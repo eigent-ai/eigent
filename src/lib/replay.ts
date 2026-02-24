@@ -33,7 +33,7 @@ export const loadProjectFromHistory = async (
   projectStore: ProjectStore,
   navigate: NavigateFunction,
   projectId: string,
-  question: string,
+  questions: string[],
   historyId: string,
   taskIdsList?: string[],
   projectName?: string
@@ -41,7 +41,7 @@ export const loadProjectFromHistory = async (
   const taskIds = taskIdsList || [projectId];
   await projectStore.loadProjectFromHistory(
     taskIds,
-    question,
+    questions,
     projectId,
     historyId,
     projectName
@@ -64,12 +64,12 @@ export const replayProject = async (
   projectStore: ProjectStore,
   navigate: NavigateFunction,
   projectId: string,
-  question: string,
+  questions: string[],
   historyId: string,
   taskIdsList?: string[]
 ) => {
   if (!taskIdsList) taskIdsList = [projectId];
-  projectStore.replayProject(taskIdsList, question, projectId, historyId);
+  projectStore.replayProject(taskIdsList, questions, projectId, historyId);
   navigate({ pathname: '/' });
 };
 
@@ -94,48 +94,16 @@ export const replayActiveTask = async (
     return;
   }
 
-  // Extract the very first available question from all chat stores and tasks
+  // Get the question from the current active task's messages
   let question = '';
-  let earliestTimestamp = Infinity;
-
-  // Get the project data to access all chat stores
-  const project = projectStore.projects[projectId];
-  if (project && project.chatStores) {
-    Object.entries(project.chatStores).forEach(
-      ([chatStoreId, chatStoreData]: [string, any]) => {
-        const timestamp = project.chatStoreTimestamps[chatStoreId] || 0;
-        const chatState = chatStoreData.getState();
-
-        if (chatState.tasks) {
-          Object.values(chatState.tasks).forEach((task: any) => {
-            // Check messages for user content
-            if (task.messages && task.messages.length > 0) {
-              const userMessage = task.messages.find(
-                (msg: any) => msg.role === 'user'
-              );
-              if (
-                userMessage &&
-                userMessage.content &&
-                timestamp < earliestTimestamp
-              ) {
-                question = userMessage.content.trim();
-                earliestTimestamp = timestamp;
-              }
-            }
-          });
-        }
-      }
+  const currentTask = chatStore.tasks[taskId];
+  if (currentTask?.messages?.length > 0) {
+    const userMessage = currentTask.messages.find(
+      (msg: any) => msg.role === 'user'
     );
-  }
-
-  // Fallback to current task's first message if no question found
-  if (
-    !question &&
-    chatStore.tasks[taskId] &&
-    chatStore.tasks[taskId].messages[0]
-  ) {
-    question = chatStore.tasks[taskId].messages[0].content;
-    console.log('[REPLAY] question fall back to ', question);
+    if (userMessage?.content) {
+      question = userMessage.content.trim();
+    }
   }
 
   const historyId = projectStore.getHistoryId(projectId);
@@ -144,7 +112,7 @@ export const replayActiveTask = async (
   const taskIdsList = [taskId];
   projectStore.replayProject(
     taskIdsList,
-    question,
+    [question],
     projectId,
     historyId || undefined
   );
