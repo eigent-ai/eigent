@@ -1475,6 +1475,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("activate_agent", item.data)
             elif item.action == Action.deactivate_agent:
                 yield sse_json("deactivate_agent", dict(item.data))
+            elif item.action == Action.request_usage:
+                yield sse_json("request_usage", dict(item.data))
             elif item.action == Action.assign_task:
                 yield sse_json("assign_task", item.data)
             elif item.action == Action.activate_toolkit:
