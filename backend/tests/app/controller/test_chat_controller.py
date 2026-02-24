@@ -31,7 +31,7 @@ from app.controller.chat_controller import (
     supplement,
 )
 from app.exception.exception import UserException
-from app.hitl import ApprovalRequest
+from app.hitl.config import ApprovalRequest
 from app.model.chat import (
     Chat,
     HumanReply,

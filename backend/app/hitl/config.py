@@ -11,3 +11,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from pydantic import BaseModel
+
+from app.model.enums import ApprovalAction
+
+
+class HitlOptions(BaseModel):
+    terminal_approval: bool = False
+
+
+class ApprovalRequest(BaseModel):
+    approval: ApprovalAction
+    agent: str

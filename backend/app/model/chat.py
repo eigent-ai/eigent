@@ -21,7 +21,7 @@ from typing import Literal
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
-from app.hitl import HitlOptions
+from app.hitl.config import HitlOptions
 from app.model.enums import (  # noqa: F401
     DEFAULT_SUMMARY_PROMPT,
     ApprovalAction,

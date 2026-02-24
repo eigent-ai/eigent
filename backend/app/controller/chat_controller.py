@@ -26,7 +26,7 @@ from fastapi.responses import StreamingResponse
 from app.component import code
 from app.component.environment import sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
-from app.hitl import ApprovalRequest
+from app.hitl.config import ApprovalRequest
 from app.model.chat import (
     AddTaskRequest,
     Chat,

@@ -21,7 +21,7 @@ import pytest
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.hitl import HitlOptions
+from app.hitl.config import HitlOptions
 from app.model.enums import ApprovalAction
 from app.service.task import ActionCommandApprovalData, TaskLock, task_locks
 
