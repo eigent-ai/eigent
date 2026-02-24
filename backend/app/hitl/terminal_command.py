@@ -12,8 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Command safety utilities for dangerous command detection."""
-
 import os
 import re
 
@@ -195,6 +193,7 @@ def is_dangerous_command(command: str) -> bool:
     """
     command = _strip_heredoc_bodies(command)
     for sub_cmd in split_compound_command(command):
+        # First non-wrapper token, e.g. "env sudo rm -rf /" → "sudo"
         effective = extract_effective_command(sub_cmd)
         if effective and effective in DANGEROUS_COMMAND_TOKENS:
             return True

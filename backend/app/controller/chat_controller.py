@@ -420,7 +420,7 @@ def human_reply(id: str, data: HumanReply):
 
 @router.post("/chat/{id}/approval")
 def approval(id: str, data: ApprovalRequest):
-    """Accept user approval for a dangerous command."""
+    """Handle user approval response for a command requiring confirmation."""
     chat_logger.info(
         "Approval received",
         extra={"task_id": id, "agent": data.agent, "approval": data.approval},

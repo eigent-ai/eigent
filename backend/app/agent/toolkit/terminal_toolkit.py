@@ -18,6 +18,7 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from camel.toolkits.terminal_toolkit import (
@@ -31,6 +32,7 @@ from app.hitl.terminal_command import (
     is_dangerous_command,
     validate_cd_within_working_dir,
 )
+from app.model.enums import ApprovalAction
 from app.service.task import (
     Action,
     ActionCommandApprovalData,
@@ -365,6 +367,34 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 exc_info=True,
             )
 
+    async def _request_user_approval(self, action_data) -> str | None:
+        task_lock = get_task_lock(self.api_task_id)
+        if task_lock.auto_approve.get(self.agent_name, False):
+            return None
+
+        logger.info(
+            "[APPROVAL] Pushing approval event to SSE queue, "
+            "api_task_id=%s, agent=%s, action=%s",
+            self.api_task_id,
+            self.agent_name,
+            action_data.action,
+        )
+
+        await task_lock.put_queue(action_data)
+
+        logger.info("[APPROVAL] Event pushed, waiting for user response")
+
+        approval = await task_lock.get_approval_input(self.agent_name)
+
+        logger.info("[APPROVAL] Received response: %s", approval)
+
+        if approval == ApprovalAction.approve_once:
+            return None
+        if approval == ApprovalAction.auto_approve:
+            task_lock.auto_approve[self.agent_name] = True
+            return None
+        return "Operation rejected by user. The task is being stopped."
+
     async def shell_exec(
         self,
         command: str,
@@ -403,29 +433,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Returns:
             str: The output of the command execution.
         """
-        import sys
-
-        print(
-            f"[APPROVAL-PRINT] shell_exec ENTERED, id={id}, terminal_approval={self._terminal_approval}",
-            flush=True,
-        )
-        print(
-            f"[APPROVAL-PRINT] command={command[:120]!r}",
-            flush=True,
-            file=sys.stderr,
-        )
-        logger.info(
-            "[APPROVAL] async shell_exec called, id=%s, terminal_approval=%s",
-            id,
-            self._terminal_approval,
-        )
-        # Auto-generate ID if not provided
         if id is None:
-            import time
-
             id = f"auto_{int(time.time() * 1000)}"
 
-        # Non-Docker: validate cd does not escape working_directory (issue #1306)
         if not self._use_docker_backend:
             ok, err = validate_cd_within_working_dir(
                 command, self._working_directory
@@ -436,30 +446,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         is_dangerous = (
             is_dangerous_command(command) if self._terminal_approval else False
         )
-        print(
-            f"[APPROVAL-PRINT] terminal_approval={self._terminal_approval}, is_dangerous={is_dangerous}",
-            flush=True,
-        )
-        logger.info(
-            "[APPROVAL] terminal_approval=%s, is_dangerous=%s, command=%r",
-            self._terminal_approval,
-            is_dangerous,
-            command[:120],
-        )
         if self._terminal_approval and is_dangerous:
-            print("[APPROVAL-PRINT] ENTERING approval flow!", flush=True)
-            logger.info(
-                "[APPROVAL] Entering approval flow for dangerous command"
-            )
             approval_data = ActionCommandApprovalData(
                 data={"command": command, "agent": self.agent_name}
             )
             rejection = await self._request_user_approval(approval_data)
-            print(
-                f"[APPROVAL-PRINT] Approval result: rejection={rejection}",
-                flush=True,
-            )
-            logger.info("[APPROVAL] Approval result: rejection=%s", rejection)
             if rejection is not None:
                 return rejection
 

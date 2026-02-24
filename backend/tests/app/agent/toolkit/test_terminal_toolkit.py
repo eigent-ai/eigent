@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.hitl.config import HitlOptions
 from app.model.enums import ApprovalAction
@@ -144,13 +143,12 @@ def _make_action_data(
     return ActionCommandApprovalData(data={"command": command, "agent": agent})
 
 
-class _ConcreteToolkit(AbstractToolkit):
-    """Minimal concrete subclass so we can test _request_user_approval."""
+class _ConcreteToolkit(TerminalToolkit):
+    """Lightweight subclass that skips the heavy TerminalToolkit.__init__."""
 
     def __init__(self, api_task_id: str, agent_name: str = "test_agent"):
         self.api_task_id = api_task_id
         self.agent_name = agent_name
-        # Register approval listener (mirrors TerminalToolkit.__init__)
         tl = task_locks.get(api_task_id)
         if tl:
             tl.add_approval_input_listen(agent_name)
@@ -158,7 +156,7 @@ class _ConcreteToolkit(AbstractToolkit):
 
 @pytest.mark.unit
 class TestRequestUserApproval:
-    """Tests for AbstractToolkit._request_user_approval."""
+    """Tests for TerminalToolkit._request_user_approval."""
 
     @pytest.mark.asyncio
     async def test_approve_once_returns_none(self):
