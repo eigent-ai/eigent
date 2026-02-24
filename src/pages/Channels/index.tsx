@@ -36,8 +36,8 @@ export default function Channels() {
 
   return (
     <div className="m-auto flex h-auto max-w-[940px] flex-col">
-      <div className="px-6 flex h-auto w-full">
-        <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
+      <div className="flex h-auto w-full px-6">
+        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
           <VerticalNavigation
             items={
               menuItems.map((menu) => ({
@@ -49,7 +49,7 @@ export default function Channels() {
             }
             value={activeTab}
             onValueChange={handleTabChange}
-            className="min-h-0 gap-0 h-full w-full flex-1"
+            className="h-full min-h-0 w-full flex-1 gap-0"
             listClassName="w-full h-full overflow-y-auto"
             contentClassName="hidden"
           />
@@ -58,22 +58,22 @@ export default function Channels() {
         <div className="flex h-auto w-full flex-1 flex-col">
           <div className="m-auto flex h-auto w-full flex-1 flex-col">
             {/* Header Section */}
-            <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+            <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
               <div className="text-heading-sm font-bold text-text-heading">
                 {menuItems.find((m) => m.id === activeTab)?.name ?? ''}
               </div>
             </div>
 
             {/* Content Section */}
-            <div className="mb-12 gap-6 flex flex-col">
-              <div className="rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
-                <div className="h-16 w-16 flex items-center justify-center">
+            <div className="mb-12 flex flex-col gap-6">
+              <div className="flex w-full flex-col items-center justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+                <div className="flex h-16 w-16 items-center justify-center">
                   <MessageSquare className="h-8 w-8 text-icon-secondary" />
                 </div>
                 <h2 className="mb-2 text-body-md font-bold text-text-heading">
                   {t('layout.coming-soon')}
                 </h2>
-                <p className="max-w-md text-body-sm text-text-label text-center">
+                <p className="max-w-md text-center text-body-sm text-text-label">
                   {activeTab === 'overview'
                     ? t('layout.channels-overview-coming-soon-description')
                     : t('layout.channels-coming-soon-description')}

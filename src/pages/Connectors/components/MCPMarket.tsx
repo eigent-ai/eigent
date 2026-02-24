@@ -273,7 +273,7 @@ export default function MCPMarket({
     <div className="flex h-full flex-col items-center">
       {externalKeyword === undefined && (
         <>
-          <div className="text-body top-0 mb-0 max-w-4xl py-2 sticky z-[20] flex w-full items-center justify-between">
+          <div className="text-body sticky top-0 z-[20] mb-0 flex w-full max-w-4xl items-center justify-between py-2">
             <Button
               variant="ghost"
               size="sm"
@@ -296,7 +296,7 @@ export default function MCPMarket({
       )}
 
       {/* Category toggle row */}
-      <div className="py-2 flex w-full">
+      <div className="flex w-full py-2">
         <ToggleGroup
           type="single"
           value={categoryId ? String(categoryId) : 'all'}
@@ -321,24 +321,24 @@ export default function MCPMarket({
         onConnect={onConnect}
         activeMcp={activeMcp}
       ></MCPEnvDialog>
-      <div className="gap-4 pt-4 flex w-full flex-col">
+      <div className="flex w-full flex-col gap-4 pt-4">
         {isLoading && items.length === 0 && (
-          <div className="py-8 text-text-muted text-center">
+          <div className="py-8 text-center text-text-muted">
             {t('setting.loading')}
           </div>
         )}
         {error && (
-          <div className="py-8 text-text-error text-center">{error}</div>
+          <div className="py-8 text-center text-text-error">{error}</div>
         )}
         {!isLoading && !error && items.length === 0 && (
-          <div className="py-8 text-text-muted text-center">
+          <div className="py-8 text-center text-text-muted">
             {t('setting.no-mcp-services')}
           </div>
         )}
         {items.map((item) => (
           <div
             key={item.id}
-            className="rounded-2xl bg-surface-secondary p-4 flex items-center"
+            className="flex items-center rounded-2xl bg-surface-secondary p-4"
           >
             {/* Left: Icon */}
             <div className="mr-4 flex items-center">
@@ -356,10 +356,10 @@ export default function MCPMarket({
                 );
               })()}
             </div>
-            <div className="min-w-0 flex flex-1 flex-col justify-center">
-              <div className="gap-xs pb-1 flex w-full items-center">
-                <div className="gap-xs flex flex-1 items-center">
-                  <span className="text-base font-bold leading-9 text-text-primary truncate">
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <div className="flex w-full items-center gap-xs pb-1">
+                <div className="flex flex-1 items-center gap-xs">
+                  <span className="truncate text-base font-bold leading-9 text-text-primary">
                     {item.name}
                   </span>
                   <TooltipSimple content={item.description}>
@@ -400,7 +400,7 @@ export default function MCPMarket({
                         verticalAlign: 'middle',
                       }}
                     />
-                    <span className="text-xs font-medium leading-3 items-center justify-center self-stretch">
+                    <span className="items-center justify-center self-stretch text-xs font-medium leading-3">
                       {(() => {
                         const parts = item.home_page.split('/');
                         return parts.length > 4 ? parts[4] : item.home_page;
@@ -408,7 +408,7 @@ export default function MCPMarket({
                     </span>
                   </div>
                 )}
-              <div className="mt-1 text-sm text-text-muted break-words whitespace-pre-line">
+              <div className="mt-1 whitespace-pre-line break-words text-sm text-text-muted">
                 {item.description}
               </div>
             </div>
@@ -416,12 +416,12 @@ export default function MCPMarket({
         ))}
         <div ref={loader} />
         {isLoading && items.length > 0 && (
-          <div className="py-4 text-text-muted text-center">
+          <div className="py-4 text-center text-text-muted">
             {t('setting.loading-more')}
           </div>
         )}
         {!hasMore && items.length > 0 && (
-          <div className="py-4 text-text-muted text-center">
+          <div className="py-4 text-center text-text-muted">
             {t('setting.no-more-mcp-servers')}
           </div>
         )}

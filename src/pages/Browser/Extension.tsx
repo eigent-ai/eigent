@@ -20,18 +20,18 @@ export default function Extension() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('layout.browser-plugins')}
         </div>
       </div>
-      <div className="gap-4 px-6 flex flex-col">
-        <div className="rounded-xl border-border-disabled bg-surface-secondary px-6 py-16 flex flex-col items-center justify-center border">
+      <div className="flex flex-col gap-4 px-6">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-border-disabled bg-surface-secondary px-6 py-16">
           <Puzzle className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
-          <div className="text-body-base font-bold text-text-label text-center">
+          <div className="text-body-base text-center font-bold text-text-label">
             {t('layout.coming-soon')}
           </div>
-          <p className="mt-2 text-label-sm text-text-label text-center">
+          <p className="mt-2 text-center text-label-sm text-text-label">
             {t('layout.browser-plugins-description')}
           </p>
         </div>

@@ -64,7 +64,7 @@ export default function MCPConfigDialog({
         <form
           ref={formRef}
           onSubmit={onSave}
-          className="gap-4 p-md flex flex-col"
+          className="flex flex-col gap-4 p-md"
         >
           <Input
             title={t('setting.name')}
@@ -104,7 +104,7 @@ export default function MCPConfigDialog({
             )}
           />
 
-          <div className="mb-1 text-label-sm font-normal block">
+          <div className="mb-1 block text-label-sm font-normal">
             Env (key-value)
           </div>
           {Object.entries(form.env).map(([k, v], idx) => (
