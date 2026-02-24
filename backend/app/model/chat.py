@@ -21,6 +21,7 @@ from typing import Literal
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
+from app.hitl import HitlOptions
 from app.model.enums import (  # noqa: F401
     DEFAULT_SUMMARY_PROMPT,
     ApprovalAction,
@@ -53,13 +54,6 @@ class QuestionAnalysisResult(BaseModel):
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 
-class HitlOptions(BaseModel):
-    """Human-in-the-loop settings sent from the frontend."""
-
-    terminal_approval: bool = False
-    """Require user approval before executing dangerous terminal commands."""
-
-
 class Chat(BaseModel):
     task_id: str
     project_id: str
@@ -77,7 +71,6 @@ class Chat(BaseModel):
     max_retries: int = 3
     allow_local_system: bool = False
     hitl_options: HitlOptions = HitlOptions()
-    """Human-in-the-loop settings (e.g. terminal command approval)."""
     installed_mcp: McpServers = {"mcpServers": {}}
     bun_mirror: str = ""
     uvx_mirror: str = ""
@@ -159,13 +152,6 @@ class SupplementChat(BaseModel):
 class HumanReply(BaseModel):
     agent: str
     reply: str
-
-
-class ApprovalRequest(BaseModel):
-    """User response for dangerous operation approval."""
-
-    approval: ApprovalAction
-    agent: str
 
 
 class TaskContent(BaseModel):

@@ -26,9 +26,9 @@ from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
+from app.hitl import HitlOptions
 from app.model.chat import (
     AgentModelConfig,
-    HitlOptions,
     McpServers,
     SupplementChat,
     UpdateData,
