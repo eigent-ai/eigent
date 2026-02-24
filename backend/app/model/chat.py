@@ -147,6 +147,7 @@ class SupplementChat(BaseModel):
     question: str
     task_id: str | None = None
     attaches: list[str] = []
+    hitl_options: HitlOptions | None = None
 
 
 class HumanReply(BaseModel):

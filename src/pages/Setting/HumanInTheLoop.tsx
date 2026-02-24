@@ -13,10 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Switch } from '@/components/ui/switch';
+import { TERMINAL_APPROVAL_STORAGE_KEY } from '@/types/constants';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-const TERMINAL_APPROVAL_STORAGE_KEY = 'eigent_terminal_approval';
 
 export default function SettingHumanInTheLoop() {
   const { t } = useTranslation();

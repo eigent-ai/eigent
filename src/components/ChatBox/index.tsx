@@ -23,7 +23,12 @@ import {
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
-import { AgentStep, ApprovalAction, ChatTaskStatus } from '@/types/constants';
+import {
+  AgentStep,
+  ApprovalAction,
+  ChatTaskStatus,
+  TERMINAL_APPROVAL_STORAGE_KEY,
+} from '@/types/constants';
 import { Square, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -604,6 +609,11 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              hitl_options: {
+                terminal_approval:
+                  localStorage.getItem(TERMINAL_APPROVAL_STORAGE_KEY) ===
+                  'true',
+              },
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {

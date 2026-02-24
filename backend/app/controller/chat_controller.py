@@ -260,6 +260,10 @@ def improve(id: str, data: SupplementChat):
     )
     task_lock = get_task_lock(id)
 
+    # Update HITL options if provided (user may have changed settings)
+    if data.hitl_options is not None:
+        task_lock.hitl_options = data.hitl_options
+
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
     if task_lock.status == Status.done:

@@ -436,7 +436,7 @@ class TestTerminalApprovalGating:
                 return_value="done",
             ),
         ):
-            assert toolkit._terminal_approval is False
+            assert toolkit._get_terminal_approval() is False
             mock_approval.assert_not_called()
 
     @pytest.mark.asyncio
@@ -452,7 +452,7 @@ class TestTerminalApprovalGating:
 
         from app.hitl.terminal_command import is_dangerous_command
 
-        assert toolkit._terminal_approval is True
+        assert toolkit._get_terminal_approval() is True
         assert is_dangerous_command("rm -rf /tmp/test") is True
 
     def test_terminal_approval_default_is_false(self):
@@ -460,15 +460,17 @@ class TestTerminalApprovalGating:
         task_id = "approval_default_test"
         _make_task_lock(task_id)
         toolkit = TerminalToolkit(task_id, "test_agent")
-        assert toolkit._terminal_approval is False
+        assert toolkit._get_terminal_approval() is False
 
     def test_terminal_approval_reads_from_task_lock(self):
-        """TerminalToolkit reads terminal_approval from TaskLock.hitl_options."""
+        """TerminalToolkit reads terminal_approval from TaskLock on the fly."""
         task_id = "approval_read_test"
         tl = _make_task_lock(task_id)
-        tl.hitl_options = HitlOptions(terminal_approval=True)
         toolkit = TerminalToolkit(task_id, "test_agent")
-        assert toolkit._terminal_approval is True
+        assert toolkit._get_terminal_approval() is False
+        # Change setting after init — should reflect immediately
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+        assert toolkit._get_terminal_approval() is True
 
     def test_terminal_approval_false_never_detects_dangerous(self):
         """With terminal_approval=False, the is_dangerous check is skipped."""
@@ -481,9 +483,169 @@ class TestTerminalApprovalGating:
         # The command IS dangerous...
         assert is_dangerous_command("rm -rf /") is True
         # ...but the gating logic would produce False
+        terminal_approval = toolkit._get_terminal_approval()
         is_dangerous = (
-            is_dangerous_command("rm -rf /")
-            if toolkit._terminal_approval
+            is_dangerous_command("rm -rf /") if terminal_approval else False
+        )
+        assert is_dangerous is False
+
+
+@pytest.mark.unit
+class TestFollowUpTaskApproval:
+    """Tests for HITL approval behaviour across follow-up tasks.
+
+    When a user sends a follow-up question in the same project the backend
+    receives a ``supplement`` action that may carry updated ``hitl_options``.
+    These tests verify that changing the setting between tasks takes effect
+    immediately — the bug fixed by ``_get_terminal_approval()`` reading from
+    ``task_lock`` on the fly rather than caching the value in ``__init__``.
+    """
+
+    def test_enable_approval_between_tasks(self):
+        """Turning approval ON after task 1 should gate task 2 commands."""
+        task_id = "followup_enable"
+        tl = _make_task_lock(task_id)
+        toolkit = _ConcreteToolkit(task_id)
+
+        # Task 1: approval is OFF (default)
+        assert toolkit._get_terminal_approval() is False
+
+        # User navigates to settings and enables approval before task 2
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+
+        # Task 2: same toolkit instance, but setting now reads True
+        assert toolkit._get_terminal_approval() is True
+
+    def test_disable_approval_between_tasks(self):
+        """Turning approval OFF after task 1 should let commands run freely."""
+        task_id = "followup_disable"
+        tl = _make_task_lock(task_id)
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+        toolkit = _ConcreteToolkit(task_id)
+
+        # Task 1: approval is ON
+        assert toolkit._get_terminal_approval() is True
+
+        # User disables approval before task 2
+        tl.hitl_options = HitlOptions(terminal_approval=False)
+
+        # Task 2: setting now reads False
+        assert toolkit._get_terminal_approval() is False
+
+    def test_safe_mode_synced_on_toggle(self):
+        """safe_mode on the Camel base class must stay in sync with the toggle."""
+        task_id = "followup_safe_mode"
+        tl = _make_task_lock(task_id)
+        toolkit = TerminalToolkit(task_id, "test_agent")
+
+        # Default: approval OFF → safe_mode ON
+        assert toolkit._get_terminal_approval() is False
+        assert toolkit.safe_mode is True
+
+        # Enable approval → safe_mode OFF
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+        assert toolkit._get_terminal_approval() is True
+        assert toolkit.safe_mode is False
+
+        # Disable again → safe_mode ON
+        tl.hitl_options = HitlOptions(terminal_approval=False)
+        assert toolkit._get_terminal_approval() is False
+        assert toolkit.safe_mode is True
+
+    def test_auto_approve_reset_between_tasks(self):
+        """auto_approve flags must be cleared when a new task starts."""
+        task_id = "followup_auto_reset"
+        tl = _make_task_lock(task_id)
+        toolkit = _ConcreteToolkit(task_id)
+
+        # Task 1: agent gets auto-approved
+        tl.auto_approve["test_agent"] = True
+        assert tl.auto_approve.get("test_agent") is True
+
+        # Simulate Action.start for task 2 — chat_service resets auto_approve
+        tl.auto_approve = {}
+
+        # Task 2: auto_approve should be cleared
+        assert tl.auto_approve.get("test_agent", False) is False
+
+    @pytest.mark.asyncio
+    async def test_approval_required_after_setting_enabled_mid_session(self):
+        """Full flow: approval OFF in task 1, ON in task 2, command triggers approval."""
+        task_id = "followup_full_flow"
+        tl = _make_task_lock(task_id)
+        tl.hitl_options = HitlOptions(terminal_approval=False)
+        toolkit = _ConcreteToolkit(task_id)
+
+        from app.hitl.terminal_command import is_dangerous_command
+
+        # Task 1: dangerous command NOT gated
+        terminal_approval = toolkit._get_terminal_approval()
+        is_dangerous = (
+            is_dangerous_command("rm -rf /tmp/data")
+            if terminal_approval
             else False
         )
         assert is_dangerous is False
+
+        # User enables approval before task 2
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+        # Reset auto_approve as chat_service would
+        tl.auto_approve = {}
+        tl.add_approval_input_listen("test_agent")
+
+        # Task 2: same command IS now gated
+        terminal_approval = toolkit._get_terminal_approval()
+        is_dangerous = (
+            is_dangerous_command("rm -rf /tmp/data")
+            if terminal_approval
+            else False
+        )
+        assert is_dangerous is True
+
+        # Approval flow works correctly
+        await tl.put_approval_input("test_agent", ApprovalAction.approve_once)
+        result = await toolkit._request_user_approval(_make_action_data())
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_reject_after_setting_enabled_mid_session(self):
+        """Rejection still works when approval is enabled between tasks."""
+        task_id = "followup_reject"
+        tl = _make_task_lock(task_id)
+        tl.hitl_options = HitlOptions(terminal_approval=False)
+        toolkit = _ConcreteToolkit(task_id)
+
+        # Enable approval before task 2
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+        tl.add_approval_input_listen("test_agent")
+
+        assert toolkit._get_terminal_approval() is True
+
+        await tl.put_approval_input("test_agent", ApprovalAction.reject)
+        result = await toolkit._request_user_approval(_make_action_data())
+        assert result is not None
+        assert "rejected" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_auto_approve_does_not_carry_over_to_next_task(self):
+        """auto_approve granted in task 1 must not persist into task 2."""
+        task_id = "followup_auto_no_carry"
+        tl = _make_task_lock(task_id)
+        tl.hitl_options = HitlOptions(terminal_approval=True)
+        toolkit = _ConcreteToolkit(task_id)
+
+        # Task 1: grant auto_approve
+        await tl.put_approval_input("test_agent", ApprovalAction.auto_approve)
+        r1 = await toolkit._request_user_approval(_make_action_data())
+        assert r1 is None
+        assert tl.auto_approve["test_agent"] is True
+
+        # Simulate new task start — reset auto_approve
+        tl.auto_approve = {}
+        tl.add_approval_input_listen("test_agent")
+
+        # Task 2: auto_approve cleared, must wait on queue again
+        await tl.put_approval_input("test_agent", ApprovalAction.reject)
+        r2 = await toolkit._request_user_approval(_make_action_data())
+        assert r2 is not None
+        assert "rejected" in r2.lower()

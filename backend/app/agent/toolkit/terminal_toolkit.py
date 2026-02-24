@@ -111,17 +111,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self._use_docker_backend = use_docker_backend
         self._working_directory = working_directory
 
-        # Read terminal_approval from the project-level TaskLock so every
-        # agent factory does not need to thread the setting through.
+        # safe_mode is read fresh from task_lock in shell_exec (see
+        # _get_terminal_approval), but we need an initial value for
+        # super().__init__.
         task_lock = get_task_lock_if_exists(api_task_id)
-        self._terminal_approval = (
+        terminal_approval = (
             task_lock.hitl_options.terminal_approval if task_lock else False
         )
-
-        # When terminal_approval is ON we handle dangerous commands via
-        # user approval prompts.  Camel's safe_mode would hard-block them
-        # instead, so we invert it.
-        camel_safe_mode = not self._terminal_approval
+        camel_safe_mode = not terminal_approval
         super().__init__(
             timeout=timeout,
             working_directory=working_directory,
@@ -369,6 +366,20 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 exc_info=True,
             )
 
+    def _get_terminal_approval(self) -> bool:
+        """Read terminal_approval from task_lock on every call.
+
+        This ensures the setting takes effect immediately when the user
+        toggles it between tasks (the task_lock is updated at POST /chat).
+        Also syncs Camel's safe_mode so it stays consistent.
+        """
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        enabled = (
+            task_lock.hitl_options.terminal_approval if task_lock else False
+        )
+        self.safe_mode = not enabled
+        return enabled
+
     async def _request_user_approval(self, action_data) -> str | None:
         task_lock = get_task_lock(self.api_task_id)
         if task_lock.auto_approve.get(self.agent_name, False):
@@ -406,8 +417,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
 
-        When Safe Mode is on, dangerous commands (e.g. rm) trigger user
-        approval before execution.
+        When HITL terminal approval is on, dangerous commands (e.g. rm)
+        trigger user approval before execution.
 
         .. note:: Async override of a sync base method
 
@@ -445,10 +456,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             if not ok:
                 return err or "cd not allowed."
 
+        terminal_approval = self._get_terminal_approval()
         is_dangerous = (
-            is_dangerous_command(command) if self._terminal_approval else False
+            is_dangerous_command(command) if terminal_approval else False
         )
-        if self._terminal_approval and is_dangerous:
+        if terminal_approval and is_dangerous:
             approval_data = ActionCommandApprovalData(
                 data={"command": command, "agent": self.agent_name}
             )

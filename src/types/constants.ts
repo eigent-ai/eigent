@@ -112,3 +112,8 @@ export const AgentStatusValue = {
 
 export type AgentStatusType =
   (typeof AgentStatusValue)[keyof typeof AgentStatusValue];
+
+/**
+ * localStorage key for the HITL terminal approval toggle.
+ */
+export const TERMINAL_APPROVAL_STORAGE_KEY = 'eigent_terminal_approval';

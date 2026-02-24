@@ -31,6 +31,7 @@ import {
   AgentStatusValue,
   AgentStep,
   ChatTaskStatus,
+  TERMINAL_APPROVAL_STORAGE_KEY,
   TaskStatus,
   type ChatTaskStatusType,
 } from '@/types/constants';
@@ -733,7 +734,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 terminal_approval: (() => {
                   try {
                     return (
-                      localStorage.getItem('eigent_terminal_approval') ===
+                      localStorage.getItem(TERMINAL_APPROVAL_STORAGE_KEY) ===
                       'true'
                     );
                   } catch {
