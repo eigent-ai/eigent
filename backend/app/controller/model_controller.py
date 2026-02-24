@@ -77,6 +77,17 @@ class ValidateModelResponse(BaseModel):
     )
 
 
+class ModelTypesRequest(BaseModel):
+    platform: str | None = Field(None, description="Platform name")
+
+
+@router.post("/model/types")
+async def get_model_types(request: ModelTypesRequest):
+    """Return model name suggestions for the given platform."""
+    model_types = get_model_type_suggestions(request.platform)
+    return {"model_types": model_types}
+
+
 @router.post("/model/validate")
 async def validate_model(request: ValidateModelRequest):
     """Validate model configuration and tool call support with detailed error messages.
@@ -289,29 +300,4 @@ async def validate_model(request: ValidateModelRequest):
                     "message": str(e),
                 },
             },
-        )
-
-
-class ModelTypeSuggestionRequest(BaseModel):
-    platform: str | None = Field(None, description="Model platform")
-
-
-class ModelTypeSuggestionResponse(BaseModel):
-    model_types: list[str] = Field(
-        ..., description="List of available model types"
-    )
-
-
-@router.post("/model/types")
-async def get_model_types(request: ModelTypeSuggestionRequest):
-    """Return CAMEL model types for the given platform, newest first."""
-    try:
-        return ModelTypeSuggestionResponse(
-            model_types=get_model_type_suggestions(request.platform)
-        )
-    except Exception as e:
-        logger.error("Error getting model types: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={"message": f"Failed to get model types: {e}"},
         )
