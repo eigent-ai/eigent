@@ -41,8 +41,8 @@ export default function Connectors() {
 
   return (
     <div className="m-auto flex h-auto max-w-[940px] flex-col">
-      <div className="flex h-auto w-full px-6">
-        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
+      <div className="px-6 flex h-auto w-full">
+        <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
           <VerticalNavigation
             items={
               menuItems.map((menu) => ({
@@ -54,14 +54,14 @@ export default function Connectors() {
             }
             value={activeTab}
             onValueChange={handleTabChange}
-            className="h-full min-h-0 w-full flex-1 gap-0"
+            className="min-h-0 gap-0 h-full w-full flex-1"
             listClassName="w-full h-full overflow-y-auto"
             contentClassName="hidden"
           />
         </div>
 
         <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="flex flex-col gap-4">
+          <div className="gap-4 flex flex-col">
             {activeTab === 'search' && <Search />}
             {activeTab === 'mcp' && <MCP />}
           </div>
