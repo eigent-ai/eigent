@@ -2711,11 +2711,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         (task) => task.content !== ''
       );
       setTaskInfo(taskId, taskInfo);
-      // Sync taskRunning with the filtered taskInfo (user edits should be reflected
-      setTaskRunning(
-        taskId,
-        taskInfo.map((task) => ({ ...task }))
-      );
+      // Sync taskRunning with the filtered taskInfo (user edits should be reflected).
+      // Skip for replay: taskRunning already reflects the completed state from playback
+      // and resetting it would revert the Done counters back to Pending.
+      if (!type) {
+        setTaskRunning(
+          taskId,
+          taskInfo.map((task) => ({ ...task }))
+        );
+      }
 
       // IMPORTANT: Set isConfirm BEFORE sending API requests to prevent race condition
       // where backend sends to_sub_tasks SSE event before we mark task as confirmed
