@@ -264,6 +264,6 @@
   "preferred-ide": "선호 IDE",
   "preferred-ide-description": "에이전트 프로젝트 폴더를 열 때 사용할 애플리케이션을 선택합니다.",
   "system-file-manager": "시스템 파일 관리자",
-  "help-improve-eigent": "Help Improve Eigent",
-  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
+  "help-improve-eigent": "Eigent 개선에 도움주기",
+  "help-improve-eigent-description": "서비스 개선을 위해 Eigent가 익명의 오류 로그와 사용 데이터를 수집하도록 허용합니다. 이는 선택 사항이며 언제든지 변경할 수 있습니다."
 }

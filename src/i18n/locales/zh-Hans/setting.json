@@ -213,6 +213,6 @@
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
   "system-file-manager": "系统文件管理器",
-  "help-improve-eigent": "Help Improve Eigent",
-  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
+  "help-improve-eigent": "帮助改进 Eigent",
+  "help-improve-eigent-description": "允许 Eigent 收集匿名错误日志和使用数据以改进服务。此项为可选，可随时更改。"
 }

@@ -263,6 +263,6 @@
   "preferred-ide": "IDE preferito",
   "preferred-ide-description": "Scegli quale applicazione utilizzare per aprire le cartelle dei progetti dell'agente.",
   "system-file-manager": "Gestione file di sistema",
-  "help-improve-eigent": "Help Improve Eigent",
-  "help-improve-eigent-description": "Allow Eigent to collect anonymous error logs and usage data to improve the service. This is optional and can be changed at any time."
+  "help-improve-eigent": "Aiuta a migliorare Eigent",
+  "help-improve-eigent-description": "Consenti a Eigent di raccogliere log di errori anonimi e dati di utilizzo per migliorare il servizio. Questo è facoltativo e può essere modificato in qualsiasi momento."
 }
