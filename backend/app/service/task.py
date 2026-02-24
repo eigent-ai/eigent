@@ -389,8 +389,10 @@ class TaskLock:
         # Human-in-the-loop settings (e.g. terminal command approval)
         self.hitl_options: HitlOptions = HitlOptions()
 
-        # Per-agent queues for user approval responses (mirrors human_input)
-        self.approval_input: dict[str, asyncio.Queue[str]] = {}
+        # Per-call Futures for user approval responses, keyed by approval_id.
+        # Each _request_user_approval call creates its own Future so
+        # concurrent calls from the same agent don't compete.
+        self.pending_approvals: dict[str, asyncio.Future[str]] = {}
         # Per-agent auto-approve: skip further prompts for this agent.
         # Reset at each task start (Action.start) in chat_service.
         self.auto_approve: dict[str, bool] = {}
@@ -432,26 +434,72 @@ class TaskLock:
         )
         return await self.human_input[agent].get()
 
-    async def put_approval_input(self, agent: str, data: str):
-        logger.debug(
-            "Adding approval input",
-            extra={"task_id": self.id, "agent": agent, "approval": data},
-        )
-        await self.approval_input[agent].put(data)
+    def create_approval(self, approval_id: str) -> asyncio.Future[str]:
+        """Create a Future for a pending approval request.
 
-    async def get_approval_input(self, agent: str) -> str:
-        logger.debug(
-            "Getting approval input",
-            extra={"task_id": self.id, "agent": agent},
-        )
-        return await self.approval_input[agent].get()
+        Args:
+            approval_id: Unique ID for this request (format: ``{agent}_{hex}``).
 
-    def add_approval_input_listen(self, agent: str):
+        Returns:
+            A Future that resolves with the user's approval action string.
+        """
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self.pending_approvals[approval_id] = future
         logger.debug(
-            "Adding approval input listener",
-            extra={"task_id": self.id, "agent": agent},
+            "Created approval future",
+            extra={"task_id": self.id, "approval_id": approval_id},
         )
-        self.approval_input[agent] = asyncio.Queue(1)
+        return future
+
+    def resolve_approval(self, approval_id: str, action: str):
+        """Resolve a single pending approval by its ID.
+
+        Design — "Approve Once":
+            The frontend sends the exact ``approval_id`` that arrived in the
+            SSE event.  Only the one Future that matches is resolved; all
+            other concurrent approvals for the same agent remain pending and
+            will surface as the next item in the frontend queue.
+        """
+        future = self.pending_approvals.pop(approval_id, None)
+        if future and not future.done():
+            future.set_result(action)
+            logger.debug(
+                "Resolved approval",
+                extra={
+                    "task_id": self.id,
+                    "approval_id": approval_id,
+                    "action": action,
+                },
+            )
+
+    def resolve_all_approvals_for_agent(self, agent: str, action: str):
+        """Resolve all pending approvals for a given agent.
+
+        Design — "Auto Approve" / "Reject":
+            Both actions apply to every pending command from this agent, not
+            just the one the user is looking at.
+
+            - Auto Approve: sets ``auto_approve[agent] = True`` (caller's
+              responsibility) so future commands skip the prompt entirely,
+              then calls this method to unblock any coroutines already
+              suspended on ``await future``.
+            - Reject: calls this method to unblock suspended coroutines, then
+              the frontend issues a skip-task request to stop the whole task.
+              ``cleanup_for_stop`` will catch any Futures that slip through
+              between the two calls.
+
+        The ``approval_id`` format ``{agent}_{hex}`` lets us filter by prefix.
+        """
+        to_remove = [
+            aid
+            for aid in self.pending_approvals
+            if aid.startswith(agent + "_")
+        ]
+        for aid in to_remove:
+            future = self.pending_approvals.pop(aid)
+            if not future.done():
+                future.set_result(action)
 
     def add_human_input_listen(self, agent: str):
         logger.debug(
@@ -483,14 +531,13 @@ class TaskLock:
         )
 
         # Unblock any coroutine awaiting approval (e.g. shell_exec
-        # waiting on get_approval_input) by injecting a "reject".
+        # waiting on a Future) by resolving all pending with "reject".
         # This lets _request_user_approval return gracefully instead
         # of hanging forever after the task is stopped.
-        for _agent, queue in self.approval_input.items():
-            try:
-                queue.put_nowait(ApprovalAction.reject)
-            except asyncio.QueueFull:
-                pass
+        for future in self.pending_approvals.values():
+            if not future.done():
+                future.set_result(ApprovalAction.reject)
+        self.pending_approvals.clear()
 
         for task in list(self.background_tasks):
             if not task.done():

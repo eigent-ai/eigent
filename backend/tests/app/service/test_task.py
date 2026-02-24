@@ -301,11 +301,11 @@ class TestTaskLock:
         assert task1.cancelled()
         assert task2.cancelled()
 
-    def test_task_lock_has_approval_input_dict(self):
-        """TaskLock should have an approval_input dict (per-agent queues)."""
+    def test_task_lock_has_pending_approvals_dict(self):
+        """TaskLock should have a pending_approvals dict (per-call Futures)."""
         task_lock = TaskLock("test_approval", asyncio.Queue(), {})
-        assert hasattr(task_lock, "approval_input")
-        assert isinstance(task_lock.approval_input, dict)
+        assert hasattr(task_lock, "pending_approvals")
+        assert isinstance(task_lock.pending_approvals, dict)
 
     def test_task_lock_has_auto_approve_dict(self):
         """TaskLock should have auto_approve dict defaulting to empty."""
@@ -314,59 +314,77 @@ class TestTaskLock:
         assert len(task_lock.auto_approve) == 0
 
     @pytest.mark.asyncio
-    async def test_put_and_get_approval_input(self):
-        """put_approval_input / get_approval_input should round-trip per agent."""
+    async def test_create_and_resolve_approval(self):
+        """create_approval / resolve_approval should round-trip."""
         task_lock = TaskLock("test_approval_io", asyncio.Queue(), {})
-        task_lock.add_approval_input_listen("agent_x")
 
-        await task_lock.put_approval_input("agent_x", "approve_once")
-        result = await task_lock.get_approval_input("agent_x")
+        future = task_lock.create_approval("agent_x_abc123")
+        assert "agent_x_abc123" in task_lock.pending_approvals
+
+        task_lock.resolve_approval("agent_x_abc123", "approve_once")
+        result = await future
         assert result == "approve_once"
+        assert "agent_x_abc123" not in task_lock.pending_approvals
 
     @pytest.mark.asyncio
-    async def test_approval_input_queue_capacity_one(self):
-        """Each agent's approval_input queue has maxsize=1."""
-        task_lock = TaskLock("test_cap", asyncio.Queue(), {})
-        task_lock.add_approval_input_listen("agent_y")
+    async def test_multiple_concurrent_approvals(self):
+        """Multiple concurrent approvals can coexist and resolve independently."""
+        task_lock = TaskLock("test_concurrent", asyncio.Queue(), {})
 
-        await task_lock.put_approval_input("agent_y", "first")
+        f1 = task_lock.create_approval("agent_a_111")
+        f2 = task_lock.create_approval("agent_a_222")
 
-        # Second put should not complete immediately (queue full)
-        with pytest.raises(asyncio.QueueFull):
-            task_lock.approval_input["agent_y"].put_nowait("second")
+        task_lock.resolve_approval("agent_a_111", "approve_once")
+        task_lock.resolve_approval("agent_a_222", "reject")
+
+        assert await f1 == "approve_once"
+        assert await f2 == "reject"
 
     @pytest.mark.asyncio
-    async def test_cleanup_injects_reject_into_approval_queues(self):
-        """cleanup() should inject 'reject' into all agent approval queues."""
+    async def test_resolve_all_approvals_for_agent(self):
+        """resolve_all_approvals_for_agent resolves all Futures for one agent."""
+        task_lock = TaskLock("test_resolve_all", asyncio.Queue(), {})
+
+        f1 = task_lock.create_approval("dev_agent_aaa")
+        f2 = task_lock.create_approval("dev_agent_bbb")
+        f3 = task_lock.create_approval("other_agent_ccc")
+
+        task_lock.resolve_all_approvals_for_agent("dev_agent", "auto_approve")
+
+        assert await f1 == "auto_approve"
+        assert await f2 == "auto_approve"
+        # other_agent's Future should still be pending
+        assert not f3.done()
+        assert "other_agent_ccc" in task_lock.pending_approvals
+
+        # Clean up
+        task_lock.resolve_approval("other_agent_ccc", "approve_once")
+
+    @pytest.mark.asyncio
+    async def test_cleanup_resolves_pending_approvals_with_reject(self):
+        """cleanup() should resolve all pending approval Futures with 'reject'."""
         task_lock = TaskLock("test_cleanup_reject", asyncio.Queue(), {})
-        task_lock.add_approval_input_listen("agent_a")
-        task_lock.add_approval_input_listen("agent_b")
 
-        # Queues are empty before cleanup
-        assert task_lock.approval_input["agent_a"].empty()
-        assert task_lock.approval_input["agent_b"].empty()
+        f_a = task_lock.create_approval("agent_a_111")
+        f_b = task_lock.create_approval("agent_b_222")
 
         await task_lock.cleanup()
 
-        # After cleanup, 'reject' should be in both queues
-        assert task_lock.approval_input["agent_a"].get_nowait() == "reject"
-        assert task_lock.approval_input["agent_b"].get_nowait() == "reject"
+        assert await f_a == "reject"
+        assert await f_b == "reject"
+        assert len(task_lock.pending_approvals) == 0
 
     @pytest.mark.asyncio
-    async def test_cleanup_does_not_fail_if_approval_queue_full(self):
-        """cleanup() should not raise if an agent's approval_input is already full."""
-        task_lock = TaskLock("test_cleanup_full", asyncio.Queue(), {})
-        task_lock.add_approval_input_listen("agent_z")
+    async def test_cleanup_handles_already_resolved_approvals(self):
+        """cleanup() should not raise if approval Futures are already resolved."""
+        task_lock = TaskLock("test_cleanup_done", asyncio.Queue(), {})
 
-        # Pre-fill the queue
-        await task_lock.put_approval_input("agent_z", "already_here")
+        f = task_lock.create_approval("agent_z_111")
+        task_lock.resolve_approval("agent_z_111", "approve_once")
 
-        # cleanup should not raise
+        # Future was already resolved and popped — cleanup should not raise
         await task_lock.cleanup()
-
-        # The original value should still be there (put_nowait was skipped)
-        result = task_lock.approval_input["agent_z"].get_nowait()
-        assert result == "already_here"
+        assert await f == "approve_once"
 
     def test_command_approval_data_model(self):
         """ActionCommandApprovalData should have correct action and data shape."""

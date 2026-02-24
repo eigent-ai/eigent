@@ -74,8 +74,8 @@ interface Task {
   isTakeControl: boolean;
   isTaskEdit: boolean;
   isContextExceeded?: boolean;
-  // Pending dangerous operation approval (no 30s timer)
-  activeApproval: { command: string; agent: string } | null;
+  // Queue of pending dangerous-command approvals (supports concurrent requests)
+  approvalQueue: { command: string; agent: string; approvalId: string }[];
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
 }
@@ -116,11 +116,12 @@ export interface ChatStore {
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
-  setActiveApproval: (
+  pushApproval: (
     taskId: string,
-    payload: { command: string; agent: string } | null
+    item: { command: string; agent: string; approvalId: string }
   ) => void;
-  clearActiveApproval: (taskId: string) => void;
+  shiftApproval: (taskId: string) => void;
+  clearAllApprovals: (taskId: string) => void;
   addWebViewUrl: (
     taskId: string,
     webViewUrl: string,
@@ -290,7 +291,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshotsTemp: [],
             isTakeControl: false,
             isTaskEdit: false,
-            activeApproval: null,
+            approvalQueue: [],
             streamingDecomposeText: '',
           },
         },
@@ -973,8 +974,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             addFileList,
             setActiveAsk,
             setActiveAskList,
-            setActiveApproval,
-            clearActiveApproval,
+            pushApproval,
+            shiftApproval,
+            clearAllApprovals,
             tasks,
             create: _create,
             setTaskTime,
@@ -1846,9 +1848,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Terminal command approval - no 30s auto-skip
           if (agentMessages.step === AgentStep.COMMAND_APPROVAL) {
-            setActiveApproval(currentTaskId, {
+            pushApproval(currentTaskId, {
               command: agentMessages.data?.command ?? '',
               agent: agentMessages.data?.agent ?? '',
+              approvalId: agentMessages.data?.approval_id ?? '',
             });
             return;
           }
@@ -2266,9 +2269,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             setIsPending(currentTaskId, false);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
-            // Clear any pending approval prompt so it doesn't
+            // Clear any pending approval prompts so they don't
             // persist when the user re-enters the project.
-            clearActiveApproval(currentTaskId);
+            clearAllApprovals(currentTaskId);
             // completed tasks move to history
             setUpdateCount();
 
@@ -2825,9 +2828,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setActiveApproval(
+    pushApproval(
       taskId: string,
-      payload: { command: string; agent: string } | null
+      item: { command: string; agent: string; approvalId: string }
     ) {
       set((state) => ({
         ...state,
@@ -2835,19 +2838,34 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeApproval: payload,
+            approvalQueue: [
+              ...(state.tasks[taskId]?.approvalQueue ?? []),
+              item,
+            ],
           },
         },
       }));
     },
-    clearActiveApproval(taskId: string) {
+    shiftApproval(taskId: string) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeApproval: null,
+            approvalQueue: (state.tasks[taskId]?.approvalQueue ?? []).slice(1),
+          },
+        },
+      }));
+    },
+    clearAllApprovals(taskId: string) {
+      set((state) => ({
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [taskId]: {
+            ...state.tasks[taskId],
+            approvalQueue: [],
           },
         },
       }));

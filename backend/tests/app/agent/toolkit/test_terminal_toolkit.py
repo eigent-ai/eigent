@@ -22,7 +22,12 @@ import pytest
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.hitl.config import HitlOptions
 from app.model.enums import ApprovalAction
-from app.service.task import ActionCommandApprovalData, TaskLock, task_locks
+from app.service.task import (
+    ActionCommandApprovalData,
+    Agents,
+    TaskLock,
+    task_locks,
+)
 
 
 @pytest.mark.unit
@@ -143,15 +148,27 @@ def _make_action_data(
     return ActionCommandApprovalData(data={"command": command, "agent": agent})
 
 
+async def _feed_approval(
+    tl: TaskLock, action: str
+) -> ActionCommandApprovalData:
+    """Read one approval event from the SSE queue and resolve it.
+
+    Simulates the frontend receiving the SSE ``command_approval`` event
+    and responding with the given *action*.  Returns the SSE item for
+    optional assertions.
+    """
+    sse_item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+    approval_id = sse_item.data["approval_id"]
+    tl.resolve_approval(approval_id, action)
+    return sse_item
+
+
 class _ConcreteToolkit(TerminalToolkit):
     """Lightweight subclass that skips the heavy TerminalToolkit.__init__."""
 
     def __init__(self, api_task_id: str, agent_name: str = "test_agent"):
         self.api_task_id = api_task_id
         self.agent_name = agent_name
-        tl = task_locks.get(api_task_id)
-        if tl:
-            tl.add_approval_input_listen(agent_name)
 
 
 @pytest.mark.unit
@@ -165,10 +182,10 @@ class TestRequestUserApproval:
         tl = _make_task_lock(task_id)
         toolkit = _ConcreteToolkit(task_id)
 
-        # Simulate user responding with approve_once
-        await tl.put_approval_input("test_agent", ApprovalAction.approve_once)
-
-        result = await toolkit._request_user_approval(_make_action_data())
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.approve_once),
+        )
         assert result is None
 
     @pytest.mark.asyncio
@@ -178,21 +195,22 @@ class TestRequestUserApproval:
         tl = _make_task_lock(task_id)
         toolkit = _ConcreteToolkit(task_id)
 
-        await tl.put_approval_input("test_agent", ApprovalAction.auto_approve)
-
-        result = await toolkit._request_user_approval(_make_action_data())
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.auto_approve),
+        )
         assert result is None
         assert tl.auto_approve["test_agent"] is True
 
     @pytest.mark.asyncio
     async def test_auto_approve_skips_subsequent_prompts(self):
-        """Once auto_approve is set, subsequent calls skip the queue entirely."""
+        """Once auto_approve is set, subsequent calls skip the Future entirely."""
         task_id = "approval_test_auto_skip"
         tl = _make_task_lock(task_id)
         tl.auto_approve["test_agent"] = True
         toolkit = _ConcreteToolkit(task_id)
 
-        # Queue is empty — should NOT block because auto_approve bypasses it
+        # Should NOT block because auto_approve bypasses the Future
         result = await toolkit._request_user_approval(_make_action_data())
         assert result is None
 
@@ -203,9 +221,10 @@ class TestRequestUserApproval:
         tl = _make_task_lock(task_id)
         toolkit = _ConcreteToolkit(task_id)
 
-        await tl.put_approval_input("test_agent", ApprovalAction.reject)
-
-        result = await toolkit._request_user_approval(_make_action_data())
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.reject),
+        )
         assert result is not None
         assert "rejected" in result.lower()
 
@@ -216,9 +235,10 @@ class TestRequestUserApproval:
         tl = _make_task_lock(task_id)
         toolkit = _ConcreteToolkit(task_id)
 
-        await tl.put_approval_input("test_agent", "some_garbage_value")
-
-        result = await toolkit._request_user_approval(_make_action_data())
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, "some_garbage_value"),
+        )
         assert result is not None
         assert "rejected" in result.lower()
 
@@ -231,19 +251,28 @@ class TestRequestUserApproval:
 
         action_data = _make_action_data("echo danger")
 
-        # Pre-fill approval so the method doesn't block
-        await tl.put_approval_input("test_agent", ApprovalAction.approve_once)
+        async def feed_and_verify():
+            sse_item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+            # The SSE item should be the same object we passed in
+            assert sse_item is action_data
+            # approval_id should have been injected
+            assert "approval_id" in sse_item.data
+            tl.resolve_approval(
+                sse_item.data["approval_id"], ApprovalAction.approve_once
+            )
+            return sse_item
 
-        await toolkit._request_user_approval(action_data)
-
-        # The action_data should have been pushed to the SSE queue
-        sse_item = tl.queue.get_nowait()
+        result, sse_item = await asyncio.gather(
+            toolkit._request_user_approval(action_data),
+            feed_and_verify(),
+        )
+        assert result is None
         assert sse_item is action_data
 
     @pytest.mark.asyncio
     async def test_concurrent_approvals_isolated(self):
         """Two agents sharing the same TaskLock have independent approval
-        queues — each agent's approval is routed to the correct queue.
+        Futures — each agent's approval is routed to the correct Future.
         """
         task_id = "approval_test_concurrent"
         tl = _make_task_lock(task_id)
@@ -263,20 +292,21 @@ class TestRequestUserApproval:
                 _make_action_data("drop table users", agent="agent_b")
             )
 
-        # Put responses into agent-specific queues AFTER both start
-        # awaiting — order doesn't matter because queues are isolated.
         async def feed_responses():
-            await asyncio.sleep(0.01)
+            items = {}
+            for _ in range(2):
+                item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+                items[item.data["agent"]] = item.data["approval_id"]
             # Approve agent_b, reject agent_a (opposite of insertion order)
-            await tl.put_approval_input("agent_b", ApprovalAction.approve_once)
-            await tl.put_approval_input("agent_a", ApprovalAction.reject)
+            tl.resolve_approval(items["agent_b"], ApprovalAction.approve_once)
+            tl.resolve_approval(items["agent_a"], ApprovalAction.reject)
 
         await asyncio.gather(request_a(), request_b(), feed_responses())
 
-        # Agent A got reject (routed to agent_a's queue)
+        # Agent A got reject
         assert results["a"] is not None
         assert "rejected" in results["a"].lower()
-        # Agent B got approve (routed to agent_b's queue)
+        # Agent B got approve
         assert results["b"] is None
 
     @pytest.mark.asyncio
@@ -307,13 +337,16 @@ class TestRequestUserApproval:
             )
 
         async def feed():
-            await asyncio.sleep(0.01)
-            await tl.put_approval_input("browser_agent", ApprovalAction.reject)
-            await tl.put_approval_input(
-                "document_agent", ApprovalAction.auto_approve
+            items = {}
+            for _ in range(3):
+                item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+                items[item.data["agent"]] = item.data["approval_id"]
+            tl.resolve_approval(items["browser_agent"], ApprovalAction.reject)
+            tl.resolve_approval(
+                items["document_agent"], ApprovalAction.auto_approve
             )
-            await tl.put_approval_input(
-                "developer_agent", ApprovalAction.approve_once
+            tl.resolve_approval(
+                items["developer_agent"], ApprovalAction.approve_once
             )
 
         await asyncio.gather(req_dev(), req_browser(), req_doc(), feed())
@@ -333,24 +366,28 @@ class TestRequestUserApproval:
         agent_b = _ConcreteToolkit(task_id, "agent_b")
 
         # Auto-approve agent_a via response
-        await tl.put_approval_input("agent_a", ApprovalAction.auto_approve)
-        result_a = await agent_a._request_user_approval(
-            _make_action_data("rm -rf /", agent="agent_a")
+        result_a, _ = await asyncio.gather(
+            agent_a._request_user_approval(
+                _make_action_data("rm -rf /", agent="agent_a")
+            ),
+            _feed_approval(tl, ApprovalAction.auto_approve),
         )
         assert result_a is None
         assert tl.auto_approve.get("agent_a") is True
 
-        # agent_a now skips queue entirely (auto-approved)
+        # agent_a now skips entirely (auto-approved)
         result_a2 = await agent_a._request_user_approval(
             _make_action_data("sudo reboot", agent="agent_a")
         )
         assert result_a2 is None
 
-        # agent_b is NOT auto-approved — it must still wait on queue
+        # agent_b is NOT auto-approved — it must still wait on a Future
         assert tl.auto_approve.get("agent_b", False) is False
-        await tl.put_approval_input("agent_b", ApprovalAction.reject)
-        result_b = await agent_b._request_user_approval(
-            _make_action_data("sudo rm -rf /", agent="agent_b")
+        result_b, _ = await asyncio.gather(
+            agent_b._request_user_approval(
+                _make_action_data("sudo rm -rf /", agent="agent_b")
+            ),
+            _feed_approval(tl, ApprovalAction.reject),
         )
         assert result_b is not None
         assert "rejected" in result_b.lower()
@@ -369,22 +406,24 @@ class TestRequestUserApproval:
         toolkit = _ConcreteToolkit(task_id)
 
         # 1. Grant auto_approve for this agent
-        await tl.put_approval_input("test_agent", ApprovalAction.auto_approve)
-        r1 = await toolkit._request_user_approval(_make_action_data())
+        r1, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.auto_approve),
+        )
         assert r1 is None
         assert tl.auto_approve["test_agent"] is True
 
         # 2. Simulate the reset that chat_service does on Action.start
         tl.auto_approve = {}
 
-        # 3. auto_approve flag is cleared — agent must wait on queue again
+        # 3. auto_approve flag is cleared — agent must wait on Future again
         assert tl.auto_approve.get("test_agent", False) is False
 
-        # 4. Re-register listener (mirrors TerminalToolkit re-init)
-        tl.add_approval_input_listen("test_agent")
-
-        await tl.put_approval_input("test_agent", ApprovalAction.approve_once)
-        r2 = await toolkit._request_user_approval(_make_action_data())
+        # 4. Must wait on Future again
+        r2, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.approve_once),
+        )
         assert r2 is None
 
     @pytest.mark.asyncio
@@ -395,25 +434,215 @@ class TestRequestUserApproval:
         toolkit = _ConcreteToolkit(task_id, "dev")
 
         # First command: approved
-        await tl.put_approval_input("dev", ApprovalAction.approve_once)
-        r1 = await toolkit._request_user_approval(
-            _make_action_data("rm /tmp/a", agent="dev")
+        r1, _ = await asyncio.gather(
+            toolkit._request_user_approval(
+                _make_action_data("rm /tmp/a", agent="dev")
+            ),
+            _feed_approval(tl, ApprovalAction.approve_once),
         )
         assert r1 is None
 
         # Second command: rejected
-        await tl.put_approval_input("dev", ApprovalAction.reject)
-        r2 = await toolkit._request_user_approval(
-            _make_action_data("rm /tmp/b", agent="dev")
+        r2, _ = await asyncio.gather(
+            toolkit._request_user_approval(
+                _make_action_data("rm /tmp/b", agent="dev")
+            ),
+            _feed_approval(tl, ApprovalAction.reject),
         )
         assert r2 is not None
 
         # Third command: approved again
-        await tl.put_approval_input("dev", ApprovalAction.approve_once)
-        r3 = await toolkit._request_user_approval(
-            _make_action_data("rm /tmp/c", agent="dev")
+        r3, _ = await asyncio.gather(
+            toolkit._request_user_approval(
+                _make_action_data("rm /tmp/c", agent="dev")
+            ),
+            _feed_approval(tl, ApprovalAction.approve_once),
         )
         assert r3 is None
+
+    @pytest.mark.asyncio
+    async def test_concurrent_same_agent_approve_all(self):
+        """Multiple concurrent approvals from same agent resolve independently.
+
+        This tests the core bug fix: when the same agent triggers multiple
+        dangerous commands concurrently, each gets its own Future and can
+        be approved independently.
+        """
+        task_id = "concurrent_same_agent_all"
+        tl = _make_task_lock(task_id)
+
+        toolkits = [_ConcreteToolkit(task_id, "dev_agent") for _ in range(3)]
+        results = {}
+
+        async def request(idx):
+            results[idx] = await toolkits[idx]._request_user_approval(
+                _make_action_data(f"cmd_{idx}", agent="dev_agent")
+            )
+
+        async def feed_all():
+            for _ in range(3):
+                item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+                tl.resolve_approval(
+                    item.data["approval_id"], ApprovalAction.approve_once
+                )
+
+        await asyncio.gather(request(0), request(1), request(2), feed_all())
+
+        assert all(results[i] is None for i in range(3))
+
+    @pytest.mark.asyncio
+    async def test_concurrent_same_agent_auto_approve_unblocks_siblings(self):
+        """Auto-approving one request unblocks all pending from the same agent.
+
+        This tests the key scenario: 3 subtasks from the same agent all
+        need approval, user clicks auto-approve on the first one, the
+        other 2 should resolve automatically.
+        """
+        task_id = "concurrent_auto_unblock"
+        tl = _make_task_lock(task_id)
+
+        toolkits = [_ConcreteToolkit(task_id, "dev_agent") for _ in range(3)]
+        results = {}
+
+        async def request(idx):
+            results[idx] = await toolkits[idx]._request_user_approval(
+                _make_action_data(f"cmd_{idx}", agent="dev_agent")
+            )
+
+        async def feed_auto():
+            # Wait for all 3 to push to the SSE queue
+            for _ in range(3):
+                await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+            # Auto-approve ONE — the toolkit code will
+            # call resolve_all_approvals_for_agent to resolve the rest
+            approval_ids = list(tl.pending_approvals.keys())
+            tl.resolve_approval(approval_ids[0], ApprovalAction.auto_approve)
+
+        await asyncio.gather(request(0), request(1), request(2), feed_auto())
+
+        assert all(results[i] is None for i in range(3))
+        assert tl.auto_approve.get("dev_agent") is True
+
+    @pytest.mark.asyncio
+    async def test_approval_id_uses_enum_value_not_repr(self):
+        """approval_id must use the Enum *value* (e.g. ``developer_agent``),
+        not the repr (``Agents.developer_agent``).
+
+        Regression: f-string formatting of a ``str, Enum`` member calls
+        ``__format__`` which returns ``Agents.developer_agent``.  String
+        concatenation (``+``) correctly uses the underlying str value.
+        If the prefix mismatches, ``resolve_all_approvals_for_agent``
+        silently matches nothing and all pending Futures hang forever.
+        """
+        task_id = "approval_id_enum_value"
+        tl = _make_task_lock(task_id)
+        # Use the real Agents enum — the exact type used in production
+        toolkit = _ConcreteToolkit(task_id, Agents.developer_agent)
+
+        action_data = _make_action_data(
+            "rm -rf /tmp/test", agent="developer_agent"
+        )
+
+        async def verify_prefix():
+            sse_item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+            approval_id = sse_item.data["approval_id"]
+            # Must start with the plain value, NOT "Agents.developer_agent_"
+            assert approval_id.startswith("developer_agent_"), (
+                f"approval_id {approval_id!r} has wrong prefix — "
+                "Enum __format__ was used instead of str value"
+            )
+            assert not approval_id.startswith("Agents."), (
+                f"approval_id {approval_id!r} contains Enum class name"
+            )
+            tl.resolve_approval(approval_id, ApprovalAction.approve_once)
+
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(action_data),
+            verify_prefix(),
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_auto_approve_with_enum_agent_name(self):
+        """Auto-approve must work when agent_name is an Agents enum member.
+
+        Regression: resolve_all_approvals_for_agent uses
+        ``aid.startswith(agent + "_")`` which relies on str concatenation
+        producing the enum value.  If approval_id was built with an
+        f-string, the prefix would be ``Agents.developer_agent_`` while
+        the lookup would search for ``developer_agent_`` — no match.
+        """
+        task_id = "auto_approve_enum"
+        tl = _make_task_lock(task_id)
+
+        toolkits = [
+            _ConcreteToolkit(task_id, Agents.developer_agent) for _ in range(3)
+        ]
+        results = {}
+
+        async def request(idx):
+            results[idx] = await toolkits[idx]._request_user_approval(
+                _make_action_data(f"cmd_{idx}", agent="developer_agent")
+            )
+
+        async def feed_auto():
+            for _ in range(3):
+                await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+            # Simulate what the controller does: resolve with the plain
+            # string agent name (as received from the frontend JSON).
+            tl.resolve_all_approvals_for_agent(
+                "developer_agent", ApprovalAction.auto_approve
+            )
+
+        await asyncio.gather(request(0), request(1), request(2), feed_auto())
+
+        assert all(results[i] is None for i in range(3))
+
+    @pytest.mark.asyncio
+    async def test_controller_resolve_matches_toolkit_approval_id(self):
+        """The controller's resolve path must match the toolkit's approval_id.
+
+        End-to-end: toolkit creates approval_id with Enum agent_name,
+        controller resolves with plain string agent name from frontend.
+        Both ``resolve_approval`` (approve_once) and
+        ``resolve_all_approvals_for_agent`` (auto/reject) must work.
+        """
+        task_id = "controller_resolve_match"
+        tl = _make_task_lock(task_id)
+        toolkit = _ConcreteToolkit(task_id, Agents.developer_agent)
+
+        # --- approve_once path: exact approval_id round-trip ---
+        action_data = _make_action_data("rm /x", agent="developer_agent")
+
+        async def feed_approve_once():
+            sse_item = await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+            # Controller receives this exact approval_id from the frontend
+            tl.resolve_approval(
+                sse_item.data["approval_id"], ApprovalAction.approve_once
+            )
+
+        r1, _ = await asyncio.gather(
+            toolkit._request_user_approval(action_data),
+            feed_approve_once(),
+        )
+        assert r1 is None
+
+        # --- reject path: bulk resolve by agent string ---
+        action_data2 = _make_action_data("rm /y", agent="developer_agent")
+
+        async def feed_reject():
+            await asyncio.wait_for(tl.queue.get(), timeout=2.0)
+            # Controller sends plain string "developer_agent" from JSON
+            tl.resolve_all_approvals_for_agent(
+                "developer_agent", ApprovalAction.reject
+            )
+
+        r2, _ = await asyncio.gather(
+            toolkit._request_user_approval(action_data2),
+            feed_reject(),
+        )
+        assert r2 is not None
+        assert "rejected" in r2.lower()
 
 
 @pytest.mark.unit
@@ -446,9 +675,6 @@ class TestTerminalApprovalGating:
         tl = _make_task_lock(task_id)
         tl.hitl_options = HitlOptions(terminal_approval=True)
         toolkit = TerminalToolkit(task_id, "test_agent")
-
-        # Pre-fill approval so the method doesn't block
-        await tl.put_approval_input("test_agent", ApprovalAction.approve_once)
 
         from app.hitl.terminal_command import is_dangerous_command
 
@@ -591,7 +817,6 @@ class TestFollowUpTaskApproval:
         tl.hitl_options = HitlOptions(terminal_approval=True)
         # Reset auto_approve as chat_service would
         tl.auto_approve = {}
-        tl.add_approval_input_listen("test_agent")
 
         # Task 2: same command IS now gated
         terminal_approval = toolkit._get_terminal_approval()
@@ -603,8 +828,10 @@ class TestFollowUpTaskApproval:
         assert is_dangerous is True
 
         # Approval flow works correctly
-        await tl.put_approval_input("test_agent", ApprovalAction.approve_once)
-        result = await toolkit._request_user_approval(_make_action_data())
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.approve_once),
+        )
         assert result is None
 
     @pytest.mark.asyncio
@@ -617,12 +844,13 @@ class TestFollowUpTaskApproval:
 
         # Enable approval before task 2
         tl.hitl_options = HitlOptions(terminal_approval=True)
-        tl.add_approval_input_listen("test_agent")
 
         assert toolkit._get_terminal_approval() is True
 
-        await tl.put_approval_input("test_agent", ApprovalAction.reject)
-        result = await toolkit._request_user_approval(_make_action_data())
+        result, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.reject),
+        )
         assert result is not None
         assert "rejected" in result.lower()
 
@@ -635,17 +863,20 @@ class TestFollowUpTaskApproval:
         toolkit = _ConcreteToolkit(task_id)
 
         # Task 1: grant auto_approve
-        await tl.put_approval_input("test_agent", ApprovalAction.auto_approve)
-        r1 = await toolkit._request_user_approval(_make_action_data())
+        r1, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.auto_approve),
+        )
         assert r1 is None
         assert tl.auto_approve["test_agent"] is True
 
         # Simulate new task start — reset auto_approve
         tl.auto_approve = {}
-        tl.add_approval_input_listen("test_agent")
 
-        # Task 2: auto_approve cleared, must wait on queue again
-        await tl.put_approval_input("test_agent", ApprovalAction.reject)
-        r2 = await toolkit._request_user_approval(_make_action_data())
+        # Task 2: auto_approve cleared, must wait on Future again
+        r2, _ = await asyncio.gather(
+            toolkit._request_user_approval(_make_action_data()),
+            _feed_approval(tl, ApprovalAction.reject),
+        )
         assert r2 is not None
         assert "rejected" in r2.lower()

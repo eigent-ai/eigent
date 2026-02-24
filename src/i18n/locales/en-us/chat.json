@@ -6,6 +6,7 @@
   "approval-yes": "Yes",
   "approval-all-yes": "Auto-approve for this task",
   "approval-no": "No",
+  "approval-pending": "pending",
   "show-more": "Show more",
   "show-less": "Show less",
   "select-file": "Select File",

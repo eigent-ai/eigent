@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from camel.toolkits.terminal_toolkit import (
@@ -134,7 +135,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # Auto-register with TaskLock for cleanup when task ends
         if task_lock:
             task_lock.register_toolkit(self)
-            task_lock.add_approval_input_listen(self.agent_name)
             logger.info(
                 "TerminalToolkit registered for cleanup",
                 extra={
@@ -385,26 +385,44 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         if task_lock.auto_approve.get(self.agent_name, False):
             return None
 
+        # Each concurrent call gets its own Future keyed by approval_id.
+        # Use str concatenation (not f-string) so that Enum values like
+        # Agents.developer_agent produce "developer_agent_..." instead of
+        # "Agents.developer_agent_..." — the latter breaks startswith()
+        # matching in resolve_all_approvals_for_agent.
+        approval_id = self.agent_name + "_" + uuid.uuid4().hex[:12]
+        action_data.data["approval_id"] = approval_id
+        future = task_lock.create_approval(approval_id)
+
         logger.info(
             "[APPROVAL] Pushing approval event to SSE queue, "
-            "api_task_id=%s, agent=%s, action=%s",
+            "api_task_id=%s, agent=%s, approval_id=%s",
             self.api_task_id,
             self.agent_name,
-            action_data.action,
+            approval_id,
         )
 
         await task_lock.put_queue(action_data)
 
         logger.info("[APPROVAL] Event pushed, waiting for user response")
 
-        approval = await task_lock.get_approval_input(self.agent_name)
+        approval = await future
 
         logger.info("[APPROVAL] Received response: %s", approval)
+
+        # Re-check: another concurrent call may have set auto_approve
+        # while this call was waiting on its Future.
+        if task_lock.auto_approve.get(self.agent_name, False):
+            return None
 
         if approval == ApprovalAction.approve_once:
             return None
         if approval == ApprovalAction.auto_approve:
             task_lock.auto_approve[self.agent_name] = True
+            # Unblock all other pending approvals for this agent
+            task_lock.resolve_all_approvals_for_agent(
+                self.agent_name, ApprovalAction.auto_approve
+            )
             return None
         return "Operation rejected by user. The task is being stopped."
 

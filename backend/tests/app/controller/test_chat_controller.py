@@ -248,67 +248,65 @@ class TestChatController:
             mock_run.assert_called_once()
 
     def test_approval_success(self, mock_task_lock):
-        """Test successful approval endpoint."""
+        """Test successful approval endpoint (approve_once resolves one Future)."""
         task_id = "test_task_123"
-        mock_task_lock.put_approval_input = AsyncMock()
         request_data = ApprovalRequest(
-            approval=ApprovalAction.approve_once, agent="dev_agent"
+            approval=ApprovalAction.approve_once,
+            agent="dev_agent",
+            approval_id="dev_agent_abc123",
         )
 
-        with (
-            patch(
-                "app.controller.chat_controller.get_task_lock",
-                return_value=mock_task_lock,
-            ),
-            patch("asyncio.run") as mock_run,
+        with patch(
+            "app.controller.chat_controller.get_task_lock",
+            return_value=mock_task_lock,
         ):
             response = approval(task_id, request_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            mock_task_lock.resolve_approval.assert_called_once_with(
+                "dev_agent_abc123", ApprovalAction.approve_once
+            )
 
     def test_approval_reject(self, mock_task_lock):
-        """Test approval endpoint with reject."""
+        """Test approval endpoint with reject (resolves ALL for this agent)."""
         task_id = "test_task_123"
-        mock_task_lock.put_approval_input = AsyncMock()
         request_data = ApprovalRequest(
             approval=ApprovalAction.reject, agent="dev_agent"
         )
 
-        with (
-            patch(
-                "app.controller.chat_controller.get_task_lock",
-                return_value=mock_task_lock,
-            ),
-            patch("asyncio.run") as mock_run,
+        with patch(
+            "app.controller.chat_controller.get_task_lock",
+            return_value=mock_task_lock,
         ):
             response = approval(task_id, request_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            mock_task_lock.resolve_all_approvals_for_agent.assert_called_once_with(
+                "dev_agent", ApprovalAction.reject
+            )
 
     def test_approval_auto_approve(self, mock_task_lock):
-        """Test approval endpoint with auto_approve."""
+        """Test approval endpoint with auto_approve (sets flag + resolves ALL)."""
         task_id = "test_task_123"
-        mock_task_lock.put_approval_input = AsyncMock()
+        mock_task_lock.auto_approve = {}
         request_data = ApprovalRequest(
             approval=ApprovalAction.auto_approve, agent="dev_agent"
         )
 
-        with (
-            patch(
-                "app.controller.chat_controller.get_task_lock",
-                return_value=mock_task_lock,
-            ),
-            patch("asyncio.run") as mock_run,
+        with patch(
+            "app.controller.chat_controller.get_task_lock",
+            return_value=mock_task_lock,
         ):
             response = approval(task_id, request_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            assert mock_task_lock.auto_approve["dev_agent"] is True
+            mock_task_lock.resolve_all_approvals_for_agent.assert_called_once_with(
+                "dev_agent", ApprovalAction.auto_approve
+            )
 
 
 @pytest.mark.integration
@@ -446,14 +444,15 @@ class TestChatControllerIntegration:
     def test_approval_endpoint_integration(self, client: TestClient):
         """Test approval endpoint through FastAPI test client."""
         task_id = "test_task_123"
-        approval_data = {"approval": "approve_once", "agent": "dev_agent"}
+        approval_data = {
+            "approval": "approve_once",
+            "agent": "dev_agent",
+            "approval_id": "dev_agent_abc123",
+        }
 
-        with (
-            patch(
-                "app.controller.chat_controller.get_task_lock"
-            ) as mock_get_lock,
-            patch("asyncio.run"),
-        ):
+        with patch(
+            "app.controller.chat_controller.get_task_lock"
+        ) as mock_get_lock:
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
 
@@ -468,12 +467,9 @@ class TestChatControllerIntegration:
         task_id = "test_task_123"
         approval_data = {"approval": "reject", "agent": "dev_agent"}
 
-        with (
-            patch(
-                "app.controller.chat_controller.get_task_lock"
-            ) as mock_get_lock,
-            patch("asyncio.run"),
-        ):
+        with patch(
+            "app.controller.chat_controller.get_task_lock"
+        ) as mock_get_lock:
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
 

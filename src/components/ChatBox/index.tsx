@@ -1020,17 +1020,30 @@ export default function ChatBox(): JSX.Element {
             onSkip={handleSkip}
             isPauseResumeLoading={isPauseResumeLoading}
           />
-          {/* Dangerous command approval (no 30s auto-skip) */}
+          {/* Dangerous command approval queue */}
           {chatStore.activeTaskId &&
-            chatStore.tasks[chatStore.activeTaskId]?.activeApproval && (
+            (chatStore.tasks[chatStore.activeTaskId]?.approvalQueue?.length ??
+              0) > 0 && (
               <div className="mx-4 mb-2 flex flex-col gap-3 rounded-xl border border-border-secondary bg-surface-tertiary px-4 py-3">
-                <div className="text-body-sm font-medium text-text-heading">
-                  {t('chat.approval-prompt')}
+                <div className="flex items-center gap-2">
+                  <div className="text-body-sm font-medium text-text-heading">
+                    {t('chat.approval-prompt')}
+                  </div>
+                  {chatStore.tasks[chatStore.activeTaskId].approvalQueue
+                    .length > 1 && (
+                    <span className="rounded-full bg-surface-secondary px-2 py-0.5 text-body-xs text-text-secondary">
+                      {
+                        chatStore.tasks[chatStore.activeTaskId].approvalQueue
+                          .length
+                      }{' '}
+                      {t('chat.approval-pending')}
+                    </span>
+                  )}
                 </div>
                 {(() => {
-                  const cmd =
-                    chatStore.tasks[chatStore.activeTaskId].activeApproval
-                      ?.command || '';
+                  const current =
+                    chatStore.tasks[chatStore.activeTaskId].approvalQueue[0];
+                  const cmd = current?.command || '';
                   const isLong = cmd.length > 100;
                   return (
                     <code
@@ -1072,14 +1085,15 @@ export default function ChatBox(): JSX.Element {
                     onClick={async () => {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
-                      const agent =
-                        chatStore.tasks[taskId]?.activeApproval?.agent ?? '';
-                      if (!projectId) return;
+                      const current =
+                        chatStore.tasks[taskId]?.approvalQueue?.[0];
+                      if (!projectId || !current) return;
                       await fetchPost(`/chat/${projectId}/approval`, {
                         approval: ApprovalAction.APPROVE_ONCE,
-                        agent,
+                        agent: current.agent,
+                        approval_id: current.approvalId,
                       });
-                      chatStore.clearActiveApproval(taskId);
+                      chatStore.shiftApproval(taskId);
                       setShowFullCommand(false);
                     }}
                   >
@@ -1092,14 +1106,15 @@ export default function ChatBox(): JSX.Element {
                     onClick={async () => {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
-                      const agent =
-                        chatStore.tasks[taskId]?.activeApproval?.agent ?? '';
-                      if (!projectId) return;
+                      const current =
+                        chatStore.tasks[taskId]?.approvalQueue?.[0];
+                      if (!projectId || !current) return;
                       await fetchPost(`/chat/${projectId}/approval`, {
                         approval: ApprovalAction.AUTO_APPROVE,
-                        agent,
+                        agent: current.agent,
+                        approval_id: current.approvalId,
                       });
-                      chatStore.clearActiveApproval(taskId);
+                      chatStore.clearAllApprovals(taskId);
                       setShowFullCommand(false);
                     }}
                   >
@@ -1112,15 +1127,16 @@ export default function ChatBox(): JSX.Element {
                     onClick={async () => {
                       const taskId = chatStore.activeTaskId as string;
                       const projectId = projectStore.activeProjectId;
-                      const agent =
-                        chatStore.tasks[taskId]?.activeApproval?.agent ?? '';
-                      if (!projectId) return;
+                      const current =
+                        chatStore.tasks[taskId]?.approvalQueue?.[0];
+                      if (!projectId || !current) return;
                       // Send rejection first so the backend await unblocks
                       await fetchPost(`/chat/${projectId}/approval`, {
                         approval: ApprovalAction.REJECT,
-                        agent,
+                        agent: current.agent,
+                        approval_id: current.approvalId,
                       });
-                      chatStore.clearActiveApproval(taskId);
+                      chatStore.clearAllApprovals(taskId);
                       setShowFullCommand(false);
                       // Also stop the task — rejection means fail/stop entirely
                       await fetchPost(`/chat/${projectId}/skip-task`, {

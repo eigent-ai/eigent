@@ -36,6 +36,7 @@ from app.model.chat import (
     SupplementChat,
     sse_json,
 )
+from app.model.enums import ApprovalAction
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
@@ -427,10 +428,30 @@ def approval(id: str, data: ApprovalRequest):
     """Handle user approval response for a command requiring confirmation."""
     chat_logger.info(
         "Approval received",
-        extra={"task_id": id, "agent": data.agent, "approval": data.approval},
+        extra={
+            "task_id": id,
+            "agent": data.agent,
+            "approval": data.approval,
+            "approval_id": data.approval_id,
+        },
     )
     task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_approval_input(data.agent, data.approval))
+
+    if data.approval == ApprovalAction.auto_approve:
+        # Set flag and resolve ALL pending approvals for this agent
+        task_lock.auto_approve[data.agent] = True
+        task_lock.resolve_all_approvals_for_agent(
+            data.agent, ApprovalAction.auto_approve
+        )
+    elif data.approval == ApprovalAction.reject:
+        # Resolve ALL pending for this agent (skip-task cleanup handles rest)
+        task_lock.resolve_all_approvals_for_agent(
+            data.agent, ApprovalAction.reject
+        )
+    else:
+        # approve_once: resolve only the specific request
+        task_lock.resolve_approval(data.approval_id, data.approval)
+
     chat_logger.debug("Approval processed", extra={"task_id": id})
     return Response(status_code=201)
 

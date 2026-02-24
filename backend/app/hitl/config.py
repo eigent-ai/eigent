@@ -24,3 +24,4 @@ class HitlOptions(BaseModel):
 class ApprovalRequest(BaseModel):
     approval: ApprovalAction
     agent: str
+    approval_id: str = ""
