@@ -126,7 +126,7 @@ export default function Project() {
 
   const _handleClickAgent = (taskId: string, agent_id: string) => {
     chatStore.setActiveTaskId(taskId);
-    chatStore.setActiveWorkSpace(taskId, 'workflow');
+    chatStore.setActiveWorkspace(taskId, 'workflow');
     chatStore.setActiveAgent(taskId, agent_id);
     navigate(`/`);
   };
@@ -268,9 +268,9 @@ export default function Project() {
       />
 
       {/* Header Section */}
-      <div className="flex w-full border-x-0 border-t-0 border-solid border-border-disabled">
-        <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-4 pt-8">
-          <div className="flex w-full flex-row items-center justify-between gap-4">
+      <div className="border-border-disabled flex w-full border-x-0 border-t-0 border-solid">
+        <div className="px-6 pb-4 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
+          <div className="gap-4 flex w-full flex-row items-center justify-between">
             <div className="flex flex-col">
               <div className="text-heading-sm font-bold text-text-heading">
                 {t('layout.projects-hub')}
@@ -281,7 +281,7 @@ export default function Project() {
       </div>
 
       <div className="flex w-full">
-        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start px-6 py-8">
+        <div className="px-6 py-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
           <GroupedHistoryView
             onTaskSelect={handleSetActive}
             onTaskDelete={handleDelete}
