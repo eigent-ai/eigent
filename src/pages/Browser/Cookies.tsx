@@ -220,26 +220,26 @@ export default function Cookies() {
         confirmVariant="information"
       />
 
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('layout.browser-cookie-management')}
         </div>
       </div>
 
-      <div className="gap-4 flex flex-col">
-        <div className="rounded-xl border-border-disabled bg-surface-secondary p-6 relative flex w-full flex-col border">
-          <div className="right-6 top-6 absolute">
+      <div className="flex flex-col gap-4">
+        <div className="relative flex w-full flex-col rounded-xl border border-border-disabled bg-surface-secondary p-6">
+          <div className="absolute right-6 top-6">
             <Button
               variant="information"
               size="xs"
               onClick={handleRestartApp}
-              className="gap-0 ease-in-out justify-center overflow-hidden rounded-full transition-all duration-300"
+              className="justify-center gap-0 overflow-hidden rounded-full transition-all duration-300 ease-in-out"
             >
               <RefreshCw className="flex-shrink-0" />
               <span
-                className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${
                   hasUnsavedChanges
-                    ? 'pl-2 max-w-[150px] opacity-100'
+                    ? 'max-w-[150px] pl-2 opacity-100'
                     : 'ml-0 max-w-0 opacity-0'
                 }`}
               >
@@ -247,12 +247,12 @@ export default function Cookies() {
               </span>
             </Button>
           </div>
-          <div className="text-body-sm text-text-label max-w-[600px]">
+          <div className="max-w-[600px] text-body-sm text-text-label">
             {t('layout.browser-cookies-description')}
           </div>
-          <div className="mt-4 gap-3 border-border-secondary pt-3 flex w-full flex-col border-[0.5px] border-x-0 border-b-0 border-solid">
-            <div className="py-2 flex flex-row items-center justify-between">
-              <div className="gap-2 flex flex-row items-center justify-start">
+          <div className="mt-4 flex w-full flex-col gap-3 border-[0.5px] border-x-0 border-b-0 border-solid border-border-secondary pt-3">
+            <div className="flex flex-row items-center justify-between py-2">
+              <div className="flex flex-row items-center justify-start gap-2">
                 <div className="text-body-base font-bold text-text-body">
                   {t('layout.cookie-domains')}
                 </div>
@@ -263,14 +263,14 @@ export default function Cookies() {
                 )}
               </div>
 
-              <div className="gap-2 flex items-center">
+              <div className="flex items-center gap-2">
                 {cookieDomains.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleDeleteAll}
                     disabled={deletingAll}
-                    className="!text-text-cuation uppercase"
+                    className="uppercase !text-text-cuation"
                   >
                     {deletingAll
                       ? t('layout.deleting')
@@ -302,14 +302,14 @@ export default function Cookies() {
             </div>
 
             {cookieDomains.length > 0 ? (
-              <div className="gap-2 flex flex-col">
+              <div className="flex flex-col gap-2">
                 {groupDomainsByMain(cookieDomains).map((group, index) => (
                   <div
                     key={index}
-                    className="rounded-xl border-border-disabled bg-surface-tertiary px-4 py-2 flex items-center justify-between border-solid"
+                    className="flex items-center justify-between rounded-xl border-solid border-border-disabled bg-surface-tertiary px-4 py-2"
                   >
                     <div className="flex w-full flex-col items-start justify-start">
-                      <span className="text-body-sm font-bold text-text-body truncate">
+                      <span className="truncate text-body-sm font-bold text-text-body">
                         {group.mainDomain}
                       </span>
                       <span className="mt-1 text-label-xs text-text-label">
@@ -335,12 +335,12 @@ export default function Cookies() {
                 ))}
               </div>
             ) : (
-              <div className="px-4 py-8 flex flex-col items-center justify-center">
+              <div className="flex flex-col items-center justify-center px-4 py-8">
                 <Cookie className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
-                <div className="text-body-base font-bold text-text-label text-center">
+                <div className="text-body-base text-center font-bold text-text-label">
                   {t('layout.no-cookies-saved-yet')}
                 </div>
-                <p className="text-label-xs font-medium text-text-label text-center">
+                <p className="text-center text-label-xs font-medium text-text-label">
                   {t('layout.no-cookies-saved-yet-description')}
                 </p>
               </div>
@@ -348,7 +348,7 @@ export default function Cookies() {
           </div>
         </div>
 
-        <div className="text-label-xs text-text-label w-full text-center">
+        <div className="w-full text-center text-label-xs text-text-label">
           For more information, check out our
           <a
             href="https://www.eigent.ai/privacy-policy"

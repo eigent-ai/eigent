@@ -340,7 +340,7 @@ export default function IntegrationList({
               }
             >
               {isSelectMode ? (
-                <div className="gap-xs flex items-center">
+                <div className="flex items-center gap-xs">
                   {(isSelectMode || showStatusDot) && (
                     <img
                       src={ellipseIcon}
@@ -361,8 +361,8 @@ export default function IntegrationList({
                   </div>
                 </div>
               ) : (
-                <div className="gap-xs flex w-full flex-row items-center justify-between">
-                  <div className="gap-xs flex flex-row items-center">
+                <div className="flex w-full flex-row items-center justify-between gap-xs">
+                  <div className="flex flex-row items-center gap-xs">
                     {showStatusDot && (
                       <img
                         src={ellipseIcon}
@@ -387,7 +387,7 @@ export default function IntegrationList({
                       </Tooltip>
                     </div>
                   </div>
-                  <div className="gap-md flex flex-row items-center">
+                  <div className="flex flex-row items-center gap-md">
                     {showConfigButton && (
                       <Button
                         type="button"
@@ -455,8 +455,8 @@ export default function IntegrationList({
             </div>
 
             {!isSelectMode && showSelect && (
-              <div className="mt-6 gap-md border-border-secondary pt-6 flex w-full flex-row items-center border-x-0 border-b-0 border-solid">
-                <div className="gap-md flex w-full flex-row items-center justify-between">
+              <div className="mt-6 flex w-full flex-row items-center gap-md border-x-0 border-b-0 border-solid border-border-secondary pt-6">
+                <div className="flex w-full flex-row items-center justify-between gap-md">
                   <div className="text-body-md text-text-body">
                     {' '}
                     Default {item.name}
