@@ -1,6 +1,6 @@
 name: 🐛 Bug Report
 description: File an issue about a bug.
-title: "[BUG] "
+title: '[BUG] '
 labels: [bug]
 body:
   - type: markdown
@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: What version of eigent are you using?
-      placeholder: E.g., 0.0.87
+      placeholder: E.g., 0.0.85
     validations:
       required: true
 
