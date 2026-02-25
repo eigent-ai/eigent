@@ -406,8 +406,5 @@
   "proxy-invalid-url": "Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.",
   "proxy-restart-hint": "Restart required to apply proxy changes.",
 
-  "preferred-ide": "Preferred IDE",
-  "preferred-ide-description": "Choose which application to use when opening agent project folders.",
-  "system-file-manager": "System File Manager",
   "agents": "Agents"
 }
