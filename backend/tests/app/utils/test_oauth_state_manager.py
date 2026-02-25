@@ -13,13 +13,13 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import threading
+
 import pytest
 
 from app.utils.oauth_state_manager import (
-    AuthStatus,
+    TERMINAL_STATUSES,
     OAuthState,
     OAuthStateManager,
-    TERMINAL_STATUSES,
 )
 
 
