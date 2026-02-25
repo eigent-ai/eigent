@@ -258,9 +258,5 @@
   "proxy-saved-restart-required": "Configurazione proxy salvata. Riavvia l'app per applicare le modifiche.",
   "proxy-save-failed": "Impossibile salvare la configurazione del proxy.",
   "proxy-invalid-url": "URL proxy non valido. Deve iniziare con http://, https://, socks4:// o socks5://.",
-  "proxy-restart-hint": "Riavvio necessario per applicare le modifiche del proxy.",
-
-  "preferred-ide": "IDE preferito",
-  "preferred-ide-description": "Scegli quale applicazione utilizzare per aprire le cartelle dei progetti dell'agente.",
-  "system-file-manager": "Gestione file di sistema"
+  "proxy-restart-hint": "Riavvio necessario per applicare le modifiche del proxy."
 }

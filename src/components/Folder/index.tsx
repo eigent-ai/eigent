@@ -14,6 +14,12 @@
 
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -510,6 +516,25 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     chatStore.setActiveWorkspace(chatStore.activeTaskId as string, 'workflow');
   };
 
+  const handleOpenInIDE = async (ide: 'vscode' | 'cursor' | 'system') => {
+    try {
+      if (!authStore.email || !projectStore.activeProjectId) return;
+      const folderPath = await window.electronAPI.getProjectFolderPath(
+        authStore.email,
+        projectStore.activeProjectId
+      );
+      const result = await window.electronAPI.openInIDE(folderPath, ide);
+      if (!result.success) {
+        toast.error(result.error || t('chat.failed-to-open-folder'));
+      } else {
+        authStore.setPreferredIDE(ide);
+      }
+    } catch (error) {
+      console.error('Failed to open in IDE:', error);
+      toast.error(t('chat.failed-to-open-folder'));
+    }
+  };
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* fileList */}
@@ -544,36 +569,40 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               {!isCollapsed &&
                 window.electronAPI?.getProjectFolderPath &&
                 window.electronAPI?.openInIDE && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={async () => {
-                      try {
-                        if (!authStore.email || !projectStore.activeProjectId)
-                          return;
-                        const folderPath =
-                          await window.electronAPI.getProjectFolderPath(
-                            authStore.email,
-                            projectStore.activeProjectId
-                          );
-                        const result = await window.electronAPI.openInIDE(
-                          folderPath,
-                          authStore.preferredIDE
-                        );
-                        if (!result.success) {
-                          toast.error(
-                            result.error || t('chat.failed-to-open-folder')
-                          );
-                        }
-                      } catch (error) {
-                        console.error('Failed to open in IDE:', error);
-                        toast.error(t('chat.failed-to-open-folder'));
-                      }
-                    }}
-                    title={t('chat.open-in-ide')}
-                  >
-                    <SquareTerminal className="h-5 w-5 text-icon-secondary" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('chat.open-in-ide')}
+                      >
+                        <SquareTerminal className="h-5 w-5 text-icon-secondary" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="z-50 border-dropdown-border bg-dropdown-bg"
+                    >
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('vscode')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-vscode')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('cursor')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-cursor')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('system')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-file-manager')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               <Button
                 variant="ghost"
@@ -700,7 +729,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}
+            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (

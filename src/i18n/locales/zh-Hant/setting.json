@@ -187,8 +187,5 @@
   "proxy-saved-restart-required": "代理設定已儲存。請重新啟動應用程式以套用變更。",
   "proxy-save-failed": "儲存代理設定失敗。",
   "proxy-invalid-url": "無效的代理 URL。必須以 http://、https://、socks4:// 或 socks5:// 開頭。",
-  "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。",
-  "preferred-ide": "偏好 IDE",
-  "preferred-ide-description": "選擇開啟智能體專案資料夾時使用的應用程式。",
-  "system-file-manager": "系統檔案管理器"
+  "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。"
 }
