@@ -31,7 +31,7 @@ import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '../ui/badge';
 
-export function WorkSpaceMenu() {
+export function WorkspaceMenu() {
   const { t } = useTranslation();
   const { chatStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
@@ -313,13 +313,13 @@ export function WorkSpaceMenu() {
   const onValueChange = (val: string) => {
     if (!chatStore.activeTaskId) return;
     if (val === '') {
-      chatStore.setActiveWorkSpace(chatStore.activeTaskId, 'workflow');
+      chatStore.setActiveWorkspace(chatStore.activeTaskId, 'workflow');
       return;
     }
     if (val === 'documentWorkSpace') {
       chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
     }
-    chatStore.setActiveWorkSpace(chatStore.activeTaskId, val);
+    chatStore.setActiveWorkspace(chatStore.activeTaskId, val);
 
     window.electronAPI.hideAllWebview();
   };
@@ -334,7 +334,7 @@ export function WorkSpaceMenu() {
               size="sm"
               value={
                 chatStore.tasks[chatStore.activeTaskId as string]
-                  .activeWorkSpace as string
+                  .activeWorkspace as string
               }
               onValueChange={onValueChange}
               className="flex items-center gap-2"
@@ -377,7 +377,7 @@ export function WorkSpaceMenu() {
                 type="single"
                 value={
                   chatStore.tasks[chatStore.activeTaskId as string]
-                    .activeWorkSpace as string
+                    .activeWorkspace as string
                 }
                 onValueChange={onValueChange}
                 className="scrollbar-horizontal flex max-w-[500px] items-center gap-2 overflow-x-auto"

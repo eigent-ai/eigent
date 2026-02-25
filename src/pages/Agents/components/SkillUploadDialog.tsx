@@ -420,10 +420,10 @@ export default function SkillUploadDialog({
         >
           <DialogHeader title={t('agents.add-skill')} />
           <DialogContentSection>
-            <div className="gap-4 flex flex-col">
+            <div className="flex flex-col gap-4">
               {/* Drop Zone */}
               <div
-                className={`rounded-xl p-8 ease-in relative cursor-pointer border-2 border-dashed transition-colors duration-300 ${
+                className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-colors duration-300 ease-in ${
                   uploadError
                     ? 'border-border-cuation bg-surface-cuation'
                     : isDragging
@@ -444,10 +444,10 @@ export default function SkillUploadDialog({
                 />
 
                 {selectedFile ? (
-                  <div className="gap-6 flex flex-col items-center">
-                    <div className="gap-2 flex items-center">
+                  <div className="flex flex-col items-center gap-6">
+                    <div className="flex items-center gap-2">
                       <div
-                        className={`p-1 rounded-lg flex flex-shrink-0 items-center justify-center ${
+                        className={`flex flex-shrink-0 items-center justify-center rounded-lg p-1 ${
                           uploadError
                             ? 'bg-surface-cuation'
                             : 'bg-surface-tertiary'
@@ -461,9 +461,9 @@ export default function SkillUploadDialog({
                           }`}
                         />
                       </div>
-                      <div className="min-w-0 flex w-full flex-col">
+                      <div className="flex w-full min-w-0 flex-col">
                         <span
-                          className={`text-body-sm font-medium truncate ${
+                          className={`truncate text-body-sm font-medium ${
                             uploadError
                               ? 'text-text-cuation'
                               : 'text-text-heading'
@@ -495,11 +495,11 @@ export default function SkillUploadDialog({
                     </span>
                   </div>
                 ) : (
-                  <div className="gap-2 flex flex-col items-center">
-                    <div className="h-12 w-12 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex h-12 w-12 items-center justify-center">
                       <Upload className="h-6 w-6 text-icon-secondary" />
                     </div>
-                    <div className="gap-1 flex flex-col items-center text-center">
+                    <div className="flex flex-col items-center gap-1 text-center">
                       <span className="text-body-sm font-medium text-text-heading">
                         {t('agents.drag-and-drop')}
                       </span>
@@ -514,10 +514,10 @@ export default function SkillUploadDialog({
               {/* Error notice */}
               {uploadError && errorMessage && (
                 <div
-                  className="gap-4 rounded-xl border-border-cuation bg-surface-cuation px-4 py-3 flex items-center border"
+                  className="flex items-center gap-4 rounded-xl border border-border-cuation bg-surface-cuation px-4 py-3"
                   role="alert"
                 >
-                  <AlertCircle className="h-4 w-4 text-icon-cuation shrink-0" />
+                  <AlertCircle className="h-4 w-4 shrink-0 text-icon-cuation" />
                   <span className="text-label-sm text-text-cuation">
                     {errorMessage}
                   </span>
@@ -529,11 +529,11 @@ export default function SkillUploadDialog({
                 <span className="text-label-sm font-bold text-text-body">
                   {t('agents.file-requirements')}
                 </span>
-                <span className="mt-2 gap-2 text-label-sm text-text-label flex items-start">
+                <span className="mt-2 flex items-start gap-2 text-label-sm text-text-label">
                   <span className="text-text-label">•</span>
                   <span>{t('agents.file-requirements-detail-1')}</span>
                 </span>
-                <span className="mt-1 gap-2 text-label-sm text-text-label flex items-start">
+                <span className="mt-1 flex items-start gap-2 text-label-sm text-text-label">
                   <span className="text-text-label">•</span>
                   <span>{t('agents.file-requirements-detail-2')}</span>
                 </span>

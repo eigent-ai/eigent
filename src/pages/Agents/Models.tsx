@@ -37,11 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
@@ -52,7 +47,6 @@ import {
   Cloud,
   Eye,
   EyeOff,
-  Info,
   Key,
   Loader2,
   RotateCcw,
@@ -85,6 +79,9 @@ import zaiImage from '@/assets/model/zai.svg';
 
 const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
 const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
+const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
+const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
+  'Added /v1 once. You can remove it if not needed.';
 
 // Sidebar tab types
 type SidebarTab =
@@ -108,6 +105,12 @@ const DARK_FILL_MODELS = new Set([
   'z.ai',
   'openai-compatible-model',
 ]);
+
+const PROVIDER_AVATAR_URLS: Record<string, string> = {
+  'samba-nova': 'https://github.com/sambanova.png',
+  mistral: 'https://github.com/mistralai.png',
+  grok: 'https://github.com/xai-org.png',
+};
 
 export default function SettingModels() {
   const {
@@ -193,6 +196,8 @@ export default function SettingModels() {
   const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(
     null
   );
+  const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
+    useState(false);
 
   // Fetch available models from Ollama API
   const fetchOllamaModels = async (endpoint?: string) => {
@@ -455,6 +460,7 @@ export default function SettingModels() {
 
   // Cloud model options
   const cloudModelOptions = [
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
@@ -626,12 +632,64 @@ export default function SettingModels() {
   };
 
   // Local Model verification
+  const isOllamaEndpointMissingV1 = (endpoint: string): boolean => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return false;
+    try {
+      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
+      return !normalizedPath.endsWith('/v1');
+    } catch {
+      return !trimmed.replace(/\/+$/, '').endsWith('/v1');
+    }
+  };
+  const canAutoFixOllamaEndpoint = (endpoint: string): boolean => {
+    const trimmed = endpoint.trim();
+    if (!trimmed || !isOllamaEndpointMissingV1(trimmed)) return false;
+    try {
+      // Auto-fix only when endpoint has no extra path, e.g. http://localhost:11434
+      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
+      return normalizedPath === '';
+    } catch {
+      const withoutQueryOrHash = trimmed.split(/[?#]/)[0] || '';
+      const normalized = withoutQueryOrHash.replace(/\/+$/, '');
+      return !normalized.includes('/');
+    }
+  };
+  const appendV1ToEndpoint = (endpoint: string): string => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return trimmed;
+    try {
+      const parsed = new URL(trimmed);
+      const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+      parsed.pathname = `${normalizedPath}/v1`.replace(/\/{2,}/g, '/');
+      return parsed.toString();
+    } catch {
+      return `${trimmed.replace(/\/+$/, '')}/v1`;
+    }
+  };
+
   const handleLocalVerify = async () => {
     setLocalVerifying(true);
     setLocalError(null);
     setLocalInputError(false);
-    const currentEndpoint = localEndpoints[localPlatform] || '';
+    let currentEndpoint = localEndpoints[localPlatform] || '';
     const currentType = localTypes[localPlatform] || '';
+
+    // Fallback guard for fast save interactions: ensure one-time auto-fix
+    // still applies even if blur state hasn't committed yet.
+    if (
+      localPlatform === 'ollama' &&
+      !ollamaEndpointAutoFixedOnce &&
+      canAutoFixOllamaEndpoint(currentEndpoint)
+    ) {
+      const fixedEndpoint = appendV1ToEndpoint(currentEndpoint);
+      currentEndpoint = fixedEndpoint;
+      setLocalEndpoints((prev) => ({
+        ...prev,
+        [localPlatform]: fixedEndpoint,
+      }));
+      setOllamaEndpointAutoFixedOnce(true);
+    }
 
     if (!currentEndpoint) {
       setLocalError(t('setting.endpoint-url-can-not-be-empty'));
@@ -898,6 +956,7 @@ export default function SettingModels() {
       setActiveModelIdx(null);
       // Re-fetch Ollama models after reset
       if (localPlatform === 'ollama') {
+        setOllamaEndpointAutoFixedOnce(false);
         setOllamaModelsError(null);
         fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
       }
@@ -1013,6 +1072,9 @@ export default function SettingModels() {
       'z.ai': zaiImage,
       moonshot: moonshotImage,
       ModelArk: modelarkImage,
+      'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
+      grok: PROVIDER_AVATAR_URLS.grok,
+      mistral: PROVIDER_AVATAR_URLS.mistral,
       'aws-bedrock': bedrockImage,
       azure: azureImage,
       'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
@@ -1053,13 +1115,13 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
             ? 'bg-fill-fill-transparent-active'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="flex items-center justify-center gap-3">
+        <div className="gap-3 flex items-center justify-center">
           {modelImage ? (
             <img
               src={modelImage}
@@ -1079,7 +1141,7 @@ export default function SettingModels() {
           </span>
         </div>
         {isConfigured && (
-          <div className="m-1 h-2 w-2 rounded-full bg-text-success" />
+          <div className="m-1 h-2 w-2 bg-text-success rounded-full" />
         )}
       </button>
     );
@@ -1091,16 +1153,16 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="flex h-64 items-center justify-center text-text-label">
+          <div className="h-64 text-text-label flex items-center justify-center">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
-          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
-            <div className="inline-flex items-center justify-start gap-2 self-stretch">
-              <div className="text-body-base my-2 flex-1 justify-center font-bold text-text-heading">
+        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
+          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-start self-stretch">
+              <div className="text-body-base my-2 font-bold text-text-heading flex-1 justify-center">
                 {t('setting.eigent-cloud')}
               </div>
               {cloudPrefer ? (
@@ -1119,7 +1181,7 @@ export default function SettingModels() {
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="rounded-full !text-text-label"
+                  className="!text-text-label rounded-full"
                   onClick={() => {
                     setLocalPrefer(false);
                     setActiveModelIdx(null);
@@ -1143,7 +1205,7 @@ export default function SettingModels() {
                 onClick={() => {
                   window.location.href = `https://www.eigent.ai/pricing`;
                 }}
-                className="cursor-pointer text-body-sm text-text-label underline"
+                className="text-body-sm text-text-label cursor-pointer underline"
               >
                 {t('setting.pricing-options')}
               </span>
@@ -1153,7 +1215,7 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
+          <div className="gap-4 px-6 pb-4 flex w-full flex-row items-center justify-between">
             <div className="text-body-sm text-text-body">
               {t('setting.credits')}:{' '}
               {loadingCredits ? (
@@ -1178,44 +1240,13 @@ export default function SettingModels() {
               <Settings />
             </Button>
           </div>
-          <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
-            <div className="flex min-w-0 flex-1 items-center">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+          <div className="px-6 pb-4 flex w-full flex-1 items-center justify-between">
+            <div className="min-w-0 flex flex-1 items-center">
+              <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
                 {t('setting.select-model-type')}
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1 inline-flex cursor-pointer items-center">
-                    <Info className="h-4 w-4 text-icon-secondary" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  className="flex min-h-[40px] min-w-[220px] items-center justify-center text-center"
-                >
-                  <span className="flex w-full items-center justify-center">
-                    {cloud_model_type === 'gpt-4.1-mini'
-                      ? t('setting.gpt-4.1-mini')
-                      : cloud_model_type === 'gpt-4.1'
-                        ? t('setting.gpt-4.1')
-                        : cloud_model_type === 'claude-sonnet-4-5'
-                          ? t('setting.claude-sonnet-4-5')
-                          : cloud_model_type === 'gemini-3-pro-preview'
-                            ? t('setting.gemini-3-pro-preview')
-                            : cloud_model_type === 'gpt-5'
-                              ? t('setting.gpt-5')
-                              : cloud_model_type === 'gpt-5.1'
-                                ? t('setting.gpt-5')
-                                : cloud_model_type === 'gpt-5.2'
-                                  ? t('setting.gpt-5')
-                                  : cloud_model_type === 'gpt-5-mini'
-                                    ? t('setting.gpt-5-mini')
-                                    : t('setting.gemini-3-flash-preview')}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
             </div>
-            <div className="flex-shrink-0">
+            <div className="ml-4 flex-shrink-0">
               <Select
                 value={cloud_model_type}
                 onValueChange={setCloudModelType}
@@ -1224,6 +1255,9 @@ export default function SettingModels() {
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini-3.1-pro-preview">
+                    {t('setting.gemini-3.1-pro-preview-name')}
+                  </SelectItem>
                   <SelectItem value="gemini-3-pro-preview">
                     {t('setting.gemini-3-pro-preview-name')}
                   </SelectItem>
@@ -1272,15 +1306,15 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
+        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
+          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
               <div className="text-body-base my-2 font-bold text-text-heading">
                 {item.name}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="gap-2 flex items-center">
                 {form[idx].prefer ? (
-                  <span className="inline-flex items-center rounded-full px-2 py-1 text-label-xs font-bold text-text-success">
+                  <span className="px-2 py-1 text-label-xs font-bold text-text-success inline-flex items-center rounded-full">
                     {t('setting.default')}
                   </span>
                 ) : (
@@ -1291,8 +1325,8 @@ export default function SettingModels() {
                     onClick={() => handleSwitch(idx, true)}
                     className={
                       canSwitch
-                        ? 'inline-flex items-center rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none hover:bg-button-transparent-fill-active'
-                        : 'inline-flex items-center gap-1.5'
+                        ? 'bg-button-transparent-fill-hover !text-text-label hover:bg-button-transparent-fill-active inline-flex items-center rounded-full shadow-none'
+                        : 'gap-1.5 inline-flex items-center'
                     }
                   >
                     {!canSwitch
@@ -1301,9 +1335,9 @@ export default function SettingModels() {
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
+                  <div className="h-2 w-2 bg-text-success shrink-0 rounded-full" />
                 ) : (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
+                  <div className="h-2 w-2 bg-text-label shrink-0 rounded-full opacity-10" />
                 )}
               </div>
             </div>
@@ -1311,7 +1345,7 @@ export default function SettingModels() {
               {item.description}
             </div>
           </div>
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             {/* API Key Setting */}
             <Input
               id={`apiKey-${item.id}`}
@@ -1392,7 +1426,7 @@ export default function SettingModels() {
             {item.externalConfig &&
               form[idx].externalConfig &&
               form[idx].externalConfig.map((ec, ecIdx) => (
-                <div key={ec.key} className="flex h-full w-full flex-col gap-4">
+                <div key={ec.key} className="gap-4 flex h-full w-full flex-col">
                   {ec.options && ec.options.length > 0 ? (
                     <Select
                       value={ec.value}
@@ -1459,7 +1493,7 @@ export default function SettingModels() {
               ))}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
               size="sm"
@@ -1492,10 +1526,10 @@ export default function SettingModels() {
       const isPreferred = localPrefer && localPlatform === platform;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
-              <div className="flex items-center gap-2">
+        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
+          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+              <div className="gap-2 flex items-center">
                 <div className="text-body-base my-2 font-bold text-text-heading">
                   {platform === 'ollama'
                     ? 'Ollama'
@@ -1523,7 +1557,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none'
+                        ? 'bg-button-transparent-fill-hover !text-text-label rounded-full shadow-none'
                         : ''
                     }
                   >
@@ -1534,14 +1568,14 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 rounded-full bg-text-success" />
+                <div className="h-2 w-2 bg-text-success rounded-full" />
               ) : (
-                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
               )}
             </div>
           </div>
           {/* Model Endpoint URL Setting */}
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             <Input
               size="default"
               title={t('setting.model-endpoint-url')}
@@ -1559,6 +1593,25 @@ export default function SettingModels() {
                   setOllamaModelsError(null);
                 }
               }}
+              onBlur={(e) => {
+                if (
+                  platform !== 'ollama' ||
+                  ollamaEndpointAutoFixedOnce ||
+                  !canAutoFixOllamaEndpoint(e.target.value)
+                ) {
+                  return;
+                }
+                const fixedEndpoint = appendV1ToEndpoint(e.target.value);
+                setLocalEndpoints((prev) => ({
+                  ...prev,
+                  [platform]: fixedEndpoint,
+                }));
+                setOllamaEndpointAutoFixedOnce(true);
+                toast(OLLAMA_ENDPOINT_AUTO_FIX_TITLE, {
+                  description: OLLAMA_ENDPOINT_AUTO_FIX_DESC,
+                  closeButton: true,
+                });
+              }}
               disabled={!localEnabled}
               placeholder={
                 platform === 'ollama'
@@ -1570,8 +1623,8 @@ export default function SettingModels() {
               note={localError ?? undefined}
             />
             {platform === 'ollama' ? (
-              <div className="flex w-full flex-col gap-1">
-                <div className="flex w-full items-end gap-2">
+              <div className="gap-1 flex w-full flex-col">
+                <div className="gap-2 flex w-full items-end">
                   <div className="flex-1">
                     <Select
                       value={currentType}
@@ -1665,7 +1718,7 @@ export default function SettingModels() {
             )}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
               size="sm"
@@ -1695,8 +1748,8 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="sticky top-0 z-10 flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
-        <div className="flex w-full flex-col items-start justify-between gap-4">
+      <div className="top-0 bg-surface-primary px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+        <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-text-heading">
               {t('setting.models')}
@@ -1705,10 +1758,10 @@ export default function SettingModels() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 flex flex-col gap-6">
+      <div className="mb-8 gap-6 flex flex-col">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-row items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="flex w-full flex-col items-start justify-center gap-1">
+        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-end justify-between">
+          <div className="gap-1 flex w-full flex-col items-start justify-center">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.models-default-setting-title')}
             </div>
@@ -1718,11 +1771,11 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
-                <span className="whitespace-nowrap text-body-sm">
+              <button className="gap-2 rounded-lg border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
+                <span className="text-body-sm whitespace-nowrap">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
+                <ChevronDown className="h-4 w-4 text-text-success flex-shrink-0" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1776,7 +1829,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1797,15 +1850,15 @@ export default function SettingModels() {
                             {item.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-text-success" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1837,7 +1890,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1858,15 +1911,15 @@ export default function SettingModels() {
                             {model.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-text-success" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1879,17 +1932,17 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="text-body-base sticky top-[86px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
+        <div className="gap-2 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-start justify-between">
+          <div className="text-body-base mb-2 border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
           <div className="flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-surface-secondary">
-              <div className="flex flex-col gap-4">
+            <div className="-ml-2 mr-4 rounded-2xl bg-surface-secondary h-full w-[240px]">
+              <div className="gap-4 flex flex-col">
                 {/* Eigent Cloud Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
                     {t('setting.eigent-cloud')}
                   </div>
@@ -1904,10 +1957,10 @@ export default function SettingModels() {
                     )}
                 </div>
                 {/* Bring Your Own Key Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
+                    className="rounded-lg px-3 py-2 hover:bg-surface-secondary flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-text-heading">
                       {t('setting.custom-model')}
@@ -1919,7 +1972,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       byokCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -1939,10 +1992,10 @@ export default function SettingModels() {
                 </div>
 
                 {/* Local Model Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
+                    className="rounded-lg px-3 py-2 hover:bg-surface-secondary flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-text-heading">
                       {t('setting.local-model')}
@@ -1954,7 +2007,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -1997,7 +2050,7 @@ export default function SettingModels() {
               </div>
             </div>
             {/* Main Content */}
-            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
+            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
               {renderContent()}
             </div>
           </div>
