@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   agentMap,
@@ -67,7 +68,7 @@ type SkillListItemProps =
 export default function SkillListItem(props: SkillListItemProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { updateSkill } = useSkillsStore();
+  const { updateSkill, toggleSkill } = useSkillsStore();
   const { projectStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -192,6 +193,10 @@ export default function SkillListItem(props: SkillListItemProps) {
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-md">
+          <Switch
+            checked={skill.enabled}
+            onCheckedChange={() => toggleSkill(skill.id)}
+          />
           <span className="text-label-xs text-text-disabled">
             {t('agents.added')} {formatDate(skill.addedAt)}
           </span>
@@ -202,7 +207,10 @@ export default function SkillListItem(props: SkillListItemProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={handleTryInChat}>
+              <DropdownMenuItem
+                disabled={!skill.enabled}
+                onClick={skill.enabled ? handleTryInChat : undefined}
+              >
                 <MessageSquare className="h-4 w-4" />
                 {t('agents.try-in-chat')}
               </DropdownMenuItem>
