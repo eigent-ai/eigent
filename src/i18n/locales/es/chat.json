@@ -49,5 +49,8 @@
   "new-project": "Nuevo proyecto",
   "no-reply-received-task-continue": "No se recibió respuesta, la tarea continúa",
   "open-in-ide": "Abrir en IDE",
+  "open-in-vscode": "Abrir en VS Code",
+  "open-in-cursor": "Abrir en Cursor",
+  "open-in-file-manager": "Abrir en el administrador de archivos",
   "failed-to-open-folder": "No se pudo abrir la carpeta"
 }

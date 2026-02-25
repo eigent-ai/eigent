@@ -23,7 +23,7 @@ import Skills from './Skills';
 
 export default function Capabilities() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('skills');
+  const [activeTab, setActiveTab] = useState('models');
 
   const menuItems = [
     {

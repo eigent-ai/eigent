@@ -200,9 +200,6 @@
   "api-key-setting": "API Key Setting",
   "api-host-setting": "API Host Setting",
   "model-type-setting": "Model Type Setting",
-  "search-model-types": "Search model types...",
-  "no-model-types-found": "No model types found.",
-  "loading-suggestions": "Loading suggestions...",
   "please-select": "Please select",
   "configuring": "Configuring...",
 
@@ -409,8 +406,5 @@
   "proxy-invalid-url": "Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.",
   "proxy-restart-hint": "Restart required to apply proxy changes.",
 
-  "preferred-ide": "Preferred IDE",
-  "preferred-ide-description": "Choose which application to use when opening agent project folders.",
-  "system-file-manager": "System File Manager",
   "agents": "Agents"
 }

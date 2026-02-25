@@ -63,11 +63,12 @@ export default function SearchInput({
   }, [onChange]);
 
   useEffect(() => {
-    if (userExpanded && inputRef.current) {
-      const id = requestAnimationFrame(() => {
+    if (userExpanded) {
+      // Delay focus until input is mounted (AnimatePresence mode="wait" ~150ms)
+      const id = setTimeout(() => {
         inputRef.current?.focus();
-      });
-      return () => cancelAnimationFrame(id);
+      }, 150);
+      return () => clearTimeout(id);
     }
   }, [userExpanded]);
 

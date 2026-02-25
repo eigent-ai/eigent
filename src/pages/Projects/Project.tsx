@@ -126,7 +126,7 @@ export default function Project() {
 
   const _handleClickAgent = (taskId: string, agent_id: string) => {
     chatStore.setActiveTaskId(taskId);
-    chatStore.setActiveWorkSpace(taskId, 'workflow');
+    chatStore.setActiveWorkspace(taskId, 'workflow');
     chatStore.setActiveAgent(taskId, agent_id);
     navigate(`/`);
   };

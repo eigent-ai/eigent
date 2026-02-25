@@ -19,7 +19,6 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import { ModelTypeCombobox } from '@/components/ModelTypeCombobox';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -183,15 +182,6 @@ export default function SettingModels() {
     {}
   );
   const [localTypes, setLocalTypes] = useState<Record<string, string>>({});
-  // Saved (persisted) model types — only updated after a successful Save, used for the display label
-  const [savedModelTypes, setSavedModelTypes] = useState<string[]>(() =>
-    INIT_PROVODERS.filter((p) => p.id !== 'local').map(
-      (p) => p.model_type ?? ''
-    )
-  );
-  const [savedLocalTypes, setSavedLocalTypes] = useState<
-    Record<string, string>
-  >({});
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
@@ -278,14 +268,6 @@ export default function SettingModels() {
             return fi;
           })
         );
-        setSavedModelTypes(
-          items.map((item) => {
-            const found = providerList.find(
-              (p: any) => p.provider_name === item.id
-            );
-            return found?.model_type ?? '';
-          })
-        );
         // Handle local models - load all local providers per platform
         const localProviders = providerList.filter((p: any) =>
           LOCAL_PROVIDER_NAMES.includes(p.provider_name)
@@ -314,7 +296,6 @@ export default function SettingModels() {
 
         setLocalEndpoints(endpoints);
         setLocalTypes(types);
-        setSavedLocalTypes(types);
         setLocalProviderIds(providerIds);
 
         // Fetch Ollama models if ollama endpoint is set
@@ -376,7 +357,7 @@ export default function SettingModels() {
     const preferredIdx = form.findIndex((f) => f.prefer);
     if (preferredIdx !== -1) {
       const item = items[preferredIdx];
-      const modelType = savedModelTypes[preferredIdx] || '';
+      const modelType = form[preferredIdx].model_type || '';
       return `${t('setting.custom-model')} / ${item.name}${modelType ? ` (${modelType})` : ''}`;
     }
 
@@ -392,7 +373,7 @@ export default function SettingModels() {
             : localPlatform === 'sglang'
               ? 'SGLang'
               : 'LM Studio';
-      const modelType = savedLocalTypes[localPlatform] || '';
+      const modelType = localTypes[localPlatform] || '';
       return `${t('setting.local-model')} / ${platformName}${modelType ? ` (${modelType})` : ''}`;
     }
 
@@ -633,14 +614,6 @@ export default function SettingModels() {
           return fi;
         })
       );
-      setSavedModelTypes(
-        items.map((item) => {
-          const found = providerList.find(
-            (p: any) => p.provider_name === item.id
-          );
-          return found?.model_type ?? '';
-        })
-      );
 
       // Check if this was a pending default model selection
       if (
@@ -845,10 +818,6 @@ export default function SettingModels() {
       if (local) {
         setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: local.id }));
         setLocalPrefer(local.prefer ?? false);
-        setSavedLocalTypes((prev) => ({
-          ...prev,
-          [localPlatform]: currentType,
-        }));
 
         // Check if this was a pending default model selection
         if (
@@ -1431,10 +1400,18 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <ModelTypeCombobox
-              platform={item.id}
+            <Input
+              id={`modelType-${item.id}`}
+              size="default"
+              title={t('setting.model-type-setting')}
+              state={errors[idx]?.model_type ? 'error' : 'default'}
+              note={errors[idx]?.model_type ?? undefined}
+              placeholder={`${t('setting.enter-your-model-type')} ${
+                item.name
+              } ${t('setting.model-type')}`}
               value={form[idx].model_type}
-              onValueChange={(v) => {
+              onChange={(e) => {
+                const v = e.target.value;
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
                 );
@@ -1444,12 +1421,6 @@ export default function SettingModels() {
                   )
                 );
               }}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
-              disabled={loading === idx}
-              error={errors[idx]?.model_type}
-              title={t('setting.model-type-setting')}
             />
             {/* externalConfig render */}
             {item.externalConfig &&
@@ -1730,19 +1701,19 @@ export default function SettingModels() {
                 )}
               </div>
             ) : (
-              <ModelTypeCombobox
-                platform={platform}
+              <Input
+                size="default"
+                title={t('setting.model-type')}
+                state={localInputError ? 'error' : 'default'}
+                placeholder={t('setting.enter-your-local-model-type')}
                 value={currentType}
-                onValueChange={(v) =>
+                onChange={(e) =>
                   setLocalTypes((prev) => ({
                     ...prev,
-                    [platform]: v,
+                    [platform]: e.target.value,
                   }))
                 }
-                placeholder={t('setting.enter-your-local-model-type')}
                 disabled={!localEnabled}
-                error={localInputError ? localError || undefined : undefined}
-                title={t('setting.model-type')}
               />
             )}
           </div>
@@ -1789,7 +1760,7 @@ export default function SettingModels() {
       {/* Content Section */}
       <div className="mb-8 flex flex-col gap-6">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-row items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex w-full flex-col items-start justify-center gap-1">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.models-default-setting-title')}

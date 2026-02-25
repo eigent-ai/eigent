@@ -36,7 +36,7 @@ import {
 } from '@/hooks/useIntegrationManagement';
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
-import { MCPEnvDialog } from '@/pages/Setting/components/MCPEnvDialog';
+import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -53,6 +53,7 @@ interface IntegrationListProps {
   // Manage mode props (Setting)
   showSelect?: boolean;
   selectPlaceholder?: string;
+  selectValue?: string;
   selectContent?: React.ReactNode;
   onSelectChange?: (value: string, item: IntegrationItem) => void;
   showConfigButton?: boolean;
@@ -73,6 +74,7 @@ export default function IntegrationList({
   onShowEnvConfig,
   showSelect = false,
   selectPlaceholder = 'Select...',
+  selectValue,
   selectContent,
   onSelectChange,
   showConfigButton = true,
@@ -293,7 +295,7 @@ export default function IntegrationList({
 
   const itemClassName = isSelectMode
     ? 'cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between'
-    : 'w-full px-6 py-4 bg-surface-secondary rounded-2xl';
+    : 'w-full px-6 py-4 bg-surface-tertiary rounded-2xl';
 
   const titleClassName = isSelectMode
     ? 'text-base leading-snug font-bold text-text-action'
@@ -459,7 +461,10 @@ export default function IntegrationList({
                     {' '}
                     Default {item.name}
                   </div>
-                  <Select onValueChange={(v) => onSelectChange?.(v, item)}>
+                  <Select
+                    {...(selectValue !== undefined && { value: selectValue })}
+                    onValueChange={(v) => onSelectChange?.(v, item)}
+                  >
                     <SelectTrigger size="default" className="w-[240px]">
                       <SelectValue placeholder={selectPlaceholder} />
                     </SelectTrigger>

@@ -235,9 +235,6 @@
   "api-key-setting": "APIキー設定",
   "api-host-setting": "APIホスト設定",
   "model-type-setting": "モデルタイプ設定",
-  "search-model-types": "モデルタイプを検索...",
-  "no-model-types-found": "モデルタイプが見つかりません。",
-  "loading-suggestions": "候補を読み込み中...",
   "please-select": "選択してください",
   "configuring": "設定中...",
 
@@ -262,9 +259,5 @@
   "proxy-saved-restart-required": "プロキシ設定が保存されました。変更を適用するにはアプリを再起動してください。",
   "proxy-save-failed": "プロキシ設定の保存に失敗しました。",
   "proxy-invalid-url": "無効なプロキシURLです。http://、https://、socks4://、またはsocks5://で始まる必要があります。",
-  "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。",
-
-  "preferred-ide": "優先IDE",
-  "preferred-ide-description": "エージェントプロジェクトフォルダを開くときに使用するアプリケーションを選択します。",
-  "system-file-manager": "システムファイルマネージャー"
+  "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。"
 }

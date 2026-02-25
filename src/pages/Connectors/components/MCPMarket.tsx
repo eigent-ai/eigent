@@ -26,7 +26,7 @@ import { useAuthStore } from '@/store/authStore';
 import { ChevronLeft, CircleAlert, Store } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MCPEnvDialog } from './components/MCPEnvDialog';
+import { MCPEnvDialog } from './MCPEnvDialog';
 interface MCPItem {
   id: number;
   name: string;
