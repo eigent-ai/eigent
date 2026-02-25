@@ -37,9 +37,9 @@ export default function MCPListItem({
   const [_showMenu, setShowMenu] = useState(false);
   const { t } = useTranslation();
   return (
-    <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-surface-secondary p-4">
-      <div className="flex items-center gap-xs">
-        <div className="mx-xs h-3 w-3 rounded-full bg-green-500"></div>
+    <div className="mb-4 gap-4 rounded-2xl bg-surface-tertiary p-4 flex items-center justify-between">
+      <div className="gap-xs flex items-center">
+        <div className="mx-xs h-3 w-3 bg-green-500 rounded-full"></div>
         <div className="text-base font-bold leading-9 text-text-primary">
           {item.mcp_name}
         </div>
@@ -49,7 +49,7 @@ export default function MCPListItem({
           </TooltipSimple>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="gap-2 flex items-center">
         {/* <Switch
 					checked={item.status === 1}
 					disabled={loading}

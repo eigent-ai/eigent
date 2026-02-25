@@ -25,6 +25,7 @@ from app.service.chat_service import (
     collect_previous_task_context,
     construct_workforce,
     format_agent_description,
+    format_task_context,
     install_mcp,
     new_agent_model,
     question_confirm,
@@ -42,6 +43,36 @@ from app.service.task import (
     ImprovePayload,
     TaskLock,
 )
+
+
+@pytest.mark.unit
+class TestFormatTaskContext:
+    """Test cases for format_task_context function."""
+
+    def test_format_task_context_with_working_directory_and_files(
+        self, temp_dir
+    ):
+        """Test format_task_context lists generated files via list_files."""
+        (temp_dir / "output.txt").write_text("content")
+        task_data = {
+            "task_content": "Create file",
+            "task_result": "Done",
+            "working_directory": str(temp_dir),
+        }
+        result = format_task_context(task_data, skip_files=False)
+        assert "Previous Task: Create file" in result
+        assert "output.txt" in result
+        assert "Generated Files from Previous Task:" in result
+
+    def test_format_task_context_skip_files(self, temp_dir):
+        """Test format_task_context with skip_files=True omits file listing."""
+        task_data = {
+            "task_content": "Task",
+            "task_result": "Result",
+            "working_directory": str(temp_dir),
+        }
+        result = format_task_context(task_data, skip_files=True)
+        assert "Generated Files from Previous Task:" not in result
 
 
 @pytest.mark.unit
@@ -230,14 +261,14 @@ class TestCollectPreviousTaskContext:
         assert "Previous Task:" not in result
         assert "Previous Task Result:" not in result
 
-    @patch("app.service.chat_service.logger")
+    @patch("app.utils.file_utils.logger")
     def test_collect_previous_task_context_file_system_error(
         self, mock_logger, temp_dir
     ):
         """Test collect_previous_task_context handles file system errors gracefully."""
         working_directory = str(temp_dir)
 
-        # Mock os.walk to raise an exception
+        # Mock os.walk to raise an exception (used inside list_files)
         with patch("os.walk", side_effect=PermissionError("Access denied")):
             result = collect_previous_task_context(
                 working_directory=working_directory,
@@ -251,7 +282,7 @@ class TestCollectPreviousTaskContext:
             assert "Test task" in result
             assert "Generated Files from Previous Task:" not in result
 
-            # Should log warning
+            # Warning is logged by file_utils.list_files
             mock_logger.warning.assert_called_once()
 
     def test_collect_previous_task_context_relative_paths(self, temp_dir):
@@ -971,7 +1002,7 @@ class TestChatServiceErrorCases:
         working_directory = str(temp_dir)
 
         with patch("os.walk", side_effect=OSError("Permission denied")):
-            with patch("app.service.chat_service.logger") as mock_logger:
+            with patch("app.utils.file_utils.logger") as mock_logger:
                 result = collect_previous_task_context(
                     working_directory=working_directory,
                     previous_task_content="Test task",
@@ -988,7 +1019,7 @@ class TestChatServiceErrorCases:
                 # Should not include file listing
                 assert "Generated Files from Previous Task:" not in result
 
-                # Should log warning
+                # Warning is logged by file_utils.list_files
                 mock_logger.warning.assert_called_once()
 
     def test_collect_previous_task_context_abspath_used(self, temp_dir):
