@@ -15,7 +15,7 @@
 import asyncio
 import weakref
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from camel.tasks import Task
@@ -385,6 +385,20 @@ class TestTaskLock:
         # Future was already resolved and popped — cleanup should not raise
         await task_lock.cleanup()
         assert await f == "approve_once"
+
+    def test_resolve_future_threadsafe_uses_loop_scheduler_cross_thread(self):
+        """Cross-thread resolution should use loop.call_soon_threadsafe."""
+        task_lock = TaskLock("test_threadsafe_resolve", asyncio.Queue(), {})
+        mock_future = MagicMock()
+        mock_loop = MagicMock()
+
+        mock_future.done.return_value = False
+        mock_future.get_loop.return_value = mock_loop
+
+        task_lock._resolve_future_threadsafe(mock_future, "approve_once")
+
+        mock_loop.call_soon_threadsafe.assert_called_once()
+        mock_future.set_result.assert_not_called()
 
     def test_command_approval_data_model(self):
         """ActionCommandApprovalData should have correct action and data shape."""

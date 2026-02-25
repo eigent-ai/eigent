@@ -452,6 +452,25 @@ class TaskLock:
         )
         return future
 
+    @staticmethod
+    def _set_future_result_if_pending(
+        future: asyncio.Future[str], action: str
+    ) -> None:
+        """Set future result if it is still pending."""
+        if not future.done():
+            future.set_result(action)
+
+    def _resolve_future_threadsafe(
+        self, future: asyncio.Future[str], action: str
+    ) -> None:
+        """Resolve an approval future safely from any thread."""
+        if future.done():
+            return
+
+        future.get_loop().call_soon_threadsafe(
+            self._set_future_result_if_pending, future, action
+        )
+
     def resolve_approval(self, approval_id: str, action: str):
         """Resolve a single pending approval by its ID.
 
@@ -468,8 +487,8 @@ class TaskLock:
                 ``ApprovalAction.approve_once``).
         """
         future = self.pending_approvals.pop(approval_id, None)
-        if future and not future.done():
-            future.set_result(action)
+        if future:
+            self._resolve_future_threadsafe(future, action)
             logger.debug(
                 "Resolved approval",
                 extra={
@@ -510,8 +529,7 @@ class TaskLock:
         ]
         for aid in to_remove:
             future = self.pending_approvals.pop(aid)
-            if not future.done():
-                future.set_result(action)
+            self._resolve_future_threadsafe(future, action)
 
     def add_human_input_listen(self, agent: str):
         logger.debug(
@@ -547,8 +565,7 @@ class TaskLock:
         # This lets _request_user_approval return gracefully instead
         # of hanging forever after the task is stopped.
         for future in self.pending_approvals.values():
-            if not future.done():
-                future.set_result(ApprovalAction.reject)
+            self._resolve_future_threadsafe(future, ApprovalAction.reject)
         self.pending_approvals.clear()
 
         for task in list(self.background_tasks):

@@ -272,6 +272,15 @@ def test_cd_compound_all_within_dir(tmp_path):
     assert err is None
 
 
+def test_cd_compound_relative_progression_allowed(tmp_path):
+    """Relative cd commands should be evaluated from the updated cwd."""
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    ok, err = validate_cd_within_working_dir("cd sub && cd ..", str(tmp_path))
+    assert ok is True
+    assert err is None
+
+
 def test_cd_relative_within_dir(tmp_path):
     sub = tmp_path / "sub"
     sub.mkdir()

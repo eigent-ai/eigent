@@ -231,6 +231,9 @@ def validate_cd_within_working_dir(
     Returns:
         (True, None) if allowed, (False, error_message) if not.
     """
+    work_real = os.path.realpath(os.path.abspath(working_directory))
+    current_dir = work_real
+
     for sub_cmd in split_compound_command(command):
         parts = sub_cmd.strip().split()
         if not parts:
@@ -247,12 +250,11 @@ def validate_cd_within_working_dir(
             # "cd -" is previous dir; cannot validate statically, allow it
             continue
         try:
-            work_real = os.path.realpath(os.path.abspath(working_directory))
             if os.path.isabs(target):
                 resolved = os.path.realpath(os.path.abspath(target))
             else:
                 resolved = os.path.realpath(
-                    os.path.abspath(os.path.join(work_real, target))
+                    os.path.abspath(os.path.join(current_dir, target))
                 )
             if os.path.commonpath([resolved, work_real]) != work_real:
                 return (
@@ -260,6 +262,7 @@ def validate_cd_within_working_dir(
                     f"cd not allowed: path would escape working directory "
                     f"({working_directory}).",
                 )
+            current_dir = resolved
         except (OSError, ValueError):
             return False, "cd not allowed: invalid path."
     return True, None
