@@ -13,10 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkSpace from '@/components/BrowserAgentWorkSpace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
-import TerminalAgentWrokSpace from '@/components/TerminalAgentWrokSpace';
+import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -144,7 +144,7 @@ export default function Home() {
             // });
             // chatStore.setSnapshots(chatStore.activeTaskId as string, list);
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             console.error('capture webview error:', error);
           });
       });
@@ -218,7 +218,7 @@ export default function Home() {
             />
             <ResizablePanel>
               {chatStore.tasks[chatStore.activeTaskId as string]
-                ?.activeWorkSpace && (
+                ?.activeWorkspace && (
                 <div className="flex h-full w-full flex-1 flex-col pr-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
                   {chatStore.tasks[
                     chatStore.activeTaskId as string
@@ -226,14 +226,14 @@ export default function Home() {
                     (agent) =>
                       agent.agent_id ===
                       chatStore.tasks[chatStore.activeTaskId as string]
-                        .activeWorkSpace
+                        .activeWorkspace
                   )?.type === 'browser_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                      <BrowserAgentWorkSpace />
+                      <BrowserAgentWorkspace />
                     </div>
                   )}
                   {chatStore.tasks[chatStore.activeTaskId as string]
-                    ?.activeWorkSpace === 'workflow' && (
+                    ?.activeWorkspace === 'workflow' && (
                     <div className="flex h-full w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
                       <div className="relative flex h-full w-full flex-col rounded-2xl border border-solid border-transparent p-2">
                         {/*filter blur */}
@@ -255,15 +255,15 @@ export default function Home() {
                     (agent) =>
                       agent.agent_id ===
                       chatStore.tasks[chatStore.activeTaskId as string]
-                        .activeWorkSpace
+                        .activeWorkspace
                   )?.type === 'developer_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                      <TerminalAgentWrokSpace></TerminalAgentWrokSpace>
+                      <TerminalAgentWorkspace></TerminalAgentWorkspace>
                       {/* <Terminal content={[]} /> */}
                     </div>
                   )}
                   {chatStore.tasks[chatStore.activeTaskId as string]
-                    .activeWorkSpace === 'documentWorkSpace' && (
+                    .activeWorkspace === 'documentWorkSpace' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
                       <div className="relative flex h-[calc(100vh-104px)] w-full flex-col rounded-2xl border border-solid border-border-subtle-strong">
                         {/*filter blur */}
@@ -280,7 +280,7 @@ export default function Home() {
                     (agent) =>
                       agent.agent_id ===
                       chatStore.tasks[chatStore.activeTaskId as string]
-                        .activeWorkSpace
+                        .activeWorkspace
                   )?.type === 'document_agent' && (
                     <div className="flex h-[calc(100vh-104px)] w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
                       <div className="relative flex h-[calc(100vh-104px)] w-full flex-col rounded-2xl border border-solid border-border-subtle-strong">
@@ -295,7 +295,7 @@ export default function Home() {
                                 agent.agent_id ===
                                 chatStore.tasks[
                                   chatStore.activeTaskId as string
-                                ].activeWorkSpace
+                                ].activeWorkspace
                             )}
                           />
                         </div>

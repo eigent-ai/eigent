@@ -55,7 +55,7 @@ interface Task {
   askList: Message[];
   progressValue: number;
   isPending: boolean;
-  activeWorkSpace: string | null;
+  activeWorkspace: string | null;
   hasMessages: boolean;
   activeAgent: string;
   status: ChatTaskStatusType;
@@ -140,7 +140,7 @@ export interface ChatStore {
     processTaskId: string,
     fileList: FileInfo[]
   ) => void;
-  setActiveWorkSpace: (taskId: string, activeWorkSpace: string) => void;
+  setActiveWorkspace: (taskId: string, activeWorkspace: string) => void;
   setActiveAgent: (taskId: string, agentName: string) => void;
   setHasMessages: (taskId: string, hasMessages: boolean) => void;
   getLastUserMessage: () => Message | null;
@@ -265,7 +265,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             askList: [],
             progressValue: 0,
             isPending: false,
-            activeWorkSpace: 'workflow',
+            activeWorkspace: 'workflow',
             hasMessages: false,
             activeAgent: '',
             status: ChatTaskStatus.PENDING,
@@ -558,7 +558,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: cloud_model_type.includes('gpt')
             ? 'openai'
             : cloud_model_type.includes('claude')
-              ? 'anthropic'
+              ? 'aws-bedrock'
               : cloud_model_type.includes('gemini')
                 ? 'gemini'
                 : 'openai-compatible-model',
@@ -651,6 +651,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
       }
       const browser_port = await window.ipcRenderer.invoke('get-browser-port');
+      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
@@ -693,7 +694,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      fetchEventSource(api, {
+      const ssePromise = fetchEventSource(api, {
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
         signal: abortController.signal, // Add abort signal for proper cleanup
@@ -728,6 +729,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               summary_prompt: ``,
               new_agents: [...addWorkers],
               browser_port: browser_port,
+              cdp_browsers: cdp_browsers,
               env_path: envPath,
               search_config: searchConfig,
             })
@@ -2400,6 +2402,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // Server closes connection
         onclose() {
           console.log('SSE connection closed');
+          // Abort to resolve fetchEventSource promise (for replay/load - allows awaiting completion)
+          try {
+            abortController.abort();
+          } catch (_e) {
+            // Ignore if already aborted
+          }
           // Clean up AbortController when connection closes with robust error handling
           try {
             if (activeSSEControllers[newTaskId]) {
@@ -2416,6 +2424,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         },
       });
+      if (type === 'replay') {
+        try {
+          await ssePromise;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            // Expected: stream closed normally, we aborted to resolve the promise
+            return;
+          }
+          // Unexpected: actual error during stream
+          console.error(`SSE stream failed for task ${newTaskId}:`, err);
+          throw err; // Let loadProjectFromHistory handle it
+        }
+      }
     },
 
     replay: async (taskId: string, question: string, time: number) => {
@@ -2661,7 +2682,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const {
         tasks,
         setMessages,
-        setActiveWorkSpace,
+        setActiveWorkspace,
         setStatus,
         setTaskTime,
         setTaskInfo,
@@ -2717,7 +2738,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
         await fetchPost(`/task/${project_id}/start`, {});
 
-        setActiveWorkSpace(taskId, 'workflow');
+        setActiveWorkspace(taskId, 'workflow');
         setStatus(taskId, ChatTaskStatus.RUNNING);
       }
 
@@ -2794,14 +2815,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
-    setActiveWorkSpace(taskId: string, activeWorkSpace: string) {
+    setActiveWorkspace(taskId: string, activeWorkspace: string) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            activeWorkSpace,
+            activeWorkspace,
           },
         },
       }));

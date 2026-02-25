@@ -22,25 +22,22 @@ import {
   TaskStatus,
 } from '@/types/constants';
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Bird,
   Bot,
   Circle,
   CircleCheckBig,
   CircleSlash,
   CircleSlash2,
-  CodeXml,
+  Copy,
   Ellipsis,
-  FileText,
-  Globe,
-  Image,
   LoaderCircle,
   SquareChevronLeft,
   SquareCode,
   Trash2,
   TriangleAlert,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Folder from '../Folder';
 import { TaskState, TaskStateType } from '../TaskState';
 import Terminal from '../Terminal';
@@ -52,6 +49,7 @@ import {
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import { agentMap } from './agents';
 import { MarkDown } from './MarkDown';
 
 interface NodeProps {
@@ -74,43 +72,13 @@ interface NodeProps {
 }
 
 export function Node({ id, data }: NodeProps) {
-  // All hooks must be called before any conditional returns
   const [isExpanded, setIsExpanded] = useState(data.isExpanded);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
+
   const [filterTasks, setFilterTasks] = useState<any[]>([]);
-  const [shouldScroll, setShouldScroll] = useState(false);
-  const [toolsHeight, setToolsHeight] = useState(0);
-
-  const nodeRef = useRef<HTMLDivElement>(null);
-  const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const toolsRef = useRef<HTMLDivElement>(null);
-  const logRef = useRef<HTMLDivElement>(null);
-  const rePortRef = useRef<HTMLDivElement>(null);
-
-  //Get Chatstore for the active project's task
-  const { chatStore } = useChatStoreAdapter();
-
-  const { setCenter, getNode, setViewport, setNodes } = useReactFlow();
-  const workerList = useWorkerList();
-  const { setWorkerList } = useAuthStore();
-
-  // Extract values for dependency arrays
-  const agentTasks = data.agent?.tasks;
-  const agentTasksLength = agentTasks?.length;
-  const runningTask = agentTasks?.find((t) => t.status === TaskStatus.RUNNING);
-  const runningTaskId = runningTask?.id;
-  const runningTaskToolkitsLength = runningTask?.toolkits?.length;
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const activeAgent = chatStore?.tasks?.[activeTaskId]?.activeAgent;
-
-  const wheelHandler = useCallback((e: WheelEvent) => {
-    e.stopPropagation();
-  }, []);
-
   useEffect(() => {
-    const tasks = agentTasks || [];
+    const tasks = data.agent?.tasks || [];
 
     if (selectedState === 'all') {
       setFilterTasks(tasks);
@@ -138,14 +106,36 @@ export function Node({ id, data }: NodeProps) {
               !task.reAssignTo
             );
           case 'failed':
-            return task.status === TaskStatus.FAILED && !task.reAssignTo;
+            return task.status === TaskStatus.FAILED;
           default:
             return false;
         }
       });
       setFilterTasks(newFiltered);
     }
-  }, [selectedState, agentTasks]);
+  }, [selectedState, data.agent?.tasks]);
+
+  //Get Chatstore for the active project's task
+  const { chatStore } = useChatStoreAdapter();
+  const { getNode, setViewport, setNodes } = useReactFlow();
+  const workerList = useWorkerList();
+  const { setWorkerList } = useAuthStore();
+  const nodeRef = useRef<HTMLDivElement>(null);
+  const lastAutoExpandedTaskIdRef = useRef<string | null>(null);
+  const onExpandChange = data.onExpandChange;
+  const agentTasks = useMemo(
+    () => data.agent?.tasks || [],
+    [data.agent?.tasks]
+  );
+  const runningTask = agentTasks.find(
+    (task) => task.status === TaskStatus.RUNNING
+  );
+  const runningTaskId = runningTask?.id;
+  const runningTaskToolkitsLength = runningTask?.toolkits?.length;
+  const activeTaskId = chatStore?.activeTaskId;
+  const activeAgent = activeTaskId
+    ? chatStore?.tasks?.[activeTaskId]?.activeAgent
+    : undefined;
 
   useEffect(() => {
     setIsExpanded(data.isExpanded);
@@ -153,7 +143,7 @@ export function Node({ id, data }: NodeProps) {
 
   // Auto-expand when a task is running with toolkits
   useEffect(() => {
-    const tasks = agentTasks || [];
+    const tasks = agentTasks;
 
     // Find running task with active toolkits
     const runningTaskWithToolkits = tasks.find(
@@ -182,18 +172,17 @@ export function Node({ id, data }: NodeProps) {
       // Expand if not already expanded
       if (!isExpanded) {
         setIsExpanded(true);
-        data.onExpandChange(id, true);
+        onExpandChange(id, true);
       }
 
       lastAutoExpandedTaskIdRef.current = runningTaskWithToolkits.id;
     }
   }, [
     agentTasks,
-    agentTasksLength,
     runningTaskId,
     runningTaskToolkitsLength,
     id,
-    data,
+    onExpandChange,
     isExpanded,
   ]);
 
@@ -221,28 +210,40 @@ export function Node({ id, data }: NodeProps) {
     }
   }, [isExpanded, data.isEditMode, id, setNodes]);
 
-  useEffect(() => {
-    if (activeAgent === id) {
-      const node = getNode(id);
-      if (node) {
-        setTimeout(() => {
-          setViewport(
-            { x: -node.position.x, y: 0, zoom: 1 },
-            {
-              duration: 500,
-            }
-          );
-        }, 100);
-      }
+  const handleShowLog = () => {
+    if (!isExpanded) {
+      setSelectedTask(
+        data.agent?.tasks.find((task) => task.status === TaskStatus.RUNNING) ||
+          data.agent?.tasks[0]
+      );
     }
-  }, [activeAgent, id, setCenter, getNode, setViewport]);
+    setIsExpanded(!isExpanded);
+    onExpandChange(id, !isExpanded);
+  };
 
   useEffect(() => {
-    if (wrapperRef.current) {
-      const { scrollHeight, clientHeight } = wrapperRef.current;
-      setShouldScroll(scrollHeight > clientHeight);
+    if (activeAgent !== id) {
+      return;
     }
-  }, [agentTasks, toolsHeight]);
+
+    const node = getNode(id);
+    if (!node) {
+      return;
+    }
+
+    setTimeout(() => {
+      setViewport(
+        { x: -node.position.x, y: 0, zoom: 1 },
+        {
+          duration: 500,
+        }
+      );
+    }, 100);
+  }, [activeAgent, id, getNode, setViewport]);
+
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const [toolsHeight, setToolsHeight] = useState(0);
 
   // dynamically calculate tool label height
   useEffect(() => {
@@ -251,6 +252,13 @@ export function Node({ id, data }: NodeProps) {
       setToolsHeight(height);
     }
   }, [data.agent?.tools]);
+
+  const logRef = useRef<HTMLDivElement>(null);
+  const rePortRef = useRef<HTMLDivElement>(null);
+
+  const wheelHandler = useCallback((e: WheelEvent) => {
+    e.stopPropagation();
+  }, []);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -272,76 +280,7 @@ export function Node({ id, data }: NodeProps) {
         log.removeEventListener('wheel', wheelHandler);
       }
     };
-  }, [
-    wheelHandler,
-    isExpanded,
-    selectedTask,
-    selectedTask?.report?.rePort?.content,
-  ]);
-
-  // Early return after all hooks
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
-  const handleShowLog = () => {
-    if (!isExpanded) {
-      setSelectedTask(
-        data.agent?.tasks.find((task) => task.status === TaskStatus.RUNNING) ||
-          data.agent?.tasks[0]
-      );
-    }
-    setIsExpanded(!isExpanded);
-    data.onExpandChange(id, !isExpanded);
-  };
-
-  const agentMap = {
-    developer_agent: {
-      name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-text-primary" />,
-      textColor: 'text-text-developer',
-      bgColor: 'bg-bg-fill-coding-active',
-      shapeColor: 'bg-bg-fill-coding-default',
-      borderColor: 'border-bg-fill-coding-active',
-      bgColorLight: 'bg-emerald-200',
-    },
-    browser_agent: {
-      name: 'Browser Agent',
-      icon: <Globe size={16} className="text-text-primary" />,
-      textColor: 'text-blue-700',
-      bgColor: 'bg-bg-fill-browser-active',
-      shapeColor: 'bg-bg-fill-browser-default',
-      borderColor: 'border-bg-fill-browser-active',
-      bgColorLight: 'bg-blue-200',
-    },
-    document_agent: {
-      name: 'Document Agent',
-      icon: <FileText size={16} className="text-text-primary" />,
-      textColor: 'text-yellow-700',
-      bgColor: 'bg-bg-fill-writing-active',
-      shapeColor: 'bg-bg-fill-writing-default',
-      borderColor: 'border-bg-fill-writing-active',
-      bgColorLight: 'bg-yellow-200',
-    },
-    multi_modal_agent: {
-      name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-text-primary" />,
-      textColor: 'text-fuchsia-700',
-      bgColor: 'bg-bg-fill-multimodal-active',
-      shapeColor: 'bg-bg-fill-multimodal-default',
-      borderColor: 'border-bg-fill-multimodal-active',
-      bgColorLight: 'bg-fuchsia-200',
-    },
-    social_media_agent: {
-      name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-text-primary" />,
-      textColor: 'text-purple-700',
-      bgColor: 'bg-violet-700',
-      shapeColor: 'bg-violet-300',
-      borderColor: 'border-violet-700',
-      bgColorLight: 'bg-purple-50',
-    },
-  };
+  }, [wheelHandler, isExpanded, selectedTask, selectedTask?.report]);
 
   const agentToolkits = {
     developer_agent: [
@@ -372,7 +311,16 @@ export function Node({ id, data }: NodeProps) {
     });
     return idStr;
   };
-  return (
+
+  const customToolkits =
+    data.agent?.tools
+      ?.map((tool) => (tool ? '# ' + tool.replace(/_/g, ' ') : ''))
+      .filter(Boolean) || [];
+  const toolkitLabels =
+    agentToolkits[data.agent?.type as keyof typeof agentToolkits] ||
+    (customToolkits.length > 0 ? customToolkits : ['No Toolkits']);
+
+  return chatStore ? (
     <>
       <NodeResizer
         minWidth={isExpanded ? 684 : 342}
@@ -388,11 +336,13 @@ export function Node({ id, data }: NodeProps) {
         position={Position.Top}
         id="top"
       />
-      <div
+      <motion.div
+        layout
         ref={nodeRef}
+        transition={{ layout: { duration: 0.3, ease: 'easeIn' } }}
         className={`${
           data.isEditMode
-            ? `w-full ${isExpanded ? 'min-w-[560px]' : 'min-w-[342px]'}`
+            ? `w-full ${isExpanded ? 'min-w-[684px]' : 'min-w-[342px]'}`
             : isExpanded
               ? 'w-[684px]'
               : 'w-[342px]'
@@ -406,12 +356,8 @@ export function Node({ id, data }: NodeProps) {
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
-        <div
-          className={`flex flex-col px-3 py-2 pr-0 ${
-            data.isEditMode ? 'min-w-[342px] flex-1' : 'w-[342px]'
-          }`}
-        >
-          <div className="flex items-center justify-between gap-sm pr-3">
+        <div className="flex w-[342px] shrink-0 flex-col border-y-0 border-l-0 border-r-[0.5px] border-solid border-border-secondary">
+          <div className="flex items-center justify-between gap-sm px-3 pb-1 pt-2">
             <div className="flex items-center justify-between gap-md">
               <div
                 className={`text-base font-bold leading-relaxed ${
@@ -474,22 +420,19 @@ export function Node({ id, data }: NodeProps) {
           </div>
           <div
             ref={toolsRef}
-            className="mb-sm min-h-4 flex-shrink-0 pr-3 text-xs font-normal leading-tight text-text-label"
+            className="mb-sm flex min-h-4 flex-shrink-0 flex-wrap px-3 text-xs font-normal leading-tight text-text-label"
           >
             {/* {JSON.stringify(data.agent)} */}
-            {agentToolkits[
-              data.agent?.type as keyof typeof agentToolkits
-            ]?.join(' ') ||
-              data.agent?.tools
-                ?.map((tool) => (tool ? '# ' + tool.replace(/_/g, ' ') : ''))
-                .filter(Boolean)
-                .join(' ') ||
-              'No Toolkits'}
+            {toolkitLabels.map((toolkit, index) => (
+              <span key={index} className="mr-2">
+                {toolkit}
+              </span>
+            ))}
           </div>
           <div
             className="max-h-[180px]"
             onClick={() => {
-              chatStore.setActiveWorkSpace(
+              chatStore.setActiveWorkspace(
                 chatStore.activeTaskId as string,
                 data.agent?.agent_id as string
               );
@@ -564,7 +507,7 @@ export function Node({ id, data }: NodeProps) {
               )}
           </div>
           {data.agent?.tasks && data.agent?.tasks.length > 0 && (
-            <div className="flex flex-col items-start justify-between gap-1 border-[0px] border-t border-solid border-task-border-default pr-3 pt-sm">
+            <div className="flex flex-col items-start justify-between gap-1 border-[0px] border-t border-solid border-task-border-default px-3 py-sm">
               {/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
               <div className="flex flex-1 justify-end">
                 <TaskState
@@ -601,8 +544,7 @@ export function Node({ id, data }: NodeProps) {
                   }
                   failed={
                     data.agent?.tasks?.filter(
-                      (task) =>
-                        task.status === TaskStatus.FAILED && !task.reAssignTo
+                      (task) => task.status === TaskStatus.FAILED
                     ).length || 0
                   }
                   selectedState={selectedState}
@@ -617,9 +559,7 @@ export function Node({ id, data }: NodeProps) {
             onWheel={(e) => {
               e.stopPropagation();
             }}
-            className={`scrollbar mt-sm flex flex-col gap-2 overflow-y-auto pr-3 duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4 ${
-              shouldScroll && 'scrollbar !overflow-y-scroll'
-            }`}
+            className="scrollbar scrollbar-always-visible flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4"
             style={{
               maxHeight:
                 data.img && data.img.length > 0
@@ -634,9 +574,9 @@ export function Node({ id, data }: NodeProps) {
                     onClick={() => {
                       setSelectedTask(task);
                       setIsExpanded(true);
-                      data.onExpandChange(id, true);
+                      onExpandChange(id, true);
                       if (task.agent) {
-                        chatStore.setActiveWorkSpace(
+                        chatStore.setActiveWorkspace(
                           chatStore.activeTaskId as string,
                           'workflow'
                         );
@@ -648,7 +588,7 @@ export function Node({ id, data }: NodeProps) {
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}
-                    className={`flex gap-2 rounded-lg px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
+                    className={`flex gap-2 rounded-xl px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
                       task.reAssignTo
                         ? 'bg-task-fill-warning'
                         : task.status === TaskStatus.COMPLETED
@@ -662,25 +602,25 @@ export function Node({ id, data }: NodeProps) {
                                 : 'bg-task-fill-running'
                     } cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
-                        ? 'hover:border-bg-fill-success-primary'
+                        ? 'hover:border-task-border-focus-success'
                         : task.status === TaskStatus.FAILED
                           ? 'hover:border-task-border-focus-error'
                           : task.status === TaskStatus.RUNNING
                             ? 'hover:border-border-primary'
                             : task.status === TaskStatus.BLOCKED
                               ? 'hover:border-task-border-focus-warning'
-                              : 'border-transparent'
+                              : 'hover:border-task-border-focus'
                     } ${
                       selectedTask?.id === task.id
                         ? task.status === TaskStatus.COMPLETED
-                          ? '!border-bg-fill-success-primary'
+                          ? '!border-task-border-focus-success'
                           : task.status === TaskStatus.FAILED
-                            ? '!border-text-cuation-primary'
+                            ? '!border-task-border-focus-error'
                             : task.status === TaskStatus.RUNNING
                               ? '!border-border-primary'
                               : task.status === TaskStatus.BLOCKED
-                                ? '!border-text-warning-primary'
-                                : 'border-transparent'
+                                ? '!border-task-border-focus-warning'
+                                : '!border-task-border-focus'
                         : 'border-transparent'
                     }`}
                   >
@@ -788,7 +728,7 @@ export function Node({ id, data }: NodeProps) {
                                   className={`${
                                     chatStore.tasks[
                                       chatStore.activeTaskId as string
-                                    ].activeWorkSpace
+                                    ].activeWorkspace
                                       ? '!w-[100px]'
                                       : '!w-[500px]'
                                   } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
@@ -808,148 +748,199 @@ export function Node({ id, data }: NodeProps) {
               })}
           </div>
         </div>
-        {isExpanded && (
-          <div
-            key={selectedTask?.id || 'empty'}
-            className={`${
-              data.isEditMode ? 'flex-1' : 'w-[342px]'
-            } flex flex-col gap-sm rounded-r-xl border-l bg-worker-surface-secondary px-sm py-3 pr-0 pt-sm duration-300 animate-in fade-in-0 slide-in-from-right-2`}
-          >
-            <div
-              ref={logRef}
-              key={selectedTask?.id + '-log' || 'empty'}
-              onWheel={(e) => {
-                e.stopPropagation();
-              }}
-              className="scrollbar scrollbar-gutter-stable my-2 flex max-h-[calc(100vh-200px)] flex-col gap-sm overflow-y-auto pr-sm"
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              key="log-panel"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 24 }}
+              transition={{ duration: 0.3, ease: 'easeIn' }}
+              className="flex w-[342px] shrink-0 flex-col gap-sm overflow-hidden rounded-r-xl bg-worker-surface-secondary py-2 pl-sm"
             >
-              {selectedTask &&
-                selectedTask.toolkits &&
-                selectedTask.toolkits.length > 0 &&
-                selectedTask.toolkits.map((toolkit: any, index: number) => (
-                  <div key={`toolkit-${toolkit.toolkitId}`}>
-                    {toolkit.toolkitName === 'notice' ? (
-                      <div
-                        key={`notice-${index}`}
-                        className="flex !w-[calc(100%-10px)] flex-col gap-sm py-2 pl-1"
-                      >
-                        <MarkDown
-                          content={toolkit?.message}
-                          enableTypewriter={false}
-                          pTextSize="text-[10px]"
-                          olPadding="pl-0"
-                        />
-                      </div>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            key={`toolkit-${index}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (toolkit.toolkitMethods === 'write to file') {
-                                chatStore.tasks[
-                                  chatStore.activeTaskId as string
-                                ].activeWorkSpace = 'documentWorkSpace';
-                              } else if (
-                                toolkit.toolkitMethods === 'visit page'
-                              ) {
-                                const parts = toolkit.message.split('\n');
-                                const url = parts[0]; // the first line is the URL
-                                window.location.href = url;
-                              } else if (toolkit.toolkitMethods === 'scrape') {
-                                window.location.href = toolkit.message;
-                              }
-                            }}
-                            className="flex items-start gap-xs rounded-sm bg-log-default px-xs py-0.5 transition-all duration-300 hover:opacity-50"
-                          >
-                            {/* {toolkit.toolkitStatus} */}
-                            <div>
-                              {toolkit.toolkitStatus ===
-                              AgentStatusValue.RUNNING ? (
-                                <LoaderCircle
-                                  size={16}
-                                  className={`${
-                                    chatStore.tasks[
-                                      chatStore.activeTaskId as string
-                                    ].status === ChatTaskStatus.RUNNING &&
-                                    'animate-spin'
-                                  }`}
-                                />
+              <div
+                ref={logRef}
+                onWheel={(e) => {
+                  e.stopPropagation();
+                }}
+                className="scrollbar scrollbar-always-visible max-h-[calc(100vh-200px)] overflow-y-scroll pr-sm"
+              >
+                <AnimatePresence mode="wait">
+                  {selectedTask && (
+                    <motion.div
+                      key={selectedTask.id}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16 }}
+                      transition={{ duration: 0.25, ease: 'easeIn' }}
+                      className="flex w-full flex-col gap-sm"
+                    >
+                      {selectedTask.toolkits &&
+                        selectedTask.toolkits.length > 0 &&
+                        selectedTask.toolkits.map(
+                          (toolkit: any, index: number) => (
+                            <div key={`toolkit-${toolkit.toolkitId}`}>
+                              {toolkit.toolkitName === 'notice' ? (
+                                <div
+                                  key={`notice-${index}`}
+                                  className="flex w-full flex-col gap-sm px-2 py-1"
+                                >
+                                  <MarkDown
+                                    content={toolkit?.message}
+                                    enableTypewriter={false}
+                                    pTextSize="text-label-xs"
+                                  />
+                                </div>
                               ) : (
-                                agentMap[data.type]?.icon
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      key={`toolkit-${index}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (
+                                          toolkit.toolkitMethods ===
+                                          'write to file'
+                                        ) {
+                                          chatStore.tasks[
+                                            chatStore.activeTaskId as string
+                                          ].activeWorkspace =
+                                            'documentWorkSpace';
+                                        } else if (
+                                          toolkit.toolkitMethods ===
+                                          'visit page'
+                                        ) {
+                                          const parts =
+                                            toolkit.message.split('\n');
+                                          const url = parts[0]; // the first line is the URL
+                                          window.location.href = url;
+                                        } else if (
+                                          toolkit.toolkitMethods === 'scrape'
+                                        ) {
+                                          window.location.href =
+                                            toolkit.message;
+                                        }
+                                      }}
+                                      className="flex flex-col items-start justify-center gap-1 rounded-lg bg-log-default p-1 px-2 transition-all duration-300 hover:opacity-50"
+                                    >
+                                      {/* first row: icon + toolkit name */}
+                                      <div className="flex w-full items-center justify-start gap-sm">
+                                        {toolkit.toolkitStatus ===
+                                        AgentStatusValue.RUNNING ? (
+                                          <LoaderCircle
+                                            size={16}
+                                            className={`${
+                                              chatStore.tasks[
+                                                chatStore.activeTaskId as string
+                                              ].status ===
+                                                ChatTaskStatus.RUNNING &&
+                                              'animate-spin'
+                                            }`}
+                                          />
+                                        ) : (
+                                          agentMap[data.type]?.icon
+                                        )}
+                                        <span className="flex items-center gap-sm text-nowrap text-label-xs font-bold text-text-primary">
+                                          {toolkit.toolkitName}
+                                        </span>
+                                      </div>
+                                      {/* second row: method + message */}
+                                      <div className="pointer-events-auto flex w-full select-text items-start justify-center gap-sm overflow-hidden pl-6">
+                                        <div className="text-nowrap text-label-xs font-bold text-text-primary">
+                                          {toolkit.toolkitMethods
+                                            ? toolkit.toolkitMethods
+                                                .charAt(0)
+                                                .toUpperCase() +
+                                              toolkit.toolkitMethods.slice(1)
+                                            : ''}
+                                        </div>
+                                        <div
+                                          className={`max-w-full flex-1 truncate text-label-xs font-normal text-text-primary ${
+                                            data.isEditMode
+                                              ? 'overflow-hidden'
+                                              : 'overflow-hidden truncate'
+                                          }`}
+                                        >
+                                          {toolkit.message}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {toolkit.message && (
+                                    <TooltipContent
+                                      align="start"
+                                      className="scrollbar pointer-events-auto !fixed left-6 z-[9999] max-h-[200px] w-max max-w-[296px] select-text overflow-y-auto text-wrap break-words rounded-lg border border-solid border-task-border-default bg-surface-tertiary p-2 text-label-xs"
+                                      side="bottom"
+                                      sideOffset={4}
+                                    >
+                                      <MarkDown
+                                        content={toolkit.message}
+                                        enableTypewriter={false}
+                                        pTextSize="text-label-xs"
+                                        olPadding="pl-4"
+                                      />
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
                               )}
                             </div>
-                            <div className="pointer-events-auto flex flex-1 select-text flex-col items-start overflow-hidden">
-                              <span className="flex items-center gap-sm text-nowrap text-xs font-bold text-text-primary">
-                                {toolkit.toolkitName}
-                              </span>
-                              <div className="flex max-w-full flex-1 items-start gap-sm">
-                                <div className="flex flex-1 items-center gap-sm text-xs font-medium text-text-primary">
-                                  <div className="text-nowrap font-bold">
-                                    {toolkit.toolkitMethods}
-                                  </div>
-
-                                  <div
-                                    className={`text-xs text-text-primary ${
-                                      data.isEditMode
-                                        ? 'max-h-[15px] overflow-hidden'
-                                        : 'overflow-hidden text-ellipsis whitespace-nowrap'
-                                    }`}
-                                  >
-                                    {toolkit.message}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </TooltipTrigger>
-                        {toolkit.message && (
-                          <TooltipContent
-                            align="start"
-                            className="scrollbar pointer-events-auto !fixed z-[9999] max-h-[200px] w-[200px] select-text overflow-y-auto text-wrap break-words rounded-sm border border-solid border-task-border-default p-2 text-xs"
-                            style={{
-                              backgroundColor: 'var(--surface-tertiary)',
-                              backdropFilter: 'none',
-                            }}
-                            side="left"
-                            sideOffset={200}
-                          >
-                            <MarkDown
-                              content={toolkit.message}
-                              enableTypewriter={false}
-                              pTextSize="text-[10px]"
-                              olPadding="pl-0"
-                            />
-                          </TooltipContent>
+                          )
                         )}
-                      </Tooltip>
-                    )}
-                  </div>
-                ))}
-              {selectedTask?.report && (
-                <div
-                  ref={rePortRef}
-                  onWheel={(e) => {
-                    e.stopPropagation();
-                  }}
-                  className="my-2 flex w-full flex-col gap-sm"
-                >
-                  <div className="text-sm font-bold text-text-primary">
-                    Completion Report
-                  </div>
-                  <MarkDown
-                    content={selectedTask?.report}
-                    enableTypewriter={false}
-                    pTextSize="text-[10px]"
-                    olPadding="pl-0"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+                      {selectedTask.report && (
+                        <div
+                          ref={rePortRef}
+                          onWheel={(e) => {
+                            e.stopPropagation();
+                          }}
+                          className="group relative my-2 flex w-full flex-col rounded-lg bg-surface-primary"
+                        >
+                          <div className="sticky top-0 z-10 flex items-center justify-between rounded-lg bg-surface-primary py-2 pl-2 pr-2">
+                            <div className="text-label-sm font-bold text-text-primary">
+                              Completion Report
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const reportText =
+                                  typeof selectedTask?.report === 'string'
+                                    ? selectedTask.report
+                                    : '';
+                                if (
+                                  reportText &&
+                                  navigator.clipboard?.writeText
+                                ) {
+                                  navigator.clipboard
+                                    .writeText(reportText)
+                                    .catch(() => {
+                                      // silently fail if clipboard is unavailable
+                                    });
+                                }
+                              }}
+                              className="text-label-xs"
+                            >
+                              <Copy className="text-icon-secondary" />
+                              <span className="text-icon-secondary">Copy</span>
+                            </Button>
+                          </div>
+                          <div className="px-2 py-2">
+                            <MarkDown
+                              content={selectedTask?.report}
+                              enableTypewriter={false}
+                              pTextSize="text-label-xs"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
       <Handle
         className="!h-0 !min-h-0 !w-0 !min-w-0 opacity-0"
         type="source"
@@ -957,5 +948,7 @@ export function Node({ id, data }: NodeProps) {
         id="bottom"
       />
     </>
+  ) : (
+    <div>Loading...</div>
   );
 }

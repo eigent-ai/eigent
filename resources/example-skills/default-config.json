@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "description": "Default configuration template for example skills. Each skill is enabled by default with global scope (all agents, including future ones).",
+  "skills": {}
+}

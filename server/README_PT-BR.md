@@ -20,7 +20,7 @@
 
 Nota: Todos os dados acima são armazenados no volume PostgreSQL local no Docker (veja "Persistência de Dados" abaixo). Se você configurar modelos externos ou MCP remoto, as solicitações vão para os serviços de terceiros que você especificar.
 
-______________________________________________________________________
+---
 
 ### Início Rápido (Docker)
 
@@ -91,7 +91,7 @@ docker logs -f eigent_api | cat
 docker logs -f eigent_postgres | cat
 ```
 
-______________________________________________________________________
+---
 
 ### Modo Desenvolvedor (Opcional)
 
@@ -110,7 +110,7 @@ export database_url=postgresql://postgres:123456@localhost:5432/eigent
 uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 ```
 
-______________________________________________________________________
+---
 
 ### Outros
 
