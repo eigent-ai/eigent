@@ -56,5 +56,8 @@
   "new-project": "새 프로젝트",
   "no-reply-received-task-continue": "응답이 없으므로 작업을 계속합니다.",
   "open-in-ide": "IDE에서 열기",
+  "open-in-vscode": "VS Code에서 열기",
+  "open-in-cursor": "Cursor에서 열기",
+  "open-in-file-manager": "파일 관리자에서 열기",
   "failed-to-open-folder": "폴더를 열 수 없습니다"
 }

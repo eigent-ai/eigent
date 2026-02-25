@@ -56,5 +56,8 @@
   "new-project": "新项目",
   "no-reply-received-task-continue": "没有收到回复，任务继续",
   "open-in-ide": "在 IDE 中打开",
+  "open-in-vscode": "在 VS Code 中打开",
+  "open-in-cursor": "在 Cursor 中打开",
+  "open-in-file-manager": "在文件管理器中打开",
   "failed-to-open-folder": "无法打开文件夹"
 }

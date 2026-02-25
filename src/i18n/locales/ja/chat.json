@@ -56,5 +56,8 @@
   "new-project": "新規プロジェクト",
   "no-reply-received-task-continue": "応答がないため、タスクを続行します",
   "open-in-ide": "IDEで開く",
+  "open-in-vscode": "VS Codeで開く",
+  "open-in-cursor": "Cursorで開く",
+  "open-in-file-manager": "ファイルマネージャーで開く",
   "failed-to-open-folder": "フォルダを開けませんでした"
 }

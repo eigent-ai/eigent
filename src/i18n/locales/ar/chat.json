@@ -56,5 +56,8 @@
   "new-project": "مشروع جديد",
   "no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة",
   "open-in-ide": "فتح في IDE",
+  "open-in-vscode": "فتح في VS Code",
+  "open-in-cursor": "فتح في Cursor",
+  "open-in-file-manager": "فتح في مدير الملفات",
   "failed-to-open-folder": "فشل في فتح المجلد"
 }
