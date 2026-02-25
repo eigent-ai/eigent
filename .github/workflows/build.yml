@@ -344,7 +344,7 @@ jobs:
           files: |
             gh-release-assets/*
 
-      # Extract version from tag (e.g., v0.0.87 -> 0.0.87)
+      # Extract version from tag (e.g., v0.0.85 -> 0.0.85)
       - name: Extract version
         if: startsWith(github.ref, 'refs/tags/')
         id: version
