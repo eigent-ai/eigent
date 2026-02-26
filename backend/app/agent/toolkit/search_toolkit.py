@@ -364,8 +364,10 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     #     )
 
     @classmethod
-    def get_can_use_tools(cls, api_task_id: str) -> list[FunctionTool]:
-        search_toolkit = SearchToolkit(api_task_id)
+    def get_can_use_tools(
+        cls, api_task_id: str, agent_name: str | None = None
+    ) -> list[FunctionTool]:
+        search_toolkit = SearchToolkit(api_task_id, agent_name=agent_name)
         tools = [
             # FunctionTool(search_toolkit.search_wiki),
             # FunctionTool(search_toolkit.search_duckduckgo),
