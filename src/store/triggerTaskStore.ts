@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ExecutionStatus, TriggerType } from '@/types';
+import { TriggerType } from '@/types';
 import { create } from 'zustand';
 
 /**
@@ -35,23 +35,14 @@ export interface TriggeredTask {
   /**
    * Target project ID where this task should run.
    * If null, creates a new project or uses active project.
-   * Future: triggers will be associated with specific projects.
    */
   projectId: string | null;
   /** Input data from webhook request or scheduled context */
   inputData: Record<string, any>;
   /** Timestamp when the task was triggered */
   timestamp: number;
-  /** Current status of the triggered task */
-  status: ExecutionStatus;
   /** Formatted message content for display and processing */
   formattedMessage?: string;
-  /** Error message if task failed */
-  errorMessage?: string;
-  /** Whether the execution status has been reported to the backend */
-  executionReported?: boolean;
-  /** Tokens used for this execution */
-  tokensUsed?: number;
 }
 
 /**
@@ -63,7 +54,7 @@ interface ExecutionMapping {
   chatTaskId: string;
   /** The trigger execution ID (from backend) */
   executionId: string;
-  /** The trigger task ID (from triggerTaskStore) */
+  /** The trigger task ID */
   triggerTaskId: string;
   /** Project ID where the task is running */
   projectId: string;
@@ -80,10 +71,8 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
   // Add the main task prompt
   parts.push(task.taskPrompt);
 
-  // Add context separator if we have input data
   // Skip adding context for scheduled triggers - just use the task prompt as-is
   if (task.triggerType === 'schedule') {
-    // For scheduled triggers, return only the task prompt without any context
     return parts.join('\n');
   }
 
@@ -111,7 +100,6 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
     if (task.triggerType === 'webhook') {
       parts.push(`- **Source:** Webhook trigger "${task.triggerName}"`);
 
-      // Include relevant webhook data
       if (task.inputData.method) {
         parts.push(`- **Method:** ${task.inputData.method}`);
       }
@@ -180,38 +168,8 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
 }
 
 interface TriggerTaskStore {
-  /** Queue of triggered tasks waiting to be executed */
-  taskQueue: TriggeredTask[];
-  /** Currently running triggered tasks (one per project) */
-  runningTasks: TriggeredTask[];
-  /** History of completed/failed tasks */
-  taskHistory: TriggeredTask[];
   /** Maps chat task IDs to execution IDs for status reporting */
   executionMappings: Map<string, ExecutionMapping>;
-
-  // Actions
-  /** Add a new triggered task to the queue */
-  enqueueTask: (
-    task: Omit<TriggeredTask, 'id' | 'status' | 'timestamp'>
-  ) => string;
-  /** Get the next pending task from the queue, optionally filtered by projectId */
-  dequeueTask: (projectId?: string | null) => TriggeredTask | null;
-  /** Check if a project already has a running task */
-  isProjectBusy: (projectId: string | null) => boolean;
-  /** Get the running task for a specific project */
-  getRunningTaskForProject: (projectId: string | null) => TriggeredTask | null;
-  /** Mark a task as completed */
-  completeTask: (taskId: string) => void;
-  /** Mark a task as failed */
-  failTask: (taskId: string, errorMessage: string) => void;
-  /** Cancel a pending task (user-initiated removal from queue) */
-  cancelTask: (taskId: string, reason?: string) => void;
-  /** Get task by ID */
-  getTaskById: (taskId: string) => TriggeredTask | undefined;
-  /** Get all pending tasks for a specific project */
-  getTasksForProject: (projectId: string) => TriggeredTask[];
-  /** Clear completed tasks from history */
-  clearHistory: () => void;
 
   // Execution status tracking
   /** Register a mapping between chat task ID and execution ID */
@@ -219,7 +177,9 @@ interface TriggerTaskStore {
     chatTaskId: string,
     executionId: string,
     triggerTaskId: string,
-    projectId: string
+    projectId: string,
+    triggerName?: string,
+    triggerId?: number
   ) => void;
   /** Get execution mapping by chat task ID */
   getExecutionMapping: (chatTaskId: string) => ExecutionMapping | undefined;
@@ -228,194 +188,15 @@ interface TriggerTaskStore {
 }
 
 export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
-  taskQueue: [],
-  runningTasks: [],
-  taskHistory: [],
   executionMappings: new Map(),
 
-  enqueueTask: (taskData) => {
-    const id = `triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Check for duplicate event_id (Slack deduplication)
-    const eventId = taskData.inputData?.event_id;
-    if (eventId) {
-      const { taskQueue, taskHistory, runningTasks } = get();
-
-      // Check if event_id exists in queue, running tasks, or history
-      const isDuplicate =
-        taskQueue.some((t) => t.inputData?.event_id === eventId) ||
-        runningTasks.some((t) => t.inputData?.event_id === eventId) ||
-        taskHistory.some((t) => t.inputData?.event_id === eventId);
-
-      if (isDuplicate) {
-        console.warn(
-          '[TriggerTaskStore] Duplicate event_id detected, marking as missed:',
-          eventId
-        );
-
-        const failedTask: TriggeredTask = {
-          ...taskData,
-          id,
-          status: ExecutionStatus.Missed,
-          timestamp: Date.now(),
-          errorMessage: `Duplicate event_id: ${eventId}`,
-        };
-
-        // Add to history as failed
-        set((state) => ({
-          taskHistory: [...state.taskHistory, failedTask],
-        }));
-
-        return id;
-      }
-    }
-
-    const newTask: TriggeredTask = {
-      ...taskData,
-      id,
-      status: ExecutionStatus.Pending,
-      timestamp: Date.now(),
-    };
-
-    set((state) => ({
-      taskQueue: [...state.taskQueue, newTask],
-    }));
-
-    console.log('[TriggerTaskStore] Task enqueued:', id, taskData.triggerName);
-    return id;
-  },
-
-  dequeueTask: (projectId?: string | null) => {
-    const { taskQueue } = get();
-    // If projectId is provided, find the next pending task for that project
-    // If not provided, find the next pending task (any project)
-    const nextTask =
-      projectId !== undefined
-        ? taskQueue.find(
-            (t) =>
-              t.status === ExecutionStatus.Pending && t.projectId === projectId
-          )
-        : taskQueue.find((t) => t.status === ExecutionStatus.Pending);
-
-    if (nextTask) {
-      const runningTask = { ...nextTask, status: ExecutionStatus.Running };
-      // Mark as running and add to runningTasks
-      set((state) => ({
-        taskQueue: state.taskQueue.filter((t) => t.id !== nextTask.id),
-        runningTasks: [...state.runningTasks, runningTask],
-      }));
-      console.log(
-        '[TriggerTaskStore] Task dequeued:',
-        nextTask.id,
-        'for project:',
-        nextTask.projectId
-      );
-      return runningTask;
-    }
-    return null;
-  },
-
-  isProjectBusy: (projectId) => {
-    const { runningTasks } = get();
-    return runningTasks.some((t) => t.projectId === projectId);
-  },
-
-  getRunningTaskForProject: (projectId) => {
-    const { runningTasks } = get();
-    return runningTasks.find((t) => t.projectId === projectId) || null;
-  },
-
-  completeTask: (taskId) => {
-    set((state) => {
-      // Search in runningTasks first, then queue as fallback
-      const completedTask =
-        state.runningTasks.find((t) => t.id === taskId) ||
-        state.taskQueue.find((t) => t.id === taskId);
-
-      if (!completedTask) return state;
-
-      return {
-        runningTasks: state.runningTasks.filter((t) => t.id !== taskId),
-        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
-        taskHistory: [
-          { ...completedTask, status: ExecutionStatus.Completed as const },
-          ...state.taskHistory,
-        ].slice(0, 50),
-      };
-    });
-    console.log('[TriggerTaskStore] Task completed:', taskId);
-  },
-
-  failTask: (taskId, errorMessage) => {
-    set((state) => {
-      // Search in runningTasks first, then queue as fallback
-      const failedTask =
-        state.runningTasks.find((t) => t.id === taskId) ||
-        state.taskQueue.find((t) => t.id === taskId);
-
-      if (!failedTask) return state;
-
-      return {
-        runningTasks: state.runningTasks.filter((t) => t.id !== taskId),
-        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
-        taskHistory: [
-          {
-            ...failedTask,
-            status: ExecutionStatus.Failed as const,
-            errorMessage,
-          },
-          ...state.taskHistory,
-        ].slice(0, 50),
-      };
-    });
-    console.log('[TriggerTaskStore] Task failed:', taskId, errorMessage);
-  },
-
-  cancelTask: (taskId, reason) => {
-    set((state) => {
-      const cancelledTask = state.taskQueue.find((t) => t.id === taskId);
-
-      if (!cancelledTask) return state;
-
-      return {
-        taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
-        taskHistory: [
-          {
-            ...cancelledTask,
-            status: ExecutionStatus.Cancelled as const,
-            errorMessage: reason || 'Task cancelled by user',
-          },
-          ...state.taskHistory,
-        ].slice(0, 50),
-      };
-    });
-    console.log('[TriggerTaskStore] Task cancelled:', taskId, reason);
-  },
-
-  getTaskById: (taskId) => {
-    const { taskQueue, runningTasks, taskHistory } = get();
-    return (
-      taskQueue.find((t) => t.id === taskId) ||
-      runningTasks.find((t) => t.id === taskId) ||
-      taskHistory.find((t) => t.id === taskId)
-    );
-  },
-
-  getTasksForProject: (projectId) => {
-    const { taskQueue } = get();
-    return taskQueue.filter((t) => t.projectId === projectId);
-  },
-
-  clearHistory: () => {
-    set({ taskHistory: [] });
-  },
-
-  // Execution status tracking methods
   registerExecutionMapping: (
     chatTaskId: string,
     executionId: string,
     triggerTaskId: string,
-    projectId: string
+    projectId: string,
+    _triggerName?: string,
+    _triggerId?: number
   ) => {
     set((state) => {
       const newMappings = new Map(state.executionMappings);

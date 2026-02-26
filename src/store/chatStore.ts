@@ -42,7 +42,6 @@ import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
 import { useProjectStore } from './projectStore';
-import { useTriggerTaskStore } from './triggerTaskStore';
 
 interface Task {
   messages: Message[];
@@ -101,7 +100,8 @@ export interface ChatStore {
     delayTime?: number,
     messageContent?: string,
     messageAttaches?: File[],
-    executionId?: string
+    executionId?: string,
+    projectId?: string
   ) => Promise<void>;
   handleConfirmTask: (
     project_id: string,
@@ -313,26 +313,6 @@ const updateTriggerExecutionStatus = async (
       '->',
       status
     );
-
-    // Complete or fail the current trigger task in triggerTaskStore
-    const triggerTaskStore = useTriggerTaskStore.getState();
-    const runningTask = triggerTaskStore.runningTasks.find(
-      (t) => t.executionId === executionId
-    );
-
-    if (runningTask) {
-      if (status === ExecutionStatus.Completed) {
-        triggerTaskStore.completeTask(runningTask.id);
-      } else if (
-        status === ExecutionStatus.Failed ||
-        status === ExecutionStatus.Cancelled
-      ) {
-        triggerTaskStore.failTask(
-          runningTask.id,
-          errorMessage || 'Task failed'
-        );
-      }
-    }
   } catch (err) {
     console.warn(
       `[updateTriggerExecutionStatus] Failed to update execution status to ${status}:`,
@@ -524,7 +504,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       delayTime?: number,
       messageContent?: string,
       messageAttaches?: File[],
-      executionId?: string
+      executionId?: string,
+      projectId?: string
     ) => {
       // ✅ Wait for backend to be ready before starting task (except for replay/share)
       if (!type || type === 'normal') {
@@ -565,7 +546,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       //ProjectStore must exist as chatStore is already
       const projectStore = useProjectStore.getState();
-      const project_id = projectStore.activeProjectId;
+      const project_id = projectId || projectStore.activeProjectId;
       //Create a new chatStore on Start
       let newTaskId = taskId;
       let targetChatStore = { getState: () => get() }; // Default to current store

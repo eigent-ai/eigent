@@ -27,6 +27,10 @@ interface TaskQueue {
   content: string;
   timestamp: number;
   attaches: File[];
+  executionId?: string;
+  triggerTaskId?: string;
+  triggerId?: number;
+  triggerName?: string;
 }
 
 interface Project {
@@ -98,7 +102,11 @@ interface ProjectStore {
     projectId: string,
     content: string,
     attaches: File[],
-    task_id?: string
+    task_id?: string,
+    executionId?: string,
+    triggerTaskId?: string,
+    triggerId?: number,
+    triggerName?: string
   ) => string | null;
   removeQueuedMessage: (projectId: string, taskId: string) => TaskQueue;
   restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => void;
@@ -811,7 +819,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     projectId: string,
     content: string,
     attaches: File[],
-    task_id?: string
+    task_id?: string,
+    executionId?: string,
+    triggerTaskId?: string,
+    triggerId?: number,
+    triggerName?: string
   ) => {
     const { projects } = get();
 
@@ -835,6 +847,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               content,
               timestamp: Date.now(),
               attaches: [...attaches],
+              executionId,
+              triggerTaskId,
+              triggerId,
+              triggerName,
             },
           ],
           updatedAt: Date.now(),
@@ -881,15 +897,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   },
 
   // Method to restore a queued message (for error handling)
-  restoreQueuedMessage: (
-    projectId: string,
-    messageData: {
-      task_id: string;
-      content: string;
-      timestamp: number;
-      attaches: File[];
-    }
-  ) => {
+  restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => {
     const { projects } = get();
 
     if (!projects[projectId]) {
