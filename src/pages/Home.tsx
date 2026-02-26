@@ -42,7 +42,7 @@ import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import Overview, { getTriggerLimitTooltip } from './Project/Triggers';
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkSpace from '@/components/BrowserAgentWorkspace';
+import BrowserAgentWorkSpace from '@/components/BrowserAgentWorkSpace';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import {
