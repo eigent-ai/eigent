@@ -20,6 +20,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
 import { useTriggerTaskExecutor } from './hooks/useTriggerTaskExecutor';
 import { hasStackKeys } from './lib';
@@ -36,6 +37,7 @@ function App() {
   // Note: Removed triggers.length check to prevent reconnection on every trigger update
   const shouldSubscribe = !!token;
   useExecutionSubscription(shouldSubscribe);
+  useBackgroundTaskProcessor();
 
   // Execute triggered tasks automatically when WebSocket events are received
   useTriggerTaskExecutor();

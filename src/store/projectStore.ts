@@ -74,7 +74,8 @@ interface ProjectStore {
     description?: string,
     projectId?: string,
     type?: ProjectType,
-    historyId?: string
+    historyId?: string,
+    setActive?: boolean
   ) => string;
   setActiveProject: (projectId: string) => void;
   removeProject: (projectId: string) => void;
@@ -207,7 +208,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     description?: string,
     projectId?: string,
     type?: ProjectType,
-    historyId?: string
+    historyId?: string,
+    setActive: boolean = true
   ) => {
     const { projects } = get();
 
@@ -240,7 +242,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               updatedAt: now,
             },
           },
-          activeProjectId: existingEmptyProject.id,
+          ...(setActive ? { activeProjectId: existingEmptyProject.id } : {}),
         }));
 
         return existingEmptyProject.id;
@@ -286,7 +288,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         ...state.projects,
         [targetProjectId]: newProject,
       },
-      activeProjectId: targetProjectId,
+      ...(setActive ? { activeProjectId: targetProjectId } : {}),
     }));
 
     return targetProjectId;

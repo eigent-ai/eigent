@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
@@ -19,9 +20,6 @@ import { ExecutionStatus } from '@/types';
 import { ChatTaskStatus } from '@/types/constants';
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-
-/** Max concurrent background tasks (pool size) */
-const POOL_SIZE = 5;
 
 /** Poll interval in ms */
 const POLL_INTERVAL_MS = 2000;
@@ -38,20 +36,16 @@ interface ActiveBackgroundTask {
  * Supports trigger tasks (with executionId) and can be extended for other task types.
  *
  * - Polls all projects' queuedMessages for messages with executionId
- * - Runs up to POOL_SIZE tasks concurrently
  * - Uses appendInitChatStore + startTask for execution (supports same-project parallelism)
  */
 export function useBackgroundTaskProcessor() {
   const projectStore = useProjectStore();
   const triggerTaskStore = useTriggerTaskStore();
 
-  const inFlightCountRef = useRef(0);
   const activeTasksRef = useRef<Map<string, ActiveBackgroundTask>>(new Map());
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const processOneTask = useCallback(async () => {
-    if (inFlightCountRef.current >= POOL_SIZE) return;
-
     const projects = projectStore.getAllProjects();
     let messageToProcess: {
       projectId: string;
@@ -68,6 +62,39 @@ export function useBackgroundTaskProcessor() {
     for (const project of projects) {
       const projectData = projectStore.getProjectById(project.id);
       if (!projectData?.queuedMessages?.length) continue;
+
+      // Per-project concurrency: skip if this project already has an active background task
+      const hasActiveBackgroundTask = Array.from(
+        activeTasksRef.current.values()
+      ).some((t) => t.projectId === project.id);
+      if (hasActiveBackgroundTask) {
+        console.log(
+          '[BackgroundTaskProcessor] Skipping project',
+          project.id,
+          '- already has an active background task'
+        );
+        continue;
+      }
+
+      // Also check if any chat in this project has a running/paused task
+      const hasRunningChatTask = Object.values(
+        projectData.chatStores || {}
+      ).some((cs) => {
+        const state = cs.getState();
+        return Object.values(state.tasks).some(
+          (t) =>
+            t.status === ChatTaskStatus.RUNNING ||
+            t.status === ChatTaskStatus.PAUSE
+        );
+      });
+      if (hasRunningChatTask) {
+        console.log(
+          '[BackgroundTaskProcessor] Skipping project',
+          project.id,
+          '- has a running/paused chat task'
+        );
+        continue;
+      }
 
       const msg = projectData.queuedMessages.find((m) => m.executionId);
       if (msg && msg.executionId) {
@@ -88,7 +115,6 @@ export function useBackgroundTaskProcessor() {
 
     if (!messageToProcess) return;
 
-    inFlightCountRef.current++;
     const {
       projectId,
       task_id,
@@ -103,18 +129,15 @@ export function useBackgroundTaskProcessor() {
     projectStore.removeQueuedMessage(projectId, task_id);
 
     try {
-      // Run trigger in background: don't switch active chat (preserve user's current task view)
-      const newChatResult = projectStore.appendInitChatStore(
-        projectId,
-        undefined,
-        undefined
-      );
-      if (!newChatResult) {
-        throw new Error('Failed to create chat store for background task');
+      // Get the latest project's chatStore
+      const chatStore = projectStore.getChatStore(projectId);
+      if (!chatStore) {
+        throw new Error('Failed to get chat store for background task');
       }
 
-      const { taskId: newTaskId, chatStore } = newChatResult;
+      const newTaskId = generateUniqueId();
 
+      // Track this task so per-project concurrency guard works
       activeTasksRef.current.set(executionId, {
         projectId,
         chatTaskId: newTaskId,
@@ -157,6 +180,13 @@ export function useBackgroundTaskProcessor() {
           executionId,
           projectId
         )
+        .then(() => {
+          console.log(
+            '[BackgroundTaskProcessor] Background task completed:',
+            executionId
+          );
+          activeTasksRef.current.delete(executionId);
+        })
         .catch((err: any) => {
           console.error(
             '[BackgroundTaskProcessor] Background task error:',
@@ -179,7 +209,6 @@ export function useBackgroundTaskProcessor() {
           toast.error('Background task failed', {
             description: err?.message || 'Unknown error',
           });
-          inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1);
           activeTasksRef.current.delete(executionId);
         });
 
@@ -188,6 +217,11 @@ export function useBackgroundTaskProcessor() {
         executionId,
         'for project',
         projectId
+      );
+
+      console.log(
+        '[BackgroundTaskProcessor] Current active tasks:',
+        Array.from(activeTasksRef.current.keys())
       );
     } catch (error: any) {
       console.error(
@@ -211,7 +245,6 @@ export function useBackgroundTaskProcessor() {
       toast.error('Background task failed', {
         description: error?.message || 'Unknown error',
       });
-      inFlightCountRef.current--;
       activeTasksRef.current.delete(executionId);
     }
   }, [projectStore, triggerTaskStore]);
@@ -239,7 +272,6 @@ export function useBackgroundTaskProcessor() {
 
     toRemove.forEach((executionId) => {
       activeTasksRef.current.delete(executionId);
-      inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1);
     });
   }, [projectStore]);
 
@@ -275,9 +307,4 @@ export function useBackgroundTaskProcessor() {
       }
     };
   }, [poll]);
-
-  return {
-    inFlightCount: inFlightCountRef.current,
-    poolSize: POOL_SIZE,
-  };
 }

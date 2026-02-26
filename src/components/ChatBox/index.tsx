@@ -472,6 +472,18 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
+  // Reactive queuedMessages for the active project
+  const queuedMessages = useMemo(() => {
+    const pid = projectStore.activeProjectId;
+    if (!pid) return [];
+    const project = projectStore.getProjectById(pid);
+    return (project?.queuedMessages || []).map((m) => ({
+      id: m.task_id,
+      content: m.content,
+      timestamp: m.timestamp,
+    }));
+  }, [projectStore]);
+
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
@@ -980,6 +992,8 @@ export default function ChatBox(): JSX.Element {
             {chatStore.activeTaskId && (
               <BottomBox
                 state="input"
+                queuedMessages={queuedMessages}
+                onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                 inputProps={{
                   value: message,
                   onChange: setMessage,
@@ -1099,14 +1113,7 @@ export default function ChatBox(): JSX.Element {
         {chatStore.activeTaskId && hasAnyMessages && (
           <BottomBox
             state={hasAnyMessages ? getBottomBoxState() : 'input'}
-            queuedMessages={(
-              projectStore.getProjectById(projectStore.activeProjectId || '')
-                ?.queuedMessages || []
-            ).map((m) => ({
-              id: m.task_id,
-              content: m.content,
-              timestamp: m.timestamp,
-            }))}
+            queuedMessages={queuedMessages}
             onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
             subtitle={
               hasAnyMessages && getBottomBoxState() === 'confirm'

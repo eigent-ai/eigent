@@ -97,7 +97,8 @@ export function useTriggerTaskExecutor() {
           `No tasks to replay`,
           projectId,
           ProjectType.NORMAL,
-          historyId
+          historyId,
+          false
         );
 
         return true;
@@ -135,13 +136,17 @@ export function useTriggerTaskExecutor() {
         const store = projectStoreRef.current;
         let targetProjectId = task.projectId;
 
-        // If no project specified, create a new project for this trigger
         if (!targetProjectId) {
+          // No project specified, create a new project for this trigger
           const projectName = `Trigger: ${task.triggerName}`;
           const projectDescription = `Auto-created project for ${task.triggerType} trigger execution`;
           targetProjectId = store.createProject(
             projectName,
-            projectDescription
+            projectDescription,
+            undefined,
+            undefined,
+            undefined,
+            false
           );
           console.log(
             '[TriggerTaskExecutor] Created new project:',
@@ -165,7 +170,10 @@ export function useTriggerTaskExecutor() {
               targetProjectId = store.createProject(
                 projectName,
                 projectDescription,
-                targetProjectId
+                targetProjectId,
+                undefined,
+                undefined,
+                false
               );
             }
           }

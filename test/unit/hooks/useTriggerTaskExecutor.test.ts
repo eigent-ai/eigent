@@ -13,18 +13,24 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * useTriggerTaskExecutor Unit Tests
+ * Trigger Task System — Unit Tests
  *
- * Tests the core queueing and execution behavior:
- * - Same project running + new task same project → add to queue (serialize)
- * - Different project not busy + new task → execute immediately (parallel)
- * - Different project busy + new task → add to queue (serialize per-project)
+ * Architecture:
+ *   WebSocket event → useTriggerTaskExecutor (routes to projectStore.addQueuedMessage)
+ *     → useBackgroundTaskProcessor (polls queuedMessages, runs up to POOL_SIZE concurrently)
+ *     → triggerTaskStore (only tracks executionMappings)
+ *
+ * Plan under test:
+ * 1. IF current project is running → add to queue (projectStore.queuedMessages)
+ * 2. IF current project finished running → execute & remove from queue; update execution status on start
+ * 3. IF triggered new task while on a different page → show toast, add to project queue / run in background
  */
 
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock external dependencies before importing anything else
+// ─── Mock external dependencies ───────────────────────────────────
+
 vi.mock('@/api/http', () => ({
   proxyFetchGet: vi.fn(() =>
     Promise.resolve({
@@ -34,6 +40,10 @@ vi.mock('@/api/http', () => ({
   ),
   proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-id' })),
   fetchPost: vi.fn(),
+}));
+
+vi.mock('@/service/triggerApi', () => ({
+  proxyUpdateTriggerExecution: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('sonner', () => ({
@@ -53,357 +63,165 @@ import { useTriggerTaskExecutor } from '@/hooks/useTriggerTaskExecutor';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import type { TriggeredTask } from '@/store/triggerTaskStore';
-import { useTriggerTaskStore } from '@/store/triggerTaskStore';
-import { ExecutionStatus, TriggerType } from '@/types';
+import {
+  formatTriggeredTaskMessage,
+  useTriggerTaskStore,
+} from '@/store/triggerTaskStore';
+import { TriggerType } from '@/types';
+import { toast } from 'sonner';
 
-// ───────────────────────────────────────────
-// Helper: create a minimal task payload
-// ───────────────────────────────────────────
-function makeTaskPayload(overrides: Partial<TriggeredTask> = {}) {
+// ─── Helpers ──────────────────────────────────────────────────────
+
+function makeTask(overrides: Partial<TriggeredTask> = {}): TriggeredTask {
   return {
-    triggerId: 1,
+    id:
+      overrides.id ??
+      `triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    triggerId: overrides.triggerId ?? 1,
     triggerName: overrides.triggerName ?? 'Test Trigger',
     taskPrompt: overrides.taskPrompt ?? 'Do something',
     executionId: overrides.executionId ?? `exec-${Date.now()}-${Math.random()}`,
     triggerType: (overrides.triggerType ?? 'webhook') as TriggerType,
     projectId: overrides.projectId ?? null,
     inputData: overrides.inputData ?? {},
-    formattedMessage: overrides.formattedMessage ?? 'Do something',
+    timestamp: overrides.timestamp ?? Date.now(),
+    formattedMessage: overrides.formattedMessage,
   };
 }
 
-// ───────────────────────────────────────────
-// Store-level tests for triggerTaskStore
-// ───────────────────────────────────────────
-describe('triggerTaskStore - per-project queue behavior', () => {
+// ═══════════════════════════════════════════════════════════════════
+// 1. triggerTaskStore — execution mappings only
+// ═══════════════════════════════════════════════════════════════════
+
+describe('triggerTaskStore — execution mappings', () => {
   beforeEach(() => {
-    // Reset the store between tests
-    useTriggerTaskStore.setState({
-      taskQueue: [],
-      runningTasks: [],
-      taskHistory: [],
-      executionMappings: new Map(),
-    });
+    useTriggerTaskStore.setState({ executionMappings: new Map() });
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  // ──── Basic enqueue/dequeue ────
-
-  it('should enqueue a task as pending', () => {
+  it('should register an execution mapping', () => {
     const store = useTriggerTaskStore.getState();
-    const id = store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-
-    const state = useTriggerTaskStore.getState();
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].id).toBe(id);
-    expect(state.taskQueue[0].status).toBe(ExecutionStatus.Pending);
-    expect(state.taskQueue[0].projectId).toBe('proj-A');
-  });
-
-  it('should dequeue a task and move it to runningTasks', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-A');
-    expect(dequeued).not.toBeNull();
-    expect(dequeued!.status).toBe(ExecutionStatus.Running);
-
-    const state = useTriggerTaskStore.getState();
-    expect(state.taskQueue).toHaveLength(0);
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].projectId).toBe('proj-A');
-  });
-
-  it('should dequeue without projectId (any pending)', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-B' }));
-
-    // Dequeue without specifying projectId → takes first pending
-    const dequeued = useTriggerTaskStore.getState().dequeueTask();
-    expect(dequeued).not.toBeNull();
-    expect(dequeued!.projectId).toBe('proj-A');
-
-    const state = useTriggerTaskStore.getState();
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.runningTasks).toHaveLength(1);
-  });
-
-  // ──── Per-project dequeue isolation ────
-
-  it('should only dequeue tasks for the specified project', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-B' }));
-
-    // Dequeue for proj-B → should skip proj-A
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-B');
-    expect(dequeued).not.toBeNull();
-    expect(dequeued!.projectId).toBe('proj-B');
-
-    const state = useTriggerTaskStore.getState();
-    // proj-A task still in queue
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].projectId).toBe('proj-A');
-    // only proj-B in running
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].projectId).toBe('proj-B');
-  });
-
-  it('should return null when no pending tasks match the projectId', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-B');
-    expect(dequeued).toBeNull();
-
-    // Queue unchanged
-    expect(useTriggerTaskStore.getState().taskQueue).toHaveLength(1);
-  });
-
-  // ──── isProjectBusy ────
-
-  it('should report project as busy when it has a running task', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    useTriggerTaskStore.getState().dequeueTask('proj-A');
-
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(true);
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-B')).toBe(false);
-  });
-
-  it('should report project as not busy after task completes', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-A');
-
-    useTriggerTaskStore.getState().completeTask(dequeued!.id);
-
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(false);
-    expect(useTriggerTaskStore.getState().runningTasks).toHaveLength(0);
-    expect(useTriggerTaskStore.getState().taskHistory).toHaveLength(1);
-    expect(useTriggerTaskStore.getState().taskHistory[0].status).toBe(
-      ExecutionStatus.Completed
-    );
-  });
-
-  it('should report project as not busy after task fails', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-A');
-
-    useTriggerTaskStore.getState().failTask(dequeued!.id, 'Something broke');
-
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(false);
-    expect(useTriggerTaskStore.getState().runningTasks).toHaveLength(0);
-    expect(useTriggerTaskStore.getState().taskHistory).toHaveLength(1);
-    expect(useTriggerTaskStore.getState().taskHistory[0].status).toBe(
-      ExecutionStatus.Failed
-    );
-    expect(useTriggerTaskStore.getState().taskHistory[0].errorMessage).toBe(
-      'Something broke'
-    );
-  });
-
-  // ──── getRunningTaskForProject ────
-
-  it('should return running task for the correct project', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(
-      makeTaskPayload({ projectId: 'proj-A', triggerName: 'Trigger A' })
-    );
-    store.enqueueTask(
-      makeTaskPayload({ projectId: 'proj-B', triggerName: 'Trigger B' })
+    store.registerExecutionMapping(
+      'chat-task-1',
+      'exec-1',
+      'trigger-task-1',
+      'proj-A',
+      'My Trigger',
+      42
     );
 
-    useTriggerTaskStore.getState().dequeueTask('proj-A');
-    useTriggerTaskStore.getState().dequeueTask('proj-B');
-
-    const runningA = useTriggerTaskStore
+    const mapping = useTriggerTaskStore
       .getState()
-      .getRunningTaskForProject('proj-A');
-    const runningB = useTriggerTaskStore
-      .getState()
-      .getRunningTaskForProject('proj-B');
-    const runningC = useTriggerTaskStore
-      .getState()
-      .getRunningTaskForProject('proj-C');
-
-    expect(runningA).not.toBeNull();
-    expect(runningA!.triggerName).toBe('Trigger A');
-    expect(runningB).not.toBeNull();
-    expect(runningB!.triggerName).toBe('Trigger B');
-    expect(runningC).toBeNull();
+      .getExecutionMapping('chat-task-1');
+    expect(mapping).toBeDefined();
+    expect(mapping!.chatTaskId).toBe('chat-task-1');
+    expect(mapping!.executionId).toBe('exec-1');
+    expect(mapping!.triggerTaskId).toBe('trigger-task-1');
+    expect(mapping!.projectId).toBe('proj-A');
+    expect(mapping!.reported).toBe(false);
   });
 
-  // ──── Multiple tasks per project (serialization) ────
-
-  it('should support multiple running tasks for different projects simultaneously', () => {
+  it('should remove an execution mapping', () => {
     const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-B' }));
+    store.registerExecutionMapping('chat-task-1', 'exec-1', 'tt-1', 'proj-A');
 
-    useTriggerTaskStore.getState().dequeueTask('proj-A');
-    useTriggerTaskStore.getState().dequeueTask('proj-B');
+    store.removeExecutionMapping('chat-task-1');
 
-    const state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(2);
-    expect(state.isProjectBusy('proj-A')).toBe(true);
-    expect(state.isProjectBusy('proj-B')).toBe(true);
-    expect(state.taskQueue).toHaveLength(0);
+    expect(
+      useTriggerTaskStore.getState().getExecutionMapping('chat-task-1')
+    ).toBeUndefined();
   });
 
-  it('should queue second task for same project while first is running', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(
-      makeTaskPayload({ projectId: 'proj-A', triggerName: 'First' })
-    );
-    store.enqueueTask(
-      makeTaskPayload({ projectId: 'proj-A', triggerName: 'Second' })
-    );
-
-    // Dequeue first task for proj-A
-    const first = useTriggerTaskStore.getState().dequeueTask('proj-A');
-    expect(first!.triggerName).toBe('First');
-
-    // proj-A is now busy
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(true);
-
-    // Second task still in queue
-    expect(useTriggerTaskStore.getState().taskQueue).toHaveLength(1);
-    expect(useTriggerTaskStore.getState().taskQueue[0].triggerName).toBe(
-      'Second'
-    );
-
-    // Complete first task
-    useTriggerTaskStore.getState().completeTask(first!.id);
-
-    // Now proj-A is free
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(false);
-
-    // Can dequeue second task
-    const second = useTriggerTaskStore.getState().dequeueTask('proj-A');
-    expect(second).not.toBeNull();
-    expect(second!.triggerName).toBe('Second');
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(true);
+  it('should return undefined for non-existent mapping', () => {
+    expect(
+      useTriggerTaskStore.getState().getExecutionMapping('nope')
+    ).toBeUndefined();
   });
 
-  // ──── getTaskById with runningTasks ────
-
-  it('should find task by ID in runningTasks', () => {
+  it('should support multiple independent mappings', () => {
     const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-A');
+    store.registerExecutionMapping('ct-1', 'e-1', 'tt-1', 'proj-A');
+    store.registerExecutionMapping('ct-2', 'e-2', 'tt-2', 'proj-B');
 
-    const found = useTriggerTaskStore.getState().getTaskById(dequeued!.id);
-    expect(found).not.toBeUndefined();
-    expect(found!.status).toBe(ExecutionStatus.Running);
+    expect(useTriggerTaskStore.getState().executionMappings.size).toBe(2);
+    expect(
+      useTriggerTaskStore.getState().getExecutionMapping('ct-1')!.executionId
+    ).toBe('e-1');
+    expect(
+      useTriggerTaskStore.getState().getExecutionMapping('ct-2')!.executionId
+    ).toBe('e-2');
   });
 
-  it('should find task by ID in taskHistory after completion', () => {
+  it('should overwrite mapping for same chatTaskId', () => {
     const store = useTriggerTaskStore.getState();
-    store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-    const dequeued = useTriggerTaskStore.getState().dequeueTask('proj-A');
-    useTriggerTaskStore.getState().completeTask(dequeued!.id);
+    store.registerExecutionMapping('ct-1', 'e-old', 'tt-1', 'proj-A');
+    store.registerExecutionMapping('ct-1', 'e-new', 'tt-1', 'proj-A');
 
-    const found = useTriggerTaskStore.getState().getTaskById(dequeued!.id);
-    expect(found).not.toBeUndefined();
-    expect(found!.status).toBe(ExecutionStatus.Completed);
-  });
-
-  // ──── Cancel task from queue ────
-
-  it('should cancel a pending task from the queue', () => {
-    const store = useTriggerTaskStore.getState();
-    const id = store.enqueueTask(makeTaskPayload({ projectId: 'proj-A' }));
-
-    useTriggerTaskStore.getState().cancelTask(id, 'User cancelled');
-
-    const state = useTriggerTaskStore.getState();
-    expect(state.taskQueue).toHaveLength(0);
-    expect(state.taskHistory).toHaveLength(1);
-    expect(state.taskHistory[0].status).toBe(ExecutionStatus.Cancelled);
-  });
-
-  // ──── Duplicate event_id deduplication ────
-
-  it('should reject duplicate event_id in queue', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(
-      makeTaskPayload({
-        projectId: 'proj-A',
-        inputData: { event_id: 'evt-123' },
-      })
-    );
-
-    // Enqueue duplicate
-    store.enqueueTask(
-      makeTaskPayload({
-        projectId: 'proj-A',
-        inputData: { event_id: 'evt-123' },
-      })
-    );
-
-    const state = useTriggerTaskStore.getState();
-    // Only 1 in queue, duplicate goes to history as missed
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskHistory).toHaveLength(1);
-    expect(state.taskHistory[0].status).toBe(ExecutionStatus.Missed);
-  });
-
-  it('should reject duplicate event_id in runningTasks', () => {
-    const store = useTriggerTaskStore.getState();
-    store.enqueueTask(
-      makeTaskPayload({
-        projectId: 'proj-A',
-        inputData: { event_id: 'evt-456' },
-      })
-    );
-    // Move to running
-    useTriggerTaskStore.getState().dequeueTask('proj-A');
-
-    // Enqueue duplicate
-    useTriggerTaskStore.getState().enqueueTask(
-      makeTaskPayload({
-        projectId: 'proj-A',
-        inputData: { event_id: 'evt-456' },
-      })
-    );
-
-    const state = useTriggerTaskStore.getState();
-    expect(state.taskQueue).toHaveLength(0);
-    expect(state.runningTasks).toHaveLength(1);
-    // Duplicate added to history as missed
-    expect(state.taskHistory).toHaveLength(1);
-    expect(state.taskHistory[0].status).toBe(ExecutionStatus.Missed);
+    expect(useTriggerTaskStore.getState().executionMappings.size).toBe(1);
+    expect(
+      useTriggerTaskStore.getState().getExecutionMapping('ct-1')!.executionId
+    ).toBe('e-new');
   });
 });
 
-// ───────────────────────────────────────────
-// Hook-level tests for useTriggerTaskExecutor
-// ───────────────────────────────────────────
-describe('useTriggerTaskExecutor - hook behavior', () => {
+// ═══════════════════════════════════════════════════════════════════
+// 2. formatTriggeredTaskMessage
+// ═══════════════════════════════════════════════════════════════════
+
+describe('formatTriggeredTaskMessage', () => {
+  it('should return just the prompt for schedule triggers', () => {
+    const msg = formatTriggeredTaskMessage(
+      makeTask({
+        triggerType: 'schedule' as TriggerType,
+        taskPrompt: 'Run daily report',
+      })
+    );
+    expect(msg).toBe('Run daily report');
+  });
+
+  it('should return just the prompt for webhook with no extra data', () => {
+    const msg = formatTriggeredTaskMessage(
+      makeTask({
+        triggerType: 'webhook' as TriggerType,
+        taskPrompt: 'Handle hook',
+        inputData: {},
+      })
+    );
+    expect(msg).toBe('Handle hook');
+  });
+
+  it('should include webhook context when present', () => {
+    const msg = formatTriggeredTaskMessage(
+      makeTask({
+        triggerType: 'webhook' as TriggerType,
+        taskPrompt: 'Process request',
+        inputData: {
+          method: 'POST',
+          body: { key: 'value' },
+        },
+      })
+    );
+    expect(msg).toContain('Process request');
+    expect(msg).toContain('**Method:** POST');
+    expect(msg).toContain('"key": "value"');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 3. useTriggerTaskExecutor — hook-level tests
+// ═══════════════════════════════════════════════════════════════════
+
+describe('useTriggerTaskExecutor — hook behavior', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Reset stores
+    useTriggerTaskStore.setState({ executionMappings: new Map() });
+    useTriggerStore.setState({ webSocketEvent: null });
 
-    // Reset all stores
-    useTriggerTaskStore.setState({
-      taskQueue: [],
-      runningTasks: [],
-      taskHistory: [],
-      executionMappings: new Map(),
-    });
-
-    useTriggerStore.setState({
-      webSocketEvent: null,
-    });
-
-    // Create test projects in the project store
+    // Create test projects
     const projectStore = useProjectStore.getState();
     projectStore.createProject('Project A', 'Test project A', 'proj-A');
     projectStore.createProject('Project B', 'Test project B', 'proj-B');
@@ -414,7 +232,6 @@ describe('useTriggerTaskExecutor - hook behavior', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.restoreAllMocks();
 
     // Clean up projects
@@ -425,181 +242,149 @@ describe('useTriggerTaskExecutor - hook behavior', () => {
     }
   });
 
-  it('should expose processNextTask and executeTask', () => {
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║  PLAN 1: If current project is running → add to queue       ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  it('should add task to project queuedMessages when executeTask is called', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    expect(result.current.processNextTask).toBeDefined();
-    expect(result.current.executeTask).toBeDefined();
+    const task = makeTask({
+      projectId: 'proj-A',
+      triggerName: 'Webhook #1',
+      executionId: 'exec-001',
+      taskPrompt: 'Process webhook',
+    });
+
+    await act(async () => {
+      await result.current.executeTask(task);
+    });
+
+    // Message should be in project A's queuedMessages
+    const project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(1);
+    expect(project!.queuedMessages[0].executionId).toBe('exec-001');
+    expect(project!.queuedMessages[0].content).toContain('Process webhook');
   });
 
-  it('should process a task when no project is busy', async () => {
+  it('should queue multiple tasks for the same project (serialization)', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    // Enqueue a task for proj-A
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Task 1' })
-      );
-
-    // Process
-    await act(async () => {
-      await result.current.processNextTask();
+    // Fire two tasks at proj-A
+    const task1 = makeTask({
+      projectId: 'proj-A',
+      triggerName: 'First',
+      executionId: 'exec-1',
+    });
+    const task2 = makeTask({
+      projectId: 'proj-A',
+      triggerName: 'Second',
+      executionId: 'exec-2',
     });
 
-    const state = useTriggerTaskStore.getState();
-    // Task should have been dequeued and is now running
-    expect(state.taskQueue).toHaveLength(0);
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].projectId).toBe('proj-A');
+    await act(async () => {
+      await result.current.executeTask(task1);
+      await result.current.executeTask(task2);
+    });
+
+    const project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(2);
+    expect(project!.queuedMessages[0].executionId).toBe('exec-1');
+    expect(project!.queuedMessages[1].executionId).toBe('exec-2');
   });
 
-  it('should NOT process a second task for the SAME project while first is running', async () => {
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║  PLAN 2: Project finished → execute & remove from queue     ║
+  // ║          Update execution status on start                   ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  it('should allow background processor to remove message from queue when processing', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    // Enqueue two tasks for the same project
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Task 1' })
-      );
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Task 2' })
-      );
+    const task = makeTask({ projectId: 'proj-A', executionId: 'exec-rm' });
 
-    // Process → should only execute one task
     await act(async () => {
-      await result.current.processNextTask();
+      await result.current.executeTask(task);
     });
 
-    const state = useTriggerTaskStore.getState();
-    // First task running, second still queued
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('Task 1');
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].triggerName).toBe('Task 2');
+    // Verify it's queued
+    let project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(1);
+    const taskId = project!.queuedMessages[0].task_id;
+
+    // Simulate background processor removing the message (what useBackgroundTaskProcessor does)
+    useProjectStore.getState().removeQueuedMessage('proj-A', taskId);
+
+    project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(0);
   });
 
-  it('should process tasks for DIFFERENT projects in parallel', async () => {
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║  PLAN 3: Triggered on different page → toast + queue/run    ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  it('should show toast when task is queued via executeTask', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    // Enqueue tasks for different projects
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Task A' })
-      );
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-B', triggerName: 'Task B' })
-      );
-
-    // Process → should execute both (different projects)
-    await act(async () => {
-      await result.current.processNextTask();
+    const task = makeTask({
+      projectId: 'proj-A',
+      triggerName: 'Remote Trigger',
+      executionId: 'exec-toast',
     });
 
-    const state = useTriggerTaskStore.getState();
-    // Both tasks should be running
-    expect(state.runningTasks).toHaveLength(2);
-    expect(state.taskQueue).toHaveLength(0);
+    await act(async () => {
+      await result.current.executeTask(task);
+    });
 
-    const runningProjects = state.runningTasks.map((t) => t.projectId).sort();
-    expect(runningProjects).toEqual(['proj-A', 'proj-B']);
+    // Toast info should have been called on start
+    expect(toast.info).toHaveBeenCalledWith(
+      'Execution started: Remote Trigger',
+      expect.objectContaining({ description: 'Processing trigger task...' })
+    );
+    // Toast success should have been called after queueing
+    expect(toast.success).toHaveBeenCalledWith(
+      'Queued: Remote Trigger',
+      expect.objectContaining({
+        description: 'Task has been added to the project queue',
+      })
+    );
   });
 
-  it('should queue task for busy project while executing for non-busy project', async () => {
+  it('should queue tasks for different projects independently (parallel background execution)', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    // Start a task for proj-A (make it busy)
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Running A' })
-      );
-    await act(async () => {
-      await result.current.processNextTask();
+    const taskA = makeTask({
+      projectId: 'proj-A',
+      triggerName: 'Task A',
+      executionId: 'exec-A',
+    });
+    const taskB = makeTask({
+      projectId: 'proj-B',
+      triggerName: 'Task B',
+      executionId: 'exec-B',
     });
 
-    // Now proj-A is busy, enqueue tasks for both projects
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Queued A' })
-      );
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-B', triggerName: 'New B' })
-      );
-
-    // Process again
     await act(async () => {
-      await result.current.processNextTask();
+      await result.current.executeTask(taskA);
+      await result.current.executeTask(taskB);
     });
 
-    const state = useTriggerTaskStore.getState();
-    // proj-A: 1 running (original), 1 queued (new one for A)
-    // proj-B: 1 running (new one for B)
-    expect(state.runningTasks).toHaveLength(2);
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].triggerName).toBe('Queued A');
-    expect(state.taskQueue[0].projectId).toBe('proj-A');
+    const projA = useProjectStore.getState().getProjectById('proj-A');
+    const projB = useProjectStore.getState().getProjectById('proj-B');
 
-    const runningNames = state.runningTasks.map((t) => t.triggerName).sort();
-    expect(runningNames).toEqual(['New B', 'Running A']);
+    expect(projA!.queuedMessages).toHaveLength(1);
+    expect(projA!.queuedMessages[0].executionId).toBe('exec-A');
+    expect(projB!.queuedMessages).toHaveLength(1);
+    expect(projB!.queuedMessages[0].executionId).toBe('exec-B');
   });
 
-  it('should process queued task after busy project completes', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║  WebSocket event integration                                ║
+  // ╚═══════════════════════════════════════════════════════════════╝
 
-    // Start a task for proj-A
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'First A' })
-      );
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    // Enqueue second task for proj-A while first is running
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Second A' })
-      );
-
-    // Verify: first running, second queued
-    let state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.taskQueue).toHaveLength(1);
-
-    // Complete the first task
-    const firstTaskId = state.runningTasks[0].id;
-    useTriggerTaskStore.getState().completeTask(firstTaskId);
-
-    // proj-A should no longer be busy
-    expect(useTriggerTaskStore.getState().isProjectBusy('proj-A')).toBe(false);
-
-    // Process again → second task should now be picked up
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('Second A');
-    expect(state.taskQueue).toHaveLength(0);
-  });
-
-  it('should handle WebSocket events by enqueuing and processing', async () => {
+  it('should process WebSocket event and add to project queue', async () => {
     renderHook(() => useTriggerTaskExecutor());
 
-    // Simulate a WebSocket event
     await act(async () => {
       useTriggerStore.getState().emitWebSocketEvent({
         triggerId: 1,
@@ -613,16 +398,16 @@ describe('useTriggerTaskExecutor - hook behavior', () => {
       });
     });
 
-    // Give microtask a chance to run
+    // Allow async executeTask to complete
     await act(async () => {
       await Promise.resolve();
     });
 
-    const state = useTriggerTaskStore.getState();
-    // The WebSocket event should have been enqueued and processed
-    const allTasks = [...state.taskQueue, ...state.runningTasks];
-    expect(allTasks.length).toBeGreaterThanOrEqual(1);
-    expect(allTasks.some((t) => t.triggerName === 'WS Trigger')).toBe(true);
+    const project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages.length).toBeGreaterThanOrEqual(1);
+    expect(
+      project!.queuedMessages.some((m) => m.executionId === 'exec-ws-1')
+    ).toBe(true);
   });
 
   it('should clear WebSocket event after processing', async () => {
@@ -641,397 +426,250 @@ describe('useTriggerTaskExecutor - hook behavior', () => {
       });
     });
 
-    // After processing, the event should be cleared
     expect(useTriggerStore.getState().webSocketEvent).toBeNull();
   });
 
-  // ──── Mixed scenario: 3 projects, various states ────
-
-  it('should handle complex multi-project scenario correctly', async () => {
+  it('should create a new project when projectId is null', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    // Create proj-C
-    useProjectStore.getState().createProject('Project C', 'Test C', 'proj-C');
-
-    // Enqueue tasks A1, B1, C1
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-A', triggerName: 'A1' }));
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-B', triggerName: 'B1' }));
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-C', triggerName: 'C1' }));
-
-    // Process → all 3 should run (different projects)
-    await act(async () => {
-      await result.current.processNextTask();
+    const task = makeTask({
+      projectId: null,
+      triggerName: 'No-Project Trigger',
+      executionId: 'exec-no-proj',
     });
 
-    let state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(3);
-    expect(state.taskQueue).toHaveLength(0);
-
-    // Now enqueue A2, B2 while all projects are busy
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-A', triggerName: 'A2' }));
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-B', triggerName: 'B2' }));
-
-    // Process → nothing should move (all busy)
     await act(async () => {
-      await result.current.processNextTask();
+      await result.current.executeTask(task);
     });
 
-    state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(3);
-    expect(state.taskQueue).toHaveLength(2);
+    // A new project should have been created with the task queued
+    const allProjects = useProjectStore.getState().getAllProjects();
+    const triggerProject = allProjects.find((p) =>
+      p.name.includes('No-Project Trigger')
+    );
+    expect(triggerProject).toBeDefined();
+    expect(triggerProject!.queuedMessages).toHaveLength(1);
+    expect(triggerProject!.queuedMessages[0].executionId).toBe('exec-no-proj');
 
-    // Complete proj-A's task
-    const taskA1 = state.runningTasks.find((t) => t.triggerName === 'A1')!;
-    useTriggerTaskStore.getState().completeTask(taskA1.id);
-
-    // Process → A2 should start running
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    state = useTriggerTaskStore.getState();
-    // proj-A: A2 running (A1 completed)
-    // proj-B: B1 running, B2 still queued
-    // proj-C: C1 still running
-    expect(state.runningTasks).toHaveLength(3);
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].triggerName).toBe('B2');
-
-    const runningNames = state.runningTasks.map((t) => t.triggerName).sort();
-    expect(runningNames).toEqual(['A2', 'B1', 'C1']);
-
-    // Clean up proj-C
-    useProjectStore.getState().removeProject('proj-C');
+    // Clean up
+    if (triggerProject) {
+      useProjectStore.getState().removeProject(triggerProject.id);
+    }
   });
 
-  // ──── Edge case: null projectId ────
+  it('should handle WebSocket event for project not found locally (loads from history)', async () => {
+    renderHook(() => useTriggerTaskExecutor());
 
-  it('should handle tasks with null projectId', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    // Enqueue a task without project ID
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: null, triggerName: 'No Project' })
-      );
-
-    // Process
     await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    const state = useTriggerTaskStore.getState();
-    // Should have been dequeued and running
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].projectId).toBeNull();
-    expect(state.taskQueue).toHaveLength(0);
-  });
-
-  it('should serialize null-projectId tasks among themselves', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    // Enqueue two tasks without project ID
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: null, triggerName: 'No Project 1' })
-      );
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: null, triggerName: 'No Project 2' })
-      );
-
-    // Process → only first should run
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    const state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('No Project 1');
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].triggerName).toBe('No Project 2');
-  });
-
-  // ──── Returned values ────
-
-  it('should return pending tasks and running tasks', async () => {
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Pending 1' })
-      );
-
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    expect(result.current.pendingTasks).toHaveLength(1);
-    expect(result.current.pendingTasks[0].triggerName).toBe('Pending 1');
-    expect(result.current.runningTasks).toHaveLength(0);
-  });
-
-  // ──── Auto-process on completion ────
-
-  it('should auto-process queued task when running task completes', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    // Enqueue two tasks for the same project
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'First' })
-      );
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Second' })
-      );
-
-    // Process → only first should run (same project serialization)
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    let state = useTriggerTaskStore.getState();
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('First');
-    expect(state.taskQueue).toHaveLength(1);
-
-    // Complete the first task (simulates chatStore calling completeTask)
-    const firstId = state.runningTasks[0].id;
-    await act(async () => {
-      useTriggerTaskStore.getState().completeTask(firstId);
-    });
-
-    // The useEffect watches runningTasks + taskQueue and calls processNextTask
-    // after a 500ms delay. Advance timers to trigger it.
-    await act(async () => {
-      vi.advanceTimersByTime(600);
-    });
-
-    // Allow the async processNextTask to complete
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    state = useTriggerTaskStore.getState();
-    // Second task should now be running, none queued
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('Second');
-    expect(state.taskQueue).toHaveLength(0);
-    // First task should be in history
-    expect(state.taskHistory).toHaveLength(1);
-    expect(state.taskHistory[0].triggerName).toBe('First');
-  });
-
-  it('should auto-process queued task when running task fails', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    // Enqueue two tasks for the same project
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'First' })
-      );
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Second' })
-      );
-
-    // Process → only first runs
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    let state = useTriggerTaskStore.getState();
-    const firstId = state.runningTasks[0].id;
-
-    // Fail the first task
-    await act(async () => {
-      useTriggerTaskStore.getState().failTask(firstId, 'Oops');
-    });
-
-    // Advance past the 500ms delay
-    await act(async () => {
-      vi.advanceTimersByTime(600);
+      useTriggerStore.getState().emitWebSocketEvent({
+        triggerId: 1,
+        triggerName: 'History Trigger',
+        taskPrompt: 'Do something from history',
+        executionId: 'exec-hist-1',
+        timestamp: Date.now(),
+        triggerType: TriggerType.Webhook,
+        projectId: 'proj-no-exist',
+        inputData: {},
+      });
     });
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    state = useTriggerTaskStore.getState();
-    // Second task should now be running
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('Second');
-    expect(state.taskQueue).toHaveLength(0);
-    // Failed task in history
-    expect(state.taskHistory).toHaveLength(1);
-    expect(state.taskHistory[0].status).toBe(ExecutionStatus.Failed);
+    // The executor should have created or loaded a project
+    const project = useProjectStore.getState().getProjectById('proj-no-exist');
+    // Either loaded from history mock or created new
+    expect(project).not.toBeNull();
+
+    // Clean up
+    if (project) {
+      useProjectStore.getState().removeProject(project.id);
+    }
   });
 
-  it('should NOT auto-process when no pending tasks remain', async () => {
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║  Edge cases                                                 ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  it('should expose executeTask function', () => {
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+    expect(result.current.executeTask).toBeDefined();
+    expect(typeof result.current.executeTask).toBe('function');
+  });
+
+  it('should queue messages with triggerId and triggerName metadata', async () => {
     const { result } = renderHook(() => useTriggerTaskExecutor());
 
-    // Enqueue only one task
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Only One' })
-      );
-
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    let state = useTriggerTaskStore.getState();
-    const taskId = state.runningTasks[0].id;
-
-    // Complete it
-    await act(async () => {
-      useTriggerTaskStore.getState().completeTask(taskId);
+    const task = makeTask({
+      projectId: 'proj-A',
+      triggerId: 42,
+      triggerName: 'Special Trigger',
+      executionId: 'exec-meta',
     });
 
     await act(async () => {
-      vi.advanceTimersByTime(600);
+      await result.current.executeTask(task);
+    });
+
+    const project = useProjectStore.getState().getProjectById('proj-A');
+    const msg = project!.queuedMessages[0];
+    expect(msg.triggerId).toBe(42);
+    expect(msg.triggerName).toBe('Special Trigger');
+    expect(msg.executionId).toBe('exec-meta');
+  });
+
+  it('should handle multiple WebSocket events in sequence', async () => {
+    renderHook(() => useTriggerTaskExecutor());
+
+    // First event
+    await act(async () => {
+      useTriggerStore.getState().emitWebSocketEvent({
+        triggerId: 1,
+        triggerName: 'Seq Trigger 1',
+        taskPrompt: 'First task',
+        executionId: 'exec-seq-1',
+        timestamp: Date.now(),
+        triggerType: TriggerType.Webhook,
+        projectId: 'proj-A',
+        inputData: {},
+      });
     });
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    state = useTriggerTaskStore.getState();
-    // Nothing running, nothing queued, one in history
-    expect(state.runningTasks).toHaveLength(0);
-    expect(state.taskQueue).toHaveLength(0);
-    expect(state.taskHistory).toHaveLength(1);
-  });
-
-  // ──── Cross-project auto-switch on completion ────
-
-  it('should switch active project and process queued task from a DIFFERENT project after current completes', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    // Start with proj-A active
-    useProjectStore.getState().setActiveProject('proj-A');
-
-    // Enqueue and process a task for proj-A (makes it busy)
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-A', triggerName: 'Running A' })
-      );
+    // Second event
     await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    // Verify proj-A is active and running
-    expect(useProjectStore.getState().activeProjectId).toBe('proj-A');
-    expect(useTriggerTaskStore.getState().runningTasks).toHaveLength(1);
-
-    // Now enqueue a task for proj-B while proj-A is running AND proj-B is not busy
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(
-        makeTaskPayload({ projectId: 'proj-B', triggerName: 'Waiting B' })
-      );
-
-    // Process → proj-B task should execute immediately (proj-B is not busy)
-    //          This will call setActiveProject('proj-B')
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    let state = useTriggerTaskStore.getState();
-    // Both should be running now
-    expect(state.runningTasks).toHaveLength(2);
-    expect(state.taskQueue).toHaveLength(0);
-    // Active project switched to proj-B (last executeTask call)
-    expect(useProjectStore.getState().activeProjectId).toBe('proj-B');
-
-    // Now complete proj-B task
-    const taskB = state.runningTasks.find(
-      (t) => t.triggerName === 'Waiting B'
-    )!;
-    await act(async () => {
-      useTriggerTaskStore.getState().completeTask(taskB.id);
-    });
-
-    state = useTriggerTaskStore.getState();
-    // Only proj-A running, nothing queued
-    expect(state.runningTasks).toHaveLength(1);
-    expect(state.runningTasks[0].triggerName).toBe('Running A');
-    expect(state.taskQueue).toHaveLength(0);
-  });
-
-  it('should auto-switch to different project when queued task becomes eligible after completion', async () => {
-    const { result } = renderHook(() => useTriggerTaskExecutor());
-
-    // Set proj-A as active
-    useProjectStore.getState().setActiveProject('proj-A');
-
-    // Start tasks for both proj-A and proj-B
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-A', triggerName: 'A1' }));
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-B', triggerName: 'B1' }));
-    await act(async () => {
-      await result.current.processNextTask();
-    });
-
-    // Both running
-    expect(useTriggerTaskStore.getState().runningTasks).toHaveLength(2);
-
-    // Enqueue a second task for proj-B while B1 is running (will be queued)
-    useTriggerTaskStore
-      .getState()
-      .enqueueTask(makeTaskPayload({ projectId: 'proj-B', triggerName: 'B2' }));
-
-    let state = useTriggerTaskStore.getState();
-    expect(state.taskQueue).toHaveLength(1);
-    expect(state.taskQueue[0].triggerName).toBe('B2');
-
-    // User manually switches to proj-A
-    useProjectStore.getState().setActiveProject('proj-A');
-    expect(useProjectStore.getState().activeProjectId).toBe('proj-A');
-
-    // Complete proj-B's first task (B1)
-    const taskB1 = state.runningTasks.find((t) => t.triggerName === 'B1')!;
-    await act(async () => {
-      useTriggerTaskStore.getState().completeTask(taskB1.id);
-    });
-
-    // The useEffect detects pending B2 and calls processNextTask after 500ms
-    await act(async () => {
-      vi.advanceTimersByTime(600);
+      useTriggerStore.getState().emitWebSocketEvent({
+        triggerId: 2,
+        triggerName: 'Seq Trigger 2',
+        taskPrompt: 'Second task',
+        executionId: 'exec-seq-2',
+        timestamp: Date.now(),
+        triggerType: TriggerType.Webhook,
+        projectId: 'proj-A',
+        inputData: {},
+      });
     });
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    state = useTriggerTaskStore.getState();
-    // B2 should be running now (auto-processed after B1 completed)
-    expect(state.runningTasks).toHaveLength(2);
-    const runningNames = state.runningTasks.map((t) => t.triggerName).sort();
-    expect(runningNames).toEqual(['A1', 'B2']);
-    expect(state.taskQueue).toHaveLength(0);
+    const project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(2);
 
-    // Active project should now be proj-B (executeTask called setActiveProject)
-    expect(useProjectStore.getState().activeProjectId).toBe('proj-B');
+    const execIds = project!.queuedMessages.map((m) => m.executionId);
+    expect(execIds).toContain('exec-seq-1');
+    expect(execIds).toContain('exec-seq-2');
+  });
+
+  it('should queue tasks for different projects from WebSocket events (background parallel)', async () => {
+    renderHook(() => useTriggerTaskExecutor());
+
+    // Event for proj-A
+    await act(async () => {
+      useTriggerStore.getState().emitWebSocketEvent({
+        triggerId: 1,
+        triggerName: 'Trigger A',
+        taskPrompt: 'Task for A',
+        executionId: 'exec-par-A',
+        timestamp: Date.now(),
+        triggerType: TriggerType.Webhook,
+        projectId: 'proj-A',
+        inputData: {},
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Event for proj-B
+    await act(async () => {
+      useTriggerStore.getState().emitWebSocketEvent({
+        triggerId: 2,
+        triggerName: 'Trigger B',
+        taskPrompt: 'Task for B',
+        executionId: 'exec-par-B',
+        timestamp: Date.now(),
+        triggerType: TriggerType.Webhook,
+        projectId: 'proj-B',
+        inputData: {},
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const projA = useProjectStore.getState().getProjectById('proj-A');
+    const projB = useProjectStore.getState().getProjectById('proj-B');
+
+    expect(projA!.queuedMessages).toHaveLength(1);
+    expect(projA!.queuedMessages[0].executionId).toBe('exec-par-A');
+    expect(projB!.queuedMessages).toHaveLength(1);
+    expect(projB!.queuedMessages[0].executionId).toBe('exec-par-B');
+  });
+
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║  Queue removal / cancellation via projectStore              ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  it('should support removing a queued message (cancel from UI)', async () => {
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    const task1 = makeTask({
+      projectId: 'proj-A',
+      executionId: 'exec-c1',
+      triggerName: 'Keep',
+    });
+    const task2 = makeTask({
+      projectId: 'proj-A',
+      executionId: 'exec-c2',
+      triggerName: 'Remove',
+    });
+
+    await act(async () => {
+      await result.current.executeTask(task1);
+      await result.current.executeTask(task2);
+    });
+
+    let project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(2);
+
+    // Remove the second one (simulating cancel)
+    const toRemoveId = project!.queuedMessages[1].task_id;
+    useProjectStore.getState().removeQueuedMessage('proj-A', toRemoveId);
+
+    project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(1);
+    expect(project!.queuedMessages[0].executionId).toBe('exec-c1');
+  });
+
+  it('should support restoring a removed queued message (undo cancel)', async () => {
+    const { result } = renderHook(() => useTriggerTaskExecutor());
+
+    const task = makeTask({
+      projectId: 'proj-A',
+      executionId: 'exec-restore',
+    });
+
+    await act(async () => {
+      await result.current.executeTask(task);
+    });
+
+    let project = useProjectStore.getState().getProjectById('proj-A');
+    const taskId = project!.queuedMessages[0].task_id;
+
+    // Remove then restore
+    const removed = useProjectStore
+      .getState()
+      .removeQueuedMessage('proj-A', taskId);
+    useProjectStore.getState().restoreQueuedMessage('proj-A', removed);
+
+    project = useProjectStore.getState().getProjectById('proj-A');
+    expect(project!.queuedMessages).toHaveLength(1);
+    expect(project!.queuedMessages[0].executionId).toBe('exec-restore');
   });
 });
