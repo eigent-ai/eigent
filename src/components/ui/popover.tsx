@@ -285,7 +285,6 @@ type PopoverItemProps = React.HTMLAttributes<HTMLDivElement> & {
   selected?: boolean;
   disabled?: boolean;
 };
-PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 const PopoverItem = React.forwardRef<HTMLDivElement, PopoverItemProps>(
   ({ className, children, selected, disabled, ...props }, ref) => (
