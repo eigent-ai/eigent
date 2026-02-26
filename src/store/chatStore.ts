@@ -316,17 +316,19 @@ const updateTriggerExecutionStatus = async (
 
     // Complete or fail the current trigger task in triggerTaskStore
     const triggerTaskStore = useTriggerTaskStore.getState();
-    const currentTask = triggerTaskStore.currentTask;
+    const runningTask = triggerTaskStore.runningTasks.find(
+      (t) => t.executionId === executionId
+    );
 
-    if (currentTask && currentTask.executionId === executionId) {
+    if (runningTask) {
       if (status === ExecutionStatus.Completed) {
-        triggerTaskStore.completeTask(currentTask.id);
+        triggerTaskStore.completeTask(runningTask.id);
       } else if (
         status === ExecutionStatus.Failed ||
         status === ExecutionStatus.Cancelled
       ) {
         triggerTaskStore.failTask(
-          currentTask.id,
+          runningTask.id,
           errorMessage || 'Task failed'
         );
       }
@@ -3330,10 +3332,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       window.ipcRenderer
         .invoke('restart-backend')
-        .then((res) => {
+        .then((res: unknown) => {
           console.log('restart-backend', res);
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.error('Error in clearTasks cleanup:', error);
         });
 

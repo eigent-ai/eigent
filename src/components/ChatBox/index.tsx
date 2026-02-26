@@ -24,7 +24,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
-import { useTriggerTaskStore } from '@/store/triggerTaskStore';
+import { TriggeredTask, useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
@@ -41,9 +41,6 @@ export default function ChatBox(): JSX.Element {
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
 
   // Subscribe to triggerTaskStore for queue management
   const triggerTaskStoreState = useTriggerTaskStore();
@@ -54,7 +51,7 @@ export default function ChatBox(): JSX.Element {
   // Track which trigger task we've already started processing to avoid duplicate sends
   const processedTriggerTaskRef = useRef<string | null>(null);
   const [privacy, setPrivacy] = useState<any>(false);
-  const [hasSearchKey, setHasSearchKey] = useState<any>(false);
+  const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const { modelType } = useAuthStore();
@@ -132,238 +129,13 @@ export default function ChatBox(): JSX.Element {
   );
 
   const [_hasSubTask, setHasSubTask] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isReplayLoading, setIsReplayLoading] = useState(false);
+  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
   const activeTaskId = chatStore?.activeTaskId;
   const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
   const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
-
-  useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, message, chatStore, activeTaskId]);
-
-  const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
-
-  // Check if any chat store in the project has messages
-  const hasAnyMessages = useMemo(() => {
-    if (!chatStore) return false;
-    // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
-    }
-
-    // Then check all other chat stores in the project
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
-      const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
-      );
-    });
-  }, [chatStore, getAllChatStoresMemoized]);
-
-  const isTaskBusy = useMemo(() => {
-    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return false;
-    const task = chatStore.tasks[chatStore.activeTaskId];
-    return (
-      // running or paused
-      task.status === ChatTaskStatus.RUNNING ||
-      task.status === ChatTaskStatus.PAUSE ||
-      // splitting phase
-      task.messages.some(
-        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
-      ) ||
-      // skeleton/computing phase
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      task.isTakeControl
-    );
-  }, [chatStore?.activeTaskId, chatStore?.tasks]);
-
-  const isInputDisabled = useMemo(() => {
-    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return true;
-
-    const task = chatStore.tasks[chatStore.activeTaskId];
-
-    // If ask human is active, allow input
-    if (task.activeAsk) return false;
-
-    if (isTaskBusy) return true;
-
-    // Standard checks - check model first, then privacy
-    if (!privacy) return true;
-    if (useCloudModelInDev) return true;
-    if (task.isContextExceeded) return true;
-
-    return false;
-  }, [
-    chatStore?.activeTaskId,
-    chatStore?.tasks,
-    privacy,
-    useCloudModelInDev,
-    isTaskBusy,
-  ]);
-
-  const handleSendShare = useCallback(
-    async (token: string) => {
-      if (!chatStore) return;
-      if (!token) return;
-      if (!projectStore.activeProjectId) {
-        console.warn("Can't send share due to no active projectId");
-        return;
-      }
-
-      if (!privacy) {
-        toast.error('Please accept the privacy policy first.');
-        return;
-      }
-
-      let _token: string = token.split('__')[0];
-      let taskId: string = token.split('__')[1];
-      chatStore.create(taskId, 'share');
-      chatStore.setHasMessages(taskId, true);
-      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
-      if (res?.question) {
-        chatStore.addMessages(taskId, {
-          id: generateUniqueId(),
-          role: 'user',
-          content: res.question.split('|')[0],
-        });
-        try {
-          await chatStore.startTask(taskId, 'share', _token, 0.1);
-          chatStore.setActiveTaskId(taskId);
-          chatStore.handleConfirmTask(
-            projectStore.activeProjectId,
-            taskId,
-            'share'
-          );
-        } catch (err: any) {
-          console.error('Failed to start shared task:', err);
-          toast.error(
-            err?.message ||
-              'Failed to start task. Please check your model configuration.'
-          );
-        }
-      }
-    },
-    [chatStore, projectStore.activeProjectId, privacy, navigate]
-  );
-
-  useEffect(() => {
-    // Wait for both config and privacy to be loaded before handling share token
-    if (share_token) {
-      handleSendShare(share_token);
-    }
-  }, [share_token, handleSendShare]);
-
-  // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
-  useEffect(() => {
-    if (skill_prompt) {
-      setMessage(skill_prompt);
-      // Clear the skill_prompt param from URL after setting the message
-      const newSearchParams = new URLSearchParams(searchParams);
-      newSearchParams.delete('skill_prompt');
-      setSearchParams(newSearchParams, { replace: true });
-    }
-  }, [skill_prompt, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    console.log('ChatStore Data: ', chatStore);
-  }, [chatStore]);
-
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        scrollContainerRef.current!.scrollTo({
-          top: scrollContainerRef.current!.scrollHeight + 20,
-          behavior: 'smooth',
-        });
-      }, 200);
-    }
-  }, []);
-
-  // Handle scrollbar visibility on scroll
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      // Add scrolling class
-      scrollContainer.classList.add('scrolling');
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Remove scrolling class after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        scrollContainer.classList.remove('scrolling');
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
 
   const handleSend = async (
     messageStr?: string,
@@ -379,7 +151,7 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
-    const isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
+    const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isTaskBusy =
       // running or paused counts as busy
       (task.status === 'running' && task.hasMessages) ||
@@ -613,7 +385,380 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!chatStore?.activeTaskId) return;
+    const interval = setInterval(() => {
+      if (chatStore.activeTaskId) {
+        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [chatStore?.activeTaskId, chatStore]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    const _hasSubTask = chatStore.tasks[
+      chatStore.activeTaskId as string
+    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
+      ? true
+      : false;
+    setHasSubTask(_hasSubTask);
+  }, [chatStore, activeTaskId, activeTaskMessages]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    const _activeAsk = activeAsk;
+    let timer: NodeJS.Timeout;
+    if (_activeAsk && _activeAsk !== '') {
+      const _taskId = chatStore.activeTaskId as string;
+      timer = setTimeout(() => {
+        if (handleSendRef.current) {
+          handleSendRef.current('skip', _taskId);
+        }
+      }, 30000); // 30 seconds
+      return () => clearTimeout(timer); // clear previous timer
+    }
+    // if activeAsk is empty, also clear timer
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeAsk, message, chatStore, activeTaskId]);
+
+  // Process queued messages when task is idle
+  // This handles messages added by triggers (useTriggerTaskExecutor)
+  // Check currentTask first (already dequeued by useTriggerTaskExecutor), then pending tasks
+  useEffect(() => {
+    if (!projectStore.activeProjectId) return;
+
+    // First, check if there's a running task that matches our project
+    // The running task is set by useTriggerTaskExecutor.executeTask after dequeuing
+    const runningTaskForProject = triggerTaskStoreState.runningTasks.find(
+      (t) =>
+        t.projectId === projectStore.activeProjectId &&
+        t.status === ExecutionStatus.Running
+    );
+    const hasCurrentTaskForProject = !!runningTaskForProject;
+
+    // Also check for pending tasks in queue (fallback)
+    const pendingTasks = triggerTaskStoreState.taskQueue.filter(
+      (t) =>
+        t.projectId === projectStore.activeProjectId &&
+        t.status === ExecutionStatus.Pending
+    );
+
+    // No tasks to process
+    if (!hasCurrentTaskForProject && pendingTasks.length === 0) return;
+
+    const taskId = chatStore.activeTaskId;
+    if (!taskId) return;
+
+    const task = chatStore.tasks[taskId];
+    if (!task) return;
+
+    // Check if task is idle (not busy)
+    const isTaskBusy =
+      task.status === 'running' ||
+      task.status === 'pause' ||
+      task.isPending ||
+      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
+      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
+        !task.hasWaitComfirm &&
+        task.messages.length > 0) ||
+      task.isTakeControl;
+
+    // Only process if task is idle
+    if (isTaskBusy) return;
+
+    // Use running task for project if available, otherwise dequeue from pending
+    let taskToProcess: TriggeredTask | null;
+    if (hasCurrentTaskForProject) {
+      // Skip if we've already started processing this trigger task
+      // This prevents duplicate sends on re-renders while the task is still running
+      if (processedTriggerTaskRef.current === runningTaskForProject.id) {
+        console.log(
+          '[ChatBox] Skipping already-processed currentTask:',
+          runningTaskForProject.id
+        );
+        return;
+      }
+      taskToProcess = runningTaskForProject;
+      console.log(
+        '[ChatBox] Processing currentTask:',
+        taskToProcess.triggerName,
+        taskToProcess.formattedMessage?.substring(0, 50) + '...'
+      );
+    } else {
+      // Dequeue the task from triggerTaskStore for the active project (marks as running)
+      taskToProcess = triggerTaskStoreState.dequeueTask(
+        projectStore.activeProjectId
+      );
+      if (!taskToProcess) return;
+
+      // Skip if we've already started processing this trigger task
+      if (processedTriggerTaskRef.current === taskToProcess.id) {
+        console.log(
+          '[ChatBox] Skipping already-processed queued task:',
+          taskToProcess.id
+        );
+        return;
+      }
+      console.log(
+        '[ChatBox] Processing queued task:',
+        taskToProcess.triggerName,
+        taskToProcess.formattedMessage?.substring(0, 50) + '...'
+      );
+    }
+
+    // Mark this trigger task as being processed to prevent duplicate sends
+    processedTriggerTaskRef.current = taskToProcess.id;
+
+    // Register execution mapping for this task (for external tracking)
+    if (taskToProcess.executionId && projectStore.activeProjectId) {
+      const targetTaskId = chatStore.nextTaskId || taskId;
+
+      triggerTaskStoreState.registerExecutionMapping(
+        targetTaskId,
+        taskToProcess.executionId,
+        taskToProcess.id,
+        projectStore.activeProjectId
+      );
+    }
+
+    // Process the queued message via handleSend
+    // Pass executionId so startTask can set it on the new task
+    const messageContent =
+      taskToProcess.formattedMessage || taskToProcess.taskPrompt;
+    handleSend(messageContent, undefined, taskToProcess.executionId);
+  }, [
+    projectStore.activeProjectId,
+    triggerTaskStoreState,
+    chatStore,
+    handleSend,
+  ]);
+
+  // Clear the processed trigger task ref when no running task for active project
+  // This allows processing new trigger tasks
+  useEffect(() => {
+    const activeRunningTask = triggerTaskStoreState.runningTasks.find(
+      (t) => t.projectId === projectStore.activeProjectId
+    );
+    if (!activeRunningTask) {
+      processedTriggerTaskRef.current = null;
+    }
+  }, [triggerTaskStoreState.runningTasks, projectStore.activeProjectId]);
+
+  const activeAskValue =
+    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (activeAskValue && activeAskValue !== '') {
+      const _taskId = chatStore.activeTaskId as string;
+      timer = setTimeout(() => {
+        handleSend('skip', _taskId);
+      }, 30000); // 30 seconds
+      return () => clearTimeout(timer); // clear previous timer
+    }
+    // if activeAsk is empty, also clear timer
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [
+    activeAskValue,
+    message, // depend on message
+    chatStore,
+    handleSend,
+  ]);
+
+  const getAllChatStoresMemoized = useMemo(() => {
+    if (!projectStore.activeProjectId) return [];
+    return projectStore.getAllChatStores(projectStore.activeProjectId);
+  }, [projectStore]);
+
+  // Check if any chat store in the project has messages
+  const hasAnyMessages = useMemo(() => {
+    if (!chatStore) return false;
+    // First check current active chat store
+    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
+      const activeTask = chatStore.tasks[chatStore.activeTaskId];
+      if (
+        (activeTask.messages && activeTask.messages.length > 0) ||
+        activeTask.hasMessages
+      ) {
+        return true;
+      }
+    }
+
+    // Then check all other chat stores in the project
+    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
+      const state = store.getState();
+      return (
+        state.activeTaskId &&
+        state.tasks[state.activeTaskId] &&
+        (state.tasks[state.activeTaskId].messages.length > 0 ||
+          state.tasks[state.activeTaskId].hasMessages)
+      );
+    });
+  }, [chatStore, getAllChatStoresMemoized]);
+
+  const isTaskBusy = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return false;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    return (
+      // running or paused
+      task.status === ChatTaskStatus.RUNNING ||
+      task.status === ChatTaskStatus.PAUSE ||
+      // splitting phase
+      task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+      ) ||
+      // skeleton/computing phase
+      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+        !task.hasWaitComfirm &&
+        task.messages.length > 0) ||
+      task.isTakeControl
+    );
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+
+  const isInputDisabled = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return true;
+
+    const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // If ask human is active, allow input
+    if (task.activeAsk) return false;
+
+    if (isTaskBusy) return true;
+
+    // Standard checks - check model first, then privacy
+    if (!privacy) return true;
+    if (useCloudModelInDev) return true;
+    if (task.isContextExceeded) return true;
+
+    return false;
+  }, [
+    chatStore?.activeTaskId,
+    chatStore?.tasks,
+    privacy,
+    useCloudModelInDev,
+    isTaskBusy,
+  ]);
+
+  const handleSendShare = useCallback(
+    async (token: string) => {
+      if (!chatStore) return;
+      if (!token) return;
+      if (!projectStore.activeProjectId) {
+        console.warn("Can't send share due to no active projectId");
+        return;
+      }
+
+      if (!privacy) {
+        toast.error('Please accept the privacy policy first.');
+        return;
+      }
+
+      let _token: string = token.split('__')[0];
+      let taskId: string = token.split('__')[1];
+      chatStore.create(taskId, 'share');
+      chatStore.setHasMessages(taskId, true);
+      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
+      if (res?.question) {
+        chatStore.addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: res.question.split('|')[0],
+        });
+        try {
+          await chatStore.startTask(taskId, 'share', _token, 0.1);
+          chatStore.setActiveTaskId(taskId);
+          chatStore.handleConfirmTask(
+            projectStore.activeProjectId,
+            taskId,
+            'share'
+          );
+        } catch (err: any) {
+          console.error('Failed to start shared task:', err);
+          toast.error(
+            err?.message ||
+              'Failed to start task. Please check your model configuration.'
+          );
+        }
+      }
+    },
+    [chatStore, projectStore.activeProjectId, privacy]
+  );
+
+  useEffect(() => {
+    // Wait for both config and privacy to be loaded before handling share token
+    if (share_token) {
+      handleSendShare(share_token);
+    }
+  }, [share_token, handleSendShare]);
+
+  // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
+  useEffect(() => {
+    if (skill_prompt) {
+      setMessage(skill_prompt);
+      // Clear the skill_prompt param from URL after setting the message
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('skill_prompt');
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [skill_prompt, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    console.log('ChatStore Data: ', chatStore);
+  }, [chatStore]);
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollContainerRef.current) {
+      setTimeout(() => {
+        scrollContainerRef.current!.scrollTo({
+          top: scrollContainerRef.current!.scrollHeight + 20,
+          behavior: 'smooth',
+        });
+      }, 200);
+    }
+  }, []);
+
+  // Handle scrollbar visibility on scroll
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      // Add scrolling class
+      scrollContainer.classList.add('scrolling');
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Remove scrolling class after 1 second of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        scrollContainer.classList.remove('scrolling');
+      }, 1000);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll);
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
+
   const handleConfirmTask = async (taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (!_taskId || !projectStore.activeProjectId) {
@@ -651,7 +796,6 @@ export default function ChatBox(): JSX.Element {
   };
 
   // Replay handler
-  const [isReplayLoading, setIsReplayLoading] = useState(false);
   const handleReplay = async () => {
     setIsReplayLoading(true);
     await replayActiveTask(chatStore, projectStore, navigate);
@@ -659,7 +803,6 @@ export default function ChatBox(): JSX.Element {
   };
 
   // Pause/Resume handler
-  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
   const handlePauseResume = () => {
     const taskId = chatStore.activeTaskId as string;
     const task = chatStore.tasks[taskId];
@@ -873,155 +1016,6 @@ export default function ChatBox(): JSX.Element {
     return 'input';
   };
 
-  useEffect(() => {
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === 'to_sub_tasks')
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore?.tasks[chatStore.activeTaskId as string]?.messages]);
-
-  // Process queued messages when task is idle
-  // This handles messages added by triggers (useTriggerTaskExecutor)
-  // Check currentTask first (already dequeued by useTriggerTaskExecutor), then pending tasks
-  useEffect(() => {
-    if (!projectStore.activeProjectId) return;
-
-    // First, check if there's a currentTask that matches our project and needs processing
-    // The currentTask is set by useTriggerTaskExecutor.executeTask after dequeuing
-    const currentTask = triggerTaskStoreState.currentTask;
-    const hasCurrentTaskForProject =
-      currentTask &&
-      currentTask.projectId === projectStore.activeProjectId &&
-      currentTask.status === ExecutionStatus.Running;
-
-    // Also check for pending tasks in queue (fallback)
-    const pendingTasks = triggerTaskStoreState.taskQueue.filter(
-      (t) =>
-        t.projectId === projectStore.activeProjectId &&
-        t.status === ExecutionStatus.Pending
-    );
-
-    // No tasks to process
-    if (!hasCurrentTaskForProject && pendingTasks.length === 0) return;
-
-    const taskId = chatStore.activeTaskId;
-    if (!taskId) return;
-
-    const task = chatStore.tasks[taskId];
-    if (!task) return;
-
-    // Check if task is idle (not busy)
-    const isTaskBusy =
-      task.status === 'running' ||
-      task.status === 'pause' ||
-      task.isPending ||
-      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
-      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      task.isTakeControl;
-
-    // Only process if task is idle
-    if (isTaskBusy) return;
-
-    // Use currentTask if available, otherwise dequeue from pending
-    let taskToProcess: typeof currentTask;
-    if (hasCurrentTaskForProject) {
-      // Skip if we've already started processing this trigger task
-      // This prevents duplicate sends on re-renders while the task is still running
-      if (processedTriggerTaskRef.current === currentTask.id) {
-        console.log(
-          '[ChatBox] Skipping already-processed currentTask:',
-          currentTask.id
-        );
-        return;
-      }
-      taskToProcess = currentTask;
-      console.log(
-        '[ChatBox] Processing currentTask:',
-        taskToProcess.triggerName,
-        taskToProcess.formattedMessage?.substring(0, 50) + '...'
-      );
-    } else {
-      // Dequeue the task from triggerTaskStore (marks as running)
-      taskToProcess = triggerTaskStoreState.dequeueTask();
-      if (!taskToProcess) return;
-
-      // Skip if we've already started processing this trigger task
-      if (processedTriggerTaskRef.current === taskToProcess.id) {
-        console.log(
-          '[ChatBox] Skipping already-processed queued task:',
-          taskToProcess.id
-        );
-        return;
-      }
-      console.log(
-        '[ChatBox] Processing queued task:',
-        taskToProcess.triggerName,
-        taskToProcess.formattedMessage?.substring(0, 50) + '...'
-      );
-    }
-
-    // Mark this trigger task as being processed to prevent duplicate sends
-    processedTriggerTaskRef.current = taskToProcess.id;
-
-    // Register execution mapping for this task (for external tracking)
-    if (taskToProcess.executionId && projectStore.activeProjectId) {
-      const targetTaskId = chatStore.nextTaskId || taskId;
-
-      triggerTaskStoreState.registerExecutionMapping(
-        targetTaskId,
-        taskToProcess.executionId,
-        taskToProcess.id,
-        projectStore.activeProjectId
-      );
-    }
-
-    // Process the queued message via handleSend
-    // Pass executionId so startTask can set it on the new task
-    const messageContent =
-      taskToProcess.formattedMessage || taskToProcess.taskPrompt;
-    handleSend(messageContent, undefined, taskToProcess.executionId);
-  }, [
-    projectStore.activeProjectId,
-    triggerTaskStoreState.taskQueue,
-    triggerTaskStoreState.currentTask,
-    chatStore.activeTaskId,
-    chatStore.tasks[chatStore.activeTaskId as string]?.status,
-    chatStore.tasks[chatStore.activeTaskId as string]?.isPending,
-    chatStore.tasks[chatStore.activeTaskId as string]?.messages?.length,
-  ]);
-
-  // Clear the processed trigger task ref when currentTask changes to null (task completed)
-  // This allows processing new trigger tasks
-  useEffect(() => {
-    if (!triggerTaskStoreState.currentTask) {
-      processedTriggerTaskRef.current = null;
-    }
-  }, [triggerTaskStoreState.currentTask]);
-
-  useEffect(() => {
-    const activeAsk =
-      chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
-    let timer: NodeJS.Timeout;
-    if (activeAsk && activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        handleSend('skip', _taskId);
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [
-    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk,
-    message, // depend on message
-  ]);
-
   const handleRemoveTaskQueue = async (task_id: string) => {
     const project_id = projectStore.activeProjectId;
     if (!project_id) {
@@ -1063,6 +1057,10 @@ export default function ChatBox(): JSX.Element {
       });
     }
   };
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="h-full w-full flex-none items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">

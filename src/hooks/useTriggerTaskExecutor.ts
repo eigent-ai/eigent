@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { proxyFetchGet } from '@/api/http';
 import { ProjectType, useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
@@ -193,7 +207,7 @@ export function useTriggerTaskExecutor() {
         }
 
         // NOTE: We don't mark the trigger task as completed here.
-        // The task remains in triggerTaskStore.currentTask until the chat task actually completes.
+        // The task remains in triggerTaskStore.runningTasks until the chat task actually completes.
         // This allows us to track the execution status properly.
         // The execution mapping will be registered in ChatBox when we know the actual chat task ID.
 
@@ -222,7 +236,9 @@ export function useTriggerTaskExecutor() {
   );
 
   /**
-   * Process the next task in the queue
+   * Process the next task in the queue.
+   * Tasks are processed per-project: a task for project B won't be blocked
+   * by a running task for project A. Only tasks for the same project are serialized.
    */
   const processNextTask = useCallback(async () => {
     if (isProcessingRef.current) {
@@ -231,26 +247,51 @@ export function useTriggerTaskExecutor() {
     }
 
     // Use getState() to get the latest Zustand state directly
-    // This is important because the React-subscribed state may be stale
-    // when this function is called immediately after enqueueTask
     const store = useTriggerTaskStore.getState();
 
-    // Check if there's a current task running
-    if (store.currentTask) {
-      console.log('[TriggerTaskExecutor] Task already running, waiting');
+    // Find pending tasks and group by project
+    const pendingTasks = store.taskQueue.filter((t) => t.status === 'pending');
+
+    if (pendingTasks.length === 0) {
+      console.log('[TriggerTaskExecutor] No pending tasks to process');
       return;
     }
 
-    // Dequeue the next pending task
-    const nextTask = store.dequeueTask();
-    if (!nextTask) {
-      console.log('[TriggerTaskExecutor] No pending tasks to dequeue');
-      return; // No pending tasks
+    // Collect one task per non-busy project
+    const tasksToExecute: TriggeredTask[] = [];
+    const seenProjects = new Set<string>();
+
+    for (const task of pendingTasks) {
+      const projectKey = task.projectId || '__no_project__';
+      // Only process one task per project in this batch
+      if (seenProjects.has(projectKey)) continue;
+      seenProjects.add(projectKey);
+
+      // Skip if this project already has a running task
+      if (store.isProjectBusy(task.projectId)) {
+        console.log(
+          '[TriggerTaskExecutor] Project busy, queueing:',
+          task.projectId
+        );
+        continue;
+      }
+
+      // Dequeue the task for this specific project
+      const dequeued = store.dequeueTask(task.projectId);
+      if (dequeued) {
+        tasksToExecute.push(dequeued);
+      }
+    }
+
+    if (tasksToExecute.length === 0) {
+      console.log('[TriggerTaskExecutor] All projects busy, waiting');
+      return;
     }
 
     isProcessingRef.current = true;
     try {
-      await executeTask(nextTask);
+      // Execute all eligible tasks (one per project, in parallel)
+      await Promise.all(tasksToExecute.map((task) => executeTask(task)));
     } finally {
       isProcessingRef.current = false;
 
@@ -313,21 +354,35 @@ export function useTriggerTaskExecutor() {
     }
   }, [webSocketEvent, clearWebSocketEvent, processNextTask]);
 
-  // Also process on mount if there are pending tasks
-  // useEffect(() => {
-  //     const pending = triggerTaskStore.taskQueue.filter(t => t.status === 'pending');
-  //     if (pending.length > 0) {
-  //         processNextTask();
-  //     }
-  // }, []);
+  // Watch for task completion: when runningTasks changes (task finished) and
+  // there are still pending tasks in the queue, trigger processNextTask.
+  // This closes the gap where completeTask/failTask clear runningTasks but
+  // nothing was re-triggering the queue consumer.
+  useEffect(() => {
+    const pendingTasks = triggerTaskStore.taskQueue.filter(
+      (t) => t.status === 'pending'
+    );
+    if (pendingTasks.length > 0) {
+      const timer = setTimeout(() => {
+        processNextTask();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [
+    triggerTaskStore.runningTasks,
+    triggerTaskStore.taskQueue,
+    processNextTask,
+  ]);
 
   return {
     /** Manually trigger a task execution (useful for testing) */
     executeTask,
     /** Process pending tasks */
     processNextTask,
-    /** Current task being executed */
-    currentTask: triggerTaskStore.currentTask,
+    /** Current task being executed (first running task, for backward compat) */
+    currentTask: triggerTaskStore.runningTasks[0] || null,
+    /** All currently running tasks (one per project) */
+    runningTasks: triggerTaskStore.runningTasks,
     /** Pending tasks in queue */
     pendingTasks: triggerTaskStore.taskQueue.filter(
       (t) => t.status === 'pending'

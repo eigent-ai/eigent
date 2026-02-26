@@ -182,8 +182,8 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
 interface TriggerTaskStore {
   /** Queue of triggered tasks waiting to be executed */
   taskQueue: TriggeredTask[];
-  /** Currently running triggered task (if any) */
-  currentTask: TriggeredTask | null;
+  /** Currently running triggered tasks (one per project) */
+  runningTasks: TriggeredTask[];
   /** History of completed/failed tasks */
   taskHistory: TriggeredTask[];
   /** Maps chat task IDs to execution IDs for status reporting */
@@ -194,10 +194,12 @@ interface TriggerTaskStore {
   enqueueTask: (
     task: Omit<TriggeredTask, 'id' | 'status' | 'timestamp'>
   ) => string;
-  /** Get the next pending task from the queue */
-  dequeueTask: () => TriggeredTask | null;
-  /** Mark current task as running */
-  setCurrentTask: (task: TriggeredTask | null) => void;
+  /** Get the next pending task from the queue, optionally filtered by projectId */
+  dequeueTask: (projectId?: string | null) => TriggeredTask | null;
+  /** Check if a project already has a running task */
+  isProjectBusy: (projectId: string | null) => boolean;
+  /** Get the running task for a specific project */
+  getRunningTaskForProject: (projectId: string | null) => TriggeredTask | null;
   /** Mark a task as completed */
   completeTask: (taskId: string) => void;
   /** Mark a task as failed */
@@ -227,7 +229,7 @@ interface TriggerTaskStore {
 
 export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
   taskQueue: [],
-  currentTask: null,
+  runningTasks: [],
   taskHistory: [],
   executionMappings: new Map(),
 
@@ -237,12 +239,12 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
     // Check for duplicate event_id (Slack deduplication)
     const eventId = taskData.inputData?.event_id;
     if (eventId) {
-      const { taskQueue, taskHistory, currentTask } = get();
+      const { taskQueue, taskHistory, runningTasks } = get();
 
-      // Check if event_id exists in queue, current task, or history
+      // Check if event_id exists in queue, running tasks, or history
       const isDuplicate =
         taskQueue.some((t) => t.inputData?.event_id === eventId) ||
-        currentTask?.inputData?.event_id === eventId ||
+        runningTasks.some((t) => t.inputData?.event_id === eventId) ||
         taskHistory.some((t) => t.inputData?.event_id === eventId);
 
       if (isDuplicate) {
@@ -283,40 +285,57 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
     return id;
   },
 
-  dequeueTask: () => {
+  dequeueTask: (projectId?: string | null) => {
     const { taskQueue } = get();
-    const nextTask = taskQueue.find(
-      (t) => t.status === ExecutionStatus.Pending
-    );
+    // If projectId is provided, find the next pending task for that project
+    // If not provided, find the next pending task (any project)
+    const nextTask =
+      projectId !== undefined
+        ? taskQueue.find(
+            (t) =>
+              t.status === ExecutionStatus.Pending && t.projectId === projectId
+          )
+        : taskQueue.find((t) => t.status === ExecutionStatus.Pending);
 
     if (nextTask) {
-      // Mark as running and move to current
+      const runningTask = { ...nextTask, status: ExecutionStatus.Running };
+      // Mark as running and add to runningTasks
       set((state) => ({
         taskQueue: state.taskQueue.filter((t) => t.id !== nextTask.id),
-        currentTask: { ...nextTask, status: ExecutionStatus.Running },
+        runningTasks: [...state.runningTasks, runningTask],
       }));
-      console.log('[TriggerTaskStore] Task dequeued:', nextTask.id);
-      return { ...nextTask, status: ExecutionStatus.Running };
+      console.log(
+        '[TriggerTaskStore] Task dequeued:',
+        nextTask.id,
+        'for project:',
+        nextTask.projectId
+      );
+      return runningTask;
     }
     return null;
   },
 
-  setCurrentTask: (task) => {
-    set({ currentTask: task });
+  isProjectBusy: (projectId) => {
+    const { runningTasks } = get();
+    return runningTasks.some((t) => t.projectId === projectId);
+  },
+
+  getRunningTaskForProject: (projectId) => {
+    const { runningTasks } = get();
+    return runningTasks.find((t) => t.projectId === projectId) || null;
   },
 
   completeTask: (taskId) => {
     set((state) => {
+      // Search in runningTasks first, then queue as fallback
       const completedTask =
-        state.currentTask?.id === taskId
-          ? { ...state.currentTask, status: ExecutionStatus.Completed as const }
-          : state.taskQueue.find((t) => t.id === taskId);
+        state.runningTasks.find((t) => t.id === taskId) ||
+        state.taskQueue.find((t) => t.id === taskId);
 
       if (!completedTask) return state;
 
       return {
-        currentTask:
-          state.currentTask?.id === taskId ? null : state.currentTask,
+        runningTasks: state.runningTasks.filter((t) => t.id !== taskId),
         taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
         taskHistory: [
           { ...completedTask, status: ExecutionStatus.Completed as const },
@@ -329,20 +348,15 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
 
   failTask: (taskId, errorMessage) => {
     set((state) => {
+      // Search in runningTasks first, then queue as fallback
       const failedTask =
-        state.currentTask?.id === taskId
-          ? {
-              ...state.currentTask,
-              status: ExecutionStatus.Failed as const,
-              errorMessage,
-            }
-          : state.taskQueue.find((t) => t.id === taskId);
+        state.runningTasks.find((t) => t.id === taskId) ||
+        state.taskQueue.find((t) => t.id === taskId);
 
       if (!failedTask) return state;
 
       return {
-        currentTask:
-          state.currentTask?.id === taskId ? null : state.currentTask,
+        runningTasks: state.runningTasks.filter((t) => t.id !== taskId),
         taskQueue: state.taskQueue.filter((t) => t.id !== taskId),
         taskHistory: [
           {
@@ -379,10 +393,10 @@ export const useTriggerTaskStore = create<TriggerTaskStore>((set, get) => ({
   },
 
   getTaskById: (taskId) => {
-    const { taskQueue, currentTask, taskHistory } = get();
+    const { taskQueue, runningTasks, taskHistory } = get();
     return (
       taskQueue.find((t) => t.id === taskId) ||
-      (currentTask?.id === taskId ? currentTask : undefined) ||
+      runningTasks.find((t) => t.id === taskId) ||
       taskHistory.find((t) => t.id === taskId)
     );
   },

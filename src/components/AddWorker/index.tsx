@@ -65,7 +65,7 @@ interface McpItem {
 export function AddWorker({
   edit = false,
   workerInfo = null,
-  variant = 'default',
+  variant: _variant = 'default',
   isOpen,
   onOpenChange,
 }: {
@@ -84,13 +84,6 @@ export function AddWorker({
   const dialogOpen = isControlled ? isOpen : internalOpen;
   const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
   const { chatStore, projectStore } = useChatStoreAdapter();
-  if (!chatStore) {
-    return null;
-  }
-
-  const activeProjectId = projectStore.activeProjectId;
-  const activeTaskId = chatStore.activeTaskId;
-  const tasks = chatStore.tasks;
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
   const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
@@ -116,6 +109,14 @@ export function AddWorker({
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [customModelPlatform, setCustomModelPlatform] = useState('');
   const [customModelType, setCustomModelType] = useState('');
+
+  if (!chatStore) {
+    return null;
+  }
+
+  const activeProjectId = projectStore.activeProjectId;
+  const activeTaskId = chatStore.activeTaskId;
+  const tasks = chatStore.tasks;
 
   // environment variable management
   const initializeEnvValues = (mcp: McpItem) => {
