@@ -85,7 +85,7 @@ export function AddWorker({
   const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
   const { chatStore, projectStore } = useChatStoreAdapter();
   if (!chatStore) {
-    return <div>Loading...</div>;
+    return null;
   }
 
   const activeProjectId = projectStore.activeProjectId;
