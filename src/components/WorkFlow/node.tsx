@@ -15,6 +15,7 @@
 import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { getToolkitIcon } from '@/lib/toolkitIcons';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
   AgentStatusValue,
@@ -24,6 +25,7 @@ import {
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  Bird,
   Bot,
   Circle,
   CircleCheckBig,
@@ -617,6 +619,9 @@ export function Node({ id, data }: NodeProps) {
           >
             {data.agent?.tasks &&
               filterTasks.map((task) => {
+                const lastActiveToolkit = task.toolkits
+                  ?.filter((tool: any) => tool.toolkitName !== 'notice')
+                  .at(-1);
                 return (
                   <div
                     onClick={() => {
@@ -760,34 +765,28 @@ export function Node({ id, data }: NodeProps) {
                       {task?.status === TaskStatus.RUNNING && (
                         <div className="duration-400 mt-xs flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2">
                           {/* active toolkit */}
-                          {task.toolkits &&
-                            task.toolkits.length > 0 &&
-                            task.toolkits
-                              .filter(
-                                (tool: any) => tool.toolkitName !== 'notice'
-                              )
-                              .at(-1)?.toolkitStatus ===
-                              AgentStatusValue.RUNNING && (
-                              <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                                {agentMap[data.type]?.icon ?? (
-                                  <Bot className="h-3 w-3" />
-                                )}
-                                <div
-                                  className={`${
-                                    chatStore.tasks[
-                                      chatStore.activeTaskId as string
-                                    ].activeWorkspace
-                                      ? '!w-[100px]'
-                                      : '!w-[500px]'
-                                  } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
-                                >
-                                  <ShinyText
-                                    text={task.toolkits?.[0].toolkitName}
-                                    className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-text-primary"
-                                  />
-                                </div>
+                          {lastActiveToolkit?.toolkitStatus ===
+                            AgentStatusValue.RUNNING && (
+                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                              {getToolkitIcon(
+                                lastActiveToolkit.toolkitName ?? ''
+                              )}
+                              <div
+                                className={`${
+                                  chatStore.tasks[
+                                    chatStore.activeTaskId as string
+                                  ].activeWorkspace
+                                    ? '!w-[100px]'
+                                    : '!w-[500px]'
+                                } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
+                              >
+                                <ShinyText
+                                  text={task.toolkits?.[0].toolkitName}
+                                  className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-text-primary"
+                                />
                               </div>
-                            )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -886,7 +885,7 @@ export function Node({ id, data }: NodeProps) {
                                             }`}
                                           />
                                         ) : (
-                                          agentMap[data.type]?.icon
+                                          getToolkitIcon(toolkit.toolkitName)
                                         )}
                                         <span className="flex items-center gap-sm text-nowrap text-label-xs font-bold text-text-primary">
                                           {toolkit.toolkitName}
