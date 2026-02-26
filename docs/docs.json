@@ -73,7 +73,8 @@
                 ]
               },
               "/core/tools",
-              "/core/workers"
+              "/core/workers",
+              "/core/agent-skills"
             ]
           },
           {
