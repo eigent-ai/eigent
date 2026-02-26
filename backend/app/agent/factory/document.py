@@ -29,6 +29,7 @@ from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.pptx_toolkit import PPTXToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.utils import NOW_STR
@@ -101,6 +102,14 @@ async def document_agent(options: Chat):
     )
     skill_toolkit = message_integration.register_toolkits(skill_toolkit)
 
+    search_tools = SearchToolkit.get_can_use_tools(
+        options.project_id, agent_name=Agents.document_agent
+    )
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
     tools = [
         *file_write_toolkit.get_tools(),
         *pptx_toolkit.get_tools(),
@@ -114,6 +123,7 @@ async def document_agent(options: Chat):
         *screenshot_toolkit.get_tools(),
         *google_drive_tools,
         *skill_toolkit.get_tools(),
+        *search_tools,
     ]
     system_message = DOCUMENT_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -141,6 +151,7 @@ async def document_agent(options: Chat):
             ScreenshotToolkit.toolkit_name(),
             GoogleDriveMCPToolkit.toolkit_name(),
             SkillToolkit.toolkit_name(),
+            SearchToolkit.toolkit_name(),
         ],
         toolkits_to_register_agent=[
             screenshot_toolkit_for_agent_registration,
