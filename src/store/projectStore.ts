@@ -84,6 +84,14 @@ interface ProjectStore {
     projectId?: string,
     historyId?: string
   ) => string;
+  /** Load project from history with final state (no animation). Resolves when loading completes. */
+  loadProjectFromHistory: (
+    taskIds: string[],
+    question: string,
+    projectId: string,
+    historyId?: string,
+    projectName?: string
+  ) => Promise<string>;
 
   // Project-level queued messages management
   addQueuedMessage: (
@@ -565,7 +573,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
     // For each taskId, create a chat store within the project and call replay
     (async () => {
+      set({ activeProjectId: replayProjectId });
+      let cancelled = false;
       for (let index = 0; index < taskIds.length; index++) {
+        if (get().activeProjectId !== replayProjectId) {
+          console.log(
+            `[ProjectStore] Cancelled replay: active project changed from ${replayProjectId}`
+          );
+          cancelled = true;
+          break;
+        }
         const taskId = taskIds[index];
         console.log(
           `[ProjectStore] Creating replay for task ${index + 1}/${taskIds.length}: ${taskId}`
@@ -579,7 +596,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           const chatStore = project.chatStores[chatId];
 
           if (chatStore) {
-            // Call replay on the chat store with the taskId, question, and 0 delay
             try {
               await chatStore.getState().replay(taskId, question, 0.2);
               console.log(`[ProjectStore] Started replay for task ${taskId}`);
@@ -592,12 +608,81 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           }
         }
       }
-      console.log(
-        `[ProjectStore] Completed replay setup for ${taskIds.length} tasks`
-      );
+      if (!cancelled) {
+        console.log(
+          `[ProjectStore] Completed replay setup for ${taskIds.length} tasks`
+        );
+      }
     })();
 
     return replayProjectId;
+  },
+
+  loadProjectFromHistory: async (
+    taskIds: string[],
+    question: string,
+    projectId: string,
+    historyId?: string,
+    projectName?: string
+  ) => {
+    const { projects, removeProject, createProject, createChatStore } = get();
+
+    if (projects[projectId]) {
+      console.log(
+        `[ProjectStore] Overwriting existing project ${projectId} for load`
+      );
+      removeProject(projectId);
+    }
+
+    const displayName = projectName || question.slice(0, 50) || 'Project';
+    const loadProjectId = createProject(
+      displayName,
+      `Loaded from history`,
+      projectId,
+      ProjectType.REPLAY,
+      historyId
+    );
+
+    set({ activeProjectId: loadProjectId });
+    console.log(
+      `[ProjectStore] Loading project ${loadProjectId} with ${taskIds.length} tasks (final state, no replay)`
+    );
+
+    let cancelled = false;
+    for (let index = 0; index < taskIds.length; index++) {
+      if (get().activeProjectId !== loadProjectId) {
+        console.log(
+          `[ProjectStore] Cancelled loading: active project changed from ${loadProjectId}`
+        );
+        cancelled = true;
+        break;
+      }
+      const taskId = taskIds[index];
+      console.log(
+        `[ProjectStore] Loading task ${index + 1}/${taskIds.length}: ${taskId}`
+      );
+      const chatId = createChatStore(loadProjectId, `Task ${taskId}`);
+      if (chatId) {
+        const project = get().projects[loadProjectId];
+        const chatStore = project.chatStores[chatId];
+        if (chatStore) {
+          try {
+            await chatStore.getState().replay(taskId, question, 0);
+            console.log(`[ProjectStore] Loaded task ${taskId}`);
+          } catch (error) {
+            console.error(
+              `[ProjectStore] Failed to load task ${taskId}:`,
+              error
+            );
+          }
+        }
+      }
+    }
+
+    if (!cancelled) {
+      console.log(`[ProjectStore] Completed loading project ${loadProjectId}`);
+    }
+    return loadProjectId;
   },
 
   saveChatStore: (

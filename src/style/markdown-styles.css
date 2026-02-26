@@ -1,5 +1,13 @@
 /* Import GitHub markdown styles */
 @import 'github-markdown-css/github-markdown.css';
+
+[data-theme='dark'] .markdown-body {
+  color-scheme: dark;
+}
+[data-theme='light'] .markdown-body {
+  color-scheme: light;
+}
+
 /* Custom overrides for better integration */
 .markdown-body {
   box-sizing: border-box;
@@ -41,6 +49,8 @@
 .markdown-body p {
   margin-bottom: 0.75em;
   margin-top: 0;
+  font-size: var(--fontSize-sm, 13px);
+  line-height: var(--lineHeight-14, 20px);
 }
 
 /* Code blocks styling */

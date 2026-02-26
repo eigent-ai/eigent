@@ -89,9 +89,11 @@ async def auth(
 
 
 async def auth_must(
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     session: Session = Depends(session),
 ) -> Auth:
+    if token is None:
+        raise TokenException(code.token_invalid, _("Authentication required"))
     model = Auth.decode_token(token)
     user = session.get(User, model.id)
     model._user = user

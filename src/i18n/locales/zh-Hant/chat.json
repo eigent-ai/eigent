@@ -58,5 +58,8 @@
   "remove-queued-message": "移除排隊訊息",
   "no-agents-added": "未添加智能體",
   "open-in-ide": "在 IDE 中開啟",
+  "open-in-vscode": "在 VS Code 中開啟",
+  "open-in-cursor": "在 Cursor 中開啟",
+  "open-in-file-manager": "在檔案管理器中開啟",
   "failed-to-open-folder": "無法開啟資料夾"
 }

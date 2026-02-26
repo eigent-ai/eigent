@@ -58,5 +58,8 @@
   "remove-queued-message": "Rimuovi messaggio in coda",
   "no-agents-added": "Nessun agente aggiunto",
   "open-in-ide": "Apri in IDE",
+  "open-in-vscode": "Apri in VS Code",
+  "open-in-cursor": "Apri in Cursor",
+  "open-in-file-manager": "Apri nel gestore file",
   "failed-to-open-folder": "Impossibile aprire la cartella"
 }

@@ -540,6 +540,12 @@ code {
   opacity: 0.2;
 }
 
+/* Scoped file viewer: prevent file content CSS from affecting sidebar and app layout */
+.file-viewer-content {
+  contain: layout style;
+  isolation: isolate;
+}
+
 /* Dark mode overrides for FolderComponent (CSV/table content) */
 [data-theme='dark'] .folder-component-content {
   color: var(--text-primary);

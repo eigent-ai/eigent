@@ -58,5 +58,8 @@
   "remove-queued-message": "대기 중인 메시지 제거",
   "no-agents-added": "에이전트가 추가되지 않았습니다",
   "open-in-ide": "IDE에서 열기",
+  "open-in-vscode": "VS Code에서 열기",
+  "open-in-cursor": "Cursor에서 열기",
+  "open-in-file-manager": "파일 관리자에서 열기",
   "failed-to-open-folder": "폴더를 열 수 없습니다"
 }

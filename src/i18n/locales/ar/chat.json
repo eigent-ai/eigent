@@ -58,5 +58,8 @@
   "remove-queued-message": "إزالة الرسالة من قائمة الانتظار",
   "no-agents-added": "لم تتم إضافة وكلاء",
   "open-in-ide": "فتح في IDE",
+  "open-in-vscode": "فتح في VS Code",
+  "open-in-cursor": "فتح في Cursor",
+  "open-in-file-manager": "فتح في مدير الملفات",
   "failed-to-open-folder": "فشل في فتح المجلد"
 }

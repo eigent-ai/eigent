@@ -12,10 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { WorkSpaceMenu } from '@/components/WorkSpaceMenu';
-
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useTranslation } from 'react-i18next';
+import { WorkSpaceMenu } from '../WorkspaceMenu';
 
 interface BottomBarProps {
   onToggleChatBox?: () => void;
@@ -43,12 +42,12 @@ function BottomBar({ onToggleChatBox, isChatBoxVisible }: BottomBarProps) {
       // Reset the new file counter when user views inbox
       chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
       // Set active workspace to inbox
-      chatStore.setActiveWorkSpace(chatStore.activeTaskId, 'inbox');
+      chatStore.setActiveWorkspace(chatStore.activeTaskId, 'inbox');
     }
   };
 
   const activeWorkspace = chatStore?.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId]?.activeWorkSpace
+    ? chatStore.tasks[chatStore.activeTaskId]?.activeWorkspace
     : null;
 
   return (

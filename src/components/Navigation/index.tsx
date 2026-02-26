@@ -58,11 +58,11 @@ export function VerticalNavigation({
       value={value}
       defaultValue={initial}
       onValueChange={onValueChange}
-      className={cn('flex w-full gap-4', className)}
+      className={cn('w-full flex-1', className)}
     >
       <TabsList
         className={cn(
-          'flex flex-col gap-1.5 rounded-none border-none bg-transparent p-0',
+          'flex w-full flex-col gap-1.5 rounded-none border-none bg-transparent p-0',
           listClassName
         )}
       >

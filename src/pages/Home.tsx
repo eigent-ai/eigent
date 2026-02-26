@@ -12,11 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkSpace from '@/components/BrowserAgentWorkSpace';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
-import TerminalAgentWrokSpace from '@/components/TerminalAgentWrokSpace';
 import UpdateElectron from '@/components/update';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -44,6 +41,9 @@ import {
 import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import Overview, { getTriggerLimitTooltip } from './Project/Triggers';
 
+import BottomBar from '@/components/BottomBar';
+import BrowserAgentWorkSpace from '@/components/BrowserAgentWorkspace';
+import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import {
   ResizableHandle,
@@ -305,7 +305,7 @@ export default function Home() {
               });
             }
           })
-          .catch((error: any) => {
+          .catch((error: unknown) => {
             console.error('capture webview error:', error);
           });
       });
@@ -374,7 +374,7 @@ export default function Home() {
     const activeTask = chatStore.activeTaskId
       ? chatStore.tasks[chatStore.activeTaskId]
       : null;
-    const activeWorkSpace = activeTask?.activeWorkSpace;
+    const activeWorkSpace = activeTask?.activeWorkspace;
 
     switch (activeWorkspaceTab) {
       case 'triggers':
@@ -433,7 +433,7 @@ export default function Home() {
               (agent) => agent.agent_id === activeWorkSpace
             )?.type === 'developer_agent' && (
               <div className="flex h-full w-full flex-1">
-                <TerminalAgentWrokSpace></TerminalAgentWrokSpace>
+                <TerminalAgentWorkspace />
                 {/* <Terminal content={[]} /> */}
               </div>
             )}
@@ -510,7 +510,7 @@ export default function Home() {
             )}
             <ResizablePanel className="h-full w-full">
               {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId]?.activeWorkSpace ? (
+              chatStore.tasks[chatStore.activeTaskId]?.activeWorkspace ? (
                 <div className="flex h-full w-full flex-col rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
                   {/* Header with workspace tabs */}
                   <div className="flex w-full items-center justify-between px-2 py-2">

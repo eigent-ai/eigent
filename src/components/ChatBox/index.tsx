@@ -115,10 +115,255 @@ export default function ChatBox(): JSX.Element {
   // 			.catch((err) => console.error("Failed to fetch settings:", err));
   // 	}
   // }, [privacyDialogOpen]);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
+  const skill_prompt = searchParams.get('skill_prompt');
+
+  const handleSendRef = useRef<
+    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+  >(null);
 
   const navigate = useNavigate();
+
+  // Task time tracking
+  const [taskTime, setTaskTime] = useState(
+    chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
+      '00:00'
+  );
+
+  const [_hasSubTask, setHasSubTask] = useState(false);
+
+  const activeTaskId = chatStore?.activeTaskId;
+  const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
+  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
+
+  useEffect(() => {
+    if (!chatStore?.activeTaskId) return;
+    const interval = setInterval(() => {
+      if (chatStore.activeTaskId) {
+        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [chatStore?.activeTaskId, chatStore]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    const _hasSubTask = chatStore.tasks[
+      chatStore.activeTaskId as string
+    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
+      ? true
+      : false;
+    setHasSubTask(_hasSubTask);
+  }, [chatStore, activeTaskId, activeTaskMessages]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    const _activeAsk = activeAsk;
+    let timer: NodeJS.Timeout;
+    if (_activeAsk && _activeAsk !== '') {
+      const _taskId = chatStore.activeTaskId as string;
+      timer = setTimeout(() => {
+        if (handleSendRef.current) {
+          handleSendRef.current('skip', _taskId);
+        }
+      }, 30000); // 30 seconds
+      return () => clearTimeout(timer); // clear previous timer
+    }
+    // if activeAsk is empty, also clear timer
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeAsk, message, chatStore, activeTaskId]);
+
+  const getAllChatStoresMemoized = useMemo(() => {
+    if (!projectStore.activeProjectId) return [];
+    return projectStore.getAllChatStores(projectStore.activeProjectId);
+  }, [projectStore]);
+
+  // Check if any chat store in the project has messages
+  const hasAnyMessages = useMemo(() => {
+    if (!chatStore) return false;
+    // First check current active chat store
+    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
+      const activeTask = chatStore.tasks[chatStore.activeTaskId];
+      if (
+        (activeTask.messages && activeTask.messages.length > 0) ||
+        activeTask.hasMessages
+      ) {
+        return true;
+      }
+    }
+
+    // Then check all other chat stores in the project
+    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
+      const state = store.getState();
+      return (
+        state.activeTaskId &&
+        state.tasks[state.activeTaskId] &&
+        (state.tasks[state.activeTaskId].messages.length > 0 ||
+          state.tasks[state.activeTaskId].hasMessages)
+      );
+    });
+  }, [chatStore, getAllChatStoresMemoized]);
+
+  const isTaskBusy = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return false;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    return (
+      // running or paused
+      task.status === ChatTaskStatus.RUNNING ||
+      task.status === ChatTaskStatus.PAUSE ||
+      // splitting phase
+      task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+      ) ||
+      // skeleton/computing phase
+      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+        !task.hasWaitComfirm &&
+        task.messages.length > 0) ||
+      task.isTakeControl
+    );
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+
+  const isInputDisabled = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return true;
+
+    const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // If ask human is active, allow input
+    if (task.activeAsk) return false;
+
+    if (isTaskBusy) return true;
+
+    // Standard checks - check model first, then privacy
+    if (!privacy) return true;
+    if (useCloudModelInDev) return true;
+    if (task.isContextExceeded) return true;
+
+    return false;
+  }, [
+    chatStore?.activeTaskId,
+    chatStore?.tasks,
+    privacy,
+    useCloudModelInDev,
+    isTaskBusy,
+  ]);
+
+  const handleSendShare = useCallback(
+    async (token: string) => {
+      if (!chatStore) return;
+      if (!token) return;
+      if (!projectStore.activeProjectId) {
+        console.warn("Can't send share due to no active projectId");
+        return;
+      }
+
+      if (!privacy) {
+        toast.error('Please accept the privacy policy first.');
+        return;
+      }
+
+      let _token: string = token.split('__')[0];
+      let taskId: string = token.split('__')[1];
+      chatStore.create(taskId, 'share');
+      chatStore.setHasMessages(taskId, true);
+      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
+      if (res?.question) {
+        chatStore.addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: res.question.split('|')[0],
+        });
+        try {
+          await chatStore.startTask(taskId, 'share', _token, 0.1);
+          chatStore.setActiveTaskId(taskId);
+          chatStore.handleConfirmTask(
+            projectStore.activeProjectId,
+            taskId,
+            'share'
+          );
+        } catch (err: any) {
+          console.error('Failed to start shared task:', err);
+          toast.error(
+            err?.message ||
+              'Failed to start task. Please check your model configuration.'
+          );
+        }
+      }
+    },
+    [chatStore, projectStore.activeProjectId, privacy, navigate]
+  );
+
+  useEffect(() => {
+    // Wait for both config and privacy to be loaded before handling share token
+    if (share_token) {
+      handleSendShare(share_token);
+    }
+  }, [share_token, handleSendShare]);
+
+  // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
+  useEffect(() => {
+    if (skill_prompt) {
+      setMessage(skill_prompt);
+      // Clear the skill_prompt param from URL after setting the message
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('skill_prompt');
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [skill_prompt, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!chatStore) return;
+    console.log('ChatStore Data: ', chatStore);
+  }, [chatStore]);
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollContainerRef.current) {
+      setTimeout(() => {
+        scrollContainerRef.current!.scrollTo({
+          top: scrollContainerRef.current!.scrollHeight + 20,
+          behavior: 'smooth',
+        });
+      }, 200);
+    }
+  }, []);
+
+  // Handle scrollbar visibility on scroll
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      // Add scrolling class
+      scrollContainer.classList.add('scrolling');
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Remove scrolling class after 1 second of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        scrollContainer.classList.remove('scrolling');
+      }, 1000);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll);
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   const handleSend = async (
     messageStr?: string,
@@ -368,99 +613,6 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  useEffect(() => {
-    if (share_token) {
-      handleSendShare(share_token);
-    }
-  }, [share_token]);
-
-  useEffect(() => {
-    console.log('ChatStore Data: ', chatStore);
-  }, []);
-
-  const handleSendShare = async (token: string) => {
-    if (!token) return;
-    if (!projectStore.activeProjectId) {
-      console.warn("Can't send share due to no active projectId");
-      return;
-    }
-    let _token: string = token.split('__')[0];
-    let taskId: string = token.split('__')[1];
-    chatStore.create(taskId, 'share');
-    chatStore.setHasMessages(taskId, true);
-    const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
-    if (res?.question) {
-      chatStore.addMessages(taskId, {
-        id: generateUniqueId(),
-        role: 'user',
-        content: res.question.split('|')[0],
-      });
-      try {
-        await chatStore.startTask(taskId, 'share', _token, 0.1);
-        chatStore.setActiveTaskId(taskId);
-        chatStore.handleConfirmTask(
-          projectStore.activeProjectId,
-          taskId,
-          'share'
-        );
-      } catch (err: any) {
-        console.error('Failed to start shared task:', err);
-        toast.error(
-          err?.message ||
-            'Failed to start task. Please check your model configuration.'
-        );
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && e.ctrlKey && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        scrollContainerRef.current!.scrollTo({
-          top: scrollContainerRef.current!.scrollHeight + 20,
-          behavior: 'smooth',
-        });
-      }, 200);
-    }
-  }, [scrollContainerRef.current?.scrollHeight]);
-
-  // Handle scrollbar visibility on scroll
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      // Add scrolling class
-      scrollContainer.classList.add('scrolling');
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Remove scrolling class after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        scrollContainer.classList.remove('scrolling');
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const [loading, setLoading] = useState(false);
   const handleConfirmTask = async (taskId?: string) => {
     const _taskId = taskId || chatStore.activeTaskId;
@@ -664,19 +816,6 @@ export default function ChatBox(): JSX.Element {
     setMessage(question);
   };
 
-  // Task time tracking
-  const [taskTime, setTaskTime] = useState(
-    chatStore.getFormattedTaskTime(chatStore.activeTaskId as string)
-  );
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore.activeTaskId]);
-
   // Determine BottomBox state
   const getBottomBoxState = () => {
     if (!chatStore.activeTaskId) return 'input';
@@ -733,8 +872,6 @@ export default function ChatBox(): JSX.Element {
 
     return 'input';
   };
-
-  const [hasSubTask, setHasSubTask] = useState(false);
 
   useEffect(() => {
     const _hasSubTask = chatStore.tasks[
@@ -926,80 +1063,6 @@ export default function ChatBox(): JSX.Element {
       });
     }
   };
-  const getAllChatStoresMemoized = useMemo(() => {
-    const project_id = projectStore.activeProjectId;
-    if (!project_id) return [];
-
-    return projectStore.getAllChatStores(project_id);
-  }, [projectStore, projectStore.activeProjectId, chatStore]);
-
-  // Check if any chat store in the project has messages
-  const hasAnyMessages = useMemo(() => {
-    // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
-    }
-
-    // Then check all other chat stores in the project
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
-      const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
-      );
-    });
-  }, [chatStore, getAllChatStoresMemoized]);
-
-  const isTaskBusy = useMemo(() => {
-    if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return false;
-    const task = chatStore.tasks[chatStore.activeTaskId];
-    return (
-      // running or paused
-      task.status === 'running' ||
-      task.status === 'pause' ||
-      // splitting phase
-      task.messages.some((m) => m.step === 'to_sub_tasks' && !m.isConfirm) ||
-      // skeleton/computing phase
-      (!task.messages.find((m) => m.step === 'to_sub_tasks') &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      task.isTakeControl
-    );
-  }, [chatStore.activeTaskId, chatStore.tasks]);
-
-  const isInputDisabled = useMemo(() => {
-    if (!chatStore.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
-      return true;
-
-    const task = chatStore.tasks[chatStore.activeTaskId];
-
-    // If ask human is active, allow input
-    if (task.activeAsk) return false;
-
-    if (isTaskBusy) return true;
-
-    // Standard checks
-    if (!privacy) return true;
-    if (useCloudModelInDev) return true;
-    if (task.isContextExceeded) return true;
-
-    return false;
-  }, [
-    chatStore.activeTaskId,
-    chatStore.tasks,
-    privacy,
-    useCloudModelInDev,
-    isTaskBusy,
-  ]);
 
   return (
     <div className="h-full w-full flex-none items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
@@ -1070,8 +1133,8 @@ export default function ChatBox(): JSX.Element {
                   placeholder: t('chat.ask-placeholder'),
                   disabled: isInputDisabled,
                   textareaRef: textareaRef,
-                  allowDragDrop: false,
-                  privacy: true,
+                  allowDragDrop: true,
+                  privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
                 }}
               />

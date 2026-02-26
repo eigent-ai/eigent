@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import agents from './agents.json';
 import chat from './chat.json';
 import dashboard from './dashboard.json';
 import layout from './layout.json';
@@ -20,6 +21,7 @@ import triggers from './triggers.json';
 import update from './update.json';
 import workforce from './workforce.json';
 export default {
+  agents,
   layout,
   dashboard,
   workforce,

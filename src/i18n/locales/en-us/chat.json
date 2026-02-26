@@ -58,5 +58,8 @@
   "remove-queued-message": "Remove queued message",
   "no-agents-added": "No agents added",
   "open-in-ide": "Open in IDE",
+  "open-in-vscode": "Open in VS Code",
+  "open-in-cursor": "Open in Cursor",
+  "open-in-file-manager": "Open in File Manager",
   "failed-to-open-folder": "Failed to open folder"
 }

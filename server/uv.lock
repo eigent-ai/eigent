@@ -190,8 +190,8 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.85a0"
-source = { git = "https://github.com/camel-ai/camel.git?rev=feat-trigger#22c5a8362403a0286e2698d5a12c84af35b7f8bf" }
+version = "0.2.90a3"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "astor" },
@@ -229,6 +229,9 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8f/9d/3d13596519cfa7207a6f9834f4b082554845eb3cd2684b5f8535d50c7c44/celery-5.6.2.tar.gz", hash = "sha256:4a8921c3fcf2ad76317d3b29020772103581ed2454c4c042cc55dcc43585009b", size = 1718802 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dd/bd/9ecd619e456ae4ba73b6583cc313f26152afae13e9a82ac4fe7f8856bfd1/celery-5.6.2-py3-none-any.whl", hash = "sha256:3ffafacbe056951b629c7abcf9064c4a2366de0bdfc9fdba421b97ebb68619a5", size = 445502 },
+sdist = { url = "https://files.pythonhosted.org/packages/95/b7/4eb6f5b715d3f32c18bb39266d661ab24a358380b2a81202ee7f95f07cc6/camel_ai-0.2.90a3.tar.gz", hash = "sha256:406e279b273de4b1fc7672ded6028da7314fc30e70476018bc9ef17c045926e6", size = 1159651, upload-time = "2026-02-21T08:08:01.002Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/a3/6fb62d6bc61fe21f7fc94220958c1646da27063cb5ce9c49162463a67203/camel_ai-0.2.90a3-py3-none-any.whl", hash = "sha256:1789c080da5cbf6a53e3702ea507425af1c345b96d834c8a69206ddaf667b2b7", size = 1635399, upload-time = "2026-02-21T08:07:57.911Z" },
 ]
 
 [[package]]
@@ -480,8 +483,8 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.15.2" },
     { name = "arrow", specifier = ">=1.3.0" },
     { name = "bcrypt", specifier = "==4.0.1" },
-    { name = "camel-ai", git = "https://github.com/camel-ai/camel.git?rev=feat-trigger" },
     { name = "celery", specifier = ">=5.6.2" },
+    { name = "camel-ai", specifier = "==0.2.90a3" },
     { name = "click", specifier = ">=8.1.8" },
     { name = "convert-case", specifier = ">=1.2.3" },
     { name = "cryptography", specifier = ">=45.0.4" },

@@ -12,17 +12,46 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
 import os
+import secrets
 
 from itsdangerous import URLSafeTimedSerializer
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
+
+
+def _get_secret_key() -> str:
+    """Return the share-token signing key.
+
+    Falls back to a random ephemeral key when the environment variable
+    is not set.  A hardcoded default must never be used because the
+    source code is public and anyone could forge valid share tokens.
+    """
+    key = os.getenv("CHAT_SHARE_SECRET_KEY")
+    if key:
+        return key
+    logger.warning(
+        "CHAT_SHARE_SECRET_KEY not set — using a random ephemeral key. "
+        "Share links will not survive server restarts. "
+        "Set the CHAT_SHARE_SECRET_KEY environment variable for persistence."
+    )
+    return secrets.token_urlsafe(32)
+
+
+def _get_salt() -> str:
+    salt = os.getenv("CHAT_SHARE_SALT")
+    if salt:
+        return salt
+    return secrets.token_urlsafe(8)
+
 
 class ChatShare:
-    SECRET_KEY = os.getenv("CHAT_SHARE_SECRET_KEY", "EGB1WRC9xMUVgNoIPH8tLw")
-    SALT = os.getenv("CHAT_SHARE_SALT", "r4U2M")
+    SECRET_KEY = _get_secret_key()
+    SALT = _get_salt()
     # Set expiration to 1 day
-    EXPIRATION_SECONDS = int(os.getenv("CHAT_SHARE_EXPIRATION_SECONDS", 60 * 60 * 24))
+    EXPIRATION_SECONDS = int(os.getenv("CHAT_SHARE_EXPIRATION_SECONDS", str(60 * 60 * 24)))
 
     @classmethod
     def generate_token(cls, task_id: str) -> str:

@@ -58,5 +58,8 @@
   "remove-queued-message": "Удалить сообщение из очереди",
   "no-agents-added": "Агенты не добавлены",
   "open-in-ide": "Открыть в IDE",
+  "open-in-vscode": "Открыть в VS Code",
+  "open-in-cursor": "Открыть в Cursor",
+  "open-in-file-manager": "Открыть в файловом менеджере",
   "failed-to-open-folder": "Не удалось открыть папку"
 }
