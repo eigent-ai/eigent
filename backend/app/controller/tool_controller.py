@@ -50,7 +50,7 @@ async def _wait_for_cdp_ready(
     timeout: float = 10,
     interval: float = 0.3,
 ) -> bool:
-    r"""Poll until CDP port is open or process exits. Returns True if ready."""
+    """Poll until CDP port is open or process exits. Returns True if ready."""
     elapsed = 0.0
     while elapsed < timeout:
         if process.poll() is not None:
@@ -783,11 +783,18 @@ async def open_browser_login():
 
         _login_browser_process = process
 
-        # Create async task to log Electron output
+        # Log Electron output in a background task.
+        # readline() is blocking, so run it in an executor
+        # to avoid stalling the event loop.
         async def log_electron_output():
-            for line in iter(process.stdout.readline, ""):
-                if line:
-                    logger.info(f"[ELECTRON OUTPUT] {line.strip()}")
+            loop = asyncio.get_event_loop()
+            while True:
+                line = await loop.run_in_executor(
+                    None, process.stdout.readline
+                )
+                if not line:
+                    break
+                logger.info(f"[ELECTRON OUTPUT] {line.strip()}")
 
         asyncio.create_task(log_electron_output())
 
@@ -810,23 +817,15 @@ async def open_browser_login():
                     " before CDP became ready."
                     f" Exit code: {exit_code}",
                 }
-            else:
-                # Timeout — process is still alive but CDP
-                # port never opened. Keep tracking the process
-                # so /browser/status still reports it.
-                logger.warning(
-                    "[PROFILE USER LOGIN] CDP port"
-                    f" {cdp_port} not ready after"
-                    " timeout, but process"
-                    f" {process.pid} is still running"
-                )
-                return {
-                    "success": False,
-                    "error": "Browser started but CDP"
-                    f" port {cdp_port} did not become"
-                    " available in time.",
-                    "pid": process.pid,
-                }
+            # Timeout — process is alive but CDP port not
+            # ready yet. The browser window is open so the
+            # user can proceed with login.
+            logger.warning(
+                "[PROFILE USER LOGIN] CDP port"
+                f" {cdp_port} not ready after"
+                " timeout, but process"
+                f" {process.pid} is still running"
+            )
 
         logger.info(
             "[PROFILE USER LOGIN] Electron"
@@ -860,7 +859,7 @@ async def open_browser_login():
 
 @router.get("/browser/status", name="browser status")
 async def browser_status():
-    r"""Check if the login browser is still running."""
+    """Check if the login browser is still running."""
     global _login_browser_process
     if _login_browser_process is None:
         return {"is_open": False}
