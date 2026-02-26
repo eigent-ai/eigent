@@ -61,5 +61,7 @@
   "open-in-vscode": "In VS Code öffnen",
   "open-in-cursor": "In Cursor öffnen",
   "open-in-file-manager": "Im Dateimanager öffnen",
-  "failed-to-open-folder": "Ordner konnte nicht geöffnet werden"
+  "failed-to-open-folder": "Ordner konnte nicht geöffnet werden",
+  "task-completed-card-title": "Aufgabe abgeschlossen",
+  "task-completed-card-subtitle": "Automatisieren Sie Ihre Aufgabe mit einem Trigger"
 }

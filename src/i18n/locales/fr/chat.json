@@ -61,5 +61,7 @@
   "open-in-vscode": "Ouvrir dans VS Code",
   "open-in-cursor": "Ouvrir dans Cursor",
   "open-in-file-manager": "Ouvrir dans le gestionnaire de fichiers",
-  "failed-to-open-folder": "Impossible d'ouvrir le dossier"
+  "failed-to-open-folder": "Impossible d'ouvrir le dossier",
+  "task-completed-card-title": "Tâche terminée",
+  "task-completed-card-subtitle": "Automatisez votre tâche avec un déclencheur"
 }

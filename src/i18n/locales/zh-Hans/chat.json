@@ -61,5 +61,7 @@
   "open-in-vscode": "在 VS Code 中打开",
   "open-in-cursor": "在 Cursor 中打开",
   "open-in-file-manager": "在文件管理器中打开",
-  "failed-to-open-folder": "无法打开文件夹"
+  "failed-to-open-folder": "无法打开文件夹",
+  "task-completed-card-title": "任务已完成",
+  "task-completed-card-subtitle": "使用触发器自动化您的任务"
 }

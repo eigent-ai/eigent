@@ -61,5 +61,7 @@
   "open-in-vscode": "Apri in VS Code",
   "open-in-cursor": "Apri in Cursor",
   "open-in-file-manager": "Apri nel gestore file",
-  "failed-to-open-folder": "Impossibile aprire la cartella"
+  "failed-to-open-folder": "Impossibile aprire la cartella",
+  "task-completed-card-title": "Compito completato",
+  "task-completed-card-subtitle": "Automatizza il tuo compito con un trigger"
 }

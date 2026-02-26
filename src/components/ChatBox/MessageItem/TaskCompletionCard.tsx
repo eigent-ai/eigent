@@ -12,65 +12,65 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { RefreshCw, Plus, Pencil, PencilLine } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
+import { Button } from '@/components/ui/button';
+import { motion } from 'framer-motion';
+import { Plus } from 'lucide-react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 interface TaskCompletionCardProps {
-    taskPrompt?: string;
-    onRerun?: () => void;
+  taskPrompt?: string;
+  onRerun?: () => void;
 }
 
 export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
-    taskPrompt = '',
-    onRerun,
+  taskPrompt = '',
+  onRerun,
 }) => {
-    const { t } = useTranslation();
-    const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
+  const { t } = useTranslation();
+  const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
 
-    const handleAddTrigger = () => {
-        setIsTriggerDialogOpen(true);
-    };
+  const handleAddTrigger = () => {
+    setIsTriggerDialogOpen(true);
+  };
 
-    return (
-        <>
-            <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-surface-primary rounded-xl p-3 w-full flex flex-row gap-2 items-center"
-            >
-                {/* Description */}
-                <div className="flex flex-col w-full">
-                    <div className="text-text-body text-label-sm font-bold leading-normal">
-                        Task completed
-                    </div>
-                    <div className="text-text-label text-label-sm font-medium leading-normal">
-                        Automate your task with a trigger
-                    </div>
-                </div>
-                <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleAddTrigger}
-                    className="rounded-lg h-fit"
-                >
-                    <Plus className="w-4 h-4" />
-                    Add trigger
-                </Button>
-            </motion.div>
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="flex w-full flex-row items-center gap-2 rounded-xl bg-surface-primary p-3"
+      >
+        {/* Description */}
+        <div className="flex w-full flex-col">
+          <div className="text-label-sm font-bold leading-normal text-text-body">
+            {t('chat.task-completed-card-title')}
+          </div>
+          <div className="text-label-sm font-medium leading-normal text-text-label">
+            {t('chat.task-completed-card-subtitle')}
+          </div>
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleAddTrigger}
+          className="h-fit rounded-lg"
+        >
+          <Plus className="h-4 w-4" />
+          {t('triggers.add-trigger')}
+        </Button>
+      </motion.div>
 
-            {/* Trigger Dialog */}
-            <TriggerDialog
-                selectedTrigger={null}
-                isOpen={isTriggerDialogOpen}
-                onOpenChange={setIsTriggerDialogOpen}
-                initialTaskPrompt={taskPrompt}
-            />
-        </>
-    );
+      {/* Trigger Dialog */}
+      <TriggerDialog
+        selectedTrigger={null}
+        isOpen={isTriggerDialogOpen}
+        onOpenChange={setIsTriggerDialogOpen}
+        initialTaskPrompt={taskPrompt}
+      />
+    </>
+  );
 };
 
 export default TaskCompletionCard;

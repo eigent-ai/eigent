@@ -61,5 +61,7 @@
   "open-in-vscode": "فتح في VS Code",
   "open-in-cursor": "فتح في Cursor",
   "open-in-file-manager": "فتح في مدير الملفات",
-  "failed-to-open-folder": "فشل في فتح المجلد"
+  "failed-to-open-folder": "فشل في فتح المجلد",
+  "task-completed-card-title": "تمت المهمة",
+  "task-completed-card-subtitle": "أتمت مهامك باستخدام الزناد"
 }

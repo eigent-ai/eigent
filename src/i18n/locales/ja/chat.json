@@ -61,5 +61,7 @@
   "open-in-vscode": "VS Codeで開く",
   "open-in-cursor": "Cursorで開く",
   "open-in-file-manager": "ファイルマネージャーで開く",
-  "failed-to-open-folder": "フォルダを開けませんでした"
+  "failed-to-open-folder": "フォルダを開けませんでした",
+  "task-completed-card-title": "タスク完了",
+  "task-completed-card-subtitle": "トリガーでタスクを自動化"
 }
