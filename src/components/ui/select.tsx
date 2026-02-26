@@ -116,7 +116,7 @@ const SelectTrigger = React.forwardRef<
           disabled={disabled}
           className={cn(
             // Base styles
-            'relative flex w-full items-center justify-between gap-2 rounded-lg border-solid px-3 text-text-body outline-none transition-all',
+            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid px-3 text-text-body outline-none transition-all',
             sizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default state (when no error/success)
