@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   agentMap,
@@ -67,7 +68,7 @@ type SkillListItemProps =
 export default function SkillListItem(props: SkillListItemProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { updateSkill } = useSkillsStore();
+  const { updateSkill, toggleSkill } = useSkillsStore();
   const { projectStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -182,7 +183,9 @@ export default function SkillListItem(props: SkillListItemProps) {
   };
 
   return (
-    <div className="w-full flex-1 flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors">
+    <div
+      className={`w-full flex-1 flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
+    >
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
@@ -192,21 +195,28 @@ export default function SkillListItem(props: SkillListItemProps) {
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-md">
-          <span className="text-label-xs text-text-disabled">
-            {t('agents.added')} {formatDate(skill.addedAt)}
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Ellipsis className="h-4 w-4 text-icon-primary" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={handleTryInChat}>
-                <MessageSquare className="h-4 w-4" />
-                {t('agents.try-in-chat')}
-              </DropdownMenuItem>
-              {!skill.isExample && onDelete && (
+          <Switch
+            checked={skill.enabled}
+            onCheckedChange={() => toggleSkill(skill.id)}
+          />
+          <TooltipSimple content={t('agents.try-in-chat')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!skill.enabled}
+              onClick={skill.enabled ? handleTryInChat : undefined}
+            >
+              <MessageSquare className="h-4 w-4 text-icon-primary" />
+            </Button>
+          </TooltipSimple>
+          {!skill.isExample && onDelete && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Ellipsis className="h-4 w-4 text-icon-primary" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
                 <DropdownMenuItem
                   onClick={onDelete}
                   className="text-text-cuation focus:text-text-cuation"
@@ -214,9 +224,9 @@ export default function SkillListItem(props: SkillListItemProps) {
                   <Trash2 className="h-4 w-4" />
                   {t('layout.delete')}
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
