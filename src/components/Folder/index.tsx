@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
+import PdfViewer from './PdfViewer';
 
 import { proxyFetchGet } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
@@ -709,10 +710,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         {/* content */}
         <div
-          className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
+          className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar-always-visible overflow-y-auto'}`}
         >
           <div
-            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
+            className={`${selectedFile?.type === 'html' && !isShowSourceCode ? 'h-full' : ''} ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
@@ -729,11 +730,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     />
                   </div>
                 ) : selectedFile.type === 'pdf' ? (
-                  <iframe
-                    src={selectedFile.content as string}
-                    className="h-full w-full border-0"
-                    title={selectedFile.name}
-                  />
+                  <PdfViewer content={selectedFile.content as string} />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
                     selectedFile.type
                   ) ? (

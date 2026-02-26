@@ -15,6 +15,12 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock PdfViewer to avoid pdfjs-dist requiring DOMMatrix in jsdom
+vi.mock('../../../../src/components/Folder/PdfViewer', () => ({
+  default: () => <div data-testid="pdf-viewer-mock" />,
+}));
+
 import { FileTree } from '../../../../src/components/Folder/index';
 
 describe('FileTree', () => {
