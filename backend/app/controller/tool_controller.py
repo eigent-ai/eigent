@@ -12,8 +12,11 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import logging
 import os
+import socket
+import subprocess
 import time
 
 from fastapi import APIRouter, HTTPException
@@ -37,6 +40,27 @@ class LinkedInTokenRequest(BaseModel):
 
 logger = logging.getLogger("tool_controller")
 router = APIRouter()
+
+_login_browser_process: "subprocess.Popen | None" = None
+
+
+async def _wait_for_cdp_ready(
+    process: subprocess.Popen,
+    port: int,
+    timeout: float = 10,
+    interval: float = 0.3,
+) -> bool:
+    r"""Poll until CDP port is open or process exits. Returns True if ready."""
+    elapsed = 0.0
+    while elapsed < timeout:
+        if process.poll() is not None:
+            return False  # process already exited
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("localhost", port)) == 0:
+                return True
+        await asyncio.sleep(interval)
+        elapsed += interval
+    return False
 
 
 @router.post("/install/tool/{tool}", name="install tool")
@@ -658,10 +682,9 @@ async def open_browser_login():
     Returns:
         Browser session information
     """
-    try:
-        import socket
-        import subprocess
+    global _login_browser_process
 
+    try:
         # Use fixed profile name for persistent logins (no port suffix)
         session_id = "user_login"
         cdp_port = 9223
@@ -737,16 +760,28 @@ async def open_browser_login():
         logger.info(f"[PROFILE USER LOGIN] Electron args: {electron_args}")
 
         # Start process and capture output in real-time
-        process = subprocess.Popen(
-            electron_args,
-            cwd=app_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Redirect stderr to stdout
-            text=True,
-            encoding="utf-8",
-            errors="replace",  # Replace undecodable chars instead of crashing
-            bufsize=1,  # Line buffered
-        )
+        try:
+            process = subprocess.Popen(
+                electron_args,
+                cwd=app_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,  # Line buffered
+            )
+        except FileNotFoundError:
+            logger.error(
+                f"[PROFILE USER LOGIN] '{electron_cmd}' not found on PATH"
+            )
+            return {
+                "success": False,
+                "error": f"'{electron_cmd}' is not installed or not on PATH."
+                " Please install Node.js / npm first.",
+            }
+
+        _login_browser_process = process
 
         # Create async task to log Electron output
         async def log_electron_output():
@@ -754,14 +789,44 @@ async def open_browser_login():
                 if line:
                     logger.info(f"[ELECTRON OUTPUT] {line.strip()}")
 
-        import asyncio
-
         asyncio.create_task(log_electron_output())
 
-        # Wait a bit for Electron to start
-        import asyncio
+        # Wait for CDP port to become available (or process to exit)
+        ready = await _wait_for_cdp_ready(process, cdp_port)
 
-        await asyncio.sleep(3)
+        if not ready:
+            exit_code = process.poll()
+            if exit_code is not None:
+                # Process crashed / exited early
+                logger.error(
+                    "[PROFILE USER LOGIN] Electron"
+                    " process exited with code:"
+                    f" {exit_code}"
+                )
+                _login_browser_process = None
+                return {
+                    "success": False,
+                    "error": "Browser process exited"
+                    " before CDP became ready."
+                    f" Exit code: {exit_code}",
+                }
+            else:
+                # Timeout — process is still alive but CDP
+                # port never opened. Keep tracking the process
+                # so /browser/status still reports it.
+                logger.warning(
+                    "[PROFILE USER LOGIN] CDP port"
+                    f" {cdp_port} not ready after"
+                    " timeout, but process"
+                    f" {process.pid} is still running"
+                )
+                return {
+                    "success": False,
+                    "error": "Browser started but CDP"
+                    f" port {cdp_port} did not become"
+                    " available in time.",
+                    "pid": process.pid,
+                }
 
         logger.info(
             "[PROFILE USER LOGIN] Electron"
@@ -791,6 +856,18 @@ async def open_browser_login():
             status_code=500,
             detail="Failed to open browser. Check server logs for details.",
         )
+
+
+@router.get("/browser/status", name="browser status")
+async def browser_status():
+    r"""Check if the login browser is still running."""
+    global _login_browser_process
+    if _login_browser_process is None:
+        return {"is_open": False}
+    if _login_browser_process.poll() is not None:
+        _login_browser_process = None
+        return {"is_open": False}
+    return {"is_open": True, "pid": _login_browser_process.pid}
 
 
 @router.get("/browser/cookies", name="list cookie domains")
