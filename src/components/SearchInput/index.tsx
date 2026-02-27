@@ -80,9 +80,9 @@ export default function SearchInput({
     return (
       <motion.div
         className={cn(
-          'flex items-center justify-center overflow-hidden rounded-lg border border-solid border-transparent bg-transparent py-0.5',
+          'rounded-lg py-0.5 flex items-center justify-center overflow-hidden border border-solid border-transparent bg-transparent',
           'focus-within:border-input-border-focus focus-within:bg-input-bg-input',
-          'hover:border-transparent hover:bg-surface-tertiary'
+          'hover:bg-surface-tertiary hover:border-transparent'
         )}
         initial={false}
         animate={{ width: isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
@@ -117,13 +117,13 @@ export default function SearchInput({
           ) : (
             <motion.div
               key="input"
-              className="flex min-w-0 flex-1 items-center gap-0 pr-1"
+              className="min-w-0 gap-0 pr-1 flex flex-1 items-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-icon-secondary">
+              <span className="ml-2 h-4 w-4 text-icon-secondary pointer-events-none inline-flex shrink-0 items-center justify-center">
                 <Search className="h-4 w-4" />
               </span>
               <input
@@ -140,14 +140,14 @@ export default function SearchInput({
                     onSearch?.();
                   }
                 }}
-                className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-label-sm text-text-heading outline-none placeholder:text-text-label"
+                className="h-6 min-w-0 pl-2 text-label-sm text-text-heading placeholder:text-text-label flex-1 bg-transparent outline-none"
               />
               <TooltipSimple content={clearLabel}>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="shrink-0 rounded-full text-icon-secondary"
+                  className="text-icon-secondary shrink-0 rounded-full"
                   onClick={collapse}
                   aria-label={clearLabel}
                 >

@@ -162,7 +162,7 @@ export default function Search() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
+      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('setting.search-engine')}
         </div>
@@ -172,7 +172,7 @@ export default function Search() {
       <div className="mb-12">
         <div className="rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex flex-col">
-            <div className="flex flex-col gap-2 pb-2">
+            <div className="gap-2 pb-2 flex flex-col">
               <div className="text-label-lg font-bold">
                 {selectedProvider.name}
               </div>
@@ -181,7 +181,7 @@ export default function Search() {
               </div>
             </div>
 
-            <div className="flex-1 pt-4">
+            <div className="pt-4 flex-1">
               {selectedProvider.requiresApiKey ? (
                 <div className="space-y-4">
                   {selectedProvider.fields.map((field) => (
@@ -223,7 +223,7 @@ export default function Search() {
             </div>
 
             {!selectedProvider.enabledByDefault && (
-              <div className="flex items-center justify-end gap-3 pt-4">
+              <div className="gap-3 pt-4 flex items-center justify-end">
                 <Button size="sm" onClick={saveConfiguration} disabled={saving}>
                   {saving
                     ? t('setting.saving')
