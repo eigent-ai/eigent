@@ -27,7 +27,7 @@ Eigent provides pre-built Agent Skills for common tasks, and you can create or u
 
 - **Example Skills:** These are pre-built Agent Skills available to all users on Eigent. They operate seamlessly behind the scenes, and Eigent utilizes them without requiring any manual setup. You have the option to manually enable or disable it.
 
-  [skills 04.mp4](/images/agent_skills_example_skills_04.mp4)
+  <video controls className="w-full aspect-video rounded-xl" src="/images/agent_skills_example_skills_04.mp4"></video>
 
 - **Custom Skills:** These allow you to package your specific domain expertise and organizational knowledge. They are available across your Eigent workforce, and you can assign them to specific agents. You can create them directly within the Skill interface or add them via Eigent's settings.
 
@@ -35,11 +35,11 @@ Eigent provides pre-built Agent Skills for common tasks, and you can create or u
 
 Upload your own Skills as zip files through Homepage > Agents > Skills. Custom Skills are individual to each user and saved locally.
 
-[skill01.mp4](/images/agent_skills_skill01.mp4)
+<video controls className="w-full aspect-video rounded-xl" src="/images/agent_skills_skill01.mp4"></video>
 
 You can upload a standalone `SKILL.md` file or a complete `.zip` skill package. If uploading a package, it must contain a `SKILL.md` file in its root directory. In either case, the `SKILL.md` file must define the Skill's name and description using YAML formatting.
 
-[skill02.mp4](/images/agent_skills_skill02.mp4)
+<video controls className="w-full aspect-video rounded-xl" src="/images/agent_skills_skill02.mp4"></video>
 
 Every Skill requires a `SKILL.md` file with YAML frontmatter:
 
@@ -60,12 +60,12 @@ description: Brief description of what this Skill does and when to use it
 
 Eigent supports uploading multiple skills within one zip file, but please ensure the contents of each skill folder are complete.
 
-[skills 05.mp4](/images/agent_skills_skills_05.mp4)
+<video controls className="w-full aspect-video rounded-xl" src="/images/agent_skills_skills_05.mp4"></video>
 
 ## Using Skills
 
 To test your Skill file immediately, click the **Try in chat** button.
 
-[skill03.mp4](/images/agent_skills_skill03.mp4)
+<video controls className="w-full aspect-video rounded-xl" src="/images/agent_skills_skill03.mp4"></video>
 
 Use Skills only from trusted sources. Malicious Skills can misuse tools or execute unintended actions, potentially causing data leaks or unauthorized access—so carefully audit any untrusted Skill before use.
