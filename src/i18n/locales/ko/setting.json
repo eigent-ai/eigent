@@ -259,9 +259,5 @@
   "proxy-saved-restart-required": "프록시 설정이 저장되었습니다. 변경 사항을 적용하려면 앱을 다시 시작하세요.",
   "proxy-save-failed": "프록시 설정 저장에 실패했습니다.",
   "proxy-invalid-url": "잘못된 프록시 URL입니다. http://, https://, socks4://, 또는 socks5://로 시작해야 합니다.",
-  "proxy-restart-hint": "프록시 변경 사항을 적용하려면 다시 시작해야 합니다.",
-
-  "preferred-ide": "선호 IDE",
-  "preferred-ide-description": "에이전트 프로젝트 폴더를 열 때 사용할 애플리케이션을 선택합니다.",
-  "system-file-manager": "시스템 파일 관리자"
+  "proxy-restart-hint": "프록시 변경 사항을 적용하려면 다시 시작해야 합니다."
 }
