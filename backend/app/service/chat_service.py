@@ -47,6 +47,7 @@ from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
     Action,
+    ActionAgentEndData,
     ActionDecomposeProgressData,
     ActionDecomposeTextData,
     ActionEndData,
@@ -373,9 +374,15 @@ async def _run_direct_agent(
     # deactivate_agent because task is already FINISHED.
     await asyncio.sleep(0.1)
 
-    # Signal completion — step_solve's Action.end handler
-    # will yield sse_json("end", ...) and set status to done
-    await task_lock.put_queue(ActionEndData(data=response_content[:300]))
+    # Signal per-agent completion. step_solve's agent_end handler
+    # will emit the real "end" only when ALL agents are done.
+    await task_lock.put_queue(
+        ActionAgentEndData(
+            data=response_content[:300],
+            agent_id=getattr(agent, "agent_id", ""),
+            agent_name=getattr(agent, "agent_name", ""),
+        )
+    )
 
 
 @sync_step
@@ -1820,6 +1827,36 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         },
                     },
                 )
+
+            elif item.action == Action.agent_end:
+                # Per-agent completion for @mention direct chat.
+                # Only emit the real "end" when ALL agents finish.
+                agent_name = item.agent_name
+                agent_id = item.agent_id
+                remaining = len(task_lock.background_tasks)
+                logger.info(
+                    f"[AGENT-END] Agent {agent_name} "
+                    f"({agent_id}) finished. "
+                    f"Remaining background tasks: {remaining}",
+                    extra={
+                        "project_id": options.project_id,
+                    },
+                )
+
+                yield sse_json(
+                    "agent_end",
+                    {
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "data": item.data or "",
+                    },
+                )
+
+                if remaining == 0:
+                    # All agents done — trigger real end
+                    await task_lock.put_queue(
+                        ActionEndData(data=item.data)
+                    )
 
             elif item.action == Action.end:
                 logger.info("=" * 80)

@@ -774,7 +774,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const isTaskSwitchingEvent =
             agentMessages.step === AgentStep.CONFIRMED ||
             agentMessages.step === AgentStep.NEW_TASK_STATE ||
-            agentMessages.step === AgentStep.END;
+            agentMessages.step === AgentStep.END ||
+            agentMessages.step === AgentStep.AGENT_END;
 
           const isMultiTurnSimpleAnswer =
             agentMessages.step === AgentStep.WAIT_CONFIRM;
@@ -2118,6 +2119,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             } catch (error) {
               console.error('Error removing task from project store:', error);
             }
+            return;
+          }
+
+          if (agentMessages.step === AgentStep.AGENT_END) {
+            // Per-agent completion — do NOT set FINISHED.
+            // The agent is already visually deactivated by
+            // the deactivate_agent event. The real END event
+            // fires only when ALL parallel agents finish.
+            console.log(
+              `[agent_end] ${agentMessages.data?.agent_name} finished`
+            );
             return;
           }
 

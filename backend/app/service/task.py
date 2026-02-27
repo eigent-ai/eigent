@@ -58,6 +58,7 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
+    agent_end = "agent_end"  # backend -> user (single agent finished)
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -222,6 +223,15 @@ class ActionTerminalData(BaseModel):
 
 class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
+
+
+class ActionAgentEndData(BaseModel):
+    """Per-agent completion signal for @mention direct chat."""
+
+    action: Literal[Action.agent_end] = Action.agent_end
+    data: str | None = None
+    agent_id: str = ""
+    agent_name: str = ""
 
 
 class ActionEndData(BaseModel):
