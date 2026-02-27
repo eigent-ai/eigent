@@ -1447,12 +1447,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 taskRunning![taskIndex].agent!.status =
                   AgentStatusValue.RUNNING;
                 taskRunning![taskIndex]!.status = TaskStatus.RUNNING;
+                // Update task content for multi-turn direct agent
+                if (agentMessages.data.message) {
+                  taskRunning![taskIndex].content = agentMessages.data.message;
+                }
 
                 const task = taskAssigning[agentIndex].tasks.find(
                   (task: TaskInfo) => task.id === process_task_id
                 );
                 if (task) {
                   task.status = TaskStatus.RUNNING;
+                  if (agentMessages.data.message) {
+                    task.content = agentMessages.data.message;
+                  }
                 }
               }
               setTaskRunning(currentTaskId, [...taskRunning]);
