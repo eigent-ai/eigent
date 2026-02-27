@@ -17,7 +17,7 @@ description: This guide walks you through setting up your MiniMax API key within
 - Click on the **Settings** tab (usually located in the sidebar or top
   navigation).
 
-![Minimax 1 Pn](/docs/images/model_setting.png)
+![Minimax 1 Pn](/images/model_setting.png)
 
 #### 2. Locate Model Configuration
 
@@ -25,7 +25,7 @@ description: This guide walks you through setting up your MiniMax API key within
 - Scroll down to the **Custom Model** area.
 - Look for the **Minimax Config** card.
 
-![Minimax 2 Pn](/docs/images/minimax_1.png)
+![Minimax 2 Pn](/images/minimax_1.png)
 
 #### 3. Enter API Details
 
@@ -37,7 +37,7 @@ Click on the Minimax Config card and fill in the following fields:
   - _Example:_ `MiniMax-M2.1`
 - **Save:** Click the **Save** button to apply your changes.
 
-![Minimax 3 Pn](/docs/images/minimax_2.png)
+![Minimax 3 Pn](/images/minimax_2.png)
 
 #### 4. Set as Default & Verify
 
@@ -45,6 +45,6 @@ Click on the Minimax Config card and fill in the following fields:
   selected/active.
 - **You are ready to go.** Your Eigent agents can now utilize the Minimax model.
 
-![Minimax 4 Pn](/docs/images/minimax_3.png)
+![Minimax 4 Pn](/images/minimax_3.png)
 
 ---

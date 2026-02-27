@@ -10,7 +10,7 @@ This guide will walk you through building your first multi-agent workforce using
 
 Once opened, you'll land on the **Task** page. It’s a clean space designed to turn your ideas into action. Let's break down what you see.
 
-![Layout](/docs/images/quickstart_firsttask.png)
+![Layout](/images/quickstart_firsttask.png)
 
 ### The Top Bar
 
@@ -21,7 +21,7 @@ At the very top of the window is your main navigation bar. You'll access:
   - Ongoing Tasks
 - **Settings:** where you can configure the app to your liking.
 
-![Task Hub](/docs/images/quickstart_thetopbar.png)
+![Task Hub](/images/quickstart_thetopbar.png)
 
 ### The Main View
 
@@ -30,23 +30,23 @@ Your workspace is split into two panels:
 **Message Box (Left):** where you'll chat with your AI workforce to start a job.
 
 - Before running the task, you can Add, Edit, or Delete any subtask or Back to Edit your request, then resume. When tasks complete, you can use Replay to re-run the flow.
-  ![Message](/docs/images/quickstart_themainview.gif)
+  ![Message](/images/quickstart_themainview.gif)
 
-- You can pause anytime—hit **Pause**, edit via **Back to Edit**, then resume. When tasks complete, use **Replay** to re-run the flow.![Message 2](/docs/images/quickstart_pause.gif)
+- You can pause anytime—hit **Pause**, edit via **Back to Edit**, then resume. When tasks complete, use **Replay** to re-run the flow.![Message 2](/images/quickstart_pause.gif)
 
 **Canvas (Right):** where your AI agents get to work.
 
 - **Before a Task:** You'll see your pre-built agents and and their tools. You can also click **+ New Worker** to add your own. These workers will always be on standby for your task.
 - **During a Task:** The Canvas shows the live status of all subtasks (`Done / In Progress / Unfinished`). Click any subtask to view detailed logs (reasoning steps, tool calls, results). More on this below.
-  ![Task in Progress](/docs/images/quickstart_canvas_inprogress.png)
+  ![Task in Progress](/images/quickstart_canvas_inprogress.png)
 - **Canvas Toolbar:** At the bottom of the Canvas, you'll see a toolbar. This is where you manage your views of agents. You can switch between different task views, such as **Home**, **Agent Folder**, or a specific worker's **Workspace**.
-  ![Add Worker](/docs/images/quickstart_canvas_bottom.png)
+  ![Add Worker](/images/quickstart_canvas_bottom.png)
 
 ### Agent Folder
 
 This is the filing cabinet for your workforce. Any files your agents create or use (like documents, spreadsheets, code, pictures, or presentations) are automatically saved here. These files are also stored locally on your computer and/or in your cloud for easy access.
 
-![Agent Folder](/docs/images/quickstart_agentfolder.png)
+![Agent Folder](/images/quickstart_agentfolder.png)
 
 #### 📌 Note on File Storage
 
@@ -66,7 +66,7 @@ Eigent comes with four ready-to-work agents. Each is equipped with a specific se
 1. **Multimodal Agent** – ideals with images, videos and more
 1. **Document Agent** – reads, writes and manages files (Markdown, PDF, Word, etc.)
 
-![Pre-build Agents](/docs/images/quickstart_prebuiltagents.gif)
+![Pre-build Agents](/images/quickstart_prebuiltagents.gif)
 
 ### Add your own workers
 
@@ -76,7 +76,7 @@ Click **“+ Add Workers”**, provide:
 - **Description** (optional): the role of your customized agent
 - **Agent Tool**: install any tool available from our MCP Servers to give your agent the exact skills it needs.
 
-![Add Your Own Workers](/docs/images/quickstart_addworker.gif)
+![Add Your Own Workers](/images/quickstart_addworker.gif)
 
 ## Start Your First Task
 
@@ -97,7 +97,7 @@ Once you send your task, our **Coordinator Agent** and **Task Agent** kick in to
 
 Once you're happy with the plan, hit **Start Task.** Eigent will automatically assign each subtask to the best agent for the job based on the tools they have.
 
-![Launch the Task](/docs/images/quickstart_lauchtask.gif)
+![Launch the Task](/images/quickstart_lauchtask.gif)
 
 ## Watch Agents Work
 
@@ -109,18 +109,18 @@ Once the task starts, your agents will run in parallel on the Canvas:
   - **Task Results:** The output or conclusion of the subtask.
 - Hover over tasks to see status details
 
-![Watch Agents Work](/docs/images/quickstart_subtasklog.gif)
+![Watch Agents Work](/images/quickstart_subtasklog.gif)
 
 Click on an agent icon to open its **Workspace**:
 
 - Example 1: open **Browser Agent**, launch embedded browser
   - Use **“Take Control”** to take over browsing (e.g., accept cookies), then return control to the agent
 
-![Browser Agent](/docs/images/quickstart_takecontrol.gif)
+![Browser Agent](/images/quickstart_takecontrol.gif)
 
 - Example 2: open **Developer Agent**, lauch **Terminal**
 
-![Developer Agent](/docs/images/quickstart_terminal.gif)
+![Developer Agent](/images/quickstart_terminal.gif)
 
 <aside>
 
@@ -151,13 +151,13 @@ Click the gear icon in the top-right corner to open Settings. Here’s a brief o
 - **Language:** Choose between English, Simplified Chinese, or your System Default.
 - **Appearance:** Switch between Light mode. On macOS, a Transparent mode is also available.
 
-![General](/docs/images/quickstart_settings_general.png)
+![General](/images/quickstart_settings_general.png)
 
 ### **Privacy**
 
 Your privacy is important to us! Because Eigent agents operate on your desktop, they may need permissions to take screenshots or access local files to complete tasks. You can enable and manage all these permissions here.
 
-![Privacy](/docs/images/quickstart_settings_privacy.png)
+![Privacy](/images/quickstart_settings_privacy.png)
 
 ### **Models**
 
@@ -168,7 +168,7 @@ Eigent can run in two modes. Your choice here affects how you are billed and wha
 
 </aside>
 
-![Models](/docs/images/quickstart_settings_localmodel.png)
+![Models](/images/quickstart_settings_localmodel.png)
 
 - **Cloud Version:** We provide pre-configured, state-of-the-art models, including GPT-4.1, GPT-4.1 mini and Gemini 2.5 Pro. Using these models is the easiest way to get started and will be billed to your account based on usage (credits).
 - **Self-hosted Version:** You can connect your own models.
@@ -179,11 +179,11 @@ Eigent can run in two modes. Your choice here affects how you are billed and wha
 
 MCPs are the **tools** that give your agents their skills. We've pre-configured popular tools like Slack, Notion, Google Calendar, GitHub, and more in **MCP Market**, which you can install for your agents with a single click.
 
-![MCP Markets](/docs/images/quickstart_settings_mcp.png)
+![MCP Markets](/images/quickstart_settings_mcp.png)
 
 For advanced users, you can click **Add MCP Server** to configure and install custom tools from third-party sources.
 
-![MCP Servers](/docs/images/quickstart_settings_addmcp.png)
+![MCP Servers](/images/quickstart_settings_addmcp.png)
 
 ## Next Steps
 
@@ -205,7 +205,7 @@ Congratulations on running your first task! Here are a few recommended reads to 
   <Card
     title="Models"
     icon="server"
-    href="/core/models">
+    href="/core/models/byok">
     Discover how to connect your own local or cloud-based AI models.
   </Card>
 </CardGroup>

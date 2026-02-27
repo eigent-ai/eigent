@@ -40,13 +40,13 @@ ollama pull qwen2.5:7b
 
 2. Setting your model
 
-![set_local_model](/docs/images/models_local_model.png)
+![set_local_model](/images/models_local_model.png)
 
 3. Configure the Google Search toolkit
 
-![configure_searchtools](/docs/images/models_configure_tools.png)
+![configure_searchtools](/images/models_configure_tools.png)
 
-<img src="/docs/images/models_configure_tools_key.png" alt="configure_searchtoolsapi" /> You can refer to the following document for detailed information on how to configure **GOOGLE_API_KEY** and **SEARCH_ENGINE_ID :** https://developers.google.com/custom-search/v1/overview
+<img src="/images/models_configure_tools_key.png" alt="configure_searchtoolsapi" /> You can refer to the following document for detailed information on how to configure **GOOGLE_API_KEY** and **SEARCH_ENGINE_ID :** https://developers.google.com/custom-search/v1/overview
 
 ## **API KEY Reference**
 
