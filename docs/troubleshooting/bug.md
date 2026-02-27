@@ -4,7 +4,7 @@ description: 'Follow these simple steps to report bugs and help improve our prod
 ---
 
 <img
-src="/images/bug_report.gif"
+src="/docs/images/bug_report.gif"
 alt="Bug Report"
 width="100%"
 height="auto"
