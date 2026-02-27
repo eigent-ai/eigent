@@ -35,6 +35,7 @@ from app.agent.factory import (
     mcp_agent,
     multi_modal_agent,
     question_confirm_agent,
+    social_media_agent,
     task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
@@ -48,6 +49,7 @@ from app.service.task import (
     Action,
     ActionDecomposeProgressData,
     ActionDecomposeTextData,
+    ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
     ActionNewAgent,
@@ -284,6 +286,98 @@ def build_context_for_workforce(
     )
 
 
+# ================================================================
+# @mention direct agent routing
+# ================================================================
+
+# Maps @mention target names to (factory_fn, is_async) pairs
+_AGENT_TARGET_MAP: dict[str, tuple] = {
+    "browser": (browser_agent, False),
+    "dev": (developer_agent, True),
+    "doc": (document_agent, True),
+    "media": (multi_modal_agent, False),
+    "social": (social_media_agent, True),
+}
+
+
+async def _create_persistent_agent(
+    target: str, options: Chat
+) -> ListenChatAgent:
+    """Create a persistent agent by target name using existing factories."""
+    if target not in _AGENT_TARGET_MAP:
+        raise ValueError(
+            f"Unknown agent target: {target}. "
+            f"Valid targets: {list(_AGENT_TARGET_MAP.keys())}"
+        )
+    factory_fn, is_async = _AGENT_TARGET_MAP[target]
+    if is_async:
+        agent = await factory_fn(options)
+    else:
+        agent = await asyncio.to_thread(factory_fn, options)
+    logger.info(
+        f"[DIRECT-AGENT] Created persistent agent: {target}",
+        extra={
+            "project_id": options.project_id,
+            "agent_name": getattr(agent, "agent_name", target),
+            "agent_id": getattr(agent, "agent_id", ""),
+        },
+    )
+    return agent
+
+
+async def _run_direct_agent(
+    agent,
+    prompt: str,
+    question: str,
+    task_lock: TaskLock,
+):
+    """Background task that runs a direct agent step.
+
+    agent.astep() internally sends activate_agent and deactivate_agent
+    events via the queue, so step_solve's main loop can process them
+    in real-time alongside toolkit events.
+
+    After completion, puts ActionEndData into the queue so step_solve
+    yields the 'end' SSE event.
+    """
+    from camel.agents.chat_agent import (
+        AsyncStreamingChatAgentResponse,
+    )
+
+    response_content = ""
+    try:
+        response = await agent.astep(prompt)
+        if isinstance(response, AsyncStreamingChatAgentResponse):
+            # Must consume the stream to trigger deactivation
+            # in _astream_chunks's finally block
+            async for chunk in response:
+                if chunk.msg and chunk.msg.content:
+                    response_content += chunk.msg.content
+        else:
+            response_content = response.msg.content if response.msg else ""
+    except Exception as e:
+        logger.error(
+            f"[DIRECT-AGENT] Error executing agent: {e}",
+            exc_info=True,
+        )
+        response_content = f"Error executing agent: {e}"
+
+    # Save conversation history
+    task_lock.add_conversation("user", question)
+    task_lock.add_conversation("assistant", response_content)
+
+    # Yield control so the agent's deactivate_agent event
+    # (scheduled via _schedule_async_task in _astream_chunks's
+    # finally block) fires before the end event.
+    # Without this, end arrives first and frontend ignores
+    # deactivate_agent because task is already FINISHED.
+    await asyncio.sleep(0.1)
+
+    # Signal completion — step_solve's Action.end handler
+    # will yield sse_json("end", ...) and set status to done
+    await task_lock.put_queue(ActionEndData(data=response_content[:300]))
+
+
 @sync_step
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     """Main task execution loop. Called when POST /chat endpoint
@@ -468,6 +562,135 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "ActionImproveData: "
                         f"'{question[:100]}...'"
                     )
+
+                # --- @mention direct agent routing ---
+                target: str | None = None
+                if (
+                    hasattr(options, "target")
+                    and options.target
+                    and loop_iteration == 1
+                ):
+                    target = options.target
+                elif isinstance(item, ActionImproveData) and item.data.target:
+                    target = item.data.target
+
+                if (
+                    target
+                    and target != "workforce"
+                    and target in _AGENT_TARGET_MAP
+                ):
+                    # Direct agent mode: keep the SAME task_id
+                    # across turns (continuous chat in one chatStore).
+                    # Do NOT update options.task_id here — the
+                    # frontend reuses the existing chatStore.
+
+                    logger.info(
+                        f"[DIRECT-AGENT] Routing to @{target}",
+                        extra={
+                            "project_id": options.project_id,
+                            "target": target,
+                            "task_id": options.task_id,
+                        },
+                    )
+
+                    # Send confirmed event so frontend transitions
+                    # from pending/splitting state.
+                    # direct=True tells frontend to skip task
+                    # splitting and go straight to RUNNING.
+                    yield sse_json(
+                        "confirmed",
+                        {"question": question, "direct": True},
+                    )
+
+                    # Ensure event loop is set for agent internals
+                    set_main_event_loop(asyncio.get_running_loop())
+
+                    # Get or create persistent agent
+                    agent = task_lock.persistent_agents.get(target)
+                    is_new_agent = agent is None
+
+                    logger.info(
+                        f"[DIRECT-AGENT] persistent_agents"
+                        f" keys: {list(task_lock.persistent_agents.keys())},"
+                        f" is_new={is_new_agent},"
+                        f" target={target}",
+                    )
+
+                    if is_new_agent:
+                        # Factory internally sends create_agent
+                        # via ActionCreateAgentData in the queue
+                        agent = await _create_persistent_agent(target, options)
+                        task_lock.persistent_agents[target] = agent
+                        logger.info(
+                            f"[DIRECT-AGENT] Created NEW "
+                            f"agent: {agent.agent_name} "
+                            f"(id={agent.agent_id})",
+                        )
+                    else:
+                        logger.info(
+                            f"[DIRECT-AGENT] REUSING "
+                            f"agent: {agent.agent_name} "
+                            f"(id={agent.agent_id})",
+                        )
+                        # Reused agent: factory won't send
+                        # create_agent, so we must send it
+                        # explicitly for the new chatStore
+                        tool_names = []
+                        for t in getattr(agent, "tools", []):
+                            fn_name = getattr(t, "get_function_name", None)
+                            if fn_name:
+                                tool_names.append(fn_name())
+                        yield sse_json(
+                            "create_agent",
+                            {
+                                "agent_name": agent.agent_name,
+                                "agent_id": agent.agent_id,
+                                "tools": tool_names,
+                            },
+                        )
+
+                    agent.process_task_id = options.task_id
+
+                    # Build prompt: reused agents already have
+                    # conversation history in their CAMEL memory,
+                    # so only prepend context for brand-new agents.
+                    if is_new_agent:
+                        conv_ctx = build_conversation_context(
+                            task_lock,
+                            header="=== Previous Conversation ===",
+                        )
+                        prompt = f"{conv_ctx}\nUser: {question}"
+                    else:
+                        prompt = question
+                    if attaches_to_use:
+                        prompt += f"\n\nAttached files: {attaches_to_use}"
+
+                    # Launch agent in background task so step_solve's
+                    # while loop can process queue events (activate,
+                    # toolkit, deactivate) in real-time.
+                    # agent.astep() internally sends activate_agent
+                    # and deactivate_agent via the queue.
+                    task = asyncio.create_task(
+                        _run_direct_agent(
+                            agent,
+                            prompt,
+                            question,
+                            task_lock,
+                        )
+                    )
+                    task_lock.add_background_task(task)
+                    continue
+
+                if target == "workforce":
+                    logger.info(
+                        "[DIRECT-AGENT] @workforce: "
+                        "cleaning up persistent agents",
+                        extra={
+                            "project_id": options.project_id,
+                        },
+                    )
+                    await task_lock.cleanup_persistent_agents()
+                # --- end @mention routing ---
 
                 is_exceeded, total_length = check_conversation_history_length(
                     task_lock

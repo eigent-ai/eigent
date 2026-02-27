@@ -34,6 +34,7 @@ import { ProjectChatContainer } from './ProjectChatContainer';
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
+  const [mentionTarget, setMentionTarget] = useState<string | null>(null);
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -261,8 +262,10 @@ export default function ChatBox(): JSX.Element {
       task.messages.some(
         (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
       ) ||
-      // skeleton/computing phase
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      // skeleton/computing phase (not applicable after task finishes or in direct agent mode)
+      ((task.status as string) !== ChatTaskStatus.FINISHED &&
+        (task.status as string) !== ChatTaskStatus.RUNNING &&
+        !task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
       task.isTakeControl
@@ -430,7 +433,31 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
-    const tempMessageContent = messageStr || message;
+    const rawMessageContent = messageStr || message;
+
+    // Use the active mentionTarget state (rendered as a tag in the input).
+    // Fall back to parsing @mention from text for backwards compat.
+    let activeMentionTarget = mentionTarget;
+    let tempMessageContent = rawMessageContent;
+    if (!activeMentionTarget) {
+      const mentionMatch = rawMessageContent.match(/^@(\w+)\s+([\s\S]*)/);
+      if (mentionMatch) {
+        activeMentionTarget = mentionMatch[1];
+        tempMessageContent = mentionMatch[2];
+      }
+    }
+
+    // Build display content: embed mention as {{@agentId}} so it
+    // survives in the message text and gets rendered like skill tags.
+    const displayContent = activeMentionTarget
+      ? `{{@${activeMentionTarget}}} ${tempMessageContent}`
+      : tempMessageContent;
+
+    // Persist the mention target so the tag stays for the next turn
+    if (activeMentionTarget && activeMentionTarget !== mentionTarget) {
+      setMentionTarget(activeMentionTarget);
+    }
+
     chatStore.setHasMessages(_taskId as string, true);
     if (!_taskId) return;
 
@@ -447,7 +474,8 @@ export default function ChatBox(): JSX.Element {
       ) ||
       (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
         !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
+        task.messages.length > 0 &&
+        task.status !== ChatTaskStatus.FINISHED) ||
       task.isTakeControl ||
       // explicit confirm wait while task is pending but card not confirmed yet
       (!!task.messages.find(
@@ -471,7 +499,7 @@ export default function ChatBox(): JSX.Element {
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
           role: 'user',
-          content: tempMessageContent,
+          content: displayContent,
           attaches:
             JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
             [],
@@ -568,7 +596,9 @@ export default function ChatBox(): JSX.Element {
                 undefined,
                 undefined,
                 tempMessageContent,
-                attachesToSend
+                attachesToSend,
+                activeMentionTarget ?? undefined,
+                displayContent
               );
               chatStore.setAttaches(_taskId, []);
             } catch (err: any) {
@@ -603,12 +633,13 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              target: activeMentionTarget,
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {
               id: generateUniqueId(),
               role: 'user',
-              content: tempMessageContent,
+              content: displayContent,
               attaches: attachesForThisTurn,
             });
             chatStore.setAttaches(_taskId, []);
@@ -648,7 +679,9 @@ export default function ChatBox(): JSX.Element {
               undefined,
               undefined,
               tempMessageContent,
-              attachesToSend
+              attachesToSend,
+              activeMentionTarget ?? undefined,
+              displayContent
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
             chatStore.setAttaches(_taskId, []);
@@ -895,8 +928,10 @@ export default function ChatBox(): JSX.Element {
 
     // Determine if we're in the "splitting in progress" phase (skeleton visible)
     // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
+    // Skip splitting phase when task is already RUNNING (e.g. direct @agent mode)
     const isSkeletonPhase =
       (task.status !== ChatTaskStatus.FINISHED &&
+        task.status !== ChatTaskStatus.RUNNING &&
         !anyToSubTasksMessage &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
@@ -1078,6 +1113,8 @@ export default function ChatBox(): JSX.Element {
                 allowDragDrop: true,
                 privacy: privacy,
                 useCloudModelInDev: useCloudModelInDev,
+                mentionTarget: mentionTarget,
+                onMentionTargetChange: setMentionTarget,
               }}
             />
           )}
@@ -1122,6 +1159,8 @@ export default function ChatBox(): JSX.Element {
                   allowDragDrop: true,
                   privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
+                  mentionTarget: mentionTarget,
+                  onMentionTargetChange: setMentionTarget,
                 }}
               />
             )}

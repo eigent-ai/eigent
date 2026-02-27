@@ -146,6 +146,7 @@ declare global {
       current_length?: number;
       max_length?: number;
       text?: string;
+      direct?: boolean;
     };
     status?: AgentMessageStatusType;
   }
