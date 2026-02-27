@@ -656,7 +656,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             },
                         )
 
-                    agent.process_task_id = options.task_id
+                    # Each direct agent needs a unique process_task_id
+                    # so toolkit events map to the correct agent panel.
+                    agent.process_task_id = (
+                        f"{options.task_id}_{agent.agent_id}"
+                    )
 
                     # New agents need prior conversation context
                     # injected into the prompt; reused agents
@@ -1854,9 +1858,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 if remaining == 0:
                     # All agents done — trigger real end
-                    await task_lock.put_queue(
-                        ActionEndData(data=item.data)
-                    )
+                    await task_lock.put_queue(ActionEndData(data=item.data))
 
             elif item.action == Action.end:
                 logger.info("=" * 80)

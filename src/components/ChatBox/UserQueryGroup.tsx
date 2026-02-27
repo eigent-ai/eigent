@@ -193,6 +193,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const isSkeletonPhase =
     task &&
     ((task.status !== ChatTaskStatus.FINISHED &&
+      task.status !== ChatTaskStatus.RUNNING &&
       !anyToSubTasksMessage &&
       !task.hasWaitComfirm &&
       task.messages.length > 0) ||
