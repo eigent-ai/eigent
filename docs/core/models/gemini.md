@@ -14,18 +14,14 @@ description: This guide walks you through setting up your Google Gemini API key 
 #### 1. Access Application Settings
 
 - Launch Eigent and navigate to the **Home Page**.
-- Click on the **Settings** tab (usually located in the sidebar or top
-  navigation).
+- Click on the **Agent** tab, then click on the **Models** button.
 
 ![Gemini 1 Pn](/docs/images/model_setting.png)
 
 #### 2. Locate Model Configuration
 
-- In the Settings menu, find and select the **Models** section.
 - Scroll down to the **Custom Model** area.
 - Look for the **Gemini Config** card.
-
-![Gemini 2 Pn](/docs/images/gemini_1.png)
 
 #### 3. Enter API Details
 
@@ -38,15 +34,13 @@ Click on the Gemini Config card and fill in the following fields:
   - _Example:_ `gemini-3-pro-preview`
 - **Save:** Click the **Save** button to apply your changes.
 
-![Gemini 3 Pn](/docs/images/gemini_2.png)
+![Gemini 3 Pn](/docs/images/gemini.png)
 
 #### 4. Set as Default & Verify
 
 - Once saved, the **"Set as Default"** button on the Gemini Config card will be
   selected/active.
 - **You are ready to go.** Your Eigent agents can now utilize the Gemini model.
-
-![Gemini 4 Pn](/docs/images/gemini_3.png)
 
 ---
 
