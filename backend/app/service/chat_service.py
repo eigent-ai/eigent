@@ -620,10 +620,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         # Factory internally sends create_agent
                         # via ActionCreateAgentData in the queue
                         agent = await _create_persistent_agent(target, options)
-                        # Persistent agents are reused across turns;
-                        # keep tool call history so the LLM remembers
-                        # what it did in previous turns.
-                        agent.prune_tool_calls_from_memory = False
                         task_lock.persistent_agents[target] = agent
                         logger.info(
                             f"[DIRECT-AGENT] Created NEW "
@@ -655,9 +651,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                     agent.process_task_id = options.task_id
 
-                    # Build prompt: reused agents already have
-                    # conversation history in their CAMEL memory,
-                    # so only prepend context for brand-new agents.
+                    # New agents need prior conversation context
+                    # injected into the prompt; reused agents
+                    # already have it in CAMEL memory.
                     if is_new_agent:
                         conv_ctx = build_conversation_context(
                             task_lock,

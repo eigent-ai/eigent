@@ -308,7 +308,7 @@ def browser_agent(options: Chat):
         ),
         options,
         tools,
-        prune_tool_calls_from_memory=True,
+        prune_tool_calls_from_memory=False,
         tool_names=[
             SearchToolkit.toolkit_name(),
             HybridBrowserToolkit.toolkit_name(),
