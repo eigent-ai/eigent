@@ -1383,12 +1383,14 @@ function registerIpcHandlers() {
       }
       await seedDefaultSkillsIfEmpty();
       const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
+      const exampleSkillsDir = getExampleSkillsSourceDir();
       const skills: Array<{
         name: string;
         description: string;
         path: string;
         scope: string;
         skillDirName: string;
+        isExample: boolean;
       }> = [];
       for (const e of entries) {
         if (!e.isDirectory() || e.name.startsWith('.')) continue;
@@ -1397,12 +1399,16 @@ function registerIpcHandlers() {
           const raw = await fsp.readFile(skillPath, 'utf-8');
           const meta = parseSkillFrontmatter(raw);
           if (meta) {
+            const isExample = existsSync(
+              path.join(exampleSkillsDir, e.name, SKILL_FILE)
+            );
             skills.push({
               name: meta.name,
               description: meta.description,
               path: skillPath,
               scope: 'user',
               skillDirName: e.name,
+              isExample,
             });
           }
         } catch (_) {
