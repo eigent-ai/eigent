@@ -253,6 +253,7 @@ class ActionNewAgent(BaseModel):
     tools: list[str]
     mcp_tools: McpServers | None
     custom_model_config: "AgentModelConfig | None" = None
+    use_long_term_memory: bool = False
 
 
 class ActionBudgetNotEnough(BaseModel):

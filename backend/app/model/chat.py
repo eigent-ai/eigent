@@ -187,6 +187,7 @@ class NewAgent(BaseModel):
     mcp_tools: McpServers | None
     env_path: str | None = None
     custom_model_config: AgentModelConfig | None = None
+    use_long_term_memory: bool = False
 
 
 class AddTaskRequest(BaseModel):
