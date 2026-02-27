@@ -116,7 +116,7 @@ export default function CookieManager() {
     <div className="rounded-2xl bg-surface-secondary px-6 py-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <div className="gap-2 text-base font-bold leading-12 text-text-primary flex items-center">
+          <div className="flex items-center gap-2 text-base font-bold leading-12 text-text-primary">
             <Cookie className="h-5 w-5" />
             {t('setting.cookie-manager')}
           </div>
@@ -124,7 +124,7 @@ export default function CookieManager() {
             {t('setting.cookie-manager-description')}
           </div>
         </div>
-        <div className="gap-2 flex">
+        <div className="flex gap-2">
           <Button
             onClick={loadCookies}
             variant="outline"
@@ -152,8 +152,8 @@ export default function CookieManager() {
       </div>
 
       {/* Search Bar */}
-      <div className="mb-4 relative">
-        <Search className="left-3 h-4 w-4 text-text-tertiary absolute top-1/2 -translate-y-1/2 transform" />
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-text-tertiary" />
         <Input
           type="text"
           placeholder={t('setting.search-domains')}
@@ -166,13 +166,13 @@ export default function CookieManager() {
       {/* Cookie List */}
       <div className="space-y-2">
         {isLoading ? (
-          <div className="py-8 text-text-secondary text-center">
-            <RefreshCw className="mb-2 h-6 w-6 animate-spin mx-auto" />
+          <div className="py-8 text-center text-text-secondary">
+            <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin" />
             {t('setting.loading-cookies')}
           </div>
         ) : filteredDomains.length === 0 ? (
-          <div className="py-8 text-text-secondary text-center">
-            <Cookie className="mb-3 h-12 w-12 mx-auto opacity-30" />
+          <div className="py-8 text-center text-text-secondary">
+            <Cookie className="mx-auto mb-3 h-12 w-12 opacity-30" />
             <div className="mb-1 text-base font-medium">
               {domains.length === 0
                 ? t('setting.no-cookies-found')
@@ -188,13 +188,13 @@ export default function CookieManager() {
           filteredDomains.map((item) => (
             <div
               key={item.domain}
-              className="rounded-lg border-border-primary bg-surface-primary p-3 hover:border-border-secondary flex items-center justify-between border transition-colors"
+              className="flex items-center justify-between rounded-lg border border-border-primary bg-surface-primary p-3 transition-colors hover:border-border-secondary"
             >
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-text-primary truncate">
+                <div className="truncate font-medium text-text-primary">
                   {item.domain}
                 </div>
-                <div className="mt-1 gap-3 text-xs text-text-tertiary flex items-center">
+                <div className="mt-1 flex items-center gap-3 text-xs text-text-tertiary">
                   <span>
                     {t('setting.cookies-count', { count: item.cookie_count })}
                   </span>
@@ -222,9 +222,9 @@ export default function CookieManager() {
 
       {/* Warning */}
       {domains.length > 0 && (
-        <div className="dark:bg-yellow-900/20 mt-4 rounded-lg border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-800 border">
-          <div className="gap-2 flex items-start">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0" />
+        <div className="dark:bg-yellow-900/20 mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-800">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-600 dark:text-yellow-500" />
             <div className="text-xs text-yellow-800 dark:text-yellow-200">
               {t('setting.cookie-delete-warning')}
             </div>

@@ -67,7 +67,7 @@
   "key": "Key",
   "enter-your-api-host": "Enter your API Host",
   "url": "URL",
-  "enter-your-model-type": "Enter your Model Type",
+  "enter-your-model-type": "Enter your model",
   "verifying": "Verifying...",
 
   "mcp-and-tools": "MCP & Tools",
@@ -199,7 +199,10 @@
   "set-as-default": "Set as Default",
   "api-key-setting": "API Key Setting",
   "api-host-setting": "API Host Setting",
-  "model-type-setting": "Model Type Setting",
+  "model-type-setting": "Model Setting",
+  "search-model-types": "Search or enter model...",
+  "no-model-types-found": "No model types found.",
+  "loading-suggestions": "Loading suggestions...",
   "please-select": "Please select",
   "configuring": "Configuring...",
 
@@ -279,7 +282,7 @@
   "key": "Key",
   "enter-your-api-host": "Enter your API Host",
   "url": "URL",
-  "enter-your-model-type": "Enter your Model Type",
+  "enter-your-model-type": "Enter your model",
   "verifying": "Verifying...",
 
   "mcp-and-tools": "MCP & Tools",

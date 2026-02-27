@@ -209,7 +209,10 @@
   "set-as-default": "Définir comme défaut",
   "api-key-setting": "Paramètre de clé API",
   "api-host-setting": "Paramètre d'hôte API",
-  "model-type-setting": "Paramètre de type de modèle",
+  "model-type-setting": "Paramètre de modèle",
+  "search-model-types": "Rechercher ou saisir un modèle...",
+  "no-model-types-found": "Aucun type de modèle trouvé.",
+  "loading-suggestions": "Chargement des suggestions...",
   "please-select": "Veuillez sélectionner",
   "configuring": "Configuration...",
 

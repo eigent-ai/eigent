@@ -233,7 +233,10 @@
   "set-as-default": "Als Standard festlegen",
   "api-key-setting": "API-Schlüssel-Einstellung",
   "api-host-setting": "API-Host-Einstellung",
-  "model-type-setting": "Modelltyp-Einstellung",
+  "model-type-setting": "Modelleinstellung",
+  "search-model-types": "Modell suchen oder eingeben...",
+  "no-model-types-found": "Keine Modelltypen gefunden.",
+  "loading-suggestions": "Vorschläge werden geladen...",
   "please-select": "Bitte auswählen",
   "configuring": "Wird konfiguriert...",
 

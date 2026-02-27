@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.component.error_format import normalize_error_to_openai_format
+from app.component.model_suggestions import get_model_type_suggestions
 from app.component.model_validation import (
     ValidationErrorType,
     ValidationStage,
@@ -74,6 +75,17 @@ class ValidateModelResponse(BaseModel):
     validation_stages: dict[str, bool] | None = Field(
         None, description="Validation stages status"
     )
+
+
+class ModelTypesRequest(BaseModel):
+    platform: str | None = Field(None, description="Platform name")
+
+
+@router.post("/model/types")
+async def get_model_types(request: ModelTypesRequest):
+    """Return model name suggestions for the given platform."""
+    model_types = get_model_type_suggestions(request.platform)
+    return {"model_types": model_types}
 
 
 @router.post("/model/validate")

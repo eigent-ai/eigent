@@ -62,7 +62,7 @@ export const INIT_PROVODERS: Provider[] = [
   },
   {
     id: 'deepseek',
-    name: 'Deepseek',
+    name: 'DeepSeek',
     apiKey: '',
     apiHost: 'https://api.deepseek.com',
     description: 'DeepSeek model configuration.',

@@ -171,7 +171,10 @@
   "set-as-default": "تعيين كافتراضي",
   "api-key-setting": "إعداد مفتاح API",
   "api-host-setting": "إعداد مضيف API",
-  "model-type-setting": "إعداد نوع النموذج",
+  "model-type-setting": "إعداد النموذج",
+  "search-model-types": "ابحث أو أدخل النموذج...",
+  "no-model-types-found": "لم يتم العثور على أنواع النماذج.",
+  "loading-suggestions": "تحميل الاقتراحات...",
   "please-select": "يرجى الاختيار",
   "configuring": "جارٍ التكوين...",
 
