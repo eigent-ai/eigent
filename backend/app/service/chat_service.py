@@ -620,6 +620,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         # Factory internally sends create_agent
                         # via ActionCreateAgentData in the queue
                         agent = await _create_persistent_agent(target, options)
+                        # Persistent agents are reused across turns;
+                        # keep tool call history so the LLM remembers
+                        # what it did in previous turns.
+                        agent.prune_tool_calls_from_memory = False
                         task_lock.persistent_agents[target] = agent
                         logger.info(
                             f"[DIRECT-AGENT] Created NEW "
