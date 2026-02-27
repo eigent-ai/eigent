@@ -371,8 +371,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 <AgentMessageCard
                   key={message.id}
                   typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
+                    message.step !== AgentStep.AGENT_END &&
+                    (task?.type !== 'replay' ||
+                      (task?.type === 'replay' && task?.delayTime !== 0))
                   }
                   id={message.id}
                   content={message.content}
