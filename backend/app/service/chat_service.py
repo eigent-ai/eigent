@@ -43,6 +43,7 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
+from app.component.error_format import normalize_error_to_openai_format
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
     Action,
@@ -553,13 +554,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         )
                     except Exception as e:
                         logger.error(f"Error generating simple answer: {e}")
+                        message, error_code, _ = (
+                            normalize_error_to_openai_format(e)
+                        )
                         yield sse_json(
-                            "wait_confirm",
+                            "error",
                             {
-                                "content": "I encountered an error"
-                                " while processing "
-                                "your question.",
-                                "question": question,
+                                "message": message,
+                                "error_code": error_code,
                             },
                         )
 
@@ -1259,13 +1261,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     "Error generating simple "
                                     f"answer in multi-turn: {e}"
                                 )
+                                message, error_code, _ = (
+                                    normalize_error_to_openai_format(e)
+                                )
                                 yield sse_json(
-                                    "wait_confirm",
+                                    "error",
                                     {
-                                        "content": "I encountered an error "
-                                        "while processing your "
-                                        "question.",
-                                        "question": new_task_content,
+                                        "message": message,
+                                        "error_code": error_code,
                                     },
                                 )
 
@@ -1598,6 +1601,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     },
                 )
 
+            elif item.action == Action.error:
+                logger.error(
+                    "[LIFECYCLE] ERROR action received "
+                    f"for project {options.project_id}, "
+                    f"task {options.task_id}: "
+                    f"{item.data.get('message', 'Unknown error')}"
+                )
+                yield sse_json(
+                    "error",
+                    {
+                        "message": item.data.get("message", "Unknown error"),
+                        "error_code": item.data.get("error_code"),
+                    },
+                )
+
             elif item.action == Action.end:
                 logger.info("=" * 80)
                 logger.info(
@@ -1820,7 +1838,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     f"{item.action}: {e}",
                     exc_info=True,
                 )
-                yield sse_json("error", {"message": str(e)})
+                message, error_code, _ = normalize_error_to_openai_format(e)
+                yield sse_json(
+                    "error",
+                    {"message": message, "error_code": error_code},
+                )
                 if (
                     "workforce" in locals()
                     and workforce is not None
@@ -1834,7 +1856,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 f"{item.action}: {e}",
                 exc_info=True,
             )
-            yield sse_json("error", {"message": str(e)})
+            message, error_code, _ = normalize_error_to_openai_format(e)
+            yield sse_json(
+                "error",
+                {"message": message, "error_code": error_code},
+            )
             # Continue processing other items instead of breaking
 
 

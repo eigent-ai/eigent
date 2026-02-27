@@ -52,5 +52,10 @@
   "open-in-vscode": "Открыть в VS Code",
   "open-in-cursor": "Открыть в Cursor",
   "open-in-file-manager": "Открыть в файловом менеджере",
-  "failed-to-open-folder": "Не удалось открыть папку"
+  "failed-to-open-folder": "Не удалось открыть папку",
+  "model-error-go-to-settings": "Model Settings",
+  "model-error-invalid-api-key": "Your API key is invalid or expired. Please update it in",
+  "model-error-model-not-found": "The configured model was not found. Please check your settings in",
+  "model-error-quota-exceeded": "You've exceeded your API quota. Please check your plan or update your key in",
+  "model-error-open-settings": "Open Model Settings"
 }

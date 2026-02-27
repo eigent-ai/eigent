@@ -23,6 +23,7 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import { ModelErrorCard } from './MessageItem/ModelErrorCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
@@ -287,6 +288,22 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
+        if (message.error_code) {
+          return (
+            <motion.div
+              key={`error-${message.id}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="mt-2 flex flex-col gap-4 px-sm"
+            >
+              <ModelErrorCard
+                content={message.content}
+                errorCode={message.error_code}
+              />
+            </motion.div>
+          );
+        }
         if (message.content.length > 0) {
           if (message.step === AgentStep.END) {
             return (

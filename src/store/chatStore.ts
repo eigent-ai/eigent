@@ -24,6 +24,7 @@ import {
   waitForBackendReady,
 } from '@/api/http';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
+import { showModelErrorToast } from '@/components/Toast/modelErrorToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
 import {
@@ -525,6 +526,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         api_url: '',
         extra_params: {},
       };
+      let preferredProviderId: number | null = null;
+      let preferredProvider: any = null;
       if (modelType === 'custom' || modelType === 'local') {
         const res = await proxyFetchGet('/api/providers', {
           prefer: true,
@@ -539,6 +542,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           );
         }
 
+        preferredProviderId = provider.id ?? null;
+        preferredProvider = provider;
         apiModel = {
           api_key: provider.api_key,
           model_type: provider.model_type,
@@ -1885,13 +1890,36 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 throw new Error('Invalid error message format: missing data');
               }
 
-              // Safely extract error message with fallback chain
+              // Safely extract error message and error code with fallback chain
               const errorMessage =
                 agentMessages.data?.message ||
                 (typeof agentMessages.data === 'string'
                   ? agentMessages.data
                   : null) ||
                 'An error occurred while processing your request';
+              const errorCode = agentMessages.data?.error_code ?? null;
+
+              // Show model error toast with settings link
+              showModelErrorToast(errorMessage, errorCode);
+
+              // If API key is invalid, mark the provider as invalid on the server
+              if (
+                errorCode === 'invalid_api_key' &&
+                preferredProviderId &&
+                preferredProvider
+              ) {
+                proxyFetchPut(`/api/provider/${preferredProviderId}`, {
+                  provider_name: preferredProvider.provider_name,
+                  model_type: preferredProvider.model_type,
+                  api_key: preferredProvider.api_key,
+                  endpoint_url: preferredProvider.endpoint_url || '',
+                  encrypted_config: preferredProvider.encrypted_config || null,
+                  is_vaild: 1,
+                  prefer: preferredProvider.prefer ?? false,
+                }).catch((err: unknown) =>
+                  console.error('Failed to invalidate provider:', err)
+                );
+              }
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -1934,7 +1962,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               addMessages(currentTaskId, {
                 id: generateUniqueId(),
                 role: 'agent',
-                content: `❌ **Error**: ${errorMessage}`,
+                content: errorMessage,
+                step: AgentStep.ERROR,
+                error_code: errorCode,
               });
               uploadLog(currentTaskId, type);
 
