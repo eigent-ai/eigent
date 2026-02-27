@@ -189,6 +189,25 @@ def browser_agent(options: Chat):
     else:
         selected_port = env("browser_port", "9222")
 
+    enabled_browser_tools = [
+        "browser_click",
+        "browser_type",
+        "browser_back",
+        "browser_forward",
+        "browser_select",
+        "browser_console_exec",
+        "browser_console_view",
+        "browser_switch_tab",
+        "browser_enter",
+        "browser_visit_page",
+        "browser_scroll",
+        "browser_sheet_read",
+        "browser_sheet_input",
+        "browser_get_page_snapshot",
+    ]
+    if selected_is_external:
+        enabled_browser_tools.append("browser_open")
+
     web_toolkit_custom = HybridBrowserToolkit(
         options.project_id,
         cdp_keep_current_page=True,
@@ -197,23 +216,7 @@ def browser_agent(options: Chat):
         stealth=True,
         session_id=toolkit_session_id,
         cdp_url=f"http://localhost:{selected_port}",
-        enabled_tools=[
-            "browser_click",
-            "browser_type",
-            "browser_back",
-            "browser_forward",
-            "browser_select",
-            "browser_console_exec",
-            "browser_console_view",
-            "browser_switch_tab",
-            "browser_enter",
-            "browser_visit_page",
-            "browser_scroll",
-            "browser_sheet_read",
-            "browser_sheet_input",
-            "browser_get_page_snapshot",
-            "browser_open",
-        ],
+        enabled_tools=enabled_browser_tools,
     )
 
     # Save reference before registering for toolkits_to_register_agent
@@ -305,7 +308,7 @@ def browser_agent(options: Chat):
         ),
         options,
         tools,
-        prune_tool_calls_from_memory=True,
+        prune_tool_calls_from_memory=False,
         tool_names=[
             SearchToolkit.toolkit_name(),
             HybridBrowserToolkit.toolkit_name(),

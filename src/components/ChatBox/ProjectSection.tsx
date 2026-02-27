@@ -219,6 +219,29 @@ function groupMessagesByQuery(messages: any[]) {
           otherMessages: [],
         };
       }
+    } else if (message.step === AgentStep.AGENT_END && message.agent_name) {
+      // Per-agent result: find the group whose user message @mentions this agent.
+      // Backend agent_name (e.g. "browser_agent") → mention id (e.g. "browser")
+      const AGENT_NAME_TO_MENTION: Record<string, string> = {
+        browser_agent: 'browser',
+        developer_agent: 'dev',
+        document_agent: 'doc',
+        multi_modal_agent: 'media',
+        social_media_agent: 'social',
+      };
+      const mentionId =
+        AGENT_NAME_TO_MENTION[message.agent_name] || message.agent_name;
+      const targetGroup = [...groups, currentGroup]
+        .filter(Boolean)
+        .reverse()
+        .find((g: any) =>
+          g.userMessage?.content?.includes(`{{@${mentionId}}}`)
+        );
+      if (targetGroup) {
+        targetGroup.otherMessages.push(message);
+      } else if (currentGroup) {
+        currentGroup.otherMessages.push(message);
+      }
     } else {
       // Other messages (assistant responses, errors, etc.)
       if (currentGroup) {

@@ -34,6 +34,7 @@ import { ProjectChatContainer } from './ProjectChatContainer';
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
+  const [mentionTarget, setMentionTarget] = useState<string | null>(null);
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -249,10 +250,26 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
+  const isDirectAgentRunning = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return false;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    return (
+      task.status === ChatTaskStatus.RUNNING &&
+      !task.messages.some((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      (task.taskAssigning?.length ?? 0) > 0
+    );
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
     const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // In direct-agent mode (@mention), allow input while RUNNING
+    // so user can dispatch additional @mention agents in parallel.
+    if (isDirectAgentRunning) return false;
+
     return (
       // running or paused
       task.status === ChatTaskStatus.RUNNING ||
@@ -261,13 +278,15 @@ export default function ChatBox(): JSX.Element {
       task.messages.some(
         (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
       ) ||
-      // skeleton/computing phase
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      // skeleton/computing phase (not applicable after task finishes or in direct agent mode)
+      ((task.status as string) !== ChatTaskStatus.FINISHED &&
+        (task.status as string) !== ChatTaskStatus.RUNNING &&
+        !task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
       task.isTakeControl
     );
-  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+  }, [chatStore?.activeTaskId, chatStore?.tasks, isDirectAgentRunning]);
 
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -430,30 +449,62 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
-    const tempMessageContent = messageStr || message;
+    const rawMessageContent = messageStr || message;
+
+    // Use the active mentionTarget state (rendered as a tag in the input).
+    // Fall back to parsing @mention from text for backwards compat.
+    let activeMentionTarget = mentionTarget;
+    let tempMessageContent = rawMessageContent;
+    if (!activeMentionTarget) {
+      const mentionMatch = rawMessageContent.match(/^@(\w+)\s+([\s\S]*)/);
+      if (mentionMatch) {
+        activeMentionTarget = mentionMatch[1];
+        tempMessageContent = mentionMatch[2];
+      }
+    }
+
+    // Build display content: embed mention as {{@agentId}} so it
+    // survives in the message text and gets rendered like skill tags.
+    const displayContent = activeMentionTarget
+      ? `{{@${activeMentionTarget}}} ${tempMessageContent}`
+      : tempMessageContent;
+
+    // Persist the mention target so the tag stays for the next turn
+    if (activeMentionTarget && activeMentionTarget !== mentionTarget) {
+      setMentionTarget(activeMentionTarget);
+    }
+
     chatStore.setHasMessages(_taskId as string, true);
     if (!_taskId) return;
 
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
-    const isTaskBusy =
-      // running or paused counts as busy
-      (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
-      task.status === ChatTaskStatus.PAUSE ||
-      // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
-      task.messages.some(
-        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
-      ) ||
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      task.isTakeControl ||
-      // explicit confirm wait while task is pending but card not confirmed yet
-      (!!task.messages.find(
-        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
-      ) &&
-        task.status === ChatTaskStatus.PENDING);
+    // In direct-agent mode, allow sending @mention for parallel agents
+    const isDirectMode =
+      task.status === ChatTaskStatus.RUNNING &&
+      !task.messages.some((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      (task.taskAssigning?.length ?? 0) > 0 &&
+      !!activeMentionTarget;
+    const isTaskBusy = isDirectMode
+      ? false
+      : // running or paused counts as busy
+        (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
+        task.status === ChatTaskStatus.PAUSE ||
+        // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+        task.messages.some(
+          (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+        ) ||
+        (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+          !task.hasWaitComfirm &&
+          task.messages.length > 0 &&
+          task.status !== ChatTaskStatus.FINISHED) ||
+        task.isTakeControl ||
+        // explicit confirm wait while task is pending but card not confirmed yet
+        (!!task.messages.find(
+          (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+        ) &&
+          task.status === ChatTaskStatus.PENDING);
     const isReplayChatStore = task?.type === 'replay';
     if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
       toast.error(
@@ -471,7 +522,7 @@ export default function ChatBox(): JSX.Element {
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
           role: 'user',
-          content: tempMessageContent,
+          content: displayContent,
           attaches:
             JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
             [],
@@ -524,9 +575,11 @@ export default function ChatBox(): JSX.Element {
         // 1. Has wait confirm (simple query response) - but not if task was stopped
         // 2. Task is naturally finished (complex task completed) - but not if task was stopped
         // 3. Has any messages but pending (ongoing conversation)
+        // 4. Direct-agent RUNNING + user is @mentioning (parallel agents)
         const shouldContinueConversation =
           (hasWaitComfirm && !wasTaskStopped) ||
           (isFinished && !wasTaskStopped) ||
+          (isDirectAgentRunning && !!activeMentionTarget) ||
           (hasMessages &&
             chatStore.tasks[_taskId as string].status ===
               ChatTaskStatus.PENDING);
@@ -568,7 +621,9 @@ export default function ChatBox(): JSX.Element {
                 undefined,
                 undefined,
                 tempMessageContent,
-                attachesToSend
+                attachesToSend,
+                activeMentionTarget ?? undefined,
+                displayContent
               );
               chatStore.setAttaches(_taskId, []);
             } catch (err: any) {
@@ -603,12 +658,13 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              target: activeMentionTarget,
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {
               id: generateUniqueId(),
               role: 'user',
-              content: tempMessageContent,
+              content: displayContent,
               attaches: attachesForThisTurn,
             });
             chatStore.setAttaches(_taskId, []);
@@ -648,7 +704,9 @@ export default function ChatBox(): JSX.Element {
               undefined,
               undefined,
               tempMessageContent,
-              attachesToSend
+              attachesToSend,
+              activeMentionTarget ?? undefined,
+              displayContent
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
             chatStore.setAttaches(_taskId, []);
@@ -895,8 +953,10 @@ export default function ChatBox(): JSX.Element {
 
     // Determine if we're in the "splitting in progress" phase (skeleton visible)
     // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
+    // Skip splitting phase when task is already RUNNING (e.g. direct @agent mode)
     const isSkeletonPhase =
       (task.status !== ChatTaskStatus.FINISHED &&
+        task.status !== ChatTaskStatus.RUNNING &&
         !anyToSubTasksMessage &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
@@ -921,11 +981,18 @@ export default function ChatBox(): JSX.Element {
     }
 
     // Check task status
-    if (
-      task.status === ChatTaskStatus.RUNNING ||
-      task.status === ChatTaskStatus.PAUSE
-    ) {
+    // In direct-agent mode, show input instead of running bar
+    // so user can dispatch parallel @mention agents.
+    if (task.status === ChatTaskStatus.PAUSE) {
       return 'running';
+    }
+    if (task.status === ChatTaskStatus.RUNNING) {
+      const hasSubTasks = task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      const isDirectMode =
+        !hasSubTasks && (task.taskAssigning?.length ?? 0) > 0;
+      return isDirectMode ? 'input' : 'running';
     }
 
     if (task.status === ChatTaskStatus.FINISHED && task.type !== '') {
@@ -1078,6 +1145,8 @@ export default function ChatBox(): JSX.Element {
                 allowDragDrop: true,
                 privacy: privacy,
                 useCloudModelInDev: useCloudModelInDev,
+                mentionTarget: mentionTarget,
+                onMentionTargetChange: setMentionTarget,
               }}
             />
           )}
@@ -1122,6 +1191,8 @@ export default function ChatBox(): JSX.Element {
                   allowDragDrop: true,
                   privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
+                  mentionTarget: mentionTarget,
+                  onMentionTargetChange: setMentionTarget,
                 }}
               />
             )}

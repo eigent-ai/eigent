@@ -15,7 +15,7 @@
 import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { motion } from 'framer-motion';
-import { FileText } from 'lucide-react';
+import { ChevronDown, FileText } from 'lucide-react';
 import React, {
   useEffect,
   useRef,
@@ -28,6 +28,62 @@ import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
+
+/** Agent name map (backend name → display label) */
+const AGENT_LABEL: Record<string, string> = {
+  browser_agent: 'Browser Agent',
+  developer_agent: 'Developer Agent',
+  document_agent: 'Document Agent',
+  multi_modal_agent: 'Multi Modal Agent',
+  social_media_agent: 'Social Media Agent',
+};
+
+/** Collapsible card that shows a single agent's result. */
+const AgentResultCard: React.FC<{
+  id: string;
+  agentName?: string;
+  content: string;
+  attaches?: any[];
+  defaultOpen?: boolean;
+}> = ({ id, agentName, content, attaches, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const label = (agentName && AGENT_LABEL[agentName]) || agentName || 'Agent';
+
+  return (
+    <div className="border-border-default overflow-hidden rounded-xl border bg-task-surface">
+      {/* Header (always visible) */}
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-text-heading transition-colors hover:bg-input-bg-hover"
+        onClick={() => setIsOpen((v) => !v)}
+      >
+        <ChevronDown
+          size={14}
+          className={`shrink-0 text-icon-primary transition-transform duration-200 ${isOpen ? 'rotate-0' : '-rotate-90'}`}
+        />
+        <span className="truncate">{label}</span>
+        <span className="ml-auto shrink-0 text-xs font-normal text-text-label">
+          {isOpen ? 'Collapse' : 'Expand'}
+        </span>
+      </button>
+
+      {/* Collapsible body */}
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+      >
+        <div className="border-border-default border-t px-1 py-1">
+          <AgentMessageCard
+            id={id}
+            content={content}
+            typewriter={false}
+            onTyping={() => {}}
+            attaches={attaches}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface QueryGroup {
   queryId: string;
@@ -193,6 +249,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const isSkeletonPhase =
     task &&
     ((task.status !== ChatTaskStatus.FINISHED &&
+      task.status !== ChatTaskStatus.RUNNING &&
       !anyToSubTasksMessage &&
       !task.hasWaitComfirm &&
       task.messages.length > 0) ||
@@ -355,6 +412,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   id={message.id}
                   content="No reply received, task continues..."
                   onTyping={() => {}}
+                />
+              </motion.div>
+            );
+          } else if (message.step === AgentStep.AGENT_END) {
+            // Per-agent result — collapsible card
+            return (
+              <motion.div
+                key={`agent-end-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="px-sm"
+              >
+                <AgentResultCard
+                  id={message.id}
+                  agentName={message.agent_name}
+                  content={message.content}
+                  attaches={message.attaches}
+                  defaultOpen
                 />
               </motion.div>
             );
