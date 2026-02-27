@@ -2123,13 +2123,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (agentMessages.step === AgentStep.AGENT_END) {
-            // Per-agent completion — do NOT set FINISHED.
-            // The agent is already visually deactivated by
-            // the deactivate_agent event. The real END event
-            // fires only when ALL parallel agents finish.
-            console.log(
-              `[agent_end] ${agentMessages.data?.agent_name} finished`
-            );
+            // Per-agent completion — print result under the
+            // user's request. Do NOT set FINISHED; the real
+            // END event fires when ALL parallel agents finish.
+            const resultContent = agentMessages.data?.data || '';
+            if (resultContent) {
+              addMessages(currentTaskId, {
+                id: generateUniqueId(),
+                role: 'agent',
+                content: resultContent,
+                step: AgentStep.AGENT_END,
+              });
+            }
             return;
           }
 

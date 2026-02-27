@@ -378,7 +378,7 @@ async def _run_direct_agent(
     # will emit the real "end" only when ALL agents are done.
     await task_lock.put_queue(
         ActionAgentEndData(
-            data=response_content[:300],
+            data=response_content,
             agent_id=getattr(agent, "agent_id", ""),
             agent_name=getattr(agent, "agent_name", ""),
         )
@@ -1857,8 +1857,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 )
 
                 if remaining == 0:
-                    # All agents done — trigger real end
-                    await task_lock.put_queue(ActionEndData(data=item.data))
+                    # All agents done — trigger real end.
+                    # Don't pass agent content as data; per-agent
+                    # results are already sent via agent_end events.
+                    await task_lock.put_queue(ActionEndData())
 
             elif item.action == Action.end:
                 logger.info("=" * 80)
