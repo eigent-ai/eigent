@@ -55,7 +55,7 @@ For inquiries about our Scalable and Custom plans, please please refer to our [*
 - Click **Upgrade** to move to a higher tier with more monthly Credits.
 - Click **+ Add Credits** to purchase an Add-On Pack when you've used up your monthly allowance.
 
-![Support Dashboard](/images/support_dashboard.png)
+![Support Dashboard](/docs/images/support_dashboard.png)
 
 ### Invitation Code
 

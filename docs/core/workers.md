@@ -26,7 +26,7 @@ Always treat your API keys and access tokens like passwords. Eigent stores them 
 
 </aside>
 
-![add mcp servers.gif](/images/add_mcp_servers.gif)
+![add mcp servers.gif](/docs/images/add_mcp_servers.gif)
 
 ## Creating and Equipping a Custom Worker
 
@@ -39,7 +39,7 @@ Once you've configured a new MCP server, you need to create a worker that knows 
   - Select the custom MCP server you just configured (e.g., Github MCP). You can also add any other tools you want this worker to have.
   - Click **Save**.
 
-![add worker.gif](/images/add_worker.gif)
+![add worker.gif](/docs/images/add_worker.gif)
 
 ## What’s next?
 

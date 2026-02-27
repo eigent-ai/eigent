@@ -16,7 +16,7 @@ description: This guide walks you through setting up your Kimi (Moonshot AI) API
 - Launch Eigent and navigate to the **Home Page**.
 - Click on the **Agent** tab, then click on the **Models** button.
 
-![Kimi 1 Pn](/images/model_setting.png)
+![Kimi 1 Pn](/docs/images/model_setting.png)
 
 #### 2. Locate Model Configuration
 
@@ -34,7 +34,7 @@ Click on the Moonshot card and fill in the following fields:
   - _Example:_ `kimi-k2.5`
 - **Save:** Click the **Save** button to apply your changes.
 
-![Kimi 3 Pn](/images/kimi.png)
+![Kimi 3 Pn](/docs/images/kimi.png)
 
 #### 4. Set as Default & Verify
 
