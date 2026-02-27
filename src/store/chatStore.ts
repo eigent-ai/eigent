@@ -2133,6 +2133,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 role: 'agent',
                 content: resultContent,
                 step: AgentStep.AGENT_END,
+                agent_name: agentMessages.data?.agent_name,
+                agent_id: agentMessages.data?.agent_id,
               });
             }
             return;
