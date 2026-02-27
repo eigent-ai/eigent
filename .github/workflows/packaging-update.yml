@@ -1,0 +1,98 @@
+name: Update Packaging
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update (without v prefix)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for release assets
+        if: github.event_name == 'release'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Eigent-${VERSION}.AppImage"
+          echo "Waiting for AppImage at $URL..."
+          # Poll until the AppImage is uploaded (build workflow may still be running)
+          for i in {1..10}; do
+            if curl -fsSL --head "$URL" >/dev/null 2>&1; then
+              echo "Asset available!"
+              exit 0
+            fi
+            echo "Attempt $i/10 - waiting 30s..."
+            sleep 30
+          done
+          echo "::error::Timeout after 5 minutes waiting for release asset. Is the build workflow running?"
+          exit 1
+
+      - name: Update all packaging
+        run: |
+          chmod +x packaging/update-all.sh
+          ./packaging/update-all.sh "${{ steps.version.outputs.version }}" --verify
+
+      - name: Generate .SRCINFO
+        run: |
+          cd packaging/aur
+          # Manual .SRCINFO generation (makepkg not available on ubuntu)
+          source PKGBUILD
+          cat > .SRCINFO << EOF
+          pkgbase = ${pkgname}
+          	pkgdesc = ${pkgdesc}
+          	pkgver = ${pkgver}
+          	pkgrel = ${pkgrel}
+          	url = ${url}
+          	arch = ${arch[0]}
+          	license = ${license[0]}
+          	depends = ${depends[0]}
+          	optdepends = ${optdepends[0]}
+          	optdepends = ${optdepends[1]}
+          	provides = ${provides[0]}
+          	conflicts = ${conflicts[0]}
+          	conflicts = ${conflicts[1]}
+          	options = ${options[0]}
+          	source = ${source[0]}
+          	sha256sums = ${sha256sums[0]}
+
+          pkgname = ${pkgname}
+          EOF
+          sed -i 's/^[[:space:]]*//' .SRCINFO
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(packaging): update to v${{ steps.version.outputs.version }}"
+          branch: packaging-update-${{ steps.version.outputs.version }}
+          title: "chore(packaging): update to v${{ steps.version.outputs.version }}"
+          body: |
+            Automated packaging update for v${{ steps.version.outputs.version }}
+
+            Updated:
+            - `packaging/aur/PKGBUILD` + `.SRCINFO`
+            - `packaging/flatpak/ai.eigent.Eigent.yml` + `metainfo.xml`
+            - `packaging/deb/build-deb.sh`
+            - `packaging/nix/flake.nix`
+            - `packaging/rpm/eigent.spec`
+          labels: packaging,automated

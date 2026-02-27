@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ai.eigent.Eigent</id>
+  <name>Eigent</name>
+  <summary>AI-powered desktop agent for browser automation</summary>
+  <metadata_license>Apache-2.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="ai.eigent">
+    <name>Eigent AI</name>
+  </developer>
+  <description>
+    <p>
+      Eigent is an AI-powered desktop agent that automates browser tasks.
+      It can navigate websites, fill forms, extract data, and perform
+      complex multi-step workflows autonomously.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Natural language task instructions</li>
+      <li>Autonomous browser control</li>
+      <li>Multi-step workflow automation</li>
+      <li>Visual task monitoring</li>
+      <li>Local execution for privacy</li>
+    </ul>
+  </description>
+  <url type="homepage">https://eigent.ai</url>
+  <url type="bugtracker">https://github.com/eigent-ai/eigent/issues</url>
+  <url type="vcs-browser">https://github.com/eigent-ai/eigent</url>
+  <launchable type="desktop-id">ai.eigent.Eigent.desktop</launchable>
+  <provides>
+    <binary>eigent</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <categories>
+    <category>Utility</category>
+    <category>Development</category>
+    <category>Automation</category>
+  </categories>
+  <keywords>
+    <keyword>AI</keyword>
+    <keyword>automation</keyword>
+    <keyword>browser</keyword>
+    <keyword>agent</keyword>
+    <keyword>web</keyword>
+    <keyword>scraping</keyword>
+  </keywords>
+  <!-- TODO: Add screenshots when available
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main interface</caption>
+      <image>https://eigent.ai/screenshots/main.png</image>
+    </screenshot>
+  </screenshots>
+  -->
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.0.82" date="2026-01-31">
+      <description>
+        <p>Latest release with improvements and bug fixes.</p>
+      </description>
+    </release>
+  </releases>
+</component>
