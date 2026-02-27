@@ -176,10 +176,16 @@
 
 [data-theme='dark'] .markdown-body pre {
   background-color: #161b22;
+  color: #e6edf3;
+}
+
+[data-theme='dark'] .markdown-body pre code {
+  color: #e6edf3;
 }
 
 [data-theme='dark'] .markdown-body code {
   background-color: rgba(110, 118, 129, 0.4);
+  color: #e6edf3;
 }
 
 [data-theme='dark'] .markdown-body table th {
