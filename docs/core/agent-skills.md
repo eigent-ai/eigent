@@ -3,9 +3,7 @@ title: "Agent Skills"
 description: "Learn how to use built-in and custom Agent Skills in Eigent."
 ---
 
-# Agent Skills
-
-Agent Skills, a concept originally introduced by Anthropic, are modular capabilities designed to expand Eigent’s core capabilities. 
+Agent Skills, a concept originally introduced by Anthropic, are modular capabilities designed to expand Eigent's core capabilities.
 
 Each Skill acts as a specialized package containing instructions, metadata, and optional tools (such as scripts or templates) that Eigent automatically triggers whenever relevant to a task.
 
