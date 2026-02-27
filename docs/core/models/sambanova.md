@@ -31,7 +31,7 @@ Click on the SambaNova card and fill in the following fields:
 - **API Host:** Enter the API endpoint host.
   - _Default:_ `https://api.sambanova.ai/v1`
 - **Model Type:** Enter the specific model version you wish to use.
-  - _Example:_ `DeepSeek-V3.2`
+  - _Example:_ `DeepSeek-V3.1`
 - **Save:** Click the **Save** button to apply your changes.
 
 ![SambaNova 2 Pn](/docs/images/sambanova.png)
