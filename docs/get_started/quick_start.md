@@ -205,7 +205,7 @@ Congratulations on running your first task! Here are a few recommended reads to 
   <Card
     title="Models"
     icon="server"
-    href="/core/models">
+    href="/core/models/byok">
     Discover how to connect your own local or cloud-based AI models.
   </Card>
 </CardGroup>
