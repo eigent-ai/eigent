@@ -207,14 +207,21 @@ interface ElectronAPI {
     userId: string,
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
-  // Saved credentials
+  // Saved accounts
   credentialsSave: (
     email: string,
-    password: string
+    token: string,
+    username: string,
+    userId: number
   ) => Promise<{ success: boolean; error?: string }>;
   credentialsLoad: () => Promise<{
     success: boolean;
-    credentials: Array<{ email: string; password: string }>;
+    accounts: Array<{
+      email: string;
+      token: string;
+      username: string;
+      user_id: number;
+    }>;
   }>;
   credentialsRemove: (
     email: string

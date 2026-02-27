@@ -2308,59 +2308,77 @@ function registerIpcHandlers() {
     }
   });
 
-  // ==================== saved credentials handler ====================
-  const CREDENTIALS_FILE = path.join(
+  // ==================== saved accounts handler ====================
+  type SavedAccount = {
+    email: string;
+    token: string;
+    username: string;
+    user_id: number;
+  };
+
+  const ACCOUNTS_FILE = path.join(
     os.homedir(),
     '.eigent',
-    'saved_credentials.enc'
+    'saved_accounts.enc'
   );
 
-  const readSavedCredentials = (): Array<{
-    email: string;
-    password: string;
-  }> => {
+  const readSavedAccounts = (): SavedAccount[] => {
     try {
       if (
-        !fs.existsSync(CREDENTIALS_FILE) ||
+        !fs.existsSync(ACCOUNTS_FILE) ||
         !safeStorage.isEncryptionAvailable()
       ) {
         return [];
       }
-      const encrypted = fs.readFileSync(CREDENTIALS_FILE);
+      const encrypted = fs.readFileSync(ACCOUNTS_FILE);
       const decrypted = safeStorage.decryptString(encrypted);
-      return JSON.parse(decrypted);
+      const parsed = JSON.parse(decrypted);
+      // Filter out any entries from the old password-based format.
+      // Only email and token are required; user_id may be string or number
+      // depending on what the login API actually returns at runtime.
+      return (Array.isArray(parsed) ? parsed : []).filter(
+        (a) =>
+          typeof a.email === 'string' &&
+          a.email.length > 0 &&
+          typeof a.token === 'string' &&
+          a.token.length > 0
+      );
     } catch {
       return [];
     }
   };
 
-  const writeSavedCredentials = (
-    credentials: Array<{ email: string; password: string }>
-  ) => {
+  const writeSavedAccounts = (accounts: SavedAccount[]) => {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('Encryption not available');
     }
-    const dir = path.dirname(CREDENTIALS_FILE);
+    const dir = path.dirname(ACCOUNTS_FILE);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const encrypted = safeStorage.encryptString(JSON.stringify(credentials));
-    fs.writeFileSync(CREDENTIALS_FILE, encrypted);
-    fs.chmodSync(CREDENTIALS_FILE, 0o600);
+    const encrypted = safeStorage.encryptString(JSON.stringify(accounts));
+    fs.writeFileSync(ACCOUNTS_FILE, encrypted);
+    fs.chmodSync(ACCOUNTS_FILE, 0o600);
   };
 
   ipcMain.handle(
     'credentials-save',
-    async (_event, email: string, password: string) => {
+    async (
+      _event,
+      email: string,
+      token: string,
+      username: string,
+      user_id: number
+    ) => {
       try {
-        const credentials = readSavedCredentials();
-        const index = credentials.findIndex((c) => c.email === email);
+        const accounts = readSavedAccounts();
+        const index = accounts.findIndex((a) => a.email === email);
         if (index >= 0) {
-          credentials[index].password = password;
+          accounts[index] = { email, token, username, user_id };
         } else {
-          credentials.push({ email, password });
+          accounts.push({ email, token, username, user_id });
         }
-        writeSavedCredentials(credentials);
+        writeSavedAccounts(accounts);
         return { success: true };
       } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -2370,25 +2388,17 @@ function registerIpcHandlers() {
 
   ipcMain.handle('credentials-load', async () => {
     try {
-      const credentials = readSavedCredentials();
-      return {
-        success: true,
-        credentials: credentials.map((c) => ({
-          email: c.email,
-          password: c.password,
-        })),
-      };
+      const accounts = readSavedAccounts();
+      return { success: true, accounts };
     } catch (error) {
-      return { success: false, credentials: [] };
+      return { success: false, accounts: [] };
     }
   });
 
   ipcMain.handle('credentials-remove', async (_event, email: string) => {
     try {
-      const credentials = readSavedCredentials().filter(
-        (c) => c.email !== email
-      );
-      writeSavedCredentials(credentials);
+      const accounts = readSavedAccounts().filter((a) => a.email !== email);
+      writeSavedAccounts(accounts);
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };

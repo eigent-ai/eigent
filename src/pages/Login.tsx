@@ -15,7 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,14 @@ import eigentLogo from '@/assets/logo/eigent_icon.png';
 
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  const visible = local.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
+}
+
 export default function Login() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
@@ -57,7 +65,7 @@ export default function Login() {
   const [platform, setPlatform] = useState<string>('');
   const [rememberMe, setRememberMe] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState<
-    Array<{ email: string; password: string }>
+    Array<{ email: string; token: string; username: string; user_id: number }>
   >([]);
   const [showSavedAccounts, setShowSavedAccounts] = useState(false);
   const savedAccountsRef = useRef<HTMLDivElement>(null);
@@ -146,24 +154,22 @@ export default function Login() {
     }
   };
 
-  // Load saved credentials on mount
+  // Load saved accounts on mount
   useEffect(() => {
-    window.electronAPI
-      .credentialsLoad()
-      .then(
-        (result: {
-          success: boolean;
-          credentials: Array<{ email: string; password: string }>;
-        }) => {
-          if (result.success && result.credentials.length > 0) {
-            setSavedAccounts(result.credentials);
-            setRememberMe(true);
-            // Auto-fill the most recent saved account
-            const latest = result.credentials[result.credentials.length - 1];
-            setFormData({ email: latest.email, password: latest.password });
-          }
+    (async () => {
+      try {
+        const result = await window.electronAPI.credentialsLoad();
+        if (result.success && result.accounts.length > 0) {
+          setSavedAccounts(result.accounts);
+          setRememberMe(true);
+          // Pre-fill email from the most recent saved account
+          const latest = result.accounts[result.accounts.length - 1];
+          setFormData((prev) => ({ ...prev, email: latest.email }));
         }
-      );
+      } catch {
+        // Non-critical: silently ignore load failures
+      }
+    })();
   }, []);
 
   // Close saved accounts dropdown on outside click
@@ -182,12 +188,21 @@ export default function Login() {
 
   const handleSelectAccount = (account: {
     email: string;
-    password: string;
+    token: string;
+    username: string;
+    user_id: number;
   }) => {
-    setFormData({ email: account.email, password: account.password });
     setShowSavedAccounts(false);
-    setErrors({ email: '', password: '' });
-    setGeneralError('');
+    setAuth({
+      token: account.token,
+      username: account.username,
+      email: account.email,
+      user_id: account.user_id,
+    });
+    setModelType('cloud');
+    const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+    setLocalProxyValue(localProxyValue);
+    navigate('/');
   };
 
   const handleRemoveAccount = async (e: React.MouseEvent, email: string) => {
@@ -199,15 +214,6 @@ export default function Login() {
       setFormData({ email: '', password: '' });
     }
   };
-
-  const maskedEmail = useMemo(() => {
-    return (email: string) => {
-      const [local, domain] = email.split('@');
-      if (!domain) return email;
-      const visible = local.slice(0, 2);
-      return `${visible}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
-    };
-  }, []);
 
   const handleLogin = async () => {
     if (!validateForm()) {
@@ -228,11 +234,17 @@ export default function Login() {
         return;
       }
 
-      // Save or remove credentials based on remember me preference
+      // Save or remove this account based on remember me preference.
+      // Awaited so the file write completes before we navigate away.
       if (rememberMe) {
-        window.electronAPI.credentialsSave(formData.email, formData.password);
+        await window.electronAPI.credentialsSave(
+          formData.email,
+          data.token,
+          data.username,
+          data.user_id
+        );
       } else {
-        window.electronAPI.credentialsRemove(formData.email);
+        await window.electronAPI.credentialsRemove(formData.email);
       }
 
       setAuth({ email: formData.email, ...data });
@@ -546,7 +558,7 @@ export default function Login() {
                           onClick={() => handleSelectAccount(account)}
                         >
                           <span className="text-label-md text-text-primary">
-                            {maskedEmail(account.email)}
+                            {maskEmail(account.email)}
                           </span>
                           <button
                             className="text-label-sm text-text-secondary hover:text-text-primary"
