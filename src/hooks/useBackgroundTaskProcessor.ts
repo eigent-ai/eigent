@@ -17,7 +17,7 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
-import { ChatTaskStatus } from '@/types/constants';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
@@ -84,14 +84,25 @@ export function useBackgroundTaskProcessor() {
         return Object.values(state.tasks).some(
           (t) =>
             t.status === ChatTaskStatus.RUNNING ||
-            t.status === ChatTaskStatus.PAUSE
+            t.status === ChatTaskStatus.PAUSE ||
+            // splitting phase
+            t.messages.some(
+              (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+            ) ||
+            // skeleton/computing phase
+            (!t.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+              !t.hasWaitComfirm &&
+              t.messages.length > 0) ||
+            t.isTakeControl
         );
       });
+
       if (hasRunningChatTask) {
         console.log(
           '[BackgroundTaskProcessor] Skipping project',
           project.id,
-          '- has a running/paused chat task'
+          '- has a running/paused chat task',
+          hasRunningChatTask
         );
         continue;
       }

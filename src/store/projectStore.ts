@@ -834,6 +834,19 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return null;
     }
 
+    // Check if message with same executionId already exists to avoid duplicates
+    if (executionId) {
+      const existingMessage = projects[projectId].queuedMessages.find(
+        (m) => m.executionId === executionId
+      );
+      if (existingMessage) {
+        console.warn(
+          `[addQueuedMessage] Message with executionId ${executionId} already queued, skipping duplicate`
+        );
+        return existingMessage.task_id;
+      }
+    }
+
     const new_task_id = generateUniqueId();
     const actual_task_id = task_id || new_task_id;
 
