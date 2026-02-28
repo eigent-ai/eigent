@@ -278,7 +278,7 @@ export const proxyUpdateTriggerExecution = async (
           message = `Execution ${executionId} started running`;
           break;
         case ExecutionStatus.Cancelled:
-          activityType = ActivityType.ExecutionFailed;
+          activityType = ActivityType.ExecutionCancelled;
           message = `Execution ${executionId} was cancelled`;
           break;
         default:
@@ -286,12 +286,22 @@ export const proxyUpdateTriggerExecution = async (
           message = `Execution ${executionId} status updated to ${updateData.status}`;
       }
 
-      updateExecutionLog(executionId, activityType, message, triggerInfo, {
-        status: updateData.status,
-        error_message: updateData.error_message,
-        duration_seconds: updateData.duration_seconds,
-        tokens_used: updateData.tokens_used,
-      });
+      // Only include metadata fields that have meaningful values
+      const metadata: Record<string, any> = {};
+      if (updateData.error_message)
+        metadata.error_message = updateData.error_message;
+      if (updateData.duration_seconds != null)
+        metadata.duration_seconds = updateData.duration_seconds;
+      if (updateData.tokens_used != null && updateData.tokens_used > 0)
+        metadata.tokens_used = updateData.tokens_used;
+
+      updateExecutionLog(
+        executionId,
+        activityType,
+        message,
+        triggerInfo,
+        metadata
+      );
     }
 
     return res;

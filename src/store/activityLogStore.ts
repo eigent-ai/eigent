@@ -9,6 +9,7 @@ export enum ActivityType {
     TriggerExecuted = 'trigger_executed',
     ExecutionSuccess = 'execution_success',
     ExecutionFailed = 'execution_failed',
+    ExecutionCancelled = 'execution_cancelled',
     WebhookTriggered = 'webhook_triggered',
     TaskCompleted = 'task_completed',
     AgentStarted = 'agent_started',

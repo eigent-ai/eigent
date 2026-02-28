@@ -20,6 +20,8 @@ const getStatusIcon = (activityType: ActivityType) => {
         case ActivityType.TaskCompleted:
         case ActivityType.AgentStarted:
             return PlayCircle; // trigger executed
+        case ActivityType.ExecutionCancelled:
+            return Clock; // cancelled
         case ActivityType.ExecutionFailed:
             return AlertTriangle; // alert/error
         case ActivityType.WebhookTriggered:
@@ -48,6 +50,8 @@ const getStatusStateText = (activityType: ActivityType, t: any): string => {
         case ActivityType.ExecutionSuccess:
         case ActivityType.TaskCompleted:
             return t("triggers.status-execution-completed");
+        case ActivityType.ExecutionCancelled:
+            return t("triggers.status-cancelled", "Cancelled");
         case ActivityType.ExecutionFailed:
             return t("triggers.status-error");
         case ActivityType.WebhookTriggered:
@@ -73,6 +77,8 @@ const getStatusType = (activityType: ActivityType): 'info' | 'success' | 'error'
         case ActivityType.ExecutionSuccess:
         case ActivityType.TaskCompleted:
             return 'success';
+        case ActivityType.ExecutionCancelled:
+            return 'info';
         default:
             return 'info';
     }
@@ -84,6 +90,8 @@ const getTriggerTypeStatus = (activityType: ActivityType): 'success' | 'error' =
         case ActivityType.ExecutionFailed:
         case ActivityType.TriggerDeleted:
             return 'error';
+        case ActivityType.ExecutionCancelled:
+            return 'success';
         default:
             return 'success';
     }
@@ -185,13 +193,32 @@ export function ActivityLogItem({ log, index, isExpanded, onToggleExpanded }: Ac
                     >
                         <div className="px-2 py-2 min-h-[32px]">
                             {log.metadata && Object.keys(log.metadata).length > 0 ? (
-                                <div className="text-label-sm text-text-label">
-                                    {Object.entries(log.metadata).map(([key, value]) => (
-                                        <div key={key} className="flex gap-2">
-                                            <span className="font-medium">{key}:</span>
-                                            <span>{String(value)}</span>
-                                        </div>
-                                    ))}
+                                <div className="text-label-sm text-text-label space-y-0.5">
+                                    {Object.entries(log.metadata)
+                                        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+                                        .map(([key, value]) => {
+                                            let displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                            let displayValue: string;
+                                            if (key === 'tokens_used') {
+                                                displayKey = 'Tokens Used';
+                                                displayValue = `${Number(value).toLocaleString()} tokens`;
+                                            } else if (key === 'duration_seconds') {
+                                                displayKey = 'Duration';
+                                                const secs = Number(value);
+                                                displayValue = secs < 60 ? `${secs.toFixed(1)}s` : `${Math.floor(secs / 60)}m ${(secs % 60).toFixed(0)}s`;
+                                            } else if (key === 'status') {
+                                                return null; // status is redundant — shown in the header
+                                            } else {
+                                                displayValue = String(value);
+                                            }
+                                            return (
+                                                <div key={key} className="flex gap-2">
+                                                    <span className="font-medium text-text-secondary">{displayKey}:</span>
+                                                    <span>{displayValue}</span>
+                                                </div>
+                                            );
+                                        })
+                                    }
                                 </div>
                             ) : (
                                 <div className="text-label-xs text-text-disabled">
