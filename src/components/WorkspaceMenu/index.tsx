@@ -99,6 +99,10 @@ export function WorkSpaceMenu({
   const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
   const webViewUrls = chatStore?.tasks[activeTaskId]?.webViewUrls;
 
+  // Helper to safely access task properties
+  const getCurrentTask = () =>
+    activeTaskId ? chatStore?.tasks?.[activeTaskId] : undefined;
+
   const agentList = useMemo(() => {
     if (!chatStore) return [];
     const base = [...baseWorker, ...workerList].filter(
@@ -112,12 +116,11 @@ export function WorkSpaceMenu({
     const cleanup = window.electronAPI.onWebviewNavigated(
       (id: string, url: string) => {
         if (!chatStore.activeTaskId) return;
-        let webViewUrls = [
-          ...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls,
-        ];
-        let taskAssigning = [
-          ...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
-        ];
+        const currentTask = getCurrentTask();
+        if (!currentTask) return;
+
+        let webViewUrls = [...(currentTask.webViewUrls || [])];
+        let taskAssigning = [...(currentTask.taskAssigning || [])];
         const hasId = taskAssigning.find((item) =>
           item.activeWebviewIds?.find((webview) => webview.id === id)
         );
@@ -206,10 +209,10 @@ export function WorkSpaceMenu({
             window.ipcRenderer
               .invoke('capture-webview', webview.id)
               .then((base64: string) => {
-                let taskAssigning = [
-                  ...chatStore.tasks[chatStore.activeTaskId as string]
-                    .taskAssigning,
-                ];
+                const currentTask = getCurrentTask();
+                if (!currentTask) return;
+
+                let taskAssigning = [...(currentTask.taskAssigning || [])];
                 const browserAgentIndex = taskAssigning.findIndex(
                   (agent) => agent.agent_id === webview.agent_id
                 );
@@ -354,10 +357,7 @@ export function WorkSpaceMenu({
                 type="single"
                 size="md"
                 orientation="horizontal"
-                value={
-                  chatStore.tasks[chatStore.activeTaskId as string]
-                    .activeWorkspace as string
-                }
+                value={getCurrentTask()?.activeWorkspace as string}
                 onValueChange={onValueChange}
                 className="flex w-full items-center gap-2 pb-2"
               >
