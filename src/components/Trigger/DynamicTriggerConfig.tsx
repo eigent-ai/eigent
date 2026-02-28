@@ -1188,7 +1188,9 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 };
 
 // Helper to get default config based on trigger type
-export const getDefaultTriggerConfig = (): Record<string, any> => ({});
+export const getDefaultTriggerConfig = (): Record<string, any> => ({
+  max_failure_count: 5,
+});
 
 // Helper to filter out fields marked with exclude: true from config based on schema
 export const filterExcludedFields = (

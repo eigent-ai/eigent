@@ -92,9 +92,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   const [dayOfMonth, setDayOfMonth] = useState<string>('1'); // 1-31
   const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(undefined);
   const [expiredAt, setExpiredAt] = useState<Date | undefined>(undefined);
-  const [maxFailureCount, setMaxFailureCount] = useState<number | undefined>(
-    undefined
-  );
+  const [maxFailureCount, setMaxFailureCount] = useState<number | undefined>(5);
   const [_cronError, setCronError] = useState<string | null>(null);
 
   const hourOptions = useMemo(() => generateHourOptions(), []);
