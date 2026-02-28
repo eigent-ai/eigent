@@ -99,6 +99,7 @@ export default function BrowserAgentWorkspace() {
   }, [taskAssigning, activeWorkspace]);
 
   const [isTakeControl, setIsTakeControl] = useState(false);
+  const [activeWebviewId, setActiveWebviewId] = useState('');
 
   const getSize = useCallback(() => {
     const webviewContainer = document.getElementById('webview-container');
@@ -119,6 +120,7 @@ export default function BrowserAgentWorkspace() {
       action: 'pause',
     });
 
+    setActiveWebviewId(id);
     setIsTakeControl(true);
     setTimeout(() => {
       getSize();
@@ -149,11 +151,13 @@ export default function BrowserAgentWorkspace() {
     }
   }, [projectStore, getSize]);
 
-  const [_url, setUrl] = useState('');
+  const [url, setUrl] = useState('');
 
   useEffect(() => {
     window.ipcRenderer?.on('url-updated', (_event: any, newUrl: any) => {
-      setUrl(newUrl);
+      if (newUrl && !newUrl.startsWith('about:blank')) {
+        setUrl(newUrl);
+      }
     });
 
     // optional: clear listener when uninstall
@@ -186,7 +190,25 @@ export default function BrowserAgentWorkspace() {
             <span>Give back to Agent</span>
           </Button>
         </div>
-        {/* <div className="mx-2 bg-border-primary">{url}</div> */}
+        <div className="bg-bg-default flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-solid border-border-primary px-3 py-1.5">
+          <Globe size={14} className="flex-shrink-0 text-text-tertiary" />
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && activeWebviewId && url) {
+                const target = url.match(/^https?:\/\//)
+                  ? url
+                  : `https://${url}`;
+                setUrl(target);
+                window.electronAPI.navigateWebview(activeWebviewId, target);
+              }
+            }}
+            className="min-w-0 flex-1 border-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+            placeholder="Enter URL..."
+          />
+        </div>
       </div>
       <div id="webview-container" className="h-full w-full"></div>
     </div>
@@ -297,6 +319,20 @@ export default function BrowserAgentWorkspace() {
                     </span>
                   </Button>
                 </div>
+                {activeAgent.activeWebviewIds[0]?.url &&
+                  !activeAgent.activeWebviewIds[0].url.startsWith(
+                    'about:blank'
+                  ) && (
+                    <div className="bg-bg-default/80 absolute bottom-0 left-0 right-0 flex items-center gap-1 rounded-b-2xl px-3 py-1.5 backdrop-blur-sm">
+                      <Globe
+                        size={12}
+                        className="flex-shrink-0 text-text-tertiary"
+                      />
+                      <span className="truncate text-xs text-text-secondary">
+                        {activeAgent.activeWebviewIds[0].url}
+                      </span>
+                    </div>
+                  )}
               </div>
             )}
           </div>
@@ -346,6 +382,17 @@ export default function BrowserAgentWorkspace() {
                         </span>
                       </Button>
                     </div>
+                    {item.url && !item.url.startsWith('about:blank') && (
+                      <div className="bg-bg-default/80 absolute bottom-0 left-0 right-0 flex items-center gap-1 rounded-b-2xl px-2 py-1 backdrop-blur-sm">
+                        <Globe
+                          size={10}
+                          className="flex-shrink-0 text-text-tertiary"
+                        />
+                        <span className="truncate text-xs text-text-secondary">
+                          {item.url}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

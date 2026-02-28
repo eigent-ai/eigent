@@ -75,6 +75,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getShowWebview: () => ipcRenderer.invoke('get-show-webview'),
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
+  navigateWebview: (id: string, url: string) =>
+    ipcRenderer.invoke('navigate-webview', id, url),
   exportLog: () => ipcRenderer.invoke('export-log'),
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),

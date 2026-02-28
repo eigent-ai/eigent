@@ -466,6 +466,15 @@ export class WebViewManager {
     }
   }
 
+  public navigateWebview(id: string, url: string) {
+    const webViewInfo = this.webViews.get(id);
+    if (!webViewInfo) {
+      return { success: false, error: `Webview with id ${id} not found` };
+    }
+    webViewInfo.view.webContents.loadURL(url);
+    return { success: true };
+  }
+
   public destroy() {
     // Destroy all webviews
     Array.from(this.webViews.keys()).forEach((id) => {

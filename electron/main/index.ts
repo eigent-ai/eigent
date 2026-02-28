@@ -2218,6 +2218,7 @@ function registerIpcHandlers() {
     { name: 'set-size', method: 'setSize' },
     { name: 'get-show-webview', method: 'getShowWebview' },
     { name: 'webview-destroy', method: 'destroyWebview' },
+    { name: 'navigate-webview', method: 'navigateWebview' },
   ];
 
   webviewHandlers.forEach(({ name, method }) => {
