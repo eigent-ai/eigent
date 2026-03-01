@@ -125,7 +125,7 @@
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/archiver": "^6.0.3",
+    "@types/archiver": "^7.0.0",
     "@types/dompurify": "^3.0.5",
     "@types/lodash-es": "^4.17.12",
     "@types/mime": "^3.0.4",
