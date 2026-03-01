@@ -53,7 +53,7 @@ import {
   Server,
   Settings,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -65,6 +65,7 @@ import bedrockImage from '@/assets/model/bedrock.svg';
 import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
 import geminiImage from '@/assets/model/gemini.svg';
+import llamaCppImage from '@/assets/model/llamacpp.svg';
 import lmstudioImage from '@/assets/model/lmstudio.svg';
 import minimaxImage from '@/assets/model/minimax.svg';
 import modelarkImage from '@/assets/model/modelark.svg';
@@ -77,11 +78,38 @@ import sglangImage from '@/assets/model/sglang.svg';
 import vllmImage from '@/assets/model/vllm.svg';
 import zaiImage from '@/assets/model/zai.svg';
 
-const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
-const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
+const OLLAMA_PROVIDER_ID = 'ollama' as const;
+const VLLM_PROVIDER_ID = 'vllm' as const;
+const SGLANG_PROVIDER_ID = 'sglang' as const;
+const LMSTUDIO_PROVIDER_ID = 'lmstudio' as const;
+const LLAMA_CPP_PROVIDER_ID = 'llama.cpp' as const;
 const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
 const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
   'Added /v1 once. You can remove it if not needed.';
+const LOCAL_MODEL_OPTIONS = [
+  {
+    id: OLLAMA_PROVIDER_ID,
+    name: 'Ollama',
+    defaultEndpoint: 'http://localhost:11434/v1',
+  },
+  { id: VLLM_PROVIDER_ID, name: 'vLLM', defaultEndpoint: '' },
+  { id: SGLANG_PROVIDER_ID, name: 'SGLang', defaultEndpoint: '' },
+  {
+    id: LMSTUDIO_PROVIDER_ID,
+    name: 'LM Studio',
+    defaultEndpoint: 'http://localhost:1234/v1',
+  },
+  {
+    id: LLAMA_CPP_PROVIDER_ID,
+    name: 'LLaMA.cpp',
+    defaultEndpoint: 'http://localhost:8080/v1',
+  },
+];
+const toEndpointBaseUrl = (endpoint: string): string =>
+  endpoint.replace(/\/v1\/?$/, '').replace(/\/$/, '');
+const getDefaultLocalEndpoint = (platform: string): string =>
+  LOCAL_MODEL_OPTIONS.find((model) => model.id === platform)?.defaultEndpoint ||
+  '';
 
 // Sidebar tab types
 type SidebarTab =
@@ -92,16 +120,17 @@ type SidebarTab =
   | 'local-ollama'
   | 'local-vllm'
   | 'local-sglang'
-  | 'local-lmstudio';
+  | 'local-lmstudio'
+  | 'local-llama.cpp';
 
 // Provider logos that use dark fills (black or currentColor) and need inversion in dark mode
 const DARK_FILL_MODELS = new Set([
   'openai',
   'anthropic',
   'moonshot',
-  'ollama',
+  OLLAMA_PROVIDER_ID,
   'openrouter',
-  'lmstudio',
+  LMSTUDIO_PROVIDER_ID,
   'z.ai',
   'openai-compatible-model',
 ]);
@@ -177,7 +206,8 @@ export default function SettingModels() {
 
   // Local Model independent state - per platform
   const [localEnabled, setLocalEnabled] = useState(true);
-  const [localPlatform, setLocalPlatform] = useState('ollama');
+  const [localPlatform, setLocalPlatform] =
+    useState<string>(OLLAMA_PROVIDER_ID);
   const [localEndpoints, setLocalEndpoints] = useState<Record<string, string>>(
     {}
   );
@@ -198,14 +228,19 @@ export default function SettingModels() {
   );
   const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
     useState(false);
+  const [llamaCppModels, setLlamaCppModels] = useState<string[]>([]);
+  const [llamaCppModelsLoading, setLlamaCppModelsLoading] = useState(false);
+  const [llamaCppModelsError, setLlamaCppModelsError] = useState<string | null>(
+    null
+  );
 
   // Fetch available models from Ollama API
-  const fetchOllamaModels = async (endpoint?: string) => {
-    const url = endpoint || DEFAULT_OLLAMA_ENDPOINT;
+  const fetchOllamaModels = useCallback(async (endpoint?: string) => {
+    const url = endpoint || getDefaultLocalEndpoint(OLLAMA_PROVIDER_ID);
     setOllamaModelsLoading(true);
     setOllamaModelsError(null);
     try {
-      const baseUrl = url.replace(/\/v1\/?$/, '').replace(/\/$/, '');
+      const baseUrl = toEndpointBaseUrl(url);
       const response = await fetch(`${baseUrl}/api/tags`);
       if (!response.ok) throw new Error(`Failed: ${response.status}`);
 
@@ -219,7 +254,56 @@ export default function SettingModels() {
     } finally {
       setOllamaModelsLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch available models from llama.cpp server API
+  const fetchLlamaCppModels = useCallback(async (endpoint?: string) => {
+    const url = endpoint || getDefaultLocalEndpoint(LLAMA_CPP_PROVIDER_ID);
+    setLlamaCppModelsLoading(true);
+    setLlamaCppModelsError(null);
+    try {
+      const baseUrl = toEndpointBaseUrl(url);
+      const response = await fetch(`${baseUrl}/v1/models`);
+      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
+      const data = await response.json();
+      const modelNames =
+        data?.data
+          ?.map((m: any) => m?.id)
+          .filter((name: string | undefined) => !!name) || [];
+      setLlamaCppModels(modelNames);
+    } catch (error: any) {
+      console.error('Failed to fetch LLaMA.cpp models:', error);
+      setLlamaCppModels([]);
+      setLlamaCppModelsError(
+        'Failed to fetch LLaMA.cpp models. Is llama-server running?'
+      );
+    } finally {
+      setLlamaCppModelsLoading(false);
+    }
+  }, []);
+
+  const checkLlamaCppHealth = useCallback(async (endpoint: string) => {
+    const baseUrl = toEndpointBaseUrl(endpoint);
+    const response = await fetch(`${baseUrl}/v1/health`);
+    if (!response.ok) {
+      throw new Error(
+        'LLaMA.cpp health check failed. Please confirm llama-server is running and reachable.'
+      );
+    }
+  }, []);
+
+  const refreshModelListForPlatform = useCallback(
+    async (platform: string, endpoint?: string) => {
+      const targetEndpoint = endpoint || getDefaultLocalEndpoint(platform);
+      if (platform === OLLAMA_PROVIDER_ID) {
+        await fetchOllamaModels(targetEndpoint);
+      } else if (platform === LLAMA_CPP_PROVIDER_ID) {
+        await fetchLlamaCppModels(targetEndpoint);
+      }
+    },
+    [fetchLlamaCppModels, fetchOllamaModels]
+  );
 
   // Default model dropdown state (removed - using DropdownMenu's built-in state)
 
@@ -270,7 +354,7 @@ export default function SettingModels() {
         );
         // Handle local models - load all local providers per platform
         const localProviders = providerList.filter((p: any) =>
-          LOCAL_PROVIDER_NAMES.includes(p.provider_name)
+          LOCAL_MODEL_OPTIONS.some((model) => model.id === p.provider_name)
         );
 
         const endpoints: Record<string, string> = {};
@@ -280,10 +364,9 @@ export default function SettingModels() {
         localProviders.forEach((local: any) => {
           const platform =
             local.encrypted_config?.model_platform || local.provider_name;
-          // Auto-populate default Ollama endpoint if not set
+          // Auto-populate platform default endpoint if not set
           endpoints[platform] =
-            local.endpoint_url ||
-            (platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '');
+            local.endpoint_url || getDefaultLocalEndpoint(platform);
           types[platform] = local.encrypted_config?.model_type || '';
           providerIds[platform] = local.id;
 
@@ -299,16 +382,21 @@ export default function SettingModels() {
         setLocalProviderIds(providerIds);
 
         // Fetch Ollama models if ollama endpoint is set
-        const ollamaEndpoint = endpoints['ollama'] || DEFAULT_OLLAMA_ENDPOINT;
+        const ollamaEndpoint =
+          endpoints[OLLAMA_PROVIDER_ID] ||
+          getDefaultLocalEndpoint(OLLAMA_PROVIDER_ID);
         fetchOllamaModels(ollamaEndpoint);
+        const llamaCppEndpoint =
+          endpoints[LLAMA_CPP_PROVIDER_ID] ||
+          getDefaultLocalEndpoint(LLAMA_CPP_PROVIDER_ID);
+        fetchLlamaCppModels(llamaCppEndpoint);
 
         // If no local providers found, initialize empty state with Ollama default
         if (localProviders.length === 0) {
-          LOCAL_PROVIDER_NAMES.forEach((platform) => {
-            endpoints[platform] =
-              platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '';
-            types[platform] = '';
-            providerIds[platform] = undefined;
+          LOCAL_MODEL_OPTIONS.forEach((model) => {
+            endpoints[model.id] = getDefaultLocalEndpoint(model.id);
+            types[model.id] = '';
+            providerIds[model.id] = undefined;
           });
           setLocalEndpoints(endpoints);
           setLocalTypes(types);
@@ -337,7 +425,7 @@ export default function SettingModels() {
       fetchSubscription();
       updateCredits();
     }
-  }, [items, modelType]);
+  }, [items, modelType, fetchLlamaCppModels, fetchOllamaModels]);
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -363,16 +451,7 @@ export default function SettingModels() {
 
     // Check for local model preference
     if (localPrefer && localPlatform) {
-      const localModel = localModelOptions.find((m) => m.id === localPlatform);
-      const platformName = localModel
-        ? localModel.name
-        : localPlatform === 'ollama'
-          ? 'Ollama'
-          : localPlatform === 'vllm'
-            ? 'vLLM'
-            : localPlatform === 'sglang'
-              ? 'SGLang'
-              : 'LM Studio';
+      const platformName = getLocalPlatformName(localPlatform);
       const modelType = localTypes[localPlatform] || '';
       return `${t('setting.local-model')} / ${platformName}${modelType ? ` (${modelType})` : ''}`;
     }
@@ -473,13 +552,8 @@ export default function SettingModels() {
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
 
-  // Local model options
-  const localModelOptions = [
-    { id: 'ollama', name: 'Ollama' },
-    { id: 'vllm', name: 'vLLM' },
-    { id: 'sglang', name: 'SGLang' },
-    { id: 'lmstudio', name: 'LM Studio' },
-  ];
+  const getLocalPlatformName = (platform: string): string =>
+    LOCAL_MODEL_OPTIONS.find((m) => m.id === platform)?.name || platform;
 
   const handleVerify = async (idx: number) => {
     const { apiKey, apiHost, externalConfig, model_type, provider_id } =
@@ -678,7 +752,7 @@ export default function SettingModels() {
     // Fallback guard for fast save interactions: ensure one-time auto-fix
     // still applies even if blur state hasn't committed yet.
     if (
-      localPlatform === 'ollama' &&
+      localPlatform === OLLAMA_PROVIDER_ID &&
       !ollamaEndpointAutoFixedOnce &&
       canAutoFixOllamaEndpoint(currentEndpoint)
     ) {
@@ -704,6 +778,10 @@ export default function SettingModels() {
       return;
     }
     try {
+      if (localPlatform === LLAMA_CPP_PROVIDER_ID) {
+        await checkLlamaCppHealth(currentEndpoint);
+      }
+
       // // 1. Check if endpoint returns response
       // let baseUrl = localEndpoint;
       // let testUrl = baseUrl;
@@ -740,25 +818,43 @@ export default function SettingModels() {
       // 	throw new Error("Endpoint is not responding");
       // }
 
-      try {
-        const res = await fetchPost('/model/validate', {
-          model_platform: localPlatform,
-          model_type: currentType,
-          api_key: 'not-required',
-          url: currentEndpoint,
-        });
-        if (res.is_tool_calls && res.is_valid) {
-          console.log('success');
-          toast(t('setting.validate-success'), {
-            description: t(
-              'setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent'
-            ),
-            closeButton: true,
+      // Temporary: skip /model/validate for llama.cpp.
+      // Current validation flow is not fully compatible.
+      if (localPlatform != LLAMA_CPP_PROVIDER_ID) {
+        try {
+          const res = await fetchPost('/model/validate', {
+            model_platform: localPlatform,
+            model_type: currentType,
+            api_key: 'not-required',
+            url: currentEndpoint,
           });
-        } else {
-          console.log('failed', res.message);
+          if (res.is_tool_calls && res.is_valid) {
+            console.log('success');
+            toast(t('setting.validate-success'), {
+              description: t(
+                'setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent'
+              ),
+              closeButton: true,
+            });
+          } else {
+            console.log('failed', res.message);
+            const toastId = toast(t('setting.validate-failed'), {
+              description: getValidateMessage(res),
+              action: {
+                label: t('setting.close'),
+                onClick: () => {
+                  toast.dismiss(toastId);
+                },
+              },
+            });
+
+            return;
+          }
+          console.log(res);
+        } catch (e) {
+          console.log(e);
           const toastId = toast(t('setting.validate-failed'), {
-            description: getValidateMessage(res),
+            description: getValidateMessage(e),
             action: {
               label: t('setting.close'),
               onClick: () => {
@@ -766,24 +862,8 @@ export default function SettingModels() {
               },
             },
           });
-
           return;
         }
-        console.log(res);
-      } catch (e) {
-        console.log(e);
-        const toastId = toast(t('setting.validate-failed'), {
-          description: getValidateMessage(e),
-          action: {
-            label: t('setting.close'),
-            onClick: () => {
-              toast.dismiss(toastId);
-            },
-          },
-        });
-        return;
-      } finally {
-        setLoading(null);
       }
 
       // 2. Save to /api/provider/ (save only base URL)
@@ -830,6 +910,10 @@ export default function SettingModels() {
         } else {
           await handleLocalSwitch(true, local.id);
         }
+      }
+
+      if (localPlatform === LLAMA_CPP_PROVIDER_ID) {
+        await fetchLlamaCppModels(currentEndpoint);
       }
     } catch (e: any) {
       setLocalError(
@@ -939,9 +1023,8 @@ export default function SettingModels() {
       if (currentProviderId !== undefined) {
         await proxyFetchDelete(`/api/provider/${currentProviderId}`);
       }
-      // Set endpoint to default for Ollama, empty for others
-      const defaultEndpoint =
-        localPlatform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '';
+      // Set endpoint to platform default
+      const defaultEndpoint = getDefaultLocalEndpoint(localPlatform);
       setLocalEndpoints((prev) => ({
         ...prev,
         [localPlatform]: defaultEndpoint,
@@ -955,11 +1038,13 @@ export default function SettingModels() {
       setLocalEnabled(true);
       setActiveModelIdx(null);
       // Re-fetch Ollama models after reset
-      if (localPlatform === 'ollama') {
+      if (localPlatform === OLLAMA_PROVIDER_ID) {
         setOllamaEndpointAutoFixedOnce(false);
         setOllamaModelsError(null);
-        fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
+      } else if (localPlatform === LLAMA_CPP_PROVIDER_ID) {
+        setLlamaCppModelsError(null);
       }
+      await refreshModelListForPlatform(localPlatform);
       toast.success(t('setting.reset-success'));
     } catch (e) {
       console.error('Error resetting local model:', e);
@@ -1083,11 +1168,13 @@ export default function SettingModels() {
       vllm: vllmImage,
       sglang: sglangImage,
       lmstudio: lmstudioImage,
+      [LLAMA_CPP_PROVIDER_ID]: llamaCppImage,
       // Local model tab IDs
       'local-ollama': ollamaImage,
       'local-vllm': vllmImage,
       'local-sglang': sglangImage,
       'local-lmstudio': lmstudioImage,
+      'local-llama.cpp': llamaCppImage,
     };
     return modelImageMap[modelId] || null;
   };
@@ -1115,13 +1202,13 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
             ? 'bg-fill-fill-transparent-active'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="gap-3 flex items-center justify-center">
+        <div className="flex items-center justify-center gap-3">
           {modelImage ? (
             <img
               src={modelImage}
@@ -1141,7 +1228,7 @@ export default function SettingModels() {
           </span>
         </div>
         {isConfigured && (
-          <div className="m-1 h-2 w-2 bg-text-success rounded-full" />
+          <div className="m-1 h-2 w-2 rounded-full bg-text-success" />
         )}
       </button>
     );
@@ -1153,16 +1240,16 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="h-64 text-text-label flex items-center justify-center">
+          <div className="flex h-64 items-center justify-center text-text-label">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
       return (
-        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 inline-flex items-center justify-start self-stretch">
-              <div className="text-body-base my-2 font-bold text-text-heading flex-1 justify-center">
+        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
+          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
+            <div className="inline-flex items-center justify-start gap-2 self-stretch">
+              <div className="text-body-base my-2 flex-1 justify-center font-bold text-text-heading">
                 {t('setting.eigent-cloud')}
               </div>
               {cloudPrefer ? (
@@ -1181,7 +1268,7 @@ export default function SettingModels() {
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="!text-text-label rounded-full"
+                  className="rounded-full !text-text-label"
                   onClick={() => {
                     setLocalPrefer(false);
                     setActiveModelIdx(null);
@@ -1205,7 +1292,7 @@ export default function SettingModels() {
                 onClick={() => {
                   window.location.href = `https://www.eigent.ai/pricing`;
                 }}
-                className="text-body-sm text-text-label cursor-pointer underline"
+                className="cursor-pointer text-body-sm text-text-label underline"
               >
                 {t('setting.pricing-options')}
               </span>
@@ -1215,7 +1302,7 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="gap-4 px-6 pb-4 flex w-full flex-row items-center justify-between">
+          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
             <div className="text-body-sm text-text-body">
               {t('setting.credits')}:{' '}
               {loadingCredits ? (
@@ -1240,9 +1327,9 @@ export default function SettingModels() {
               <Settings />
             </Button>
           </div>
-          <div className="px-6 pb-4 flex w-full flex-1 items-center justify-between">
-            <div className="min-w-0 flex flex-1 items-center">
-              <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
+          <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
+            <div className="flex min-w-0 flex-1 items-center">
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
                 {t('setting.select-model-type')}
               </span>
             </div>
@@ -1306,15 +1393,15 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
+            <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="text-body-base my-2 font-bold text-text-heading">
                 {item.name}
               </div>
-              <div className="gap-2 flex items-center">
+              <div className="flex items-center gap-2">
                 {form[idx].prefer ? (
-                  <span className="px-2 py-1 text-label-xs font-bold text-text-success inline-flex items-center rounded-full">
+                  <span className="inline-flex items-center rounded-full px-2 py-1 text-label-xs font-bold text-text-success">
                     {t('setting.default')}
                   </span>
                 ) : (
@@ -1325,8 +1412,8 @@ export default function SettingModels() {
                     onClick={() => handleSwitch(idx, true)}
                     className={
                       canSwitch
-                        ? 'bg-button-transparent-fill-hover !text-text-label hover:bg-button-transparent-fill-active inline-flex items-center rounded-full shadow-none'
-                        : 'gap-1.5 inline-flex items-center'
+                        ? 'inline-flex items-center rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none hover:bg-button-transparent-fill-active'
+                        : 'inline-flex items-center gap-1.5'
                     }
                   >
                     {!canSwitch
@@ -1335,9 +1422,9 @@ export default function SettingModels() {
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 bg-text-success shrink-0 rounded-full" />
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
                 ) : (
-                  <div className="h-2 w-2 bg-text-label shrink-0 rounded-full opacity-10" />
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
                 )}
               </div>
             </div>
@@ -1345,7 +1432,7 @@ export default function SettingModels() {
               {item.description}
             </div>
           </div>
-          <div className="gap-4 px-6 flex w-full flex-col items-center">
+          <div className="flex w-full flex-col items-center gap-4 px-6">
             {/* API Key Setting */}
             <Input
               id={`apiKey-${item.id}`}
@@ -1426,7 +1513,7 @@ export default function SettingModels() {
             {item.externalConfig &&
               form[idx].externalConfig &&
               form[idx].externalConfig.map((ec, ecIdx) => (
-                <div key={ec.key} className="gap-4 flex h-full w-full flex-col">
+                <div key={ec.key} className="flex h-full w-full flex-col gap-4">
                   {ec.options && ec.options.length > 0 ? (
                     <Select
                       value={ec.value}
@@ -1493,7 +1580,7 @@ export default function SettingModels() {
               ))}
           </div>
           {/* Action Button */}
-          <div className="gap-2 px-6 py-4 flex justify-end">
+          <div className="flex justify-end gap-2 px-6 py-4">
             <Button
               variant="ghost"
               size="sm"
@@ -1524,20 +1611,26 @@ export default function SettingModels() {
       const currentType = localTypes[platform] || '';
       const isConfigured = !!localProviderIds[platform];
       const isPreferred = localPrefer && localPlatform === platform;
+      const isModelListPlatform =
+        platform === OLLAMA_PROVIDER_ID || platform === LLAMA_CPP_PROVIDER_ID;
+      const platformModels =
+        platform === OLLAMA_PROVIDER_ID ? ollamaModels : llamaCppModels;
+      const platformModelsLoading =
+        platform === OLLAMA_PROVIDER_ID
+          ? ollamaModelsLoading
+          : llamaCppModelsLoading;
+      const platformModelsError =
+        platform === OLLAMA_PROVIDER_ID
+          ? ollamaModelsError
+          : llamaCppModelsError;
 
       return (
-        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 inline-flex items-center justify-between self-stretch">
-              <div className="gap-2 flex items-center">
+        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
+            <div className="inline-flex items-center justify-between gap-2 self-stretch">
+              <div className="flex items-center gap-2">
                 <div className="text-body-base my-2 font-bold text-text-heading">
-                  {platform === 'ollama'
-                    ? 'Ollama'
-                    : platform === 'vllm'
-                      ? 'vLLM'
-                      : platform === 'sglang'
-                        ? 'SGLang'
-                        : 'LM Studio'}
+                  {getLocalPlatformName(platform)}
                 </div>
                 {isPreferred ? (
                   <Button
@@ -1557,7 +1650,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-button-transparent-fill-hover !text-text-label rounded-full shadow-none'
+                        ? 'rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none'
                         : ''
                     }
                   >
@@ -1568,14 +1661,14 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 bg-text-success rounded-full" />
+                <div className="h-2 w-2 rounded-full bg-text-success" />
               ) : (
-                <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
               )}
             </div>
           </div>
           {/* Model Endpoint URL Setting */}
-          <div className="gap-4 px-6 flex w-full flex-col items-center">
+          <div className="flex w-full flex-col items-center gap-4 px-6">
             <Input
               size="default"
               title={t('setting.model-endpoint-url')}
@@ -1589,13 +1682,16 @@ export default function SettingModels() {
                 setLocalInputError(false);
                 setLocalError(null);
                 // Clear Ollama models error when endpoint changes
-                if (platform === 'ollama') {
+                if (platform === OLLAMA_PROVIDER_ID) {
                   setOllamaModelsError(null);
+                }
+                if (platform === LLAMA_CPP_PROVIDER_ID) {
+                  setLlamaCppModelsError(null);
                 }
               }}
               onBlur={(e) => {
                 if (
-                  platform !== 'ollama' ||
+                  platform !== OLLAMA_PROVIDER_ID ||
                   ollamaEndpointAutoFixedOnce ||
                   !canAutoFixOllamaEndpoint(e.target.value)
                 ) {
@@ -1614,17 +1710,13 @@ export default function SettingModels() {
               }}
               disabled={!localEnabled}
               placeholder={
-                platform === 'ollama'
-                  ? 'http://localhost:11434/v1'
-                  : platform === 'lmstudio'
-                    ? 'http://localhost:1234/v1'
-                    : 'http://localhost:8000/v1'
+                getDefaultLocalEndpoint(platform) || 'http://localhost:8000/v1'
               }
               note={localError ?? undefined}
             />
-            {platform === 'ollama' ? (
-              <div className="gap-1 flex w-full flex-col">
-                <div className="gap-2 flex w-full items-end">
+            {isModelListPlatform ? (
+              <div className="flex w-full flex-col gap-1">
+                <div className="flex w-full items-end gap-2">
                   <div className="flex-1">
                     <Select
                       value={currentType}
@@ -1634,20 +1726,20 @@ export default function SettingModels() {
                           [platform]: v,
                         }))
                       }
-                      disabled={!localEnabled || ollamaModelsLoading}
+                      disabled={!localEnabled || platformModelsLoading}
                     >
                       <SelectTrigger
                         size="default"
                         title={t('setting.model-type')}
                         state={
-                          localInputError || ollamaModelsError
+                          localInputError || platformModelsError
                             ? 'error'
                             : undefined
                         }
                       >
                         <SelectValue
                           placeholder={
-                            ollamaModelsLoading
+                            platformModelsLoading
                               ? 'Loading models...'
                               : 'Select model'
                           }
@@ -1656,10 +1748,10 @@ export default function SettingModels() {
                       <SelectContent>
                         {(() => {
                           const modelList =
-                            currentType && !ollamaModels.includes(currentType)
-                              ? [currentType, ...ollamaModels]
+                            currentType && !platformModels.includes(currentType)
+                              ? [currentType, ...platformModels]
                               : [
-                                  ...new Set([currentType, ...ollamaModels]),
+                                  ...new Set([currentType, ...platformModels]),
                                 ].filter(Boolean);
                           return modelList.length > 0 ? (
                             modelList.map((model) => (
@@ -1680,23 +1772,24 @@ export default function SettingModels() {
                     variant="ghost"
                     size="icon"
                     onClick={() =>
-                      fetchOllamaModels(
-                        currentEndpoint || DEFAULT_OLLAMA_ENDPOINT
+                      void refreshModelListForPlatform(
+                        platform,
+                        currentEndpoint
                       )
                     }
-                    disabled={!localEnabled || ollamaModelsLoading}
+                    disabled={!localEnabled || platformModelsLoading}
                     className="mb-1 flex-shrink-0"
                   >
-                    {ollamaModelsLoading ? (
+                    {platformModelsLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <RotateCcw className="h-4 w-4" />
                     )}
                   </Button>
                 </div>
-                {ollamaModelsError && (
+                {platformModelsError && (
                   <span className="text-label-sm text-text-error">
-                    {ollamaModelsError}
+                    {platformModelsError}
                   </span>
                 )}
               </div>
@@ -1718,7 +1811,7 @@ export default function SettingModels() {
             )}
           </div>
           {/* Action Button */}
-          <div className="gap-2 px-6 py-4 flex justify-end">
+          <div className="flex justify-end gap-2 px-6 py-4">
             <Button
               variant="ghost"
               size="sm"
@@ -1748,8 +1841,8 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="top-0 bg-surface-primary px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
-        <div className="gap-4 flex w-full flex-col items-start justify-between">
+      <div className="sticky top-0 z-10 flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
+        <div className="flex w-full flex-col items-start justify-between gap-4">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-text-heading">
               {t('setting.models')}
@@ -1758,10 +1851,10 @@ export default function SettingModels() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 gap-6 flex flex-col">
+      <div className="mb-8 flex flex-col gap-6">
         {/* Default Model Cascading Dropdown */}
-        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-end justify-between">
-          <div className="gap-1 flex w-full flex-col items-start justify-center">
+        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="flex w-full flex-col items-start justify-center gap-1">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.models-default-setting-title')}
             </div>
@@ -1771,11 +1864,11 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="gap-2 rounded-lg border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
-                <span className="text-body-sm whitespace-nowrap">
+              <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
+                <span className="whitespace-nowrap text-body-sm">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 text-text-success flex-shrink-0" />
+                <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1829,7 +1922,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="gap-2 flex items-center">
+                        <div className="flex items-center gap-2">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1850,15 +1943,15 @@ export default function SettingModels() {
                             {item.name}
                           </span>
                         </div>
-                        <div className="gap-1 flex items-center">
+                        <div className="flex items-center gap-1">
                           {!isConfigured && (
-                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-text-success" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 bg-text-success rounded-full" />
+                            <div className="h-2 w-2 rounded-full bg-text-success" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1876,7 +1969,7 @@ export default function SettingModels() {
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-[200px]">
-                  {localModelOptions.map((model) => {
+                  {LOCAL_MODEL_OPTIONS.map((model) => {
                     const isConfigured = !!localProviderIds[model.id];
                     const isPreferred =
                       localPrefer && localPlatform === model.id;
@@ -1890,7 +1983,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="gap-2 flex items-center">
+                        <div className="flex items-center gap-2">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1911,15 +2004,15 @@ export default function SettingModels() {
                             {model.name}
                           </span>
                         </div>
-                        <div className="gap-1 flex items-center">
+                        <div className="flex items-center gap-1">
                           {!isConfigured && (
-                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-text-success" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 bg-text-success rounded-full" />
+                            <div className="h-2 w-2 rounded-full bg-text-success" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1932,17 +2025,17 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="gap-2 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-start justify-between">
-          <div className="text-body-base mb-2 border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="text-body-base sticky top-[86px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
             {t('setting.models-configuration')}
           </div>
 
           <div className="flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 rounded-2xl bg-surface-secondary h-full w-[240px]">
-              <div className="gap-4 flex flex-col">
+            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-surface-secondary">
+              <div className="flex flex-col gap-4">
                 {/* Eigent Cloud Section */}
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
                     {t('setting.eigent-cloud')}
                   </div>
@@ -1957,10 +2050,10 @@ export default function SettingModels() {
                     )}
                 </div>
                 {/* Bring Your Own Key Section */}
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-surface-secondary flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
                   >
                     <div className="text-body-sm font-bold text-text-heading">
                       {t('setting.custom-model')}
@@ -1972,7 +2065,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       byokCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -1992,10 +2085,10 @@ export default function SettingModels() {
                 </div>
 
                 {/* Local Model Section */}
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-surface-secondary flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
                   >
                     <div className="text-body-sm font-bold text-text-heading">
                       {t('setting.local-model')}
@@ -2007,7 +2100,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -2019,7 +2112,7 @@ export default function SettingModels() {
                       'local-ollama',
                       selectedTab === 'local-ollama',
                       true,
-                      !!localProviderIds['ollama']
+                      !!localProviderIds[OLLAMA_PROVIDER_ID]
                     )}
                     {renderSidebarItem(
                       'local-vllm',
@@ -2027,7 +2120,7 @@ export default function SettingModels() {
                       'local-vllm',
                       selectedTab === 'local-vllm',
                       true,
-                      !!localProviderIds['vllm']
+                      !!localProviderIds[VLLM_PROVIDER_ID]
                     )}
                     {renderSidebarItem(
                       'local-sglang',
@@ -2035,7 +2128,7 @@ export default function SettingModels() {
                       'local-sglang',
                       selectedTab === 'local-sglang',
                       true,
-                      !!localProviderIds['sglang']
+                      !!localProviderIds[SGLANG_PROVIDER_ID]
                     )}
                     {renderSidebarItem(
                       'local-lmstudio',
@@ -2043,14 +2136,22 @@ export default function SettingModels() {
                       'local-lmstudio',
                       selectedTab === 'local-lmstudio',
                       true,
-                      !!localProviderIds['lmstudio']
+                      !!localProviderIds[LMSTUDIO_PROVIDER_ID]
+                    )}
+                    {renderSidebarItem(
+                      'local-llama.cpp',
+                      'LLaMA.cpp',
+                      'local-llama.cpp',
+                      selectedTab === 'local-llama.cpp',
+                      true,
+                      !!localProviderIds[LLAMA_CPP_PROVIDER_ID]
                     )}
                   </div>
                 </div>
               </div>
             </div>
             {/* Main Content */}
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
               {renderContent()}
             </div>
           </div>
