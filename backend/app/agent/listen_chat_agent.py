@@ -297,7 +297,11 @@ class ListenChatAgent(ChatAgent):
                 f"tokens used: {total_tokens}"
             )
 
-        assert message is not None
+        if message is None:
+            raise RuntimeError(
+                f"Agent {self.agent_name}: message is None after step "
+                f"completion — this indicates a missing LLM response"
+            )
 
         _schedule_async_task(
             task_lock.put_queue(
@@ -315,7 +319,11 @@ class ListenChatAgent(ChatAgent):
 
         if error_info is not None:
             raise error_info
-        assert res is not None
+        if res is None:
+            raise RuntimeError(
+                f"Agent {self.agent_name}: step() returned None "
+                f"without setting error_info"
+            )
         return res
 
     async def astep(
@@ -402,7 +410,11 @@ class ListenChatAgent(ChatAgent):
 
         # Send deactivation for all non-streaming cases (success or error)
         # Streaming responses handle deactivation in _astream_chunks
-        assert message is not None
+        if message is None:
+            raise RuntimeError(
+                f"Agent {self.agent_name}: message is None after astep "
+                f"completion — this indicates a missing LLM response"
+            )
 
         asyncio.create_task(
             task_lock.put_queue(
@@ -420,7 +432,11 @@ class ListenChatAgent(ChatAgent):
 
         if error_info is not None:
             raise error_info
-        assert res is not None
+        if res is None:
+            raise RuntimeError(
+                f"Agent {self.agent_name}: astep() returned None "
+                f"without setting error_info"
+            )
         return res
 
     def _execute_tool(
