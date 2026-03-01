@@ -165,16 +165,21 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         )
         return res.json()
 
-    # @listen_toolkit(
-    #     BaseSearchToolkit.search_duckduckgo,
-    #     lambda _,
-    #     query,
-    #     source="text",
-    #     max_results=5: f"Search DuckDuckGo with query '{query}', source '{source}', and max results {max_results}",
-    #     lambda result: f"Search DuckDuckGo returned {len(result)} results",
-    # )
-    # def search_duckduckgo(self, query: str, source: str = "text", max_results: int = 5) -> list[dict[str, Any]]:
-    #     return super().search_duckduckgo(query, source, max_results)
+    @listen_toolkit(
+        BaseSearchToolkit.search_duckduckgo,
+        lambda _,
+        query,
+        source="text",
+        number_of_result_pages=10: f"Search DuckDuckGo with query '{query}', source '{source}', and {number_of_result_pages} result pages",
+        lambda result: f"Search DuckDuckGo returned {len(result)} results",
+    )
+    def search_duckduckgo(
+        self,
+        query: str,
+        source: str = "text",
+        number_of_result_pages: int = 10,
+    ) -> list[dict[str, Any]]:
+        return super().search_duckduckgo(query, source, number_of_result_pages)
 
     # @listen_toolkit(
     #     BaseSearchToolkit.tavily_search,
@@ -365,9 +370,14 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
 
     @classmethod
     def get_can_use_tools(
-        cls, api_task_id: str, agent_name: str | None = None
+        cls,
+        api_task_id: str,
+        agent_name: str | None = None,
     ) -> list[FunctionTool]:
-        search_toolkit = SearchToolkit(api_task_id, agent_name=agent_name)
+        search_toolkit = SearchToolkit(
+            api_task_id,
+            agent_name=agent_name,
+        )
         tools = [
             # FunctionTool(search_toolkit.search_wiki),
             # FunctionTool(search_toolkit.search_duckduckgo),
@@ -380,10 +390,17 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # if env("BRAVE_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_brave))
 
-        if (env("GOOGLE_API_KEY") and env("SEARCH_ENGINE_ID")) or env(
-            "cloud_api_key"
-        ):
+        if env("GOOGLE_API_KEY") and env("SEARCH_ENGINE_ID"):
+            logger.info("Using search tool: search_google (user API keys)")
             tools.append(FunctionTool(search_toolkit.search_google))
+        elif env("cloud_api_key"):
+            logger.info("Using search tool: search_google (cloud proxy)")
+            tools.append(FunctionTool(search_toolkit.search_google))
+        else:
+            logger.info(
+                "Using search tool: search_duckduckgo (no API keys configured)"
+            )
+            tools.append(FunctionTool(search_toolkit.search_duckduckgo))
 
         # if env("TAVILY_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.tavily_search))
