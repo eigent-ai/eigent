@@ -820,7 +820,7 @@ export default function SettingModels() {
 
       // Temporary: skip /model/validate for llama.cpp.
       // Current validation flow is not fully compatible.
-      if (localPlatform != LLAMA_CPP_PROVIDER_ID) {
+      if (localPlatform !== LLAMA_CPP_PROVIDER_ID) {
         try {
           const res = await fetchPost('/model/validate', {
             model_platform: localPlatform,
