@@ -185,7 +185,7 @@
   "days-ago": "أيام مضت",
   "delete-project": "حذف المشروع",
   "delete-project-confirmation": "هل أنت متأكد من أنك تريد حذف هذا المشروع وجميع مهامه؟ لا يمكن التراجع عن هذا الإجراء.",
-  "please-select-model": "يرجى اختيار نموذج في الإعدادات > النماذج للمتابعة.",
+  "please-select-model": "يرجى اختيار نموذج في الوكلاء > النماذج للمتابعة.",
   "cdp-browser-connection": "اتصال متصفح CDP",
   "cdp-browser-connection-description": "الاتصال بمتصفح Chrome مع تمكين التصحيح عن بُعد",
   "current-port": "المنفذ الحالي:",
