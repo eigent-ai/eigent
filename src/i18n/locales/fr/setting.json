@@ -31,9 +31,6 @@
   "how-we-handle-your-data-line-3": "Credentials are stored locally, encrypted, and used only for approved steps.",
   "how-we-handle-your-data-line-4": "Your data is never used to train our AI models without your explicit consent.",
   "how-we-handle-your-data-line-5": "We don’t sell your data to third parties.",
-  "enable-privacy-permissions-settings": "Enable Privacy Permissions Settings",
-  "enable-privacy-permissions-settings-description": "By turning this on, you acknowledge that you have read and agree to our Privacy Policy regarding how your task data is collected, processed, and protected.",
-
   "api-key-can-not-be-empty": "API Key can not be empty!",
   "api-host-can-not-be-empty": "API Host can not be empty!",
   "model-type-can-not-be-empty": "Model Type can not be empty!",
@@ -94,9 +91,6 @@
   "how-we-handle-your-data-line-3": "Credentials are stored locally, encrypted, and used only for approved steps.",
   "how-we-handle-your-data-line-4": "Your data is never used to train our AI models without your explicit consent.",
   "how-we-handle-your-data-line-5": "We don’t sell your data to third parties.",
-  "enable-privacy-permissions-settings": "Enable Privacy Permissions Settings",
-  "enable-privacy-permissions-settings-description": "By turning this on, you acknowledge that you have read and agree to our Privacy Policy regarding how your task data is collected, processed, and protected.",
-
   "api-key-can-not-be-empty": "API Key can not be empty!",
   "api-host-can-not-be-empty": "API Host can not be empty!",
   "model-type-can-not-be-empty": "Model Type can not be empty!",
@@ -234,5 +228,11 @@
   "proxy-saved-restart-required": "Configuration du proxy enregistrée. Redémarrez l'application pour appliquer les modifications.",
   "proxy-save-failed": "Échec de l'enregistrement de la configuration du proxy.",
   "proxy-invalid-url": "URL de proxy invalide. Doit commencer par http://, https://, socks4:// ou socks5://.",
-  "proxy-restart-hint": "Redémarrage nécessaire pour appliquer les modifications du proxy."
+  "proxy-restart-hint": "Redémarrage nécessaire pour appliquer les modifications du proxy.",
+
+  "preferred-ide": "IDE préféré",
+  "preferred-ide-description": "Choisissez l'application à utiliser lors de l'ouverture des dossiers de projets d'agent.",
+  "system-file-manager": "Gestionnaire de fichiers système",
+  "help-improve-eigent": "Aidez à améliorer Eigent",
+  "help-improve-eigent-description": "Autorisez Eigent à collecter des journaux d'erreurs anonymes et des données d'utilisation pour améliorer le service. Ceci est facultatif et peut être modifié à tout moment."
 }

@@ -13,15 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { CarouselStep } from '@/components/InstallStep/Carousel';
-import { Permissions } from '@/components/InstallStep/Permissions';
 import { ProgressInstall } from '@/components/ui/progress-install';
-import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import React from 'react';
 
 export const InstallDependencies: React.FC = () => {
-  const { initState } = useAuthStore();
-
   const { progress, latestLog, isInstalling, installationState } =
     useInstallationUI();
 
@@ -64,8 +60,7 @@ export const InstallDependencies: React.FC = () => {
           </div>
         </div>
         <div className="flex h-full w-2/3 rounded-2xl bg-surface-tertiary p-md">
-          {initState === 'permissions' && <Permissions />}
-          {initState !== 'permissions' && <CarouselStep />}
+          <CarouselStep />
         </div>
       </div>
     </div>
