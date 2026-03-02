@@ -15,7 +15,9 @@ Closes #
 ### Testing Evidence (REQUIRED)
 
 <!-- REQUIRED: Every PR must include human-verified testing proof (e.g., test logs, screenshots, or screen recordings). -->
+
 <!-- REQUIRED for frontend/UI changes: You MUST attach at least one screenshot or screen recording in this PR. -->
+
 <!-- Frontend/UI PRs without visual evidence will not be reviewed. -->
 
 - [ ] I have included human-verified testing evidence in this PR.
