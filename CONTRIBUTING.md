@@ -9,7 +9,7 @@ issues, or fix bugs, we appreciate your enthusiasm and efforts. 🙌
 You are welcome to join our [discord](https://discord.com/invite/CNcNpquyDc)
 for more efficient communication. 💬
 
-______________________________________________________________________
+---
 
 ## Eigent Contribution Guideline
 
@@ -43,7 +43,7 @@ The following abusive behaviors will result in an immediate ban (PR submission p
 1. **Inauthentic contribution activity.** Using AI tools to artificially inflate open-source contribution metrics for personal or commercial gain.
 1. **Bulk, low-quality, irrelevant, or misleading AI-generated content.**
 
-______________________________________________________________________
+---
 
 ## Join Our Community 🌍
 
@@ -127,14 +127,12 @@ our coding standards.
 #### Code Review Checklist
 
 - Functionality
-
   - Correctness: Does the code perform the intended task? Are edge cases handled?
   - Testing: Is there sufficient test coverage? Do all tests pass?
   - Security: Are there any security vulnerabilities introduced by the change?
   - Performance: Does the code introduce any performance regressions?
 
 - Code Quality
-
   - Readability: Is the code easy to read and understand? Is it well-commented where necessary?
   - Maintainability: Is the code structured in a way that makes future changes easy?
   - Style: Does the code follow the project’s style guidelines?
@@ -142,7 +140,6 @@ our coding standards.
   - Documentation: Are public methods, classes, and any complex logic well-documented?
 
 - Design
-
   - Consistency: Does the code follow established design patterns and project architecture?
   - Modularity: Are the changes modular and self-contained? Does the code avoid unnecessary duplication?
   - Dependencies: Are dependencies minimized and used appropriately?
