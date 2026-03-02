@@ -31,6 +31,7 @@ interface TaskQueue {
   triggerTaskId?: string;
   triggerId?: number;
   triggerName?: string;
+  processing?: boolean;
 }
 
 interface Project {
@@ -112,6 +113,7 @@ interface ProjectStore {
   removeQueuedMessage: (projectId: string, taskId: string) => TaskQueue;
   restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => void;
   clearQueuedMessages: (projectId: string) => void;
+  markQueuedMessageAsProcessing: (projectId: string, taskId: string) => void;
 
   // Chat store state management
   createChatStore: (projectId: string, chatName?: string) => string | null;
@@ -873,6 +875,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       },
     }));
 
+    console.log(
+      `[addQueuedMessage] Message added successfully: task_id=${actual_task_id}, queue length now: ${get().projects[projectId].queuedMessages.length}`
+    );
+
     return actual_task_id;
   },
 
@@ -964,6 +970,43 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         },
       },
     }));
+  },
+
+  markQueuedMessageAsProcessing: (projectId: string, taskId: string) => {
+    const { projects } = get();
+
+    if (!projects[projectId]) {
+      console.warn(`Project ${projectId} not found`);
+      return;
+    }
+
+    const message = projects[projectId].queuedMessages.find(
+      (m) => m.task_id === taskId
+    );
+
+    if (!message) {
+      console.warn(
+        `Message with task_id ${taskId} not found in project ${projectId}`
+      );
+      return;
+    }
+
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          queuedMessages: state.projects[projectId].queuedMessages.map((m) =>
+            m.task_id === taskId ? { ...m, processing: true } : m
+          ),
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+
+    console.log(
+      `[ProjectStore] Marked message as processing: ${taskId} in project ${projectId}`
+    );
   },
 
   getAllChatStores: (projectId: string) => {
