@@ -72,7 +72,7 @@
     "@stackframe/react": "file:package/@stackframe/react",
     "@tanstack/react-query": "^5.90.19",
     "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^5.5.0",
     "@xyflow/react": "^12.6.4",
     "adm-zip": "^0.5.16",
