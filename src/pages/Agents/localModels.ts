@@ -22,6 +22,9 @@ export const LLAMA_CPP_PROVIDER_ID = 'llama.cpp' as const;
 
 // --- Ollama endpoint auto-fix ---
 
+// Toast strings shown when the Ollama endpoint input auto-appends "/v1".
+// Triggered on blur when a user enters a bare Ollama URL (e.g. http://localhost:11434)
+// that is missing the required /v1 suffix for the OpenAI-compatible API.
 export const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
 export const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
   'Added /v1 once. You can remove it if not needed.';
