@@ -14,6 +14,10 @@
 
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
+import {
+  getSavedLoginStore,
+  useSavedLoginStore,
+} from '@/store/savedLoginStore';
 import { useStackApp } from '@stackframe/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -26,6 +30,8 @@ import eye from '@/assets/eye.svg';
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import WindowControls from '@/components/WindowControls';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
 
@@ -39,9 +45,11 @@ export default function Login() {
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
   const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
+  const { addSavedAccount } = useSavedLoginStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [hidePassword, setHidePassword] = useState(true);
+  const [rememberMe, setRememberMe] = useState(true);
   const { t } = useTranslation();
   const [formData, setFormData] = useState({
     email: '',
@@ -162,9 +170,12 @@ export default function Login() {
 
       setAuth({ email: formData.email, ...data });
       setModelType('cloud');
-      // Record VITE_USE_LOCAL_PROXY value at login
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
       setLocalProxyValue(localProxyValue);
+      addSavedAccount(formData.email, {
+        password: formData.password,
+        rememberPassword: rememberMe,
+      });
       navigate('/');
     } catch (error: any) {
       console.error('Login failed:', error);
@@ -315,10 +326,19 @@ export default function Login() {
     }
   }, [platform]);
 
-  // Handle before-close event for login page
+  useEffect(() => {
+    const prefill = getSavedLoginStore().getLastUsedPrefill();
+    if (prefill?.email) {
+      setFormData((prev) => ({
+        ...prev,
+        email: prefill.email,
+        ...(prefill.password !== undefined && { password: prefill.password }),
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     const handleBeforeClose = () => {
-      // On login page, always close directly without confirmation
       window.electronAPI.closeWindow(true);
     };
 
@@ -471,6 +491,19 @@ export default function Login() {
                   onBackIconClick={() => setHidePassword(!hidePassword)}
                   onEnter={handleLogin}
                 />
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="remember-me"
+                  checked={rememberMe}
+                  onCheckedChange={setRememberMe}
+                />
+                <Label
+                  htmlFor="remember-me"
+                  className="cursor-pointer text-body-sm text-text-label"
+                >
+                  {t('layout.remember-me')}
+                </Label>
               </div>
             </div>
             <Button
