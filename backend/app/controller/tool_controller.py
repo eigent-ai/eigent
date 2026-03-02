@@ -481,7 +481,7 @@ async def uninstall_tool(tool: str):
                         "Cancelled ongoing Google Calendar authorization"
                     )
                 # Clear the state completely to remove cached credentials
-                oauth_state_manager._states.pop("google_calendar", None)
+                oauth_state_manager.remove_state("google_calendar")
                 logger.info("Cleared Google Calendar OAuth state cache")
 
             return {
