@@ -207,6 +207,24 @@ interface ElectronAPI {
     userId: string,
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
+  // Global Agent Templates
+  agentTemplatesLoad: (userId: string) => Promise<{
+    success: boolean;
+    templates?: Array<{
+      id: string;
+      name: string;
+      description: string;
+      tools: string[];
+      mcp_tools: any;
+      custom_model_config?: any;
+      updatedAt: number;
+    }>;
+    error?: string;
+  }>;
+  agentTemplatesSave: (
+    userId: string,
+    templates: any[]
+  ) => Promise<{ success: boolean; error?: string }>;
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;
   getCdpBrowsers: () => Promise<any[]>;

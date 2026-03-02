@@ -16,5 +16,8 @@
   "model-type": "Model Type",
   "model-type-placeholder": "e.g., gpt-4o-mini",
   "worker-name-cannot-be-empty": "Worker name cannot be empty",
-  "worker-name-already-exists": "Worker name already exists"
+  "worker-name-already-exists": "Worker name already exists",
+  "duplicate-agent": "Duplicate agent",
+  "export-agent": "Export agent config",
+  "import-agent": "Import agent config"
 }
