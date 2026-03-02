@@ -814,29 +814,57 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   );
 }
 
+function toFileUrl(filePath: string): string {
+  if (
+    filePath.startsWith('file://') ||
+    filePath.startsWith('localfile://') ||
+    filePath.startsWith('http://') ||
+    filePath.startsWith('https://') ||
+    filePath.startsWith('blob:') ||
+    filePath.startsWith('data:')
+  ) {
+    return filePath;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  // Windows UNC path: //server/share/path/to/file
+  if (normalizedPath.startsWith('//')) {
+    const withoutLeadingSlashes = normalizedPath.replace(/^\/+/, '');
+    const [host, ...pathSegments] = withoutLeadingSlashes.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath ? `file://${host}/${encodedPath}` : `file://${host}/`;
+  }
+
+  const hasWindowsDrive = /^[A-Za-z]:\//.test(normalizedPath);
+  if (hasWindowsDrive) {
+    const [drive, ...pathSegments] = normalizedPath.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath
+      ? `file:///${drive}/${encodedPath}`
+      : `file:///${drive}/`;
+  }
+
+  const encodedPath = normalizedPath
+    .split('/')
+    .map((segment, index) =>
+      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
+    )
+    .join('/');
+  return `file://${encodedPath}`;
+}
+
 function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    window.electronAPI
-      .readFileAsDataUrl(selectedFile.path)
-      .then((dataUrl: string) => {
-        if (!cancelled) setSrc(dataUrl);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        console.error('Audio load error:', err);
-        setSrc('');
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
@@ -855,25 +883,13 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    window.electronAPI
-      .readFileAsDataUrl(selectedFile.path)
-      .then((dataUrl: string) => {
-        if (!cancelled) setSrc(dataUrl);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        console.error('Video load error:', err);
-        setSrc('');
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
