@@ -535,7 +535,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!provider) {
           throw new Error(
-            'No model provider configured. Please go to Settings > Models and configure at least one model provider as default.'
+            'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
           );
         }
 
