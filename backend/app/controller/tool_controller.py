@@ -793,6 +793,20 @@ async def open_browser_login():
         )
 
 
+@router.get("/browser/status", name="browser status")
+async def browser_status():
+    """Check if the login browser is currently open."""
+    import socket
+
+    cdp_port = 9223
+
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("localhost", port)) == 0
+
+    return {"is_open": is_port_in_use(cdp_port)}
+
+
 @router.get("/browser/cookies", name="list cookie domains")
 async def list_cookie_domains(search: str = None):
     """
