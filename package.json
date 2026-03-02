@@ -87,6 +87,7 @@
     "embla-carousel-autoplay": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.17.0",
+    "jszip": "^3.10.1",
     "github-markdown-css": "^5.8.1",
     "gsap": "^3.13.0",
     "koffi": "^2.14.1",

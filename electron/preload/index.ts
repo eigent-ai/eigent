@@ -97,6 +97,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
   readFileAsDataUrl: (path: string) =>
     ipcRenderer.invoke('read-file-dataurl', path),
+  getFileAsDataUrl: (path: string, type?: string) =>
+    ipcRenderer.invoke('get-file-dataurl', path, type),
   deleteFolder: (email: string) => ipcRenderer.invoke('delete-folder', email),
   getMcpConfigPath: (email: string) =>
     ipcRenderer.invoke('get-mcp-config-path', email),

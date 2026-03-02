@@ -2099,6 +2099,14 @@ function registerIpcHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'get-file-dataurl',
+    async (_: Electron.IpcMainInvokeEvent, filePath: string, type?: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.getFileAsDataUrl(filePath, type);
+    }
+  );
+
   ipcMain.handle('download-file', async (_, url: string) => {
     try {
       const https = await import('https');

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
+import PptxViewer from './PptxViewer';
 
 import { proxyFetchGet } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
@@ -307,6 +308,22 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         })
         .catch((error) => {
           console.error('read-file-dataurl error:', error);
+          setLoading(false);
+        });
+      return;
+    }
+
+    // For PPTX files, use data URL for client-side rendering (supports local + remote)
+    if (file.type === 'pptx') {
+      window.ipcRenderer
+        .invoke('get-file-dataurl', file.path, file.type)
+        .then((dataUrl: string) => {
+          setSelectedFile({ ...file, content: dataUrl });
+          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error('get-file-dataurl error:', error);
           setLoading(false);
         });
       return;
@@ -733,6 +750,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     src={selectedFile.content as string}
                     className="h-full w-full border-0"
                     title={selectedFile.name}
+                  />
+                ) : selectedFile.type === 'pptx' &&
+                  typeof selectedFile.content === 'string' &&
+                  selectedFile.content.startsWith('data:') ? (
+                  <PptxViewer
+                    dataUrl={selectedFile.content}
+                    fileName={selectedFile.name}
+                    className="h-full"
                   />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
                     selectedFile.type
