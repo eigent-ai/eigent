@@ -187,7 +187,7 @@
   "days-ago": "days ago",
   "delete-project": "Delete Project",
   "delete-project-confirmation": "Are you sure you want to delete this project and all its tasks? This action cannot be undone.",
-  "please-select-model": "Please select a model in Settings > Models to continue.",
+  "please-select-model": "Please select a model in Agents > Models to continue.",
   "cdp-browser-connection": "CDP Browser Connection",
   "cdp-browser-connection-description": "Connect to a Chrome browser with remote debugging enabled",
   "current-port": "Current Electron Port:",

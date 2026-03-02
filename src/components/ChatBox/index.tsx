@@ -308,7 +308,7 @@ export default function ChatBox(): JSX.Element {
       // Check model configuration before starting task
       if (!hasModel) {
         toast.error('Please select a model first.');
-        navigate('/setting/models');
+        navigate('/history?tab=agents');
         return;
       }
       if (!privacy) {
@@ -422,7 +422,7 @@ export default function ChatBox(): JSX.Element {
     // Check model first, then privacy
     if (!hasModel) {
       toast.error('Please select a model first.');
-      navigate('/setting/models');
+      navigate('/history?tab=agents');
       return;
     }
     if (!privacy) {
@@ -1130,7 +1130,7 @@ export default function ChatBox(): JSX.Element {
                 <div className="flex items-center gap-2">
                   <div
                     onClick={() => {
-                      navigate('/setting/models');
+                      navigate('/history?tab=agents');
                     }}
                     className="flex cursor-pointer items-center gap-2 rounded-md bg-surface-warning px-sm py-xs"
                   >
