@@ -15,6 +15,7 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import DOMPurify from 'dompurify';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
 import { TooltipSimple } from './tooltip';
@@ -254,9 +255,11 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                     : 'text-text-label'
               )}
               dangerouslySetInnerHTML={{
-                __html: note.replace(
-                  /(https?:\/\/[^\s]+)/g,
-                  '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-text-information hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
+                __html: DOMPurify.sanitize(
+                  note.replace(
+                    /(https?:\/\/[^\s]+)/g,
+                    '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-text-information hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
+                  )
                 ),
               }}
             />
