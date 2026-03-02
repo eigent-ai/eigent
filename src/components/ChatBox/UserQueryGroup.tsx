@@ -122,6 +122,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       ? chatState.tasks[activeTaskId]
       : null;
 
+  // Check if this is an instant replay (loaded from history with no delay).
+  // Derived from the actual task state, not the conditional `task` variable,
+  // so it stays correct even when `task` is null (e.g. no TO_SUB_TASKS in group).
+  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : null;
+  const isInstantReplay =
+    activeTask?.type === 'replay' && activeTask?.delayTime === 0;
+
   // Set up intersection observer for this query group
   useEffect(() => {
     if (!groupRef.current) return;
@@ -202,20 +209,24 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     <motion.div
       ref={groupRef}
       data-query-id={queryGroup.queryId}
-      initial={{ opacity: 0, y: 10 }}
+      initial={isInstantReplay ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.3,
-        delay: index * 0.1, // Stagger animation for multiple groups
-      }}
+      transition={
+        isInstantReplay
+          ? { duration: 0 }
+          : {
+              duration: 0.3,
+              delay: index * 0.1, // Stagger animation for multiple groups
+            }
+      }
       className="relative"
     >
       {/* User Query (render only if exists) */}
       {queryGroup.userMessage && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={isInstantReplay ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={isInstantReplay ? { duration: 0 } : { duration: 0.3 }}
           className="px-sm py-sm"
         >
           <UserMessageCard
@@ -238,15 +249,19 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           }}
         >
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={isInstantReplay ? false : { opacity: 0, y: 20 }}
             animate={{
               opacity: 1,
               y: 0,
             }}
-            transition={{
-              duration: 0.3,
-              delay: 0.1, // Slight delay for sequencing
-            }}
+            transition={
+              isInstantReplay
+                ? { duration: 0 }
+                : {
+                    duration: 0.3,
+                    delay: 0.1, // Slight delay for sequencing
+                  }
+            }
           >
             <div
               style={{
@@ -292,16 +307,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             return (
               <motion.div
                 key={`end-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
+                initial={isInstantReplay ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+                transition={isInstantReplay ? { duration: 0 } : { delay: 0.2 }}
                 className="flex flex-col gap-4 px-sm"
               >
                 <AgentMessageCard
-                  typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
-                  }
+                  typewriter={!isInstantReplay}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
@@ -362,17 +374,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             return (
               <motion.div
                 key={`message-${message.id}`}
-                initial={{ opacity: 0, y: 10 }}
+                initial={isInstantReplay ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+                transition={isInstantReplay ? { duration: 0 } : { delay: 0.2 }}
                 className="flex flex-col gap-4 px-sm"
               >
                 <AgentMessageCard
                   key={message.id}
-                  typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
-                  }
+                  typewriter={!isInstantReplay}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
