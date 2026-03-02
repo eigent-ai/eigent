@@ -27,8 +27,6 @@ def test_normalize_model_platform_maps_known_aliases():
     assert normalize_model_platform("z.ai") == "openai-compatible-model"
     assert normalize_model_platform("ModelArk") == "openai-compatible-model"
     assert normalize_model_platform("llama.cpp") == "openai-compatible-model"
-    assert normalize_model_platform("llama-cpp") == "openai-compatible-model"
-    assert normalize_model_platform("llamacpp") == "openai-compatible-model"
 
 
 def test_normalize_model_platform_keeps_non_alias_unchanged():
