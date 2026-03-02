@@ -712,15 +712,34 @@ async def open_browser_login():
                 f"Electron browser script not found: {electron_script_path}"
             )
 
-        electron_cmd = "npx"
-        electron_args = [
-            electron_cmd,
+        # Resolve npx path for Windows compatibility.
+        # On Windows, subprocess.Popen uses CreateProcess which cannot
+        # execute .cmd files directly. We resolve the full path and
+        # invoke via cmd.exe.
+        import shutil
+
+        npx_cmd = None
+        if os.name == "nt":
+            eigent_npx = os.path.expanduser("~/.eigent/bin/npx.cmd")
+            if os.path.exists(eigent_npx):
+                npx_cmd = eigent_npx
+        if not npx_cmd:
+            npx_cmd = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+
+        base_args = [
+            npx_cmd,
             "electron",
             electron_script_path,
             user_data_dir,
             str(cdp_port),
             "https://www.google.com",
         ]
+
+        # On Windows, wrap with cmd.exe so .cmd execution is reliable
+        if os.name == "nt":
+            electron_args = ["cmd.exe", "/d", "/s", "/c"] + base_args
+        else:
+            electron_args = base_args
 
         # Get the app's directory to run npx in the right context
         app_dir = os.path.dirname(
@@ -736,10 +755,17 @@ async def open_browser_login():
         logger.info(f"[PROFILE USER LOGIN] userData path: {user_data_dir}")
         logger.info(f"[PROFILE USER LOGIN] Electron args: {electron_args}")
 
+        # Ensure ~/.eigent/bin is on PATH for the spawned process
+        env = os.environ.copy()
+        eigent_bin = os.path.expanduser("~/.eigent/bin")
+        if os.path.isdir(eigent_bin):
+            env["PATH"] = eigent_bin + os.pathsep + env.get("PATH", "")
+
         # Start process and capture output in real-time
         process = subprocess.Popen(
             electron_args,
             cwd=app_dir,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Redirect stderr to stdout
             text=True,
