@@ -12,7 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet, proxyFetchPost } from '@/api/http';
+import {
+  proxyFetchDelete,
+  proxyFetchGet,
+  proxyFetchPost,
+  proxyFetchPut,
+} from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/store/authStore';
@@ -82,27 +87,35 @@ export default function Search() {
   const { t } = useTranslation();
   const { modelType } = useAuthStore();
   const [formData, setFormData] = useState<Record<string, string>>({});
+  // Track existing config IDs for update/delete operations
+  const [configIds, setConfigIds] = useState<Record<string, number>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
 
   const engines = useMemo(() => buildSearchEngines(modelType), [modelType]);
 
-  useEffect(() => {
-    proxyFetchGet('/api/configs').then((configsRes) => {
-      const configsList = Array.isArray(configsRes) ? configsRes : [];
-      const existingData: Record<string, string> = {};
-      engines.forEach((engine) => {
-        engine.fields.forEach((field) => {
-          const config = configsList.find(
-            (c: any) => c.config_name === field.key
-          );
-          if (config) {
-            existingData[field.key] = config.config_value || '';
-          }
-        });
+  const loadConfigs = async () => {
+    const configsRes = await proxyFetchGet('/api/configs');
+    const configsList = Array.isArray(configsRes) ? configsRes : [];
+    const existingData: Record<string, string> = {};
+    const existingIds: Record<string, number> = {};
+    engines.forEach((engine) => {
+      engine.fields.forEach((field) => {
+        const config = configsList.find(
+          (c: any) => c.config_name === field.key
+        );
+        if (config) {
+          existingData[field.key] = config.config_value || '';
+          existingIds[field.key] = config.id;
+        }
       });
-      setFormData(existingData);
     });
+    setFormData(existingData);
+    setConfigIds(existingIds);
+  };
+
+  useEffect(() => {
+    loadConfigs();
   }, [engines]);
 
   const selectedProvider = engines[0];
@@ -121,12 +134,27 @@ export default function Search() {
       if (selectedProvider.requiresApiKey) {
         for (const field of selectedProvider.fields) {
           const value = formData[field.key];
+          const existingId = configIds[field.key];
+
           if (value && value.trim() !== '') {
-            await proxyFetchPost('/api/configs', {
-              config_group: 'Search',
-              config_name: field.key,
-              config_value: value.trim(),
-            });
+            if (existingId) {
+              // Update existing config
+              await proxyFetchPut(`/api/configs/${existingId}`, {
+                config_group: 'Search',
+                config_name: field.key,
+                config_value: value.trim(),
+              });
+            } else {
+              // Create new config
+              await proxyFetchPost('/api/configs', {
+                config_group: 'Search',
+                config_name: field.key,
+                config_value: value.trim(),
+              });
+            }
+          } else if (existingId) {
+            // Value cleared — delete config
+            await proxyFetchDelete(`/api/configs/${existingId}`);
           }
         }
       } else {
@@ -137,20 +165,7 @@ export default function Search() {
         });
       }
       toast.success(t('setting.configuration-saved-successfully'));
-      const res = await proxyFetchGet('/api/configs');
-      const configsList = Array.isArray(res) ? res : [];
-      const existingData: Record<string, string> = {};
-      engines.forEach((engine) => {
-        engine.fields.forEach((field) => {
-          const config = configsList.find(
-            (c: any) => c.config_name === field.key
-          );
-          if (config) {
-            existingData[field.key] = config.config_value || '';
-          }
-        });
-      });
-      setFormData(existingData);
+      await loadConfigs();
     } catch (error) {
       console.error(error);
       toast.error(t('setting.failed-to-save-configuration'));
@@ -162,7 +177,7 @@ export default function Search() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('setting.search-engine')}
         </div>
@@ -172,7 +187,7 @@ export default function Search() {
       <div className="mb-12">
         <div className="rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex flex-col">
-            <div className="gap-2 pb-2 flex flex-col">
+            <div className="flex flex-col gap-2 pb-2">
               <div className="text-label-lg font-bold">
                 {selectedProvider.name}
               </div>
@@ -181,7 +196,7 @@ export default function Search() {
               </div>
             </div>
 
-            <div className="pt-4 flex-1">
+            <div className="flex-1 pt-4">
               {selectedProvider.requiresApiKey ? (
                 <div className="space-y-4">
                   {selectedProvider.fields.map((field) => (
@@ -223,7 +238,7 @@ export default function Search() {
             </div>
 
             {!selectedProvider.enabledByDefault && (
-              <div className="gap-3 pt-4 flex items-center justify-end">
+              <div className="flex items-center justify-end gap-3 pt-4">
                 <Button size="sm" onClick={saveConfiguration} disabled={saving}>
                   {saving
                     ? t('setting.saving')
