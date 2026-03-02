@@ -78,38 +78,23 @@ import sglangImage from '@/assets/model/sglang.svg';
 import vllmImage from '@/assets/model/vllm.svg';
 import zaiImage from '@/assets/model/zai.svg';
 
-const OLLAMA_PROVIDER_ID = 'ollama' as const;
-const VLLM_PROVIDER_ID = 'vllm' as const;
-const SGLANG_PROVIDER_ID = 'sglang' as const;
-const LMSTUDIO_PROVIDER_ID = 'lmstudio' as const;
-const LLAMA_CPP_PROVIDER_ID = 'llama.cpp' as const;
-const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
-const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
-  'Added /v1 once. You can remove it if not needed.';
-const LOCAL_MODEL_OPTIONS = [
-  {
-    id: OLLAMA_PROVIDER_ID,
-    name: 'Ollama',
-    defaultEndpoint: 'http://localhost:11434/v1',
-  },
-  { id: VLLM_PROVIDER_ID, name: 'vLLM', defaultEndpoint: '' },
-  { id: SGLANG_PROVIDER_ID, name: 'SGLang', defaultEndpoint: '' },
-  {
-    id: LMSTUDIO_PROVIDER_ID,
-    name: 'LM Studio',
-    defaultEndpoint: 'http://localhost:1234/v1',
-  },
-  {
-    id: LLAMA_CPP_PROVIDER_ID,
-    name: 'LLaMA.cpp',
-    defaultEndpoint: 'http://localhost:8080/v1',
-  },
-];
-const toEndpointBaseUrl = (endpoint: string): string =>
-  endpoint.replace(/\/v1\/?$/, '').replace(/\/$/, '');
-const getDefaultLocalEndpoint = (platform: string): string =>
-  LOCAL_MODEL_OPTIONS.find((model) => model.id === platform)?.defaultEndpoint ||
-  '';
+import {
+  appendV1ToEndpoint,
+  canAutoFixOllamaEndpoint,
+  DARK_FILL_MODELS,
+  getDefaultLocalEndpoint,
+  getLocalPlatformName,
+  LLAMA_CPP_PROVIDER_ID,
+  LMSTUDIO_PROVIDER_ID,
+  LOCAL_MODEL_OPTIONS,
+  OLLAMA_ENDPOINT_AUTO_FIX_DESC,
+  OLLAMA_ENDPOINT_AUTO_FIX_TITLE,
+  OLLAMA_PROVIDER_ID,
+  PROVIDER_AVATAR_URLS,
+  SGLANG_PROVIDER_ID,
+  toEndpointBaseUrl,
+  VLLM_PROVIDER_ID,
+} from './localModels';
 
 // Sidebar tab types
 type SidebarTab =
@@ -122,24 +107,6 @@ type SidebarTab =
   | 'local-sglang'
   | 'local-lmstudio'
   | 'local-llama.cpp';
-
-// Provider logos that use dark fills (black or currentColor) and need inversion in dark mode
-const DARK_FILL_MODELS = new Set([
-  'openai',
-  'anthropic',
-  'moonshot',
-  OLLAMA_PROVIDER_ID,
-  'openrouter',
-  LMSTUDIO_PROVIDER_ID,
-  'z.ai',
-  'openai-compatible-model',
-]);
-
-const PROVIDER_AVATAR_URLS: Record<string, string> = {
-  'samba-nova': 'https://github.com/sambanova.png',
-  mistral: 'https://github.com/mistralai.png',
-  grok: 'https://github.com/xai-org.png',
-};
 
 export default function SettingModels() {
   const {
@@ -220,67 +187,61 @@ export default function SettingModels() {
   const [localInputError, setLocalInputError] = useState(false);
   const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state (for current platform)
 
-  // Ollama-specific state for model fetching
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
-  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(
-    null
-  );
+  // Per-platform model list state: { models, loading, error } keyed by platform ID.
+  const [platformModelState, setPlatformModelState] = useState<
+    Record<string, { models: string[]; loading: boolean; error: string | null }>
+  >({});
   const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
     useState(false);
-  const [llamaCppModels, setLlamaCppModels] = useState<string[]>([]);
-  const [llamaCppModelsLoading, setLlamaCppModelsLoading] = useState(false);
-  const [llamaCppModelsError, setLlamaCppModelsError] = useState<string | null>(
-    null
+
+  // Generic model fetcher driven by LOCAL_MODEL_OPTIONS config.
+  // Only fetches for providers that define fetchPath and parseModels.
+  const fetchModelsForPlatform = useCallback(
+    async (platform: string, endpoint?: string) => {
+      const option = LOCAL_MODEL_OPTIONS.find((m) => m.id === platform);
+      if (!option?.fetchPath || !option?.parseModels) return;
+
+      const url = endpoint || option.defaultEndpoint;
+      setPlatformModelState((prev) => ({
+        ...prev,
+        [platform]: {
+          models: prev[platform]?.models || [],
+          loading: true,
+          error: null,
+        },
+      }));
+      try {
+        const baseUrl = toEndpointBaseUrl(url);
+        const response = await fetch(`${baseUrl}${option.fetchPath}`);
+        if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
+        const data = await response.json();
+        const modelNames = option.parseModels(data);
+        setPlatformModelState((prev) => ({
+          ...prev,
+          [platform]: { models: modelNames, loading: false, error: null },
+        }));
+      } catch (error: any) {
+        console.error(`Failed to fetch ${option.name} models:`, error);
+        setPlatformModelState((prev) => ({
+          ...prev,
+          [platform]: {
+            models: [],
+            loading: false,
+            error: `Failed to fetch ${option.name} models. Is ${option.name} running?`,
+          },
+        }));
+      }
+    },
+    []
   );
 
-  // Fetch available models from Ollama API
-  const fetchOllamaModels = useCallback(async (endpoint?: string) => {
-    const url = endpoint || getDefaultLocalEndpoint(OLLAMA_PROVIDER_ID);
-    setOllamaModelsLoading(true);
-    setOllamaModelsError(null);
-    try {
-      const baseUrl = toEndpointBaseUrl(url);
-      const response = await fetch(`${baseUrl}/api/tags`);
-      if (!response.ok) throw new Error(`Failed: ${response.status}`);
-
-      const data = await response.json();
-      const modelNames = data.models?.map((m: any) => m.name) || [];
-      setOllamaModels(modelNames);
-    } catch (error: any) {
-      console.error('Failed to fetch Ollama models:', error);
-      setOllamaModels([]);
-      setOllamaModelsError('Failed to fetch Ollama models. Is Ollama running?');
-    } finally {
-      setOllamaModelsLoading(false);
-    }
-  }, []);
-
-  // Fetch available models from llama.cpp server API
-  const fetchLlamaCppModels = useCallback(async (endpoint?: string) => {
-    const url = endpoint || getDefaultLocalEndpoint(LLAMA_CPP_PROVIDER_ID);
-    setLlamaCppModelsLoading(true);
-    setLlamaCppModelsError(null);
-    try {
-      const baseUrl = toEndpointBaseUrl(url);
-      const response = await fetch(`${baseUrl}/v1/models`);
-      if (!response.ok) throw new Error(`Failed: ${response.status}`);
-
-      const data = await response.json();
-      const modelNames =
-        data?.data
-          ?.map((m: any) => m?.id)
-          .filter((name: string | undefined) => !!name) || [];
-      setLlamaCppModels(modelNames);
-    } catch (error: any) {
-      console.error('Failed to fetch LLaMA.cpp models:', error);
-      setLlamaCppModels([]);
-      setLlamaCppModelsError(
-        'Failed to fetch LLaMA.cpp models. Is llama-server running?'
-      );
-    } finally {
-      setLlamaCppModelsLoading(false);
-    }
+  const clearPlatformModelsError = useCallback((platform: string) => {
+    setPlatformModelState((prev) => {
+      const current = prev[platform];
+      if (!current || !current.error) return prev;
+      return { ...prev, [platform]: { ...current, error: null } };
+    });
   }, []);
 
   const checkLlamaCppHealth = useCallback(async (endpoint: string) => {
@@ -292,18 +253,6 @@ export default function SettingModels() {
       );
     }
   }, []);
-
-  const refreshModelListForPlatform = useCallback(
-    async (platform: string, endpoint?: string) => {
-      const targetEndpoint = endpoint || getDefaultLocalEndpoint(platform);
-      if (platform === OLLAMA_PROVIDER_ID) {
-        await fetchOllamaModels(targetEndpoint);
-      } else if (platform === LLAMA_CPP_PROVIDER_ID) {
-        await fetchLlamaCppModels(targetEndpoint);
-      }
-    },
-    [fetchLlamaCppModels, fetchOllamaModels]
-  );
 
   // Default model dropdown state (removed - using DropdownMenu's built-in state)
 
@@ -381,15 +330,11 @@ export default function SettingModels() {
         setLocalTypes(types);
         setLocalProviderIds(providerIds);
 
-        // Fetch Ollama models if ollama endpoint is set
-        const ollamaEndpoint =
-          endpoints[OLLAMA_PROVIDER_ID] ||
-          getDefaultLocalEndpoint(OLLAMA_PROVIDER_ID);
-        fetchOllamaModels(ollamaEndpoint);
-        const llamaCppEndpoint =
-          endpoints[LLAMA_CPP_PROVIDER_ID] ||
-          getDefaultLocalEndpoint(LLAMA_CPP_PROVIDER_ID);
-        fetchLlamaCppModels(llamaCppEndpoint);
+        // Fetch model lists for all providers that support it
+        LOCAL_MODEL_OPTIONS.filter((m) => m.fetchPath).forEach((m) => {
+          const ep = endpoints[m.id] || m.defaultEndpoint;
+          fetchModelsForPlatform(m.id, ep);
+        });
 
         // If no local providers found, initialize empty state with Ollama default
         if (localProviders.length === 0) {
@@ -425,7 +370,7 @@ export default function SettingModels() {
       fetchSubscription();
       updateCredits();
     }
-  }, [items, modelType, fetchLlamaCppModels, fetchOllamaModels]);
+  }, [items, modelType, fetchModelsForPlatform]);
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -551,9 +496,6 @@ export default function SettingModels() {
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
-
-  const getLocalPlatformName = (platform: string): string =>
-    LOCAL_MODEL_OPTIONS.find((m) => m.id === platform)?.name || platform;
 
   const handleVerify = async (idx: number) => {
     const { apiKey, apiHost, externalConfig, model_type, provider_id } =
@@ -702,43 +644,6 @@ export default function SettingModels() {
       }
     } finally {
       setLoading(null);
-    }
-  };
-
-  // Local Model verification
-  const isOllamaEndpointMissingV1 = (endpoint: string): boolean => {
-    const trimmed = endpoint.trim();
-    if (!trimmed) return false;
-    try {
-      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
-      return !normalizedPath.endsWith('/v1');
-    } catch {
-      return !trimmed.replace(/\/+$/, '').endsWith('/v1');
-    }
-  };
-  const canAutoFixOllamaEndpoint = (endpoint: string): boolean => {
-    const trimmed = endpoint.trim();
-    if (!trimmed || !isOllamaEndpointMissingV1(trimmed)) return false;
-    try {
-      // Auto-fix only when endpoint has no extra path, e.g. http://localhost:11434
-      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
-      return normalizedPath === '';
-    } catch {
-      const withoutQueryOrHash = trimmed.split(/[?#]/)[0] || '';
-      const normalized = withoutQueryOrHash.replace(/\/+$/, '');
-      return !normalized.includes('/');
-    }
-  };
-  const appendV1ToEndpoint = (endpoint: string): string => {
-    const trimmed = endpoint.trim();
-    if (!trimmed) return trimmed;
-    try {
-      const parsed = new URL(trimmed);
-      const normalizedPath = parsed.pathname.replace(/\/+$/, '');
-      parsed.pathname = `${normalizedPath}/v1`.replace(/\/{2,}/g, '/');
-      return parsed.toString();
-    } catch {
-      return `${trimmed.replace(/\/+$/, '')}/v1`;
     }
   };
 
@@ -912,9 +817,7 @@ export default function SettingModels() {
         }
       }
 
-      if (localPlatform === LLAMA_CPP_PROVIDER_ID) {
-        await fetchLlamaCppModels(currentEndpoint);
-      }
+      await fetchModelsForPlatform(localPlatform, currentEndpoint);
     } catch (e: any) {
       setLocalError(
         e.message || t('setting.verification-failed-please-check-endpoint-url')
@@ -1037,14 +940,12 @@ export default function SettingModels() {
       }
       setLocalEnabled(true);
       setActiveModelIdx(null);
-      // Re-fetch Ollama models after reset
+      // Re-fetch model list after reset
       if (localPlatform === OLLAMA_PROVIDER_ID) {
         setOllamaEndpointAutoFixedOnce(false);
-        setOllamaModelsError(null);
-      } else if (localPlatform === LLAMA_CPP_PROVIDER_ID) {
-        setLlamaCppModelsError(null);
       }
-      await refreshModelListForPlatform(localPlatform);
+      clearPlatformModelsError(localPlatform);
+      await fetchModelsForPlatform(localPlatform);
       toast.success(t('setting.reset-success'));
     } catch (e) {
       console.error('Error resetting local model:', e);
@@ -1611,18 +1512,13 @@ export default function SettingModels() {
       const currentType = localTypes[platform] || '';
       const isConfigured = !!localProviderIds[platform];
       const isPreferred = localPrefer && localPlatform === platform;
-      const isModelListPlatform =
-        platform === OLLAMA_PROVIDER_ID || platform === LLAMA_CPP_PROVIDER_ID;
-      const platformModels =
-        platform === OLLAMA_PROVIDER_ID ? ollamaModels : llamaCppModels;
-      const platformModelsLoading =
-        platform === OLLAMA_PROVIDER_ID
-          ? ollamaModelsLoading
-          : llamaCppModelsLoading;
-      const platformModelsError =
-        platform === OLLAMA_PROVIDER_ID
-          ? ollamaModelsError
-          : llamaCppModelsError;
+      const platformState = platformModelState[platform];
+      const isModelListPlatform = !!LOCAL_MODEL_OPTIONS.find(
+        (m) => m.id === platform && m.fetchPath
+      );
+      const platformModels = platformState?.models || [];
+      const platformModelsLoading = platformState?.loading || false;
+      const platformModelsError = platformState?.error || null;
 
       return (
         <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
@@ -1681,13 +1577,8 @@ export default function SettingModels() {
                 }));
                 setLocalInputError(false);
                 setLocalError(null);
-                // Clear Ollama models error when endpoint changes
-                if (platform === OLLAMA_PROVIDER_ID) {
-                  setOllamaModelsError(null);
-                }
-                if (platform === LLAMA_CPP_PROVIDER_ID) {
-                  setLlamaCppModelsError(null);
-                }
+                // Clear model list error when endpoint changes
+                clearPlatformModelsError(platform);
               }}
               onBlur={(e) => {
                 if (
@@ -1772,9 +1663,9 @@ export default function SettingModels() {
                     variant="ghost"
                     size="icon"
                     onClick={() =>
-                      void refreshModelListForPlatform(
+                      void fetchModelsForPlatform(
                         platform,
-                        currentEndpoint
+                        currentEndpoint || getDefaultLocalEndpoint(platform)
                       )
                     }
                     disabled={!localEnabled || platformModelsLoading}
