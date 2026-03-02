@@ -330,11 +330,19 @@ export function Node({ id, data }: NodeProps) {
       : browserImages.length === 2
         ? 'grid-cols-2 grid-rows-1'
         : 'grid-cols-2 grid-rows-2';
+  const browserPlaceholderCount =
+    browserImages.length >= 3 ? Math.max(0, 4 - browserImages.length) : 0;
   const terminalTasks = (data.agent?.tasks || [])
     .filter((task) => task.terminal && task.terminal.length > 0)
     .slice(0, 4);
-  const terminalGridClass = 'grid-cols-2 grid-rows-2';
-  const terminalPlaceholderCount = Math.max(0, 4 - terminalTasks.length);
+  const terminalGridClass =
+    terminalTasks.length === 1
+      ? 'grid-cols-1 grid-rows-1'
+      : terminalTasks.length === 2
+        ? 'grid-cols-2 grid-rows-1'
+        : 'grid-cols-2 grid-rows-2';
+  const terminalPlaceholderCount =
+    terminalTasks.length >= 3 ? Math.max(0, 4 - terminalTasks.length) : 0;
 
   return chatStore ? (
     <>
@@ -460,13 +468,25 @@ export function Node({ id, data }: NodeProps) {
                 className={`gap-1 grid h-[180px] w-full overflow-hidden ${browserImageGridClass}`}
               >
                 {browserImages.map((img, index) => (
-                  <img
+                  <div
                     key={`${img.img}-${index}`}
-                    className="rounded-lg h-full w-full object-cover"
-                    src={img.img}
-                    alt={data.type}
-                  />
+                    className="rounded-lg relative h-full w-full overflow-hidden"
+                  >
+                    <img
+                      className="left-0 top-0 absolute h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      src={img.img}
+                      alt={data.type}
+                    />
+                  </div>
                 ))}
+                {Array.from({ length: browserPlaceholderCount }).map(
+                  (_, index) => (
+                    <div
+                      key={`browser-placeholder-${index}`}
+                      className="rounded-sm bg-surface-primary h-full w-full"
+                    />
+                  )
+                )}
               </div>
             )}
             {data.type === 'document_agent' &&
@@ -488,7 +508,7 @@ export function Node({ id, data }: NodeProps) {
                     key={task.id}
                     className="rounded-lg relative h-full w-full overflow-hidden object-cover"
                   >
-                    <div className="left-0 top-0 absolute h-[500px] w-[800px] origin-top-left scale-x-[0.4] scale-y-[0.3]">
+                    <div className="left-0 top-0 absolute h-[250%] w-[250%] origin-top-left scale-[0.4]">
                       <Terminal content={task.terminal} />
                     </div>
                   </div>
@@ -497,7 +517,7 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`terminal-placeholder-${index}`}
-                      className="rounded-sm bg-surface-primary h-full w-full"
+                      className="rounded-lg bg-surface-primary h-full w-full"
                     />
                   )
                 )}
