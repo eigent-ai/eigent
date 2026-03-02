@@ -21,6 +21,7 @@ import {
   Menu,
   nativeTheme,
   protocol,
+  safeStorage,
   session,
   shell,
 } from 'electron';
@@ -2302,6 +2303,103 @@ function registerIpcHandlers() {
         hasLockFile,
         timestamp: Date.now(),
       };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // ==================== saved accounts handler ====================
+  type SavedAccount = {
+    email: string;
+    token: string;
+    username: string;
+    user_id: number;
+  };
+
+  const ACCOUNTS_FILE = path.join(
+    os.homedir(),
+    '.eigent',
+    'saved_accounts.enc'
+  );
+
+  const readSavedAccounts = (): SavedAccount[] => {
+    try {
+      if (
+        !fs.existsSync(ACCOUNTS_FILE) ||
+        !safeStorage.isEncryptionAvailable()
+      ) {
+        return [];
+      }
+      const encrypted = fs.readFileSync(ACCOUNTS_FILE);
+      const decrypted = safeStorage.decryptString(encrypted);
+      const parsed = JSON.parse(decrypted);
+      // Filter out any entries from the old password-based format.
+      // Only email and token are required; user_id may be string or number
+      // depending on what the login API actually returns at runtime.
+      return (Array.isArray(parsed) ? parsed : []).filter(
+        (a) =>
+          typeof a.email === 'string' &&
+          a.email.length > 0 &&
+          typeof a.token === 'string' &&
+          a.token.length > 0
+      );
+    } catch {
+      return [];
+    }
+  };
+
+  const writeSavedAccounts = (accounts: SavedAccount[]) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption not available');
+    }
+    const dir = path.dirname(ACCOUNTS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const encrypted = safeStorage.encryptString(JSON.stringify(accounts));
+    fs.writeFileSync(ACCOUNTS_FILE, encrypted);
+    fs.chmodSync(ACCOUNTS_FILE, 0o600);
+  };
+
+  ipcMain.handle(
+    'credentials-save',
+    async (
+      _event,
+      email: string,
+      token: string,
+      username: string,
+      user_id: number
+    ) => {
+      try {
+        const accounts = readSavedAccounts();
+        const index = accounts.findIndex((a) => a.email === email);
+        if (index >= 0) {
+          accounts[index] = { email, token, username, user_id };
+        } else {
+          accounts.push({ email, token, username, user_id });
+        }
+        writeSavedAccounts(accounts);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
+  ipcMain.handle('credentials-load', async () => {
+    try {
+      const accounts = readSavedAccounts();
+      return { success: true, accounts };
+    } catch (error) {
+      return { success: false, accounts: [] };
+    }
+  });
+
+  ipcMain.handle('credentials-remove', async (_event, email: string) => {
+    try {
+      const accounts = readSavedAccounts().filter((a) => a.email !== email);
+      writeSavedAccounts(accounts);
+      return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
