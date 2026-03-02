@@ -45,6 +45,7 @@ import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Trigger, TriggerStatus } from '@/types';
+import { motion } from 'framer-motion';
 import {
   ArrowUpDown,
   Plus,
@@ -412,11 +413,37 @@ export default function Overview() {
         </div>
 
         {/* Execution Logs - Slides in/out from the right */}
-        <div
-          className={`mb-2 rounded-xl bg-surface-primary ease-in-out flex h-full flex-col overflow-hidden transition-[width,opacity,margin] duration-300 ${
+        <motion.div
+          initial={false}
+          animate={
             selectedTriggerId && isExecutionLogsOpen
-              ? 'ml-2 w-[40%] max-w-[560px] min-w-[240px] opacity-100'
-              : 'ml-0 w-0 min-w-0 max-w-0 pointer-events-none opacity-0'
+              ? {
+                  width: '40%',
+                  minWidth: 240,
+                  maxWidth: 560,
+                  marginLeft: 8,
+                  opacity: 1,
+                  x: 0,
+                }
+              : {
+                  width: 0,
+                  minWidth: 0,
+                  maxWidth: 0,
+                  marginLeft: 0,
+                  opacity: 0,
+                  x: 20,
+                }
+          }
+          transition={{
+            type: 'spring',
+            stiffness: 340,
+            damping: 34,
+            mass: 0.9,
+          }}
+          className={`mb-2 rounded-xl bg-surface-primary flex h-full flex-col overflow-hidden ${
+            selectedTriggerId && isExecutionLogsOpen
+              ? ''
+              : 'pointer-events-none'
           }`}
         >
           <div className="min-h-0 flex h-full flex-col">
@@ -431,7 +458,7 @@ export default function Overview() {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Edit Trigger Dialog */}
