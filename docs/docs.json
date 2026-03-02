@@ -69,11 +69,13 @@
                   "/core/models/local-model",
                   "/core/models/gemini",
                   "/core/models/minimax",
-                  "/core/models/kimi"
+                  "/core/models/kimi",
+                  "/core/models/sambanova"
                 ]
               },
               "/core/tools",
-              "/core/workers"
+              "/core/workers",
+              "/core/agent-skills"
             ]
           },
           {
