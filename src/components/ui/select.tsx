@@ -13,11 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, CircleAlert } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { TooltipSimple } from './tooltip';
 
 export type SelectSize = 'default' | 'sm';
 // Only keep controllable states; hover/focus/default are automatic
@@ -42,14 +43,15 @@ function resolveStateClasses(
   if (disabled) {
     return {
       wrapper: 'opacity-50 cursor-not-allowed',
+      trigger: 'border-transparent',
       note: 'text-text-label',
     };
   }
   if (state === 'error') {
     return {
       wrapper: '',
-      trigger: 'border-input-border-caution bg-input-bg-default',
-      note: 'text-text-caution',
+      trigger: 'border-input-border-cuation bg-input-bg-default',
+      note: 'text-text-cuation',
     };
   }
   if (state === 'success') {
@@ -61,7 +63,7 @@ function resolveStateClasses(
   }
   return {
     wrapper: '',
-    trigger: '',
+    trigger: 'border-transparent',
     note: 'text-text-label',
   };
 }
@@ -71,6 +73,8 @@ type SelectTriggerExtraProps = {
   state?: SelectState;
   title?: string;
   note?: string;
+  tooltip?: string;
+  required?: boolean;
 };
 
 const SelectTrigger = React.forwardRef<
@@ -87,6 +91,8 @@ const SelectTrigger = React.forwardRef<
       title,
       note,
       disabled,
+      tooltip,
+      required = false,
       ...props
     },
     ref
@@ -95,8 +101,14 @@ const SelectTrigger = React.forwardRef<
     return (
       <div className={cn('w-fit', stateCls.wrapper)}>
         {title ? (
-          <div className="mb-1.5 text-body-sm font-bold text-text-heading">
-            {title}
+          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+            <span>{title}</span>
+            {required && <span className="text-text-body">*</span>}
+            {tooltip && (
+              <TooltipSimple content={tooltip}>
+                <CircleAlert size={16} className="text-icon-primary" />
+              </TooltipSimple>
+            )}
           </div>
         ) : null}
         <SelectPrimitive.Trigger
@@ -104,17 +116,17 @@ const SelectTrigger = React.forwardRef<
           disabled={disabled}
           className={cn(
             // Base styles
-            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid border-input-border-default px-3 text-text-body outline-none transition-colors',
+            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid px-3 text-text-body outline-none transition-all',
             sizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default state (when no error/success)
-            !state && 'border-input-border-default bg-input-bg-default',
-            // Interactive states (only when no error state)
-            state !== 'error' && [
-              'hover:border-input-border-hover hover:bg-input-bg-hover',
-              'focus-visible:ring-0 data-[state=open]:bg-input-bg-input',
-              'focus-within:border-input-border-focus',
-            ],
+            !state && 'bg-input-bg-default',
+            // Interactive states (only when no error/success state)
+            state !== 'error' &&
+              state !== 'success' && [
+                'hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
+                'focus-visible:ring-1 focus-visible:ring-input-border-focus focus-visible:ring-offset-0 data-[state=open]:bg-input-bg-input data-[state=open]:ring-1 data-[state=open]:ring-input-border-focus data-[state=open]:ring-offset-0',
+              ],
             // Validation states (override defaults)
             stateCls.trigger,
             // Placeholder styling
@@ -180,7 +192,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'text-popover-foreground relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-y-auto overflow-x-hidden rounded-lg border border-solid border-input-border-default bg-input-bg-default shadow-md backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        'text-popover-foreground relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-y-auto overflow-x-hidden rounded-lg border border-solid border-transparent bg-input-bg-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
         className
@@ -223,7 +235,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
@@ -280,7 +292,7 @@ const SelectItemWithButton = React.forwardRef<
       value={value}
       disabled={!enabled}
       className={cn(
-        'focus:bg-accent focus:text-accent-foreground group relative flex w-full cursor-default select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'focus:bg-accent focus:text-accent-foreground group relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}

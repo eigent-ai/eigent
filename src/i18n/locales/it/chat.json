@@ -48,9 +48,20 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Stiamo riscontrando un traffico elevato. Riprova tra qualche istante.",
   "new-project": "Nuovo Progetto",
   "no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua",
+  "splitting-tasks": "Suddivisione dei compiti",
+  "start-task": "Avvia compito",
+  "message-cannot-be-empty": "Il messaggio non può essere vuoto",
+  "remove-file": "Rimuovi file",
+  "drop-files-to-attach": "Trascina i file da allegare",
+  "expand-input": "Espandi input (⌘P)",
+  "queued-tasks": "Compiti in coda",
+  "remove-queued-message": "Rimuovi messaggio in coda",
+  "no-agents-added": "Nessun agente aggiunto",
   "open-in-ide": "Apri in IDE",
   "open-in-vscode": "Apri in VS Code",
   "open-in-cursor": "Apri in Cursor",
   "open-in-file-manager": "Apri nel gestore file",
-  "failed-to-open-folder": "Impossibile aprire la cartella"
+  "failed-to-open-folder": "Impossibile aprire la cartella",
+  "task-completed-card-title": "Compito completato",
+  "task-completed-card-subtitle": "Automatizza il tuo compito con un trigger"
 }

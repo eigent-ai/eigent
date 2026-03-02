@@ -8,5 +8,13 @@
   "save-changes": "儲存變更",
   "description-optional": "描述（可選）",
   "agent-tool": "代理工具",
-  "share": "分享"
+  "share": "分享",
+  "advanced-model-config": "進階模型設定",
+  "use-custom-model": "使用自訂模型設定",
+  "model-platform": "模型平台",
+  "select-platform": "選擇平台",
+  "model-type": "模型類型",
+  "model-type-placeholder": "例如：gpt-4o-mini",
+  "worker-name-cannot-be-empty": "Worker 名稱不能為空",
+  "worker-name-already-exists": "Worker 名稱已存在"
 }

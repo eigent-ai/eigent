@@ -38,7 +38,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      'bg-black/50 fixed inset-0 z-50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className
     )}
     {...props}
@@ -50,7 +50,7 @@ export type DialogOverlayVariant = 'default' | 'dark';
 
 // Size variants for dialog content
 const dialogContentVariants = cva(
-  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 border border-solid border-popup-border bg-popup-bg shadow-perfect duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-xl',
+  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 border border-solid border-popup-border bg-popup-bg shadow-perfect duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl max-h-[90vh] flex flex-col overflow-hidden',
   {
     variants: {
       size: {
@@ -268,38 +268,97 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
       ...props
     },
     ref
-  ) => (
-    <div
-      ref={ref}
-      className={cn(
-        'relative flex w-full shrink-0 items-center justify-end gap-2 px-4 pb-4 pt-2',
-        className
-      )}
-      {...props}
-    >
-      {children}
-      {showCancelButton && (
-        <Button
-          variant={cancelButtonVariant}
-          size="sm"
-          onClick={onCancel}
-          disabled={cancelButtonDisabled}
-        >
-          {cancelButtonText}
-        </Button>
-      )}
-      {showConfirmButton && (
-        <Button
-          variant={confirmButtonVariant}
-          size="sm"
-          onClick={onConfirm}
-          disabled={confirmButtonDisabled}
-        >
-          {confirmButtonText}
-        </Button>
-      )}
-    </div>
-  )
+  ) => {
+    const footerRef = React.useRef<HTMLDivElement>(null);
+    const [hasScrollbar, setHasScrollbar] = React.useState(false);
+
+    // Combine local ref with forwarded ref
+    React.useImperativeHandle(ref, () => footerRef.current as HTMLDivElement);
+
+    React.useEffect(() => {
+      const footer = footerRef.current;
+      if (!footer) return;
+
+      const parent = footer.parentElement;
+      if (!parent) return;
+
+      const checkScrollbar = () => {
+        const siblings = Array.from(parent.children);
+        const footerIndex = siblings.indexOf(footer);
+        if (footerIndex === -1) return;
+
+        // Find the most likely scrollable sibling (usually the one before footer)
+        const scrollable = siblings
+          .slice(0, footerIndex)
+          .reverse()
+          .find((el) => {
+            const style = window.getComputedStyle(el);
+            return (
+              style.overflowY === 'auto' ||
+              style.overflowY === 'scroll' ||
+              el.classList.contains('scrollbar-overlay') ||
+              el.classList.contains('scrollbar') ||
+              el.scrollHeight > el.clientHeight
+            );
+          });
+
+        if (scrollable) {
+          setHasScrollbar(scrollable.scrollHeight > scrollable.clientHeight);
+        } else {
+          setHasScrollbar(false);
+        }
+      };
+
+      checkScrollbar();
+
+      const observer = new ResizeObserver(() => {
+        checkScrollbar();
+      });
+
+      // Observe parent and its children for layout changes
+      observer.observe(parent);
+      Array.from(parent.children).forEach((child) => {
+        if (child !== footer) observer.observe(child);
+      });
+
+      return () => observer.disconnect();
+    }, []);
+
+    return (
+      <div
+        ref={footerRef}
+        className={cn(
+          'relative flex w-full shrink-0 items-center justify-end gap-2 px-4 pb-4 pt-2',
+          hasScrollbar &&
+            'border-x-0 border-b-0 border-t-[0.5px] border-solid border-border-secondary',
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCancelButton && (
+          <Button
+            variant={cancelButtonVariant}
+            size="sm"
+            onClick={onCancel}
+            disabled={cancelButtonDisabled}
+          >
+            {cancelButtonText}
+          </Button>
+        )}
+        {showConfirmButton && (
+          <Button
+            variant={confirmButtonVariant}
+            size="sm"
+            onClick={onConfirm}
+            disabled={confirmButtonDisabled}
+          >
+            {confirmButtonText}
+          </Button>
+        )}
+      </div>
+    );
+  }
 );
 DialogFooter.displayName = 'DialogFooter';
 

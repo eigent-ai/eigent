@@ -8,16 +8,32 @@ services:
       POSTGRES_DB: eigent
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       #- ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     networks:
       - eigent_network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d eigent" ]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d eigent']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: eigent-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - eigent_redis_data:/data
+    networks:
+      - eigent_network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,11 +48,15 @@ services:
     container_name: eigent_api
     restart: unless-stopped
     ports:
-      - "3001:5678"
+      - '3001:5678'
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:123456@postgres:5432/eigent
-      - ENVIRONMENT=production
-      - DEBUG=false
+      - database_url=postgresql://postgres:123456@postgres:5432/eigent
+      - redis_url=redis://redis:6379/0
+      - celery_broker_url=redis://redis:6379/0
+      - celery_result_url=redis://redis:6379/0
+      - SESSION_REDIS_URL=redis://redis:6379/1
     # volumes:
     #   - ./app:/app/app
     #   - ./alembic:/app/alembic
@@ -45,18 +65,87 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - eigent_network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:5678/health" ]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5678/health']
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+      args:
+        database_url: postgresql://postgres:123456@postgres:5432/eigent
+    container_name: eigent_celery_worker
+    restart: unless-stopped
+    command: /app/celery/worker/start
+    env_file:
+      - .env
+    environment:
+      - database_url=postgresql://postgres:123456@postgres:5432/eigent
+      - redis_url=redis://redis:6379/0
+      - celery_broker_url=redis://redis:6379/0
+      - celery_result_url=redis://redis:6379/0
+      - SESSION_REDIS_URL=redis://redis:6379/1
+    # volumes:
+    #   - ./app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eigent_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'celery -A app.component.celery inspect ping -d celery@$$HOSTNAME',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+      args:
+        database_url: postgresql://postgres:123456@postgres:5432/eigent
+    container_name: eigent_celery_beat
+    restart: unless-stopped
+    command: /app/celery/beat/start
+    env_file:
+      - .env
+    environment:
+      - database_url=postgresql://postgres:123456@postgres:5432/eigent
+      - redis_url=redis://redis:6379/0
+      - celery_broker_url=redis://redis:6379/0
+      - celery_result_url=redis://redis:6379/0
+      - SESSION_REDIS_URL=redis://redis:6379/1
+    # volumes:
+    #   - ./app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eigent_network
+
 volumes:
   postgres_data:
     driver: local
+  eigent_redis_data:
 
 networks:
   eigent_network:

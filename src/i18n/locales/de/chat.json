@@ -48,9 +48,20 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Wir erleben hohen Datenverkehr. Bitte versuchen Sie es in wenigen Augenblicken erneut.",
   "new-project": "Neues Projekt",
   "no-reply-received-task-continue": "Keine Antwort erhalten, Aufgabe wird fortgesetzt",
+  "splitting-tasks": "Aufgaben teilen",
+  "start-task": "Aufgabe starten",
+  "message-cannot-be-empty": "Nachricht darf nicht leer sein",
+  "remove-file": "Datei entfernen",
+  "drop-files-to-attach": "Dateien zum Anhängen ablegen",
+  "expand-input": "Eingabe erweitern (⌘P)",
+  "queued-tasks": "Aufgaben in Warteschlange",
+  "remove-queued-message": "Nachricht aus Warteschlange entfernen",
+  "no-agents-added": "Keine Agenten hinzugefügt",
   "open-in-ide": "In IDE öffnen",
   "open-in-vscode": "In VS Code öffnen",
   "open-in-cursor": "In Cursor öffnen",
   "open-in-file-manager": "Im Dateimanager öffnen",
-  "failed-to-open-folder": "Ordner konnte nicht geöffnet werden"
+  "failed-to-open-folder": "Ordner konnte nicht geöffnet werden",
+  "task-completed-card-title": "Aufgabe abgeschlossen",
+  "task-completed-card-subtitle": "Automatisieren Sie Ihre Aufgabe mit einem Trigger"
 }
