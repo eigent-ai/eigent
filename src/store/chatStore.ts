@@ -1347,6 +1347,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          // Request-level token usage updates (non-stream mode)
+          if (agentMessages.step === AgentStep.REQUEST_USAGE) {
+            if (agentMessages.data.tokens) {
+              addTokens(currentTaskId, agentMessages.data.tokens);
+            }
+            return;
+          }
+
           // Activate agent
           if (
             agentMessages.step === AgentStep.ACTIVATE_AGENT ||

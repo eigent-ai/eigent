@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import json
 import logging
 import threading
@@ -43,6 +44,7 @@ from app.service.task import (
     ActionBudgetNotEnough,
     ActionDeactivateAgentData,
     ActionDeactivateToolkitData,
+    ActionRequestUsageData,
     get_task_lock,
     set_process_task,
 )
@@ -98,6 +100,17 @@ class ListenChatAgent(ChatAgent):
         step_timeout: float | None = 1800,  # 30 minutes
         **kwargs: Any,
     ) -> None:
+        self.api_task_id = api_task_id
+        self.agent_name = agent_name
+        self._request_usage_events_enabled = False
+        self._user_on_request_usage = kwargs.pop("on_request_usage", None)
+        if (
+            "on_request_usage"
+            in inspect.signature(ChatAgent.__init__).parameters
+        ):
+            kwargs["on_request_usage"] = self._on_request_usage
+            self._request_usage_events_enabled = True
+
         super().__init__(
             system_message=system_message,
             model=model,
@@ -121,10 +134,40 @@ class ListenChatAgent(ChatAgent):
             step_timeout=step_timeout,
             **kwargs,
         )
-        self.api_task_id = api_task_id
-        self.agent_name = agent_name
 
     process_task_id: str = ""
+
+    def _on_request_usage(self, payload: dict[str, Any]) -> Any:
+        request_usage = payload.get("request_usage") or {}
+        step_usage = payload.get("step_usage") or {}
+        request_tokens = int(request_usage.get("total_tokens") or 0)
+        if request_tokens > 0:
+            task_lock = get_task_lock(self.api_task_id)
+            _schedule_async_task(
+                task_lock.put_queue(
+                    ActionRequestUsageData(
+                        data={
+                            "agent_name": self.agent_name,
+                            "process_task_id": self.process_task_id,
+                            "agent_id": self.agent_id,
+                            "tokens": request_tokens,
+                            "request_index": int(
+                                payload.get("request_index") or 0
+                            ),
+                            "response_id": str(
+                                payload.get("response_id") or ""
+                            ),
+                            "step_total_tokens": int(
+                                step_usage.get("total_tokens") or 0
+                            ),
+                        }
+                    )
+                )
+            )
+
+        if self._user_on_request_usage is not None:
+            return self._user_on_request_usage(payload)
+        return None
 
     def _send_agent_deactivate(self, message: str, tokens: int) -> None:
         """Send agent deactivation event to the frontend.
@@ -296,6 +339,8 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
+            if self._request_usage_events_enabled:
+                total_tokens = 0
 
         assert message is not None
 
@@ -399,6 +444,8 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
+            if self._request_usage_events_enabled:
+                total_tokens = 0
 
         # Send deactivation for all non-streaming cases (success or error)
         # Streaming responses handle deactivation in _astream_chunks
