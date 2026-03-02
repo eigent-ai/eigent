@@ -15,7 +15,7 @@
 import asyncio
 import weakref
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from camel.tasks import Task
@@ -25,6 +25,7 @@ from app.model.chat import Status, SupplementChat, TaskContent, UpdateData
 from app.service.task import (
     Action,
     ActionAskData,
+    ActionCommandApprovalData,
     ActionCreateAgentData,
     ActionImproveData,
     ActionNewAgent,
@@ -299,6 +300,114 @@ class TestTaskLock:
         assert len(task_lock.background_tasks) == 0
         assert task1.cancelled()
         assert task2.cancelled()
+
+    def test_task_lock_has_pending_approvals_dict(self):
+        """TaskLock should have a pending_approvals dict (per-call Futures)."""
+        task_lock = TaskLock("test_approval", asyncio.Queue(), {})
+        assert hasattr(task_lock, "pending_approvals")
+        assert isinstance(task_lock.pending_approvals, dict)
+
+    def test_task_lock_has_auto_approve_dict(self):
+        """TaskLock should have auto_approve dict defaulting to empty."""
+        task_lock = TaskLock("test_auto", asyncio.Queue(), {})
+        assert isinstance(task_lock.auto_approve, dict)
+        assert len(task_lock.auto_approve) == 0
+
+    @pytest.mark.asyncio
+    async def test_create_and_resolve_approval(self):
+        """create_approval / resolve_approval should round-trip."""
+        task_lock = TaskLock("test_approval_io", asyncio.Queue(), {})
+
+        future = task_lock.create_approval("agent_x_abc123")
+        assert "agent_x_abc123" in task_lock.pending_approvals
+
+        task_lock.resolve_approval("agent_x_abc123", "approve_once")
+        result = await future
+        assert result == "approve_once"
+        assert "agent_x_abc123" not in task_lock.pending_approvals
+
+    @pytest.mark.asyncio
+    async def test_multiple_concurrent_approvals(self):
+        """Multiple concurrent approvals can coexist and resolve independently."""
+        task_lock = TaskLock("test_concurrent", asyncio.Queue(), {})
+
+        f1 = task_lock.create_approval("agent_a_111")
+        f2 = task_lock.create_approval("agent_a_222")
+
+        task_lock.resolve_approval("agent_a_111", "approve_once")
+        task_lock.resolve_approval("agent_a_222", "reject")
+
+        assert await f1 == "approve_once"
+        assert await f2 == "reject"
+
+    @pytest.mark.asyncio
+    async def test_resolve_all_approvals_for_agent(self):
+        """resolve_all_approvals_for_agent resolves all Futures for one agent."""
+        task_lock = TaskLock("test_resolve_all", asyncio.Queue(), {})
+
+        f1 = task_lock.create_approval("dev_agent_aaa")
+        f2 = task_lock.create_approval("dev_agent_bbb")
+        f3 = task_lock.create_approval("other_agent_ccc")
+
+        task_lock.resolve_all_approvals_for_agent("dev_agent", "auto_approve")
+
+        assert await f1 == "auto_approve"
+        assert await f2 == "auto_approve"
+        # other_agent's Future should still be pending
+        assert not f3.done()
+        assert "other_agent_ccc" in task_lock.pending_approvals
+
+        # Clean up
+        task_lock.resolve_approval("other_agent_ccc", "approve_once")
+
+    @pytest.mark.asyncio
+    async def test_cleanup_resolves_pending_approvals_with_reject(self):
+        """cleanup() should resolve all pending approval Futures with 'reject'."""
+        task_lock = TaskLock("test_cleanup_reject", asyncio.Queue(), {})
+
+        f_a = task_lock.create_approval("agent_a_111")
+        f_b = task_lock.create_approval("agent_b_222")
+
+        await task_lock.cleanup()
+
+        assert await f_a == "reject"
+        assert await f_b == "reject"
+        assert len(task_lock.pending_approvals) == 0
+
+    @pytest.mark.asyncio
+    async def test_cleanup_handles_already_resolved_approvals(self):
+        """cleanup() should not raise if approval Futures are already resolved."""
+        task_lock = TaskLock("test_cleanup_done", asyncio.Queue(), {})
+
+        f = task_lock.create_approval("agent_z_111")
+        task_lock.resolve_approval("agent_z_111", "approve_once")
+
+        # Future was already resolved and popped — cleanup should not raise
+        await task_lock.cleanup()
+        assert await f == "approve_once"
+
+    def test_resolve_future_threadsafe_uses_loop_scheduler_cross_thread(self):
+        """Cross-thread resolution should use loop.call_soon_threadsafe."""
+        task_lock = TaskLock("test_threadsafe_resolve", asyncio.Queue(), {})
+        mock_future = MagicMock()
+        mock_loop = MagicMock()
+
+        mock_future.done.return_value = False
+        mock_future.get_loop.return_value = mock_loop
+
+        task_lock._resolve_future_threadsafe(mock_future, "approve_once")
+
+        mock_loop.call_soon_threadsafe.assert_called_once()
+        mock_future.set_result.assert_not_called()
+
+    def test_command_approval_data_model(self):
+        """ActionCommandApprovalData should have correct action and data shape."""
+        data = ActionCommandApprovalData(
+            data={"command": "rm -rf /", "agent": "dev_agent"}
+        )
+        assert data.action == Action.command_approval
+        assert data.data["command"] == "rm -rf /"
+        assert data.data["agent"] == "dev_agent"
 
 
 @pytest.mark.unit

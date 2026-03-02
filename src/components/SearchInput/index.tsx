@@ -51,7 +51,7 @@ export default function SearchInput({
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [userExpanded, setUserExpanded] = useState(false);
-  const isExpanded = userExpanded || value.length > 0;
+  const isExpanded = userExpanded || (value ?? '').length > 0;
 
   const expand = useCallback(() => {
     setUserExpanded(true);

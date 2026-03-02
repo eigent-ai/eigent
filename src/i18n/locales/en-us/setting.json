@@ -1,6 +1,8 @@
 {
   "settings": "Settings",
   "general": "General",
+  "human-in-the-loop": "HITL",
+  "human-in-the-loop-title": "Human in the Loop",
   "privacy": "Privacy",
   "models": "Models",
   "mcp": "MCP & Tools",
@@ -18,6 +20,9 @@
   "dark": "Dark",
   "light": "Light",
   "transparent": "Transparent",
+
+  "terminal-approval": "Terminal Command Approval",
+  "terminal-approval-hint": "Require your approval before executing potentially dangerous terminal commands (e.g. rm, sudo, kill).",
 
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",

@@ -26,13 +26,14 @@ from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from app.exception.exception import ProgramException
+from app.hitl.config import HitlOptions
 from app.model.chat import (
     AgentModelConfig,
     McpServers,
     SupplementChat,
     UpdateData,
 )
-from app.model.enums import Status
+from app.model.enums import ApprovalAction, Status
 
 logger = logging.getLogger("task_service")
 
@@ -58,6 +59,7 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
+    command_approval = "command_approval"  # backend -> user (approval)
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -219,6 +221,19 @@ class ActionTerminalData(BaseModel):
     data: str
 
 
+class ActionCommandApprovalData(BaseModel):
+    """SSE payload sent to the frontend to prompt for command approval.
+
+    Args:
+        action: SSE event type (currently ``command_approval``).
+        data: Contains ``command`` (the shell command) and ``agent``
+            (the agent name requesting approval).
+    """
+
+    action: Literal[Action.command_approval] = Action.command_approval
+    data: dict[Literal["command", "agent"], str]
+
+
 class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
 
@@ -296,6 +311,7 @@ ActionData = (
     | ActionSearchMcpData
     | ActionInstallMcpData
     | ActionTerminalData
+    | ActionCommandApprovalData
     | ActionStopData
     | ActionEndData
     | ActionTimeoutData
@@ -370,6 +386,17 @@ class TaskLock:
         self.question_agent = None
         self.current_task_id = None
 
+        # Human-in-the-loop settings (e.g. terminal command approval)
+        self.hitl_options: HitlOptions = HitlOptions()
+
+        # Per-call Futures for user approval responses, keyed by approval_id.
+        # Each _request_user_approval call creates its own Future so
+        # concurrent calls from the same agent don't compete.
+        self.pending_approvals: dict[str, asyncio.Future[str]] = {}
+        # Per-agent auto-approve: skip further prompts for this agent.
+        # Reset at each task start (Action.start) in chat_service.
+        self.auto_approve: dict[str, bool] = {}
+
         logger.info(
             "Task lock initialized",
             extra={"task_id": id, "created_at": self.created_at.isoformat()},
@@ -407,6 +434,103 @@ class TaskLock:
         )
         return await self.human_input[agent].get()
 
+    def create_approval(self, approval_id: str) -> asyncio.Future[str]:
+        """Create a Future for a pending approval request.
+
+        Args:
+            approval_id: Unique ID for this request (format: ``{agent}_{hex}``).
+
+        Returns:
+            A Future that resolves with the user's approval action string.
+        """
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self.pending_approvals[approval_id] = future
+        logger.debug(
+            "Created approval future",
+            extra={"task_id": self.id, "approval_id": approval_id},
+        )
+        return future
+
+    @staticmethod
+    def _set_future_result_if_pending(
+        future: asyncio.Future[str], action: str
+    ) -> None:
+        """Set future result if it is still pending."""
+        if not future.done():
+            future.set_result(action)
+
+    def _resolve_future_threadsafe(
+        self, future: asyncio.Future[str], action: str
+    ) -> None:
+        """Resolve an approval future safely from any thread."""
+        if future.done():
+            return
+
+        future.get_loop().call_soon_threadsafe(
+            self._set_future_result_if_pending, future, action
+        )
+
+    def resolve_approval(self, approval_id: str, action: str):
+        """Resolve a single pending approval by its ID.
+
+        Design — "Approve Once":
+            The frontend sends the exact ``approval_id`` that arrived in the
+            SSE event.  Only the one Future that matches is resolved; all
+            other concurrent approvals for the same agent remain pending and
+            will surface as the next item in the frontend queue.
+
+        Args:
+            approval_id (str): Unique ID of the approval to resolve
+                (format: ``{agent}_{hex}``).
+            action (str): The approval action string (e.g.
+                ``ApprovalAction.approve_once``).
+        """
+        future = self.pending_approvals.pop(approval_id, None)
+        if future:
+            self._resolve_future_threadsafe(future, action)
+            logger.debug(
+                "Resolved approval",
+                extra={
+                    "task_id": self.id,
+                    "approval_id": approval_id,
+                    "action": action,
+                },
+            )
+
+    def resolve_all_approvals_for_agent(self, agent: str, action: str):
+        """Resolve all pending approvals for a given agent.
+
+        Design — "Auto Approve" / "Reject":
+            Both actions apply to every pending command from this agent, not
+            just the one the user is looking at.
+
+            - Auto Approve: sets ``auto_approve[agent] = True`` (caller's
+              responsibility) so future commands skip the prompt entirely,
+              then calls this method to unblock any coroutines already
+              suspended on ``await future``.
+            - Reject: calls this method to unblock suspended coroutines, then
+              the frontend issues a skip-task request to stop the whole task.
+              ``cleanup_for_stop`` will catch any Futures that slip through
+              between the two calls.
+
+        The ``approval_id`` format ``{agent}_{hex}`` lets us filter by prefix.
+
+        Args:
+            agent (str): Agent name whose pending approvals should all be
+                resolved (e.g. ``"developer_agent"``).
+            action (str): The approval action string to set on every matched
+                Future (e.g. ``ApprovalAction.auto_approve``).
+        """
+        to_remove = [
+            aid
+            for aid in self.pending_approvals
+            if aid.startswith(agent + "_")
+        ]
+        for aid in to_remove:
+            future = self.pending_approvals.pop(aid)
+            self._resolve_future_threadsafe(future, action)
+
     def add_human_input_listen(self, agent: str):
         logger.debug(
             "Adding human input listener",
@@ -435,6 +559,15 @@ class TaskLock:
                 "background_tasks_count": len(self.background_tasks),
             },
         )
+
+        # Unblock any coroutine awaiting approval (e.g. shell_exec
+        # waiting on a Future) by resolving all pending with "reject".
+        # This lets _request_user_approval return gracefully instead
+        # of hanging forever after the task is stopped.
+        for future in self.pending_approvals.values():
+            self._resolve_future_threadsafe(future, ApprovalAction.reject)
+        self.pending_approvals.clear()
+
         for task in list(self.background_tasks):
             if not task.done():
                 task.cancel()
