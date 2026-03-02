@@ -299,22 +299,22 @@ export default function Overview() {
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex h-full flex-row gap-2 bg-surface-secondary px-2 pt-2">
+    <div className="min-h-0 min-w-0 flex h-full flex-1 flex-col">
+      <div className="gap-2 bg-surface-secondary px-2 pt-2 flex h-full flex-row">
         {/* Left Side: Trigger List (70% width) */}
-        <div className="flex min-w-0 flex-[0.6] flex-col">
+        <div className="min-w-0 flex flex-[0.6] flex-col">
           {/* Header */}
-          <div className="flex w-full items-center justify-between pb-4 pl-1 pt-2">
+          <div className="pb-4 pl-1 pt-2 flex w-full items-center justify-between">
             <div className="text-body-sm font-bold text-text-heading">
               {t('triggers.title')}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <div className="flex items-center gap-2">
+                <div className="gap-2 flex items-center">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-label-sm font-semibold text-text-label opacity-50"
+                    className="font-semibold opacity-50"
                   >
                     {getSortLabel()}
                     <ArrowUpDown className="h-4 w-4" />
@@ -340,23 +340,23 @@ export default function Overview() {
 
           {/* List View Section */}
           <div className="scrollbar-always-visible flex h-full flex-col overflow-auto">
-            <div className="flex flex-col gap-2">
+            <div className="gap-2 flex flex-col">
               {sortedTriggers.length === 0 ? (
                 <div
                   onClick={() => {
                     setEditingTrigger(null);
                     setEditDialogOpen(true);
                   }}
-                  className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-border-tertiary bg-surface-primary p-3 transition-all duration-200 hover:border-border-secondary hover:bg-surface-tertiary"
+                  className="group gap-3 rounded-xl border-border-tertiary bg-surface-primary p-3 hover:border-border-secondary hover:bg-surface-tertiary flex cursor-pointer items-center justify-center border transition-all duration-200"
                 >
                   {/* Zap Icon */}
-                  <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
+                  <div className="bg-amber-500/10 h-10 w-10 rounded-lg flex flex-shrink-0 items-center justify-center">
                     <Plus className="h-5 w-5 text-icon-primary" />
                   </div>
 
                   {/* Create Trigger Text */}
                   <div className="w-full flex-1">
-                    <div className="truncate text-sm font-semibold text-text-heading transition-colors group-hover:text-text-action">
+                    <div className="text-sm font-semibold text-text-heading group-hover:text-text-action truncate transition-colors">
                       {t('triggers.create-hint')}
                     </div>
                   </div>
@@ -380,15 +380,15 @@ export default function Overview() {
         </div>
 
         {/* Right Side: Live Activity or Execution Logs (30% width) */}
-        <div className="relative mb-2 flex min-w-[240px] flex-[0.4] flex-col overflow-hidden rounded-xl bg-surface-primary">
+        <div className="mb-2 rounded-xl bg-surface-primary relative flex min-w-[240px] flex-[0.4] flex-col overflow-hidden">
           {/* Live Activity - Always rendered but slides out to the right when logs are shown */}
           <div
-            className={`absolute inset-0 flex flex-col rounded-xl bg-surface-primary transition-transform duration-300 ease-in-out ${
+            className={`inset-0 rounded-xl bg-surface-primary ease-in-out absolute flex flex-col transition-transform duration-300 ${
               selectedTriggerId ? 'translate-x-full' : 'translate-x-0'
             }`}
           >
             {/* Live Activity Header */}
-            <div className="flex h-[48px] items-center justify-between px-4 py-3">
+            <div className="px-4 py-3 flex h-[48px] items-center justify-between">
               <span className="text-label-sm font-bold text-text-heading">
                 {t('triggers.live-activity')}
               </span>
@@ -396,7 +396,7 @@ export default function Overview() {
             {/* Live Activity Content */}
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
               {activityLogs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+                <div className="px-4 py-12 flex flex-col items-center justify-center text-center">
                   <Bell className="mb-2 h-10 w-10 text-text-label" />
                   <p className="text-xs text-text-label">
                     {t('triggers.no-activity')}
@@ -406,7 +406,7 @@ export default function Overview() {
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col pt-2">
+                <div className="pt-2 flex flex-col">
                   <AnimatePresence initial={false}>
                     {activityLogs.slice(0, 50).map((log, index) => (
                       <ActivityLogItem
@@ -425,12 +425,12 @@ export default function Overview() {
 
           {/* Execution Logs - Slides in from the left */}
           <div
-            className={`absolute inset-0 flex flex-col rounded-xl bg-surface-primary transition-transform duration-300 ease-in-out ${
+            className={`inset-0 rounded-xl bg-surface-primary ease-in-out absolute flex flex-col transition-transform duration-300 ${
               selectedTriggerId ? 'translate-x-0' : '-translate-x-full'
             }`}
           >
             {/* Back button to return to Live Activity */}
-            <div className="relative flex flex-row items-center justify-start gap-2 bg-surface-tertiary px-3 py-3">
+            <div className="gap-2 bg-surface-tertiary px-3 py-3 relative flex flex-row items-center justify-start">
               <Button
                 variant="ghost"
                 size="icon"
