@@ -8,5 +8,13 @@
   "save-changes": "Сохранить изменения",
   "description-optional": "Описание (необязательно)",
   "agent-tool": "Инструмент агента",
-  "share": "Поделиться"
+  "share": "Поделиться",
+  "advanced-model-config": "Расширенная конфигурация модели",
+  "use-custom-model": "Использовать пользовательскую конфигурацию модели",
+  "model-platform": "Платформа модели",
+  "select-platform": "Выберите платформу",
+  "model-type": "Тип модели",
+  "model-type-placeholder": "например, gpt-4o-mini",
+  "worker-name-cannot-be-empty": "Имя работника не может быть пустым",
+  "worker-name-already-exists": "Имя работника уже существует"
 }

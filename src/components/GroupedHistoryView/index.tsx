@@ -21,14 +21,7 @@ import { useGlobalStore } from '@/store/globalStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  FolderOpen,
-  LayoutGrid,
-  List,
-  Loader2,
-  Pin,
-  Sparkle,
-} from 'lucide-react';
+import { FolderOpen, LayoutGrid, List, Pin, Sparkle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ProjectGroup from './ProjectGroup';
@@ -271,9 +264,14 @@ export default function GroupedHistoryView({
     projectStore.isEmptyProject(project)
   );
 
+  // Get IDs of projects already in filteredProjects to avoid duplicates
+  const filteredProjectIds = new Set(filteredProjects.map((p) => p.project_id));
+
   // Convert empty projects from projectStore format to ProjectGroup format
-  const emptyProjectGroups: ProjectGroupType[] = emptyProjects.map(
-    (project) => ({
+  // Filter out any that already exist in filteredProjects
+  const emptyProjectGroups: ProjectGroupType[] = emptyProjects
+    .filter((project) => !filteredProjectIds.has(project.id))
+    .map((project) => ({
       project_id: project.id,
       project_name: project.name,
       total_tokens: 0,
@@ -282,19 +280,96 @@ export default function GroupedHistoryView({
       last_prompt: '',
       tasks: [],
       total_completed_tasks: 0,
+      total_triggers: 0,
       total_ongoing_tasks: 0,
       average_tokens_per_task: 0,
-    })
-  );
+    }));
 
   // Combine filtered projects with empty projects from store
   const allProjects = [...emptyProjectGroups, ...filteredProjects];
 
+  // Shimmer animation styles
+  // Shimmer animation styles
+  const shimmerStyle = {
+    background:
+      'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s infinite',
+  };
+
+  // Skeleton component for list card loading state
+  const ListCardSkeleton = () => (
+    <div className="overflow-hidden rounded-xl bg-surface-secondary">
+      <div className="flex w-full items-center justify-between px-6 py-4">
+        {/* Start: Folder icon and project name skeleton */}
+        <div className="flex w-48 flex-shrink-0 items-center gap-3">
+          <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded bg-surface-primary">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+          <div className="relative h-5 w-32 overflow-hidden rounded bg-surface-primary">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+        </div>
+
+        {/* Middle: Tags skeleton */}
+        <div className="flex flex-1 items-center justify-end gap-4">
+          <div className="relative h-6 w-16 overflow-hidden rounded-full bg-surface-primary">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-surface-primary">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-surface-primary">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+        </div>
+
+        {/* End: Menu skeleton */}
+        <div className="ml-4 flex min-w-32 items-center justify-end gap-2 pl-4">
+          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-surface-primary">
+            <div className="absolute inset-0" style={shimmerStyle} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-6 w-6 animate-spin text-icon-secondary" />
-        <span className="ml-2 text-text-secondary">{t('layout.loading')}</span>
+      <div className="flex w-full flex-col gap-4 pb-40">
+        {/* Keyframe animation for shimmer effect */}
+        <style>
+          {`
+            @keyframes shimmer {
+              0% { background-position: 200% 0; }
+              100% { background-position: -200% 0; }
+            }
+          `}
+        </style>
+
+        {/* Summary skeleton */}
+        <div className="flex items-center justify-between pb-4">
+          <div className="flex items-center gap-2">
+            <div className="relative h-7 w-28 overflow-hidden rounded-full bg-surface-tertiary">
+              <div className="absolute inset-0" style={shimmerStyle} />
+            </div>
+            <div className="relative h-7 w-32 overflow-hidden rounded-full bg-surface-tertiary">
+              <div className="absolute inset-0" style={shimmerStyle} />
+            </div>
+          </div>
+          <div className="flex items-center gap-md">
+            <div className="relative h-9 w-40 overflow-hidden rounded-lg bg-surface-tertiary">
+              <div className="absolute inset-0" style={shimmerStyle} />
+            </div>
+          </div>
+        </div>
+
+        {/* List skeleton cards */}
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <ListCardSkeleton key={i} />
+          ))}
+        </div>
       </div>
     );
   }

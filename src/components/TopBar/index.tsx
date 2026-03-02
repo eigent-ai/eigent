@@ -29,6 +29,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import {
@@ -58,6 +59,8 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { toggle } = useSidebarStore();
+  const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const appearance = useAuthStore((state) => state.appearance);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
@@ -209,27 +212,21 @@ function HeaderWin() {
       ref={titlebarRef}
     >
       {/* left */}
-      {platform !== 'darwin' && (
-        <div className="no-drag flex w-[70px] items-center justify-center">
+      <div
+        className={`${
+          platform === 'darwin' && isFullscreen ? 'w-0' : 'w-[70px]'
+        } no-drag flex items-center justify-center`}
+      >
+        {platform !== 'darwin' && (
           <span className="text-label-md font-bold text-text-heading">
             Eigent
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* center */}
-      <div className="drag flex h-full w-full items-center justify-between">
+      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
         <div className="relative z-50 flex h-full items-center">
-          <div className="flex flex-1 items-end justify-start pr-1 pt-1">
-            <Button
-              onClick={() => navigate('/history')}
-              variant="ghost"
-              size="icon"
-              className="no-drag h-6 w-6 p-0"
-            >
-              <img className="h-6 w-6" src={logoSrc} alt="folder-icon" />
-            </Button>
-          </div>
           {location.pathname === '/history' && (
             <div className="mr-1 flex items-center">
               <Button
@@ -238,7 +235,7 @@ function HeaderWin() {
                 className="no-drag"
                 onClick={() => navigate('/')}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4 text-text-label" />
               </Button>
             </div>
           )}
@@ -318,6 +315,7 @@ function HeaderWin() {
             </>
           )}
         </div>
+
         {/* right */}
         {location.pathname !== '/history' && (
           <div
@@ -340,9 +338,9 @@ function HeaderWin() {
                 >
                   <Button
                     onClick={() => setEndDialogOpen(true)}
-                    variant="outline"
+                    variant="ghost"
                     size="xs"
-                    className="no-drag justify-center !text-text-cuation"
+                    className="no-drag justify-center rounded-full bg-surface-cuation !text-text-cuation"
                   >
                     <Power />
                     {t('layout.end-project')}

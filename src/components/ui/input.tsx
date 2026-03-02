@@ -35,6 +35,7 @@ type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   tooltip?: string;
   note?: string;
   required?: boolean;
+  optional?: boolean;
   leadingIcon?: React.ReactNode;
   backIcon?: React.ReactNode;
   onBackIconClick?: () => void;
@@ -107,6 +108,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       tooltip,
       note,
       required = false,
+      optional = false,
       leadingIcon,
       backIcon,
       onBackIconClick,
@@ -129,6 +131,11 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
             <span>{title}</span>
             {required && <span className="text-text-body">*</span>}
+            {optional && (
+              <span className="rounded bg-surface-disabled px-1.5 py-0.5 text-xs font-normal text-text-label">
+                (optional)
+              </span>
+            )}
             {tooltip && (
               <TooltipSimple content={tooltip}>
                 <CircleAlert size={16} className="text-icon-primary" />
@@ -142,7 +149,8 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             'relative flex items-center rounded-lg border border-solid shadow-sm transition-colors',
             // Only apply hover/focus visuals when not in error state
             state !== 'error' &&
-              'focus-within:border-input-border-focus focus-within:bg-input-bg-input hover:border-input-border-hover hover:bg-input-bg-hover',
+              state !== 'success' &&
+              'focus-within:bg-input-bg-input focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
             stateCls.field,
             sizeClasses[size]
           )}

@@ -57,30 +57,46 @@ interface TooltipSimpleProps extends Omit<
 > {
   children: React.ReactNode;
   content: React.ReactNode;
+  delayDuration?: number;
+  enabled?: boolean;
 }
 
 const TooltipSimple = React.forwardRef<
   React.ElementRef<typeof TooltipContent>,
   TooltipSimpleProps
->(({ children, content, className, sideOffset = 4, ...props }, ref) => {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
+>(
+  (
+    {
+      children,
+      content,
+      className,
+      sideOffset = 4,
+      delayDuration = 700,
+      enabled = true,
+      ...props
+    },
+    ref
+  ) => {
+    return (
+      <TooltipProvider delayDuration={delayDuration}>
+        <Tooltip>
+          <TooltipTrigger asChild>{children}</TooltipTrigger>
 
-        <TooltipContent
-          ref={ref}
-          sideOffset={sideOffset}
-          className={cn(className)}
-          {...props}
-        >
-          {content}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-});
-TooltipSimple.displayName = 'TooltipSimple';
+          {enabled && (
+            <TooltipContent
+              ref={ref}
+              sideOffset={sideOffset}
+              className={cn(className)}
+              {...props}
+            >
+              {content}
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+);
 
 export {
   Tooltip,

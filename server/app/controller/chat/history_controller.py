@@ -14,11 +14,13 @@
 
 import logging
 from collections import defaultdict
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
-from sqlmodel import Session, case, desc, select
+from app.model.trigger.trigger import Trigger
+from sqlmodel import Session, case, desc, select, func
 
 from app.component.auth import Auth, auth_must
 from app.component.database import session
@@ -38,6 +40,27 @@ logger = logging.getLogger("server_chat_history")
 
 router = APIRouter(prefix="/chat", tags=["Chat History"])
 
+def is_real_task(history: ChatHistory) -> bool:
+    """
+    Check if a task is a real task vs a placeholder/trigger-created task.
+    Excludes placeholder tasks created during trigger creation.
+    """
+    # Has actual token usage
+    if history.tokens and history.tokens > 0:
+        return True
+    
+    # Has real model configuration (not placeholder "none" values)
+    if (history.model_platform and history.model_platform != "none" and
+        history.model_type and history.model_type != "none" and
+        history.installed_mcp and history.installed_mcp != "none"):
+        return True
+    
+    # Check if question starts with trigger placeholder prefix
+    if history.question and history.question.startswith("Project created via trigger:"):
+        return False
+    
+    # Default to real task if no placeholder indicators
+    return True
 
 @router.post("/history", name="save chat history", response_model=ChatHistoryOut)
 def create_chat_history(data: ChatHistoryIn, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
@@ -89,9 +112,9 @@ def list_chat_history(session: Session = Depends(session), auth: Auth = Depends(
 
 @router.get("/histories/grouped", name="get grouped chat history")
 def list_grouped_chat_history(
-    include_tasks: bool | None = Query(True, description="Whether to include individual tasks in groups"),
+    include_tasks: Optional[bool] = Query(True, description="Whether to include individual tasks in groups"),
     session: Session = Depends(session),
-    auth: Auth = Depends(auth_must),
+    auth: Auth = Depends(auth_must)
 ) -> GroupedHistoryResponse:
     """List chat histories grouped by project_id for current user."""
     user_id = auth.user.id
@@ -103,75 +126,83 @@ def list_grouped_chat_history(
         .order_by(
             desc(case((ChatHistory.created_at.is_(None), 0), else_=1)),  # Non-null created_at first
             desc(ChatHistory.created_at),  # Then by created_at descending
-            desc(ChatHistory.id),  # Finally by id descending for records with same/null created_at
+            desc(ChatHistory.id)  # Finally by id descending for records with same/null created_at
         )
     )
 
     histories = session.exec(stmt).all()
 
-    # Group histories by project_id
-    project_map: dict[str, dict] = defaultdict(
-        lambda: {
-            "project_id": "",
-            "project_name": None,
-            "total_tokens": 0,
-            "task_count": 0,
-            "latest_task_date": "",
-            "last_prompt": None,
-            "tasks": [],
-            "total_completed_tasks": 0,
-            "total_ongoing_tasks": 0,
-            "average_tokens_per_task": 0,
-        }
+    # Get trigger counts per project
+    trigger_count_stmt = (
+        select(Trigger.project_id, func.count(Trigger.id).label('count'))
+        .where(Trigger.user_id == str(user_id))
+        .group_by(Trigger.project_id)
     )
+    trigger_counts = session.exec(trigger_count_stmt).all()
+    trigger_count_map = {project_id: count for project_id, count in trigger_counts}
 
+    # Group histories by project_id
+    project_map = defaultdict(lambda: {
+        'project_id': '',
+        'project_name': None,
+        'total_tokens': 0,
+        'task_count': 0,
+        'latest_task_date': '',
+        'last_prompt': None,
+        'tasks': [],
+        'total_completed_tasks': 0,
+        'total_ongoing_tasks': 0,
+        'average_tokens_per_task': 0,
+        'total_triggers': 0
+    })
+    
     for history in histories:
         # Use project_id if available, fallback to task_id
         project_id = history.project_id if history.project_id else history.task_id
         project_data = project_map[project_id]
 
         # Initialize project data
-        if not project_data["project_id"]:
-            project_data["project_id"] = project_id
-            project_data["project_name"] = history.project_name or f"Project {project_id}"
-            project_data["latest_task_date"] = history.created_at.isoformat() if history.created_at else ""
-            project_data["last_prompt"] = history.question  # Set the most recent question
+        if not project_data['project_id']:
+            project_data['project_id'] = project_id
+            project_data['project_name'] = history.project_name or f"Project {project_id}"
+            project_data['latest_task_date'] = history.created_at.isoformat() if history.created_at else ''
+            project_data['last_prompt'] = history.question  # Set the most recent question
 
         # Convert to ChatHistoryOut format
         history_out = ChatHistoryOut(**history.model_dump())
 
-        # Add task to project if requested
-        if include_tasks:
-            project_data["tasks"].append(history_out)
+        # Add task to project if requested (only real tasks)
+        if include_tasks and is_real_task(history):
+            project_data['tasks'].append(history_out)
 
-        # Update project statistics
-        project_data["task_count"] += 1
-        project_data["total_tokens"] += history.tokens or 0
+        # Update project statistics (only for real tasks)
+        if is_real_task(history):
+            project_data['task_count'] += 1
+            project_data['total_tokens'] += history.tokens or 0
 
-        # Count completed and failed tasks
-        # ChatStatus.ongoing = 1, ChatStatus.done = 2
-        if history.status == ChatStatus.done:
-            project_data["total_completed_tasks"] += 1
-        elif history.status == ChatStatus.ongoing:
-            project_data["total_ongoing_tasks"] += 1
-        else:
-            # Only count as failed if not ongoing and not done
-            project_data["total_failed_tasks"] += 1
-
-        # Update latest task date and last prompt
-        if history.created_at:
-            task_date = history.created_at.isoformat()
-            if not project_data["latest_task_date"] or task_date > project_data["latest_task_date"]:
-                project_data["latest_task_date"] = task_date
-                project_data["last_prompt"] = history.question
+            if history.status == ChatStatus.done:
+                project_data['total_completed_tasks'] += 1
+            elif history.status == ChatStatus.ongoing:
+                project_data['total_ongoing_tasks'] += 1
+            
+            # Update latest task date and last prompt
+            if history.created_at:
+                task_date = history.created_at.isoformat()
+                if not project_data['latest_task_date'] or task_date > project_data['latest_task_date']:
+                    project_data['latest_task_date'] = task_date
+                    project_data['last_prompt'] = history.question
 
     # Convert to ProjectGroup objects and sort
     projects = []
     for project_data in project_map.values():
         # Sort tasks within each project by creation date (oldest first)
         if include_tasks:
-            project_data["tasks"].sort(key=lambda x: (x.created_at is None, x.created_at or ""), reverse=False)
-
+            project_data['tasks'].sort(key=lambda x: (x.created_at is None, x.created_at or ''), reverse=False)
+        
+        # Set trigger count from trigger_count_map
+        project_id = project_data['project_id']
+        project_data['total_triggers'] = trigger_count_map.get(project_id, 0)
+        
         project_group = ProjectGroup(**project_data)
         projects.append(project_group)
 
@@ -179,18 +210,112 @@ def list_grouped_chat_history(
     projects.sort(key=lambda x: x.latest_task_date, reverse=True)
 
     response = GroupedHistoryResponse(projects=projects)
+    
+    logger.debug("Grouped chat histories listed", extra={
+        "user_id": user_id, 
+        "total_projects": response.total_projects,
+        "total_tasks": response.total_tasks,
+        "include_tasks": include_tasks
+    })
+    
+    return response
 
-    logger.debug(
-        "Grouped chat histories listed",
-        extra={
-            "user_id": user_id,
-            "total_projects": response.total_projects,
-            "total_tasks": response.total_tasks,
-            "include_tasks": include_tasks,
-        },
+
+@router.get("/histories/grouped/{project_id}", name="get single grouped project")
+def get_grouped_project(
+    project_id: str,
+    include_tasks: Optional[bool] = Query(True, description="Whether to include individual tasks in the project"),
+    session: Session = Depends(session),
+    auth: Auth = Depends(auth_must)
+) -> ProjectGroup:
+    """Get a single project group by project_id for current user."""
+    user_id = auth.user.id
+
+    # Get all histories for the specific project
+    stmt = (
+        select(ChatHistory)
+        .where(ChatHistory.user_id == user_id)
+        .where(ChatHistory.project_id == project_id)
+        .order_by(
+            desc(case((ChatHistory.created_at.is_(None), 0), else_=1)),
+            desc(ChatHistory.created_at),
+            desc(ChatHistory.id)
+        )
     )
 
-    return response
+    histories = session.exec(stmt).all()
+
+    if not histories:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Get trigger count for this project
+    trigger_count_stmt = (
+        select(func.count(Trigger.id))
+        .where(Trigger.user_id == str(user_id))
+        .where(Trigger.project_id == project_id)
+    )
+    trigger_count = session.exec(trigger_count_stmt).first() or 0
+
+    # Build project data
+    project_data = {
+        'project_id': project_id,
+        'project_name': None,
+        'total_tokens': 0,
+        'task_count': 0,
+        'latest_task_date': '',
+        'last_prompt': None,
+        'tasks': [],
+        'total_completed_tasks': 0,
+        'total_ongoing_tasks': 0,
+        'average_tokens_per_task': 0,
+        'total_triggers': trigger_count
+    }
+
+    for history in histories:
+        # Initialize project name from first history
+        if not project_data['project_name']:
+            project_data['project_name'] = history.project_name or f"Project {project_id}"
+            project_data['latest_task_date'] = history.created_at.isoformat() if history.created_at else ''
+            project_data['last_prompt'] = history.question
+
+        # Convert to ChatHistoryOut format
+        history_out = ChatHistoryOut(**history.model_dump())
+
+        # Add task to project if requested (only real tasks)
+        if include_tasks and is_real_task(history):
+            project_data['tasks'].append(history_out)
+
+        # Update project statistics (only for real tasks)
+        if is_real_task(history):
+            project_data['task_count'] += 1
+            project_data['total_tokens'] += history.tokens or 0
+
+            if history.status == ChatStatus.done:
+                project_data['total_completed_tasks'] += 1
+            elif history.status == ChatStatus.ongoing:
+                project_data['total_ongoing_tasks'] += 1
+
+            # Update latest task date and last prompt
+            if history.created_at:
+                task_date = history.created_at.isoformat()
+                if not project_data['latest_task_date'] or task_date > project_data['latest_task_date']:
+                    project_data['latest_task_date'] = task_date
+                    project_data['last_prompt'] = history.question
+
+    # Sort tasks within the project by creation date (oldest first)
+    if include_tasks:
+        project_data['tasks'].sort(key=lambda x: (x.created_at is None, x.created_at or ''), reverse=False)
+
+    project_group = ProjectGroup(**project_data)
+
+    logger.debug("Single grouped project retrieved", extra={
+        "user_id": user_id,
+        "project_id": project_id,
+        "task_count": project_group.task_count,
+        "include_tasks": include_tasks
+    })
+
+    return project_group
 
 
 @router.delete("/history/{history_id}", name="delete chat history")
