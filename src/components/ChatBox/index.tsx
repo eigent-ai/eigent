@@ -139,6 +139,19 @@ export default function ChatBox(): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
     const tempMessageContent = messageStr || message;
+
+    if (executionId && projectStore.activeProjectId) {
+      const project = projectStore.getProjectById(projectStore.activeProjectId);
+      const isInQueue = project?.queuedMessages?.some(
+        (m) => m.executionId === executionId
+      );
+      if (isInQueue) {
+        console.warn(
+          `[handleSend] Skipping message with executionId ${executionId} - already in queue, will be processed by useBackgroundTaskProcessor`
+        );
+        return;
+      }
+    }
     chatStore.setHasMessages(_taskId as string, true);
     if (!_taskId) return;
 

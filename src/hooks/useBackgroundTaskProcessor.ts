@@ -14,6 +14,10 @@
 
 import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
+import {
+  closeSSEConnectionsForTasks,
+  hasActiveSSEConnection,
+} from '@/store/chatStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
@@ -107,7 +111,44 @@ export function useBackgroundTaskProcessor() {
         continue;
       }
 
-      const msg = projectData.queuedMessages.find((m) => m.executionId);
+      // If SSE is active, starting a new task would duplicate trigger processing.
+      // Wait for the active task to finish; if task is done but SSE lingers, close it
+      // so the trigger can start fresh on the next poll.
+      const allTaskIds = Object.values(projectData.chatStores || {}).flatMap(
+        (cs) => Object.keys(cs.getState().tasks)
+      );
+      if (hasActiveSSEConnection(allTaskIds)) {
+        const activeChatStore = projectStore.getChatStore(project.id);
+        const activeState = activeChatStore?.getState();
+        const activeTaskId = activeState?.activeTaskId;
+        const activeTask = activeTaskId
+          ? activeState?.tasks[activeTaskId]
+          : null;
+
+        const isActiveTaskDone =
+          activeTask?.status === ChatTaskStatus.FINISHED ||
+          activeTask?.hasWaitComfirm;
+
+        if (isActiveTaskDone) {
+          console.log(
+            '[BackgroundTaskProcessor] Closing stale SSE for project',
+            project.id,
+            '- active task done, trigger waiting in queue'
+          );
+          closeSSEConnectionsForTasks(allTaskIds);
+        } else {
+          console.log(
+            '[BackgroundTaskProcessor] Skipping project',
+            project.id,
+            '- SSE active, task still in progress'
+          );
+        }
+        continue;
+      }
+
+      const msg = projectData.queuedMessages.find(
+        (m) => m.executionId && !m.processing
+      );
       if (msg && msg.executionId) {
         messageToProcess = {
           projectId: project.id,
@@ -137,7 +178,14 @@ export function useBackgroundTaskProcessor() {
       triggerName,
     } = messageToProcess;
 
-    projectStore.removeQueuedMessage(projectId, task_id);
+    projectStore.markQueuedMessageAsProcessing(projectId, task_id);
+
+    console.log(
+      '[BackgroundTaskProcessor] Marked message as processing:',
+      task_id,
+      'executionId:',
+      executionId
+    );
 
     try {
       // Get the latest project's chatStore
@@ -196,6 +244,8 @@ export function useBackgroundTaskProcessor() {
             '[BackgroundTaskProcessor] Background task completed:',
             executionId
           );
+          // Remove from queue after successful completion
+          projectStore.removeQueuedMessage(projectId, task_id);
           activeTasksRef.current.delete(executionId);
         })
         .catch((err: any) => {
@@ -203,6 +253,8 @@ export function useBackgroundTaskProcessor() {
             '[BackgroundTaskProcessor] Background task error:',
             err
           );
+          // Remove from queue on error as well
+          projectStore.removeQueuedMessage(projectId, task_id);
           // Report failure to backend
           proxyUpdateTriggerExecution(
             executionId,
@@ -239,6 +291,8 @@ export function useBackgroundTaskProcessor() {
         '[BackgroundTaskProcessor] Failed to start background task:',
         error
       );
+      // Remove from queue on error
+      projectStore.removeQueuedMessage(projectId, task_id);
       // Report failure to backend
       proxyUpdateTriggerExecution(
         executionId,
@@ -270,12 +324,13 @@ export function useBackgroundTaskProcessor() {
       for (const chatStore of Object.values(project.chatStores)) {
         const state = chatStore.getState();
         const t = state.tasks[task.chatTaskId];
-        if (
-          t &&
-          t.status !== ChatTaskStatus.RUNNING &&
-          t.status !== ChatTaskStatus.PAUSE
-        ) {
-          toRemove.push(executionId);
+        if (t) {
+          if (
+            t.status !== ChatTaskStatus.RUNNING &&
+            t.status !== ChatTaskStatus.PAUSE
+          ) {
+            toRemove.push(executionId);
+          }
           break;
         }
       }
