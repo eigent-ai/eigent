@@ -143,16 +143,20 @@ export default function HistorySidebar() {
   ) => {
     close();
     const project = historyTasks.find((p) => p.project_id === projectId);
-    const taskIdsList = project?.tasks.map(
-      (task: HistoryTask) => task.task_id
-    ) || [projectId];
+    const tasks = project?.tasks || [];
+    const taskIdsList = tasks
+      .map((t: HistoryTask) => t.task_id)
+      .filter(Boolean) as string[];
+    const questions = tasks.map((t: HistoryTask) => t.question || '');
+    const finalTaskIds = taskIdsList.length ? taskIdsList : [projectId];
+    const finalQuestions = questions.length ? questions : [question];
     await loadProjectFromHistory(
       projectStore,
       navigate,
       projectId,
-      question,
+      finalQuestions,
       historyId,
-      taskIdsList,
+      finalTaskIds,
       project?.project_name
     );
   };
