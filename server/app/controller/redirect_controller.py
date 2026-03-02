@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import json
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -24,6 +25,8 @@ router = APIRouter(tags=["Redirect"])
 def redirect_callback(code: str, request: Request):
     cookies = request.cookies
     cookies_json = json.dumps(cookies)
+
+    safe_code = quote(code, safe='')
 
     html_content = f"""
     <!DOCTYPE html>
@@ -72,7 +75,7 @@ def redirect_callback(code: str, request: Request):
         <script>
             (function() {{
                 const allCookies = {cookies_json};
-                const baseUrl = "eigent://callback?code={code}";
+                const baseUrl = "eigent://callback?code={safe_code}";
                 let finalUrl = baseUrl;
 
                 // 自动跳转到应用

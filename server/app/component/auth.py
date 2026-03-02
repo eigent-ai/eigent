@@ -96,6 +96,8 @@ async def auth_must(
         raise TokenException(code.token_invalid, _("Authentication required"))
     model = Auth.decode_token(token)
     user = session.get(User, model.id)
+    if not user:
+        raise TokenException(code.token_invalid, _("User not found"))
     model._user = user
     return model
 

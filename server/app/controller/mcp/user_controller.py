@@ -95,13 +95,14 @@ async def list_mcp_users(
 @router.get("/mcp/users/{mcp_user_id}", name="get mcp user", response_model=McpUserOut)
 async def get_mcp_user(mcp_user_id: int, session: Session = Depends(session), auth: Auth = Depends(auth_must)):
     """Get MCP user details."""
-    query = select(McpUser).where(McpUser.id == mcp_user_id)
+    user_id = auth.user.id
+    query = select(McpUser).where(McpUser.id == mcp_user_id, McpUser.user_id == user_id)
     mcp_user = session.exec(query).first()
     if not mcp_user:
-        logger.warning("MCP user not found", extra={"user_id": auth.user.id, "mcp_user_id": mcp_user_id})
+        logger.warning("MCP user not found", extra={"user_id": user_id, "mcp_user_id": mcp_user_id})
         raise HTTPException(status_code=404, detail=_("McpUser not found"))
     logger.debug(
-        "MCP user retrieved", extra={"user_id": auth.user.id, "mcp_user_id": mcp_user_id, "mcp_id": mcp_user.mcp_id}
+        "MCP user retrieved", extra={"user_id": user_id, "mcp_user_id": mcp_user_id, "mcp_id": mcp_user.mcp_id}
     )
     return mcp_user
 
@@ -192,6 +193,13 @@ async def delete_mcp_user(mcp_user_id: int, session: Session = Depends(session),
     if not db_mcp_user:
         logger.warning("MCP user not found for deletion", extra={"user_id": user_id, "mcp_user_id": mcp_user_id})
         raise HTTPException(status_code=404, detail=_("Mcp Info not found"))
+
+    if db_mcp_user.user_id != user_id:
+        logger.warning(
+            "Unauthorized MCP user deletion",
+            extra={"user_id": user_id, "mcp_user_id": mcp_user_id, "owner_id": db_mcp_user.user_id},
+        )
+        raise HTTPException(status_code=403, detail=_("You are not allowed to delete this MCP"))
 
     try:
         session.delete(db_mcp_user)
