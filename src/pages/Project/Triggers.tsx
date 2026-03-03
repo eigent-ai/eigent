@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ActivityLogItem } from '@/components/Trigger/ActivityLogItem';
 import { ExecutionLogs } from '@/components/Trigger/ExecutionLogs';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { TriggerListItem } from '@/components/Trigger/TriggerListItem';
@@ -30,6 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   useTriggerCacheInvalidation,
   useUserTriggerCountQuery,
@@ -45,11 +45,18 @@ import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Trigger, TriggerStatus } from '@/types';
-import { AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowUpDown, Bell, Plus } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  ArrowUpDown,
+  Plus,
+  SquareChevronRight,
+  SquareCode,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+
+const EXECUTION_LOGS_OPEN_STORAGE_KEY = 'triggers.executionLogs.open';
 
 export default function Overview() {
   const { t } = useTranslation();
@@ -59,25 +66,18 @@ export default function Overview() {
   const [selectedTriggerId, setSelectedTriggerId] = useState<number | null>(
     null
   );
+  const [isExecutionLogsOpen, setIsExecutionLogsOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      window.localStorage.getItem(EXECUTION_LOGS_OPEN_STORAGE_KEY) === 'true'
+    );
+  });
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingTrigger, setDeletingTrigger] = useState<Trigger | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const { setHasTriggers } = usePageTabStore();
-
-  const toggleLogExpanded = (logId: string) => {
-    setExpandedLogs((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(logId)) {
-        newSet.delete(logId);
-      } else {
-        newSet.add(logId);
-      }
-      return newSet;
-    });
-  };
 
   // Use trigger store
   const {
@@ -92,16 +92,7 @@ export default function Overview() {
   // Get projectStore for the active project's task
   const { projectStore } = useChatStoreAdapter();
 
-  // Use activity log store - subscribe to logs for reactivity
-  const { logs: allLogs, addLog } = useActivityLogStore();
-
-  // Get project-specific activity logs using useMemo for performance
-  const activityLogs = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return allLogs
-      .filter((log) => log.projectId === projectStore.activeProjectId)
-      .slice(0, 50);
-  }, [allLogs, projectStore.activeProjectId]);
+  const { addLog } = useActivityLogStore();
 
   // User trigger count query (cached, across all projects)
   const { data: userTriggerCount = 0 } = useUserTriggerCountQuery();
@@ -130,6 +121,13 @@ export default function Overview() {
   useEffect(() => {
     setSelectedTriggerId(null);
   }, [projectStore.activeProjectId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      EXECUTION_LOGS_OPEN_STORAGE_KEY,
+      String(isExecutionLogsOpen)
+    );
+  }, [isExecutionLogsOpen]);
 
   // Update hasTriggers based on the trigger list
   useEffect(() => {
@@ -226,6 +224,7 @@ export default function Overview() {
       return;
     }
     setSelectedTriggerId(triggerId);
+    setIsExecutionLogsOpen(true);
   };
 
   const handleEdit = (trigger: Trigger) => {
@@ -248,6 +247,7 @@ export default function Overview() {
 
       if (selectedTriggerId === deletingTrigger.id) {
         setSelectedTriggerId(null);
+        setIsExecutionLogsOpen(false);
       }
 
       // Add activity log
@@ -299,64 +299,97 @@ export default function Overview() {
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex h-full flex-row gap-2 bg-surface-secondary px-2 pt-2">
-        {/* Left Side: Trigger List (70% width) */}
-        <div className="flex min-w-0 flex-[0.6] flex-col">
+    <div className="min-h-0 min-w-0 flex h-full flex-1 flex-col">
+      <div className="bg-surface-secondary px-2 pt-2 flex h-full flex-row">
+        {/* Left Side: Trigger List */}
+        <div className="min-w-0 flex flex-1 flex-col">
           {/* Header */}
-          <div className="flex w-full items-center justify-between pb-4 pl-1 pt-2">
+          <div className="pb-4 pl-1 pt-2 flex w-full items-center justify-between">
             <div className="text-body-sm font-bold text-text-heading">
               {t('triggers.title')}
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <div className="flex items-center gap-2">
+            <div className="gap-1 pr-2 flex items-center">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-label-sm font-semibold text-text-label opacity-50"
+                    className="font-semibold opacity-50"
                   >
                     {getSortLabel()}
                     <ArrowUpDown className="h-4 w-4" />
                   </Button>
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSortBy('createdAt')}>
-                  {t('triggers.created-time')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setSortBy('lastExecutionTime')}
-                >
-                  {t('triggers.last-execution-label')}
-                </DropdownMenuItem>
-                {/* TODO: Support Token Cost */}
-                {/* <DropdownMenuItem onClick={() => setSortBy("tokens")}>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setSortBy('createdAt')}>
+                    {t('triggers.created-time')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setSortBy('lastExecutionTime')}
+                  >
+                    {t('triggers.last-execution-label')}
+                  </DropdownMenuItem>
+                  {/* TODO: Support Token Cost */}
+                  {/* <DropdownMenuItem onClick={() => setSortBy("tokens")}>
                                     {t('triggers.token-cost')}
                                 </DropdownMenuItem> */}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <TooltipSimple
+                content={
+                  isExecutionLogsOpen
+                    ? 'Fold execution logs'
+                    : 'Open execution logs'
+                }
+                delayDuration={300}
+                side="bottom"
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="opacity-70"
+                  disabled={sortedTriggers.length === 0}
+                  onClick={() => {
+                    if (isExecutionLogsOpen) {
+                      setIsExecutionLogsOpen(false);
+                      return;
+                    }
+
+                    if (!selectedTriggerId && sortedTriggers.length > 0) {
+                      setSelectedTriggerId(sortedTriggers[0].id);
+                    }
+                    setIsExecutionLogsOpen(true);
+                  }}
+                >
+                  {isExecutionLogsOpen ? (
+                    <SquareChevronRight className="h-4 w-4" />
+                  ) : (
+                    <SquareCode className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipSimple>
+            </div>
           </div>
 
           {/* List View Section */}
           <div className="scrollbar-always-visible flex h-full flex-col overflow-auto">
-            <div className="flex flex-col gap-2">
+            <div className="gap-2 flex flex-col">
               {sortedTriggers.length === 0 ? (
                 <div
                   onClick={() => {
                     setEditingTrigger(null);
                     setEditDialogOpen(true);
                   }}
-                  className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-border-tertiary bg-surface-primary p-3 transition-all duration-200 hover:border-border-secondary hover:bg-surface-tertiary"
+                  className="group gap-3 rounded-xl border-border-tertiary bg-surface-primary p-3 hover:border-border-secondary hover:bg-surface-tertiary flex cursor-pointer items-center justify-center border transition-all duration-200"
                 >
                   {/* Zap Icon */}
-                  <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
+                  <div className="bg-amber-500/10 h-10 w-10 rounded-lg flex flex-shrink-0 items-center justify-center">
                     <Plus className="h-5 w-5 text-icon-primary" />
                   </div>
 
                   {/* Create Trigger Text */}
                   <div className="w-full flex-1">
-                    <div className="truncate text-sm font-semibold text-text-heading transition-colors group-hover:text-text-action">
+                    <div className="text-sm font-semibold text-text-heading group-hover:text-text-action truncate transition-colors">
                       {t('triggers.create-hint')}
                     </div>
                   </div>
@@ -379,76 +412,53 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Right Side: Live Activity or Execution Logs (30% width) */}
-        <div className="relative mb-2 flex min-w-[240px] flex-[0.4] flex-col overflow-hidden rounded-xl bg-surface-primary">
-          {/* Live Activity - Always rendered but slides out to the right when logs are shown */}
-          <div
-            className={`absolute inset-0 flex flex-col rounded-xl bg-surface-primary transition-transform duration-300 ease-in-out ${
-              selectedTriggerId ? 'translate-x-full' : 'translate-x-0'
-            }`}
-          >
-            {/* Live Activity Header */}
-            <div className="flex h-[48px] items-center justify-between px-4 py-3">
-              <span className="text-label-sm font-bold text-text-heading">
-                {t('triggers.live-activity')}
-              </span>
-            </div>
-            {/* Live Activity Content */}
-            <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
-              {activityLogs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-                  <Bell className="mb-2 h-10 w-10 text-text-label" />
-                  <p className="text-xs text-text-label">
-                    {t('triggers.no-activity')}
-                  </p>
-                  <p className="mt-1 text-xs text-text-label">
-                    {t('triggers.activity-hint')}
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col pt-2">
-                  <AnimatePresence initial={false}>
-                    {activityLogs.slice(0, 50).map((log, index) => (
-                      <ActivityLogItem
-                        key={log.id}
-                        log={log}
-                        index={index}
-                        isExpanded={expandedLogs.has(log.id)}
-                        onToggleExpanded={() => toggleLogExpanded(log.id)}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Execution Logs - Slides in from the left */}
-          <div
-            className={`absolute inset-0 flex flex-col rounded-xl bg-surface-primary transition-transform duration-300 ease-in-out ${
-              selectedTriggerId ? 'translate-x-0' : '-translate-x-full'
-            }`}
-          >
-            {/* Back button to return to Live Activity */}
-            <div className="relative flex flex-row items-center justify-start gap-2 bg-surface-tertiary px-3 py-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSelectedTriggerId(null)}
-              >
-                <ArrowLeft />
-              </Button>
+        {/* Execution Logs - Slides in/out from the right */}
+        <motion.div
+          initial={false}
+          animate={
+            selectedTriggerId && isExecutionLogsOpen
+              ? {
+                  width: '40%',
+                  minWidth: 240,
+                  maxWidth: 560,
+                  marginLeft: 8,
+                  opacity: 1,
+                  x: 0,
+                }
+              : {
+                  width: 0,
+                  minWidth: 0,
+                  maxWidth: 0,
+                  marginLeft: 0,
+                  opacity: 0,
+                  x: 20,
+                }
+          }
+          transition={{
+            type: 'spring',
+            stiffness: 340,
+            damping: 34,
+            mass: 0.9,
+          }}
+          className={`mb-2 rounded-xl bg-surface-primary flex h-full flex-col overflow-hidden ${
+            selectedTriggerId && isExecutionLogsOpen
+              ? ''
+              : 'pointer-events-none'
+          }`}
+        >
+          <div className="min-h-0 flex h-full flex-col">
+            <div className="bg-surface-tertiary px-3 py-3 relative flex flex-row items-center justify-start">
               <span className="text-label-sm font-bold text-text-body">
                 {t('triggers.execution-logs')}
               </span>
             </div>
             <div className="min-h-0 flex-1">
-              {selectedTriggerId && (
+              {selectedTriggerId && isExecutionLogsOpen && (
                 <ExecutionLogs triggerId={selectedTriggerId} />
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Edit Trigger Dialog */}
