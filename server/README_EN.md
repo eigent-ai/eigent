@@ -28,7 +28,14 @@ Note: All the above data is stored in the local PostgreSQL volume in Docker (see
 
 - **Docker Desktop**: Installed and running
 - **Python**: 3.10.\* (3.10.15 recommended)
-- **Node.js**: >=18.0.0 \<23.0.0
+- **Node.js**: >=18.0.0 <23.0.0
+
+#### Hosting Configuration for Triggers
+
+**Important**: If you plan to use **app triggers** (incoming webhooks), you must host this server with a **publicly accessible domain**. App triggers require external services to reach your server via HTTPS callback URLs.
+
+- For local development, you can use tools like `ngrok` to expose your local server
+- For production, deploy with a proper domain and SSL certificate
 
 #### Setup Steps
 
@@ -38,8 +45,14 @@ Note: All the above data is stored in the local PostgreSQL volume in Docker (see
 cd server
 # Copy .env.example to .env(or create .env according to .env.example)
 cp .env.example .env
-docker compose up -d
+# Environment variables from .env are automatically passed to Docker images
+docker-compose up --build -d
 ```
+
+**Notes:**
+
+- Database migrations are automatically run by Alembic on container startup
+- All environment variables defined in `.env` are passed to the Docker images
 
 2. Start Frontend (Local Mode)
 

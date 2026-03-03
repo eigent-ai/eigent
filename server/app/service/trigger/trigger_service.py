@@ -128,6 +128,10 @@ class TriggerService:
                 trigger.last_execution_status = "cancelled"
             elif status == ExecutionStatus.missed:
                 trigger.last_execution_status = "missed"
+                
+                trigger.consecutive_failures += 1
+                # Check for auto-disable based on max_failure_count in config
+                self._check_auto_disable(trigger)
             
             self.session.add(trigger)
             self.session.commit()
