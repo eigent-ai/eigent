@@ -154,6 +154,7 @@ export default function Home() {
               value={activeTab}
               orientation="horizontal"
               onValueChange={handleTabChange}
+              className="gap-3"
             >
               <MenuToggleItem
                 size="xs"

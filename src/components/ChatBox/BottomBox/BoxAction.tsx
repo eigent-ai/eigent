@@ -12,20 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 
 interface BoxActionProps {
-  /** Token count to display */
-  tokens: number;
-  /** Whether replay is allowed (e.g., only when task finished) */
-  disabled?: boolean;
-  /** Loading state for replay action */
-  loading?: boolean;
-  /** Callback when replay button is clicked */
-  onReplay?: () => void;
-  /** Optional right-side content to replace replay */
-  rightContent?: React.ReactNode;
   /** Task status for determining what button to show */
   status?: 'running' | 'finished' | 'pending' | 'pause';
   /** Task time display */
@@ -38,11 +27,6 @@ interface BoxActionProps {
 }
 
 export function BoxAction({
-  tokens,
-  disabled = false,
-  loading: _loading = false,
-  onReplay,
-  rightContent: _rightContent,
   status: _status,
   taskTime: _taskTime,
   onPauseResume: _onPauseResume,
@@ -55,13 +39,8 @@ export function BoxAction({
     <div
       className={`z-50 flex items-center justify-between gap-sm pl-4 ${className || ''}`}
     >
-      <div className="text-xs font-semibold leading-17 text-text-information">
-        # {t('chat.token')} {tokens || 0}
-      </div>
-
-      <Button onClick={onReplay} disabled={disabled} variant="ghost" size="sm">
-        {t('chat.replay')}
-      </Button>
+      {/* Placeholder for future actions */}
+      <div></div>
     </div>
   );
 }

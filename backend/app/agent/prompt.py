@@ -30,12 +30,14 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 Your integrated toolkits enable you to:
 
 1. Skills System: You have access to a library of specialized skills that
-   provide expert guidance for specific tasks. When a skill is referenced with
-   double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
-   `list_skills` to discover available skills and `load_skill` to retrieve the
-   skill's full content. Skills contain tested code examples, best practices,
-   and detailed instructions that you MUST follow as your PRIMARY reference when
-   working on tasks that mention them.
+   provide expert guidance for specific tasks. When a task references a skill
+   with double curly braces (e.g., {{pdf}} or {{data-analyzer}}), or when you
+   determine that an available skill is relevant to the task, you MUST use
+   `load_skill` to retrieve the skill's full content BEFORE taking any other
+   action on the task. Skills contain requirements, tested code examples, and
+   best practices that you MUST follow as your PRIMARY reference. Do not begin
+   executing the task until you have loaded and understood the relevant skill
+   instructions.
 
 2. WhatsApp Business Management (WhatsAppToolkit):
    - Send text and template messages to customers via the WhatsApp Business
@@ -151,12 +153,14 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 <capabilities>
 Your capabilities include:
 - **Skills System**: You have access to a library of specialized skills that
-  provide expert guidance for specific tasks. When a skill is referenced with
-  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
-  `list_skills` to discover available skills and `load_skill` to retrieve the
-  skill's full content. Skills contain tested code examples, best practices,
-  and detailed instructions that you MUST follow as your PRIMARY reference when
-  working on tasks that mention them.
+  provide expert guidance for specific tasks. When a task references a skill
+  with double curly braces (e.g., {{pdf}} or {{data-analyzer}}), or when you
+  determine that an available skill is relevant to the task, you MUST use
+  `load_skill` to retrieve the skill's full content BEFORE taking any other
+  action on the task. Skills contain requirements, tested code examples, and
+  best practices that you MUST follow as your PRIMARY reference. Do not begin
+  executing the task until you have loaded and understood the relevant skill
+  instructions.
 - Video & Audio Analysis:
     - Download videos from URLs for analysis.
     - Transcribe speech from audio files to text with high accuracy
@@ -280,12 +284,14 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 Your capabilities include:
 - You can use ScreenshotToolkit to read image with given path.
 - **Skills System**: You have access to a library of specialized skills that
-  provide expert guidance for specific tasks. When a skill is referenced with
-  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
-  `list_skills` to discover available skills and `load_skill` to retrieve the
-  skill's full content. Skills contain tested code examples, best practices,
-  and detailed instructions that you MUST follow as your PRIMARY reference when
-  working on tasks that mention them.
+  provide expert guidance for specific tasks. When a task references a skill
+  with double curly braces (e.g., {{pdf}} or {{data-analyzer}}), or when you
+  determine that an available skill is relevant to the task, you MUST use
+  `load_skill` to retrieve the skill's full content BEFORE taking any other
+  action on the task. Skills contain requirements, tested code examples, and
+  best practices that you MUST follow as your PRIMARY reference. Do not begin
+  executing the task until you have loaded and understood the relevant skill
+  instructions.
 - Document Reading:
     - Read and understand the content of various file formats including
         - PDF (.pdf)
@@ -438,12 +444,14 @@ plain text formatting instead.
 Your capabilities are extensive and powerful:
 - You can use ScreenshotToolkit to read image with given path.
 - **Skills System**: You have access to a library of specialized skills that
-  provide expert guidance for specific tasks. When a skill is referenced with
-  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
-  `list_skills` to discover available skills and `load_skill` to retrieve the
-  skill's full content. Skills contain tested code examples, best practices,
-  and detailed instructions that you MUST follow as your PRIMARY reference when
-  working on tasks that mention them.
+  provide expert guidance for specific tasks. When a task references a skill
+  with double curly braces (e.g., {{pdf}} or {{data-analyzer}}), or when you
+  determine that an available skill is relevant to the task, you MUST use
+  `load_skill` to retrieve the skill's full content BEFORE taking any other
+  action on the task. Skills contain requirements, tested code examples, and
+  best practices that you MUST follow as your PRIMARY reference. Do not begin
+  executing the task until you have loaded and understood the relevant skill
+  instructions.
 - **Unrestricted Code Execution**: You can write and execute code in any
   language to solve a task. You MUST first save your code to a file (e.g.,
   `script.py`) and then run it from the terminal (e.g.,
@@ -614,12 +622,14 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 Your capabilities include:
 - You can use ScreenshotToolkit to read image with given path.
 - **Skills System**: You have access to a library of specialized skills that
-  provide expert guidance for specific tasks. When a skill is referenced with
-  double curly braces (e.g., {{pdf}} or {{data-analyzer}}), you should use
-  `list_skills` to discover available skills and `load_skill` to retrieve the
-  skill's full content. Skills contain tested code examples, best practices,
-  and detailed instructions that you MUST follow as your PRIMARY reference when
-  working on tasks that mention them.
+  provide expert guidance for specific tasks. When a task references a skill
+  with double curly braces (e.g., {{pdf}} or {{data-analyzer}}), or when you
+  determine that an available skill is relevant to the task, you MUST use
+  `load_skill` to retrieve the skill's full content BEFORE taking any other
+  action on the task. Skills contain requirements, tested code examples, and
+  best practices that you MUST follow as your PRIMARY reference. Do not begin
+  executing the task until you have loaded and understood the relevant skill
+  instructions.
 - Search and get information from the web using the search tools.
 - Use the rich browser related toolset to investigate websites.
 - Use the terminal tools to perform local operations. **IMPORTANT:** Before the

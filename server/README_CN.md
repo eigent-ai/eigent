@@ -30,6 +30,13 @@
 - **Python**：3.10.\*（推荐使用 3.10.15）
 - **Node.js**：>=18.0.0 \<23.0.0
 
+#### Triggers 托管配置
+
+**重要提示**：如果你计划使用 **应用触发器**（外部 Webhook 回调），你必须使用**公开可访问的域名**来托管此服务器。应用触发器需要外部服务能够通过 HTTPS 回调 URL 访问你的服务器。
+
+- 本地开发时，可以使用 `ngrok` 等工具暴露你的本地服务器
+- 生产环境请使用正式域名并配置 SSL 证书
+
 #### 启动步骤
 
 1. 启动服务
@@ -38,8 +45,14 @@
 cd server
 # 复制 .env.example 为 .env(或者按照.env.example的格式创建.env)
 cp .env.example .env
-docker compose up -d
+# .env 中的环境变量会自动传递给 Docker 镜像
+docker-compose up --build -d
 ```
+
+**注意：**
+
+- 数据库迁移由 Alembic 在容器启动时自动执行
+- `.env` 中定义的所有环境变量都会自动传递给 Docker 镜像
 
 2. 启动前端（本地模式）
 
