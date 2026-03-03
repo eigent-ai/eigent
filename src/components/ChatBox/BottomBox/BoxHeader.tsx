@@ -17,6 +17,7 @@ import { Orbit } from '@/components/animate-ui/icons/orbit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Variant: Splitting
@@ -26,10 +27,11 @@ export interface BoxHeaderSplittingProps {
 }
 
 export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
-        'flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 flex w-full flex-col items-start justify-center gap-1',
         className
       )}
     >
@@ -50,7 +52,7 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
 
         <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
           <span className="whitespace-nowrap text-sm font-bold text-text-information">
-            Splitting Tasks
+            {t('chat.splitting-tasks')}
           </span>
         </div>
       </div>
@@ -76,10 +78,11 @@ export const BoxHeaderConfirm = ({
   className,
   loading = false,
 }: BoxHeaderConfirmProps) => {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
-        'flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 flex w-full flex-col items-start justify-center gap-1',
         className
       )}
     >
@@ -110,7 +113,7 @@ export const BoxHeaderConfirm = ({
           onClick={onStartTask}
           disabled={loading}
         >
-          Start Task
+          {t('chat.start-task')}
         </Button>
       </div>
     </div>

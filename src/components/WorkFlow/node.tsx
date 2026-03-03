@@ -134,10 +134,14 @@ export function Node({ id, data }: NodeProps) {
   );
   const runningTaskId = runningTask?.id;
   const runningTaskToolkitsLength = runningTask?.toolkits?.length;
-  const activeTaskId = chatStore?.activeTaskId;
+  const activeTaskId = chatStore?.activeTaskId as string;
   const activeAgent = activeTaskId
     ? chatStore?.tasks?.[activeTaskId]?.activeAgent
     : undefined;
+
+  // Helper to safely access task properties
+  const getCurrentTask = () =>
+    activeTaskId ? chatStore?.tasks?.[activeTaskId] : undefined;
 
   useEffect(() => {
     setIsExpanded(data.isExpanded);
@@ -351,7 +355,7 @@ export function Node({ id, data }: NodeProps) {
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
         } flex overflow-hidden rounded-xl border border-solid border-worker-border-default bg-worker-surface-primary ${
-          chatStore.tasks[chatStore.activeTaskId as string].activeAgent === id
+          getCurrentTask()?.activeAgent === id
             ? `${agentMap[data.type]?.borderColor} z-50`
             : 'z-10 border-worker-border-default'
         } transition-all duration-300 ease-in-out ${
@@ -374,8 +378,7 @@ export function Node({ id, data }: NodeProps) {
                 {isExpanded ? <SquareChevronLeft /> : <SquareCode />}
               </Button>
               {!Object.keys(agentMap).find((key) => key === data.type) &&
-                chatStore.tasks[chatStore.activeTaskId as string].messages
-                  .length === 0 && (
+                getCurrentTask()?.messages?.length === 0 && (
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
