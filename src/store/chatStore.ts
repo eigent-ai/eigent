@@ -3448,3 +3448,26 @@ export const useChatStore = chatStore;
 export const createChatStoreInstance = chatStore;
 
 export const getToolStore = () => chatStore().getState();
+
+/** Returns true if any task has an active SSE connection. */
+export function hasActiveSSEConnection(taskIds: string[]): boolean {
+  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+}
+
+/** Close SSE for given tasks (e.g. after completion, so triggers can start fresh). */
+export function closeSSEConnectionsForTasks(taskIds: string[]): void {
+  for (const taskId of taskIds) {
+    if (activeSSEControllers[taskId]) {
+      console.log(
+        '[closeSSEConnectionsForTasks] Closing SSE for task:',
+        taskId
+      );
+      try {
+        activeSSEControllers[taskId].abort();
+      } catch (_e) {
+        // Ignore if already aborted
+      }
+      delete activeSSEControllers[taskId];
+    }
+  }
+}
