@@ -22,7 +22,6 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
-  agentMap,
   getWorkflowAgentDisplay,
   WORKFLOW_AGENT_LIST,
 } from '@/components/WorkFlow/agents';
@@ -73,16 +72,26 @@ export default function SkillListItem(props: SkillListItemProps) {
   const workerList = useWorkerList();
   const [scopeOpen, setScopeOpen] = useState(false);
 
+  type AgentOption = {
+    value: string;
+    label: string;
+  };
+
   const allAgents = useMemo(() => {
-    const workflowNames = WORKFLOW_AGENT_LIST.map((a) => a.name);
-    const workerNames = workerList.map((w) => w.name);
-    const combined = [...workflowNames];
-    workerNames.forEach((name) => {
-      if (!combined.includes(name)) {
-        combined.push(name);
+    const workflowAgents: AgentOption[] = WORKFLOW_AGENT_LIST.filter(
+      (a) => a.id !== 'social_media_agent'
+    ).map((a) => ({ value: a.id, label: a.name }));
+    const workerAgents: AgentOption[] = workerList.map((w) => ({
+      value: w.name,
+      label: w.name,
+    }));
+    const combined = [...workflowAgents];
+    workerAgents.forEach((agent) => {
+      if (!combined.some((a) => a.value === agent.value)) {
+        combined.push(agent);
       }
     });
-    return combined.filter((name) => name !== agentMap.social_media_agent.name);
+    return combined;
   }, [workerList]);
 
   if (props.variant === 'placeholder') {
@@ -113,24 +122,6 @@ export default function SkillListItem(props: SkillListItemProps) {
 
   const { skill, onDelete } = props;
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffDays === 0) {
-      return t('layout.today');
-    } else if (diffDays === 1) {
-      return t('layout.yesterday');
-    } else if (diffDays < 30) {
-      return `${diffDays} ${t('layout.days-ago')}`;
-    } else {
-      return date.toLocaleDateString();
-    }
-  };
-
   const handleScopeChange = (scope: {
     isGlobal: boolean;
     selectedAgents: string[];
@@ -156,9 +147,11 @@ export default function SkillListItem(props: SkillListItemProps) {
     }
   };
 
-  const handleToggleAgent = (agentName: string) => {
+  const handleToggleAgent = (agentValue: string) => {
     if (isAllAgentsSelected) {
-      const newSelectedAgents = allAgents.filter((a) => a !== agentName);
+      const newSelectedAgents = allAgents
+        .filter((a) => a.value !== agentValue)
+        .map((a) => a.value);
       handleScopeChange({
         isGlobal: false,
         selectedAgents: newSelectedAgents,
@@ -166,10 +159,10 @@ export default function SkillListItem(props: SkillListItemProps) {
       return;
     }
 
-    const isSelected = skill.scope.selectedAgents.includes(agentName);
+    const isSelected = skill.scope.selectedAgents.includes(agentValue);
     const newSelectedAgents = isSelected
-      ? skill.scope.selectedAgents.filter((a) => a !== agentName)
-      : [...skill.scope.selectedAgents, agentName];
+      ? skill.scope.selectedAgents.filter((a) => a !== agentValue)
+      : [...skill.scope.selectedAgents, agentValue];
     handleScopeChange({
       isGlobal: false,
       selectedAgents: newSelectedAgents,
@@ -276,19 +269,19 @@ export default function SkillListItem(props: SkillListItemProps) {
               All Agents
             </button>
 
-            {allAgents.map((agentName) => {
+            {allAgents.map((agent) => {
               const isSelected =
                 isAllAgentsSelected ||
-                skill.scope.selectedAgents.includes(agentName);
-              const display = getWorkflowAgentDisplay(agentName);
+                skill.scope.selectedAgents.includes(agent.value);
+              const display = getWorkflowAgentDisplay(agent.value);
               const icon = display?.icon ?? (
                 <Bot size={16} className="shrink-0 text-inherit" />
               );
               return (
                 <button
-                  key={agentName}
+                  key={agent.value}
                   type="button"
-                  onClick={() => handleToggleAgent(agentName)}
+                  onClick={() => handleToggleAgent(agent.value)}
                   className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                     isSelected
                       ? 'opacity-100 [&>svg]:text-icon-success'
@@ -296,7 +289,7 @@ export default function SkillListItem(props: SkillListItemProps) {
                   }`}
                 >
                   {isSelected ? <Check size={16} className="shrink-0" /> : icon}
-                  {agentName}
+                  {agent.label}
                 </button>
               );
             })}
