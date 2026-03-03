@@ -24,6 +24,7 @@ dependencies = [
     "opentelemetry-api>=1.34.1",
     "opentelemetry-sdk>=1.34.1",
     "opentelemetry-exporter-otlp-proto-http>=1.34.1",
+    "duckduckgo-search>=7.0.0",
 ]
 
 

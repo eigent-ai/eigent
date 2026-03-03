@@ -79,7 +79,8 @@ async def social_media_agent(options: Chat):
             user_id=options.skill_config_user_id(),
         ).get_tools(),
         *SearchToolkit.get_can_use_tools(
-            options.project_id, agent_name=Agents.social_media_agent
+            options.project_id,
+            agent_name=Agents.social_media_agent,
         ),
         # *DiscordToolkit(options.project_id).get_tools(),
         # *GoogleSuiteToolkit(options.project_id).get_tools(),

@@ -85,7 +85,8 @@ async def developer_agent(options: Chat):
     skill_toolkit = message_integration.register_toolkits(skill_toolkit)
 
     search_tools = SearchToolkit.get_can_use_tools(
-        options.project_id, agent_name=Agents.developer_agent
+        options.project_id,
+        agent_name=Agents.developer_agent,
     )
     if search_tools:
         search_tools = message_integration.register_functions(search_tools)
