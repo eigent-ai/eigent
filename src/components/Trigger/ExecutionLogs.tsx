@@ -275,12 +275,12 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   const successfulExecutions = Array.isArray(executions)
     ? executions.filter((e) => e.status === ExecutionStatus.Completed)
     : [];
-  const successRate =
+  const successRate: number | null =
     completedExecutions.length > 0
       ? Math.round(
           (successfulExecutions.length / completedExecutions.length) * 100
         )
-      : 0;
+      : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -314,9 +314,9 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
           </div>
           <div className="border-r-1 mr-4 flex flex-col border-y-0 border-l-0 border-solid border-border-tertiary pr-4">
             <span
-              className={`text-label-sm font-medium ${successRate >= 90 ? 'text-icon-success' : successRate >= 70 ? 'text-icon-warning' : 'text-icon-cuation'}`}
+              className={`text-label-sm font-medium ${successRate !== null ? (successRate >= 90 ? 'text-icon-success' : successRate >= 70 ? 'text-icon-warning' : 'text-icon-cuation') : 'text-text-label'}`}
             >
-              {successRate}%
+              {successRate !== null ? `${successRate}%` : '-'}
             </span>
             <span className="text-label-xs text-text-label">
               {t('triggers.success-rate')}
