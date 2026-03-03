@@ -20,6 +20,7 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
     "z.ai": "openai-compatible-model",
     "ModelArk": "openai-compatible-model",
     "grok": "openai-compatible-model",
+    "llama.cpp": "openai-compatible-model",
 }
 
 
