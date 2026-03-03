@@ -182,11 +182,6 @@ export function useTriggerTaskExecutor() {
         // Format the message with all context
         const formattedMessage = formatTriggeredTaskMessage(task);
 
-        console.log(
-          '[TriggerTaskExecutor] Adding message to project queue:',
-          formattedMessage.substring(0, 100) + '...'
-        );
-
         // Add message directly to projectStore's queuedMessages
         // useBackgroundTaskProcessor will pick it up and execute it
         const queuedTaskId = store.addQueuedMessage(
@@ -229,7 +224,7 @@ export function useTriggerTaskExecutor() {
     if (webSocketEvent) {
       console.log(
         '[TriggerTaskExecutor] WebSocket event received:',
-        webSocketEvent
+        webSocketEvent.executionId
       );
 
       const task: TriggeredTask = {
