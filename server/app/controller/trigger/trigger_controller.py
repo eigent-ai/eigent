@@ -43,6 +43,37 @@ from sqlalchemy import func
 logger = logging.getLogger("server_trigger_controller")
 
 
+ACTIVE_STATUSES = (TriggerStatus.active, TriggerStatus.pending_verification)
+MAX_ACTIVE_PER_USER = 25
+MAX_ACTIVE_PER_PROJECT = 5
+
+
+def get_active_trigger_counts(session: Session, user_id: str, project_id: str | None = None) -> tuple[int, int]:
+    """Return (user_active_count, project_active_count) for active/pending triggers."""
+    user_count = session.exec(
+        select(func.count(Trigger.id)).where(
+            and_(
+                Trigger.user_id == user_id,
+                Trigger.status.in_(ACTIVE_STATUSES),  # type: ignore[attr-defined]
+            )
+        )
+    ).one()
+
+    project_count = 0
+    if project_id:
+        project_count = session.exec(
+            select(func.count(Trigger.id)).where(
+                and_(
+                    Trigger.user_id == user_id,
+                    Trigger.project_id == project_id,
+                    Trigger.status.in_(ACTIVE_STATUSES),  # type: ignore[attr-defined]
+                )
+            )
+        ).one()
+
+    return user_count, project_count
+
+
 def get_execution_counts(session: Session, trigger_ids: list[int]) -> dict[int, int]:
     """Get execution counts for multiple triggers in a single query."""
     if not trigger_ids:
@@ -98,45 +129,6 @@ def create_trigger(
     user_id = auth.user.id
     
     try:
-        # Check user trigger limit (max 25 triggers per user)
-        user_trigger_count = session.exec(
-            select(func.count(Trigger.id)).where(Trigger.user_id == str(user_id))
-        ).one()
-        
-        if user_trigger_count >= 25:
-            logger.warning("User trigger limit reached", extra={
-                "user_id": user_id,
-                "current_count": user_trigger_count,
-                "limit": 25
-            })
-            raise HTTPException(
-                status_code=400,
-                detail="Maximum number of triggers (25) reached for this user"
-            )
-        
-        # Check project trigger limit (max 5 triggers per project)
-        if data.project_id:
-            project_trigger_count = session.exec(
-                select(func.count(Trigger.id)).where(
-                    and_(
-                        Trigger.user_id == str(user_id),
-                        Trigger.project_id == data.project_id
-                    )
-                )
-            ).one()
-            
-            if project_trigger_count >= 5:
-                logger.warning("Project trigger limit reached", extra={
-                    "user_id": user_id,
-                    "project_id": data.project_id,
-                    "current_count": project_trigger_count,
-                    "limit": 5
-                })
-                raise HTTPException(
-                    status_code=400,
-                    detail="Maximum number of triggers (5) reached for this project"
-                )
-        
         # Check if project_id exists in chat_history, if not create one
         if data.project_id:
             existing_chat = session.exec(
@@ -221,11 +213,31 @@ def create_trigger(
         trigger_data["user_id"] = str(user_id)
         trigger_data["webhook_url"] = webhook_url
         
-        # Check if authentication is required - set initial status accordingly
+        # Determine desired initial status based on auth requirements
         if has_config(data.trigger_type) and data.config and requires_authentication(data.trigger_type, data.config):
-            trigger_data["status"] = TriggerStatus.pending_verification
-        else: 
-            trigger_data["status"] = TriggerStatus.active
+            desired_status = TriggerStatus.pending_verification
+        else:
+            desired_status = TriggerStatus.active
+
+        # Check concurrent active-trigger limits before auto-activating
+        user_active, project_active = get_active_trigger_counts(
+            session, str(user_id), data.project_id
+        )
+        if user_active >= MAX_ACTIVE_PER_USER or (
+            data.project_id and project_active >= MAX_ACTIVE_PER_PROJECT
+        ):
+            logger.info(
+                "Active trigger limit reached — new trigger created as inactive",
+                extra={
+                    "user_id": user_id,
+                    "project_id": data.project_id,
+                    "user_active": user_active,
+                    "project_active": project_active,
+                },
+            )
+            trigger_data["status"] = TriggerStatus.inactive
+        else:
+            trigger_data["status"] = desired_status
         
         trigger = Trigger(**trigger_data)
         session.add(trigger)
@@ -498,7 +510,59 @@ def activate_trigger(
         raise HTTPException(status_code=404, detail="Trigger not found")
     
     try:
-        # Check activation requirements for trigger types with configs
+        # --- Concurrent active-trigger limits ---
+        user_active, project_active = get_active_trigger_counts(
+            session, str(user_id), trigger.project_id
+        )
+        if user_active >= MAX_ACTIVE_PER_USER:
+            logger.warning("User active trigger limit reached", extra={
+                "user_id": user_id,
+                "trigger_id": trigger_id,
+                "current_active": user_active,
+                "limit": MAX_ACTIVE_PER_USER,
+            })
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum number of concurrent active triggers ({MAX_ACTIVE_PER_USER}) reached for this user"
+            )
+
+        if trigger.project_id and project_active >= MAX_ACTIVE_PER_PROJECT:
+            logger.warning("Project active trigger limit reached", extra={
+                "user_id": user_id,
+                "trigger_id": trigger_id,
+                "project_id": trigger.project_id,
+                "current_active": project_active,
+                "limit": MAX_ACTIVE_PER_PROJECT,
+            })
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum number of concurrent active triggers ({MAX_ACTIVE_PER_PROJECT}) reached for this project"
+            )
+
+        # Check if authentication is required first — auth-required triggers
+        # go straight to pending_verification (credentials are provided via
+        # the auth flow, so missing-credential errors are expected).
+        if has_config(trigger.trigger_type) and requires_authentication(trigger.trigger_type, trigger.config):
+            trigger.status = TriggerStatus.pending_verification
+            logger.info("Trigger set to pending verification (authentication required)", extra={
+                "user_id": user_id,
+                "trigger_id": trigger_id,
+                "trigger_type": trigger.trigger_type.value
+            })
+            # Save the status change before raising the exception
+            session.add(trigger)
+            session.commit()
+            session.refresh(trigger)
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": "Authentication required for this trigger type",
+                    "missing_requirements": ["authentication"],
+                    "trigger_type": trigger.trigger_type.value
+                }
+            )
+
+        # For non-auth triggers, validate activation requirements
         if has_config(trigger.trigger_type):
             try:
                 validate_activation(
@@ -523,31 +587,10 @@ def activate_trigger(
                     }
                 )
         
-        # Check if authentication is required - set to pending_verification if so
-        if has_config(trigger.trigger_type) and requires_authentication(trigger.trigger_type, trigger.config):
-            trigger.status = TriggerStatus.pending_verification
-            logger.info("Trigger set to pending verification (authentication required)", extra={
-                "user_id": user_id,
-                "trigger_id": trigger_id,
-                "trigger_type": trigger.trigger_type.value
-            })
-            # Save the status change before raising the exception
-            session.add(trigger)
-            session.commit()
-            session.refresh(trigger)
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "message": "Authentication required for this trigger type",
-                    "missing_requirements": ["authentication"],
-                    "trigger_type": trigger.trigger_type.value
-                }
-            )
-        else:
-            trigger.status = TriggerStatus.active
-            session.add(trigger)
-            session.commit()
-            session.refresh(trigger)
+        trigger.status = TriggerStatus.active
+        session.add(trigger)
+        session.commit()
+        session.refresh(trigger)
         
         # Get execution count
         counts = get_execution_counts(session, [trigger_id])
