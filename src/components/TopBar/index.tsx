@@ -18,10 +18,9 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
+import defaultFolderIcon from '@/assets/Folder.svg';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
-import folderIconBlack from '@/assets/logo/icon_black.svg';
-import folderIconWhite from '@/assets/logo/icon_white.svg';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -71,8 +70,6 @@ function HeaderWin() {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
-  const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
-
   const exportLog = async () => {
     try {
       const response = await window.electronAPI.exportLog();
@@ -205,17 +202,14 @@ function HeaderWin() {
   return (
     <div
       className={`drag left-0 right-0 top-0 !h-9 py-1 absolute z-50 flex items-center justify-between ${
-        platform === 'darwin' ? 'pl-20' : 'pl-2'
+        platform === 'darwin' ? 'pl-16' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
     >
       {/* left */}
-      <div
-        className={`${
-          platform === 'darwin' ? 'w-0' : 'w-[70px]'
-        } no-drag flex items-center justify-center`}
-      >
+      <div className="w-8 no-drag gap-1 ml-2 mt-[1.5px] flex items-center justify-center">
+        <img src={defaultFolderIcon} alt="folder-icon" className="h-6 w-6" />
         {platform !== 'darwin' && (
           <span className="text-label-md font-bold text-text-heading">
             Eigent
@@ -231,7 +225,7 @@ function HeaderWin() {
               <Button
                 variant="ghost"
                 size="xs"
-                className="no-drag"
+                className="no-drag rounded-full"
                 onClick={() => navigate('/')}
               >
                 <ChevronLeft className="h-4 w-4 text-text-label" />
@@ -239,7 +233,7 @@ function HeaderWin() {
             </div>
           )}
           {location.pathname !== '/history' && (
-            <div className="mr-1 flex items-center">
+            <div className="flex items-center">
               <TooltipSimple
                 content={t('layout.home')}
                 side="bottom"
@@ -248,7 +242,7 @@ function HeaderWin() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="no-drag"
+                  className="no-drag rounded-full"
                   onClick={() => navigate('/history')}
                 >
                   <House className="h-4 w-4" />
@@ -262,7 +256,7 @@ function HeaderWin() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="no-drag"
+                  className="no-drag rounded-full"
                   onClick={createNewProject}
                 >
                   <Plus className="h-4 w-4" />
@@ -281,7 +275,7 @@ function HeaderWin() {
                   <Button
                     id="active-task-title-btn"
                     variant="ghost"
-                    className="no-drag text-base font-bold"
+                    className="no-drag text-base font-bold rounded-full"
                     onClick={toggle}
                     size="sm"
                   >
@@ -392,7 +386,7 @@ function HeaderWin() {
                 onClick={getReferFriendsLink}
                 variant="ghost"
                 size="icon"
-                className="no-drag"
+                className="no-drag rounded-full"
               >
                 <img
                   src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
@@ -410,7 +404,7 @@ function HeaderWin() {
                 onClick={() => navigate('/history?tab=settings')}
                 variant="ghost"
                 size="icon"
-                className="no-drag"
+                className="no-drag rounded-full"
               >
                 <Settings className="h-4 w-4" />
               </Button>
