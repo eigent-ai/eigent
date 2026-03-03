@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload Artifact (macOS - dmg only)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
@@ -180,7 +180,7 @@ jobs:
 
       - name: Upload Artifact (Windows - exe only)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload Artifact (Linux - AppImage only)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.artifact_name }}-${{ matrix.arch }}
           path: |
