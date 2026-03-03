@@ -127,7 +127,7 @@ export default function Home() {
         cancelText={t('layout.cancel')}
       />
       {/* welcome text */}
-      <div className="flex w-full flex-row bg-gradient-to-b from-surface-primary to-surface-primary px-20 pt-16">
+      <div className="from-surface-primary to-surface-primary px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
         <WordCarousel
           words={[`${t('layout.welcome')}, ${welcomeName} !`]}
           className="text-heading-xl font-bold tracking-tight"
@@ -145,15 +145,16 @@ export default function Home() {
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
-        className={`sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-border-disabled bg-bg-page-default px-20 pb-4 pt-10`}
+        className={`border-border-disabled bg-bg-page-default px-20 pb-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid`}
       >
         <div className="mx-auto flex w-full flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="gap-2 flex items-center">
             <MenuToggleGroup
               type="single"
               value={activeTab}
               orientation="horizontal"
               onValueChange={handleTabChange}
+              className="gap-3"
             >
               <MenuToggleItem
                 size="xs"

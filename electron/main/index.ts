@@ -352,6 +352,9 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// Disable Fontations (Rust-based font engine) to prevent crashes on macOS
+app.commandLine.appendSwitch('disable-features', 'Fontations');
+
 // ==================== Proxy configuration ====================
 // Read proxy from global .env file on startup
 proxyUrl = readGlobalEnvKey('HTTP_PROXY');
