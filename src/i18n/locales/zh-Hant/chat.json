@@ -48,9 +48,20 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "我們正在經歷高流量。請稍後再試。",
   "new-project": "新項目",
   "no-reply-received-task-continue": "沒有收到回复，任務繼續",
+  "splitting-tasks": "拆分任務",
+  "start-task": "開始任務",
+  "message-cannot-be-empty": "訊息不能為空",
+  "remove-file": "移除文件",
+  "drop-files-to-attach": "拖放文件以附加",
+  "expand-input": "展開輸入 (⌘P)",
+  "queued-tasks": "排隊任務",
+  "remove-queued-message": "移除排隊訊息",
+  "no-agents-added": "未添加智能體",
   "open-in-ide": "在 IDE 中開啟",
   "open-in-vscode": "在 VS Code 中開啟",
   "open-in-cursor": "在 Cursor 中開啟",
   "open-in-file-manager": "在檔案管理器中開啟",
-  "failed-to-open-folder": "無法開啟資料夾"
+  "failed-to-open-folder": "無法開啟資料夾",
+  "task-completed-card-title": "任務已完成",
+  "task-completed-card-subtitle": "使用觸發器自動化您的任務"
 }
