@@ -90,7 +90,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   );
   const [weekdays, setWeekdays] = useState<string[]>(['1']); // Array of weekday strings: ["0", "1", ...]
   const [dayOfMonth, setDayOfMonth] = useState<string>('1'); // 1-31
-  const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(undefined);
+  const [oneTimeDate, setOneTimeDate] = useState<Date | undefined>(new Date());
   const [expiredAt, setExpiredAt] = useState<Date | undefined>(undefined);
   const [maxFailureCount, setMaxFailureCount] = useState<number | undefined>(5);
   const [_cronError, setCronError] = useState<string | null>(null);
@@ -436,13 +436,29 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     const config: ScheduleConfig = {};
 
     if (frequency === 'one-time' && oneTimeDate) {
-      // Send YYYY-MM-DD format to backend
-      config.date = format(oneTimeDate, 'yyyy-MM-dd');
+      // Apply UTC dayOffset so config.date matches the UTC date in the cron expression
+      const { dayOffset } = localTimeToUTC(
+        parseInt(hour),
+        parseInt(minute),
+        oneTimeDate
+      );
+      const utcDate = new Date(oneTimeDate);
+      utcDate.setDate(utcDate.getDate() + dayOffset);
+      config.date = format(utcDate, 'yyyy-MM-dd');
     }
 
     if (expiredAt) {
-      // Send YYYY-MM-DD format to backend
-      config.expirationDate = format(expiredAt, 'yyyy-MM-dd');
+      // Apply UTC dayOffset so expiration date aligns with the UTC date the cron actually fires on.
+      // e.g. if local 23:00 in UTC-5 becomes 04:00 UTC next day (dayOffset=+1),
+      // the "last allowed UTC run date" must also shift forward by 1.
+      const { dayOffset } = localTimeToUTC(
+        parseInt(hour),
+        parseInt(minute),
+        expiredAt
+      );
+      const utcExpiredAt = new Date(expiredAt);
+      utcExpiredAt.setDate(utcExpiredAt.getDate() + dayOffset);
+      config.expirationDate = format(utcExpiredAt, 'yyyy-MM-dd');
     }
 
     if (maxFailureCount !== undefined) {
