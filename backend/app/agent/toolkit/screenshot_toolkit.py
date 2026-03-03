@@ -18,21 +18,22 @@ from camel.toolkits import ScreenshotToolkit as BaseScreenshotToolkit
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
-from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 
 @auto_listen_toolkit(BaseScreenshotToolkit)
 class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
-    agent_name: str = Agents.developer_agent
+    agent_name: str
 
     def __init__(
         self,
         api_task_id,
+        agent_name: str,
         working_directory: str | None = None,
         timeout: float | None = None,
     ):
         self.api_task_id = api_task_id
+        self.agent_name = agent_name
         if working_directory is None:
             working_directory = env(
                 "file_save_path", os.path.expanduser("~/Downloads")

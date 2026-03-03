@@ -344,6 +344,20 @@ async def async_mock_agent() -> AsyncGenerator[AsyncMock, None]:
     yield agent
 
 
+# Safety net: clean up any MagicMock-named directories that tests may
+# accidentally create when mock objects are used as file paths.
+@pytest.fixture(autouse=True, scope="session")
+def _cleanup_magicmock_dirs():
+    """Remove MagicMock-named directories from backend/ after test session."""
+    yield
+    import shutil
+
+    backend_dir = Path(__file__).parent.parent
+    for entry in backend_dir.iterdir():
+        if "MagicMock" in entry.name:
+            shutil.rmtree(entry, ignore_errors=True)
+
+
 # Markers for test categorization
 pytest_plugins = ["pytest_asyncio"]
 

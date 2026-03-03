@@ -18,6 +18,7 @@ import pytest
 
 from app.agent.factory import developer_agent
 from app.model.chat import Chat
+from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
 
@@ -36,6 +37,9 @@ async def test_developer_agent_creation(sample_chat_data):
     _mod = "app.agent.factory.developer"
     with (
         patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
@@ -58,6 +62,11 @@ async def test_developer_agent_creation(sample_chat_data):
 
         assert result is mock_agent
         mock_agent_model.assert_called_once()
+        mock_screenshot_toolkit.assert_called_once_with(
+            options.project_id,
+            working_directory="/tmp/test_workdir",
+            agent_name=Agents.developer_agent,
+        )
 
         # Should have called with development-related tools
         call_args = mock_agent_model.call_args
@@ -82,6 +91,9 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
     _mod = "app.agent.factory.developer"
     with (
         patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,

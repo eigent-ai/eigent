@@ -41,6 +41,7 @@
   "validate-failed": "驗證失敗",
   "copy": "複製",
   "copied-to-clipboard": "已複製到剪貼板",
+  "failed-to-copy-to-clipboard": "複製到剪貼板失敗",
   "endpoint-url-can-not-be-empty": "端點 URL 不可為空！",
   "verification-failed-please-check-endpoint-url": "驗證失敗，請檢查端點 URL",
   "eigent-cloud-version": "Eigent 雲端版本",
@@ -49,12 +50,6 @@
   "pricing-options": "定價選項",
   "credits": "點數",
   "select-model-type": "選擇模型類型",
-  "gpt-4.1-mini": "GPT-4.1 mini: 更低成本，更快回應，但輸出品質降低。",
-  "gpt-4.1": "GPT-4.1: 更高成本，更慢回應，但更高品質和推理。",
-  "claude-opus-4.1": "Claude Opus 4.1: 更高成本，更慢回應，但更高品質和推理。",
-  "gpt-5": "GPT-5: 更高成本，更慢回應，但更高品質和推理。",
-  "gpt-5-mini": "GPT-5 mini: 更高成本，更慢回應，但更高品質和推理。",
-  "gpt-5-nano": "GPT-5 nano: 更高成本，更慢回應，但更高品質和推理。",
   "custom-model": "自訂模型",
   "use-your-own-api-keys-or-set-up-a-local-model": "使用您自己的 API 金鑰或設定本地模型。",
   "verify": "驗證",
@@ -175,6 +170,7 @@
   "models-configuration": "配置",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
   "gpt-4.1-mini-name": "GPT-4.1 Mini",
   "gpt-4.1-name": "GPT-4.1",
@@ -191,8 +187,5 @@
   "proxy-saved-restart-required": "代理設定已儲存。請重新啟動應用程式以套用變更。",
   "proxy-save-failed": "儲存代理設定失敗。",
   "proxy-invalid-url": "無效的代理 URL。必須以 http://、https://、socks4:// 或 socks5:// 開頭。",
-  "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。",
-  "preferred-ide": "偏好 IDE",
-  "preferred-ide-description": "選擇開啟智能體專案資料夾時使用的應用程式。",
-  "system-file-manager": "系統檔案管理器"
+  "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。"
 }

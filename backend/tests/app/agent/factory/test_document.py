@@ -18,6 +18,7 @@ import pytest
 
 from app.agent.factory import document_agent
 from app.model.chat import Chat
+from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
 
@@ -36,6 +37,9 @@ async def test_document_agent_creation(sample_chat_data):
     _mod = "app.agent.factory.document"
     with (
         patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.FileToolkit") as mock_file_toolkit,
@@ -43,6 +47,7 @@ async def test_document_agent_creation(sample_chat_data):
         patch(f"{_mod}.MarkItDownToolkit") as mock_markdown_toolkit,
         patch(f"{_mod}.ExcelToolkit") as mock_excel_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
+        patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.GoogleDriveMCPToolkit") as mock_gdrive_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
@@ -54,6 +59,7 @@ async def test_document_agent_creation(sample_chat_data):
         mock_markdown_toolkit.return_value.get_tools.return_value = []
         mock_excel_toolkit.return_value.get_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []
+        mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
         mock_gdrive_toolkit.get_can_use_tools = AsyncMock(return_value=[])
 
@@ -64,6 +70,11 @@ async def test_document_agent_creation(sample_chat_data):
 
         assert result is mock_agent
         mock_agent_model.assert_called_once()
+        mock_screenshot_toolkit.assert_called_once_with(
+            options.project_id,
+            working_directory="/tmp/test_workdir",
+            agent_name=Agents.document_agent,
+        )
 
         # Should have called with document-related tools
         call_args = mock_agent_model.call_args

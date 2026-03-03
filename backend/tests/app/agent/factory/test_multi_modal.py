@@ -35,6 +35,9 @@ def test_multi_modal_agent_creation(sample_chat_data):
     _mod = "app.agent.factory.multi_modal"
     with (
         patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.VideoDownloaderToolkit") as mock_video_toolkit,

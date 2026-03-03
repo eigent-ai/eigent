@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronUp, Circle, X } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface QueuedMessage {
   id: string;
@@ -34,6 +35,7 @@ export function QueuedBox({
   onRemoveQueuedMessage,
   className,
 }: QueuedBoxProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const hasQueued = queuedMessages.length > 0;
 
@@ -71,7 +73,7 @@ export function QueuedBox({
           </div>
           <div className="relative flex shrink-0 flex-col justify-center">
             <span className="text-xs font-bold text-text-body">
-              Queued Tasks
+              {t('chat.queued-tasks')}
             </span>
           </div>
         </div>
@@ -104,6 +106,7 @@ interface QueueingItemProps {
 }
 
 function QueueingItem({ content, onRemove }: QueueingItemProps) {
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -135,7 +138,7 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
           e.preventDefault();
           onRemove?.();
         }}
-        aria-label="Remove queued message"
+        aria-label={t('chat.remove-queued-message')}
       >
         <X size={16} className="text-icon-secondary" />
       </Button>

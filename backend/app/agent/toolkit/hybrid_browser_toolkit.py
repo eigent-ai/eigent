@@ -456,7 +456,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         page_stability_timeout: int | None = None,
         dom_content_loaded_timeout: int | None = None,
         viewport_limit: bool = False,
-        connect_over_cdp: bool = True,
+        connect_over_cdp: bool = True,  # Deprecated: auto-set to True when cdp_url is provided, kept for compatibility
         cdp_url: str | None = "http://localhost:9222",
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
@@ -588,7 +588,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             dom_content_loaded_timeout=self._dom_content_loaded_timeout,
             viewport_limit=self._viewport_limit,
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
-            cdp_url=f"http://localhost:{env('browser_port', '9222')}",
+            cdp_url=self.config_loader.get_browser_config().cdp_url,
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
             full_visual_mode=self._full_visual_mode,
         )

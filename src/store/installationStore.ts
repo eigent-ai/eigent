@@ -41,6 +41,7 @@ interface InstallationStoreState {
   error?: string;
   backendError?: string; // Separate error for backend startup failures
   isVisible: boolean;
+  isBackendReady: boolean; // Non-persisted, defaults to false on each app launch
   needsBackendRestart: boolean; // Flag to indicate backend is restarting after logout
 
   // Actions
@@ -71,6 +72,7 @@ const initialState = {
   error: undefined,
   backendError: undefined,
   isVisible: false,
+  isBackendReady: false,
   needsBackendRestart: false,
 };
 
@@ -87,6 +89,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
         progress: 20,
         logs: [],
         error: undefined,
+        isBackendReady: false,
         isVisible: true,
       }),
 
@@ -103,6 +106,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
       set({
         state: 'completed',
         progress: 100,
+        isBackendReady: true,
       }),
 
     setError: (error: string) =>
@@ -123,6 +127,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
       set({
         state: 'waiting-backend',
         progress: 80,
+        isBackendReady: false,
         isVisible: true,
       }),
 
@@ -135,6 +140,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
       set({
         backendError: error,
         state: 'error',
+        isBackendReady: false,
       }),
 
     retryInstallation: () => {
@@ -153,6 +159,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           backendError: undefined,
           state: 'waiting-backend',
           progress: 80,
+          isBackendReady: false,
         });
 
         // Call restart-backend via electronAPI
@@ -162,6 +169,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           set({
             backendError: result.error || 'Failed to restart backend',
             state: 'error',
+            isBackendReady: false,
           });
         }
       } catch (error) {
@@ -169,6 +177,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
           backendError:
             error instanceof Error ? error.message : 'Unknown error',
           state: 'error',
+          isBackendReady: false,
         });
       }
     },
@@ -187,15 +196,15 @@ export const useInstallationStore = create<InstallationStoreState>()(
 
     // Async actions
     performInstallation: async () => {
-      const { startInstallation, setSuccess, setError } = get();
+      const { startInstallation, setWaitingBackend, setError } = get();
 
       try {
         startInstallation();
         const result = await window.electronAPI.checkAndInstallDepsOnUpdate();
 
         if (result.success) {
-          // initState will be set to 'done' by useInstallationSetup after both installation and backend are ready
-          setSuccess();
+          // Keep waiting state until useInstallationSetup confirms backend readiness.
+          setWaitingBackend();
         } else {
           setError('Installation failed');
         }
@@ -260,6 +269,7 @@ export const useInstallationUI = () => {
   const error = useInstallationStore((state) => state.error);
   const backendError = useInstallationStore((state) => state.backendError);
   const isVisible = useInstallationStore((state) => state.isVisible);
+  const isBackendReady = useInstallationStore((state) => state.isBackendReady);
   const performInstallation = useInstallationStore(
     (state) => state.performInstallation
   );
@@ -276,6 +286,7 @@ export const useInstallationUI = () => {
     error,
     backendError,
     isInstalling: state === 'installing',
+    isBackendReady,
     shouldShowInstallScreen: isVisible && state !== 'completed',
     canRetry: state === 'error',
     performInstallation,

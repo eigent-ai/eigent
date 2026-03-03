@@ -33,6 +33,6 @@ jobs:
 
       - name: Lint markdown
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: npx markdownlint-cli@0.43.0 $CHANGED_FILES
+        run: npx markdownlint-cli@0.43.0 --ignore 'resources/**' $CHANGED_FILES
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}

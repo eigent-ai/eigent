@@ -8,5 +8,13 @@
   "save-changes": "変更を保存",
   "description-optional": "説明（任意）",
   "agent-tool": "エージェントツール",
-  "share": "共有"
+  "share": "共有",
+  "advanced-model-config": "高度なモデル設定",
+  "use-custom-model": "カスタムモデル設定を使用",
+  "model-platform": "モデルプラットフォーム",
+  "select-platform": "プラットフォームを選択",
+  "model-type": "モデルタイプ",
+  "model-type-placeholder": "例：gpt-4o-mini",
+  "worker-name-cannot-be-empty": "ワーカー名は空にできません",
+  "worker-name-already-exists": "ワーカー名は既に存在します"
 }

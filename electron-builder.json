@@ -41,10 +41,13 @@
 
         "!venv/lib/python*/site-packages/yt_dlp/**",
         "!venv/lib/python*/site-packages/yt_dlp-*.dist-info/**",
-        "!uv_python/**/site-packages/pip/**",
         "!uv_python/**/site-packages/setuptools/**",
         "!uv_python/**/site-packages/wheel/**"
       ]
+    },
+    {
+      "from": "resources/example-skills",
+      "to": "example-skills"
     }
   ],
   "protocols": [

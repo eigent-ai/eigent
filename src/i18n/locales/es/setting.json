@@ -42,6 +42,7 @@
   "validate-failed": "Validación fallida",
   "copy": "Copiar",
   "copied-to-clipboard": "Copiado al portapapeles",
+  "failed-to-copy-to-clipboard": "Error al copiar al portapapeles",
   "endpoint-url-can-not-be-empty": "Endpoint URL no puede estar vacío!",
   "verification-failed-please-check-endpoint-url": "Verificación fallida, por favor verifique Endpoint URL",
   "eigent-cloud-version": "Eigent Cloud Version",
@@ -50,12 +51,6 @@
   "pricing-options": "opciones de precios",
   "credits": "Créditos",
   "select-model-type": "Seleccionar Model Type",
-  "gpt-4.1-mini": "GPT-4.1 Mini: Menor costo, respuestas más rápidas, pero calidad de salida reducida.",
-  "gpt-4.1": "GPT-4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "claude-opus-4.1": "Claude Opus 4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "gpt-5": "GPT-5: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "gpt-5-mini": "GPT-5 mini: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "gpt-5-nano": "GPT-5 nano: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
   "custom-model": "Modelo personalizado",
   "use-your-own-api-keys-or-set-up-a-local-model": "Usa tus propias API keys o configura un modelo local.",
   "verify": "Verificar",
@@ -118,12 +113,6 @@
   "pricing-options": "opciones de precios",
   "credits": "Créditos",
   "select-model-type": "Seleccionar Model Type",
-  "gpt-4.1-mini": "GPT-4.1 Mini: Menor costo, respuestas más rápidas, pero calidad de salida reducida.",
-  "gpt-4.1": "GPT-4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "claude-opus-4.1": "Claude Opus 4.1: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "gpt-5": "GPT-5: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "gpt-5-mini": "GPT-5 mini: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
-  "gpt-5-nano": "GPT-5 nano: Mayor costo, respuestas más lentas, pero superior calidad y razonamiento.",
   "custom-model": "Modelo personalizado",
   "use-your-own-api-keys-or-set-up-a-local-model": "Usa tus propias API keys o configura un modelo local.",
   "verify": "Verificar",
@@ -253,6 +242,7 @@
   "models-configuration": "Configuración",
 
   "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
   "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
   "gpt-4.1-mini-name": "GPT-4.1 Mini",
   "gpt-4.1-name": "GPT-4.1",
@@ -268,9 +258,5 @@
   "proxy-saved-restart-required": "Configuración de proxy guardada. Reinicie la aplicación para aplicar los cambios.",
   "proxy-save-failed": "Error al guardar la configuración del proxy.",
   "proxy-invalid-url": "URL de proxy no válida. Debe comenzar con http://, https://, socks4:// o socks5://.",
-  "proxy-restart-hint": "Es necesario reiniciar para aplicar los cambios del proxy.",
-
-  "preferred-ide": "IDE preferido",
-  "preferred-ide-description": "Elija qué aplicación usar al abrir las carpetas de proyectos del agente.",
-  "system-file-manager": "Administrador de archivos del sistema"
+  "proxy-restart-hint": "Es necesario reiniciar para aplicar los cambios del proxy."
 }

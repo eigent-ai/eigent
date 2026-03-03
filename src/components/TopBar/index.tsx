@@ -29,6 +29,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import {
@@ -58,6 +59,7 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { toggle } = useSidebarStore();
+  const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
   const appearance = useAuthStore((state) => state.appearance);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
@@ -202,34 +204,28 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
+      className={`drag left-0 right-0 top-0 !h-9 py-1 absolute z-50 flex items-center justify-between ${
         platform === 'darwin' ? 'pl-20' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
     >
       {/* left */}
-      {platform !== 'darwin' && (
-        <div className="no-drag flex w-[70px] items-center justify-center">
+      <div
+        className={`${
+          platform === 'darwin' ? 'w-0' : 'w-[70px]'
+        } no-drag flex items-center justify-center`}
+      >
+        {platform !== 'darwin' && (
           <span className="text-label-md font-bold text-text-heading">
             Eigent
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* center */}
-      <div className="drag flex h-full w-full items-center justify-between">
+      <div className="drag pr-2 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
-          <div className="flex flex-1 items-end justify-start pr-1 pt-1">
-            <Button
-              onClick={() => navigate('/history')}
-              variant="ghost"
-              size="icon"
-              className="no-drag h-6 w-6 p-0"
-            >
-              <img className="h-6 w-6" src={logoSrc} alt="folder-icon" />
-            </Button>
-          </div>
           {location.pathname === '/history' && (
             <div className="mr-1 flex items-center">
               <Button
@@ -238,7 +234,7 @@ function HeaderWin() {
                 className="no-drag"
                 onClick={() => navigate('/')}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4 text-text-label" />
               </Button>
             </div>
           )}
@@ -289,7 +285,7 @@ function HeaderWin() {
                     onClick={toggle}
                     size="sm"
                   >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                    <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
                       {t('layout.new-project')}
                     </span>
                     <ChevronDown />
@@ -308,7 +304,7 @@ function HeaderWin() {
                     className="no-drag text-base font-bold"
                     onClick={toggle}
                   >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                    <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
                       {activeTaskTitle}
                     </span>
                     <ChevronDown />
@@ -318,12 +314,13 @@ function HeaderWin() {
             </>
           )}
         </div>
+
         {/* right */}
         {location.pathname !== '/history' && (
           <div
             className={`${
               platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
+            } no-drag gap-1 relative z-50 flex h-full items-center`}
           >
             {chatStore.activeTaskId &&
               chatStore.tasks[chatStore.activeTaskId as string] &&
@@ -340,9 +337,9 @@ function HeaderWin() {
                 >
                   <Button
                     onClick={() => setEndDialogOpen(true)}
-                    variant="outline"
+                    variant="ghost"
                     size="xs"
-                    className="no-drag justify-center !text-text-cuation"
+                    className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
                   >
                     <Power />
                     {t('layout.end-project')}
@@ -363,7 +360,7 @@ function HeaderWin() {
                     }
                     variant="ghost"
                     size="xs"
-                    className="no-drag bg-button-fill-information !text-button-fill-information-foreground"
+                    className="no-drag bg-surface-information !text-text-information rounded-full"
                   >
                     {t('layout.share')}
                   </Button>
@@ -424,7 +421,7 @@ function HeaderWin() {
           <div
             className={`${
               platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
+            } no-drag gap-1 relative z-50 flex h-full items-center`}
           ></div>
         )}
       </div>
@@ -436,19 +433,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
+            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
+            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
+            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.closeWindow()}
           >
             <X className="h-4 w-4" />

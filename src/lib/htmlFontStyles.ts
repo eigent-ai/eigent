@@ -13,8 +13,21 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * Consistent font style tag for HTML content rendering.
- * Uses system fonts with !important to override inline styles.
+ * Scoped font style for HTML fragments rendered in the main document (e.g. CSV in FolderComponent).
+ * Uses a wrapper class so styles do not leak to the rest of the app (sidebar, file list, etc.).
+ */
+const SCOPED_FONT_STYLE = `<style data-eigent-fonts>
+  .eigent-file-content *, .eigent-file-content *::before, .eigent-file-content *::after {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  }
+  .eigent-file-content code, .eigent-file-content pre, .eigent-file-content kbd, .eigent-file-content samp {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace !important;
+  }
+</style>`;
+
+/**
+ * Unscoped font style for full HTML documents rendered in an iframe (e.g. HtmlRenderer).
+ * Safe there because the iframe has its own document.
  */
 export const FONT_STYLE_TAG = `<style data-eigent-fonts>
   *, *::before, *::after {
@@ -27,22 +40,22 @@ export const FONT_STYLE_TAG = `<style data-eigent-fonts>
 
 /**
  * Injects font styles into HTML content.
- * Smart injection that handles different HTML structures:
- * - Injects after <head> if present
- * - Injects after <html> if no <head>
- * - Prepends to content otherwise
+ * - For fragments (no head/html): uses scoped styles and a wrapper so the app layout is not affected.
+ * - For full documents (iframe): injects global-style tag; scope is the iframe document only.
  */
 export function injectFontStyles(html: string): string {
-  // If HTML has <head>, inject after <head>
+  // If HTML has <head>, inject after <head> (full document, typically in iframe)
   if (/<head[^>]*>/i.test(html)) {
     return html.replace(/(<head[^>]*>)/i, `$1${FONT_STYLE_TAG}`);
   }
-  // If HTML has <html>, inject after <html>
+  // If HTML has <html>, inject after <html> (full document, typically in iframe)
   if (/<html[^>]*>/i.test(html)) {
     return html.replace(/(<html[^>]*>)/i, `$1${FONT_STYLE_TAG}`);
   }
-  // Otherwise prepend to content
-  return FONT_STYLE_TAG + html;
+  // Fragment (e.g. CSV table): scope to wrapper so styles don't affect sidebar/app
+  return (
+    SCOPED_FONT_STYLE + '<div class="eigent-file-content">' + html + '</div>'
+  );
 }
 
 /**
@@ -52,4 +65,132 @@ export function injectFontStyles(html: string): string {
 export function isHtmlDocument(text: string): boolean {
   const trimmed = text.trim();
   return /^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed);
+}
+
+/**
+ * Returns true if the script attributes indicate classic (inline) JavaScript.
+ */
+function isClassicInlineJs(attrs: string): boolean {
+  const a = attrs.toLowerCase();
+  const typeMatch = a.match(
+    /(?:^|\s)type\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
+  );
+  if (!typeMatch) return true;
+
+  const rawType = (typeMatch[1] ?? typeMatch[2] ?? typeMatch[3] ?? '').trim();
+  if (!rawType) return true;
+
+  const normalizedType = rawType.split(';', 1)[0].trim();
+  if (!normalizedType) return true;
+
+  if (normalizedType === 'module') return false;
+  if (normalizedType === 'application/ld+json') return false;
+
+  const jsMimeTypes = new Set([
+    'text/javascript',
+    'application/javascript',
+    'text/ecmascript',
+    'application/ecmascript',
+    'application/x-javascript',
+    'text/x-javascript',
+    'application/x-ecmascript',
+    'text/x-ecmascript',
+    'text/jscript',
+    'text/livescript',
+  ]);
+
+  return jsMimeTypes.has(normalizedType);
+}
+
+/**
+ * Returns true when a script tag has a real src attribute.
+ * This intentionally excludes attributes like data-src.
+ */
+function hasScriptSrc(attrs: string): boolean {
+  return /(?:^|\s)src\s*=/.test(attrs.toLowerCase());
+}
+
+/**
+ * Defers inline classic-JS that appears after external scripts until window load.
+ * This keeps pre-library config scripts in place and preserves global scope by
+ * executing deferred code through dynamically-inserted script elements.
+ */
+export function deferInlineScriptsUntilLoad(html: string): string {
+  const lower = html.toLowerCase();
+  let idx = lower.indexOf('<script');
+  let hasExternal = false;
+  while (idx !== -1) {
+    const end = html.indexOf('>', idx);
+    if (end !== -1) {
+      const attrs = html.slice(idx + '<script'.length, end);
+      if (hasScriptSrc(attrs)) {
+        hasExternal = true;
+        break;
+      }
+    }
+    idx = lower.indexOf('<script', idx + 1);
+  }
+  if (!hasExternal) return html;
+
+  let result = '';
+  let i = 0;
+  let seenExternalScript = false;
+  while (i < html.length) {
+    const scriptStart = lower.indexOf('<script', i);
+    if (scriptStart === -1) {
+      result += html.slice(i);
+      break;
+    }
+    result += html.slice(i, scriptStart);
+    const afterOpen = scriptStart + '<script'.length;
+    const attrEnd = html.indexOf('>', afterOpen);
+    if (attrEnd === -1) {
+      result += html.slice(scriptStart);
+      break;
+    }
+    const attrs = html.slice(afterOpen, attrEnd);
+    const hasSrc = hasScriptSrc(attrs);
+    const contentStart = attrEnd + 1;
+    const endTag = '</script>';
+    const contentEnd = lower.indexOf(endTag, contentStart);
+    if (contentEnd === -1) {
+      result += html.slice(scriptStart);
+      break;
+    }
+    const fullTag = html.slice(scriptStart, contentEnd + endTag.length);
+    const content = html.slice(contentStart, contentEnd);
+    const openTag = html.slice(scriptStart, attrEnd + 1);
+
+    if (hasSrc) {
+      seenExternalScript = true;
+      result += fullTag;
+    } else if (
+      seenExternalScript &&
+      content.trim().length > 0 &&
+      isClassicInlineJs(attrs)
+    ) {
+      const serializedContent = JSON.stringify(content).replace(
+        /<\/script>/gi,
+        '<\\/script>'
+      );
+      const deferredRunner = [
+        '(function(){',
+        'var __eigentRun=function(){',
+        "var __eigentScript=document.createElement('script');",
+        'var __eigentCurrentScript=document.currentScript;',
+        'if(__eigentCurrentScript&&__eigentCurrentScript.nonce){__eigentScript.nonce=__eigentCurrentScript.nonce;}',
+        `__eigentScript.text=${serializedContent};`,
+        '(document.head||document.body||document.documentElement).appendChild(__eigentScript);',
+        '__eigentScript.remove();',
+        '};',
+        "if(document.readyState==='complete'){__eigentRun();}else{window.addEventListener('load',__eigentRun,{once:true});}",
+        '})();',
+      ].join('');
+      result += `${openTag}${deferredRunner}</script>`;
+    } else {
+      result += fullTag;
+    }
+    i = contentEnd + endTag.length;
+  }
+  return result;
 }
