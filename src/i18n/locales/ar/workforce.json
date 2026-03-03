@@ -8,5 +8,13 @@
   "save-changes": "حفظ التغييرات",
   "description-optional": "الوصف (اختياري)",
   "agent-tool": "أداة الوكيل",
-  "share": "مشاركة"
+  "share": "مشاركة",
+  "advanced-model-config": "إعدادات النموذج المتقدمة",
+  "use-custom-model": "استخدام إعدادات نموذج مخصصة",
+  "model-platform": "منصة النموذج",
+  "select-platform": "اختر المنصة",
+  "model-type": "نوع النموذج",
+  "model-type-placeholder": "مثال: gpt-4o-mini",
+  "worker-name-cannot-be-empty": "لا يمكن أن يكون اسم العامل فارغًا",
+  "worker-name-already-exists": "اسم العامل موجود بالفعل"
 }

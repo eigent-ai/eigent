@@ -12,29 +12,42 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AddWorker } from '@/components/AddWorker';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  MenuToggleGroup,
+  MenuToggleItem,
+} from '@/components/MenuButton/MenuButton';
+import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useWorkerList } from '@/store/authStore';
+import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bird,
   Bot,
+  ChevronLeft,
+  ChevronRight,
   CodeXml,
   FileText,
   Globe,
   Image,
-  Inbox,
-  LayoutGrid,
 } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Badge } from '../ui/badge';
 
-export function WorkspaceMenu() {
+interface WorkSpaceMenuProps {
+  onToggleChatBox?: () => void;
+  isChatBoxVisible?: boolean;
+}
+
+export function WorkSpaceMenu({
+  onToggleChatBox,
+  isChatBoxVisible = true,
+}: WorkSpaceMenuProps) {
   const { t } = useTranslation();
   const { chatStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
+
+  const { moveLeft, moveRight } = useWorkflowViewportStore();
 
   const baseWorker: Agent[] = useMemo(
     () => [
@@ -86,6 +99,10 @@ export function WorkspaceMenu() {
   const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
   const webViewUrls = chatStore?.tasks[activeTaskId]?.webViewUrls;
 
+  // Helper to safely access task properties
+  const getCurrentTask = () =>
+    activeTaskId ? chatStore?.tasks?.[activeTaskId] : undefined;
+
   const agentList = useMemo(() => {
     if (!chatStore) return [];
     const base = [...baseWorker, ...workerList].filter(
@@ -99,12 +116,11 @@ export function WorkspaceMenu() {
     const cleanup = window.electronAPI.onWebviewNavigated(
       (id: string, url: string) => {
         if (!chatStore.activeTaskId) return;
-        let webViewUrls = [
-          ...chatStore.tasks[chatStore.activeTaskId as string].webViewUrls,
-        ];
-        let taskAssigning = [
-          ...chatStore.tasks[chatStore.activeTaskId as string].taskAssigning,
-        ];
+        const currentTask = getCurrentTask();
+        if (!currentTask) return;
+
+        let webViewUrls = [...(currentTask.webViewUrls || [])];
+        let taskAssigning = [...(currentTask.taskAssigning || [])];
         const hasId = taskAssigning.find((item) =>
           item.activeWebviewIds?.find((webview) => webview.id === id)
         );
@@ -193,10 +209,10 @@ export function WorkspaceMenu() {
             window.ipcRenderer
               .invoke('capture-webview', webview.id)
               .then((base64: string) => {
-                let taskAssigning = [
-                  ...chatStore.tasks[chatStore.activeTaskId as string]
-                    .taskAssigning,
-                ];
+                const currentTask = getCurrentTask();
+                if (!currentTask) return;
+
+                let taskAssigning = [...(currentTask.taskAssigning || [])];
                 const browserAgentIndex = taskAssigning.findIndex(
                   (agent) => agent.agent_id === webview.agent_id
                 );
@@ -325,44 +341,8 @@ export function WorkspaceMenu() {
   };
 
   return (
-    <div className="h-full">
-      <div className="flex-start flex h-full items-center">
-        <div className="flex-start mr-3 flex items-center gap-1">
-          {chatStore.activeTaskId && (
-            <ToggleGroup
-              type="single"
-              size="sm"
-              value={
-                chatStore.tasks[chatStore.activeTaskId as string]
-                  .activeWorkspace as string
-              }
-              onValueChange={onValueChange}
-              className="flex items-center gap-2"
-            >
-              <ToggleGroupItem value="workflow" className="!h-10 !w-10 p-2">
-                <LayoutGrid className="!h-6 !w-6" />
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="documentWorkSpace"
-                className="relative !h-10 !w-10 p-2"
-              >
-                {chatStore.tasks[chatStore.activeTaskId as string].nuwFileNum >
-                  0 && (
-                  <Badge
-                    className="absolute right-0.5 top-0.5 h-4 min-w-4 rounded-full bg-icon-cuation px-1 font-mono tabular-nums text-white-100%"
-                    variant="destructive"
-                  >
-                    {
-                      chatStore.tasks[chatStore.activeTaskId as string]
-                        .nuwFileNum
-                    }
-                  </Badge>
-                )}
-                <Inbox className="!h-6 !w-6" />
-              </ToggleGroupItem>
-            </ToggleGroup>
-          )}
-        </div>
+    <div className="w-full">
+      <div className="relative flex h-full w-full flex-row items-center justify-center">
         {/* activeAgent */}
         <AnimatePresence>
           {agentList.length > 0 && (
@@ -371,16 +351,15 @@ export function WorkspaceMenu() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className={`border-[0px] border-l border-solid border-white-100% px-3`}
+              className={`flex w-fit flex-row gap-2 pl-2`}
             >
-              <ToggleGroup
+              <MenuToggleGroup
                 type="single"
-                value={
-                  chatStore.tasks[chatStore.activeTaskId as string]
-                    .activeWorkspace as string
-                }
+                size="md"
+                orientation="horizontal"
+                value={getCurrentTask()?.activeWorkspace as string}
                 onValueChange={onValueChange}
-                className="scrollbar-horizontal flex max-w-[500px] items-center gap-2 overflow-x-auto"
+                className="flex w-full items-center gap-2 pb-2"
               >
                 <AnimatePresence mode="popLayout">
                   {agentList.map((agent) => (
@@ -395,7 +374,7 @@ export function WorkspaceMenu() {
                       }}
                       layout
                     >
-                      <ToggleGroupItem
+                      <MenuToggleItem
                         disabled={
                           ![
                             'developer_agent',
@@ -406,29 +385,41 @@ export function WorkspaceMenu() {
                           agent.tasks.length === 0
                         }
                         value={agent.agent_id}
-                        aria-label="Toggle bold"
-                        className={`relative !h-10 !w-10 !p-2 hover:bg-white-100% ${
-                          agent.tasks.length === 0 && 'opacity-30'
-                        }`}
-                      >
-                        <Bot className={`!h-6 !w-6`} />
-                        <div className="absolute right-1 top-0">
-                          {
-                            agentIconMap[
-                              agent.type as keyof typeof agentIconMap
-                            ]
-                          }
-                        </div>
-                      </ToggleGroupItem>
+                        icon={<Bot />}
+                        subIcon={
+                          agentIconMap[agent.type as keyof typeof agentIconMap]
+                        }
+                        showSubIcon={true}
+                        className={agent.tasks.length === 0 ? 'opacity-30' : ''}
+                      />
                     </motion.div>
                   ))}
                 </AnimatePresence>
-              </ToggleGroup>
+              </MenuToggleGroup>
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="mr-3 h-full w-[1px] bg-white-100%"></div>
-        <AddWorker />
+        {/* Viewport Navigation Buttons */}
+        {(moveLeft || moveRight) && (
+          <div className="absolute right-2 flex items-center pb-2">
+            <Button
+              variant="ghost"
+              size="md"
+              className="px-2"
+              onClick={moveLeft || undefined}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              className="px-2"
+              onClick={moveRight || undefined}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

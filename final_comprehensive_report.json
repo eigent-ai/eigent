@@ -1,0 +1,92 @@
+[
+  {
+    "model": "claude-opus-4-5",
+    "task_success_rate": 80.0,
+    "criteria_success_rate": 80.0,
+    "avg_tool_calls": 32.375,
+    "avg_api_calls": 41.1875,
+    "avg_success_tool_calls": 15.11111111111111,
+    "avg_failure_tool_calls": 57.333333333333336,
+    "total_tasks": 15,
+    "success_count": 12,
+    "failure_count": 3,
+    "success_tool_calls_list": [
+      26,
+      25,
+      27,
+      7,
+      11,
+      2,
+      11,
+      11,
+      16
+    ],
+    "failure_tool_calls_list": [
+      76,
+      60,
+      36
+    ]
+  },
+  {
+    "model": "gemini-3-pro-preview",
+    "task_success_rate": 73.33333333333333,
+    "criteria_success_rate": 75.0,
+    "avg_tool_calls": 22.142857142857142,
+    "avg_api_calls": 31.285714285714285,
+    "avg_success_tool_calls": 21.09090909090909,
+    "avg_failure_tool_calls": 44.25,
+    "total_tasks": 15,
+    "success_count": 11,
+    "failure_count": 4,
+    "success_tool_calls_list": [
+      30,
+      33,
+      42,
+      25,
+      26,
+      11,
+      11,
+      16,
+      18,
+      10,
+      10
+    ],
+    "failure_tool_calls_list": [
+      13,
+      59,
+      27,
+      78
+    ]
+  },
+  {
+    "model": "gpt-5.1",
+    "task_success_rate": 66.66666666666666,
+    "criteria_success_rate": 70.0,
+    "avg_tool_calls": 17.666666666666668,
+    "avg_api_calls": 25.476190476190474,
+    "avg_success_tool_calls": 22.5,
+    "avg_failure_tool_calls": 19.4,
+    "total_tasks": 15,
+    "success_count": 10,
+    "failure_count": 5,
+    "success_tool_calls_list": [
+      32,
+      25,
+      48,
+      31,
+      33,
+      18,
+      10,
+      10,
+      7,
+      11
+    ],
+    "failure_tool_calls_list": [
+      27,
+      17,
+      26,
+      17,
+      10
+    ]
+  }
+]

@@ -1,0 +1,665 @@
+{
+  "summary": {
+    "total_models": 4
+  },
+  "model_statistics": {
+    "gpt-5.1": {
+      "total_tasks": 21,
+      "tasks_with_developer_agent": 7,
+      "total_developer_agent_calls": 31,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "01",
+          "has_developer_agent": true,
+          "developer_agent_count": 4,
+          "files": [
+            {
+              "file": "conv_20251126_212000_189588.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_212002_828147.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_212005_104636.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_212007_675577.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "02",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "05",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "06",
+          "has_developer_agent": true,
+          "developer_agent_count": 2,
+          "files": [
+            {
+              "file": "conv_20251127_012652_948832.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_012655_222547.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "07",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "08",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "09",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "10",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "11",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "01",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "05",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "06",
+          "has_developer_agent": true,
+          "developer_agent_count": 6,
+          "files": [
+            {
+              "file": "conv_20251127_002734_081033.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_002727_505695.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_002721_309002.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_002730_922724.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_002724_250074.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_002812_842316.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "saed",
+          "task_num": "01",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "02",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "03",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "07",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "08",
+          "has_developer_agent": true,
+          "developer_agent_count": 1,
+          "files": [
+            {
+              "file": "conv_20251126_211236_596267.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "saed",
+          "task_num": "09",
+          "has_developer_agent": true,
+          "developer_agent_count": 4,
+          "files": [
+            {
+              "file": "conv_20251126_212051_015665.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_212029_773224.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_212034_544752.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_212031_725873.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "waleed",
+          "task_num": "01",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "05",
+          "has_developer_agent": true,
+          "developer_agent_count": 7,
+          "files": [
+            {
+              "file": "conv_20251126_115837_605920.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_115834_061436.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_115813_627976.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_115853_612563.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_115815_531989.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_115856_243085.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_115818_408576.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "waleed",
+          "task_num": "06",
+          "has_developer_agent": true,
+          "developer_agent_count": 7,
+          "files": [
+            {
+              "file": "conv_20251126_120749_904957.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_120819_459193.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_120747_540111.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_120816_939499.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_120834_994317.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_120804_918671.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_120808_036910.json",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    "claude-opus-4-5": {
+      "total_tasks": 16,
+      "tasks_with_developer_agent": 0,
+      "total_developer_agent_calls": 0,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "03",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "04",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "12",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "03",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "04",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "05",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "12",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "07",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "08",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "09",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "claude",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "claude",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "claude",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "02",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "03",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "04",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        }
+      ]
+    },
+    "gemini-3-pro-preview": {
+      "total_tasks": 14,
+      "tasks_with_developer_agent": 2,
+      "total_developer_agent_calls": 14,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "06",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "07",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "08",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "01",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "02",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "10",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "11",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "12",
+          "has_developer_agent": true,
+          "developer_agent_count": 5,
+          "files": [
+            {
+              "file": "conv_20251127_012956_282462.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_013003_229172.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_012939_402428.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_013009_194993.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251127_012921_646176.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "saed",
+          "task_num": "04",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "05",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "06",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "07",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "08",
+          "has_developer_agent": true,
+          "developer_agent_count": 9,
+          "files": [
+            {
+              "file": "conv_20251126_124820_089404.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124639_480780.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124824_384354.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124606_870657.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124755_776385.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124801_387712.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_125107_487915.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124812_384476.json",
+              "count": 1
+            },
+            {
+              "file": "conv_20251126_124726_375689.json",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "user": "waleed",
+          "task_num": "09",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        }
+      ]
+    },
+    "claude-sonnet-4-5": {
+      "total_tasks": 12,
+      "tasks_with_developer_agent": 0,
+      "total_developer_agent_calls": 0,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "09",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "10",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "11",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "02",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "03",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "puzhen",
+          "task_num": "04",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "10",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "11",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "saed",
+          "task_num": "12",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "10",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "11",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        },
+        {
+          "user": "waleed",
+          "task_num": "12",
+          "has_developer_agent": false,
+          "developer_agent_count": 0,
+          "files": []
+        }
+      ]
+    }
+  }
+}

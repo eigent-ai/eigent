@@ -1,0 +1,64 @@
+[
+  {
+    "model": "claude-opus-4-5",
+    "original_total": 15,
+    "original_success": 12,
+    "original_failure": 3,
+    "original_task_success_rate": 80.0,
+    "timeout_failures_removed": 2,
+    "new_total": 13,
+    "new_success": 12,
+    "new_failure": 1,
+    "new_task_success_rate": 92.3076923076923,
+    "new_criteria_success_rate": 85.18518518518519,
+    "failed_tasks_removed": [
+      "pengcheng/04",
+      "pengcheng/05"
+    ],
+    "failed_tasks_kept": [
+      "pengcheng/06"
+    ]
+  },
+  {
+    "model": "gemini-3-pro-preview",
+    "original_total": 15,
+    "original_success": 11,
+    "original_failure": 4,
+    "original_task_success_rate": 73.33333333333333,
+    "timeout_failures_removed": 2,
+    "new_total": 13,
+    "new_success": 11,
+    "new_failure": 2,
+    "new_task_success_rate": 84.61538461538461,
+    "new_criteria_success_rate": 79.62962962962963,
+    "failed_tasks_removed": [
+      "pengcheng/01",
+      "pengcheng/02"
+    ],
+    "failed_tasks_kept": [
+      "Tao sun/06",
+      "pengcheng/12"
+    ]
+  },
+  {
+    "model": "gpt-5.1",
+    "original_total": 15,
+    "original_success": 10,
+    "original_failure": 5,
+    "original_task_success_rate": 66.66666666666666,
+    "timeout_failures_removed": 0,
+    "new_total": 15,
+    "new_success": 10,
+    "new_failure": 5,
+    "new_task_success_rate": 66.66666666666666,
+    "new_criteria_success_rate": 70.0,
+    "failed_tasks_removed": [],
+    "failed_tasks_kept": [
+      "Tao sun/01",
+      "Tao sun/02",
+      "pengcheng/08",
+      "pengcheng/09",
+      "puzhen/06"
+    ]
+  }
+]

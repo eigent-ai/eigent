@@ -1,0 +1,777 @@
+{
+  "task_analysis": [
+    {
+      "task_name": "Tao sun",
+      "min_steps": 24,
+      "success_attempts": [
+        {
+          "model": "gpt-5.1",
+          "steps": 30,
+          "task_num": "03"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 29,
+          "task_num": "04"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 33,
+          "task_num": "05"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 24,
+          "task_num": "07"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 25,
+          "task_num": "08"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 25,
+          "task_num": "09"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 25,
+          "task_num": "10"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 25,
+          "task_num": "11"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 29,
+          "task_num": "12"
+        }
+      ],
+      "total_attempts": 12
+    },
+    {
+      "task_name": "pengcheng",
+      "min_steps": 25,
+      "success_attempts": [
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 39,
+          "task_num": "03"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 33,
+          "task_num": "07"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 25,
+          "task_num": "10"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 26,
+          "task_num": "11"
+        }
+      ],
+      "total_attempts": 12
+    },
+    {
+      "task_name": "puzhen",
+      "min_steps": 1,
+      "success_attempts": [
+        {
+          "model": "claude-opus-4-5",
+          "steps": 7,
+          "task_num": "01"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 10,
+          "task_num": "02"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 1,
+          "task_num": "03"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 17,
+          "task_num": "04"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 10,
+          "task_num": "05"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 4,
+          "task_num": "06"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 9,
+          "task_num": "07"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 9,
+          "task_num": "08"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 14,
+          "task_num": "09"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 7,
+          "task_num": "01"
+        },
+        {
+          "model": "gpt-5.1",
+          "steps": 10,
+          "task_num": "02"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 17,
+          "task_num": "04"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 10,
+          "task_num": "05"
+        },
+        {
+          "model": "gemini-3-pro-preview",
+          "steps": 4,
+          "task_num": "06"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 9,
+          "task_num": "07"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 9,
+          "task_num": "08"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 14,
+          "task_num": "09"
+        }
+      ],
+      "total_attempts": 18
+    },
+    {
+      "task_name": "saed",
+      "min_steps": 12,
+      "success_attempts": [
+        {
+          "model": "claude-opus-4-5",
+          "steps": 12,
+          "task_num": "claude_opus_4-5_1"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 12,
+          "task_num": "claude_opus_4-5_2"
+        },
+        {
+          "model": "claude-opus-4-5",
+          "steps": 12,
+          "task_num": "claude_opus_4-5_3"
+        }
+      ],
+      "total_attempts": 3
+    }
+  ],
+  "model_analysis": {
+    "gpt-5.1": {
+      "tasks_by_min_steps": {
+        "24": [
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 24,
+            "success": false
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 16,
+            "success": false
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 30,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 25,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 25,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 29,
+            "success": true
+          }
+        ],
+        "25": [
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 33,
+            "success": true
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 26,
+            "success": false
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 17,
+            "success": false
+          }
+        ],
+        "1": [
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 17,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 10,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 4,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 7,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 10,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 4,
+            "success": false
+          }
+        ]
+      },
+      "all_tasks": [
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 24,
+          "success": false
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 16,
+          "success": false
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 30,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 25,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 25,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 29,
+          "success": true
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 33,
+          "success": true
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 26,
+          "success": false
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 17,
+          "success": false
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 17,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 10,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 4,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 7,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 10,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 4,
+          "success": false
+        }
+      ]
+    },
+    "gemini-3-pro-preview": {
+      "tasks_by_min_steps": {
+        "24": [
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 29,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 33,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 13,
+            "success": false
+          }
+        ],
+        "25": [
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 59,
+            "success": false
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 27,
+            "success": false
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 39,
+            "success": true
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 25,
+            "success": true
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 26,
+            "success": true
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 70,
+            "success": false
+          }
+        ],
+        "1": [
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 9,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 9,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 14,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 17,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 10,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 4,
+            "success": true
+          }
+        ]
+      },
+      "all_tasks": [
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 29,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 33,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 13,
+          "success": false
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 59,
+          "success": false
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 27,
+          "success": false
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 39,
+          "success": true
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 25,
+          "success": true
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 26,
+          "success": true
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 70,
+          "success": false
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 9,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 9,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 14,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 17,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 10,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 4,
+          "success": true
+        }
+      ]
+    },
+    "claude-opus-4-5": {
+      "tasks_by_min_steps": {
+        "24": [
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 24,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 25,
+            "success": true
+          },
+          {
+            "task_name": "Tao sun",
+            "min_steps": 24,
+            "actual_steps": 25,
+            "success": true
+          }
+        ],
+        "25": [
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 72,
+            "success": false
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 57,
+            "success": false
+          },
+          {
+            "task_name": "pengcheng",
+            "min_steps": 25,
+            "actual_steps": 33,
+            "success": false
+          }
+        ],
+        "1": [
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 7,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 10,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 1,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 9,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 9,
+            "success": true
+          },
+          {
+            "task_name": "puzhen",
+            "min_steps": 1,
+            "actual_steps": 14,
+            "success": true
+          }
+        ],
+        "12": [
+          {
+            "task_name": "saed",
+            "min_steps": 12,
+            "actual_steps": 12,
+            "success": true
+          },
+          {
+            "task_name": "saed",
+            "min_steps": 12,
+            "actual_steps": 12,
+            "success": true
+          },
+          {
+            "task_name": "saed",
+            "min_steps": 12,
+            "actual_steps": 12,
+            "success": true
+          }
+        ]
+      },
+      "all_tasks": [
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 24,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 25,
+          "success": true
+        },
+        {
+          "task_name": "Tao sun",
+          "min_steps": 24,
+          "actual_steps": 25,
+          "success": true
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 72,
+          "success": false
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 57,
+          "success": false
+        },
+        {
+          "task_name": "pengcheng",
+          "min_steps": 25,
+          "actual_steps": 33,
+          "success": false
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 7,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 10,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 1,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 9,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 9,
+          "success": true
+        },
+        {
+          "task_name": "puzhen",
+          "min_steps": 1,
+          "actual_steps": 14,
+          "success": true
+        },
+        {
+          "task_name": "saed",
+          "min_steps": 12,
+          "actual_steps": 12,
+          "success": true
+        },
+        {
+          "task_name": "saed",
+          "min_steps": 12,
+          "actual_steps": 12,
+          "success": true
+        },
+        {
+          "task_name": "saed",
+          "min_steps": 12,
+          "actual_steps": 12,
+          "success": true
+        }
+      ]
+    }
+  }
+}

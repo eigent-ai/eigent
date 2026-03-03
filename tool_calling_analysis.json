@@ -1,0 +1,416 @@
+{
+  "models": {
+    "gpt-5.1": {
+      "total_tasks": 21,
+      "total_tool_calls": 371,
+      "total_api_calls": 535,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "01",
+          "tool_calls": 27,
+          "api_calls": 39
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "02",
+          "tool_calls": 17,
+          "api_calls": 22
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "05",
+          "tool_calls": 33,
+          "api_calls": 39
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "06",
+          "tool_calls": 36,
+          "api_calls": 44
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "07",
+          "tool_calls": 33,
+          "api_calls": 32
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "08",
+          "tool_calls": 26,
+          "api_calls": 30
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "09",
+          "tool_calls": 17,
+          "api_calls": 26
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "10",
+          "tool_calls": 25,
+          "api_calls": 29
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "11",
+          "tool_calls": 26,
+          "api_calls": 31
+        },
+        {
+          "user": "puzhen",
+          "task_num": "01",
+          "tool_calls": 7,
+          "api_calls": 13
+        },
+        {
+          "user": "puzhen",
+          "task_num": "05",
+          "tool_calls": 10,
+          "api_calls": 19
+        },
+        {
+          "user": "puzhen",
+          "task_num": "06",
+          "tool_calls": 10,
+          "api_calls": 22
+        },
+        {
+          "user": "saed",
+          "task_num": "01",
+          "tool_calls": 12,
+          "api_calls": 16
+        },
+        {
+          "user": "saed",
+          "task_num": "02",
+          "tool_calls": 16,
+          "api_calls": 21
+        },
+        {
+          "user": "saed",
+          "task_num": "03",
+          "tool_calls": 20,
+          "api_calls": 25
+        },
+        {
+          "user": "saed",
+          "task_num": "07",
+          "tool_calls": 4,
+          "api_calls": 13
+        },
+        {
+          "user": "saed",
+          "task_num": "08",
+          "tool_calls": 2,
+          "api_calls": 12
+        },
+        {
+          "user": "saed",
+          "task_num": "09",
+          "tool_calls": 4,
+          "api_calls": 17
+        },
+        {
+          "user": "waleed",
+          "task_num": "01",
+          "tool_calls": 14,
+          "api_calls": 23
+        },
+        {
+          "user": "waleed",
+          "task_num": "05",
+          "tool_calls": 19,
+          "api_calls": 35
+        },
+        {
+          "user": "waleed",
+          "task_num": "06",
+          "tool_calls": 13,
+          "api_calls": 27
+        }
+      ]
+    },
+    "claude-opus-4-5": {
+      "total_tasks": 16,
+      "total_tool_calls": 518,
+      "total_api_calls": 659,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "03",
+          "tool_calls": 32,
+          "api_calls": 41
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "04",
+          "tool_calls": 30,
+          "api_calls": 39
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "12",
+          "tool_calls": 31,
+          "api_calls": 40
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "03",
+          "tool_calls": 42,
+          "api_calls": 51
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "04",
+          "tool_calls": 76,
+          "api_calls": 88
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "05",
+          "tool_calls": 60,
+          "api_calls": 73
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "12",
+          "tool_calls": 78,
+          "api_calls": 99
+        },
+        {
+          "user": "puzhen",
+          "task_num": "07",
+          "tool_calls": 11,
+          "api_calls": 17
+        },
+        {
+          "user": "puzhen",
+          "task_num": "08",
+          "tool_calls": 11,
+          "api_calls": 17
+        },
+        {
+          "user": "puzhen",
+          "task_num": "09",
+          "tool_calls": 16,
+          "api_calls": 22
+        },
+        {
+          "user": "saed",
+          "task_num": "claude",
+          "tool_calls": 14,
+          "api_calls": 20
+        },
+        {
+          "user": "saed",
+          "task_num": "claude",
+          "tool_calls": 14,
+          "api_calls": 20
+        },
+        {
+          "user": "saed",
+          "task_num": "claude",
+          "tool_calls": 14,
+          "api_calls": 20
+        },
+        {
+          "user": "waleed",
+          "task_num": "02",
+          "tool_calls": 35,
+          "api_calls": 44
+        },
+        {
+          "user": "waleed",
+          "task_num": "03",
+          "tool_calls": 17,
+          "api_calls": 23
+        },
+        {
+          "user": "waleed",
+          "task_num": "04",
+          "tool_calls": 37,
+          "api_calls": 45
+        }
+      ]
+    },
+    "gemini-3-pro-preview": {
+      "total_tasks": 14,
+      "total_tool_calls": 310,
+      "total_api_calls": 438,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "06",
+          "tool_calls": 13,
+          "api_calls": 19
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "07",
+          "tool_calls": 26,
+          "api_calls": 37
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "08",
+          "tool_calls": 25,
+          "api_calls": 35
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "01",
+          "tool_calls": 59,
+          "api_calls": 73
+        },
+        {
+          "user": "pengcheng",
+          "task_num": "02",
+          "tool_calls": 27,
+          "api_calls": 27
+        },
+        {
+          "user": "puzhen",
+          "task_num": "10",
+          "tool_calls": 13,
+          "api_calls": 18
+        },
+        {
+          "user": "puzhen",
+          "task_num": "11",
+          "tool_calls": 22,
+          "api_calls": 30
+        },
+        {
+          "user": "puzhen",
+          "task_num": "12",
+          "tool_calls": 16,
+          "api_calls": 28
+        },
+        {
+          "user": "saed",
+          "task_num": "04",
+          "tool_calls": 11,
+          "api_calls": 17
+        },
+        {
+          "user": "saed",
+          "task_num": "05",
+          "tool_calls": 15,
+          "api_calls": 27
+        },
+        {
+          "user": "saed",
+          "task_num": "06",
+          "tool_calls": 15,
+          "api_calls": 25
+        },
+        {
+          "user": "waleed",
+          "task_num": "07",
+          "tool_calls": 23,
+          "api_calls": 34
+        },
+        {
+          "user": "waleed",
+          "task_num": "08",
+          "tool_calls": 30,
+          "api_calls": 43
+        },
+        {
+          "user": "waleed",
+          "task_num": "09",
+          "tool_calls": 15,
+          "api_calls": 25
+        }
+      ]
+    },
+    "claude-sonnet-4-5": {
+      "total_tasks": 12,
+      "total_tool_calls": 337,
+      "total_api_calls": 456,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task_num": "09",
+          "tool_calls": 27,
+          "api_calls": 37
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "10",
+          "tool_calls": 25,
+          "api_calls": 35
+        },
+        {
+          "user": "Tao sun",
+          "task_num": "11",
+          "tool_calls": 48,
+          "api_calls": 59
+        },
+        {
+          "user": "puzhen",
+          "task_num": "02",
+          "tool_calls": 11,
+          "api_calls": 17
+        },
+        {
+          "user": "puzhen",
+          "task_num": "03",
+          "tool_calls": 2,
+          "api_calls": 6
+        },
+        {
+          "user": "puzhen",
+          "task_num": "04",
+          "tool_calls": 18,
+          "api_calls": 24
+        },
+        {
+          "user": "saed",
+          "task_num": "10",
+          "tool_calls": 17,
+          "api_calls": 26
+        },
+        {
+          "user": "saed",
+          "task_num": "11",
+          "tool_calls": 20,
+          "api_calls": 29
+        },
+        {
+          "user": "saed",
+          "task_num": "12",
+          "tool_calls": 19,
+          "api_calls": 28
+        },
+        {
+          "user": "waleed",
+          "task_num": "10",
+          "tool_calls": 16,
+          "api_calls": 27
+        },
+        {
+          "user": "waleed",
+          "task_num": "11",
+          "tool_calls": 28,
+          "api_calls": 40
+        },
+        {
+          "user": "waleed",
+          "task_num": "12",
+          "tool_calls": 106,
+          "api_calls": 128
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_models": 4,
+    "total_tasks": 63,
+    "total_tool_calls": 1536,
+    "total_api_calls": 2088
+  }
+}

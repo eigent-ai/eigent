@@ -192,9 +192,9 @@ export default function BrowserAgentWorkspace() {
     </div>
   ) : (
     <div
-      className={`flex h-[calc(100vh-104px)] w-full flex-1 items-center justify-center transition-all duration-300 ease-in-out`}
+      className={`flex h-full w-full flex-1 items-center justify-center transition-all duration-300 ease-in-out`}
     >
-      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-menutabs-bg-default">
+      <div className="blur-bg relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-surface-secondary">
         <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
           <div className="flex items-center justify-start gap-sm">
             <Button

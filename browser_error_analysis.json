@@ -1,0 +1,546 @@
+{
+  "models": {
+    "gpt-5.1": {
+      "total_tasks": 21,
+      "total_actions": 661,
+      "total_errors": 0,
+      "tasks_with_errors": 0,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task": "01",
+          "total_actions": 48,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "02",
+          "total_actions": 32,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "05",
+          "total_actions": 60,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "06",
+          "total_actions": 65,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "07",
+          "total_actions": 63,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "08",
+          "total_actions": 50,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "09",
+          "total_actions": 32,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "10",
+          "total_actions": 49,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "11",
+          "total_actions": 50,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "01",
+          "total_actions": 13,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "05",
+          "total_actions": 19,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "06",
+          "total_actions": 7,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "01",
+          "total_actions": 22,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "02",
+          "total_actions": 30,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "03",
+          "total_actions": 38,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "07",
+          "total_actions": 8,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "08",
+          "total_actions": 4,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "09",
+          "total_actions": 4,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "01",
+          "total_actions": 26,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "05",
+          "total_actions": 25,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "06",
+          "total_actions": 16,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        }
+      ]
+    },
+    "claude-opus-4-5": {
+      "total_tasks": 16,
+      "total_actions": 862,
+      "total_errors": 0,
+      "tasks_with_errors": 0,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task": "03",
+          "total_actions": 55,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "04",
+          "total_actions": 52,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "12",
+          "total_actions": 54,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "03",
+          "total_actions": 72,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "04",
+          "total_actions": 129,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "05",
+          "total_actions": 105,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "12",
+          "total_actions": 127,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "07",
+          "total_actions": 17,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "08",
+          "total_actions": 17,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "09",
+          "total_actions": 25,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "claude",
+          "total_actions": 22,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "claude",
+          "total_actions": 22,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "claude",
+          "total_actions": 22,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "02",
+          "total_actions": 57,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "03",
+          "total_actions": 26,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "04",
+          "total_actions": 60,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        }
+      ]
+    },
+    "gemini-3-pro-preview": {
+      "total_tasks": 14,
+      "total_actions": 537,
+      "total_errors": 0,
+      "tasks_with_errors": 0,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task": "06",
+          "total_actions": 24,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "07",
+          "total_actions": 46,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "08",
+          "total_actions": 48,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "01",
+          "total_actions": 105,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "pengcheng",
+          "task": "02",
+          "total_actions": 50,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "10",
+          "total_actions": 23,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "11",
+          "total_actions": 42,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "12",
+          "total_actions": 21,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "04",
+          "total_actions": 20,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "05",
+          "total_actions": 26,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "06",
+          "total_actions": 26,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "07",
+          "total_actions": 42,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "08",
+          "total_actions": 34,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "09",
+          "total_actions": 30,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        }
+      ]
+    },
+    "claude-sonnet-4-5": {
+      "total_tasks": 12,
+      "total_actions": 496,
+      "total_errors": 0,
+      "tasks_with_errors": 0,
+      "task_details": [
+        {
+          "user": "Tao sun",
+          "task": "09",
+          "total_actions": 46,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "10",
+          "total_actions": 46,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "Tao sun",
+          "task": "11",
+          "total_actions": 46,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "02",
+          "total_actions": 18,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "03",
+          "total_actions": 2,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "puzhen",
+          "task": "04",
+          "total_actions": 31,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "10",
+          "total_actions": 29,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "11",
+          "total_actions": 30,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "saed",
+          "task": "12",
+          "total_actions": 32,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "10",
+          "total_actions": 24,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "11",
+          "total_actions": 41,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        },
+        {
+          "user": "waleed",
+          "task": "12",
+          "total_actions": 151,
+          "error_count": 0,
+          "error_rate": 0.0,
+          "error_details": []
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_models": 4,
+    "total_tasks": 63,
+    "total_actions": 2556,
+    "total_errors": 0
+  }
+}
