@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """
 Standard Python Environment Management
 
@@ -10,13 +24,13 @@ agents try to create environments simultaneously.
 """
 
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import threading
-import platform
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 from utils import traceroot_wrapper as traceroot
 
@@ -50,30 +64,32 @@ def get_standard_env_marker_file(env_path: Path) -> Path:
 
 def _get_python_executable(env_path: Path) -> str:
     """Get the Python executable path for an environment."""
-    if platform.system() == 'Windows':
+    if platform.system() == "Windows":
         return str(env_path / "Scripts" / "python.exe")
     return str(env_path / "bin" / "python")
 
 
-def _get_uv_path() -> Optional[str]:
+def _get_uv_path() -> str | None:
     """Get the path to uv if available."""
     try:
         result = subprocess.run(
-            ["which", "uv"] if platform.system() != 'Windows' else ["where", "uv"],
+            ["which", "uv"]
+            if platform.system() != "Windows"
+            else ["where", "uv"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
         if result.returncode == 0:
-            return result.stdout.strip().split('\n')[0]
+            return result.stdout.strip().split("\n")[0]
     except Exception:
         pass
     return None
 
 
 def ensure_standard_environment(
-    update_callback: Optional[Callable[[str], None]] = None
-) -> Optional[str]:
+    update_callback: Callable[[str], None] | None = None,
+) -> str | None:
     """
     Ensure the standard environment exists with all required packages.
 
@@ -112,7 +128,9 @@ def ensure_standard_environment(
 
             env_path.mkdir(parents=True, exist_ok=True)
 
-            current_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            current_version = (
+                f"{sys.version_info.major}.{sys.version_info.minor}"
+            )
             uv_path = _get_uv_path()
 
             if uv_path:
@@ -122,7 +140,13 @@ def ensure_standard_environment(
 
                 # Create venv with uv
                 subprocess.run(
-                    [uv_path, "venv", "--python", current_version, str(env_path)],
+                    [
+                        uv_path,
+                        "venv",
+                        "--python",
+                        current_version,
+                        str(env_path),
+                    ],
                     check=True,
                     capture_output=True,
                     timeout=300,
@@ -132,8 +156,16 @@ def ensure_standard_environment(
 
                 # Install pip, setuptools, wheel
                 subprocess.run(
-                    [uv_path, "pip", "install", "--python", python_path,
-                     "pip", "setuptools", "wheel"],
+                    [
+                        uv_path,
+                        "pip",
+                        "install",
+                        "--python",
+                        python_path,
+                        "pip",
+                        "setuptools",
+                        "wheel",
+                    ],
                     check=True,
                     capture_output=True,
                     timeout=300,
@@ -141,10 +173,13 @@ def ensure_standard_environment(
 
                 # Install standard packages
                 if update_callback:
-                    update_callback(f"Installing packages: {', '.join(STANDARD_PACKAGES)}\n")
+                    update_callback(
+                        f"Installing packages: {', '.join(STANDARD_PACKAGES)}\n"
+                    )
 
                 subprocess.run(
-                    [uv_path, "pip", "install", "--python", python_path] + STANDARD_PACKAGES,
+                    [uv_path, "pip", "install", "--python", python_path]
+                    + STANDARD_PACKAGES,
                     check=True,
                     capture_output=True,
                     timeout=600,
@@ -152,9 +187,12 @@ def ensure_standard_environment(
             else:
                 # Fallback to standard venv
                 if update_callback:
-                    update_callback("Using standard venv to create environment...\n")
+                    update_callback(
+                        "Using standard venv to create environment...\n"
+                    )
 
                 import venv
+
                 venv.create(str(env_path), with_pip=True)
 
                 python_path = _get_python_executable(env_path)
@@ -169,10 +207,13 @@ def ensure_standard_environment(
 
                 # Install standard packages
                 if update_callback:
-                    update_callback(f"Installing packages: {', '.join(STANDARD_PACKAGES)}\n")
+                    update_callback(
+                        f"Installing packages: {', '.join(STANDARD_PACKAGES)}\n"
+                    )
 
                 subprocess.run(
-                    [python_path, "-m", "pip", "install", "--upgrade"] + STANDARD_PACKAGES,
+                    [python_path, "-m", "pip", "install", "--upgrade"]
+                    + STANDARD_PACKAGES,
                     check=True,
                     capture_output=True,
                     timeout=600,
@@ -184,11 +225,15 @@ def ensure_standard_environment(
             if update_callback:
                 update_callback("Standard environment created successfully!\n")
 
-            logger.info(f"Standard environment created successfully at {env_path}")
+            logger.info(
+                f"Standard environment created successfully at {env_path}"
+            )
             return str(env_path)
 
         except Exception as e:
-            logger.error(f"Failed to create standard environment: {e}", exc_info=True)
+            logger.error(
+                f"Failed to create standard environment: {e}", exc_info=True
+            )
             # Clean up on failure
             if env_path.exists():
                 try:
@@ -199,9 +244,8 @@ def ensure_standard_environment(
 
 
 def copy_standard_env_to_working_dir(
-    working_dir: str,
-    update_callback: Optional[Callable[[str], None]] = None
-) -> Optional[str]:
+    working_dir: str, update_callback: Callable[[str], None] | None = None
+) -> str | None:
     """
     Copy the standard environment to a working directory.
 
@@ -266,7 +310,7 @@ def copy_standard_env_to_working_dir(
                 standard_env_path,
                 target_env_path,
                 symlinks=True,
-                ignore_dangling_symlinks=True
+                ignore_dangling_symlinks=True,
             )
 
             # Update pyvenv.cfg if it exists (important for venv relocatability)
@@ -299,7 +343,7 @@ def copy_standard_env_to_working_dir(
             return None
 
 
-def get_env_python_executable(working_dir: str) -> Optional[str]:
+def get_env_python_executable(working_dir: str) -> str | None:
     """
     Get the Python executable for a working directory's environment.
 

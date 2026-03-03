@@ -1083,7 +1083,7 @@ export default function ChatBox(): JSX.Element {
   }
 
   return (
-    <div className="rounded-2xl border-border-tertiary bg-surface-secondary h-full w-full flex-none items-center justify-center overflow-hidden border-solid">
+    <div className="h-full w-full flex-none items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
       {/* Unified ChatBox Structure */}
       <div className="relative flex h-full w-full flex-col overflow-hidden">
         {/* Header Box - Always visible */}
@@ -1100,10 +1100,10 @@ export default function ChatBox(): JSX.Element {
         <div className="relative flex flex-1 flex-col overflow-hidden">
           {/* Project Chat Container - Show when has messages (absolute, full height) */}
           <div
-            className={`inset-0 ease-in-out absolute flex h-full flex-col transition-all duration-300 ${
+            className={`absolute inset-0 flex h-full flex-col transition-all duration-300 ease-in-out ${
               hasAnyMessages
-                ? 'translate-y-0 pointer-events-auto opacity-100'
-                : '-translate-y-4 pointer-events-none opacity-0'
+                ? 'pointer-events-auto translate-y-0 opacity-100'
+                : 'pointer-events-none -translate-y-4 opacity-0'
             }`}
           >
             <ProjectChatContainer
@@ -1114,15 +1114,15 @@ export default function ChatBox(): JSX.Element {
 
           {/* Init State Container - Welcome + BottomBox + Suggestions (vertically centered) */}
           <div
-            className={`ease-in-out flex flex-1 flex-col transition-all duration-300 ${
+            className={`flex flex-1 flex-col transition-all duration-300 ease-in-out ${
               hasAnyMessages
-                ? 'inset-0 pointer-events-none absolute opacity-0'
+                ? 'pointer-events-none absolute inset-0 opacity-0'
                 : 'pointer-events-auto opacity-100'
             }`}
           >
             {/* Welcome Message - Top area, flex-1 to push content down */}
-            <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end">
-              <div className="text-body-lg font-bold text-text-heading text-center">
+            <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4">
+              <div className="text-center text-body-lg font-bold text-text-heading">
                 {t('layout.welcome-to-eigent')}
               </div>
             </div>
@@ -1163,24 +1163,24 @@ export default function ChatBox(): JSX.Element {
             )}
 
             {/* Suggestion Area - Bottom area, flex-1 to push content up */}
-            <div className="mt-3 gap-2 flex h-[210px] flex-1 items-start justify-center">
+            <div className="mt-3 flex h-[210px] flex-1 items-start justify-center gap-2">
               {!hasModel ? (
-                <div className="gap-2 flex items-center">
+                <div className="flex items-center gap-2">
                   <div
                     onClick={() => {
                       navigate('/history?tab=agents');
                     }}
-                    className="gap-2 rounded-md bg-surface-warning px-sm py-xs flex cursor-pointer items-center"
+                    className="flex cursor-pointer items-center gap-2 rounded-md bg-surface-warning px-sm py-xs"
                   >
                     <TriangleAlert size={20} className="text-icon-warning" />
-                    <span className="text-xs font-medium text-text-warning flex-1 leading-[20px]">
+                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-warning">
                       {t('layout.please-select-model')}
                     </span>
                   </div>
                 </div>
               ) : null}
               {hasModel && !privacy ? (
-                <div className="gap-2 flex items-center">
+                <div className="flex items-center gap-2">
                   <div
                     onClick={(e) => {
                       const target = e.target as HTMLElement;
@@ -1202,13 +1202,13 @@ export default function ChatBox(): JSX.Element {
                       proxyFetchPut('/api/user/privacy', requestData);
                       setPrivacy(true);
                     }}
-                    className="gap-1 rounded-md bg-surface-information px-sm py-xs flex cursor-pointer items-center"
+                    className="flex cursor-pointer items-center gap-1 rounded-md bg-surface-information px-sm py-xs"
                   >
                     <TriangleAlert
                       size={20}
                       className="text-icon-information"
                     />
-                    <span className="text-xs font-medium text-text-information flex-1 leading-[20px]">
+                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-information">
                       {t('layout.by-messaging-eigent')}{' '}
                       <a
                         href="https://www.eigent.ai/terms-of-use"
@@ -1234,7 +1234,7 @@ export default function ChatBox(): JSX.Element {
                   </div>
                 </div>
               ) : (
-                <div className="mr-2 gap-2 flex flex-col items-center">
+                <div className="mr-2 flex flex-col items-center gap-2">
                   {[
                     {
                       label: t('layout.it-ticket-creation'),
@@ -1251,7 +1251,7 @@ export default function ChatBox(): JSX.Element {
                   ].map(({ label, message }) => (
                     <div
                       key={label}
-                      className="rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium text-button-tertiery-text-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
+                      className="cursor-pointer rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium leading-none text-button-tertiery-text-default opacity-70 transition-all duration-300 hover:opacity-100"
                       onClick={() => {
                         setMessage(message);
                       }}

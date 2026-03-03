@@ -36,12 +36,12 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { ExpandedInputBox } from './ExpandedInputBox';
 import {
   BUILTIN_AGENTS,
   MentionAgent,
   MentionDropdown,
 } from './MentionDropdown';
-import { ExpandedInputBox } from './ExpandedInputBox';
 
 // Module-level singleton to track which InputBox instance has the expanded dialog open
 // This prevents multiple dialogs from opening when Cmd+P is pressed
