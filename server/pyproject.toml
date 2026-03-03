@@ -34,9 +34,10 @@ dependencies = [
     "cryptography>=45.0.4",
     "sqids>=0.5.2",
     "exa-py>=1.14.16",
-    "fastapi-limiter>=0.1.6",
+    "fastapi-limiter>=0.1.6,<0.2.0",
     "slack-sdk>=3.39.0",
     "celery>=5.6.2",
+    "redis>=7.2.1",
 ]
 
 [project.optional-dependencies]

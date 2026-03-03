@@ -14,6 +14,7 @@
 
 import logging
 import os
+import shutil
 import time
 
 from fastapi import APIRouter, HTTPException
@@ -712,15 +713,38 @@ async def open_browser_login():
                 f"Electron browser script not found: {electron_script_path}"
             )
 
-        electron_cmd = "npx"
-        electron_args = [
-            electron_cmd,
+        # Resolve npx path for Windows compatibility.
+        # On Windows, subprocess.Popen uses CreateProcess which cannot
+        # execute .cmd files directly. We resolve the full path and
+        # invoke via cmd.exe.
+        npx_cmd = None
+        if os.name == "nt":
+            eigent_npx = os.path.expanduser("~/.eigent/bin/npx.cmd")
+            if os.path.exists(eigent_npx):
+                npx_cmd = eigent_npx
+        if not npx_cmd:
+            npx_cmd = shutil.which("npx") or shutil.which("npx.cmd")
+        if not npx_cmd:
+            if os.name == "nt":
+                raise FileNotFoundError(
+                    "npx not found. Please ensure Node.js is installed and npx is on your PATH."
+                )
+            npx_cmd = "npx"
+
+        base_args = [
+            npx_cmd,
             "electron",
             electron_script_path,
             user_data_dir,
             str(cdp_port),
             "https://www.google.com",
         ]
+
+        # On Windows, wrap with cmd.exe so .cmd execution is reliable
+        if os.name == "nt":
+            electron_args = ["cmd.exe", "/d", "/s", "/c"] + base_args
+        else:
+            electron_args = base_args
 
         # Get the app's directory to run npx in the right context
         app_dir = os.path.dirname(
@@ -736,10 +760,17 @@ async def open_browser_login():
         logger.info(f"[PROFILE USER LOGIN] userData path: {user_data_dir}")
         logger.info(f"[PROFILE USER LOGIN] Electron args: {electron_args}")
 
+        # Ensure ~/.eigent/bin is on PATH for the spawned process
+        env = os.environ.copy()
+        eigent_bin = os.path.expanduser("~/.eigent/bin")
+        if os.path.isdir(eigent_bin):
+            env["PATH"] = eigent_bin + os.pathsep + env.get("PATH", "")
+
         # Start process and capture output in real-time
         process = subprocess.Popen(
             electron_args,
             cwd=app_dir,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Redirect stderr to stdout
             text=True,
@@ -791,6 +822,20 @@ async def open_browser_login():
             status_code=500,
             detail="Failed to open browser. Check server logs for details.",
         )
+
+
+@router.get("/browser/status", name="browser status")
+async def browser_status():
+    """Check if the login browser is currently open."""
+    import socket
+
+    cdp_port = 9223
+
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("localhost", port)) == 0
+
+    return {"is_open": is_port_in_use(cdp_port)}
 
 
 @router.get("/browser/cookies", name="list cookie domains")
