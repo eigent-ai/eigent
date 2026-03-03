@@ -20,7 +20,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from app.model.trigger.trigger import Trigger
-from sqlmodel import Session, case, desc, select, func
+from app.model.trigger.trigger_execution import TriggerExecution
+from sqlmodel import Session, case, desc, select, func, delete
 
 from app.component.auth import Auth, auth_must
 from app.component.database import session
@@ -336,7 +337,32 @@ def delete_chat_history(history_id: str, session: Session = Depends(session), au
         raise HTTPException(status_code=403, detail="You are not allowed to delete this chat history")
 
     try:
+        # Determine the project this history belongs to
+        project_id = history.project_id if history.project_id else history.task_id
+
+        # Check if this is the last history in the project
+        sibling_count = (
+            session.exec(
+                select(func.count(ChatHistory.id)).where(
+                    ChatHistory.id != history_id,
+                    ChatHistory.project_id == project_id if history.project_id else ChatHistory.task_id == project_id,
+                )
+            ).first()
+            or 0
+        )
+
         session.delete(history)
+
+        if sibling_count == 0:
+            # Last history in the project — delete all related triggers
+            triggers = session.exec(select(Trigger).where(Trigger.project_id == project_id)).all()
+            for trigger in triggers:
+                session.exec(delete(TriggerExecution).where(TriggerExecution.trigger_id == trigger.id))
+                session.delete(trigger)
+            logger.info(
+                "Deleted triggers for removed project", extra={"project_id": project_id, "trigger_count": len(triggers)}
+            )
+
         session.commit()
         logger.info("Chat history deleted", extra={"user_id": user_id, "history_id": history_id})
         return Response(status_code=204)
