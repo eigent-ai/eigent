@@ -791,29 +791,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   );
 }
 
-function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
-  const [src, setSrc] = useState('');
-
-  useEffect(() => {
-    const filePath = selectedFile.isRemote
-      ? (selectedFile.content as string)
-      : selectedFile.path;
-
-    window.electronAPI
-      .readFileAsDataUrl(filePath)
-      .then(setSrc)
-      .catch((err: any) => console.error('Image load error:', err));
-  }, [selectedFile]);
-
-  return (
-    <img
-      src={src}
-      alt={selectedFile.name}
-      className="max-h-full max-w-full object-contain"
-    />
-  );
-}
-
 function toFileUrl(filePath: string): string {
   if (
     filePath.startsWith('file://') ||
@@ -854,6 +831,29 @@ function toFileUrl(filePath: string): string {
   return `file://${encodedPath}`;
 }
 
+function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc((selectedFile.content as string) || selectedFile.path);
+      return;
+    }
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
+  }, [selectedFile]);
+
+  return (
+    <img
+      src={src}
+      alt={selectedFile.name}
+      className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Image load error:', err)}
+    />
+  );
+}
+
 function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
@@ -872,7 +872,12 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
       <p className="text-sm font-medium text-text-primary">
         {selectedFile.name}
       </p>
-      <audio controls src={src} className="w-full">
+      <audio
+        controls
+        src={src}
+        className="w-full"
+        onError={(err) => console.error('Audio load error:', err)}
+      >
         Your browser does not support audio playback.
       </audio>
     </div>
@@ -893,7 +898,12 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
   }, [selectedFile]);
 
   return (
-    <video controls src={src} className="max-h-full max-w-full object-contain">
+    <video
+      controls
+      src={src}
+      className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Video load error:', err)}
+    >
       Your browser does not support video playback.
     </video>
   );
