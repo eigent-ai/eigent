@@ -14,6 +14,7 @@
 
 import logging
 import os
+import shutil
 import time
 
 from fastapi import APIRouter, HTTPException
@@ -716,15 +717,19 @@ async def open_browser_login():
         # On Windows, subprocess.Popen uses CreateProcess which cannot
         # execute .cmd files directly. We resolve the full path and
         # invoke via cmd.exe.
-        import shutil
-
         npx_cmd = None
         if os.name == "nt":
             eigent_npx = os.path.expanduser("~/.eigent/bin/npx.cmd")
             if os.path.exists(eigent_npx):
                 npx_cmd = eigent_npx
         if not npx_cmd:
-            npx_cmd = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+            npx_cmd = shutil.which("npx") or shutil.which("npx.cmd")
+        if not npx_cmd:
+            if os.name == "nt":
+                raise FileNotFoundError(
+                    "npx not found. Please ensure Node.js is installed and npx is on your PATH."
+                )
+            npx_cmd = "npx"
 
         base_args = [
             npx_cmd,
