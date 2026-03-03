@@ -14,9 +14,7 @@
 
 'use client';
 
-import { ScanFace, Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
-
+import { proxyFetchDelete } from '@/api/http';
 import GroupedHistoryView from '@/components/GroupedHistoryView';
 import {
   CommandDialog,
@@ -29,13 +27,25 @@ import {
 } from '@/components/ui/command';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
+import { share } from '@/lib/share';
 import { fetchHistoryTasks } from '@/service/historyApi';
+import { getAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
+import { HistoryTask } from '@/types/history';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { Ellipsis, ScanFace, Search, Share2, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { DialogTitle } from './ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
 export function SearchHistoryDialog() {
   const { t } = useTranslation();
@@ -75,14 +85,53 @@ export function SearchHistoryDialog() {
     }
   };
 
-  const handleDelete = (taskId: string) => {
-    // TODO: Implement delete functionality similar to HistorySidebar
-    console.log('Delete task:', taskId);
+  const handleDelete = async (
+    historyId: string,
+    task: HistoryTask | undefined,
+    callback: () => void
+  ) => {
+    try {
+      await proxyFetchDelete(`/api/chat/history/${historyId}`);
+
+      if (
+        task?.task_id &&
+        (window as unknown as { ipcRenderer?: object }).ipcRenderer
+      ) {
+        const { email } = getAuthStore();
+        try {
+          await (
+            window as unknown as {
+              ipcRenderer: {
+                invoke: (
+                  a: string,
+                  b: string,
+                  c: string,
+                  d?: string
+                ) => Promise<void>;
+              };
+            }
+          ).ipcRenderer.invoke(
+            'delete-task-files',
+            email,
+            task.task_id,
+            task.project_id ?? undefined
+          );
+        } catch (error) {
+          console.warn('Local file cleanup failed:', error);
+        }
+      }
+
+      callback();
+      toast.success(t('layout.delete-success') || 'Task deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete history task:', error);
+      toast.error(t('layout.delete-failed') || 'Failed to delete task');
+    }
   };
 
-  const handleShare = (taskId: string) => {
-    // TODO: Implement share functionality similar to HistorySidebar
-    console.log('Share task:', taskId);
+  const handleShare = async (taskId: string) => {
+    setOpen(false);
+    await share(taskId);
   };
 
   useEffect(() => {
@@ -125,23 +174,70 @@ export function SearchHistoryDialog() {
               {historyTasks.map((task) => (
                 <CommandItem
                   key={task.id}
-                  className="cursor-pointer"
-                  /**
-                   * TODO(history): Update to use project_id field
-                   * after update instead.
-                   */
+                  className="flex cursor-pointer items-center justify-between gap-2"
                   onSelect={() =>
                     handleSetActive(
-                      task.task_id,
+                      task.project_id || task.task_id,
                       task.question,
-                      String(task.id)
+                      String(task.id),
+                      {
+                        tasks: task.tasks || [{ task_id: task.task_id }],
+                        project_name: task.project_name,
+                      }
                     )
                   }
                 >
-                  <ScanFace />
-                  <div className="overflow-hidden text-ellipsis whitespace-nowrap">
-                    {task.question}
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <ScanFace className="h-4 w-4 flex-shrink-0" />
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                      {task.question}
+                    </span>
                   </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Ellipsis className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShare(task.task_id || String(task.id));
+                        }}
+                      >
+                        <Share2 className="mr-2 h-4 w-4" />
+                        {t('layout.share')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-text-cuation"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await handleDelete(
+                              String(task.id),
+                              task,
+                              () => {
+                                setHistoryTasks((prev) =>
+                                  prev.filter((t) => t.id !== task.id)
+                                );
+                              }
+                            );
+                          } catch {
+                            // Error already handled in handleDelete
+                          }
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {t('layout.delete')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </CommandItem>
               ))}
             </CommandGroup>

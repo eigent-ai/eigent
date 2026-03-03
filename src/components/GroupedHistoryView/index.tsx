@@ -34,7 +34,11 @@ interface GroupedHistoryViewProps {
     historyId: string,
     project?: ProjectGroupType
   ) => void;
-  onTaskDelete: (historyId: string, callback: () => void) => void;
+  onTaskDelete: (
+    historyId: string,
+    task: HistoryTask | undefined,
+    callback: () => void
+  ) => void;
   onTaskShare: (taskId: string) => void;
   activeTaskId?: string;
   refreshTrigger?: number; // For triggering refresh from parent
@@ -82,9 +86,12 @@ export default function GroupedHistoryView({
     }
   };
 
-  const onDelete = (historyId: string) => {
+  const onDelete = (historyId: string, task?: HistoryTask) => {
     try {
-      onTaskDelete(historyId, () => {
+      const targetTask = task ?? projects.flatMap((p) => p.tasks).find(
+        (t) => String(t.id) === historyId
+      );
+      onTaskDelete(historyId, targetTask, () => {
         setProjects((prevProjects) => {
           // Create new project objects instead of mutating existing ones
           return prevProjects
