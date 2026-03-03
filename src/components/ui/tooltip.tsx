@@ -97,7 +97,6 @@ const TooltipSimple = React.forwardRef<
     );
   }
 );
-TooltipSimple.displayName = 'TooltipSimple';
 
 export {
   Tooltip,

@@ -393,7 +393,7 @@ export default function Home() {
           return (
             <div className="flex h-full w-full flex-1 items-center justify-center">
               <div className="relative flex h-full w-full flex-col">
-                <div className="pointer-events-none absolute inset-0 rounded-xl bg-transparent"></div>
+                <div className="inset-0 rounded-xl pointer-events-none absolute bg-transparent"></div>
                 <div className="relative z-10 h-full w-full">
                   <Workflow taskAssigning={[]} />
                 </div>
@@ -407,7 +407,7 @@ export default function Home() {
             {activeTask.taskAssigning?.find(
               (agent) => agent.agent_id === activeWorkSpace
             )?.type === 'browser_agent' && (
-              <div className="flex h-full w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
+              <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 duration-300">
                 <BrowserAgentWorkspace />
               </div>
             )}
@@ -415,7 +415,7 @@ export default function Home() {
               <div className="flex h-full w-full flex-1 items-center justify-center">
                 <div className="relative flex h-full w-full flex-col">
                   {/*filter blur */}
-                  <div className="pointer-events-none absolute inset-0 rounded-xl bg-transparent"></div>
+                  <div className="inset-0 rounded-xl pointer-events-none absolute bg-transparent"></div>
                   <div className="relative z-10 h-full w-full">
                     <Workflow taskAssigning={activeTask.taskAssigning || []} />
                   </div>
@@ -434,7 +434,7 @@ export default function Home() {
               <div className="flex h-full w-full flex-1 items-center justify-center">
                 <div className="relative flex h-full w-full flex-col">
                   {/*filter blur */}
-                  <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
+                  <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
                   <div className="relative z-10 h-full w-full">
                     <Folder />
                   </div>
@@ -447,7 +447,7 @@ export default function Home() {
               <div className="flex h-full w-full flex-1 items-center justify-center">
                 <div className="relative flex h-full w-full flex-col">
                   {/*filter blur */}
-                  <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
+                  <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
                   <div className="relative z-10 h-full w-full">
                     <Folder
                       data={activeTask.taskAssigning?.find(
@@ -463,7 +463,7 @@ export default function Home() {
               <div className="flex h-full w-full flex-1 items-center justify-center">
                 <div className="relative flex h-full w-full flex-col">
                   {/*filter blur */}
-                  <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
+                  <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
                   <div className="relative z-10 h-full w-full">
                     <Folder />
                   </div>
@@ -478,12 +478,12 @@ export default function Home() {
   // Render Tasks tab content (default)
   return (
     <ReactFlowProvider>
-      <div className="flex h-full min-h-0 flex-row overflow-hidden px-2 pb-2 pt-10">
-        <div className="relative flex h-full min-h-0 min-w-0 flex-1 items-center justify-center gap-4 overflow-hidden">
+      <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
+        <div className="min-h-0 min-w-0 gap-4 relative flex h-full flex-1 items-center justify-center overflow-hidden">
           <ResizablePanelGroup
             direction="horizontal"
             key={`${isChatBoxVisible}-${chatPanelPosition}`}
-            className="w-full items-center justify-center gap-0.5"
+            className="gap-0.5 w-full items-center justify-center"
           >
             {/* ChatBox Panel - Left side */}
             {isChatBoxVisible && chatPanelPosition === 'left' && (
@@ -504,10 +504,10 @@ export default function Home() {
             <ResizablePanel className="h-full w-full min-w-[600px]">
               {chatStore.activeTaskId &&
               chatStore.tasks[chatStore.activeTaskId]?.activeWorkspace ? (
-                <div className="flex h-full w-full flex-col rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
+                <div className="rounded-2xl border-border-tertiary bg-surface-secondary flex h-full w-full flex-col border-solid">
                   {/* Header with workspace tabs */}
-                  <div className="flex w-full items-center justify-between px-2 py-2">
-                    <div className="flex w-full flex-row items-center justify-start gap-4">
+                  <div className="px-2 py-2 flex w-full items-center justify-between">
+                    <div className="gap-4 flex w-full flex-row items-center justify-start">
                       <MenuToggleGroup
                         type="single"
                         variant="info"
@@ -538,7 +538,7 @@ export default function Home() {
                           icon={<Inbox />}
                           showSubIcon={unviewedTabs.has('inbox')}
                           subIcon={
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                            <span className="h-2 w-2 bg-red-500 rounded-full" />
                           }
                           className="w-32"
                         >
@@ -553,14 +553,14 @@ export default function Home() {
                           }
                           showSubIcon={unviewedTabs.has('triggers')}
                           subIcon={
-                            <span className="h-2 w-2 rounded-full bg-text-error" />
+                            <span className="h-2 w-2 bg-text-error rounded-full" />
                           }
                           className="w-32"
                           rightElement={
                             wsConnectionStatus !== 'connected' && (
                               <Popover>
                                 <PopoverPrimitive.Trigger asChild>
-                                  <div className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-surface-tertiary">
+                                  <div className="h-6 w-6 rounded-md hover:bg-surface-tertiary flex cursor-pointer items-center justify-center transition-colors">
                                     <RefreshCw
                                       className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
                                     />
@@ -571,7 +571,7 @@ export default function Home() {
                                   side="bottom"
                                   align="end"
                                 >
-                                  <div className="flex flex-col gap-3">
+                                  <div className="gap-3 flex flex-col">
                                     <p className="text-body-sm text-text-body">
                                       Reconnect to trigger listener
                                     </p>
@@ -596,12 +596,12 @@ export default function Home() {
                         </MenuToggleItem>
                       </MenuToggleGroup>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="gap-2 flex items-center">
                       {activeWorkspaceTab !== 'inbox' && (
                         <Button
                           variant="primary"
                           size="sm"
-                          className="w-24 items-center justify-center rounded-lg"
+                          className="w-24 rounded-lg items-center justify-center"
                           onClick={() => {
                             if (activeWorkspaceTab === 'workforce') {
                               setAddWorkerDialogOpen(true);
@@ -664,10 +664,10 @@ export default function Home() {
                 </div>
               ) : (
                 // Show default workspace when activeTaskId is null or task doesn't exist
-                <div className="flex h-full w-full flex-col rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
+                <div className="rounded-2xl border-border-tertiary bg-surface-secondary flex h-full w-full flex-col border-solid">
                   {/* Header with workspace tabs */}
-                  <div className="flex w-full items-center justify-between px-2 py-2">
-                    <div className="flex w-full flex-row items-center justify-start gap-4">
+                  <div className="px-2 py-2 flex w-full items-center justify-between">
+                    <div className="gap-4 flex w-full flex-row items-center justify-start">
                       <MenuToggleGroup
                         type="single"
                         variant="info"
@@ -698,7 +698,7 @@ export default function Home() {
                           icon={<Inbox />}
                           showSubIcon={unviewedTabs.has('inbox')}
                           subIcon={
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                            <span className="h-2 w-2 bg-red-500 rounded-full" />
                           }
                           className="w-32"
                         >
@@ -713,14 +713,14 @@ export default function Home() {
                           }
                           showSubIcon={unviewedTabs.has('triggers')}
                           subIcon={
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                            <span className="h-2 w-2 bg-red-500 rounded-full" />
                           }
                           className="w-32"
                           rightElement={
                             wsConnectionStatus !== 'connected' && (
                               <Popover>
                                 <PopoverPrimitive.Trigger asChild>
-                                  <div className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-surface-tertiary">
+                                  <div className="h-6 w-6 rounded-md hover:bg-surface-tertiary flex cursor-pointer items-center justify-center transition-colors">
                                     <RefreshCw
                                       className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
                                     />
@@ -731,7 +731,7 @@ export default function Home() {
                                   side="bottom"
                                   align="end"
                                 >
-                                  <div className="flex flex-col gap-3">
+                                  <div className="gap-3 flex flex-col">
                                     <p className="text-sm text-text-body">
                                       Reconnect to trigger listener
                                     </p>
@@ -756,7 +756,7 @@ export default function Home() {
                         </MenuToggleItem>
                       </MenuToggleGroup>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="gap-2 flex items-center">
                       {activeWorkspaceTab !== 'inbox' && (
                         <Button
                           variant="primary"
