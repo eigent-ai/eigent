@@ -26,7 +26,7 @@ interface GlobalStore {
 const globalStore = create<GlobalStore>()(
   persist(
     (set) => ({
-      history_type: 'grid',
+      history_type: 'list',
       setHistoryType: (history_type: 'grid' | 'list' | 'table') =>
         set({ history_type }),
       toggleHistoryType: () =>

@@ -53,24 +53,21 @@ function resolveStateClasses(state: TextareaState | undefined) {
   if (state === 'disabled') {
     return {
       container: 'opacity-50 cursor-not-allowed',
-      field:
-        'border-input-border-default bg-input-bg-default text-input-text-default',
+      field: 'border-transparent bg-input-bg-default text-input-text-default',
       placeholder: 'text-input-label-default',
     };
   }
   if (state === 'hover') {
     return {
       container: '',
-      field:
-        'border-input-border-hover bg-input-bg-default text-input-text-default',
+      field: 'border-transparent bg-input-bg-default text-input-text-default',
       placeholder: 'text-input-label-default',
     };
   }
   if (state === 'input') {
     return {
       container: '',
-      field:
-        'border-input-border-focus bg-input-bg-input text-input-text-focus',
+      field: 'border-transparent bg-input-bg-input text-input-text-focus',
       placeholder: 'text-input-label-default',
     };
   }
@@ -90,8 +87,7 @@ function resolveStateClasses(state: TextareaState | undefined) {
   }
   return {
     container: '',
-    field:
-      'border-input-border-default bg-input-bg-default text-input-text-default',
+    field: 'border-transparent bg-input-bg-default text-input-text-default',
     placeholder: 'text-input-label-default/10',
   };
 }
@@ -127,7 +123,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <textarea
             data-scrollbar="ui-textarea"
             className={cn(
-              'border-input placeholder:text-text-label/20 focus-visible:ring-ring flex min-h-[60px] w-full rounded-md border bg-transparent py-2 pl-3 pr-3 text-body-md shadow-sm [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50',
+              'border-input placeholder:text-text-label/20 focus-visible:ring-ring flex min-h-[60px] w-full rounded-lg border bg-transparent py-2 pl-3 pr-3 text-body-sm shadow-sm [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50',
               className
             )}
             style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
@@ -181,10 +177,11 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
 
           <div
             className={cn(
-              'relative flex items-start rounded-lg border border-solid transition-colors',
-              // Only apply hover/focus visuals when not in error state
+              'relative flex items-start rounded-lg border border-solid shadow-sm transition-all',
+              // Only apply hover/focus visuals when not in error or success state
               state !== 'error' &&
-                'focus-within:border-input-border-focus focus-within:bg-input-bg-input hover:border-input-border-hover hover:bg-input-bg-hover',
+                state !== 'success' &&
+                'focus-within:bg-input-bg-input focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
               stateCls.field,
               sizeClasses[size]
             )}
