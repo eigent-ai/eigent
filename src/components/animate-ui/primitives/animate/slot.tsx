@@ -90,13 +90,11 @@ const Slot = React.forwardRef<HTMLElement, SlotProps>(function Slot<
 
   if (!React.isValidElement(children)) return null;
 
-  const { ref: childRef, ...childProps } = children.props as AnyProps;
+  const childProps = children.props as AnyProps;
 
   const mergedProps = mergeProps(childProps, props);
 
-  return (
-    <Base {...mergedProps} ref={mergeRefs(childRef as React.Ref<T>, ref)} />
-  );
+  return <Base {...mergedProps} ref={ref} />;
 }) as <T extends HTMLElement = HTMLElement>(
   props: SlotProps<T> & { ref?: React.Ref<T> }
 ) => React.ReactElement | null;
