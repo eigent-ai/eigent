@@ -14,6 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
+import TaskSidebar from '@/components/TaskSidebar';
 import UpdateElectron from '@/components/update';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -135,9 +136,11 @@ export default function Home() {
 
   const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scrollToTopSignal, setScrollToTopSignal] = useState(0);
 
   const toggleChatBox = () => {
     setIsChatBoxVisible((prev) => !prev);
@@ -479,7 +482,37 @@ export default function Home() {
   return (
     <ReactFlowProvider>
       <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
-        <div className="min-h-0 min-w-0 gap-4 relative flex h-full flex-1 items-center justify-center overflow-hidden">
+        <div className="min-h-0 min-w-0 gap-2 relative flex h-full flex-1 items-center justify-center overflow-hidden">
+          {/* Left Sidebar - task list */}
+          <AnimatePresence initial={false}>
+            {isLeftSidebarOpen && (
+              <motion.div
+                key="task-sidebar"
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 240, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full shrink-0 overflow-hidden"
+                style={{ maxWidth: 240 }}
+              >
+                <TaskSidebar
+                  onNewTask={() => {
+                    const pid = projectStore.activeProjectId;
+                    if (pid) {
+                      const result = projectStore.appendInitChatStore(pid);
+                      if (result) {
+                        result.chatStore
+                          .getState()
+                          .setHasMessages(result.taskId, true);
+                        setScrollToTopSignal((n) => n + 1);
+                      }
+                    }
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <ResizablePanelGroup
             direction="horizontal"
             key={`${isChatBoxVisible}-${chatPanelPosition}`}
@@ -493,7 +526,11 @@ export default function Home() {
                   minSize={20}
                   className="h-full"
                 >
-                  <ChatBox />
+                  <ChatBox
+                    scrollToTopSignal={scrollToTopSignal}
+                    onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
+                    isLeftSidebarOpen={isLeftSidebarOpen}
+                  />
                 </ResizablePanel>
                 <ResizableHandle
                   withHandle={true}
@@ -835,7 +872,11 @@ export default function Home() {
                   minSize={20}
                   className="h-full"
                 >
-                  <ChatBox />
+                  <ChatBox
+                    scrollToTopSignal={scrollToTopSignal}
+                    onToggleSidebar={() => setIsLeftSidebarOpen((v) => !v)}
+                    isLeftSidebarOpen={isLeftSidebarOpen}
+                  />
                 </ResizablePanel>
               </>
             )}

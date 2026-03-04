@@ -35,7 +35,17 @@ import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
 
-export default function ChatBox(): JSX.Element {
+interface ChatBoxProps {
+  onToggleSidebar?: () => void;
+  isLeftSidebarOpen?: boolean;
+  scrollToTopSignal?: number;
+}
+
+export default function ChatBox({
+  onToggleSidebar,
+  isLeftSidebarOpen,
+  scrollToTopSignal,
+}: ChatBoxProps): JSX.Element {
   const [message, setMessage] = useState<string>('');
 
   //Get Chatstore for the active project's task
@@ -999,6 +1009,8 @@ export default function ChatBox(): JSX.Element {
             status={chatStore.tasks[chatStore.activeTaskId]?.status}
             replayLoading={isReplayLoading}
             onReplay={handleReplay}
+            onToggleSidebar={onToggleSidebar}
+            isLeftSidebarOpen={isLeftSidebarOpen}
           />
         )}
 
@@ -1015,6 +1027,7 @@ export default function ChatBox(): JSX.Element {
             <ProjectChatContainer
               onSkip={handleSkip}
               isPauseResumeLoading={isPauseResumeLoading}
+              scrollToTopSignal={scrollToTopSignal}
             />
           </div>
 

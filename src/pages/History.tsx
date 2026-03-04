@@ -28,7 +28,6 @@ import WordCarousel from '@/components/ui/WordCarousel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import Project from '@/pages/Projects/Project';
 import Setting from '@/pages/Setting';
-import { useAuthStore } from '@/store/authStore';
 import { Plus } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -60,8 +59,6 @@ export default function Home() {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const { username, email } = useAuthStore();
-  const displayName = username ?? email ?? '';
 
   // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
   const activeTab = useMemo(() => {
@@ -80,21 +77,6 @@ export default function Home() {
       navigate(`?tab=${value}`, { replace: true });
     }
   };
-
-  const formatWelcomeName = (raw: string): string => {
-    if (!raw) return '';
-    if (/^[^@]+@gmail\.com$/i.test(raw)) {
-      const local = raw.split('@')[0];
-      const pretty = local.replace(/[._-]+/g, ' ').trim();
-      return pretty
-        .split(/\s+/)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-    }
-    return raw;
-  };
-
-  const welcomeName = formatWelcomeName(displayName);
 
   const confirmDelete = () => {
     setDeleteModalOpen(false);
@@ -129,7 +111,7 @@ export default function Home() {
       {/* welcome text */}
       <div className="from-surface-primary to-surface-primary px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
         <WordCarousel
-          words={[`${t('layout.welcome')}, ${welcomeName} !`]}
+          words={['Welcome to Eigent!']}
           className="text-heading-xl font-bold tracking-tight"
           rotateIntervalMs={100}
           sweepDurationMs={2000}

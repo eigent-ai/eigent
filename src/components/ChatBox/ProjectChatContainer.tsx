@@ -28,13 +28,15 @@ interface ProjectChatContainerProps {
   // onPauseResume: () => void;  // Commented out - temporary not needed
   onSkip: () => void;
   isPauseResumeLoading: boolean;
+  /** Increment this value to trigger a smooth scroll-to-top */
+  scrollToTopSignal?: number;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = '',
-  // onPauseResume,  // Commented out - temporary not needed
   onSkip,
   isPauseResumeLoading,
+  scrollToTopSignal,
 }) => {
   const { projectStore, chatStore } = useChatStoreAdapter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,12 +52,43 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     [activeProjectId, projectStore]
   );
 
+  const activeChatId = useMemo(() => {
+    if (!activeProjectId) return null;
+    const project = projectStore.getProjectById(activeProjectId);
+    return project?.activeChatId ?? null;
+  }, [activeProjectId, projectStore]);
+
   // Extract messages array to avoid complex expression in dependency array
   const activeTaskId = chatStore?.activeTaskId as string;
   const messages = useMemo(
     () => chatStore?.tasks[activeTaskId]?.messages || [],
     [chatStore, activeTaskId]
   );
+
+  // Scroll so the active task's ProjectSection top aligns with chatbox view top
+  const scrollToActiveSection = useCallback(() => {
+    if (!containerRef.current || !activeChatId) return;
+    const el = containerRef.current.querySelector(
+      `[data-chat-id="${activeChatId}"]`
+    );
+    if (el) {
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }, [activeChatId]);
+
+  // When user selects a task in sidebar, scroll to that section
+  useEffect(() => {
+    if (!activeChatId) return;
+    const timer = setTimeout(scrollToActiveSection, 100);
+    return () => clearTimeout(timer);
+  }, [activeChatId, scrollToActiveSection]);
+
+  // When new task created (Plus button), scroll to new section (delay for DOM to render)
+  useEffect(() => {
+    if (!scrollToTopSignal) return;
+    const timer = setTimeout(scrollToActiveSection, 200);
+    return () => clearTimeout(timer);
+  }, [scrollToTopSignal, scrollToActiveSection]);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
@@ -193,12 +226,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
           const task = chatState.tasks[activeTaskId];
           const messages = task.messages || [];
 
-          // Only render if there are actual user messages (not just empty or system messages)
           const hasUserMessages = messages.some(
             (msg: any) => msg.role === 'user' && msg.content
           );
+          // Render if has user messages OR hasMessages (new task placeholder for scroll alignment)
+          const shouldRender = hasUserMessages || task.hasMessages;
 
-          if (!hasUserMessages) {
+          if (!shouldRender) {
             return null;
           }
 
