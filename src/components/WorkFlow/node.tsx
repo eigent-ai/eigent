@@ -270,25 +270,27 @@ export function Node({ id, data }: NodeProps) {
   const scrollLogToBottom = useCallback(() => {
     const el = logRef.current;
     if (!el || !wasAtBottomRef.current) return;
-    const deadline = Date.now() + 150;
-    const scroll = () => {
-      if (Date.now() > deadline) return;
+    setTimeout(() => {
       el.scrollTo({
         top: el.scrollHeight,
         behavior: 'smooth',
       });
-    };
-    setTimeout(scroll, 50);
+    }, 50);
   }, []);
 
   const toolkits = selectedTask?.toolkits;
   const lastToolkit = toolkits?.[toolkits.length - 1];
-  const toolkitChangeKey = `${selectedTask?.id ?? ''}:${toolkits?.length ?? 0}:${lastToolkit?.toolkitId ?? ''}:${lastToolkit?.toolkitStatus ?? ''}:${lastToolkit?.message ?? ''}`;
+  const toolkitChangeKey = `${selectedTask?.id ?? ''}:${toolkits?.length ?? 0}:${lastToolkit?.toolkitId ?? ''}:${lastToolkit?.toolkitStatus ?? ''}`;
 
   useEffect(() => {
     if (!isExpanded || !toolkits?.length) return;
     scrollLogToBottom();
   }, [isExpanded, toolkits?.length, toolkitChangeKey, scrollLogToBottom]);
+
+  // Reset scroll-to-bottom flag when switching tasks so new task always starts at bottom
+  useEffect(() => {
+    wasAtBottomRef.current = true;
+  }, [selectedTask?.id]);
 
   // Track whether user has scrolled up so we don't override manual reading
   useEffect(() => {
