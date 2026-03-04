@@ -46,6 +46,27 @@ class QuestionAnalysisResult(BaseModel):
     )
 
 
+class TaskAnalysisResult(BaseModel):
+    """Result of combined task analysis (complexity + summary).
+
+    Merges question_confirm (complexity) and summary_task (name/summary)
+    into one LLM call. See issue #1427.
+    """
+
+    is_complex: bool = Field(
+        description="True if complex task requiring tools/workforce, "
+        "False if simple question answerable directly."
+    )
+    task_name: str | None = Field(
+        default=None,
+        description="Short descriptive task name. Only when is_complex=True.",
+    )
+    summary: str | None = Field(
+        default=None,
+        description="Concise task summary. Only when is_complex=True.",
+    )
+
+
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 

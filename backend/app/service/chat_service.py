@@ -14,6 +14,7 @@
 
 import asyncio
 import datetime
+import json
 import logging
 import platform
 from pathlib import Path
@@ -43,7 +44,14 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
-from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.model.chat import (
+    Chat,
+    NewAgent,
+    Status,
+    TaskAnalysisResult,
+    TaskContent,
+    sse_json,
+)
 from app.service.task import (
     Action,
     ActionDecomposeProgressData,
@@ -501,17 +509,28 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 is_complex_task: bool
                 if len(attaches_to_use) > 0:
                     is_complex_task = True
+                    task_lock._prefetched_summary = None
                     logger.info(
                         "[NEW-QUESTION] Has attachments"
                         ", treating as complex task"
                     )
                 else:
-                    is_complex_task = await question_confirm(
+                    analysis = await analyze_task(
                         question_agent, question, task_lock
                     )
+                    is_complex_task = analysis.is_complex
+                    if (
+                        is_complex_task
+                        and analysis.task_name
+                        and analysis.summary
+                    ):
+                        task_lock._prefetched_summary = (
+                            f"{analysis.task_name}|{analysis.summary}"
+                        )
+                    else:
+                        task_lock._prefetched_summary = None
                     logger.info(
-                        "[NEW-QUESTION] question_confirm"
-                        " result: is_complex="
+                        "[NEW-QUESTION] analyze_task result: is_complex="
                         f"{is_complex_task}"
                     )
 
@@ -736,57 +755,73 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             except Exception:
                                 pass
 
-                            # Generate task summary
-                            summary_task_agent = task_summary_agent(options)
-                            try:
-                                summary_task_content = await asyncio.wait_for(
-                                    summary_task(
-                                        summary_task_agent, camel_task
-                                    ),
-                                    timeout=10,
-                                )
+                            # Generate task summary (use prefetched if available)
+                            prefetched = getattr(
+                                task_lock, "_prefetched_summary", None
+                            )
+                            if prefetched:
+                                summary_task_content = prefetched
                                 task_lock.summary_generated = True
-                            except TimeoutError:
-                                logger.warning(
-                                    "summary_task timeout",
-                                    extra={
-                                        "project_id": options.project_id,
-                                        "task_id": options.task_id,
-                                    },
+                                logger.debug(
+                                    "Using prefetched task summary from "
+                                    "analyze_task (issue #1427)"
                                 )
-                                task_lock.summary_generated = True
-                                content_preview = (
-                                    camel_task.content
-                                    if hasattr(camel_task, "content")
-                                    else ""
+                            else:
+                                summary_task_agent = task_summary_agent(
+                                    options
                                 )
-                                if content_preview is None:
-                                    content_preview = ""
-                                if len(content_preview) > 80:
-                                    cp = content_preview[:80]
-                                    summary_task_content = cp + "..."
-                                else:
-                                    summary_task_content = content_preview
-                                summary_task_content = (
-                                    f"Task|{summary_task_content}"
-                                )
-                            except Exception:
-                                task_lock.summary_generated = True
-                                content_preview = (
-                                    camel_task.content
-                                    if hasattr(camel_task, "content")
-                                    else ""
-                                )
-                                if content_preview is None:
-                                    content_preview = ""
-                                if len(content_preview) > 80:
-                                    cp = content_preview[:80]
-                                    summary_task_content = cp + "..."
-                                else:
-                                    summary_task_content = content_preview
-                                summary_task_content = (
-                                    f"Task|{summary_task_content}"
-                                )
+                                try:
+                                    summary_task_content = (
+                                        await asyncio.wait_for(
+                                            summary_task(
+                                                summary_task_agent,
+                                                camel_task,
+                                            ),
+                                            timeout=10,
+                                        )
+                                    )
+                                    task_lock.summary_generated = True
+                                except TimeoutError:
+                                    logger.warning(
+                                        "summary_task timeout",
+                                        extra={
+                                            "project_id": options.project_id,
+                                            "task_id": options.task_id,
+                                        },
+                                    )
+                                    task_lock.summary_generated = True
+                                    content_preview = (
+                                        camel_task.content
+                                        if hasattr(camel_task, "content")
+                                        else ""
+                                    )
+                                    if content_preview is None:
+                                        content_preview = ""
+                                    if len(content_preview) > 80:
+                                        cp = content_preview[:80]
+                                        summary_task_content = cp + "..."
+                                    else:
+                                        summary_task_content = content_preview
+                                    summary_task_content = (
+                                        f"Task|{summary_task_content}"
+                                    )
+                                except Exception:
+                                    task_lock.summary_generated = True
+                                    content_preview = (
+                                        camel_task.content
+                                        if hasattr(camel_task, "content")
+                                        else ""
+                                    )
+                                    if content_preview is None:
+                                        content_preview = ""
+                                    if len(content_preview) > 80:
+                                        cp = content_preview[:80]
+                                        summary_task_content = cp + "..."
+                                    else:
+                                        summary_task_content = content_preview
+                                    summary_task_content = (
+                                        f"Task|{summary_task_content}"
+                                    )
 
                             state_holder["summary_task"] = summary_task_content
                             try:
@@ -1925,6 +1960,93 @@ def add_sub_tasks(
             camel_task.add_subtask(new_task)
             added_tasks.append(new_task)
     return added_tasks
+
+
+async def analyze_task(
+    agent: ListenChatAgent,
+    question: str,
+    task_lock: TaskLock | None = None,
+) -> TaskAnalysisResult:
+    """Analyze user query in one LLM call: complexity + task name/summary.
+
+    Merges question_confirm and summary_task into a single request (issue #1427).
+    Falls back to question_confirm when structured output parsing fails.
+    """
+    context_prompt = ""
+    if task_lock:
+        context_prompt = build_conversation_context(
+            task_lock, header="=== Previous Conversation ==="
+        )
+
+    full_prompt = f"""{context_prompt}User Query: {question}
+
+Analyze this user query and return structured JSON with these fields:
+- is_complex (boolean): True if this requires tools, code execution, file operations,
+  multi-step planning, or creating/modifying content. False if it can be answered
+  directly (greetings, fact queries, clarifications, status checks).
+- task_name (string, only when is_complex): A short descriptive name for the task.
+- summary (string, only when is_complex): A concise summary of the task's main points.
+
+Examples of complex: "create a file", "search for X", "implement feature Y".
+Examples of simple: "hello", "what is X?", "how are you?"
+
+Return valid JSON only, no other text."""
+
+    try:
+        resp = agent.step(full_prompt, response_format=TaskAnalysisResult)
+
+        if not resp or not resp.msgs or len(resp.msgs) == 0:
+            logger.warning(
+                "analyze_task: no response, falling back to question_confirm"
+            )
+            is_complex = await question_confirm(agent, question, task_lock)
+            return TaskAnalysisResult(
+                is_complex=is_complex, task_name=None, summary=None
+            )
+
+        content = resp.msgs[0].content
+        parsed = getattr(resp.msgs[0], "parsed", None)
+
+        if parsed is not None and isinstance(parsed, TaskAnalysisResult):
+            logger.info(
+                "analyze_task: got structured result",
+                extra={"is_complex": parsed.is_complex},
+            )
+            return parsed
+
+        if content:
+            try:
+                data = json.loads(content.strip())
+                result = TaskAnalysisResult(
+                    is_complex=bool(data.get("is_complex", True)),
+                    task_name=data.get("task_name"),
+                    summary=data.get("summary"),
+                )
+                logger.info(
+                    "analyze_task: parsed JSON from content",
+                    extra={"is_complex": result.is_complex},
+                )
+                return result
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        logger.warning(
+            "analyze_task: could not parse response, falling back to question_confirm"
+        )
+        is_complex = await question_confirm(agent, question, task_lock)
+        return TaskAnalysisResult(
+            is_complex=is_complex, task_name=None, summary=None
+        )
+
+    except Exception as e:
+        logger.warning(
+            f"analyze_task failed: {e}, falling back to question_confirm",
+            exc_info=True,
+        )
+        is_complex = await question_confirm(agent, question, task_lock)
+        return TaskAnalysisResult(
+            is_complex=is_complex, task_name=None, summary=None
+        )
 
 
 async def question_confirm(

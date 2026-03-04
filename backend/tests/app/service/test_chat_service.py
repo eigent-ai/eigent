@@ -18,9 +18,10 @@ import pytest
 from camel.tasks import Task
 from camel.tasks.task import TaskState
 
-from app.model.chat import Chat, NewAgent
+from app.model.chat import Chat, NewAgent, TaskAnalysisResult
 from app.service.chat_service import (
     add_sub_tasks,
+    analyze_task,
     build_context_for_workforce,
     collect_previous_task_context,
     construct_workforce,
@@ -647,6 +648,65 @@ class TestChatServiceAgentOperations:
         mock_camel_agent.step.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_analyze_task_structured_output(self, mock_camel_agent):
+        """Test analyze_task with structured parsed output."""
+        mock_camel_agent.step.return_value.msgs[0].parsed = TaskAnalysisResult(
+            is_complex=True,
+            task_name="Web App Creation",
+            summary="Create a modern web application with auth",
+        )
+        mock_camel_agent.step.return_value.msgs[0].content = "{}"
+        mock_camel_agent.chat_history = []
+
+        result = await analyze_task(
+            mock_camel_agent, "Create a web app with authentication"
+        )
+
+        assert result.is_complex is True
+        assert result.task_name == "Web App Creation"
+        assert result.summary == "Create a modern web application with auth"
+        mock_camel_agent.step.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_analyze_task_json_content(self, mock_camel_agent):
+        """Test analyze_task parses JSON from content when parsed is None."""
+        mock_camel_agent.step.return_value.msgs[0].parsed = None
+        mock_camel_agent.step.return_value.msgs[
+            0
+        ].content = '{"is_complex": false, "task_name": null, "summary": null}'
+        mock_camel_agent.chat_history = []
+
+        result = await analyze_task(mock_camel_agent, "hello")
+
+        assert result.is_complex is False
+        assert result.task_name is None
+        assert result.summary is None
+
+    @pytest.mark.asyncio
+    async def test_analyze_task_fallback_to_question_confirm(
+        self, mock_camel_agent
+    ):
+        """Test analyze_task falls back to question_confirm when parsing fails."""
+        first_response = MagicMock()
+        first_response.msgs = [MagicMock()]
+        first_response.msgs[0].parsed = None
+        first_response.msgs[0].content = "invalid json"
+
+        second_response = MagicMock()
+        second_response.msgs = [MagicMock()]
+        second_response.msgs[0].content = "yes"
+
+        mock_camel_agent.step.side_effect = [first_response, second_response]
+        mock_camel_agent.chat_history = []
+
+        result = await analyze_task(mock_camel_agent, "Create a file")
+
+        assert result.is_complex is True
+        assert result.task_name is None
+        assert result.summary is None
+        assert mock_camel_agent.step.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_new_agent_model_creation(self, sample_chat_data):
         """Test new_agent_model creates agent with proper configuration."""
         options = Chat(**sample_chat_data)
@@ -893,7 +953,12 @@ class TestChatServiceIntegration:
                 "app.service.chat_service.task_summary_agent"
             ) as mock_summary_agent,
             patch(
-                "app.service.chat_service.question_confirm", return_value=True
+                "app.service.chat_service.analyze_task",
+                return_value=TaskAnalysisResult(
+                    is_complex=True,
+                    task_name="Test Task",
+                    summary="Test summary",
+                ),
             ),
             patch(
                 "app.service.chat_service.summary_task",
