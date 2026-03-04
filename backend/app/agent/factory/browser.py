@@ -239,9 +239,7 @@ class ExtensionTabPoolManager:
                 logger.error(f"Failed to close tab {tab_id}: {e}")
 
         if released:
-            logger.info(
-                f"Released {len(released)} tab(s) for task {task_id}"
-            )
+            logger.info(f"Released {len(released)} tab(s) for task {task_id}")
         return [t for t, _ in released]
 
 
@@ -288,9 +286,7 @@ def browser_agent(options: Chat):
     if extension_proxy_browser:
         # Extension proxy mode: use plugin exclusively, no CDP fallback
         use_extension_proxy = True
-        extension_proxy_port = int(
-            extension_proxy_browser.get("port", 8765)
-        )
+        extension_proxy_port = int(extension_proxy_browser.get("port", 8765))
         selected_is_external = True
         logger.info(
             f"Using extension proxy mode (exclusive): "
@@ -299,7 +295,8 @@ def browser_agent(options: Chat):
     else:
         # No extension proxy — use CDP browsers
         cdp_only_browsers = [
-            b for b in (options.cdp_browsers or [])
+            b
+            for b in (options.cdp_browsers or [])
             if not b.get("isExtensionProxy", False)
         ]
         if cdp_only_browsers:
@@ -501,16 +498,12 @@ def browser_agent(options: Chat):
             try:
                 loop = asyncio.get_event_loop()
                 tab_id = loop.run_until_complete(
-                    _tab_pool_manager.acquire_tab(
-                        session_id, options.task_id
-                    )
+                    _tab_pool_manager.acquire_tab(session_id, options.task_id)
                 )
             except RuntimeError:
                 # If no event loop, create one
                 tab_id = asyncio.run(
-                    _tab_pool_manager.acquire_tab(
-                        session_id, options.task_id
-                    )
+                    _tab_pool_manager.acquire_tab(session_id, options.task_id)
                 )
             agent_instance._extension_tab_id = tab_id
             agent_instance._cdp_session_id = session_id
@@ -552,7 +545,8 @@ def browser_agent(options: Chat):
         def acquire_cdp_for_agent(agent_instance):
             """Acquire a CDP browser from pool for a cloned agent."""
             cdp_only = [
-                b for b in (options.cdp_browsers or [])
+                b
+                for b in (options.cdp_browsers or [])
                 if not b.get("isExtensionProxy", False)
             ]
             if not cdp_only:
@@ -564,9 +558,7 @@ def browser_agent(options: Chat):
             if selected:
                 agent_instance._cdp_port = _get_browser_port(selected)
             else:
-                agent_instance._cdp_port = _get_browser_port(
-                    cdp_only[0]
-                )
+                agent_instance._cdp_port = _get_browser_port(cdp_only[0])
             agent_instance._cdp_session_id = session_id
             logger.info(
                 f"Acquired CDP for cloned agent {agent_instance.agent_id}: "

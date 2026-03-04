@@ -13,7 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -31,15 +30,17 @@ router = APIRouter()
 class StartProxyRequest(BaseModel):
     host: str = "localhost"
     port: int = 8765
-    model_platform: Optional[str] = None
-    model_type: Optional[str] = None
-    api_key: Optional[str] = None
-    api_url: Optional[str] = None
-    extra_params: Optional[dict] = None
+    model_platform: str | None = None
+    model_type: str | None = None
+    api_key: str | None = None
+    api_url: str | None = None
+    extra_params: dict | None = None
 
 
 @router.post("/extension-proxy/start", name="start extension proxy")
-async def start_proxy(req: StartProxyRequest = StartProxyRequest()):
+async def start_proxy(req: StartProxyRequest = None):
+    if req is None:
+        req = StartProxyRequest()
     # Build model config if provided
     model_config = None
     if req.model_platform and req.model_type and req.api_key:

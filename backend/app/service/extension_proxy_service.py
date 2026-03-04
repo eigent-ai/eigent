@@ -106,9 +106,7 @@ async def _watch_connection():
                                 "Timed out waiting for extension reconnection"
                             )
                     except Exception as e:
-                        logger.error(
-                            f"Error waiting for reconnection: {e}"
-                        )
+                        logger.error(f"Error waiting for reconnection: {e}")
                         break
         else:
             logger.warning("Timed out waiting for extension connection")
