@@ -53,11 +53,8 @@ export interface Skill {
   isExample: boolean;
 }
 
-export const EXAMPLE_SKILL_DIR_NAMES = [
-  'code-reviewer',
-  'report-writer',
-  'data-analyzer',
-] as const;
+// isExample is now determined dynamically by skills-scan based on whether
+// the skill dir exists in resources/example-skills (no hardcoded list needed)
 
 // Skills state interface
 interface SkillsState {
@@ -299,9 +296,7 @@ export const useSkillsStore = create<SkillsState>()(
           const diskSkills: Skill[] = [];
           for (const s of result.skills) {
             const existing = prevByKey.get(s.skillDirName);
-            const isExample = (
-              EXAMPLE_SKILL_DIR_NAMES as readonly string[]
-            ).includes(s.skillDirName);
+            const isExample = s.isExample ?? false;
 
             // Get config from global/project (config key = skill name from SKILL.md)
             const globalConfig = config.global?.skills?.[s.name];

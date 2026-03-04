@@ -96,13 +96,12 @@ export default function Skills() {
                 >
                   {t('agents.your-skills')}
                 </TabsTrigger>
-                {/* TODO: Add example skills back in */}
-                {/* <TabsTrigger
+                <TabsTrigger
                   value="example-skills"
                   className="data-[state=active]:bg-transparent"
                 >
                   {t('agents.example-skills')}
-                </TabsTrigger> */}
+                </TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-2">
                 <SearchInput

@@ -185,7 +185,7 @@
   "days-ago": "giorni fa",
   "delete-project": "Elimina Progetto",
   "delete-project-confirmation": "Sei sicuro di voler eliminare questo progetto e tutte le sue attività? Questa azione non può essere annullata.",
-  "please-select-model": "Seleziona un modello in Impostazioni > Modelli per continuare.",
+  "please-select-model": "Seleziona un modello in Agenti > Modelli per continuare.",
   "cdp-browser-connection": "Connessione browser CDP",
   "cdp-browser-connection-description": "Connetti a un browser Chrome con il debug remoto abilitato",
   "current-port": "Porta attuale:",

@@ -48,9 +48,20 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": ".نواجه حركة مرور عالية. يرجى المحاولة مرة أخرى بعد وقت قصيرة",
   "new-project": "مشروع جديد",
   "no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة",
+  "splitting-tasks": "تقسيم المهام",
+  "start-task": "بدء المهمة",
+  "message-cannot-be-empty": "لا يمكن أن تكون الرسالة فارغة",
+  "remove-file": "إزالة الملف",
+  "drop-files-to-attach": "أسقط الملفات للإرفاق",
+  "expand-input": "توسيع الإدخال (⌘P)",
+  "queued-tasks": "المهام في قائمة الانتظار",
+  "remove-queued-message": "إزالة الرسالة من قائمة الانتظار",
+  "no-agents-added": "لم تتم إضافة وكلاء",
   "open-in-ide": "فتح في IDE",
   "open-in-vscode": "فتح في VS Code",
   "open-in-cursor": "فتح في Cursor",
   "open-in-file-manager": "فتح في مدير الملفات",
-  "failed-to-open-folder": "فشل في فتح المجلد"
+  "failed-to-open-folder": "فشل في فتح المجلد",
+  "task-completed-card-title": "تمت المهمة",
+  "task-completed-card-subtitle": "أتمت مهامك باستخدام الزناد"
 }

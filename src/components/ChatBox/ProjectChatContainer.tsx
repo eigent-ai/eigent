@@ -179,7 +179,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`scrollbar relative z-10 mt-sm flex flex-1 flex-col overflow-y-auto ${className}`}
+      className={`scrollbar-always-visible relative z-10 flex flex-1 flex-col overflow-y-scroll ${className}`}
     >
       <AnimatePresence mode="popLayout">
         {chatStores.map(({ chatId, chatStore }) => {

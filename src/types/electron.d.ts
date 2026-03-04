@@ -159,6 +159,7 @@ interface ElectronAPI {
       path: string;
       scope: string;
       skillDirName: string;
+      isExample: boolean;
     }>;
     error?: string;
   }>;
