@@ -21,17 +21,11 @@ description: Configure your own API keys to use various LLM providers with Eigen
 
 ### Step 2: Configure in Eigent
 
-1. Launch Eigent and go to **Settings** > **Models**
+1. Launch Eigent and go to **Agent** > **Models**
 
 1. Find the **OpenAI** card in the Custom Model section
 
-   \<img
-   src="/images/Screenshot2026-01-20at18.13.45.png"
-   alt="Screenshot 2026 01 20 At 18 13 45"
-   title="Screenshot 2026 01 20 At 18 13 45"
-   className="mr-auto"
-   style={{ width:"74%" }}
-   />
+![byok_1](/docs/images/byok_1.png)
 
 1. Fill in the following fields:
 

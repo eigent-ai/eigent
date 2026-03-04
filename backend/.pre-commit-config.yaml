@@ -58,7 +58,7 @@ repos:
     hooks:
       - id: mdformat
         name: Format Markdown
-        exclude: 'benchmark/answer/'
+        exclude: 'benchmark/answer/|^resources/'
         additional_dependencies:
           - mdformat-gfm
           - mdformat_frontmatter

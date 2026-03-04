@@ -187,7 +187,7 @@
   "days-ago": "天前",
   "delete-project": "删除项目",
   "delete-project-confirmation": "您确定要删除此项目及其所有任务吗？此操作无法撤销。",
-  "please-select-model": "请在设置 > 模型中选择一个模型以继续。",
+  "please-select-model": "请在智能体 > 模型中选择一个模型以继续。",
   "cdp-browser-connection": "CDP 浏览器连接",
   "cdp-browser-connection-description": "连接到启用了远程调试的 Chrome 浏览器",
   "current-port": "当前端口：",
