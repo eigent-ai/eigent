@@ -59,6 +59,10 @@ class ListenChatAgent(ChatAgent):
         threading.Lock()
     )  # Protects CDP URL mutation during clone
 
+    _camel_has_request_usage: bool = (
+        "on_request_usage" in inspect.signature(ChatAgent.__init__).parameters
+    )
+
     def __init__(
         self,
         api_task_id: str,
@@ -102,14 +106,9 @@ class ListenChatAgent(ChatAgent):
     ) -> None:
         self.api_task_id = api_task_id
         self.agent_name = agent_name
-        self._request_usage_events_enabled = False
         self._user_on_request_usage = kwargs.pop("on_request_usage", None)
-        if (
-            "on_request_usage"
-            in inspect.signature(ChatAgent.__init__).parameters
-        ):
+        if self._camel_has_request_usage:
             kwargs["on_request_usage"] = self._on_request_usage
-            self._request_usage_events_enabled = True
 
         super().__init__(
             system_message=system_message,
@@ -142,21 +141,16 @@ class ListenChatAgent(ChatAgent):
         step_usage = payload.get("step_usage") or {}
         request_tokens = int(request_usage.get("total_tokens") or 0)
         if request_tokens > 0:
-            task_lock = get_task_lock(self.api_task_id)
             _schedule_async_task(
-                task_lock.put_queue(
+                get_task_lock(self.api_task_id).put_queue(
                     ActionRequestUsageData(
                         data={
                             "agent_name": self.agent_name,
                             "process_task_id": self.process_task_id,
                             "agent_id": self.agent_id,
                             "tokens": request_tokens,
-                            "request_index": int(
-                                payload.get("request_index") or 0
-                            ),
-                            "response_id": str(
-                                payload.get("response_id") or ""
-                            ),
+                            "request_index": payload.get("request_index", 0),
+                            "response_id": payload.get("response_id", ""),
                             "step_total_tokens": int(
                                 step_usage.get("total_tokens") or 0
                             ),
@@ -164,7 +158,6 @@ class ListenChatAgent(ChatAgent):
                     )
                 )
             )
-
         if self._user_on_request_usage is not None:
             return self._user_on_request_usage(payload)
         return None
@@ -339,7 +332,7 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
-            if self._request_usage_events_enabled:
+            if self._camel_has_request_usage:
                 total_tokens = 0
 
         assert message is not None
@@ -444,7 +437,7 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
-            if self._request_usage_events_enabled:
+            if self._camel_has_request_usage:
                 total_tokens = 0
 
         # Send deactivation for all non-streaming cases (success or error)
@@ -801,6 +794,10 @@ class ListenChatAgent(ChatAgent):
         else:
             cloned_tools, toolkits_to_register = self._clone_tools()
 
+        clone_kwargs: dict[str, Any] = {}
+        if self._user_on_request_usage is not None:
+            clone_kwargs["on_request_usage"] = self._user_on_request_usage
+
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
             agent_name=self.agent_name,
@@ -828,6 +825,7 @@ class ListenChatAgent(ChatAgent):
             enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
             stream_accumulate=self.stream_accumulate,
+            **clone_kwargs,
         )
 
         new_agent.process_task_id = self.process_task_id
