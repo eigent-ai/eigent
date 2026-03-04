@@ -460,6 +460,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         cdp_url: str | None = "http://localhost:9222",
         cdp_keep_current_page: bool = False,
         full_visual_mode: bool = False,
+        extension_proxy_mode: bool = False,
+        extension_proxy_host: str = "localhost",
+        extension_proxy_port: int = 8765,
     ) -> None:
         logger.info(
             f"[HybridBrowserToolkit] Initializing with api_task_id: {api_task_id}"
@@ -489,6 +492,18 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.debug(
             f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}"
         )
+        # Extension proxy mode state
+        self._extension_proxy_mode = extension_proxy_mode
+        self._extension_proxy_host = extension_proxy_host
+        self._extension_proxy_port = extension_proxy_port
+        self._extension_proxy_wrapper = None  # Shared ExtensionProxyWrapper
+
+        if extension_proxy_mode:
+            # In extension proxy mode, we don't connect via CDP
+            # Set cdp_url to None to prevent CDP connection attempts
+            cdp_url = None
+            connect_over_cdp = False
+
         super().__init__(
             headless=headless,
             user_data_dir=user_data_dir,
@@ -513,6 +528,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         )
         logger.info(
             f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}"
+            f"{' (extension proxy mode)' if extension_proxy_mode else ''}"
         )
 
     async def _ensure_ws_wrapper(self):
@@ -520,6 +536,45 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.debug(
             f"[HybridBrowserToolkit] _ensure_ws_wrapper called for api_task_id: {getattr(self, 'api_task_id', 'NOT SET')}"
         )
+
+        # Extension proxy mode: use ExtensionProxyWrapper
+        if self._extension_proxy_mode:
+            if self._extension_proxy_wrapper is not None:
+                # Already have a shared wrapper (from clone or explicit set)
+                self._ws_wrapper = self._extension_proxy_wrapper
+                logger.info(
+                    "[HybridBrowserToolkit] Using shared ExtensionProxyWrapper"
+                )
+                return
+
+            from camel.toolkits.hybrid_browser_toolkit.extension_proxy_wrapper import (
+                ExtensionProxyWrapper,
+            )
+
+            session_id = self._ws_config.get("session_id", "default")
+            wrapper = ExtensionProxyWrapper(
+                config=self._ws_config,
+                host=self._extension_proxy_host,
+                port=self._extension_proxy_port,
+            )
+            await wrapper.start()
+            logger.info(
+                f"[HybridBrowserToolkit] Extension proxy started on "
+                f"ws://{self._extension_proxy_host}:{self._extension_proxy_port}"
+            )
+
+            # Wait for Chrome extension to connect
+            connected = await wrapper.wait_for_connection(timeout=120.0)
+            if not connected:
+                raise RuntimeError(
+                    "Timed out waiting for Chrome extension to connect"
+                )
+
+            self._extension_proxy_wrapper = wrapper
+            self._ws_wrapper = wrapper
+            return
+
+        # Standard CDP mode
         global websocket_connection_pool
 
         # Get session ID from config or use default
@@ -561,17 +616,46 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             new_session_id = str(uuid.uuid4())[:8]
 
         # For cloned sessions, use the same user_data_dir to share login state
-        # This allows multiple agents to use the same browser profile without conflicts
         logger.info(
             f"Cloning session {new_session_id} with shared user_data_dir: {self._user_data_dir}"
         )
 
-        # Use the same session_id to share the same browser instance
-        # This ensures all clones use the same WebSocket connection and browser
+        if self._extension_proxy_mode:
+            # Extension proxy mode: share the same wrapper connection
+            cloned = HybridBrowserToolkit(
+                self.api_task_id,
+                headless=self._headless,
+                user_data_dir=self._user_data_dir,
+                stealth=self._stealth,
+                cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
+                enabled_tools=self.enabled_tools.copy(),
+                browser_log_to_file=self._browser_log_to_file,
+                log_dir=self.config_loader.get_toolkit_config().log_dir,
+                session_id=new_session_id,
+                default_start_url=self._default_start_url,
+                default_timeout=self._default_timeout,
+                short_timeout=self._short_timeout,
+                navigation_timeout=self._navigation_timeout,
+                network_idle_timeout=self._network_idle_timeout,
+                screenshot_timeout=self._screenshot_timeout,
+                page_stability_timeout=self._page_stability_timeout,
+                dom_content_loaded_timeout=self._dom_content_loaded_timeout,
+                viewport_limit=self._viewport_limit,
+                full_visual_mode=self._full_visual_mode,
+                extension_proxy_mode=True,
+                extension_proxy_host=self._extension_proxy_host,
+                extension_proxy_port=self._extension_proxy_port,
+            )
+            # Share the existing ExtensionProxyWrapper connection
+            if self._extension_proxy_wrapper is not None:
+                cloned._extension_proxy_wrapper = self._extension_proxy_wrapper
+            return cloned
+
+        # Standard CDP mode
         return HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
-            user_data_dir=self._user_data_dir,  # Use the same user_data_dir
+            user_data_dir=self._user_data_dir,
             stealth=self._stealth,
             cache_dir=f"{self._cache_dir.rstrip('/')}/_clone_{new_session_id}/",
             enabled_tools=self.enabled_tools.copy(),

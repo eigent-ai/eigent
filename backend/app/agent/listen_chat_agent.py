@@ -709,7 +709,11 @@ class ListenChatAgent(ChatAgent):
         if has_cdp and hasattr(self, "_cdp_options"):
             options = self._cdp_options
             cdp_browsers = getattr(options, "cdp_browsers", [])
-            if cdp_browsers and hasattr(self, "_browser_toolkit"):
+            cdp_only_browsers = [
+                b for b in cdp_browsers
+                if not b.get("isExtensionProxy", False)
+            ]
+            if cdp_only_browsers and hasattr(self, "_browser_toolkit"):
                 need_cdp_clone = True
                 import uuid as _uuid
 
@@ -717,7 +721,7 @@ class ListenChatAgent(ChatAgent):
 
                 new_cdp_session = str(_uuid.uuid4())[:8]
                 selected = _cdp_pool_manager.acquire_browser(
-                    cdp_browsers,
+                    cdp_only_browsers,
                     new_cdp_session,
                     getattr(self, "_cdp_task_id", None),
                 )
@@ -726,7 +730,7 @@ class ListenChatAgent(ChatAgent):
                 if selected:
                     new_cdp_port = _get_browser_port(selected)
                 else:
-                    new_cdp_port = _get_browser_port(cdp_browsers[0])
+                    new_cdp_port = _get_browser_port(cdp_only_browsers[0])
 
         if need_cdp_clone:
             # Temporarily override the browser toolkit's CDP URL.

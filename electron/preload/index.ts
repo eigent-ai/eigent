@@ -162,8 +162,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-browser-port', port, isExternal),
   getBrowserPort: () => ipcRenderer.invoke('get-browser-port'),
   getCdpBrowsers: () => ipcRenderer.invoke('get-cdp-browsers'),
-  addCdpBrowser: (port: number, isExternal: boolean, name?: string) =>
-    ipcRenderer.invoke('add-cdp-browser', port, isExternal, name),
+  addCdpBrowser: (
+    port: number,
+    isExternal: boolean,
+    name?: string,
+    isExtensionProxy?: boolean
+  ) =>
+    ipcRenderer.invoke(
+      'add-cdp-browser',
+      port,
+      isExternal,
+      name,
+      isExtensionProxy
+    ),
   removeCdpBrowser: (browserId: string, closeBrowser?: boolean) =>
     ipcRenderer.invoke('remove-cdp-browser', browserId, closeBrowser ?? true),
   launchCdpBrowser: () => ipcRenderer.invoke('launch-cdp-browser'),

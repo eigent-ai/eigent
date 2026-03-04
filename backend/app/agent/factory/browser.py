@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import platform
 import threading
 import uuid
@@ -148,6 +149,114 @@ class CdpBrowserPoolManager:
 _cdp_pool_manager = CdpBrowserPoolManager()
 
 
+class ExtensionTabPoolManager:
+    """Manages tab allocations within a shared extension proxy connection
+    for parallel agent tasks."""
+
+    def __init__(self):
+        self._occupied_tabs: dict[int, str] = {}  # tabId -> session_id
+        self._session_to_tab: dict[str, int] = {}
+        self._session_to_task: dict[str, str | None] = {}
+        self._extension_proxy = None
+        self._lock = threading.Lock()
+
+    def set_extension_proxy(self, proxy):
+        """Set the shared ExtensionProxyWrapper instance."""
+        self._extension_proxy = proxy
+
+    async def acquire_tab(
+        self,
+        session_id: str,
+        task_id: str | None = None,
+        url: str = "about:blank",
+    ) -> int | None:
+        """Create a new tab and assign it to a session."""
+        if not self._extension_proxy:
+            logger.error("ExtensionTabPoolManager: no extension proxy set")
+            return None
+        try:
+            result = await self._extension_proxy.open_tab(url)
+            tab_id = result.get("tabId")
+            if tab_id is not None:
+                with self._lock:
+                    self._occupied_tabs[tab_id] = session_id
+                    self._session_to_tab[session_id] = tab_id
+                    self._session_to_task[session_id] = task_id
+                logger.info(
+                    f"Acquired tab {tab_id} for session {session_id}. "
+                    f"Total tabs: {len(self._occupied_tabs)}"
+                )
+            return tab_id
+        except Exception as e:
+            logger.error(f"Failed to acquire tab: {e}")
+            return None
+
+    async def release_tab(self, tab_id: int, session_id: str):
+        """Close a tab and release it from the session."""
+        with self._lock:
+            if (
+                tab_id in self._occupied_tabs
+                and self._occupied_tabs[tab_id] == session_id
+            ):
+                del self._occupied_tabs[tab_id]
+                self._session_to_tab.pop(session_id, None)
+                self._session_to_task.pop(session_id, None)
+            else:
+                logger.warning(
+                    f"Tab {tab_id} not occupied by session {session_id}"
+                )
+                return
+        try:
+            if self._extension_proxy:
+                await self._extension_proxy.close_tab(tab_id)
+            logger.info(
+                f"Released tab {tab_id} from session {session_id}. "
+                f"Remaining tabs: {len(self._occupied_tabs)}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to close tab {tab_id}: {e}")
+
+    async def release_by_task(self, task_id: str) -> list[int]:
+        """Release all tabs associated with a task_id."""
+        released = []
+        with self._lock:
+            sessions = [
+                s for s, t in self._session_to_task.items() if t == task_id
+            ]
+            for session_id in sessions:
+                tab_id = self._session_to_tab.get(session_id)
+                if tab_id is not None:
+                    released.append((tab_id, session_id))
+                    self._occupied_tabs.pop(tab_id, None)
+                self._session_to_tab.pop(session_id, None)
+                self._session_to_task.pop(session_id, None)
+
+        for tab_id, _ in released:
+            try:
+                if self._extension_proxy:
+                    await self._extension_proxy.close_tab(tab_id)
+            except Exception as e:
+                logger.error(f"Failed to close tab {tab_id}: {e}")
+
+        if released:
+            logger.info(f"Released {len(released)} tab(s) for task {task_id}")
+        return [t for t, _ in released]
+
+
+# Global extension tab pool manager instance
+_tab_pool_manager = ExtensionTabPoolManager()
+
+
+def _find_extension_proxy_browser(
+    cdp_browsers: list[dict],
+) -> dict | None:
+    """Find the first extension proxy browser in the list."""
+    for browser in cdp_browsers:
+        if browser.get("isExtensionProxy", False):
+            return browser
+    return None
+
+
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
@@ -164,30 +273,59 @@ def browser_agent(options: Chat):
     toolkit_session_id = str(uuid.uuid4())[:8]
     selected_port = None
     selected_is_external = False
+    use_extension_proxy = False
+    extension_proxy_port = 8765
 
+    # Check for extension proxy browser first
+    extension_proxy_browser = None
     if options.cdp_browsers:
-        selected_browser = _cdp_pool_manager.acquire_browser(
-            options.cdp_browsers, toolkit_session_id, options.task_id
+        extension_proxy_browser = _find_extension_proxy_browser(
+            options.cdp_browsers
         )
-        if selected_browser:
-            selected_port = _get_browser_port(selected_browser)
-            selected_is_external = selected_browser.get("isExternal", False)
-            logger.info(
-                f"Acquired CDP browser from pool (initial): "
-                f"port={selected_port}, isExternal={selected_is_external}, "
-                f"session_id={toolkit_session_id}"
-            )
-        else:
-            selected_port = _get_browser_port(options.cdp_browsers[0])
-            selected_is_external = options.cdp_browsers[0].get(
-                "isExternal", False
-            )
-            logger.warning(
-                f"No available browsers in pool (initial), using first: "
-                f"port={selected_port}, session_id={toolkit_session_id}"
-            )
+
+    if extension_proxy_browser:
+        # Extension proxy mode: use plugin exclusively, no CDP fallback
+        use_extension_proxy = True
+        extension_proxy_port = int(extension_proxy_browser.get("port", 8765))
+        selected_is_external = True
+        logger.info(
+            f"Using extension proxy mode (exclusive): "
+            f"port={extension_proxy_port}, session_id={toolkit_session_id}"
+        )
     else:
-        selected_port = env("browser_port", "9222")
+        # No extension proxy — use CDP browsers
+        cdp_only_browsers = [
+            b
+            for b in (options.cdp_browsers or [])
+            if not b.get("isExtensionProxy", False)
+        ]
+        if cdp_only_browsers:
+            selected_browser = _cdp_pool_manager.acquire_browser(
+                cdp_only_browsers, toolkit_session_id, options.task_id
+            )
+            if selected_browser:
+                selected_port = _get_browser_port(selected_browser)
+                selected_is_external = selected_browser.get(
+                    "isExternal", False
+                )
+                logger.info(
+                    f"Acquired CDP browser from pool (initial): "
+                    f"port={selected_port}, "
+                    f"isExternal={selected_is_external}, "
+                    f"session_id={toolkit_session_id}"
+                )
+            else:
+                selected_port = _get_browser_port(cdp_only_browsers[0])
+                selected_is_external = cdp_only_browsers[0].get(
+                    "isExternal", False
+                )
+                logger.warning(
+                    f"No available browsers in pool (initial), "
+                    f"using first: port={selected_port}, "
+                    f"session_id={toolkit_session_id}"
+                )
+        else:
+            selected_port = env("browser_port", "9222")
 
     enabled_browser_tools = [
         "browser_click",
@@ -205,19 +343,45 @@ def browser_agent(options: Chat):
         "browser_sheet_input",
         "browser_get_page_snapshot",
     ]
-    if selected_is_external:
+    if selected_is_external or use_extension_proxy:
         enabled_browser_tools.append("browser_open")
 
-    web_toolkit_custom = HybridBrowserToolkit(
-        options.project_id,
-        cdp_keep_current_page=True,
-        headless=False,
-        browser_log_to_file=True,
-        stealth=True,
-        session_id=toolkit_session_id,
-        cdp_url=f"http://localhost:{selected_port}",
-        enabled_tools=enabled_browser_tools,
-    )
+    if use_extension_proxy:
+        web_toolkit_custom = HybridBrowserToolkit(
+            options.project_id,
+            cdp_keep_current_page=True,
+            headless=False,
+            browser_log_to_file=True,
+            stealth=True,
+            session_id=toolkit_session_id,
+            extension_proxy_mode=True,
+            extension_proxy_port=extension_proxy_port,
+            enabled_tools=enabled_browser_tools,
+        )
+        # Inject pre-started global wrapper if available
+        from app.service.extension_proxy_service import (
+            get_extension_proxy_wrapper,
+        )
+
+        global_wrapper = get_extension_proxy_wrapper()
+        if global_wrapper is not None:
+            web_toolkit_custom._extension_proxy_wrapper = global_wrapper
+            _tab_pool_manager.set_extension_proxy(global_wrapper)
+            logger.info(
+                "Injected pre-started global ExtensionProxyWrapper "
+                "into toolkit"
+            )
+    else:
+        web_toolkit_custom = HybridBrowserToolkit(
+            options.project_id,
+            cdp_keep_current_page=True,
+            headless=False,
+            browser_log_to_file=True,
+            stealth=True,
+            session_id=toolkit_session_id,
+            cdp_url=f"http://localhost:{selected_port}",
+            enabled_tools=enabled_browser_tools,
+        )
 
     # Save reference before registering for toolkits_to_register_agent
     web_toolkit_for_agent_registration = web_toolkit_custom
@@ -327,44 +491,98 @@ def browser_agent(options: Chat):
         enable_snapshot_clean=True,
     )
 
-    # Attach CDP management callbacks and info to the agent
-    def acquire_cdp_for_agent(agent_instance):
-        """Acquire a CDP browser from pool for a cloned agent."""
-        if not options.cdp_browsers:
-            return
-        session_id = str(uuid.uuid4())[:8]
-        selected = _cdp_pool_manager.acquire_browser(
-            options.cdp_browsers, session_id, options.task_id
-        )
-        if selected:
-            agent_instance._cdp_port = _get_browser_port(selected)
-        else:
-            agent_instance._cdp_port = _get_browser_port(
-                options.cdp_browsers[0]
-            )
-        agent_instance._cdp_session_id = session_id
-        logger.info(
-            f"Acquired CDP for cloned agent {agent_instance.agent_id}: "
-            f"port={agent_instance._cdp_port}, session={session_id}"
-        )
-
-    def release_cdp_from_agent(agent_instance):
-        """Release CDP browser back to pool."""
-        port = getattr(agent_instance, "_cdp_port", None)
-        session_id = getattr(agent_instance, "_cdp_session_id", None)
-        if port is not None and session_id is not None:
-            _cdp_pool_manager.release_browser(port, session_id)
+    if use_extension_proxy:
+        # Extension proxy mode: tab-based parallelism
+        def acquire_tab_for_agent(agent_instance):
+            """Acquire a new tab from extension for a cloned agent."""
+            session_id = str(uuid.uuid4())[:8]
+            try:
+                loop = asyncio.get_event_loop()
+                tab_id = loop.run_until_complete(
+                    _tab_pool_manager.acquire_tab(session_id, options.task_id)
+                )
+            except RuntimeError:
+                # If no event loop, create one
+                tab_id = asyncio.run(
+                    _tab_pool_manager.acquire_tab(session_id, options.task_id)
+                )
+            agent_instance._extension_tab_id = tab_id
+            agent_instance._cdp_session_id = session_id
+            agent_instance._cdp_port = extension_proxy_port
             logger.info(
-                f"Released CDP for agent {agent_instance.agent_id}: "
-                f"port={port}, session={session_id}"
+                f"Acquired tab {tab_id} for cloned agent "
+                f"{agent_instance.agent_id}, session={session_id}"
             )
 
-    agent._cdp_acquire_callback = acquire_cdp_for_agent
-    agent._cdp_release_callback = release_cdp_from_agent
-    agent._cdp_port = selected_port
-    agent._cdp_session_id = toolkit_session_id
-    agent._cdp_task_id = options.task_id
-    agent._cdp_options = options
-    agent._browser_toolkit = web_toolkit_for_agent_registration
+        def release_tab_from_agent(agent_instance):
+            """Release tab back to pool."""
+            tab_id = getattr(agent_instance, "_extension_tab_id", None)
+            session_id = getattr(agent_instance, "_cdp_session_id", None)
+            if tab_id is not None and session_id is not None:
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.run_until_complete(
+                        _tab_pool_manager.release_tab(tab_id, session_id)
+                    )
+                except RuntimeError:
+                    asyncio.run(
+                        _tab_pool_manager.release_tab(tab_id, session_id)
+                    )
+                logger.info(
+                    f"Released tab {tab_id} for agent "
+                    f"{agent_instance.agent_id}"
+                )
+
+        agent._cdp_acquire_callback = acquire_tab_for_agent
+        agent._cdp_release_callback = release_tab_from_agent
+        agent._cdp_port = extension_proxy_port
+        agent._cdp_session_id = toolkit_session_id
+        agent._cdp_task_id = options.task_id
+        agent._cdp_options = options
+        agent._browser_toolkit = web_toolkit_for_agent_registration
+        agent._use_extension_proxy = True
+    else:
+        # Standard CDP mode: port-based parallelism
+        def acquire_cdp_for_agent(agent_instance):
+            """Acquire a CDP browser from pool for a cloned agent."""
+            cdp_only = [
+                b
+                for b in (options.cdp_browsers or [])
+                if not b.get("isExtensionProxy", False)
+            ]
+            if not cdp_only:
+                return
+            session_id = str(uuid.uuid4())[:8]
+            selected = _cdp_pool_manager.acquire_browser(
+                cdp_only, session_id, options.task_id
+            )
+            if selected:
+                agent_instance._cdp_port = _get_browser_port(selected)
+            else:
+                agent_instance._cdp_port = _get_browser_port(cdp_only[0])
+            agent_instance._cdp_session_id = session_id
+            logger.info(
+                f"Acquired CDP for cloned agent {agent_instance.agent_id}: "
+                f"port={agent_instance._cdp_port}, session={session_id}"
+            )
+
+        def release_cdp_from_agent(agent_instance):
+            """Release CDP browser back to pool."""
+            port = getattr(agent_instance, "_cdp_port", None)
+            session_id = getattr(agent_instance, "_cdp_session_id", None)
+            if port is not None and session_id is not None:
+                _cdp_pool_manager.release_browser(port, session_id)
+                logger.info(
+                    f"Released CDP for agent {agent_instance.agent_id}: "
+                    f"port={port}, session={session_id}"
+                )
+
+        agent._cdp_acquire_callback = acquire_cdp_for_agent
+        agent._cdp_release_callback = release_cdp_from_agent
+        agent._cdp_port = selected_port
+        agent._cdp_session_id = toolkit_session_id
+        agent._cdp_task_id = options.task_id
+        agent._cdp_options = options
+        agent._browser_toolkit = web_toolkit_for_agent_registration
 
     return agent

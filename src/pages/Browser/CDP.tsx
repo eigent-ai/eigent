@@ -23,6 +23,7 @@ interface CdpBrowser {
   id: string;
   port: number;
   isExternal: boolean;
+  isExtensionProxy?: boolean;
   name?: string;
   addedAt: number;
 }
@@ -215,35 +216,37 @@ export default function CDP() {
             {t('layout.cdp-browser-pool')}
           </div>
 
-          {cdpBrowsers.length > 0 ? (
+          {cdpBrowsers.filter((b) => !b.isExtensionProxy).length > 0 ? (
             <div className="flex flex-col gap-2">
-              {cdpBrowsers.map((browser) => (
-                <div
-                  key={browser.id}
-                  className="flex items-center justify-between rounded-xl border-solid border-border-disabled bg-surface-tertiary px-4 py-2"
-                >
-                  <div className="flex w-full flex-row items-center gap-2">
-                    <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
-                    <div className="flex flex-col items-start justify-start">
-                      <span className="text-body-sm font-bold text-text-body">
-                        {browser.name || `Browser ${browser.port}`}
-                      </span>
-                      <span className="text-label-xs text-text-label">
-                        {t('layout.port')} {browser.port}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setBrowserToRemove(browser)}
-                    disabled={deletingBrowser === browser.id}
-                    className="ml-3 flex-shrink-0"
+              {cdpBrowsers
+                .filter((b) => !b.isExtensionProxy)
+                .map((browser) => (
+                  <div
+                    key={browser.id}
+                    className="flex items-center justify-between rounded-xl border-solid border-border-disabled bg-surface-tertiary px-4 py-2"
                   >
-                    <Trash2 className="h-4 w-4 text-text-cuation" />
-                  </Button>
-                </div>
-              ))}
+                    <div className="flex w-full flex-row items-center gap-2">
+                      <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
+                      <div className="flex flex-col items-start justify-start">
+                        <span className="text-body-sm font-bold text-text-body">
+                          {browser.name || `Browser ${browser.port}`}
+                        </span>
+                        <span className="text-label-xs text-text-label">
+                          {t('layout.port')} {browser.port}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setBrowserToRemove(browser)}
+                      disabled={deletingBrowser === browser.id}
+                      className="ml-3 flex-shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4 text-text-cuation" />
+                    </Button>
+                  </div>
+                ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-4 py-8">

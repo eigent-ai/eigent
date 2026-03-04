@@ -94,6 +94,7 @@ interface CdpBrowser {
   id: string;
   port: number;
   isExternal: boolean;
+  isExtensionProxy?: boolean;
   name?: string;
   addedAt: number;
 }
@@ -160,7 +161,9 @@ async function runPoolHealthCheck(): Promise<void> {
   // Probe a snapshot so add/remove IPC handlers can run safely in parallel.
   const snapshot = [...cdp_browser_pool];
   const results = await Promise.all(
-    snapshot.map((b) => isCdpPortAlive(b.port))
+    snapshot.map((b) =>
+      b.isExtensionProxy ? Promise.resolve(true) : isCdpPortAlive(b.port)
+    )
   );
   const deadIds = snapshot
     .filter((_, idx) => !results[idx])
@@ -632,7 +635,13 @@ function registerIpcHandlers() {
   // Add browser to pool
   ipcMain.handle(
     'add-cdp-browser',
-    (event, port: number, isExternal: boolean, name?: string) => {
+    (
+      event,
+      port: number,
+      isExternal: boolean,
+      name?: string,
+      isExtensionProxy?: boolean
+    ) => {
       const existing = cdp_browser_pool.find((b) => b.port === port);
       if (existing) {
         log.warn(
@@ -648,6 +657,7 @@ function registerIpcHandlers() {
         id: `cdp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         port,
         isExternal,
+        isExtensionProxy: isExtensionProxy || false,
         name,
         addedAt: Date.now(),
       };
@@ -675,8 +685,8 @@ function registerIpcHandlers() {
 
       const removed = cdp_browser_pool.splice(index, 1)[0];
 
-      // Close the browser via CDP (best-effort)
-      if (closeBrowser) {
+      // Close the browser via CDP (best-effort, skip for extension proxy)
+      if (closeBrowser && !removed.isExtensionProxy) {
         await closeBrowserViaCdp(removed.port);
       }
 

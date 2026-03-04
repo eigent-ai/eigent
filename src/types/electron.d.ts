@@ -213,7 +213,8 @@ interface ElectronAPI {
   addCdpBrowser: (
     port: number,
     isExternal: boolean,
-    name?: string
+    name?: string,
+    isExtensionProxy?: boolean
   ) => Promise<{ success: boolean; browser?: any; error?: string }>;
   removeCdpBrowser: (
     browserId: string,

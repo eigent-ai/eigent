@@ -23,6 +23,7 @@ from fastapi import FastAPI
 
 from app.controller import (
     chat_controller,
+    extension_proxy_controller,
     health_controller,
     model_controller,
     task_controller,
@@ -70,6 +71,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": tool_controller.router,
             "tags": ["tool"],
             "description": "Tool installation and management",
+        },
+        {
+            "router": extension_proxy_controller.router,
+            "tags": ["extension-proxy"],
+            "description": "Extension proxy WebSocket server lifecycle",
         },
     ]
 
