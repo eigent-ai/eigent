@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useProjectStore } from '@/store/projectStore';
-import { ProjectGroup } from '@/types/history';
+import { HistoryTask, ProjectGroup } from '@/types/history';
 import {
   CheckCircle,
   Clock,
@@ -46,7 +46,7 @@ interface ProjectDialogProps {
     historyId: string,
     project?: ProjectGroup
   ) => void;
-  onTaskDelete: (historyId: string, task?: import('@/types/history').HistoryTask) => void;
+  onTaskDelete: (historyId: string, task?: HistoryTask) => void;
   onTaskShare: (taskId: string) => void;
   activeTaskId?: string;
 }

@@ -98,6 +98,7 @@ export function SearchHistoryDialog() {
         (window as unknown as { ipcRenderer?: object }).ipcRenderer
       ) {
         const { email } = getAuthStore();
+        const safeEmail = email ?? '';
         try {
           await (
             window as unknown as {
@@ -112,9 +113,9 @@ export function SearchHistoryDialog() {
             }
           ).ipcRenderer.invoke(
             'delete-task-files',
-            email,
+            safeEmail,
             task.task_id,
-            task.project_id ?? undefined
+            task.project_id
           );
         } catch (error) {
           console.warn('Local file cleanup failed:', error);
@@ -218,19 +219,15 @@ export function SearchHistoryDialog() {
                         className="text-text-cuation"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          try {
-                            await handleDelete(
-                              String(task.id),
-                              task,
-                              () => {
-                                setHistoryTasks((prev) =>
-                                  prev.filter((t) => t.id !== task.id)
-                                );
-                              }
-                            );
-                          } catch {
-                            // Error already handled in handleDelete
-                          }
+                          await handleDelete(
+                            String(task.id),
+                            task,
+                            () => {
+                              setHistoryTasks((prev) =>
+                                prev.filter((t) => t.id !== task.id)
+                              );
+                            }
+                          );
                         }}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />

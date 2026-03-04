@@ -19,7 +19,7 @@ import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
 import { useProjectStore } from '@/store/projectStore';
-import { ProjectGroup as ProjectGroupType } from '@/types/history';
+import { HistoryTask, ProjectGroup as ProjectGroupType } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FolderOpen, LayoutGrid, List, Pin, Sparkle } from 'lucide-react';
 import { useEffect, useState } from 'react';
