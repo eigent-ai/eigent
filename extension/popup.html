@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAMEL Browser Agent</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+            <line x1="9" y1="9" x2="9.01" y2="9"/>
+            <line x1="15" y1="9" x2="15.01" y2="9"/>
+          </svg>
+        </div>
+        <span class="title">CAMEL Browser Agent</span>
+      </div>
+      <div class="header-right">
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 12v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Page -->
+    <div id="settingsPage" class="page hidden">
+      <div class="settings-content">
+        <h2>Settings</h2>
+
+        <div class="setting-group">
+          <label>Connection Status</label>
+          <div class="connection-status">
+            <span id="connectionDot" class="status-dot disconnected"></span>
+            <span id="connectionText">Disconnected</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label>Server URL</label>
+          <input type="text" id="serverUrl" value="ws://localhost:8765" class="input" />
+        </div>
+
+        <div class="setting-group">
+          <label>Current Page</label>
+          <div id="currentPageUrl" class="current-page">-</div>
+        </div>
+
+        <div class="setting-actions">
+          <button id="connectBtn" class="btn btn-primary">
+            <span class="btn-text">Connect</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </div>
+
+        <div class="setting-group">
+          <label>About</label>
+          <p class="about-text">CAMEL Browser Agent uses AI to automate browser tasks on your current page.</p>
+        </div>
+      </div>
+
+      <button id="backToChat" class="btn btn-secondary btn-full">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Chat
+      </button>
+    </div>
+
+    <!-- Chat Page -->
+    <div id="chatPage" class="page">
+      <!-- Messages Container -->
+      <div id="messagesContainer" class="messages-container">
+        <div class="welcome-message">
+          <div class="welcome-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9"/>
+              <line x1="15" y1="9" x2="15.01" y2="9"/>
+            </svg>
+          </div>
+          <h3>Welcome to CAMEL Browser Agent</h3>
+          <p>Describe what you want to do on this page, and I'll help automate it.</p>
+          <div class="suggestions">
+            <button class="suggestion-chip" data-text="Click the first link on this page">Click first link</button>
+            <button class="suggestion-chip" data-text="Scroll down to see more content">Scroll down</button>
+            <button class="suggestion-chip" data-text="Find and click the search button">Find search</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-wrapper">
+          <textarea
+            id="messageInput"
+            placeholder="Describe your task..."
+            rows="1"
+          ></textarea>
+          <button id="sendBtn" class="send-btn" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+        <div class="input-hint">
+          <span id="statusHint" class="status-hint disconnected">
+            <span class="hint-dot"></span>
+            Not connected
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAMEL Browser Agent</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+            <line x1="9" y1="9" x2="9.01" y2="9"/>
+            <line x1="15" y1="9" x2="15.01" y2="9"/>
+          </svg>
+        </div>
+        <span class="title">CAMEL Browser Agent</span>
+      </div>
+      <div class="header-right">
+        <button id="clearBtn" class="icon-btn" title="Clear chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Panel (overlay) -->
+    <div id="settingsPanel" class="settings-panel hidden">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button id="closeSettings" class="icon-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-content">
+        <div class="setting-group">
+          <label>Connection</label>
+          <div class="connection-row">
+            <span id="connectionDot" class="status-dot"></span>
+            <span id="connectionText">Disconnected</span>
+            <button id="connectBtn" class="btn btn-sm btn-primary">Connect</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label>Server URL</label>
+          <input type="text" id="serverUrl" value="ws://localhost:8765" class="input" />
+        </div>
+
+        <div class="setting-group">
+          <label>Current Page</label>
+          <div id="currentPageUrl" class="current-page">-</div>
+        </div>
+
+        <div class="setting-group">
+          <label>Full Vision Mode</label>
+          <div class="debug-toggle-row">
+            <span>Use screenshots + pixel coordinates</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="fullVisionToggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label>Debug Mode</label>
+          <div class="debug-toggle-row">
+            <span>Enable manual action execution</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="debugModeToggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debug Panel (shows when debug mode is on) -->
+    <div id="debugPanel" class="debug-panel hidden">
+      <div class="debug-header">
+        <span class="debug-title">Debug Console</span>
+        <button id="closeDebug" class="icon-btn" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="debug-content">
+        <div class="debug-output" id="debugOutput">
+          <div class="debug-welcome">
+            <p>Debug mode enabled. Available commands:</p>
+            <ul>
+              <li><code>snapshot</code> - Get page snapshot</li>
+              <li><code>click &lt;ref&gt;</code> - Click element (e.g., click e1)</li>
+              <li><code>type &lt;ref&gt; &lt;text&gt;</code> - Type text (e.g., type e2 "hello")</li>
+              <li><code>scroll &lt;direction&gt; [amount]</code> - Scroll page (e.g., scroll down 500)</li>
+              <li><code>visit &lt;url&gt;</code> - Navigate to URL</li>
+              <li><code>back</code> - Go back</li>
+              <li><code>forward</code> - Go forward</li>
+              <li><code>key &lt;key&gt;</code> - Press key (e.g., key Enter)</li>
+              <li><code>exec &lt;js&gt;</code> - Execute JavaScript</li>
+            </ul>
+          </div>
+        </div>
+        <div class="debug-input-area">
+          <input type="text" id="debugInput" placeholder="Enter command..." class="debug-input" />
+          <button id="debugSendBtn" class="debug-send-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area">
+      <!-- Messages Container -->
+      <div id="messagesContainer" class="messages-container">
+        <div class="welcome-message">
+          <div class="welcome-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9"/>
+              <line x1="15" y1="9" x2="15.01" y2="9"/>
+            </svg>
+          </div>
+          <h3>Welcome to CAMEL Browser Agent</h3>
+          <p>Describe what you want to do on this page.</p>
+          <div class="suggestions">
+            <button class="suggestion-chip" data-text="Click the first link on this page">Click first link</button>
+            <button class="suggestion-chip" data-text="Scroll down to see more content">Scroll down</button>
+            <button class="suggestion-chip" data-text="Fill the form on this page">Fill form</button>
+            <button class="suggestion-chip" data-text="Extract all text content from this page">Extract text</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-wrapper">
+          <textarea
+            id="messageInput"
+            placeholder="Describe your task..."
+            rows="1"
+          ></textarea>
+          <button id="sendBtn" class="send-btn" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+        <div class="input-hint">
+          <span id="statusHint" class="status-hint">
+            <span class="hint-dot"></span>
+            <span class="hint-text">Not connected</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
