@@ -14,7 +14,7 @@
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useTranslation } from 'react-i18next';
-import { WorkSpaceMenu } from '../WorkSpaceMenu';
+import { WorkSpaceMenu } from '../WorkspaceMenu';
 
 interface BottomBarProps {
   onToggleChatBox?: () => void;

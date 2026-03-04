@@ -35,13 +35,6 @@ import eigentLogo from '@/assets/logo/eigent_icon.png';
 const HAS_STACK_KEYS = hasStackKeys();
 let lock = false;
 
-function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!domain) return email;
-  const visible = local.slice(0, 2);
-  return `${visible}${'*'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
-}
-
 export default function Login() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
@@ -152,6 +145,15 @@ export default function Login() {
     if (generalError) {
       setGeneralError('');
     }
+
+    // Show/hide saved accounts dropdown based on email prefix match
+    if (field === 'email') {
+      const input = value.toLowerCase();
+      const hasMatch = savedAccounts.some((a) =>
+        a.email.toLowerCase().startsWith(input)
+      );
+      setShowSavedAccounts(hasMatch && savedAccounts.length > 0);
+    }
   };
 
   // Load saved accounts on mount
@@ -199,6 +201,7 @@ export default function Login() {
       email: account.email,
       user_id: account.user_id,
     });
+    // TODO: avoid hardcoding 'cloud' — save and restore the user's model type preference per account
     setModelType('cloud');
     const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
     setLocalProxyValue(localProxyValue);
@@ -214,6 +217,10 @@ export default function Login() {
       setFormData({ email: '', password: '' });
     }
   };
+
+  const filteredAccounts = savedAccounts.filter((a) =>
+    a.email.toLowerCase().startsWith(formData.email.toLowerCase())
+  );
 
   const handleLogin = async () => {
     if (!validateForm()) {
@@ -541,24 +548,28 @@ export default function Login() {
                     note={errors.email}
                     onEnter={handleLogin}
                     onFocus={() => {
-                      if (savedAccounts.length > 0) {
+                      const input = formData.email.toLowerCase();
+                      const hasMatch = savedAccounts.some((a) =>
+                        a.email.toLowerCase().startsWith(input)
+                      );
+                      if (hasMatch) {
                         setShowSavedAccounts(true);
                       }
                     }}
                   />
-                  {showSavedAccounts && savedAccounts.length > 0 && (
+                  {showSavedAccounts && filteredAccounts.length > 0 && (
                     <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border-tertiary bg-surface-primary shadow-lg">
                       <div className="px-3 py-2 text-label-sm text-text-secondary">
                         {t('layout.saved-accounts')}
                       </div>
-                      {savedAccounts.map((account) => (
+                      {filteredAccounts.map((account) => (
                         <div
                           key={account.email}
                           className="flex cursor-pointer items-center justify-between px-3 py-2 hover:bg-surface-secondary"
                           onClick={() => handleSelectAccount(account)}
                         >
                           <span className="text-label-md text-text-primary">
-                            {maskEmail(account.email)}
+                            {account.email}
                           </span>
                           <button
                             className="text-label-sm text-text-secondary hover:text-text-primary"

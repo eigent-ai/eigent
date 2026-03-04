@@ -2323,15 +2323,13 @@ function registerIpcHandlers() {
     'saved_accounts.enc'
   );
 
-  const readSavedAccounts = (): SavedAccount[] => {
+  const readSavedAccounts = async (): Promise<SavedAccount[]> => {
     try {
-      if (
-        !fs.existsSync(ACCOUNTS_FILE) ||
-        !safeStorage.isEncryptionAvailable()
-      ) {
+      if (!safeStorage.isEncryptionAvailable()) {
         return [];
       }
-      const encrypted = fs.readFileSync(ACCOUNTS_FILE);
+      const encrypted = await fsp.readFile(ACCOUNTS_FILE).catch(() => null);
+      if (!encrypted) return [];
       const decrypted = safeStorage.decryptString(encrypted);
       const parsed = JSON.parse(decrypted);
       // Filter out any entries from the old password-based format.
@@ -2349,17 +2347,15 @@ function registerIpcHandlers() {
     }
   };
 
-  const writeSavedAccounts = (accounts: SavedAccount[]) => {
+  const writeSavedAccounts = async (accounts: SavedAccount[]) => {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('Encryption not available');
     }
     const dir = path.dirname(ACCOUNTS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    await fsp.mkdir(dir, { recursive: true });
     const encrypted = safeStorage.encryptString(JSON.stringify(accounts));
-    fs.writeFileSync(ACCOUNTS_FILE, encrypted);
-    fs.chmodSync(ACCOUNTS_FILE, 0o600);
+    await fsp.writeFile(ACCOUNTS_FILE, encrypted);
+    await fsp.chmod(ACCOUNTS_FILE, 0o600);
   };
 
   ipcMain.handle(
@@ -2372,14 +2368,14 @@ function registerIpcHandlers() {
       user_id: number
     ) => {
       try {
-        const accounts = readSavedAccounts();
+        const accounts = await readSavedAccounts();
         const index = accounts.findIndex((a) => a.email === email);
         if (index >= 0) {
           accounts[index] = { email, token, username, user_id };
         } else {
           accounts.push({ email, token, username, user_id });
         }
-        writeSavedAccounts(accounts);
+        await writeSavedAccounts(accounts);
         return { success: true };
       } catch (error) {
         return { success: false, error: (error as Error).message };
@@ -2389,7 +2385,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('credentials-load', async () => {
     try {
-      const accounts = readSavedAccounts();
+      const accounts = await readSavedAccounts();
       return { success: true, accounts };
     } catch (error) {
       return { success: false, accounts: [] };
@@ -2398,8 +2394,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('credentials-remove', async (_event, email: string) => {
     try {
-      const accounts = readSavedAccounts().filter((a) => a.email !== email);
-      writeSavedAccounts(accounts);
+      const accounts = (await readSavedAccounts()).filter(
+        (a) => a.email !== email
+      );
+      await writeSavedAccounts(accounts);
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
