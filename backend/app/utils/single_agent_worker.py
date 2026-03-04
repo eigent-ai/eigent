@@ -36,7 +36,7 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         description: str,
         worker: ListenChatAgent,
         use_agent_pool: bool = True,
-        pool_initial_size: int = 1,
+        pool_initial_size: int = 0,  # Changed from 1 to 0 to avoid pre-creating clones that waste CDP resources
         pool_max_size: int = 10,
         auto_scale_pool: bool = True,
         use_structured_output_handler: bool = True,
@@ -86,6 +86,16 @@ class SingleAgentWorker(BaseSingleAgentWorker):
             TaskState: `TaskState.DONE` if processed successfully, otherwise
                 `TaskState.FAILED`.
         """
+        # Log task details before getting agent (for clone tracking)
+        task_content_preview = (
+            task.content[:100] + "..."
+            if len(task.content) > 100
+            else task.content
+        )
+        logger.debug(
+            f"[TASK REQUEST] Requesting agent for task_id={task.id}, content_preview='{task_content_preview}'"
+        )
+
         # Get agent efficiently (from pool or by cloning)
         worker_agent = await self._get_worker_agent()
         worker_agent.process_task_id = task.id  # type: ignore  rewrite line

@@ -171,6 +171,24 @@ def _log_deactivate(
     )
 
 
+def _filter_kwargs_for_callable(
+    func: Callable[..., Any], kwargs: dict
+) -> dict:
+    """Drop unexpected kwargs unless the callable accepts **kwargs."""
+    if not kwargs:
+        return kwargs
+    try:
+        sig = signature(func)
+    except (TypeError, ValueError):
+        return kwargs
+    if any(
+        param.kind == param.VAR_KEYWORD for param in sig.parameters.values()
+    ):
+        return kwargs
+    allowed = set(sig.parameters.keys())
+    return {k: v for k, v in kwargs.items() if k in allowed}
+
+
 def _safe_put_queue(task_lock, data):
     """Safely put data to the queue, handling both sync and async contexts"""
     try:
@@ -308,7 +326,8 @@ def listen_toolkit(
                 error = None
                 res = None
                 try:
-                    res = await func(*args, **kwargs)
+                    safe_kwargs = _filter_kwargs_for_callable(func, kwargs)
+                    res = await func(*args, **safe_kwargs)
                 except Exception as e:
                     error = e
 

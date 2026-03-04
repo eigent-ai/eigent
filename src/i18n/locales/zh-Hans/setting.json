@@ -191,9 +191,6 @@
   "api-key-setting": "API 密钥设置",
   "api-host-setting": "API Host 设置",
   "model-type-setting": "模型类型设置",
-  "search-model-types": "搜索模型类型...",
-  "no-model-types-found": "未找到模型类型。",
-  "loading-suggestions": "正在加载建议...",
   "please-select": "请选择",
   "configuring": "正在配置...",
 
@@ -211,9 +208,5 @@
   "gpt-5.2-name": "GPT-5.2",
   "gpt-5-mini-name": "GPT-5 Mini",
   "claude-sonnet-4-5-name": "Claude Sonnet 4-5",
-  "minimax-m2-5-name": "Minimax M2.5",
-
-  "preferred-ide": "首选 IDE",
-  "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
-  "system-file-manager": "系统文件管理器"
+  "minimax-m2-5-name": "Minimax M2.5"
 }

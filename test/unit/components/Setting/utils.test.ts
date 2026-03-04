@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   arrayToArgsJson,
   parseArgsToArray,
-} from '../../../../src/pages/Setting/components/utils';
+} from '../../../../src/pages/Connectors/components/utils';
 
 describe('parseArgsToArray', () => {
   it('should parse JSON array string to array', () => {

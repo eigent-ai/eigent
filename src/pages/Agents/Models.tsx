@@ -19,7 +19,6 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import { ModelTypeCombobox } from '@/components/ModelTypeCombobox';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -54,7 +53,7 @@ import {
   Server,
   Settings,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -66,6 +65,7 @@ import bedrockImage from '@/assets/model/bedrock.svg';
 import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
 import geminiImage from '@/assets/model/gemini.svg';
+import llamaCppImage from '@/assets/model/llamacpp.svg';
 import lmstudioImage from '@/assets/model/lmstudio.svg';
 import minimaxImage from '@/assets/model/minimax.svg';
 import modelarkImage from '@/assets/model/modelark.svg';
@@ -78,11 +78,23 @@ import sglangImage from '@/assets/model/sglang.svg';
 import vllmImage from '@/assets/model/vllm.svg';
 import zaiImage from '@/assets/model/zai.svg';
 
-const LOCAL_PROVIDER_NAMES = ['ollama', 'vllm', 'sglang', 'lmstudio'];
-const DEFAULT_OLLAMA_ENDPOINT = 'http://localhost:11434/v1';
-const OLLAMA_ENDPOINT_AUTO_FIX_TITLE = 'Ollama endpoint updated';
-const OLLAMA_ENDPOINT_AUTO_FIX_DESC =
-  'Added /v1 once. You can remove it if not needed.';
+import {
+  appendV1ToEndpoint,
+  canAutoFixOllamaEndpoint,
+  DARK_FILL_MODELS,
+  getDefaultLocalEndpoint,
+  getLocalPlatformName,
+  LLAMA_CPP_PROVIDER_ID,
+  LMSTUDIO_PROVIDER_ID,
+  LOCAL_MODEL_OPTIONS,
+  OLLAMA_ENDPOINT_AUTO_FIX_DESC,
+  OLLAMA_ENDPOINT_AUTO_FIX_TITLE,
+  OLLAMA_PROVIDER_ID,
+  PROVIDER_AVATAR_URLS,
+  SGLANG_PROVIDER_ID,
+  toEndpointBaseUrl,
+  VLLM_PROVIDER_ID,
+} from './localModels';
 
 // Sidebar tab types
 type SidebarTab =
@@ -93,25 +105,8 @@ type SidebarTab =
   | 'local-ollama'
   | 'local-vllm'
   | 'local-sglang'
-  | 'local-lmstudio';
-
-// Provider logos that use dark fills (black or currentColor) and need inversion in dark mode
-const DARK_FILL_MODELS = new Set([
-  'openai',
-  'anthropic',
-  'moonshot',
-  'ollama',
-  'openrouter',
-  'lmstudio',
-  'z.ai',
-  'openai-compatible-model',
-]);
-
-const PROVIDER_AVATAR_URLS: Record<string, string> = {
-  'samba-nova': 'https://github.com/sambanova.png',
-  mistral: 'https://github.com/mistralai.png',
-  grok: 'https://github.com/xai-org.png',
-};
+  | 'local-lmstudio'
+  | 'local-llama.cpp';
 
 export default function SettingModels() {
   const {
@@ -178,20 +173,12 @@ export default function SettingModels() {
 
   // Local Model independent state - per platform
   const [localEnabled, setLocalEnabled] = useState(true);
-  const [localPlatform, setLocalPlatform] = useState('ollama');
+  const [localPlatform, setLocalPlatform] =
+    useState<string>(OLLAMA_PROVIDER_ID);
   const [localEndpoints, setLocalEndpoints] = useState<Record<string, string>>(
     {}
   );
   const [localTypes, setLocalTypes] = useState<Record<string, string>>({});
-  // Saved (persisted) model types — only updated after a successful Save, used for the display label
-  const [savedModelTypes, setSavedModelTypes] = useState<string[]>(() =>
-    INIT_PROVODERS.filter((p) => p.id !== 'local').map(
-      (p) => p.model_type ?? ''
-    )
-  );
-  const [savedLocalTypes, setSavedLocalTypes] = useState<
-    Record<string, string>
-  >({});
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
@@ -200,36 +187,72 @@ export default function SettingModels() {
   const [localInputError, setLocalInputError] = useState(false);
   const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state (for current platform)
 
-  // Ollama-specific state for model fetching
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
-  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(
-    null
-  );
+  // Per-platform model list state: { models, loading, error } keyed by platform ID.
+  const [platformModelState, setPlatformModelState] = useState<
+    Record<string, { models: string[]; loading: boolean; error: string | null }>
+  >({});
   const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
     useState(false);
 
-  // Fetch available models from Ollama API
-  const fetchOllamaModels = async (endpoint?: string) => {
-    const url = endpoint || DEFAULT_OLLAMA_ENDPOINT;
-    setOllamaModelsLoading(true);
-    setOllamaModelsError(null);
-    try {
-      const baseUrl = url.replace(/\/v1\/?$/, '').replace(/\/$/, '');
-      const response = await fetch(`${baseUrl}/api/tags`);
-      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+  // Generic model fetcher driven by LOCAL_MODEL_OPTIONS config.
+  // Only fetches for providers that define fetchPath and parseModels.
+  const fetchModelsForPlatform = useCallback(
+    async (platform: string, endpoint?: string) => {
+      const option = LOCAL_MODEL_OPTIONS.find((m) => m.id === platform);
+      if (!option?.fetchPath || !option?.parseModels) return;
 
-      const data = await response.json();
-      const modelNames = data.models?.map((m: any) => m.name) || [];
-      setOllamaModels(modelNames);
-    } catch (error: any) {
-      console.error('Failed to fetch Ollama models:', error);
-      setOllamaModels([]);
-      setOllamaModelsError('Failed to fetch Ollama models. Is Ollama running?');
-    } finally {
-      setOllamaModelsLoading(false);
+      const url = endpoint || option.defaultEndpoint;
+      setPlatformModelState((prev) => ({
+        ...prev,
+        [platform]: {
+          models: prev[platform]?.models || [],
+          loading: true,
+          error: null,
+        },
+      }));
+      try {
+        const baseUrl = toEndpointBaseUrl(url);
+        const response = await fetch(`${baseUrl}${option.fetchPath}`);
+        if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
+        const data = await response.json();
+        const modelNames = option.parseModels(data);
+        setPlatformModelState((prev) => ({
+          ...prev,
+          [platform]: { models: modelNames, loading: false, error: null },
+        }));
+      } catch (error: any) {
+        console.error(`Failed to fetch ${option.name} models:`, error);
+        setPlatformModelState((prev) => ({
+          ...prev,
+          [platform]: {
+            models: [],
+            loading: false,
+            error: `Failed to fetch ${option.name} models. Is ${option.name} running?`,
+          },
+        }));
+      }
+    },
+    []
+  );
+
+  const clearPlatformModelsError = useCallback((platform: string) => {
+    setPlatformModelState((prev) => {
+      const current = prev[platform];
+      if (!current || !current.error) return prev;
+      return { ...prev, [platform]: { ...current, error: null } };
+    });
+  }, []);
+
+  const checkLlamaCppHealth = useCallback(async (endpoint: string) => {
+    const baseUrl = toEndpointBaseUrl(endpoint);
+    const response = await fetch(`${baseUrl}/v1/health`);
+    if (!response.ok) {
+      throw new Error(
+        'LLaMA.cpp health check failed. Please confirm llama-server is running and reachable.'
+      );
     }
-  };
+  }, []);
 
   // Default model dropdown state (removed - using DropdownMenu's built-in state)
 
@@ -278,17 +301,9 @@ export default function SettingModels() {
             return fi;
           })
         );
-        setSavedModelTypes(
-          items.map((item) => {
-            const found = providerList.find(
-              (p: any) => p.provider_name === item.id
-            );
-            return found?.model_type ?? '';
-          })
-        );
         // Handle local models - load all local providers per platform
         const localProviders = providerList.filter((p: any) =>
-          LOCAL_PROVIDER_NAMES.includes(p.provider_name)
+          LOCAL_MODEL_OPTIONS.some((model) => model.id === p.provider_name)
         );
 
         const endpoints: Record<string, string> = {};
@@ -298,10 +313,9 @@ export default function SettingModels() {
         localProviders.forEach((local: any) => {
           const platform =
             local.encrypted_config?.model_platform || local.provider_name;
-          // Auto-populate default Ollama endpoint if not set
+          // Auto-populate platform default endpoint if not set
           endpoints[platform] =
-            local.endpoint_url ||
-            (platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '');
+            local.endpoint_url || getDefaultLocalEndpoint(platform);
           types[platform] = local.encrypted_config?.model_type || '';
           providerIds[platform] = local.id;
 
@@ -314,20 +328,20 @@ export default function SettingModels() {
 
         setLocalEndpoints(endpoints);
         setLocalTypes(types);
-        setSavedLocalTypes(types);
         setLocalProviderIds(providerIds);
 
-        // Fetch Ollama models if ollama endpoint is set
-        const ollamaEndpoint = endpoints['ollama'] || DEFAULT_OLLAMA_ENDPOINT;
-        fetchOllamaModels(ollamaEndpoint);
+        // Fetch model lists for all providers that support it
+        LOCAL_MODEL_OPTIONS.filter((m) => m.fetchPath).forEach((m) => {
+          const ep = endpoints[m.id] || m.defaultEndpoint;
+          fetchModelsForPlatform(m.id, ep);
+        });
 
         // If no local providers found, initialize empty state with Ollama default
         if (localProviders.length === 0) {
-          LOCAL_PROVIDER_NAMES.forEach((platform) => {
-            endpoints[platform] =
-              platform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '';
-            types[platform] = '';
-            providerIds[platform] = undefined;
+          LOCAL_MODEL_OPTIONS.forEach((model) => {
+            endpoints[model.id] = getDefaultLocalEndpoint(model.id);
+            types[model.id] = '';
+            providerIds[model.id] = undefined;
           });
           setLocalEndpoints(endpoints);
           setLocalTypes(types);
@@ -356,7 +370,7 @@ export default function SettingModels() {
       fetchSubscription();
       updateCredits();
     }
-  }, [items, modelType]);
+  }, [items, modelType, fetchModelsForPlatform]);
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -376,23 +390,14 @@ export default function SettingModels() {
     const preferredIdx = form.findIndex((f) => f.prefer);
     if (preferredIdx !== -1) {
       const item = items[preferredIdx];
-      const modelType = savedModelTypes[preferredIdx] || '';
+      const modelType = form[preferredIdx].model_type || '';
       return `${t('setting.custom-model')} / ${item.name}${modelType ? ` (${modelType})` : ''}`;
     }
 
     // Check for local model preference
     if (localPrefer && localPlatform) {
-      const localModel = localModelOptions.find((m) => m.id === localPlatform);
-      const platformName = localModel
-        ? localModel.name
-        : localPlatform === 'ollama'
-          ? 'Ollama'
-          : localPlatform === 'vllm'
-            ? 'vLLM'
-            : localPlatform === 'sglang'
-              ? 'SGLang'
-              : 'LM Studio';
-      const modelType = savedLocalTypes[localPlatform] || '';
+      const platformName = getLocalPlatformName(localPlatform);
+      const modelType = localTypes[localPlatform] || '';
       return `${t('setting.local-model')} / ${platformName}${modelType ? ` (${modelType})` : ''}`;
     }
 
@@ -490,14 +495,6 @@ export default function SettingModels() {
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
-  ];
-
-  // Local model options
-  const localModelOptions = [
-    { id: 'ollama', name: 'Ollama' },
-    { id: 'vllm', name: 'vLLM' },
-    { id: 'sglang', name: 'SGLang' },
-    { id: 'lmstudio', name: 'LM Studio' },
   ];
 
   const handleVerify = async (idx: number) => {
@@ -633,14 +630,6 @@ export default function SettingModels() {
           return fi;
         })
       );
-      setSavedModelTypes(
-        items.map((item) => {
-          const found = providerList.find(
-            (p: any) => p.provider_name === item.id
-          );
-          return found?.model_type ?? '';
-        })
-      );
 
       // Check if this was a pending default model selection
       if (
@@ -658,43 +647,6 @@ export default function SettingModels() {
     }
   };
 
-  // Local Model verification
-  const isOllamaEndpointMissingV1 = (endpoint: string): boolean => {
-    const trimmed = endpoint.trim();
-    if (!trimmed) return false;
-    try {
-      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
-      return !normalizedPath.endsWith('/v1');
-    } catch {
-      return !trimmed.replace(/\/+$/, '').endsWith('/v1');
-    }
-  };
-  const canAutoFixOllamaEndpoint = (endpoint: string): boolean => {
-    const trimmed = endpoint.trim();
-    if (!trimmed || !isOllamaEndpointMissingV1(trimmed)) return false;
-    try {
-      // Auto-fix only when endpoint has no extra path, e.g. http://localhost:11434
-      const normalizedPath = new URL(trimmed).pathname.replace(/\/+$/, '');
-      return normalizedPath === '';
-    } catch {
-      const withoutQueryOrHash = trimmed.split(/[?#]/)[0] || '';
-      const normalized = withoutQueryOrHash.replace(/\/+$/, '');
-      return !normalized.includes('/');
-    }
-  };
-  const appendV1ToEndpoint = (endpoint: string): string => {
-    const trimmed = endpoint.trim();
-    if (!trimmed) return trimmed;
-    try {
-      const parsed = new URL(trimmed);
-      const normalizedPath = parsed.pathname.replace(/\/+$/, '');
-      parsed.pathname = `${normalizedPath}/v1`.replace(/\/{2,}/g, '/');
-      return parsed.toString();
-    } catch {
-      return `${trimmed.replace(/\/+$/, '')}/v1`;
-    }
-  };
-
   const handleLocalVerify = async () => {
     setLocalVerifying(true);
     setLocalError(null);
@@ -705,7 +657,7 @@ export default function SettingModels() {
     // Fallback guard for fast save interactions: ensure one-time auto-fix
     // still applies even if blur state hasn't committed yet.
     if (
-      localPlatform === 'ollama' &&
+      localPlatform === OLLAMA_PROVIDER_ID &&
       !ollamaEndpointAutoFixedOnce &&
       canAutoFixOllamaEndpoint(currentEndpoint)
     ) {
@@ -731,6 +683,10 @@ export default function SettingModels() {
       return;
     }
     try {
+      if (localPlatform === LLAMA_CPP_PROVIDER_ID) {
+        await checkLlamaCppHealth(currentEndpoint);
+      }
+
       // // 1. Check if endpoint returns response
       // let baseUrl = localEndpoint;
       // let testUrl = baseUrl;
@@ -767,25 +723,43 @@ export default function SettingModels() {
       // 	throw new Error("Endpoint is not responding");
       // }
 
-      try {
-        const res = await fetchPost('/model/validate', {
-          model_platform: localPlatform,
-          model_type: currentType,
-          api_key: 'not-required',
-          url: currentEndpoint,
-        });
-        if (res.is_tool_calls && res.is_valid) {
-          console.log('success');
-          toast(t('setting.validate-success'), {
-            description: t(
-              'setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent'
-            ),
-            closeButton: true,
+      // Temporary: skip /model/validate for llama.cpp.
+      // Current validation flow is not fully compatible.
+      if (localPlatform !== LLAMA_CPP_PROVIDER_ID) {
+        try {
+          const res = await fetchPost('/model/validate', {
+            model_platform: localPlatform,
+            model_type: currentType,
+            api_key: 'not-required',
+            url: currentEndpoint,
           });
-        } else {
-          console.log('failed', res.message);
+          if (res.is_tool_calls && res.is_valid) {
+            console.log('success');
+            toast(t('setting.validate-success'), {
+              description: t(
+                'setting.the-model-has-been-verified-to-support-function-calling-which-is-required-to-use-eigent'
+              ),
+              closeButton: true,
+            });
+          } else {
+            console.log('failed', res.message);
+            const toastId = toast(t('setting.validate-failed'), {
+              description: getValidateMessage(res),
+              action: {
+                label: t('setting.close'),
+                onClick: () => {
+                  toast.dismiss(toastId);
+                },
+              },
+            });
+
+            return;
+          }
+          console.log(res);
+        } catch (e) {
+          console.log(e);
           const toastId = toast(t('setting.validate-failed'), {
-            description: getValidateMessage(res),
+            description: getValidateMessage(e),
             action: {
               label: t('setting.close'),
               onClick: () => {
@@ -793,24 +767,8 @@ export default function SettingModels() {
               },
             },
           });
-
           return;
         }
-        console.log(res);
-      } catch (e) {
-        console.log(e);
-        const toastId = toast(t('setting.validate-failed'), {
-          description: getValidateMessage(e),
-          action: {
-            label: t('setting.close'),
-            onClick: () => {
-              toast.dismiss(toastId);
-            },
-          },
-        });
-        return;
-      } finally {
-        setLoading(null);
       }
 
       // 2. Save to /api/provider/ (save only base URL)
@@ -845,10 +803,6 @@ export default function SettingModels() {
       if (local) {
         setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: local.id }));
         setLocalPrefer(local.prefer ?? false);
-        setSavedLocalTypes((prev) => ({
-          ...prev,
-          [localPlatform]: currentType,
-        }));
 
         // Check if this was a pending default model selection
         if (
@@ -862,6 +816,8 @@ export default function SettingModels() {
           await handleLocalSwitch(true, local.id);
         }
       }
+
+      await fetchModelsForPlatform(localPlatform, currentEndpoint);
     } catch (e: any) {
       setLocalError(
         e.message || t('setting.verification-failed-please-check-endpoint-url')
@@ -970,9 +926,8 @@ export default function SettingModels() {
       if (currentProviderId !== undefined) {
         await proxyFetchDelete(`/api/provider/${currentProviderId}`);
       }
-      // Set endpoint to default for Ollama, empty for others
-      const defaultEndpoint =
-        localPlatform === 'ollama' ? DEFAULT_OLLAMA_ENDPOINT : '';
+      // Set endpoint to platform default
+      const defaultEndpoint = getDefaultLocalEndpoint(localPlatform);
       setLocalEndpoints((prev) => ({
         ...prev,
         [localPlatform]: defaultEndpoint,
@@ -985,12 +940,12 @@ export default function SettingModels() {
       }
       setLocalEnabled(true);
       setActiveModelIdx(null);
-      // Re-fetch Ollama models after reset
-      if (localPlatform === 'ollama') {
+      // Re-fetch model list after reset
+      if (localPlatform === OLLAMA_PROVIDER_ID) {
         setOllamaEndpointAutoFixedOnce(false);
-        setOllamaModelsError(null);
-        fetchOllamaModels(DEFAULT_OLLAMA_ENDPOINT);
       }
+      clearPlatformModelsError(localPlatform);
+      await fetchModelsForPlatform(localPlatform);
       toast.success(t('setting.reset-success'));
     } catch (e) {
       console.error('Error resetting local model:', e);
@@ -1114,11 +1069,13 @@ export default function SettingModels() {
       vllm: vllmImage,
       sglang: sglangImage,
       lmstudio: lmstudioImage,
+      [LLAMA_CPP_PROVIDER_ID]: llamaCppImage,
       // Local model tab IDs
       'local-ollama': ollamaImage,
       'local-vllm': vllmImage,
       'local-sglang': sglangImage,
       'local-lmstudio': lmstudioImage,
+      'local-llama.cpp': llamaCppImage,
     };
     return modelImageMap[modelId] || null;
   };
@@ -1431,10 +1388,18 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <ModelTypeCombobox
-              platform={item.id}
+            <Input
+              id={`modelType-${item.id}`}
+              size="default"
+              title={t('setting.model-type-setting')}
+              state={errors[idx]?.model_type ? 'error' : 'default'}
+              note={errors[idx]?.model_type ?? undefined}
+              placeholder={`${t('setting.enter-your-model-type')} ${
+                item.name
+              } ${t('setting.model-type')}`}
               value={form[idx].model_type}
-              onValueChange={(v) => {
+              onChange={(e) => {
+                const v = e.target.value;
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
                 );
@@ -1444,12 +1409,6 @@ export default function SettingModels() {
                   )
                 );
               }}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
-              disabled={loading === idx}
-              error={errors[idx]?.model_type}
-              title={t('setting.model-type-setting')}
             />
             {/* externalConfig render */}
             {item.externalConfig &&
@@ -1553,6 +1512,13 @@ export default function SettingModels() {
       const currentType = localTypes[platform] || '';
       const isConfigured = !!localProviderIds[platform];
       const isPreferred = localPrefer && localPlatform === platform;
+      const platformState = platformModelState[platform];
+      const isModelListPlatform = !!LOCAL_MODEL_OPTIONS.find(
+        (m) => m.id === platform && m.fetchPath
+      );
+      const platformModels = platformState?.models || [];
+      const platformModelsLoading = platformState?.loading || false;
+      const platformModelsError = platformState?.error || null;
 
       return (
         <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
@@ -1560,13 +1526,7 @@ export default function SettingModels() {
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">
                 <div className="text-body-base my-2 font-bold text-text-heading">
-                  {platform === 'ollama'
-                    ? 'Ollama'
-                    : platform === 'vllm'
-                      ? 'vLLM'
-                      : platform === 'sglang'
-                        ? 'SGLang'
-                        : 'LM Studio'}
+                  {getLocalPlatformName(platform)}
                 </div>
                 {isPreferred ? (
                   <Button
@@ -1617,14 +1577,12 @@ export default function SettingModels() {
                 }));
                 setLocalInputError(false);
                 setLocalError(null);
-                // Clear Ollama models error when endpoint changes
-                if (platform === 'ollama') {
-                  setOllamaModelsError(null);
-                }
+                // Clear model list error when endpoint changes
+                clearPlatformModelsError(platform);
               }}
               onBlur={(e) => {
                 if (
-                  platform !== 'ollama' ||
+                  platform !== OLLAMA_PROVIDER_ID ||
                   ollamaEndpointAutoFixedOnce ||
                   !canAutoFixOllamaEndpoint(e.target.value)
                 ) {
@@ -1643,15 +1601,11 @@ export default function SettingModels() {
               }}
               disabled={!localEnabled}
               placeholder={
-                platform === 'ollama'
-                  ? 'http://localhost:11434/v1'
-                  : platform === 'lmstudio'
-                    ? 'http://localhost:1234/v1'
-                    : 'http://localhost:8000/v1'
+                getDefaultLocalEndpoint(platform) || 'http://localhost:8000/v1'
               }
               note={localError ?? undefined}
             />
-            {platform === 'ollama' ? (
+            {isModelListPlatform ? (
               <div className="flex w-full flex-col gap-1">
                 <div className="flex w-full items-end gap-2">
                   <div className="flex-1">
@@ -1663,20 +1617,20 @@ export default function SettingModels() {
                           [platform]: v,
                         }))
                       }
-                      disabled={!localEnabled || ollamaModelsLoading}
+                      disabled={!localEnabled || platformModelsLoading}
                     >
                       <SelectTrigger
                         size="default"
                         title={t('setting.model-type')}
                         state={
-                          localInputError || ollamaModelsError
+                          localInputError || platformModelsError
                             ? 'error'
                             : undefined
                         }
                       >
                         <SelectValue
                           placeholder={
-                            ollamaModelsLoading
+                            platformModelsLoading
                               ? 'Loading models...'
                               : 'Select model'
                           }
@@ -1685,10 +1639,10 @@ export default function SettingModels() {
                       <SelectContent>
                         {(() => {
                           const modelList =
-                            currentType && !ollamaModels.includes(currentType)
-                              ? [currentType, ...ollamaModels]
+                            currentType && !platformModels.includes(currentType)
+                              ? [currentType, ...platformModels]
                               : [
-                                  ...new Set([currentType, ...ollamaModels]),
+                                  ...new Set([currentType, ...platformModels]),
                                 ].filter(Boolean);
                           return modelList.length > 0 ? (
                             modelList.map((model) => (
@@ -1709,40 +1663,41 @@ export default function SettingModels() {
                     variant="ghost"
                     size="icon"
                     onClick={() =>
-                      fetchOllamaModels(
-                        currentEndpoint || DEFAULT_OLLAMA_ENDPOINT
+                      void fetchModelsForPlatform(
+                        platform,
+                        currentEndpoint || getDefaultLocalEndpoint(platform)
                       )
                     }
-                    disabled={!localEnabled || ollamaModelsLoading}
+                    disabled={!localEnabled || platformModelsLoading}
                     className="mb-1 flex-shrink-0"
                   >
-                    {ollamaModelsLoading ? (
+                    {platformModelsLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <RotateCcw className="h-4 w-4" />
                     )}
                   </Button>
                 </div>
-                {ollamaModelsError && (
+                {platformModelsError && (
                   <span className="text-label-sm text-text-error">
-                    {ollamaModelsError}
+                    {platformModelsError}
                   </span>
                 )}
               </div>
             ) : (
-              <ModelTypeCombobox
-                platform={platform}
+              <Input
+                size="default"
+                title={t('setting.model-type')}
+                state={localInputError ? 'error' : 'default'}
+                placeholder={t('setting.enter-your-local-model-type')}
                 value={currentType}
-                onValueChange={(v) =>
+                onChange={(e) =>
                   setLocalTypes((prev) => ({
                     ...prev,
-                    [platform]: v,
+                    [platform]: e.target.value,
                   }))
                 }
-                placeholder={t('setting.enter-your-local-model-type')}
                 disabled={!localEnabled}
-                error={localInputError ? localError || undefined : undefined}
-                title={t('setting.model-type')}
               />
             )}
           </div>
@@ -1789,7 +1744,7 @@ export default function SettingModels() {
       {/* Content Section */}
       <div className="mb-8 flex flex-col gap-6">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-row items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex w-full flex-col items-start justify-center gap-1">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.models-default-setting-title')}
@@ -1905,7 +1860,7 @@ export default function SettingModels() {
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-[200px]">
-                  {localModelOptions.map((model) => {
+                  {LOCAL_MODEL_OPTIONS.map((model) => {
                     const isConfigured = !!localProviderIds[model.id];
                     const isPreferred =
                       localPrefer && localPlatform === model.id;
@@ -2048,7 +2003,7 @@ export default function SettingModels() {
                       'local-ollama',
                       selectedTab === 'local-ollama',
                       true,
-                      !!localProviderIds['ollama']
+                      !!localProviderIds[OLLAMA_PROVIDER_ID]
                     )}
                     {renderSidebarItem(
                       'local-vllm',
@@ -2056,7 +2011,7 @@ export default function SettingModels() {
                       'local-vllm',
                       selectedTab === 'local-vllm',
                       true,
-                      !!localProviderIds['vllm']
+                      !!localProviderIds[VLLM_PROVIDER_ID]
                     )}
                     {renderSidebarItem(
                       'local-sglang',
@@ -2064,7 +2019,7 @@ export default function SettingModels() {
                       'local-sglang',
                       selectedTab === 'local-sglang',
                       true,
-                      !!localProviderIds['sglang']
+                      !!localProviderIds[SGLANG_PROVIDER_ID]
                     )}
                     {renderSidebarItem(
                       'local-lmstudio',
@@ -2072,7 +2027,15 @@ export default function SettingModels() {
                       'local-lmstudio',
                       selectedTab === 'local-lmstudio',
                       true,
-                      !!localProviderIds['lmstudio']
+                      !!localProviderIds[LMSTUDIO_PROVIDER_ID]
+                    )}
+                    {renderSidebarItem(
+                      'local-llama.cpp',
+                      'LLaMA.cpp',
+                      'local-llama.cpp',
+                      selectedTab === 'local-llama.cpp',
+                      true,
+                      !!localProviderIds[LLAMA_CPP_PROVIDER_ID]
                     )}
                   </div>
                 </div>

@@ -84,6 +84,15 @@ def multi_modal_agent(options: Chat):
         user_id=options.skill_config_user_id(),
     )
     skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
+    search_tools = SearchToolkit.get_can_use_tools(
+        options.project_id, agent_name=Agents.multi_modal_agent
+    )
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
     tools = [
         *video_download_toolkit.get_tools(),
         *image_analysis_toolkit.get_tools(),
@@ -93,6 +102,7 @@ def multi_modal_agent(options: Chat):
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *skill_toolkit.get_tools(),
+        *search_tools,
     ]
     if options.is_cloud():
         # TODO: check llm has this model

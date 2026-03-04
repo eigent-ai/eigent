@@ -28,6 +28,7 @@ const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
         project_name: task.project_name || `Project ${projectId}`,
         total_tokens: 0,
         task_count: 0,
+        total_triggers: 0,
         latest_task_date: task.created_at || new Date().toISOString(),
         tasks: [],
         total_completed_tasks: 0,

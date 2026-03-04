@@ -394,37 +394,6 @@ export default function SettingGeneral() {
             }
           />
         </div>
-
-        {/* Preferred IDE Section - same card style as Network Proxy */}
-        <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="flex flex-col gap-1">
-            <div className="text-body-base font-bold text-text-heading">
-              {t('setting.preferred-ide')}
-            </div>
-            <div className="mb-4 text-sm leading-13 text-text-secondary">
-              {t('setting.preferred-ide-description')}
-            </div>
-          </div>
-          <Select
-            value={authStore.preferredIDE}
-            onValueChange={(value) =>
-              authStore.setPreferredIDE(value as 'vscode' | 'cursor' | 'system')
-            }
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="border bg-input-bg-default">
-              <SelectGroup>
-                <SelectItem value="system">
-                  {t('setting.system-file-manager')}
-                </SelectItem>
-                <SelectItem value="vscode">VS Code</SelectItem>
-                <SelectItem value="cursor">Cursor</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
     </div>
   );

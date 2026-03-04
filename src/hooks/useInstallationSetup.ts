@@ -153,21 +153,13 @@ export const useInstallationSetup = () => {
       installationCompleted.current = true;
       backendReady.current = false;
 
-      // Only show install screen when not already "done" to avoid layout visibility race
-      if (initState !== 'done') {
-        setWaitingBackend();
-      }
+      // Set to waiting-backend state
+      setWaitingBackend();
 
       // Start polling for backend
       startBackendPolling();
     }
-  }, [
-    needsBackendRestart,
-    email,
-    initState,
-    setWaitingBackend,
-    startBackendPolling,
-  ]);
+  }, [needsBackendRestart, email, setWaitingBackend, startBackendPolling]);
 
   useEffect(() => {
     if (hasCheckedOnMount.current) {
@@ -186,10 +178,7 @@ export const useInstallationSetup = () => {
               '[useInstallationSetup] Tools already installed, waiting for backend'
             );
             installationCompleted.current = true;
-            // Only show install screen when not already "done" to avoid layout visibility race
-            if (initState !== 'done') {
-              setWaitingBackend();
-            }
+            setWaitingBackend();
 
             // Start polling for backend when tools are already installed
             startBackendPolling();

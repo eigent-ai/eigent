@@ -172,9 +172,6 @@
   "api-key-setting": "إعداد مفتاح API",
   "api-host-setting": "إعداد مضيف API",
   "model-type-setting": "إعداد نوع النموذج",
-  "search-model-types": "البحث في أنواع النماذج...",
-  "no-model-types-found": "لم يتم العثور على أنواع النماذج.",
-  "loading-suggestions": "تحميل الاقتراحات...",
   "please-select": "يرجى الاختيار",
   "configuring": "جارٍ التكوين...",
 
@@ -351,9 +348,5 @@
   "proxy-saved-restart-required": "تم حفظ تكوين الوكيل. أعد تشغيل التطبيق لتطبيق التغييرات.",
   "proxy-save-failed": "فشل حفظ تكوين الوكيل.",
   "proxy-invalid-url": "عنوان URL للوكيل غير صالح. يجب أن يبدأ بـ http:// أو https:// أو socks4:// أو socks5://.",
-  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل.",
-
-  "preferred-ide": "IDE المفضل",
-  "preferred-ide-description": "اختر التطبيق الذي سيتم استخدامه عند فتح مجلدات مشاريع الوكيل.",
-  "system-file-manager": "مدير ملفات النظام"
+  "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل."
 }

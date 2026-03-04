@@ -14,8 +14,13 @@
 
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   CodeXml,
@@ -493,6 +498,25 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     chatStore.setActiveWorkspace(chatStore.activeTaskId as string, 'workflow');
   };
 
+  const handleOpenInIDE = async (ide: 'vscode' | 'cursor' | 'system') => {
+    try {
+      if (!authStore.email || !projectStore.activeProjectId) return;
+      const folderPath = await window.electronAPI.getProjectFolderPath(
+        authStore.email,
+        projectStore.activeProjectId
+      );
+      const result = await window.electronAPI.openInIDE(folderPath, ide);
+      if (!result.success) {
+        toast.error(result.error || t('chat.failed-to-open-folder'));
+      } else {
+        authStore.setPreferredIDE(ide);
+      }
+    } catch (error) {
+      console.error('Failed to open in IDE:', error);
+      toast.error(t('chat.failed-to-open-folder'));
+    }
+  };
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* fileList */}
@@ -510,15 +534,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleBack}
-                  size="sm"
-                  variant="ghost"
-                  className={`flex items-center gap-2`}
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="text-primary whitespace-nowrap text-xl font-bold">
+                <span className="text-body-base text-primary whitespace-nowrap font-bold">
                   {t('chat.agent-folder')}
                 </span>
               </div>
@@ -527,36 +543,40 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               {!isCollapsed &&
                 window.electronAPI?.getProjectFolderPath &&
                 window.electronAPI?.openInIDE && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={async () => {
-                      try {
-                        if (!authStore.email || !projectStore.activeProjectId)
-                          return;
-                        const folderPath =
-                          await window.electronAPI.getProjectFolderPath(
-                            authStore.email,
-                            projectStore.activeProjectId
-                          );
-                        const result = await window.electronAPI.openInIDE(
-                          folderPath,
-                          authStore.preferredIDE
-                        );
-                        if (!result.success) {
-                          toast.error(
-                            result.error || t('chat.failed-to-open-folder')
-                          );
-                        }
-                      } catch (error) {
-                        console.error('Failed to open in IDE:', error);
-                        toast.error(t('chat.failed-to-open-folder'));
-                      }
-                    }}
-                    title={t('chat.open-in-ide')}
-                  >
-                    <SquareTerminal className="h-5 w-5 text-icon-secondary" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('chat.open-in-ide')}
+                      >
+                        <SquareTerminal className="h-5 w-5 text-icon-secondary" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="z-50 border-dropdown-border bg-dropdown-bg"
+                    >
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('vscode')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-vscode')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('cursor')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-cursor')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('system')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-file-manager')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               <Button
                 variant="ghost"
@@ -683,7 +703,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}
+            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
@@ -771,18 +791,57 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   );
 }
 
+function toFileUrl(filePath: string): string {
+  if (
+    filePath.startsWith('file://') ||
+    filePath.startsWith('localfile://') ||
+    filePath.startsWith('http://') ||
+    filePath.startsWith('https://') ||
+    filePath.startsWith('blob:') ||
+    filePath.startsWith('data:')
+  ) {
+    return filePath;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  // Windows UNC path: //server/share/path/to/file
+  if (normalizedPath.startsWith('//')) {
+    const withoutLeadingSlashes = normalizedPath.replace(/^\/+/, '');
+    const [host, ...pathSegments] = withoutLeadingSlashes.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath ? `file://${host}/${encodedPath}` : `file://${host}/`;
+  }
+
+  const hasWindowsDrive = /^[A-Za-z]:\//.test(normalizedPath);
+  if (hasWindowsDrive) {
+    const [drive, ...pathSegments] = normalizedPath.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath
+      ? `file:///${drive}/${encodedPath}`
+      : `file:///${drive}/`;
+  }
+
+  const encodedPath = normalizedPath
+    .split('/')
+    .map((segment, index) =>
+      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
+    )
+    .join('/');
+  return `file://${encodedPath}`;
+}
+
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    const filePath = selectedFile.isRemote
-      ? (selectedFile.content as string)
-      : selectedFile.path;
-
-    window.electronAPI
-      .readFileAsDataUrl(filePath)
-      .then(setSrc)
-      .catch((err: any) => console.error('Image load error:', err));
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc((selectedFile.content as string) || selectedFile.path);
+      return;
+    }
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
@@ -790,6 +849,7 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
       src={src}
       alt={selectedFile.name}
       className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Image load error:', err)}
     />
   );
 }
@@ -798,25 +858,13 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    window.electronAPI
-      .readFileAsDataUrl(selectedFile.path)
-      .then((dataUrl: string) => {
-        if (!cancelled) setSrc(dataUrl);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        console.error('Audio load error:', err);
-        setSrc('');
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
@@ -824,7 +872,12 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
       <p className="text-sm font-medium text-text-primary">
         {selectedFile.name}
       </p>
-      <audio controls src={src} className="w-full">
+      <audio
+        controls
+        src={src}
+        className="w-full"
+        onError={(err) => console.error('Audio load error:', err)}
+      >
         Your browser does not support audio playback.
       </audio>
     </div>
@@ -835,29 +888,22 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    window.electronAPI
-      .readFileAsDataUrl(selectedFile.path)
-      .then((dataUrl: string) => {
-        if (!cancelled) setSrc(dataUrl);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        console.error('Video load error:', err);
-        setSrc('');
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
-    <video controls src={src} className="max-h-full max-w-full object-contain">
+    <video
+      controls
+      src={src}
+      className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Video load error:', err)}
+    >
       Your browser does not support video playback.
     </video>
   );

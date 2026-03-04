@@ -158,6 +158,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-project-folder-path', email, projectId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
+  setBrowserPort: (port: number, isExternal?: boolean) =>
+    ipcRenderer.invoke('set-browser-port', port, isExternal),
+  getBrowserPort: () => ipcRenderer.invoke('get-browser-port'),
+  getCdpBrowsers: () => ipcRenderer.invoke('get-cdp-browsers'),
+  addCdpBrowser: (port: number, isExternal: boolean, name?: string) =>
+    ipcRenderer.invoke('add-cdp-browser', port, isExternal, name),
+  removeCdpBrowser: (browserId: string, closeBrowser?: boolean) =>
+    ipcRenderer.invoke('remove-cdp-browser', browserId, closeBrowser ?? true),
+  launchCdpBrowser: () => ipcRenderer.invoke('launch-cdp-browser'),
+  onCdpPoolChanged: (callback: (browsers: any[]) => void) => {
+    const channel = 'cdp-pool-changed';
+    const listener = (_event: any, browsers: any[]) => callback(browsers);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
   // Skills
   getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
   skillsScan: () => ipcRenderer.invoke('skills-scan'),

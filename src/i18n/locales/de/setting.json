@@ -234,9 +234,6 @@
   "api-key-setting": "API-Schlüssel-Einstellung",
   "api-host-setting": "API-Host-Einstellung",
   "model-type-setting": "Modelltyp-Einstellung",
-  "search-model-types": "Modelltypen suchen...",
-  "no-model-types-found": "Keine Modelltypen gefunden.",
-  "loading-suggestions": "Vorschläge werden geladen...",
   "please-select": "Bitte auswählen",
   "configuring": "Wird konfiguriert...",
 
@@ -261,9 +258,5 @@
   "proxy-saved-restart-required": "Proxy-Konfiguration gespeichert. Starten Sie die App neu, um die Änderungen anzuwenden.",
   "proxy-save-failed": "Proxy-Konfiguration konnte nicht gespeichert werden.",
   "proxy-invalid-url": "Ungültige Proxy-URL. Muss mit http://, https://, socks4:// oder socks5:// beginnen.",
-  "proxy-restart-hint": "Neustart erforderlich, um Proxy-Änderungen anzuwenden.",
-
-  "preferred-ide": "Bevorzugte IDE",
-  "preferred-ide-description": "Wählen Sie die Anwendung aus, die beim Öffnen von Agent-Projektordnern verwendet werden soll.",
-  "system-file-manager": "System-Dateimanager"
+  "proxy-restart-hint": "Neustart erforderlich, um Proxy-Änderungen anzuwenden."
 }
