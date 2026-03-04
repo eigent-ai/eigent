@@ -48,7 +48,6 @@ import {
   Eye,
   EyeOff,
   FileUp,
-  Plus,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -723,14 +722,16 @@ export function AddWorker({
                         {t('agents.global-agent-create-from-template')}
                       </label>
                       <Select
-                        value={selectedTemplateId}
-                        onValueChange={setSelectedTemplateId}
+                        value={selectedTemplateId || '__none__'}
+                        onValueChange={(v) =>
+                          setSelectedTemplateId(v === '__none__' ? '' : v)
+                        }
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder={t('agents.no-templates')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">
+                          <SelectItem value="__none__">
                             {t('agents.no-templates')}
                           </SelectItem>
                           {globalTemplates.map((tpl) => (
