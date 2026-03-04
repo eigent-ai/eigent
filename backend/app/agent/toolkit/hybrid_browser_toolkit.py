@@ -492,11 +492,6 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.debug(
             f"[HybridBrowserToolkit] Calling super().__init__ with session_id: {session_id}"
         )
-        # Extension proxy mode state
-        self._extension_proxy_mode = extension_proxy_mode
-        self._extension_proxy_host = extension_proxy_host
-        self._extension_proxy_port = extension_proxy_port
-        self._extension_proxy_wrapper = None  # Shared ExtensionProxyWrapper
 
         if extension_proxy_mode:
             # In extension proxy mode, we don't connect via CDP
@@ -525,6 +520,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_url=cdp_url,
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
+            extension_proxy_mode=extension_proxy_mode,
+            extension_proxy_host=extension_proxy_host,
+            extension_proxy_port=extension_proxy_port,
         )
         logger.info(
             f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}"

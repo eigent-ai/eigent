@@ -710,8 +710,7 @@ class ListenChatAgent(ChatAgent):
             options = self._cdp_options
             cdp_browsers = getattr(options, "cdp_browsers", [])
             cdp_only_browsers = [
-                b for b in cdp_browsers
-                if not b.get("isExtensionProxy", False)
+                b for b in cdp_browsers if not b.get("isExtensionProxy", False)
             ]
             if cdp_only_browsers and hasattr(self, "_browser_toolkit"):
                 need_cdp_clone = True

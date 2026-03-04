@@ -12,8 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getBaseURL } from '@/api/http';
+import { getBaseURL, proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
+import { getAuthStore } from '@/store/authStore';
 import { Loader2, Plug, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -93,10 +94,44 @@ export default function Extension() {
 
   const handleConnect = async () => {
     try {
-      // 1. Start backend WebSocket server
+      // 1. Fetch model config
+      const { modelType, cloud_model_type } = getAuthStore();
+      let modelConfig: Record<string, any> = {};
+
+      if (modelType === 'custom' || modelType === 'local') {
+        const res = await proxyFetchGet('/api/providers', { prefer: true });
+        const provider = (res.items || [])[0];
+        if (provider) {
+          modelConfig = {
+            model_platform: provider.provider_name,
+            model_type: provider.model_type,
+            api_key: provider.api_key,
+            api_url: provider.endpoint_url || provider.api_url,
+            extra_params: provider.encrypted_config,
+          };
+        }
+      } else if (modelType === 'cloud') {
+        const res = await proxyFetchGet('/api/user/key');
+        modelConfig = {
+          model_platform: cloud_model_type.includes('gpt')
+            ? 'openai'
+            : cloud_model_type.includes('claude')
+              ? 'aws-bedrock'
+              : cloud_model_type.includes('gemini')
+                ? 'gemini'
+                : 'openai-compatible-model',
+          model_type: cloud_model_type,
+          api_key: res.value,
+          api_url: res.api_url,
+        };
+      }
+
+      // 2. Start backend WebSocket server with model config
       const base = await getBaseURL();
       const resp = await fetch(`${base}/extension-proxy/start`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modelConfig),
       });
       const data = await resp.json();
       if (!data.success) {
