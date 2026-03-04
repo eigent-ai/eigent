@@ -71,7 +71,7 @@ export default [
       // Prebuilt resources
       'resources/prebuilt/**',
       // Chrome extension (standalone, uses chrome/browser globals)
-      'extension/**',
+      'extensions/**',
     ],
   },
 
