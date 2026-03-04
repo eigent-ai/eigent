@@ -201,14 +201,14 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
+      className={`drag left-0 right-0 top-0 !h-9 py-1 absolute z-50 flex items-center justify-between ${
         platform === 'darwin' ? 'pl-16' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
     >
       {/* left */}
-      <div className="no-drag ml-2 mt-[1.5px] flex w-8 items-center justify-center gap-1">
+      <div className="w-8 no-drag gap-1 ml-2 mt-[1.5px] flex items-center justify-center">
         <img src={defaultFolderIcon} alt="folder-icon" className="h-6 w-6" />
         {platform !== 'darwin' && (
           <span className="text-label-md font-bold text-text-heading">
@@ -218,7 +218,7 @@ function HeaderWin() {
       </div>
 
       {/* center */}
-      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
+      <div className="drag pr-2 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
           {location.pathname === '/history' && (
             <div className="mr-1 flex items-center">
@@ -275,11 +275,11 @@ function HeaderWin() {
                   <Button
                     id="active-task-title-btn"
                     variant="ghost"
-                    className="no-drag rounded-full text-base font-bold"
+                    className="no-drag text-base font-bold rounded-full"
                     onClick={toggle}
                     size="sm"
                   >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                    <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
                       {t('layout.new-project')}
                     </span>
                     <ChevronDown />
@@ -298,7 +298,7 @@ function HeaderWin() {
                     className="no-drag text-base font-bold"
                     onClick={toggle}
                   >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                    <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
                       {activeTaskTitle}
                     </span>
                     <ChevronDown />
@@ -314,7 +314,7 @@ function HeaderWin() {
           <div
             className={`${
               platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
+            } no-drag gap-1 relative z-50 flex h-full items-center`}
           >
             {chatStore.activeTaskId &&
               chatStore.tasks[chatStore.activeTaskId as string] &&
@@ -333,7 +333,7 @@ function HeaderWin() {
                     onClick={() => setEndDialogOpen(true)}
                     variant="ghost"
                     size="xs"
-                    className="no-drag justify-center rounded-full bg-surface-cuation !text-text-cuation"
+                    className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
                   >
                     <Power />
                     {t('layout.end-project')}
@@ -354,7 +354,7 @@ function HeaderWin() {
                     }
                     variant="ghost"
                     size="xs"
-                    className="no-drag rounded-full bg-surface-information !text-text-information"
+                    className="no-drag bg-surface-information !text-text-information rounded-full"
                   >
                     {t('layout.share')}
                   </Button>
@@ -415,7 +415,7 @@ function HeaderWin() {
           <div
             className={`${
               platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
+            } no-drag gap-1 relative z-50 flex h-full items-center`}
           ></div>
         )}
       </div>
@@ -427,19 +427,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
+            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
+            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
+            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.closeWindow()}
           >
             <X className="h-4 w-4" />
