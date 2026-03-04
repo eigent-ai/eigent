@@ -21,6 +21,8 @@ Uses ChatAgent directly — no TaskLock, no SSE, no project infrastructure.
 
 import asyncio
 import logging
+import os
+from pathlib import Path
 import platform
 import uuid
 
@@ -64,6 +66,15 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
             "Pass model_config when starting extension proxy."
         )
 
+    # Setup camel LLM logging (same pattern as chat_controller)
+    log_dir = (
+        Path.home() / ".eigent" / "qwe" / "extension_chat" / "camel_logs"
+    )
+    log_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["CAMEL_LOG_DIR"] = str(log_dir)
+    os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
+    logger.info(f"CAMEL_LOG_DIR set to {log_dir}")
+
     extra_params = _model_config.get("extra_params", {})
     model_config_dict = {}
     if extra_params:
@@ -97,7 +108,7 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
         "browser_enter",
         "browser_visit_page",
         "browser_scroll",
-        "browser_open",
+        "browser_set_trigger",
     ]
     if full_visual_mode:
         enabled_tools.append("browser_get_screenshot")
@@ -135,6 +146,14 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
             "The browser is already open with active sessions and logged-in "
             "websites.\n"
             "</external_browser_connection>\n"
+            "\n<trigger_capability>\n"
+            "You have a browser_set_trigger tool. When the user asks you to "
+            "wait for a condition (e.g., 'click the buy button when it becomes "
+            "available', 'do something at 12:00'), write a JavaScript arrow "
+            "function that returns true when the condition is met, and call "
+            "browser_set_trigger. You will be automatically notified when the "
+            "condition is met, then proceed with the requested action.\n"
+            "</trigger_capability>\n"
         ),
     )
 
@@ -225,9 +244,10 @@ async def _process_chat_message(
                 )
 
         await wrapper.send_chat_response("STREAM_END", {})
-        await wrapper.send_chat_response(
-            "TASK_COMPLETE", {"result": full_text or "Done"}
-        )
+        # Don't re-send full_text — it was already streamed via
+        # STREAM_TEXT chunks. Sending it again in TASK_COMPLETE causes
+        # duplicate text in the UI.
+        await wrapper.send_chat_response("TASK_COMPLETE", {})
 
     except Exception as e:
         logger.error(f"Chat agent error: {e}", exc_info=True)
@@ -243,9 +263,40 @@ async def _chat_loop(wrapper):
             if msg_data is None:
                 continue
 
+            msg_type = msg_data.get("type", "CHAT_MESSAGE")
+
+            if msg_type == "CLEAR_CONTEXT":
+                await clear_chat_context()
+                continue
+
+            if msg_type == "TRIGGER_FIRED":
+                description = msg_data.get("description", "unknown")
+                trigger_msg = (
+                    f"[TRIGGER FIRED] Your trigger has been activated: "
+                    f"{description}. Please proceed with the next action."
+                )
+                logger.info(f"Trigger fired: {description}")
+                await _process_chat_message(
+                    wrapper,
+                    trigger_msg,
+                    full_vision_mode=_current_vision_mode,
+                )
+                continue
+
             message = msg_data.get("message", "")
             full_vision = msg_data.get("fullVisionMode", False)
             if message.strip():
+                # Prepend current page context
+                page_url = msg_data.get("url", "")
+                page_title = msg_data.get("pageTitle", "")
+                if page_url:
+                    context = (
+                        f"[Current page: {page_title} | {page_url}]\n"
+                        if page_title
+                        else f"[Current page: {page_url}]\n"
+                    )
+                    message = context + message
+
                 logger.info(
                     f"Processing chat message "
                     f"(vision={full_vision}): {message[:100]}"
