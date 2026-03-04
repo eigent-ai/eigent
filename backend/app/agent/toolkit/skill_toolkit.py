@@ -22,12 +22,24 @@ User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
 import json
 import logging
 from pathlib import Path
+from typing import TypedDict
 
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
 
 logger = logging.getLogger(__name__)
 
 SKILL_CONFIG_FILENAME = "skills-config.json"
+
+
+class SkillScopeConfig(TypedDict, total=False):
+    isGlobal: bool
+    selectedAgents: list[str]
+
+
+class SkillEntryConfig(TypedDict, total=False):
+    enabled: bool
+    scope: SkillScopeConfig
+    agents: list[str]
 
 
 def _get_user_config_path(user_id: str | None = None) -> Path:
@@ -47,7 +59,7 @@ def _get_user_config_path(user_id: str | None = None) -> Path:
         return Path.home() / ".eigent" / SKILL_CONFIG_FILENAME
 
 
-def _load_skill_config(config_path: Path) -> dict[str, dict]:
+def _load_skill_config(config_path: Path) -> dict[str, SkillEntryConfig]:
     """Load skill configuration from JSON file."""
     if not config_path.exists():
         logger.debug(f"No config file at: {config_path}")
@@ -67,7 +79,7 @@ def _load_skill_config(config_path: Path) -> dict[str, dict]:
 def _get_merged_skill_config(
     working_directory: Path | None = None,
     user_id: str | None = None,
-) -> dict[str, dict]:
+) -> dict[str, SkillEntryConfig]:
     """Get merged skill configuration (user-global + project-level).
 
     Priority: Project-level > User-global
@@ -102,7 +114,9 @@ def _get_merged_skill_config(
     return config
 
 
-def _is_skill_enabled(skill_name: str, config: dict[str, dict]) -> bool:
+def _is_skill_enabled(
+    skill_name: str, config: dict[str, SkillEntryConfig]
+) -> bool:
     """Check if a skill is enabled according to config."""
     if not config or skill_name not in config:
         return True  # Not configured = enabled by default
@@ -114,7 +128,7 @@ def _is_skill_enabled(skill_name: str, config: dict[str, dict]) -> bool:
 def _is_agent_allowed(
     skill_name: str,
     agent_name: str | None,
-    config: dict[str, dict],
+    config: dict[str, SkillEntryConfig],
 ) -> bool:
     """Check if an agent is allowed to use this skill.
 
@@ -169,10 +183,14 @@ def _is_agent_allowed(
 
 
 def _build_allowed_skills(
-    config: dict[str, dict],
+    config: dict[str, SkillEntryConfig],
     agent_name: str | None,
 ) -> set[str] | None:
     """Build allowed skill set for CAMEL SkillToolkit filtering.
+
+    Args:
+        config: Skill configuration
+        agent_name: Name of the agent requesting the skill
 
     Returns:
         None if no filtering should be applied (all skills allowed),
