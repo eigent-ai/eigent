@@ -18,10 +18,9 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
+import defaultFolderIcon from '@/assets/Folder.svg';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
-import folderIconBlack from '@/assets/logo/icon_black.svg';
-import folderIconWhite from '@/assets/logo/icon_white.svg';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -71,8 +70,6 @@ function HeaderWin() {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
-  const logoSrc = appearance === 'dark' ? folderIconWhite : folderIconBlack;
-
   const exportLog = async () => {
     try {
       const response = await window.electronAPI.exportLog();
@@ -204,18 +201,15 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-9 py-1 absolute z-50 flex items-center justify-between ${
-        platform === 'darwin' ? 'pl-20' : 'pl-2'
+      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
+        platform === 'darwin' ? 'pl-16' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
     >
       {/* left */}
-      <div
-        className={`${
-          platform === 'darwin' ? 'w-0' : 'w-[70px]'
-        } no-drag flex items-center justify-center`}
-      >
+      <div className="no-drag ml-2 mt-[1.5px] flex w-8 items-center justify-center gap-1">
+        <img src={defaultFolderIcon} alt="folder-icon" className="h-6 w-6" />
         {platform !== 'darwin' && (
           <span className="text-label-md font-bold text-text-heading">
             Eigent
@@ -224,14 +218,14 @@ function HeaderWin() {
       </div>
 
       {/* center */}
-      <div className="drag pr-2 flex h-full flex-1 items-center justify-between">
+      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
         <div className="relative z-50 flex h-full items-center">
           {location.pathname === '/history' && (
             <div className="mr-1 flex items-center">
               <Button
                 variant="ghost"
                 size="xs"
-                className="no-drag"
+                className="no-drag rounded-full"
                 onClick={() => navigate('/')}
               >
                 <ChevronLeft className="h-4 w-4 text-text-label" />
@@ -239,7 +233,7 @@ function HeaderWin() {
             </div>
           )}
           {location.pathname !== '/history' && (
-            <div className="mr-1 flex items-center">
+            <div className="flex items-center">
               <TooltipSimple
                 content={t('layout.home')}
                 side="bottom"
@@ -248,7 +242,7 @@ function HeaderWin() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="no-drag"
+                  className="no-drag rounded-full"
                   onClick={() => navigate('/history')}
                 >
                   <House className="h-4 w-4" />
@@ -262,7 +256,7 @@ function HeaderWin() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="no-drag"
+                  className="no-drag rounded-full"
                   onClick={createNewProject}
                 >
                   <Plus className="h-4 w-4" />
@@ -281,11 +275,11 @@ function HeaderWin() {
                   <Button
                     id="active-task-title-btn"
                     variant="ghost"
-                    className="no-drag text-base font-bold"
+                    className="no-drag rounded-full text-base font-bold"
                     onClick={toggle}
                     size="sm"
                   >
-                    <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
+                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
                       {t('layout.new-project')}
                     </span>
                     <ChevronDown />
@@ -304,7 +298,7 @@ function HeaderWin() {
                     className="no-drag text-base font-bold"
                     onClick={toggle}
                   >
-                    <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
+                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
                       {activeTaskTitle}
                     </span>
                     <ChevronDown />
@@ -320,7 +314,7 @@ function HeaderWin() {
           <div
             className={`${
               platform === 'darwin' && 'pr-2'
-            } no-drag gap-1 relative z-50 flex h-full items-center`}
+            } no-drag relative z-50 flex h-full items-center gap-1`}
           >
             {chatStore.activeTaskId &&
               chatStore.tasks[chatStore.activeTaskId as string] &&
@@ -339,7 +333,7 @@ function HeaderWin() {
                     onClick={() => setEndDialogOpen(true)}
                     variant="ghost"
                     size="xs"
-                    className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
+                    className="no-drag justify-center rounded-full bg-surface-cuation !text-text-cuation"
                   >
                     <Power />
                     {t('layout.end-project')}
@@ -360,7 +354,7 @@ function HeaderWin() {
                     }
                     variant="ghost"
                     size="xs"
-                    className="no-drag bg-surface-information !text-text-information rounded-full"
+                    className="no-drag rounded-full bg-surface-information !text-text-information"
                   >
                     {t('layout.share')}
                   </Button>
@@ -392,7 +386,7 @@ function HeaderWin() {
                 onClick={getReferFriendsLink}
                 variant="ghost"
                 size="icon"
-                className="no-drag"
+                className="no-drag rounded-full"
               >
                 <img
                   src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
@@ -410,7 +404,7 @@ function HeaderWin() {
                 onClick={() => navigate('/history?tab=settings')}
                 variant="ghost"
                 size="icon"
-                className="no-drag"
+                className="no-drag rounded-full"
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -421,7 +415,7 @@ function HeaderWin() {
           <div
             className={`${
               platform === 'darwin' && 'pr-2'
-            } no-drag gap-1 relative z-50 flex h-full items-center`}
+            } no-drag relative z-50 flex h-full items-center gap-1`}
           ></div>
         )}
       </div>
@@ -433,19 +427,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
             onClick={() => window.electronAPI.closeWindow()}
           >
             <X className="h-4 w-4" />
