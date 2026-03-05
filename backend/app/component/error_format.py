@@ -12,8 +12,35 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ast
 import json
 import re
+
+
+def _parse_dict(text: str) -> dict | None:
+    """Parse a dict string (JSON double-quotes or Python single-quotes)."""
+    for loader in (json.loads, ast.literal_eval):
+        try:
+            result = loader(text)
+            if isinstance(result, dict):
+                return result
+        except Exception:  # nosec B112
+            continue
+    return None
+
+
+def _extract_from_dict(d: dict) -> tuple[str | None, str | None, dict]:
+    """Pull message / code / error_obj from an OpenAI-shaped dict."""
+    err = d.get("error") or d
+    if not isinstance(err, dict):
+        return None, None, {}
+    error_obj = {
+        "message": err.get("message"),
+        "type": err.get("type"),
+        "param": err.get("param"),
+        "code": err.get("code"),
+    }
+    return err.get("message"), err.get("code"), error_obj
 
 
 def normalize_error_to_openai_format(
@@ -29,76 +56,50 @@ def normalize_error_to_openai_format(
         tuple: (message, error_code, error_object)
     """
     raw_msg = str(exception)
-    error_obj = None
-    error_code = None
-    message = raw_msg
 
-    # Match "Error code: <code> - {json}"
+    # 1) Structured attributes (OpenAI SDK exceptions expose .body)
+    body = getattr(exception, "body", None)
+    if isinstance(body, dict):
+        msg, code, obj = _extract_from_dict(body)
+        if msg:
+            return msg, code, obj
+
+    # 2) Parse "Error code: <status> - {dict}" from str(exception)
     m = re.search(r"Error code:\s*(\d+)\s*-\s*(\{.*\})", raw_msg, re.DOTALL)
     if m:
-        error_code = m.group(1)
-        try:
-            parsed = json.loads(m.group(2))
-            err = parsed.get("error") or parsed
-            if isinstance(err, dict):
-                error_obj = {
-                    "message": err.get("message"),
-                    "type": err.get("type"),
-                    "param": err.get("param"),
-                    "code": err.get("code"),
-                }
-                if err.get("message"):
-                    message = err.get("message")
-                if err.get("code"):
-                    error_code = err.get("code")
-        except Exception:
-            pass
+        parsed = _parse_dict(m.group(2))
+        if parsed:
+            msg, code, obj = _extract_from_dict(parsed)
+            if msg:
+                return msg, code or m.group(1), obj
 
-    # Heuristics if not parsed
-    if error_obj is None:
-        lower = raw_msg.lower()
-        if (
-            "invalid_api_key" in lower
-            or "incorrect api key" in lower
-            or "unauthorized" in lower
-            or " 401" in lower
-        ):
-            error_code = "invalid_api_key"
-            message = "Invalid key. Validation failed."
-            error_obj = {
-                "message": message,
-                "type": "invalid_request_error",
-                "param": None,
-                "code": "invalid_api_key",
-            }
-        elif (
-            "model_not_found" in lower
-            or "does not exist" in lower
-            or " 404" in lower
-        ):
-            error_code = "model_not_found"
-            message = "Invalid model name. Validation failed."
-            error_obj = {
-                "message": message,
-                "type": "invalid_request_error",
-                "param": None,
-                "code": "model_not_found",
-            }
-        elif (
-            "insufficient_quota" in lower
-            or "quota" in lower
-            or " 429" in lower
-        ):
-            error_code = "insufficient_quota"
-            message = (
-                "You exceeded your current quota, "
-                "please check your plan and billing details."
-            )
-            error_obj = {
-                "message": message,
-                "type": "insufficient_quota",
-                "param": None,
-                "code": "insufficient_quota",
-            }
+    # 3) Keyword heuristics — classify the error but preserve original text
+    lower = raw_msg.lower()
+    if (
+        "invalid_api_key" in lower
+        or "incorrect api key" in lower
+        or "unauthorized" in lower
+        or " 401" in lower
+    ):
+        code = "invalid_api_key"
+    elif (
+        "model_not_found" in lower
+        or "does not exist" in lower
+        or " 404" in lower
+    ):
+        code = "model_not_found"
+    elif "insufficient_quota" in lower or "quota" in lower or " 429" in lower:
+        code = "insufficient_quota"
+    else:
+        return raw_msg, None, None
 
-    return message, error_code, error_obj
+    return (
+        raw_msg,
+        code,
+        {
+            "message": raw_msg,
+            "type": "invalid_request_error",
+            "param": None,
+            "code": code,
+        },
+    )
