@@ -706,6 +706,47 @@ class TestChatServiceAgentOperations:
         assert result.summary is None
         assert mock_camel_agent.step.call_count == 2
 
+    def test_task_analysis_result_has_valid_prefetch_data(self):
+        """Test has_valid_prefetch_data post-validation."""
+        assert (
+            TaskAnalysisResult(
+                is_complex=True,
+                task_name="Task",
+                summary="Summary",
+            ).has_valid_prefetch_data()
+            is True
+        )
+
+        assert (
+            TaskAnalysisResult(
+                is_complex=True, task_name=None, summary="Summary"
+            ).has_valid_prefetch_data()
+            is False
+        )
+
+        assert (
+            TaskAnalysisResult(
+                is_complex=True, task_name="Task", summary=None
+            ).has_valid_prefetch_data()
+            is False
+        )
+
+        assert (
+            TaskAnalysisResult(
+                is_complex=True, task_name="", summary="Summary"
+            ).has_valid_prefetch_data()
+            is False
+        )
+
+        assert (
+            TaskAnalysisResult(
+                is_complex=False,
+                task_name="Greeting",
+                summary=None,
+            ).has_valid_prefetch_data()
+            is False
+        )
+
     @pytest.mark.asyncio
     async def test_new_agent_model_creation(self, sample_chat_data):
         """Test new_agent_model creates agent with proper configuration."""

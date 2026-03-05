@@ -510,6 +510,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if len(attaches_to_use) > 0:
                     is_complex_task = True
                     task_lock._prefetched_summary = None
+                    task_lock._fallback_task_name = "Task"
                     logger.info(
                         "[NEW-QUESTION] Has attachments"
                         ", treating as complex task"
@@ -519,16 +520,18 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         question_agent, question, task_lock
                     )
                     is_complex_task = analysis.is_complex
-                    if (
-                        is_complex_task
-                        and analysis.task_name
-                        and analysis.summary
-                    ):
+                    if analysis.has_valid_prefetch_data():
                         task_lock._prefetched_summary = (
                             f"{analysis.task_name}|{analysis.summary}"
                         )
+                        task_lock._fallback_task_name = None
                     else:
                         task_lock._prefetched_summary = None
+                        task_lock._fallback_task_name = (
+                            analysis.task_name
+                            if analysis.task_name
+                            else "Task"
+                        )
                     logger.info(
                         "[NEW-QUESTION] analyze_task result: is_complex="
                         f"{is_complex_task}"
@@ -566,21 +569,29 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         task_lock.add_conversation("assistant", answer_content)
 
+                        wait_confirm_payload: dict[str, Any] = {
+                            "content": answer_content,
+                            "question": question,
+                        }
+                        if analysis.task_name:
+                            wait_confirm_payload["task_name"] = (
+                                analysis.task_name
+                            )
                         yield sse_json(
                             "wait_confirm",
-                            {"content": answer_content, "question": question},
+                            wait_confirm_payload,
                         )
                     except Exception as e:
                         logger.error(f"Error generating simple answer: {e}")
-                        yield sse_json(
-                            "wait_confirm",
-                            {
-                                "content": "I encountered an error"
-                                " while processing "
-                                "your question.",
-                                "question": question,
-                            },
-                        )
+                        error_payload: dict[str, Any] = {
+                            "content": "I encountered an error"
+                            " while processing "
+                            "your question.",
+                            "question": question,
+                        }
+                        if analysis.task_name:
+                            error_payload["task_name"] = analysis.task_name
+                        yield sse_json("wait_confirm", error_payload)
 
                     # Clean up empty folder if it was created for this task
                     if (
@@ -802,9 +813,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                         summary_task_content = cp + "..."
                                     else:
                                         summary_task_content = content_preview
-                                    summary_task_content = (
-                                        f"Task|{summary_task_content}"
+                                    fallback_name = getattr(
+                                        task_lock,
+                                        "_fallback_task_name",
+                                        "Task",
                                     )
+                                    summary_task_content = f"{fallback_name}|{summary_task_content}"
                                 except Exception:
                                     task_lock.summary_generated = True
                                     content_preview = (
@@ -819,9 +833,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                         summary_task_content = cp + "..."
                                     else:
                                         summary_task_content = content_preview
-                                    summary_task_content = (
-                                        f"Task|{summary_task_content}"
+                                    fallback_name = getattr(
+                                        task_lock,
+                                        "_fallback_task_name",
+                                        "Task",
                                     )
+                                    summary_task_content = f"{fallback_name}|{summary_task_content}"
 
                             state_holder["summary_task"] = summary_task_content
                             try:
@@ -1969,7 +1986,6 @@ async def analyze_task(
 ) -> TaskAnalysisResult:
     """Analyze user query in one LLM call: complexity + task name/summary.
 
-    Merges question_confirm and summary_task into a single request (issue #1427).
     Falls back to question_confirm when structured output parsing fails.
     """
     context_prompt = ""
@@ -1984,8 +2000,11 @@ Analyze this user query and return structured JSON with these fields:
 - is_complex (boolean): True if this requires tools, code execution, file operations,
   multi-step planning, or creating/modifying content. False if it can be answered
   directly (greetings, fact queries, clarifications, status checks).
-- task_name (string, only when is_complex): A short descriptive name for the task.
+- task_name (string, always): A short descriptive name. For complex tasks: describe
+  the task. For simple questions: use a short label (e.g. "Greeting", "Fact Query",
+  "Clarification").
 - summary (string, only when is_complex): A concise summary of the task's main points.
+  Omit or use null when is_complex is false.
 
 Examples of complex: "create a file", "search for X", "implement feature Y".
 Examples of simple: "hello", "what is X?", "how are you?"
