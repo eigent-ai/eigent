@@ -26,6 +26,12 @@ AuthStatus = Literal[
     "pending", "authorizing", "success", "failed", "cancelled"
 ]
 
+TERMINAL_STATUSES: tuple[AuthStatus, ...] = (
+    "success",
+    "failed",
+    "cancelled",
+)
+
 
 class OAuthState:
     """Represents the state of an OAuth authorization flow"""
@@ -79,9 +85,11 @@ class OAuthStateManager:
             # Cancel any existing authorization for this provider
             if provider in self._states:
                 old_state = self._states[provider]
-                if old_state.status in ["pending", "authorizing"]:
+                if old_state.status in ("pending", "authorizing"):
                     old_state.cancel()
-                    logger.info(f"Cancelled previous {provider} authorization")
+                    logger.info(
+                        "Cancelled previous %s authorization", provider
+                    )
 
             state = OAuthState(provider)
             self._states[provider] = state
@@ -106,9 +114,59 @@ class OAuthStateManager:
                 state.status = status
                 state.error = error
                 state.result = result
-                if status in ["success", "failed", "cancelled"]:
+                if status in TERMINAL_STATUSES:
                     state.completed_at = datetime.now()
-                logger.info(f"Updated {provider} OAuth status to {status}")
+                logger.info("Updated %s OAuth status to %s", provider, status)
+
+    def remove_state(self, provider: str | None) -> bool:
+        """Remove and discard state for a provider. Returns True if removed."""
+        if provider is None or not str(provider).strip():
+            logger.warning("remove_state: provider is None or empty")
+            return False
+        provider = str(provider).strip()
+        with self._lock:
+            if provider in self._states:
+                state = self._states[provider]
+                if state.status in ("pending", "authorizing"):
+                    state.cancel()
+                del self._states[provider]
+                logger.info("Removed OAuth state for provider %s", provider)
+                return True
+            return False
+
+    def list_states(self) -> list[dict[str, Any]]:
+        """Return a list of current states as dicts (for API/debugging)."""
+        with self._lock:
+            return [s.to_dict() for s in self._states.values()]
+
+    def clear_completed(self, max_age_seconds: int | None = None) -> int:
+        """
+        Remove completed (success/failed/cancelled) states.
+        If max_age_seconds is set, only remove those completed at least
+        that many seconds ago. Returns the number of states removed.
+        """
+        with self._lock:
+            now = datetime.now()
+            to_remove = []
+            for provider, state in self._states.items():
+                if state.status not in TERMINAL_STATUSES:
+                    continue
+                if state.completed_at is None:
+                    continue
+                if max_age_seconds is not None:
+                    delta = (now - state.completed_at).total_seconds()
+                    if delta < max_age_seconds:
+                        continue
+                to_remove.append(provider)
+            for provider in to_remove:
+                del self._states[provider]
+            if to_remove:
+                logger.info(
+                    "Cleared %d completed OAuth state(s): %s",
+                    len(to_remove),
+                    to_remove,
+                )
+            return len(to_remove)
 
 
 # Global instance
