@@ -34,6 +34,9 @@ export function showModelErrorToast(
 
   const isPersistent = errorCode === 'invalid_api_key';
 
+  const showOriginal =
+    errorCode && errorMessage && errorMessage !== description;
+
   toast.error(
     <div>
       {description}{' '}
@@ -43,6 +46,9 @@ export function showModelErrorToast(
       >
         {i18n.t('chat.model-error-go-to-settings')}
       </a>
+      {showOriginal && (
+        <p className="mt-1 text-xs opacity-70">{errorMessage}</p>
+      )}
     </div>,
     {
       duration: isPersistent ? Infinity : 8000,
