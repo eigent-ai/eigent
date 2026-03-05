@@ -1,7 +1,6 @@
 ---
 name: pptx
 description: "Use this skill any time a .pptx file is involved in any way — as input, output, or both. This includes: creating slide decks, pitch decks, or presentations; reading, parsing, or extracting text from any .pptx file (even if the extracted content will be used elsewhere, like in an email or summary); editing, modifying, or updating existing presentations; combining or splitting slide files; working with templates, layouts, speaker notes, or comments. Trigger whenever the user mentions \"deck,\" \"slides,\" \"presentation,\" or references a .pptx filename, regardless of what they plan to do with the content afterward. If a .pptx file needs to be opened, created, or touched, use this skill."
-license: Proprietary. LICENSE.txt has complete terms
 ---
 
 # PPTX Skill
@@ -162,7 +161,7 @@ If grep returns results, fix them before declaring success.
 
 ### Visual QA
 
-**⚠️ USE SUBAGENTS** — even for 2-3 slides. You've been staring at the code and will see what you expect, not what's there. Subagents have fresh eyes.
+**Use parallel review if available** — even for 2-3 slides. You've been staring at the code and will see what you expect, not what's there. Parallel review provides an independent pass.
 
 Convert slides to images (see [Converting to Images](#converting-to-images)), then use this prompt:
 
