@@ -224,25 +224,25 @@ jobs:
           mkdir -p release/mac-arm64 release/mac-intel release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-macos-arm64-arm64
           path: temp-mac-arm64
 
       - name: Download mac-intel artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-macos-intel-x64
           path: temp-mac-intel
 
       - name: Download win-x64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-windows-latest-x64
           path: temp-win-x64
 
       - name: Download linux-x64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-ubuntu-latest-x64
           path: temp-linux-x64
