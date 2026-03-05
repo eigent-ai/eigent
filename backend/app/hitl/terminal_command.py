@@ -14,6 +14,7 @@
 
 import os
 import re
+import shlex
 
 # Dangerous commands that require user approval (issue #1306)
 DANGEROUS_COMMAND_TOKENS = frozenset(
@@ -233,22 +234,30 @@ def validate_cd_within_working_dir(
     """
     work_real = os.path.realpath(os.path.abspath(working_directory))
     current_dir = work_real
+    previous_dir = work_real
 
     for sub_cmd in split_compound_command(command):
-        parts = sub_cmd.strip().split()
+        try:
+            parts = shlex.split(sub_cmd)
+        except ValueError:
+            # Fall back to naive split if command has unmatched quotes.
+            parts = sub_cmd.strip().split()
         if not parts:
             continue
         # Check if this sub-command is a cd
         basename = parts[0].rsplit("/", 1)[-1]
         if basename != "cd":
             continue
-        target = parts[1] if len(parts) > 1 else ""
+        args = parts[1:]
+        if args and args[0] == "--":
+            args = args[1:]
+        target = args[0] if args else ""
         # cd with no args or "cd ~" -> home; treat as potential escape
         if not target or target == "~":
             target = os.path.expanduser("~")
         elif target == "-":
-            # "cd -" is previous dir; cannot validate statically, allow it
-            continue
+            # Resolve "cd -" using current simulated shell state.
+            target = previous_dir
         try:
             if os.path.isabs(target):
                 resolved = os.path.realpath(os.path.abspath(target))
@@ -262,6 +271,7 @@ def validate_cd_within_working_dir(
                     f"cd not allowed: path would escape working directory "
                     f"({working_directory}).",
                 )
+            previous_dir = current_dir
             current_dir = resolved
         except (OSError, ValueError):
             return False, "cd not allowed: invalid path."

@@ -467,9 +467,32 @@ class TaskLock:
         if future.done():
             return
 
-        future.get_loop().call_soon_threadsafe(
-            self._set_future_result_if_pending, future, action
-        )
+        try:
+            loop = future.get_loop()
+        except RuntimeError:
+            logger.warning(
+                "Approval future has no active loop",
+                extra={"task_id": self.id},
+            )
+            return
+
+        if loop.is_closed():
+            logger.warning(
+                "Approval future loop already closed",
+                extra={"task_id": self.id},
+            )
+            return
+
+        try:
+            loop.call_soon_threadsafe(
+                self._set_future_result_if_pending, future, action
+            )
+        except RuntimeError:
+            # Loop may close between is_closed() check and scheduling.
+            logger.warning(
+                "Failed to schedule approval future resolution on loop",
+                extra={"task_id": self.id},
+            )
 
     def resolve_approval(self, approval_id: str, action: str):
         """Resolve a single pending approval by its ID.
