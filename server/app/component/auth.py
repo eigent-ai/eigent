@@ -18,7 +18,7 @@ import jwt
 from fastapi import Depends, Header
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_babel import _
-from jwt.exceptions import InvalidTokenError
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from sqlmodel import Session, select
 
 from app.component import code
@@ -51,12 +51,11 @@ class Auth:
     def decode_token(cls, token: str):
         try:
             payload = jwt.decode(token, Auth.SECRET_KEY, algorithms=["HS256"])
-            id = payload["id"]
-            if payload["exp"] < int(datetime.now().timestamp()):
-                raise TokenException(code.token_expired, _("Validate credentials expired"))
+        except ExpiredSignatureError:
+            raise TokenException(code.token_expired, _("Validate credentials expired"))
         except InvalidTokenError:
             raise TokenException(code.token_invalid, _("Could not validate credentials"))
-        return Auth(id, payload["exp"])
+        return Auth(payload["id"], payload["exp"])
 
     @classmethod
     def create_access_token(cls, user_id: int, expires_delta: timedelta | None = None):

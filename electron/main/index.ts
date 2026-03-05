@@ -2079,8 +2079,9 @@ function registerIpcHandlers() {
     const childWindow = new BrowserWindow({
       webPreferences: {
         preload,
-        nodeIntegration: true,
-        contextIsolation: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
       },
     });
 
