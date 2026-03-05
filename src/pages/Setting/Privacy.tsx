@@ -63,11 +63,14 @@ export default function SettingPrivacy() {
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        const allEnabled = isPrivacyAllEnabled(res || {});
+        const allEnabled =
+          res && typeof res.all_required_granted === 'boolean'
+            ? res.all_required_granted
+            : isPrivacyAllEnabled(res || {});
         setSettings((prev) =>
           prev.map((item, index) => ({
             ...item,
-            checked: !!res?.[API_FIELDS[index]],
+            checked: res?.[API_FIELDS[index]] || false,
           }))
         );
         setPrivacy(allEnabled);

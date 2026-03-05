@@ -74,7 +74,10 @@ export default function ChatBox(): JSX.Element {
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        const allEnabled = isPrivacyAllEnabled(res || {});
+        const allEnabled =
+          res && typeof res.all_required_granted === 'boolean'
+            ? res.all_required_granted
+            : isPrivacyAllEnabled(res || {});
         setPrivacy(allEnabled);
         setStoredPrivacyEnabled(email, allEnabled);
       })
