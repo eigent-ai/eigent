@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 import { app } from 'electron';
 import log from 'electron-log';
 import fs from 'fs';
@@ -108,6 +108,23 @@ export async function getBinaryPath(name?: string): Promise<string> {
     if (prebuiltPath) {
       log.info(`Using prebuilt binary: ${prebuiltPath}`);
       return prebuiltPath;
+    }
+  }
+
+  // In dev: prefer system PATH uv (e.g. Homebrew) for speed - has cache at ~/.cache/uv
+  if (!app.isPackaged && name) {
+    try {
+      const whichCmd = process.platform === 'win32' ? 'where.exe' : 'which';
+      const found = execFileSync(whichCmd, [name], {
+        encoding: 'utf-8',
+      }).trim();
+      if (found && fs.existsSync(found.split('\n')[0]!.trim())) {
+        const systemPath = found.split('\n')[0]!.trim();
+        log.info(`[DEV] Using system uv from PATH: ${systemPath}`);
+        return systemPath;
+      }
+    } catch {
+      // Fall through to .eigent/bin
     }
   }
 
