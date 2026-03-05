@@ -15,21 +15,25 @@
 import { proxyFetchGet, proxyFetchPut } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import {
+  getStoredPrivacyEnabled,
+  isPrivacyAllEnabled,
+  PRIVACY_API_FIELDS,
+  setStoredPrivacyEnabled,
+} from '@/lib/privacy';
 import { useAuthStore } from '@/store/authStore';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
 export default function SettingPrivacy() {
   const { email } = useAuthStore();
-  const [_privacy, setPrivacy] = useState(false);
+  const [privacy, setPrivacy] = useState<boolean>(() =>
+    getStoredPrivacyEnabled(email)
+  );
   const { t } = useTranslation();
   const API_FIELDS = useMemo(
-    () => [
-      'take_screenshot',
-      'access_local_software',
-      'access_your_address',
-      'password_storage',
-    ],
+    () => [...PRIVACY_API_FIELDS] as typeof PRIVACY_API_FIELDS,
     []
   );
   const [settings, setSettings] = useState([
@@ -59,22 +63,18 @@ export default function SettingPrivacy() {
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        let hasFalse = false;
+        const allEnabled = isPrivacyAllEnabled(res || {});
         setSettings((prev) =>
-          prev.map((item, index) => {
-            if (!res[API_FIELDS[index]]) {
-              hasFalse = true;
-            }
-            return {
-              ...item,
-              checked: res[API_FIELDS[index]] || false,
-            };
-          })
+          prev.map((item, index) => ({
+            ...item,
+            checked: !!res?.[API_FIELDS[index]],
+          }))
         );
-        setPrivacy(!hasFalse);
+        setPrivacy(allEnabled);
+        setStoredPrivacyEnabled(email, allEnabled);
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
-  }, [API_FIELDS]);
+  }, [API_FIELDS, email]);
 
   const handleTurnOnAll = (type: boolean) => {
     const newSettings = settings.map((item) => ({
@@ -83,12 +83,8 @@ export default function SettingPrivacy() {
     }));
     setSettings(newSettings);
     setPrivacy(type);
-    const requestData = {
-      [API_FIELDS[0]]: type,
-      [API_FIELDS[1]]: type,
-      [API_FIELDS[2]]: type,
-      [API_FIELDS[3]]: type,
-    };
+    setStoredPrivacyEnabled(email, type);
+    const requestData = Object.fromEntries(API_FIELDS.map((k) => [k, type]));
 
     proxyFetchPut('/api/user/privacy', requestData);
   };
@@ -112,9 +108,13 @@ export default function SettingPrivacy() {
 
     requestData[API_FIELDS[index]] = !settings[index].checked;
 
-    proxyFetchPut('/api/user/privacy', requestData).catch((err) =>
-      console.error('Failed to update settings:', err)
-    );
+    proxyFetchPut('/api/user/privacy', requestData)
+      .then(() => {
+        const allEnabled = isPrivacyAllEnabled(requestData);
+        setPrivacy(allEnabled);
+        setStoredPrivacyEnabled(email, allEnabled);
+      })
+      .catch((err) => console.error('Failed to update settings:', err));
   };
 
   const [logFolder, setLogFolder] = useState('');
@@ -219,8 +219,8 @@ export default function SettingPrivacy() {
             </div>
             <div className="flex items-center justify-center">
               <Switch
-                checked={_privacy}
-                onCheckedChange={() => handleTurnOnAll(!_privacy)}
+                checked={privacy}
+                onCheckedChange={() => handleTurnOnAll(!privacy)}
               />
             </div>
           </div>
