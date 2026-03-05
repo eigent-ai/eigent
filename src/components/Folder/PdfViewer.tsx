@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -23,6 +23,51 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+const DEFAULT_PAGE_HEIGHT = 1056;
+
+interface LazyPageProps {
+  pageNumber: number;
+  width: number | undefined;
+}
+
+const LazyPage = memo(function LazyPage({ pageNumber, width }: LazyPageProps) {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref}>
+      {visible ? (
+        <Page
+          pageNumber={pageNumber}
+          width={width}
+          className="mb-4 shadow-md"
+        />
+      ) : (
+        <div
+          className="bg-background-secondary mb-4"
+          style={{ height: width ? width * 1.414 : DEFAULT_PAGE_HEIGHT }}
+        />
+      )}
+    </div>
+  );
+});
+
 interface PdfViewerProps {
   /** data URL (data:application/pdf;base64,...) or file path */
   content: string;
@@ -31,6 +76,7 @@ interface PdfViewerProps {
 export default function PdfViewer({ content }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [containerWidth, setContainerWidth] = useState<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const onDocumentLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
@@ -39,7 +85,8 @@ export default function PdfViewer({ content }: PdfViewerProps) {
     []
   );
 
-  const containerRef = useCallback((node: HTMLDivElement | null) => {
+  useEffect(() => {
+    const node = containerRef.current;
     if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -54,11 +101,10 @@ export default function PdfViewer({ content }: PdfViewerProps) {
     <div ref={containerRef} className="flex flex-col items-center gap-4">
       <Document file={content} onLoadSuccess={onDocumentLoadSuccess}>
         {Array.from({ length: numPages }, (_, index) => (
-          <Page
+          <LazyPage
             key={`page_${index + 1}`}
             pageNumber={index + 1}
             width={containerWidth || undefined}
-            className="mb-4 shadow-md"
           />
         ))}
       </Document>
