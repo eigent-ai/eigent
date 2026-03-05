@@ -1,0 +1,80 @@
+### ============================================
+### Eigent Server API Tests
+### ============================================
+### VSCode Extension: "REST Client" by Huachao Mao
+### Extension ID: humao.rest-client
+### ============================================
+
+@baseUrl = http://localhost:3001/api
+@token = YOUR_TOKEN_HERE
+
+### ──────────────────────────────────────────
+### Auth (no token required)
+### ──────────────────────────────────────────
+
+### Register a new user
+POST {{baseUrl}}/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "testpassword123"
+}
+
+### Login
+# @name login
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "testpassword123"
+}
+
+### Save token from login response (use this after running login)
+@authToken = {{login.response.body.token}}
+
+### ──────────────────────────────────────────
+### User
+### ──────────────────────────────────────────
+
+### Get current user info
+GET {{baseUrl}}/user
+Authorization: Bearer {{authToken}}
+
+### ──────────────────────────────────────────
+### Privacy Settings
+### ──────────────────────────────────────────
+
+### Get privacy settings
+GET {{baseUrl}}/user/privacy
+Authorization: Bearer {{authToken}}
+
+### Update privacy settings
+PUT {{baseUrl}}/user/privacy
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "take_screenshot": true,
+  "access_local_software": false,
+  "access_your_address": false,
+  "password_storage": false
+}
+
+### Update only help_improve
+PUT {{baseUrl}}/user/privacy
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "help_improve": true
+}
+
+### ──────────────────────────────────────────
+### User Stats
+### ──────────────────────────────────────────
+
+### Get user stats
+GET {{baseUrl}}/user/stat
+Authorization: Bearer {{authToken}}
