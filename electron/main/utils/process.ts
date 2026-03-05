@@ -111,20 +111,21 @@ export async function getBinaryPath(name?: string): Promise<string> {
     }
   }
 
-  // In dev: prefer system PATH uv (e.g. Homebrew) for speed - has cache at ~/.cache/uv
+  // In dev: prefer system PATH binary (e.g. Homebrew uv) for speed - reuses existing cache
   if (!app.isPackaged && name) {
     try {
       const whichCmd = process.platform === 'win32' ? 'where.exe' : 'which';
       const found = execFileSync(whichCmd, [name], {
         encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
-      if (found && fs.existsSync(found.split('\n')[0]!.trim())) {
-        const systemPath = found.split('\n')[0]!.trim();
-        log.info(`[DEV] Using system uv from PATH: ${systemPath}`);
+      const systemPath = found.split('\n')[0]?.trim();
+      if (systemPath && fs.existsSync(systemPath)) {
+        log.info(`[DEV] Using system ${name} from PATH: ${systemPath}`);
         return systemPath;
       }
     } catch {
-      // Fall through to .eigent/bin
+      // Not found on PATH, fall through to .eigent/bin
     }
   }
 
