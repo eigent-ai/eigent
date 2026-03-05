@@ -116,7 +116,7 @@ jobs:
           fi
           ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
           echo "File descriptor limit: $(ulimit -n) (hard: $(ulimit -Hn 2>/dev/null || echo 'N/A'))"
-          npm run build -- --arch ${{ matrix.arch }}
+          npm run build -- --${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
@@ -134,7 +134,7 @@ jobs:
       - name: Build Release Files (Windows without signing)
         if: runner.os == 'Windows'
         timeout-minutes: 90
-        run: npm run build -- --arch ${{ matrix.arch }}
+        run: npm run build -- --${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
