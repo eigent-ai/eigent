@@ -54,7 +54,7 @@ export function ModelErrorCard({ content, errorCode }: ModelErrorCardProps) {
           {description}
         </p>
         {errorCode && content && content !== description && (
-          <p className="mt-0 font-inter text-xs text-text-secondary">
+          <p className="mt-0 break-all font-inter text-xs text-text-secondary">
             {content}
           </p>
         )}
