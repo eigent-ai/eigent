@@ -50,6 +50,10 @@ export interface TriggerExecutionData {
   logs: ExecutionLogEntry[];
 }
 
+// Success rate thresholds for color coding (percentage)
+const SUCCESS_CRITERIA_EXCELLENT = 90;
+const SUCCESS_CRITERIA_ACCEPTABLE = 70;
+
 // Helper function to map ExecutionStatus to display status
 const mapExecutionStatus = (
   status: ExecutionStatus
@@ -164,6 +168,13 @@ const getStatusColor = (status: ExecutionLogEntry['status']) => {
   }
 };
 
+const getSuccessRateColorClass = (rate: number | null): string => {
+  if (rate === null) return 'text-text-label';
+  if (rate >= SUCCESS_CRITERIA_EXCELLENT) return 'text-icon-success';
+  if (rate >= SUCCESS_CRITERIA_ACCEPTABLE) return 'text-icon-warning';
+  return 'text-icon-caution';
+};
+
 interface ExecutionLogsProps {
   triggerId: number;
 }
@@ -275,12 +286,12 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   const successfulExecutions = Array.isArray(executions)
     ? executions.filter((e) => e.status === ExecutionStatus.Completed)
     : [];
-  const successRate =
+  const successRate: number | null =
     completedExecutions.length > 0
       ? Math.round(
           (successfulExecutions.length / completedExecutions.length) * 100
         )
-      : 0;
+      : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -314,9 +325,9 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
           </div>
           <div className="border-r-1 mr-4 flex flex-col border-y-0 border-l-0 border-solid border-border-tertiary pr-4">
             <span
-              className={`text-label-sm font-medium ${successRate >= 90 ? 'text-icon-success' : successRate >= 70 ? 'text-icon-warning' : 'text-icon-cuation'}`}
+              className={`text-label-sm font-medium ${getSuccessRateColorClass(successRate)}`}
             >
-              {successRate}%
+              {successRate !== null ? `${successRate}%` : '-'}
             </span>
             <span className="text-label-xs text-text-label">
               {t('triggers.success-rate')}
