@@ -39,7 +39,7 @@ export function showModelErrorToast(
       {description}{' '}
       <a
         className="cursor-pointer underline"
-        onClick={() => (window.location.href = '#/setting/models')}
+        onClick={() => (window.location.href = '#/history?tab=agents')}
       >
         {i18n.t('chat.model-error-go-to-settings')}
       </a>

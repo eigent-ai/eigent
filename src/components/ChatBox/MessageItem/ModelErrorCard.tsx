@@ -57,7 +57,7 @@ export function ModelErrorCard({ content, errorCode }: ModelErrorCardProps) {
           variant="outline"
           size="sm"
           className="w-fit"
-          onClick={() => navigate('/setting/models')}
+          onClick={() => navigate('/history?tab=agents')}
         >
           {t('chat.model-error-open-settings')}
         </Button>
