@@ -17,17 +17,35 @@ from app.agent.factory.developer import developer_agent
 from app.agent.factory.document import document_agent
 from app.agent.factory.mcp import mcp_agent
 from app.agent.factory.multi_modal import multi_modal_agent
-from app.agent.factory.question_confirm import question_confirm_agent
+from app.agent.factory.question_confirm import (
+    question_confirm,
+    question_confirm_agent,
+)
 from app.agent.factory.social_media import social_media_agent
-from app.agent.factory.task_summary import task_summary_agent
+from app.agent.factory.task_summary import (
+    get_task_result_with_optional_summary,
+    summary_subtasks_result,
+    summary_task,
+    task_summary_agent,
+)
+from app.agent.factory.workforce_agents import (
+    create_coordinator_and_task_agents,
+    create_new_worker_agent,
+)
 
 __all__ = [
     "browser_agent",
+    "create_coordinator_and_task_agents",
+    "create_new_worker_agent",
     "developer_agent",
     "document_agent",
+    "get_task_result_with_optional_summary",
     "mcp_agent",
     "multi_modal_agent",
+    "question_confirm",
     "question_confirm_agent",
     "social_media_agent",
+    "summary_subtasks_result",
+    "summary_task",
     "task_summary_agent",
 ]

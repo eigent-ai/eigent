@@ -661,10 +661,17 @@ class TestChatServiceAgentOperations:
         mock_agent = MagicMock()
 
         with (
-            patch("app.service.chat_service.get_toolkits", return_value=[]),
-            patch("app.service.chat_service.get_mcp_tools", return_value=[]),
             patch(
-                "app.service.chat_service.agent_model", return_value=mock_agent
+                "app.service.chat_service.lifecycle.get_toolkits",
+                return_value=[],
+            ),
+            patch(
+                "app.service.chat_service.lifecycle.get_mcp_tools",
+                return_value=[],
+            ),
+            patch(
+                "app.service.chat_service.lifecycle.agent_model",
+                return_value=mock_agent,
             ),
         ):
             result = await new_agent_model(agent_data, options)
@@ -680,21 +687,26 @@ class TestChatServiceAgentOperations:
         mock_mcp_agent = MagicMock()
 
         with (
-            patch("app.service.chat_service.agent_model") as mock_agent_model,
             patch(
-                "app.service.chat_service.get_working_directory",
+                "app.service.chat_service.lifecycle.agent_model"
+            ) as mock_agent_model,
+            patch(
+                "app.agent.factory.workforce_agents.agent_model"
+            ) as mock_wf_agent_model,
+            patch(
+                "app.service.chat_service.lifecycle.get_working_directory",
                 return_value="/tmp/test_workdir",
             ),
             patch(
-                "app.service.chat_service.Workforce",
+                "app.service.chat_service.lifecycle.Workforce",
                 return_value=mock_workforce,
             ),
-            patch("app.service.chat_service.browser_agent"),
-            patch("app.service.chat_service.developer_agent"),
-            patch("app.service.chat_service.document_agent"),
-            patch("app.service.chat_service.multi_modal_agent"),
+            patch("app.service.chat_service.lifecycle.browser_agent"),
+            patch("app.service.chat_service.lifecycle.developer_agent"),
+            patch("app.service.chat_service.lifecycle.document_agent"),
+            patch("app.service.chat_service.lifecycle.multi_modal_agent"),
             patch(
-                "app.service.chat_service.mcp_agent",
+                "app.service.chat_service.lifecycle.mcp_agent",
                 return_value=mock_mcp_agent,
             ),
             patch(
@@ -702,11 +714,12 @@ class TestChatServiceAgentOperations:
                 return_value=mock_task_lock,
             ),
             patch(
-                "app.service.chat_service.WorkforceMetricsCallback",
+                "app.service.chat_service.lifecycle.WorkforceMetricsCallback",
                 return_value=MagicMock(),
             ),
         ):
             mock_agent_model.return_value = MagicMock()
+            mock_wf_agent_model.return_value = MagicMock()
 
             workforce, mcp = await construct_workforce(options)
 
@@ -725,7 +738,8 @@ class TestChatServiceAgentOperations:
         )
 
         with patch(
-            "app.service.chat_service.get_mcp_tools", return_value=mock_tools
+            "app.service.chat_service.lifecycle.get_mcp_tools",
+            return_value=mock_tools,
         ):
             await install_mcp(mock_camel_agent, install_data)
 
@@ -883,20 +897,21 @@ class TestChatServiceIntegration:
 
         with (
             patch(
-                "app.service.chat_service.construct_workforce",
+                "app.service.chat_service.decomposition.construct_workforce",
                 return_value=(mock_workforce, mock_mcp),
             ),
             patch(
-                "app.service.chat_service.question_confirm_agent"
+                "app.service.chat_service._step_solve.question_confirm_agent"
             ) as mock_question_agent,
             patch(
-                "app.service.chat_service.task_summary_agent"
+                "app.service.chat_service.router.task_summary_agent"
             ) as mock_summary_agent,
             patch(
-                "app.service.chat_service.question_confirm", return_value=True
+                "app.service.chat_service.router.question_confirm",
+                return_value=True,
             ),
             patch(
-                "app.service.chat_service.summary_task",
+                "app.service.chat_service.router.summary_task",
                 return_value="Test Summary",
             ),
         ):
@@ -1222,7 +1237,11 @@ class TestChatServiceErrorCases:
                 return_value=mock_task_lock,
             ),
             patch(
-                "app.service.chat_service.agent_model",
+                "app.service.chat_service.lifecycle.agent_model",
+                side_effect=Exception("Agent creation failed"),
+            ),
+            patch(
+                "app.agent.factory.workforce_agents.agent_model",
                 side_effect=Exception("Agent creation failed"),
             ),
             patch(
@@ -1258,7 +1277,7 @@ class TestChatServiceErrorCases:
         )
 
         with patch(
-            "app.service.chat_service.get_toolkits",
+            "app.service.chat_service.lifecycle.get_toolkits",
             side_effect=Exception("Invalid tool"),
         ):
             with pytest.raises(Exception, match="Invalid tool"):

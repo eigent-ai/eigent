@@ -15,12 +15,18 @@
 from app.agent.agent_model import agent_model
 from app.agent.factory import (
     browser_agent,
+    create_coordinator_and_task_agents,
+    create_new_worker_agent,
     developer_agent,
     document_agent,
+    get_task_result_with_optional_summary,
     mcp_agent,
     multi_modal_agent,
+    question_confirm,
     question_confirm_agent,
     social_media_agent,
+    summary_subtasks_result,
+    summary_task,
     task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
@@ -32,11 +38,17 @@ __all__ = [
     "get_mcp_tools",
     "get_toolkits",
     "browser_agent",
+    "create_coordinator_and_task_agents",
+    "create_new_worker_agent",
     "developer_agent",
     "document_agent",
+    "get_task_result_with_optional_summary",
     "mcp_agent",
     "multi_modal_agent",
+    "question_confirm",
     "question_confirm_agent",
     "social_media_agent",
+    "summary_subtasks_result",
+    "summary_task",
     "task_summary_agent",
 ]
