@@ -53,6 +53,11 @@ export function ModelErrorCard({ content, errorCode }: ModelErrorCardProps) {
         <p className="mt-0 font-inter text-sm font-medium text-text-warning">
           {description}
         </p>
+        {errorCode && content && content !== description && (
+          <p className="mt-0 font-inter text-xs text-text-secondary">
+            {content}
+          </p>
+        )}
         <Button
           variant="outline"
           size="sm"
