@@ -65,14 +65,7 @@ export default function ChatBox(): JSX.Element {
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        const REQUIRED_FIELDS = [
-          'take_screenshot',
-          'access_local_software',
-          'access_your_address',
-          'password_storage',
-        ];
-        const allGranted = REQUIRED_FIELDS.every((key) => res[key] === true);
-        setPrivacy(allGranted);
+        setPrivacy(res.all_required_granted);
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
 
