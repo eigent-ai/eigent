@@ -992,43 +992,115 @@ function registerIpcHandlers() {
   // ==================== log export handler ====================
   ipcMain.handle('export-log', async () => {
     try {
+      // Locate the Electron app log
       let targetLogPath = logPath;
       if (!fs.existsSync(targetLogPath)) {
         const backupPath = getBackupLogPath();
         if (fs.existsSync(backupPath)) {
           targetLogPath = backupPath;
-        } else {
-          return { success: false, error: 'no log file' };
         }
       }
 
-      await fsp.access(targetLogPath, fs.constants.R_OK);
-      const stats = await fsp.stat(targetLogPath);
-      if (stats.size === 0) {
-        return { success: true, data: 'log file is empty' };
+      // Collect camel_logs directories from ~/.eigent/
+      const eigentDir = path.join(os.homedir(), '.eigent');
+      const camelLogDirs: { rel: string; abs: string }[] = [];
+      if (fs.existsSync(eigentDir)) {
+        const userDirs = fs.readdirSync(eigentDir, { withFileTypes: true });
+        for (const userDir of userDirs) {
+          if (!userDir.isDirectory()) continue;
+          const userPath = path.join(eigentDir, userDir.name);
+          // Scan project_*/task_*/camel_logs and task_*/camel_logs
+          const entries = fs.readdirSync(userPath, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const entryPath = path.join(userPath, entry.name);
+            if (entry.name.startsWith('project_')) {
+              // project_X/task_Y/camel_logs
+              const taskDirs = fs.readdirSync(entryPath, {
+                withFileTypes: true,
+              });
+              for (const taskDir of taskDirs) {
+                if (!taskDir.isDirectory()) continue;
+                const camelDir = path.join(
+                  entryPath,
+                  taskDir.name,
+                  'camel_logs'
+                );
+                if (fs.existsSync(camelDir)) {
+                  camelLogDirs.push({
+                    rel: path.join(
+                      userDir.name,
+                      entry.name,
+                      taskDir.name,
+                      'camel_logs'
+                    ),
+                    abs: camelDir,
+                  });
+                }
+              }
+            } else if (entry.name.startsWith('task_')) {
+              // task_X/camel_logs (legacy)
+              const camelDir = path.join(entryPath, 'camel_logs');
+              if (fs.existsSync(camelDir)) {
+                camelLogDirs.push({
+                  rel: path.join(userDir.name, entry.name, 'camel_logs'),
+                  abs: camelDir,
+                });
+              }
+            }
+          }
+        }
       }
 
-      const logContent = await fsp.readFile(targetLogPath, 'utf-8');
+      const hasAppLog = targetLogPath && fs.existsSync(targetLogPath);
+      const hasCamelLogs = camelLogDirs.length > 0;
 
-      // Get app version and system version
+      if (!hasAppLog && !hasCamelLogs) {
+        return { success: false, error: 'no log files found' };
+      }
+
+      // Get app version and system info for filename
       const appVersion = app.getVersion();
       const platform = process.platform;
       const arch = process.arch;
       const systemVersion = `${platform}-${arch}`;
-      const defaultFileName = `eigent-${appVersion}-${systemVersion}-${Date.now()}.log`;
+      const defaultFileName = `eigent-${appVersion}-${systemVersion}-${Date.now()}.zip`;
 
       // Show save dialog
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'save log file',
         defaultPath: defaultFileName,
-        filters: [{ name: 'log file', extensions: ['log', 'txt'] }],
+        filters: [{ name: 'zip archive', extensions: ['zip'] }],
       });
 
       if (canceled || !filePath) {
         return { success: false, error: '' };
       }
 
-      await fsp.writeFile(filePath, logContent, 'utf-8');
+      // Build zip archive with app log + camel_logs
+      // @ts-ignore
+      const archiver = (await import('archiver')).default;
+      await new Promise<void>((resolve, reject) => {
+        const output = fs.createWriteStream(filePath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+
+        output.on('close', () => resolve());
+        archive.on('error', (err: any) => reject(err));
+        archive.pipe(output);
+
+        // Add app log
+        if (hasAppLog) {
+          archive.file(targetLogPath, { name: 'app.log' });
+        }
+
+        // Add camel_logs directories
+        for (const dir of camelLogDirs) {
+          archive.directory(dir.abs, path.join('camel_logs', dir.rel));
+        }
+
+        archive.finalize();
+      });
+
       return { success: true, savedPath: filePath };
     } catch (error: any) {
       return { success: false, error: error.message };
