@@ -169,6 +169,8 @@ class ListenChatAgent(ChatAgent):
             message: The accumulated message content
             tokens: The total token count used
         """
+        if self._camel_has_request_usage:
+            tokens = 0
         task_lock = get_task_lock(self.api_task_id)
         _schedule_async_task(
             task_lock.put_queue(
@@ -332,24 +334,10 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
-            if self._camel_has_request_usage:
-                total_tokens = 0
 
         assert message is not None
 
-        _schedule_async_task(
-            task_lock.put_queue(
-                ActionDeactivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": message,
-                        "tokens": total_tokens,
-                    },
-                )
-            )
-        )
+        self._send_agent_deactivate(message, total_tokens)
 
         if error_info is not None:
             raise error_info
@@ -437,8 +425,6 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} completed step, "
                 f"tokens used: {total_tokens}"
             )
-            if self._camel_has_request_usage:
-                total_tokens = 0
 
         # Send deactivation for all non-streaming cases (success or error)
         # Streaming responses handle deactivation in _astream_chunks
@@ -452,7 +438,9 @@ class ListenChatAgent(ChatAgent):
                         "process_task_id": self.process_task_id,
                         "agent_id": self.agent_id,
                         "message": message,
-                        "tokens": total_tokens,
+                        "tokens": 0
+                        if self._camel_has_request_usage
+                        else total_tokens,
                     },
                 )
             )
