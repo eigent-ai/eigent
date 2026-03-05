@@ -155,6 +155,7 @@ async def invalidate(id: int, session: Session = Depends(session), auth: Auth = 
         logger.info("Provider invalidated", extra={"user_id": user_id, "provider_id": id})
         return {"success": True}
     except Exception as e:
+        session.rollback()
         logger.error(
             "Provider invalidation failed", extra={"user_id": user_id, "provider_id": id, "error": str(e)}, exc_info=True
         )
