@@ -12,8 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Shared context-building utilities for conversation history and task data."""
-
 import logging
 
 from app.service.task import TaskLock
