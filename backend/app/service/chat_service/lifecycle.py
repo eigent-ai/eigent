@@ -12,8 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Workforce setup, task CRUD helpers, and agent construction."""
-
 from __future__ import annotations
 
 import asyncio
@@ -39,6 +37,13 @@ from app.agent.factory.workforce_agents import (
     create_new_worker_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.prompt import (
+    AGENT_ENVIRONMENT_PROMPT,
+    BROWSER_WORKER_DESCRIPTION,
+    DEVELOPER_WORKER_DESCRIPTION,
+    DOCUMENT_WORKER_DESCRIPTION,
+    MULTI_MODAL_WORKER_DESCRIPTION,
+)
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.model.chat import Chat, NewAgent, TaskContent, sse_json
@@ -49,11 +54,6 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# Standalone helper functions (moved as-is from chat_service.py)
-# ============================================================================
 
 
 async def install_mcp(
@@ -175,7 +175,9 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
-async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
+async def new_agent_model(
+    data: NewAgent | ActionNewAgent, options: Chat
+) -> ListenChatAgent:
     logger.info(
         "Creating new agent",
         extra={
@@ -192,7 +194,6 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
     for item in data.tools:
         tool_names.append(titleize(item))
-    # Always include terminal_toolkit with proper working directory
     terminal_toolkit = TerminalToolkit(
         options.project_id,
         agent_name=data.name,
@@ -211,21 +212,17 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     logger.info(
         f"Agent {data.name} created with {len(tools)} tools: {tool_names}"
     )
-    # Enhanced system message with platform information
-    enhanced_description = f"""{data.description}
-- You are now working in system {platform.system()} with architecture
-{platform.machine()} at working directory \
-`{working_directory}`. All local file operations \
-must occur here, but you can access files from any \
-place in the file system. For all file system \
-operations, you MUST use absolute paths to ensure \
-precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
-For any date-related tasks, you MUST use this as \
-the current date.
-"""
+    enhanced_description = (
+        data.description
+        + "\n"
+        + AGENT_ENVIRONMENT_PROMPT.format(
+            platform_system=platform.system(),
+            platform_machine=platform.machine(),
+            working_directory=working_directory,
+            current_date=datetime.date.today(),
+        )
+    )
 
-    # Pass per-agent custom model config if available
     custom_model_config = getattr(data, "custom_model_config", None)
     return agent_model(
         data.name,
@@ -257,10 +254,6 @@ async def construct_workforce(
     set_main_event_loop(asyncio.get_running_loop())
 
     working_directory = get_working_directory(options)
-
-    # ========================================================================
-    # Execute all agent creations in PARALLEL
-    # ========================================================================
 
     try:
         # asyncio.gather runs all coroutines concurrently
@@ -304,10 +297,6 @@ async def construct_workforce(
 
     coordinator_agent, task_agent = coord_task_agents
 
-    # ========================================================================
-    # Create Workforce instance and add workers (must be sequential)
-    # ========================================================================
-
     try:
         model_platform_enum = ModelPlatformType(options.model_platform.lower())
     except (ValueError, AttributeError):
@@ -333,32 +322,11 @@ async def construct_workforce(
 
     # Register workforce metrics callback
     workforce._callbacks.append(workforce_metrics)
+    workforce.add_single_agent_worker(DEVELOPER_WORKER_DESCRIPTION, developer)
+    workforce.add_single_agent_worker(BROWSER_WORKER_DESCRIPTION, searcher)
+    workforce.add_single_agent_worker(DOCUMENT_WORKER_DESCRIPTION, documenter)
     workforce.add_single_agent_worker(
-        "Developer Agent: A master-level coding assistant with a powerful "
-        "terminal. It can write and execute code, manage files, automate "
-        "desktop tasks, and deploy web applications to solve complex "
-        "technical challenges.",
-        developer,
-    )
-    workforce.add_single_agent_worker(
-        "Browser Agent: Can search the web, extract webpage content, "
-        "simulate browser actions, and provide relevant information to "
-        "solve the given task.",
-        searcher,
-    )
-    workforce.add_single_agent_worker(
-        "Document Agent: A document processing assistant skilled in creating "
-        "and modifying a wide range of file formats. It can generate "
-        "text-based files/reports (Markdown, JSON, YAML, HTML), "
-        "office documents (Word, PDF), presentations (PowerPoint), and "
-        "data files (Excel, CSV).",
-        documenter,
-    )
-    workforce.add_single_agent_worker(
-        "Multi-Modal Agent: A specialist in media processing. It can "
-        "analyze images and audio, transcribe speech, download videos, and "
-        "generate new images from text prompts.",
-        multi_modaler,
+        MULTI_MODAL_WORKER_DESCRIPTION, multi_modaler
     )
 
     return workforce, mcp

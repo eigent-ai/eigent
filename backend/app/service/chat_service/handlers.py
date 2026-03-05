@@ -12,13 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Event handlers for the step_solve dispatch loop."""
-
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
 
 from camel.tasks import Task
 
@@ -34,25 +31,65 @@ from app.service.chat_service.lifecycle import (
     to_sub_tasks,
     update_sub_tasks,
 )
+from app.service.chat_service.types import LoopControl, StepSolveState
 from app.service.task import Action, delete_task_lock
 from app.utils.context import check_conversation_history_length
 from app.utils.file_utils import get_working_directory
 
-if TYPE_CHECKING:
-    from app.service.chat_service._step_solve import (
-        LoopControl,
-        StepSolveState,
-    )
-
 logger = logging.getLogger(__name__)
 
 
-def handle_passthrough_event(item) -> str | None:
-    """Handle simple passthrough events that just forward data as SSE.
+def _sse_error(message: str) -> str:
+    return sse_json("error", {"message": message})
 
-    Returns:
-        SSE JSON string if the action is a passthrough, None otherwise.
-    """
+
+def _stop_workforce(state: StepSolveState, *, force: bool = False) -> None:
+    """Stop and clear the workforce. *force* uses BaseWorkforce.stop()
+    (needed by skip_task to bypass the subclass override)."""
+    if state.workforce is None:
+        logger.info("Workforce is None, nothing to stop")
+        return
+    if state.workforce._running:
+        if force:
+            from camel.societies.workforce.workforce import (
+                Workforce as BaseWorkforce,
+            )
+
+            BaseWorkforce.stop(state.workforce)
+        else:
+            state.workforce.stop()
+    state.workforce.stop_gracefully()
+    logger.info(f"Workforce stopped for project {state.options.project_id}")
+
+
+def _extract_task_content(state: StepSolveState) -> str:
+    """Get the user-facing task content string from camel_task."""
+    if state.camel_task is not None:
+        content: str = state.camel_task.content
+        if "=== CURRENT TASK ===" in content:
+            content = content.split("=== CURRENT TASK ===")[-1].strip()
+        return content
+    return f"Task {state.options.task_id}"
+
+
+def _finalize_task(state: StepSolveState, result: str) -> None:
+    """Mark the task done, save conversation history, clear camel_task."""
+    state.task_lock.status = Status.done
+    state.task_lock.last_task_result = result
+    state.task_lock.add_conversation(
+        "task_result",
+        {
+            "task_content": _extract_task_content(state),
+            "task_result": result,
+            "working_directory": get_working_directory(
+                state.options, state.task_lock
+            ),
+        },
+    )
+    state.camel_task = None
+
+
+def handle_passthrough_event(item) -> str | None:
     if item.action == Action.create_agent:
         return sse_json("create_agent", item.data)
     elif item.action == Action.activate_agent:
@@ -68,30 +105,21 @@ def handle_passthrough_event(item) -> str | None:
     elif item.action == Action.write_file:
         return sse_json(
             "write_file",
-            {
-                "file_path": item.data,
-                "process_task_id": item.process_task_id,
-            },
+            {"file_path": item.data, "process_task_id": item.process_task_id},
         )
     elif item.action == Action.ask:
         return sse_json("ask", item.data)
     elif item.action == Action.notice:
         return sse_json(
             "notice",
-            {
-                "notice": item.data,
-                "process_task_id": item.process_task_id,
-            },
+            {"notice": item.data, "process_task_id": item.process_task_id},
         )
     elif item.action == Action.search_mcp:
         return sse_json("search_mcp", item.data)
     elif item.action == Action.terminal:
         return sse_json(
             "terminal",
-            {
-                "output": item.data,
-                "process_task_id": item.process_task_id,
-            },
+            {"output": item.data, "process_task_id": item.process_task_id},
         )
     elif item.action == Action.decompose_text:
         return sse_json("decompose_text", item.data)
@@ -101,39 +129,17 @@ def handle_passthrough_event(item) -> str | None:
 
 
 def handle_disconnect(state: StepSolveState) -> tuple[list[str], LoopControl]:
-    """Handle client disconnect. Returns BREAK to exit the main loop."""
-    from app.service.chat_service._step_solve import LoopControl
-
-    # This is called after checking request.is_disconnected()
-    # The actual async disconnect check is done in _step_solve.py
-    logger.warning("=" * 80)
     logger.warning(
-        "[LIFECYCLE] CLIENT DISCONNECTED "
-        f"for project {state.options.project_id}"
+        f"Client disconnected for project {state.options.project_id}"
     )
-    logger.warning("=" * 80)
-    if state.workforce is not None:
-        logger.info(
-            "[LIFECYCLE] Stopping workforce "
-            "due to client disconnect, "
-            "workforce._running="
-            f"{state.workforce._running}"
-        )
-        if state.workforce._running:
-            state.workforce.stop()
-        state.workforce.stop_gracefully()
-        logger.info("[LIFECYCLE] Workforce stopped after client disconnect")
-    else:
-        logger.info("[LIFECYCLE] Workforce is None, no need to stop")
+    _stop_workforce(state)
     state.task_lock.status = Status.done
     return [], LoopControl.BREAK
 
 
 async def handle_disconnect_cleanup(state: StepSolveState) -> None:
-    """Async cleanup after disconnect (delete task lock)."""
     try:
         await delete_task_lock(state.task_lock.id)
-        logger.info("[LIFECYCLE] Task lock deleted after client disconnect")
     except Exception as e:
         logger.error(f"Error deleting task lock on disconnect: {e}")
 
@@ -141,20 +147,14 @@ async def handle_disconnect_cleanup(state: StepSolveState) -> None:
 def handle_update_task(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
     assert state.camel_task is not None
     update_tasks_map = {item.id: item for item in item.data.task}
-    # Use stored decomposition results if available
     if not state.sub_tasks:
         state.sub_tasks = getattr(state.task_lock, "decompose_sub_tasks", [])
     state.sub_tasks = update_sub_tasks(state.sub_tasks, update_tasks_map)
-    # Also update camel_task.subtasks to remove deleted tasks
     update_sub_tasks(state.camel_task.subtasks, update_tasks_map)
-    # Add new tasks (with empty id) to both camel_task and sub_tasks
     new_tasks = add_sub_tasks(state.camel_task, item.data.task)
     state.sub_tasks.extend(new_tasks)
-    # Save updated sub_tasks back to task_lock
     state.task_lock.decompose_sub_tasks = state.sub_tasks
     summary_task_content_local = getattr(
         state.task_lock, "summary_task_content", state.summary_task_content
@@ -167,435 +167,199 @@ def handle_update_task(
 def handle_add_task(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    events = []
-    # Check if this might be a misrouted second question
     if state.camel_task is None and state.workforce is None:
         logger.error(
-            "Cannot add task: both "
-            "camel_task and workforce "
-            "are None for project "
-            f"{state.options.project_id}"
+            f"Cannot add task: not initialized for {state.options.project_id}"
         )
-        events.append(
-            sse_json(
-                "error",
-                {
-                    "message": "Cannot add task: task not "
-                    "initialized. Please start"
-                    " a task first."
-                },
+        return [
+            _sse_error(
+                "Cannot add task: task not initialized. Please start a task first."
             )
-        )
-        return events, LoopControl.CONTINUE
+        ], LoopControl.CONTINUE
 
     assert state.camel_task is not None
     if state.workforce is None:
         logger.error(
-            "Cannot add task: workforce"
-            " not initialized for "
-            "project "
-            f"{state.options.project_id}"
+            f"Cannot add task: workforce not initialized for {state.options.project_id}"
         )
-        events.append(
-            sse_json(
-                "error",
-                {
-                    "message": "Workforce not initialized."
-                    " Please start the task "
-                    "first."
-                },
+        return [
+            _sse_error(
+                "Workforce not initialized. Please start the task first."
             )
-        )
-        return events, LoopControl.CONTINUE
+        ], LoopControl.CONTINUE
 
-    # Add task to the workforce queue
     state.workforce.add_task(item.content, item.task_id, item.additional_info)
-
-    returnData = {
-        "project_id": item.project_id,
-        "task_id": item.task_id or (len(state.camel_task.subtasks) + 1),
-    }
-    events.append(sse_json("add_task", returnData))
-    return events, LoopControl.NORMAL
+    return [
+        sse_json(
+            "add_task",
+            {
+                "project_id": item.project_id,
+                "task_id": item.task_id
+                or (len(state.camel_task.subtasks) + 1),
+            },
+        )
+    ], LoopControl.NORMAL
 
 
 def handle_remove_task(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    events = []
     if state.workforce is None:
         logger.error(
-            "Cannot remove task: "
-            "workforce not initialized "
-            "for project "
-            f"{state.options.project_id}"
+            f"Cannot remove task: workforce not initialized for {state.options.project_id}"
         )
-        events.append(
-            sse_json(
-                "error",
-                {
-                    "message": "Workforce not initialized."
-                    " Please start the task "
-                    "first."
-                },
+        return [
+            _sse_error(
+                "Workforce not initialized. Please start the task first."
             )
-        )
-        return events, LoopControl.CONTINUE
+        ], LoopControl.CONTINUE
 
     state.workforce.remove_task(item.task_id)
-    returnData = {
-        "project_id": item.project_id,
-        "task_id": item.task_id,
-    }
-    events.append(sse_json("remove_task", returnData))
-    return events, LoopControl.NORMAL
+    return [
+        sse_json(
+            "remove_task",
+            {"project_id": item.project_id, "task_id": item.task_id},
+        )
+    ], LoopControl.NORMAL
 
 
 def handle_skip_task(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
+    logger.info(f"SKIP_TASK received for project {state.options.project_id}")
 
-    events = []
-    logger.info("=" * 80)
-    logger.info(
-        "🛑 [LIFECYCLE] SKIP_TASK action received (User clicked Stop button)",
-        extra={
-            "project_id": state.options.project_id,
-            "item_project_id": item.project_id,
-        },
-    )
-    logger.info("=" * 80)
-
-    # Prevent duplicate skip processing
     if state.task_lock.status == Status.done:
-        logger.warning(
-            "[LIFECYCLE] SKIP_TASK "
-            "received but task already "
-            "marked as done. Ignoring."
-        )
-        return events, LoopControl.CONTINUE
+        logger.warning("SKIP_TASK ignored: task already done")
+        return [], LoopControl.CONTINUE
 
-    wf_match = (
+    if (
         state.workforce is not None
         and item.project_id == state.options.project_id
-    )
-    if wf_match:
-        logger.info(
-            "[LIFECYCLE] Workforce exists"
-            f" (id={id(state.workforce)}), "
-            "state="
-            f"{state.workforce._state.name}, "
-            f"_running={state.workforce._running}"
-        )
-
-        # Stop workforce completely
-        logger.info("[LIFECYCLE] 🛑 Stopping workforce")
-        if state.workforce._running:
-            # Import correct BaseWorkforce from camel
-            from camel.societies.workforce.workforce import (
-                Workforce as BaseWorkforce,
-            )
-
-            BaseWorkforce.stop(state.workforce)
-            logger.info(
-                "[LIFECYCLE] "
-                "BaseWorkforce.stop() "
-                "completed, state="
-                f"{state.workforce._state.name}, "
-                f"_running={state.workforce._running}"
-            )
-
-        state.workforce.stop_gracefully()
-        logger.info("[LIFECYCLE] ✅ Workforce stopped gracefully")
-
-        # Clear workforce to avoid state issues
+    ):
+        _stop_workforce(state, force=True)
         state.workforce = None
-        logger.info(
-            "[LIFECYCLE] Workforce set "
-            "to None, will be recreated"
-            " on next question"
-        )
-    else:
-        logger.warning(
-            "[LIFECYCLE] Cannot skip: workforce is None or project_id mismatch"
-        )
 
-    # Mark task as done and preserve context
-    state.task_lock.status = Status.done
     end_message = "<summary>Task stopped</summary>Task stopped by user"
-    state.task_lock.last_task_result = end_message
-
-    # Add to conversation history
-    if state.camel_task is not None:
-        task_content: str = state.camel_task.content
-        if "=== CURRENT TASK ===" in task_content:
-            task_content = task_content.split("=== CURRENT TASK ===")[
-                -1
-            ].strip()
-    else:
-        task_content: str = f"Task {state.options.task_id}"
-
-    state.task_lock.add_conversation(
-        "task_result",
-        {
-            "task_content": task_content,
-            "task_result": end_message,
-            "working_directory": get_working_directory(
-                state.options, state.task_lock
-            ),
-        },
-    )
-
-    # Clear camel_task as well
-    state.camel_task = None
-    logger.info(
-        "[LIFECYCLE] Task marked as "
-        "done, workforce and "
-        "camel_task cleared, "
-        "ready for multi-turn"
-    )
-
-    events.append(sse_json("end", end_message))
-    logger.info("[LIFECYCLE] Sent 'end' SSE event to frontend")
-    return events, LoopControl.NORMAL
+    _finalize_task(state, end_message)
+    logger.info("Task stopped, ready for multi-turn")
+    return [sse_json("end", end_message)], LoopControl.NORMAL
 
 
 def handle_start(state: StepSolveState, item) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    events = []
-    # Check conversation history length before starting task
     is_exceeded, total_length = check_conversation_history_length(
         state.task_lock
     )
     if is_exceeded:
         logger.error(
-            "Cannot start task: "
-            "conversation history too "
-            f"long ({total_length} chars)"
-            " for project "
-            f"{state.options.project_id}"
+            f"Conversation history too long ({total_length} chars) for {state.options.project_id}"
         )
-        ctx_msg = (
-            "The conversation history "
-            "is too long. Please create"
-            " a new project to continue."
-        )
-        events.append(
+        return [
             sse_json(
                 "context_too_long",
                 {
-                    "message": ctx_msg,
+                    "message": "The conversation history is too long. Please create a new project to continue.",
                     "current_length": total_length,
                     "max_length": 100000,
                 },
             )
-        )
-        return events, LoopControl.CONTINUE
+        ], LoopControl.CONTINUE
 
     if state.workforce is not None:
         if state.workforce._state.name == "PAUSED":
-            # Resume paused workforce
             state.workforce.resume()
-            return events, LoopControl.CONTINUE
+            return [], LoopControl.CONTINUE
     else:
-        return events, LoopControl.CONTINUE
+        return [], LoopControl.CONTINUE
 
     state.task_lock.status = Status.processing
     if not state.sub_tasks:
         state.sub_tasks = getattr(state.task_lock, "decompose_sub_tasks", [])
     task = asyncio.create_task(state.workforce.eigent_start(state.sub_tasks))
     state.task_lock.add_background_task(task)
-    return events, LoopControl.NORMAL
+    return [], LoopControl.NORMAL
 
 
 def handle_task_state(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    # Track completed task results for the end event
     task_state = item.data.get("state", "unknown")
     task_result = item.data.get("result", "")
-
     if task_state == "DONE" and task_result:
         state.last_completed_task_result = task_result
-
     return [sse_json("task_state", item.data)], LoopControl.NORMAL
 
 
 async def handle_end(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    events = []
-    logger.info("=" * 80)
     logger.info(
-        "[LIFECYCLE] END action "
-        "received for project "
-        f"{state.options.project_id}, "
-        f"task {state.options.task_id}"
+        f"END received for project {state.options.project_id}, task {state.options.task_id}"
     )
-    logger.info(
-        "[LIFECYCLE] camel_task "
-        f"exists: {state.camel_task is not None}"
-        ", current status: "
-        f"{state.task_lock.status}, workforce"
-        f" exists: {state.workforce is not None}"
-    )
-    if state.workforce is not None:
-        logger.info(
-            "[LIFECYCLE] Workforce state"
-            " at END: _state="
-            f"{state.workforce._state.name}"
-            ", _running="
-            f"{state.workforce._running}"
-        )
-    logger.info("=" * 80)
 
-    # Prevent duplicate end processing
     if state.task_lock.status == Status.done:
-        logger.warning(
-            "[LIFECYCLE] END action "
-            "received but task already "
-            "marked as done. Ignoring "
-            "duplicate END action."
-        )
-        return events, LoopControl.CONTINUE
+        logger.warning("END ignored: task already done")
+        return [], LoopControl.CONTINUE
 
     if state.camel_task is None:
         logger.warning(
-            "END action received but "
-            "camel_task is None for "
-            "project "
-            f"{state.options.project_id}, "
-            f"task {state.options.task_id}. "
-            "This may indicate multiple "
-            "END actions or improper "
-            "task lifecycle management."
+            f"END with camel_task=None for {state.options.project_id}"
         )
-        # Use item data as final result if camel_task is None
         final_result: str = str(item.data) if item.data else "Task completed"
     else:
         final_result: str = await get_task_result_with_optional_summary(
             state.camel_task, state.options
         )
 
-    state.task_lock.status = Status.done
-    state.task_lock.last_task_result = final_result
-
-    # Handle task content - use fallback if camel_task is None
-    if state.camel_task is not None:
-        task_content: str = state.camel_task.content
-        if "=== CURRENT TASK ===" in task_content:
-            task_content = task_content.split("=== CURRENT TASK ===")[
-                -1
-            ].strip()
-    else:
-        task_content: str = f"Task {state.options.task_id}"
-
-    state.task_lock.add_conversation(
-        "task_result",
-        {
-            "task_content": task_content,
-            "task_result": final_result,
-            "working_directory": get_working_directory(
-                state.options, state.task_lock
-            ),
-        },
-    )
-
-    events.append(sse_json("end", final_result))
+    _finalize_task(state, final_result)
 
     if state.workforce is not None:
-        logger.info(
-            "[LIFECYCLE] Calling "
-            "workforce.stop_gracefully()"
-            " for project "
-            f"{state.options.project_id}, "
-            f"workforce id={id(state.workforce)}"
-        )
         state.workforce.stop_gracefully()
-        logger.info(
-            "[LIFECYCLE] Workforce "
-            "stopped gracefully for "
-            "project "
-            f"{state.options.project_id}"
-        )
         state.workforce = None
-        logger.info("[LIFECYCLE] Workforce set to None")
+        logger.info(
+            f"Workforce stopped for project {state.options.project_id}"
+        )
     else:
         logger.warning(
-            "[LIFECYCLE] Workforce "
-            "already None at end "
-            "action for project "
-            f"{state.options.project_id}"
+            f"Workforce already None at end for {state.options.project_id}"
         )
-
-    state.camel_task = None
-    logger.info("[LIFECYCLE] camel_task set to None")
 
     if state.task_lock.question_agent is not None:
         state.task_lock.question_agent.reset()
-        logger.info(
-            "[LIFECYCLE] question_agent"
-            " reset for project "
-            f"{state.options.project_id}"
-        )
-    return events, LoopControl.NORMAL
+
+    return [sse_json("end", final_result)], LoopControl.NORMAL
 
 
 def handle_supplement(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    events = []
     if state.camel_task is None:
         logger.warning(
-            "SUPPLEMENT action received "
-            "but camel_task is None for "
-            f"project {state.options.project_id}"
+            f"SUPPLEMENT with camel_task=None for {state.options.project_id}"
         )
-        events.append(
-            sse_json(
-                "error",
-                {
-                    "message": "Cannot supplement task: "
-                    "task not initialized. "
-                    "Please start a task "
-                    "first."
-                },
+        return [
+            _sse_error(
+                "Cannot supplement task: task not initialized. Please start a task first."
             )
+        ], LoopControl.CONTINUE
+
+    state.task_lock.status = Status.processing
+    state.camel_task.add_subtask(
+        Task(
+            content=item.data.question,
+            id=f"{state.camel_task.id}.{len(state.camel_task.subtasks)}",
         )
-        return events, LoopControl.CONTINUE
-    else:
-        state.task_lock.status = Status.processing
-        state.camel_task.add_subtask(
-            Task(
-                content=item.data.question,
-                id=f"{state.camel_task.id}.{len(state.camel_task.subtasks)}",
-            )
+    )
+    if state.workforce is not None:
+        task = asyncio.create_task(
+            state.workforce.eigent_start(state.camel_task.subtasks)
         )
-        if state.workforce is not None:
-            task = asyncio.create_task(
-                state.workforce.eigent_start(state.camel_task.subtasks)
-            )
-            state.task_lock.add_background_task(task)
-    return events, LoopControl.NORMAL
+        state.task_lock.add_background_task(task)
+    return [], LoopControl.NORMAL
 
 
 def handle_budget_not_enough(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
     if state.workforce is not None:
         state.workforce.pause()
     return [
@@ -606,59 +370,19 @@ def handle_budget_not_enough(
 async def handle_stop(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    logger.info("=" * 80)
-    logger.info(
-        "[LIFECYCLE] STOP action received"
-        " for project "
-        f"{state.options.project_id}"
-    )
-    logger.info("=" * 80)
-    if state.workforce is not None:
-        logger.info(
-            "[LIFECYCLE] Workforce exists "
-            f"(id={id(state.workforce)}), "
-            f"_running={state.workforce._running}"
-            ", _state="
-            f"{state.workforce._state.name}"
-        )
-        if state.workforce._running:
-            logger.info(
-                "[LIFECYCLE] Calling workforce.stop() because _running=True"
-            )
-            state.workforce.stop()
-            logger.info("[LIFECYCLE] workforce.stop() completed")
-        logger.info("[LIFECYCLE] Calling workforce.stop_gracefully()")
-        state.workforce.stop_gracefully()
-        logger.info(
-            "[LIFECYCLE] Workforce stopped"
-            " for project "
-            f"{state.options.project_id}"
-        )
-    else:
-        logger.warning(
-            "[LIFECYCLE] Workforce is None"
-            " at stop action for project"
-            f" {state.options.project_id}"
-        )
-    logger.info("[LIFECYCLE] Deleting task lock")
+    logger.info(f"STOP received for project {state.options.project_id}")
+    _stop_workforce(state)
     await delete_task_lock(state.task_lock.id)
-    logger.info("[LIFECYCLE] Task lock deleted, breaking out of loop")
     return [], LoopControl.BREAK
 
 
 def handle_pause(state: StepSolveState, item) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
     if state.workforce is not None:
         state.workforce.pause()
         logger.info(f"Workforce paused for project {state.options.project_id}")
     else:
         logger.warning(
-            "Cannot pause: workforce is "
-            "None for project "
-            f"{state.options.project_id}"
+            f"Cannot pause: workforce is None for {state.options.project_id}"
         )
     return [], LoopControl.NORMAL
 
@@ -666,8 +390,6 @@ def handle_pause(state: StepSolveState, item) -> tuple[list[str], LoopControl]:
 def handle_resume(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
     if state.workforce is not None:
         state.workforce.resume()
         logger.info(
@@ -675,9 +397,7 @@ def handle_resume(
         )
     else:
         logger.warning(
-            "Cannot resume: workforce "
-            "is None for project "
-            f"{state.options.project_id}"
+            f"Cannot resume: workforce is None for {state.options.project_id}"
         )
     return [], LoopControl.NORMAL
 
@@ -685,8 +405,6 @@ def handle_resume(
 async def handle_new_agent(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
     if state.workforce is not None:
         state.workforce.pause()
         state.workforce.add_single_agent_worker(
@@ -700,34 +418,17 @@ async def handle_new_agent(
 def handle_timeout(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    logger.info("=" * 80)
-    logger.info(
-        "[LIFECYCLE] TIMEOUT action "
-        "received for project "
-        f"{state.options.project_id}, "
-        f"task {state.options.task_id}"
-    )
-    logger.info(f"[LIFECYCLE] Timeout data: {item.data}")
-    logger.info("=" * 80)
-
-    # Send timeout error to frontend
-    timeout_message = item.data.get("message", "Task execution timeout")
-    in_flight = item.data.get("in_flight_tasks", 0)
-    pending = item.data.get("pending_tasks", 0)
-    timeout_seconds = item.data.get("timeout_seconds", 0)
-
+    logger.info(f"TIMEOUT for project {state.options.project_id}: {item.data}")
     return [
         sse_json(
             "error",
             {
-                "message": timeout_message,
+                "message": item.data.get("message", "Task execution timeout"),
                 "type": "timeout",
                 "details": {
-                    "in_flight_tasks": in_flight,
-                    "pending_tasks": pending,
-                    "timeout_seconds": timeout_seconds,
+                    "in_flight_tasks": item.data.get("in_flight_tasks", 0),
+                    "pending_tasks": item.data.get("pending_tasks", 0),
+                    "timeout_seconds": item.data.get("timeout_seconds", 0),
                 },
             },
         )
@@ -737,27 +438,15 @@ def handle_timeout(
 def handle_install_mcp(
     state: StepSolveState, item
 ) -> tuple[list[str], LoopControl]:
-    from app.service.chat_service._step_solve import LoopControl
-
-    events = []
     if state.mcp is None:
         logger.error(
-            "Cannot install MCP: mcp "
-            "agent not initialized for "
-            "project "
-            f"{state.options.project_id}"
+            f"Cannot install MCP: agent not initialized for {state.options.project_id}"
         )
-        events.append(
-            sse_json(
-                "error",
-                {
-                    "message": "MCP agent not initialized."
-                    " Please start a complex "
-                    "task first."
-                },
+        return [
+            _sse_error(
+                "MCP agent not initialized. Please start a complex task first."
             )
-        )
-        return events, LoopControl.CONTINUE
+        ], LoopControl.CONTINUE
     task = asyncio.create_task(install_mcp(state.mcp, item))
     state.task_lock.add_background_task(task)
-    return events, LoopControl.NORMAL
+    return [], LoopControl.NORMAL

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
+from app.agent.prompt import AGENT_ENVIRONMENT_PROMPT
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -31,6 +32,15 @@ from app.service.task import Agents
 
 if TYPE_CHECKING:
     from app.agent.listen_chat_agent import ListenChatAgent
+
+
+def _env_prompt(working_directory: str) -> str:
+    return AGENT_ENVIRONMENT_PROMPT.format(
+        platform_system=platform.system(),
+        platform_machine=platform.machine(),
+        working_directory=working_directory,
+        current_date=datetime.date.today(),
+    )
 
 
 def create_coordinator_and_task_agents(
@@ -64,32 +74,14 @@ def create_coordinator_and_task_agents(
             ],
         )
         for key, prompt in {
-            Agents.coordinator_agent: f"""
-You are a helpful coordinator.
-- You are now working in system {platform.system()} with architecture
-{platform.machine()} at working directory \
-`{working_directory}`. All local file operations \
-must occur here, but you can access files from any \
-place in the file system. For all file system \
-operations, you MUST use absolute paths to ensure \
-precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
-For any date-related tasks, you MUST use this as \
-the current date.
-            """,
-            Agents.task_agent: f"""
-You are a helpful task planner.
-- You are now working in system {platform.system()} with architecture
-{platform.machine()} at working directory \
-`{working_directory}`. All local file operations \
-must occur here, but you can access files from any \
-place in the file system. For all file system \
-operations, you MUST use absolute paths to ensure \
-precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
-For any date-related tasks, you MUST use this as \
-the current date.
-        """,
+            Agents.coordinator_agent: (
+                "You are a helpful coordinator.\n"
+                + _env_prompt(working_directory)
+            ),
+            Agents.task_agent: (
+                "You are a helpful task planner.\n"
+                + _env_prompt(working_directory)
+            ),
         }.items()
     ]
 
@@ -100,19 +92,7 @@ def create_new_worker_agent(
     """Create new worker agent (sync, runs in thread pool)."""
     return agent_model(
         Agents.new_worker_agent,
-        f"""
-        You are a helpful assistant.
-- You are now working in system {platform.system()} with architecture
-{platform.machine()} at working directory \
-`{working_directory}`. All local file operations \
-must occur here, but you can access files from any \
-place in the file system. For all file system \
-operations, you MUST use absolute paths to ensure \
-precision and avoid ambiguity.
-The current date is {datetime.date.today()}. \
-For any date-related tasks, you MUST use this as \
-the current date.
-        """,
+        "You are a helpful assistant.\n" + _env_prompt(working_directory),
         options,
         [
             *HumanToolkit.get_can_use_tools(

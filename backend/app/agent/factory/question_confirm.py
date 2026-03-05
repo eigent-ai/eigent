@@ -21,6 +21,7 @@ from app.agent.agent_model import agent_model
 from app.agent.prompt import (
     QUESTION_CONFIRM_PROMPT,
     QUESTION_CONFIRM_SYS_PROMPT,
+    SIMPLE_ANSWER_PROMPT,
 )
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
@@ -97,3 +98,26 @@ async def question_confirm(
     except Exception as e:
         logger.error(f"Error in question_confirm: {e}")
         raise
+
+
+async def simple_answer(
+    question: str, options: Chat, task_lock: TaskLock
+) -> str:
+    """Generate a direct answer to a simple question using the cached agent."""
+    if (
+        not hasattr(task_lock, "question_agent")
+        or task_lock.question_agent is None
+    ):
+        task_lock.question_agent = _create_question_agent(options)
+
+    context_prompt = build_conversation_context(
+        task_lock, header="=== Previous Conversation ==="
+    )
+    prompt = SIMPLE_ANSWER_PROMPT.format(
+        context_prompt=context_prompt, user_query=question
+    )
+
+    resp = task_lock.question_agent.step(prompt)
+    if resp and resp.msgs and resp.msgs[0].content:
+        return resp.msgs[0].content
+    return "I understand your question, but I'm having trouble generating a response right now."

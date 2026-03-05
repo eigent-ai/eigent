@@ -12,18 +12,12 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Main step_solve dispatcher and shared state."""
-
 import asyncio
 import logging
-from dataclasses import dataclass, field
-from enum import Enum
 
 from camel.models import ModelProcessingError
-from camel.tasks import Task
 from fastapi import Request
 
-from app.agent.listen_chat_agent import ListenChatAgent
 from app.model.chat import Chat, sse_json
 from app.service.chat_service.handlers import (
     handle_add_task,
@@ -45,40 +39,15 @@ from app.service.chat_service.handlers import (
     handle_timeout,
     handle_update_task,
 )
-from app.service.chat_service.router import (
+from app.service.chat_service.question_router import (
     handle_improve,
     handle_new_task_state,
 )
+from app.service.chat_service.types import LoopControl, StepSolveState
 from app.service.task import Action, TaskLock
 from app.utils.server.sync_step import sync_step
-from app.utils.workforce import Workforce
 
-logger = logging.getLogger("chat_service")
-
-
-class LoopControl(Enum):
-    """Control flow for the main step_solve loop."""
-
-    NORMAL = "normal"
-    CONTINUE = "continue"
-    BREAK = "break"
-
-
-@dataclass
-class StepSolveState:
-    """Mutable state bag for step_solve's main loop."""
-
-    options: Chat
-    request: Request
-    task_lock: TaskLock
-    workforce: Workforce | None = None
-    camel_task: Task | None = None
-    mcp: ListenChatAgent | None = None
-    sub_tasks: list[Task] = field(default_factory=list)
-    summary_task_content: str = ""
-    last_completed_task_result: str = ""
-    start_event_loop: bool = True
-    event_loop: asyncio.AbstractEventLoop | None = None
+logger = logging.getLogger(__name__)
 
 
 def _initialize_state(state: StepSolveState) -> None:

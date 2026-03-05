@@ -219,6 +219,43 @@ multi-modal content across audio and visual domains."""
 TASK_SUMMARY_SYS_PROMPT = """\
 You are a helpful task assistant that can help users summarize the content of their tasks"""
 
+DEVELOPER_WORKER_DESCRIPTION = (
+    "Developer Agent: A master-level coding assistant with a powerful "
+    "terminal. It can write and execute code, manage files, automate "
+    "desktop tasks, and deploy web applications to solve complex "
+    "technical challenges."
+)
+
+BROWSER_WORKER_DESCRIPTION = (
+    "Browser Agent: Can search the web, extract webpage content, "
+    "simulate browser actions, and provide relevant information to "
+    "solve the given task."
+)
+
+DOCUMENT_WORKER_DESCRIPTION = (
+    "Document Agent: A document processing assistant skilled in creating "
+    "and modifying a wide range of file formats. It can generate "
+    "text-based files/reports (Markdown, JSON, YAML, HTML), "
+    "office documents (Word, PDF), presentations (PowerPoint), and "
+    "data files (Excel, CSV)."
+)
+
+MULTI_MODAL_WORKER_DESCRIPTION = (
+    "Multi-Modal Agent: A specialist in media processing. It can "
+    "analyze images and audio, transcribe speech, download videos, and "
+    "generate new images from text prompts."
+)
+
+AGENT_ENVIRONMENT_PROMPT = """\
+- You are now working in system {platform_system} with architecture \
+{platform_machine} at working directory `{working_directory}`. All local \
+file operations must occur here, but you can access files from any place \
+in the file system. For all file system operations, you MUST use absolute \
+paths to ensure precision and avoid ambiguity.
+The current date is {current_date}. For any date-related tasks, you MUST \
+use this as the current date.
+"""
+
 QUESTION_CONFIRM_SYS_PROMPT = """\
 You are a highly capable agent. Your primary function is to analyze a user's \
 request and determine the appropriate course of action. The current date is \
@@ -752,6 +789,13 @@ Instructions:
 6. Keep it professional but conversational
 
 Summary:
+"""
+
+SIMPLE_ANSWER_PROMPT = """\
+{context_prompt}\
+User Query: {user_query}
+
+Provide a direct, helpful answer to this simple question.
 """
 
 DEFAULT_SUMMARY_PROMPT = (

@@ -77,3 +77,68 @@ async def test_question_confirm_reuses_cached_agent(sample_chat_data):
 
         assert result is True
         mock_create.assert_not_called()  # Should NOT create a new agent
+
+
+@pytest.mark.asyncio
+async def test_simple_answer_returns_content(sample_chat_data):
+    options = Chat(**sample_chat_data)
+
+    mock_agent = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.msgs = [MagicMock(content="The answer is 42.")]
+    mock_agent.step.return_value = mock_resp
+
+    mock_task_lock = MagicMock(spec=TaskLock)
+    mock_task_lock.conversation_history = []
+    mock_task_lock.question_agent = mock_agent
+
+    from app.agent.factory.question_confirm import simple_answer
+
+    result = await simple_answer(
+        "What is the answer?", options, mock_task_lock
+    )
+    assert result == "The answer is 42."
+    mock_agent.step.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_simple_answer_creates_agent_when_none(sample_chat_data):
+    options = Chat(**sample_chat_data)
+
+    mock_agent = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.msgs = [MagicMock(content="Created and answered.")]
+    mock_agent.step.return_value = mock_resp
+
+    mock_task_lock = MagicMock(spec=TaskLock)
+    mock_task_lock.conversation_history = []
+    mock_task_lock.question_agent = None
+
+    from app.agent.factory.question_confirm import simple_answer
+
+    with patch(
+        f"{_mod}._create_question_agent", return_value=mock_agent
+    ) as mock_create:
+        result = await simple_answer("Hello?", options, mock_task_lock)
+        assert result == "Created and answered."
+        mock_create.assert_called_once_with(options)
+        assert mock_task_lock.question_agent is mock_agent
+
+
+@pytest.mark.asyncio
+async def test_simple_answer_fallback_on_empty_response(sample_chat_data):
+    options = Chat(**sample_chat_data)
+
+    mock_agent = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.msgs = [MagicMock(content="")]
+    mock_agent.step.return_value = mock_resp
+
+    mock_task_lock = MagicMock(spec=TaskLock)
+    mock_task_lock.conversation_history = []
+    mock_task_lock.question_agent = mock_agent
+
+    from app.agent.factory.question_confirm import simple_answer
+
+    result = await simple_answer("Hello?", options, mock_task_lock)
+    assert "trouble generating" in result

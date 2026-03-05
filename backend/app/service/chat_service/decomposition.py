@@ -12,14 +12,12 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Task decomposition and streaming callbacks."""
-
 from __future__ import annotations
 
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from camel.tasks import Task
 
@@ -31,6 +29,7 @@ from app.service.chat_service.lifecycle import (
     new_agent_model,
     tree_sub_tasks,
 )
+from app.service.chat_service.types import LoopControl, StepSolveState
 from app.service.task import (
     ActionDecomposeProgressData,
     ActionDecomposeTextData,
@@ -38,13 +37,7 @@ from app.service.task import (
 )
 from app.utils.context import build_conversation_context
 
-if TYPE_CHECKING:
-    from app.service.chat_service._step_solve import (
-        LoopControl,
-        StepSolveState,
-    )
-
-logger = logging.getLogger("chat_service")
+logger = logging.getLogger(__name__)
 
 
 def create_stream_callbacks(
@@ -208,8 +201,6 @@ async def handle_improve_complex_task(
 ) -> tuple[list[str], LoopControl]:
     """Handle complex task: create workforce, setup camel_task,
     kick off decomposition."""
-    from app.service.chat_service._step_solve import LoopControl
-
     events = []
     logger.info(
         "[NEW-QUESTION] Complex task, creating workforce and decomposing"
