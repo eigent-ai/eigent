@@ -16,36 +16,64 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.agent.factory import question_confirm_agent
+from app.agent.factory.question_confirm import question_confirm
 from app.model.chat import Chat
+from app.service.task import TaskLock
 
 pytestmark = pytest.mark.unit
 
+_mod = "app.agent.factory.question_confirm"
 
-def test_question_confirm_agent_creation(sample_chat_data):
-    """Test question_confirm_agent creates specialized agent."""
+
+@pytest.mark.asyncio
+async def test_question_confirm_creates_agent(sample_chat_data):
+    """Test question_confirm lazily creates and caches the agent."""
     options = Chat(**sample_chat_data)
 
-    # Setup task lock in the registry before calling agent function
     from app.service.task import task_locks
 
-    mock_task_lock = MagicMock()
+    mock_task_lock = MagicMock(spec=TaskLock)
+    mock_task_lock.conversation_history = []
+    mock_task_lock.question_agent = None
     task_locks[options.task_id] = mock_task_lock
 
-    _mod = "app.agent.factory.question_confirm"
+    mock_agent = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.msgs = [MagicMock(content="no")]
+    mock_agent.step.return_value = mock_resp
+
     with (
-        patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}._create_question_agent", return_value=mock_agent
+        ) as mock_create,
         patch("asyncio.create_task"),
     ):
-        mock_agent = MagicMock()
-        mock_agent_model.return_value = mock_agent
+        result = await question_confirm("hello", options, mock_task_lock)
 
-        result = question_confirm_agent(options)
+        assert result is False
+        mock_create.assert_called_once_with(options)
+        # Agent should be cached on task_lock
+        assert mock_task_lock.question_agent is mock_agent
 
-        assert result is mock_agent
-        mock_agent_model.assert_called_once()
 
-        # Check that it was called with question confirmation prompt
-        call_args = mock_agent_model.call_args
-        assert "question_confirm_agent" in call_args[0][0]  # agent_name
-        assert "analyze a user's request" in call_args[0][1]  # system_prompt
+@pytest.mark.asyncio
+async def test_question_confirm_reuses_cached_agent(sample_chat_data):
+    """Test question_confirm reuses cached agent from task_lock."""
+    options = Chat(**sample_chat_data)
+
+    mock_agent = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.msgs = [MagicMock(content="yes")]
+    mock_agent.step.return_value = mock_resp
+
+    mock_task_lock = MagicMock(spec=TaskLock)
+    mock_task_lock.conversation_history = []
+    mock_task_lock.question_agent = mock_agent  # Already cached
+
+    with patch(f"{_mod}._create_question_agent") as mock_create:
+        result = await question_confirm(
+            "create a file", options, mock_task_lock
+        )
+
+        assert result is True
+        mock_create.assert_not_called()  # Should NOT create a new agent

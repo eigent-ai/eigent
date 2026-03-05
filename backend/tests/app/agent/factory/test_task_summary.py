@@ -15,37 +15,41 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from camel.tasks import Task
 
-from app.agent.factory import task_summary_agent
+from app.agent.factory.task_summary import summary_task
 from app.model.chat import Chat
 
 pytestmark = pytest.mark.unit
 
+_mod = "app.agent.factory.task_summary"
 
-def test_task_summary_agent_creation(sample_chat_data):
-    """Test task_summary_agent creates specialized agent."""
+
+@pytest.mark.asyncio
+async def test_summary_task_creates_agent_and_summarizes(sample_chat_data):
+    """Test summary_task creates agent internally and generates summary."""
     options = Chat(**sample_chat_data)
 
-    # Setup task lock in the registry before calling agent function
     from app.service.task import task_locks
 
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    _mod = "app.agent.factory.task_summary"
+    mock_agent = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.msgs = [MagicMock(content="Task Name|Summary of the task")]
+    mock_agent.step.return_value = mock_resp
+
+    task = Task(content="Build a website", id="test_task")
+
     with (
-        patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}._create_summary_agent", return_value=mock_agent
+        ) as mock_create,
         patch("asyncio.create_task"),
     ):
-        mock_agent = MagicMock()
-        mock_agent_model.return_value = mock_agent
+        result = await summary_task(task, options)
 
-        result = task_summary_agent(options)
-
-        assert result is mock_agent
-        mock_agent_model.assert_called_once()
-
-        # Check that it was called with task summary prompt
-        call_args = mock_agent_model.call_args
-        assert "task_summary_agent" in call_args[0][0]  # agent_name
-        assert "task assistant" in call_args[0][1].lower()  # system_prompt
+        assert result == "Task Name|Summary of the task"
+        mock_create.assert_called_once_with(options)
+        mock_agent.step.assert_called_once()

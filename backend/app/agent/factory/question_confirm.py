@@ -18,19 +18,22 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.agent.agent_model import agent_model
-from app.agent.prompt import QUESTION_CONFIRM_SYS_PROMPT
+from app.agent.prompt import (
+    QUESTION_CONFIRM_PROMPT,
+    QUESTION_CONFIRM_SYS_PROMPT,
+)
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.utils.context import build_conversation_context
 
 if TYPE_CHECKING:
-    from app.agent.listen_chat_agent import ListenChatAgent
     from app.service.task import TaskLock
 
-logger = logging.getLogger("chat_service")
+logger = logging.getLogger(__name__)
 
 
-def question_confirm_agent(options: Chat):
+def _create_question_agent(options: Chat):
+    """Create a question classification agent."""
     return agent_model(
         "question_confirm_agent",
         QUESTION_CONFIRM_SYS_PROMPT.format(now_str=NOW_STR),
@@ -39,34 +42,30 @@ def question_confirm_agent(options: Chat):
 
 
 async def question_confirm(
-    agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None
+    prompt: str, options: Chat, task_lock: TaskLock
 ) -> bool:
-    """Simple question confirmation - returns True
-    for complex tasks, False for simple questions."""
+    """Classify whether a user query is a complex task or simple question.
 
-    context_prompt = ""
-    if task_lock:
-        context_prompt = build_conversation_context(
-            task_lock, header="=== Previous Conversation ==="
-        )
+    Creates and caches the question agent on task_lock.question_agent
+    for reuse across multi-turn conversations.
 
-    full_prompt = f"""{context_prompt}User Query: {prompt}
+    Returns True for complex tasks, False for simple questions.
+    """
+    if (
+        not hasattr(task_lock, "question_agent")
+        or task_lock.question_agent is None
+    ):
+        task_lock.question_agent = _create_question_agent(options)
 
-Determine if this user query is a complex task or a simple question.
+    agent = task_lock.question_agent
 
-**Complex task** (answer "yes"): Requires tools, code execution, \
-file operations, multi-step planning, or creating/modifying content
-- Examples: "create a file", "search for X", \
-"implement feature Y", "write code", "analyze data"
+    context_prompt = build_conversation_context(
+        task_lock, header="=== Previous Conversation ==="
+    )
 
-**Simple question** (answer "no"): Can be answered directly \
-with knowledge or conversation history, no action needed
-- Examples: greetings ("hello", "hi"), \
-fact queries ("what is X?"), clarifications, status checks
-
-Answer only "yes" or "no". Do not provide any explanation.
-
-Is this a complex task? (yes/no):"""
+    full_prompt = QUESTION_CONFIRM_PROMPT.format(
+        context_prompt=context_prompt, user_query=prompt
+    )
 
     try:
         resp = agent.step(full_prompt)

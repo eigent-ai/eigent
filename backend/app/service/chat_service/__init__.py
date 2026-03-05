@@ -32,7 +32,6 @@ from app.service.chat_service.lifecycle import (
     update_sub_tasks,
 )
 from app.utils.context import (
-    build_context_for_workforce,
     build_conversation_context,
     check_conversation_history_length,
     collect_previous_task_context,
@@ -41,7 +40,6 @@ from app.utils.context import (
 
 __all__ = [
     "step_solve",
-    "build_context_for_workforce",
     "build_conversation_context",
     "check_conversation_history_length",
     "collect_previous_task_context",

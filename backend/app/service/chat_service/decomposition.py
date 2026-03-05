@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from camel.tasks import Task
 
-from app.agent.factory.task_summary import summary_task, task_summary_agent
+from app.agent.factory.task_summary import summary_task
 from app.model.chat import Status, sse_json
 from app.service.chat_service.lifecycle import (
     construct_workforce,
@@ -36,7 +36,7 @@ from app.service.task import (
     ActionDecomposeTextData,
     set_current_task_id,
 )
-from app.utils.context import build_context_for_workforce
+from app.utils.context import build_conversation_context
 
 if TYPE_CHECKING:
     from app.service.chat_service._step_solve import (
@@ -132,10 +132,9 @@ async def run_decomposition_task(
             pass
 
         # Generate task summary
-        summary_task_agent = task_summary_agent(state.options)
         try:
             new_summary = await asyncio.wait_for(
-                summary_task(summary_task_agent, state.camel_task),
+                summary_task(state.camel_task, state.options),
                 timeout=10,
             )
             state.task_lock.summary_generated = True
@@ -222,9 +221,7 @@ async def handle_improve_complex_task(
 
     events.append(sse_json("confirmed", {"question": question}))
 
-    context_for_coordinator = build_context_for_workforce(
-        state.task_lock, state.options
-    )
+    context_for_coordinator = build_conversation_context(state.task_lock)
 
     # Check if workforce exists - reuse it; otherwise create new one
     if state.workforce is not None:

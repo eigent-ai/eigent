@@ -699,6 +699,61 @@ Your capabilities include:
     robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>"""
 
+QUESTION_CONFIRM_PROMPT = """\
+{context_prompt}User Query: {user_query}
+
+Determine if this user query is a complex task or a simple question.
+
+**Complex task** (answer "yes"): Requires tools, code execution, \
+file operations, multi-step planning, or creating/modifying content
+- Examples: "create a file", "search for X", \
+"implement feature Y", "write code", "analyze data"
+
+**Simple question** (answer "no"): Can be answered directly \
+with knowledge or conversation history, no action needed
+- Examples: greetings ("hello", "hi"), \
+fact queries ("what is X?"), clarifications, status checks
+
+Answer only "yes" or "no". Do not provide any explanation.
+
+Is this a complex task? (yes/no):"""
+
+TASK_SUMMARY_PROMPT = """\
+The user's task is:
+---
+{task_string}
+---
+Your instructions are:
+1.  Come up with a short and descriptive name for this task.
+2.  Create a concise summary of the task's main points and objectives.
+3.  Return the task name and the summary, separated by a vertical bar (|).
+
+Example format: "Task Name|This is the summary of the task."
+Do not include any other text or formatting.
+"""
+
+SUBTASKS_SUMMARY_PROMPT = """\
+You are a professional summarizer. \
+Summarize the results of the following subtasks.
+
+Main Task: {task_content}
+
+Subtasks (with descriptions and results):
+---
+{subtasks_info}
+---
+
+Instructions:
+1. Provide a concise summary of what was accomplished
+2. Highlight key findings or outputs from each subtask
+3. Mention any important files created or actions taken
+4. Use bullet points or sections for clarity
+5. DO NOT repeat the task name in your summary - go straight to the results
+6. Keep it professional but conversational
+
+Summary:
+"""
+
 DEFAULT_SUMMARY_PROMPT = (
     "After completing the task, please generate"
     " a summary of the entire task completion. "

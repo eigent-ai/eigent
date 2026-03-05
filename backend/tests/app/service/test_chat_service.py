@@ -21,7 +21,7 @@ from camel.tasks.task import TaskState
 from app.model.chat import Chat, NewAgent
 from app.service.chat_service import (
     add_sub_tasks,
-    build_context_for_workforce,
+    build_conversation_context,
     collect_previous_task_context,
     construct_workforce,
     format_agent_description,
@@ -310,12 +310,11 @@ class TestCollectPreviousTaskContext:
 
 
 @pytest.mark.unit
-class TestBuildContextForWorkforce:
-    """Test cases for build_context_for_workforce function."""
+class TestBuildConversationContext:
+    """Test cases for build_conversation_context function."""
 
-    def test_build_context_for_workforce_basic(self, temp_dir):
-        """Test build_context_for_workforce with basic task lock and options."""
-        # Create mock TaskLock
+    def test_build_conversation_context_basic(self, temp_dir):
+        """Test build_conversation_context with basic task lock."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
             {
@@ -323,37 +322,25 @@ class TestBuildContextForWorkforce:
                 "content": "I will create a Python script for you",
             },
         ]
-        task_lock.last_task_result = "Script created successfully"
-        task_lock.last_task_summary = "Python Script Creation"
 
-        # Create mock Chat options
-        options = MagicMock()
-        options.file_save_path.return_value = str(temp_dir)
-
-        result = build_context_for_workforce(task_lock, options)
+        result = build_conversation_context(task_lock)
 
         # Should include conversation history header
         assert "=== CONVERSATION HISTORY ===" in result
-        # build_conversation_context only processes assistant and task_result roles
         assert "I will create a Python script for you" in result
 
-    def test_build_context_for_workforce_empty_history(self, temp_dir):
-        """Test build_context_for_workforce with empty conversation history."""
+    def test_build_conversation_context_empty_history(self, temp_dir):
+        """Test build_conversation_context with empty conversation history."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = ""
-        task_lock.last_task_summary = ""
 
-        options = MagicMock()
-        options.file_save_path.return_value = str(temp_dir)
-
-        result = build_context_for_workforce(task_lock, options)
+        result = build_conversation_context(task_lock)
 
         # Should return empty string for no context
         assert result == ""
 
-    def test_build_context_for_workforce_task_result_role(self, temp_dir):
-        """Test build_context_for_workforce handles 'task_result' role."""
+    def test_build_conversation_context_task_result_role(self, temp_dir):
+        """Test build_conversation_context handles 'task_result' role."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
             {
@@ -365,20 +352,15 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed successfully",
             },
         ]
-        task_lock.last_task_result = "Final result"
-        task_lock.last_task_summary = "Task summary"
 
-        options = MagicMock()
-        options.file_save_path.return_value = str(temp_dir)
-
-        result = build_context_for_workforce(task_lock, options)
+        result = build_conversation_context(task_lock)
 
         # build_conversation_context appends string task_result content directly
         assert "Full task context from previous task" in result
         assert "Task completed successfully" in result
 
-    def test_build_context_for_workforce_with_last_task_result(self, temp_dir):
-        """Test build_context_for_workforce with assistant entries."""
+    def test_build_conversation_context_with_assistant_entries(self, temp_dir):
+        """Test build_conversation_context with assistant entries."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
             {
@@ -386,13 +368,8 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed with output.txt",
             },
         ]
-        task_lock.last_task_result = "Task completed with output.txt"
-        task_lock.last_task_summary = "File creation task"
 
-        options = MagicMock()
-        options.file_save_path.return_value = str(temp_dir)
-
-        result = build_context_for_workforce(task_lock, options)
+        result = build_conversation_context(task_lock)
 
         # Should include conversation history
         assert "=== CONVERSATION HISTORY ===" in result
@@ -606,9 +583,13 @@ class TestChatServiceAgentOperations:
     async def test_question_confirm_simple_query(self, mock_camel_agent):
         """Test question_confirm with simple query returns False."""
         mock_camel_agent.step.return_value.msgs[0].content = "no"
-        mock_camel_agent.chat_history = []
 
-        result = await question_confirm(mock_camel_agent, "hello")
+        task_lock = MagicMock(spec=TaskLock)
+        task_lock.conversation_history = []
+        task_lock.question_agent = mock_camel_agent
+
+        options = MagicMock()
+        result = await question_confirm("hello", options, task_lock)
 
         # Should return False for simple queries (no "yes" in response)
         assert result is False
@@ -617,10 +598,16 @@ class TestChatServiceAgentOperations:
     async def test_question_confirm_complex_task(self, mock_camel_agent):
         """Test question_confirm with complex task that should proceed."""
         mock_camel_agent.step.return_value.msgs[0].content = "yes"
-        mock_camel_agent.chat_history = []
 
+        task_lock = MagicMock(spec=TaskLock)
+        task_lock.conversation_history = []
+        task_lock.question_agent = mock_camel_agent
+
+        options = MagicMock()
         result = await question_confirm(
-            mock_camel_agent, "Create a web application with authentication"
+            "Create a web application with authentication",
+            options,
+            task_lock,
         )
 
         # Should return True for complex tasks
@@ -638,7 +625,12 @@ class TestChatServiceAgentOperations:
             id="web_app_task",
         )
 
-        result = await summary_task(mock_camel_agent, task)
+        options = MagicMock()
+        with patch(
+            "app.agent.factory.task_summary._create_summary_agent",
+            return_value=mock_camel_agent,
+        ):
+            result = await summary_task(task, options)
 
         assert (
             result
@@ -776,9 +768,8 @@ class TestChatServiceIntegration:
         )
 
         # Test the context building directly
-        # build_context_for_workforce now only calls build_conversation_context
-        # which only processes assistant and task_result roles
-        context = build_context_for_workforce(task_lock, options)
+        # build_conversation_context only processes assistant and task_result roles
+        context = build_conversation_context(task_lock)
 
         # Verify context includes conversation history header
         assert "=== CONVERSATION HISTORY ===" in context
@@ -901,12 +892,6 @@ class TestChatServiceIntegration:
                 return_value=(mock_workforce, mock_mcp),
             ),
             patch(
-                "app.service.chat_service._step_solve.question_confirm_agent"
-            ) as mock_question_agent,
-            patch(
-                "app.service.chat_service.router.task_summary_agent"
-            ) as mock_summary_agent,
-            patch(
                 "app.service.chat_service.router.question_confirm",
                 return_value=True,
             ),
@@ -915,8 +900,6 @@ class TestChatServiceIntegration:
                 return_value="Test Summary",
             ),
         ):
-            mock_question_agent.return_value = MagicMock()
-            mock_summary_agent.return_value = MagicMock()
             mock_workforce.eigent_make_sub_tasks.return_value = []
 
             # Convert async generator to list
@@ -1055,33 +1038,23 @@ class TestChatServiceErrorCases:
         assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
         assert "test.txt" in result
 
-    def test_build_context_for_workforce_missing_attributes(self, temp_dir):
-        """Test build_context_for_workforce handles missing attributes gracefully."""
-        # Create task_lock without required attributes
+    def test_build_conversation_context_missing_attributes(self, temp_dir):
+        """Test build_conversation_context handles missing attributes gracefully."""
         task_lock = MagicMock(spec=TaskLock)
-        task_lock.conversation_history = None  # Missing attribute
-        task_lock.last_task_result = None  # Missing attribute
-        task_lock.last_task_summary = None  # Missing attribute
+        task_lock.conversation_history = None
 
-        options = MagicMock()
-        options.file_save_path.return_value = str(temp_dir)
-
-        result = build_context_for_workforce(task_lock, options)
+        result = build_conversation_context(task_lock)
 
         # Should handle missing attributes gracefully
         assert result == ""
 
-    def test_build_context_for_workforce_empty_conversation(self):
-        """Test build_context_for_workforce returns empty for empty conversation."""
+    def test_build_conversation_context_empty_conversation(self):
+        """Test build_conversation_context returns empty for empty conversation."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = "Test result"
-        task_lock.last_task_summary = "Test summary"
-
-        options = MagicMock()
 
         # Should return empty string for empty conversation history
-        result = build_context_for_workforce(task_lock, options)
+        result = build_conversation_context(task_lock)
         assert result == ""
 
     def test_collect_previous_task_context_unicode_handling(self, temp_dir):
@@ -1211,8 +1184,13 @@ class TestChatServiceErrorCases:
         """Test question_confirm when agent raises error."""
         mock_camel_agent.step.side_effect = Exception("Agent error")
 
+        task_lock = MagicMock(spec=TaskLock)
+        task_lock.conversation_history = []
+        task_lock.question_agent = mock_camel_agent
+
+        options = MagicMock()
         with pytest.raises(Exception, match="Agent error"):
-            await question_confirm(mock_camel_agent, "test question")
+            await question_confirm("test question", options, task_lock)
 
     @pytest.mark.asyncio
     async def test_summary_task_agent_error(self, mock_camel_agent):
@@ -1220,9 +1198,16 @@ class TestChatServiceErrorCases:
         mock_camel_agent.step.side_effect = Exception("Summary error")
 
         task = Task(content="Test task", id="test")
+        options = MagicMock()
 
-        with pytest.raises(Exception, match="Summary error"):
-            await summary_task(mock_camel_agent, task)
+        with (
+            patch(
+                "app.agent.factory.task_summary._create_summary_agent",
+                return_value=mock_camel_agent,
+            ),
+            pytest.raises(Exception, match="Summary error"),
+        ):
+            await summary_task(task, options)
 
     @pytest.mark.asyncio
     async def test_construct_workforce_agent_creation_error(

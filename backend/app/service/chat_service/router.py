@@ -27,7 +27,6 @@ from app.agent.factory.question_confirm import question_confirm
 from app.agent.factory.task_summary import (
     get_task_result_with_optional_summary,
     summary_task,
-    task_summary_agent,
 )
 from app.model.chat import Status, sse_json
 from app.service.chat_service.decomposition import (
@@ -41,7 +40,6 @@ from app.service.task import (
     set_current_task_id,
 )
 from app.utils.context import (
-    build_context_for_workforce,
     build_conversation_context,
     check_conversation_history_length,
 )
@@ -150,7 +148,7 @@ async def handle_improve(
         logger.info("[NEW-QUESTION] Has attachments, treating as complex task")
     else:
         is_complex_task = await question_confirm(
-            state.question_agent, question, state.task_lock
+            question, state.options, state.task_lock
         )
         logger.info(
             "[NEW-QUESTION] question_confirm"
@@ -196,7 +194,7 @@ async def handle_improve_simple_task(
     )
 
     try:
-        simple_resp = state.question_agent.step(simple_answer_prompt)
+        simple_resp = state.task_lock.question_agent.step(simple_answer_prompt)
         if simple_resp and simple_resp.msgs:
             answer_content = simple_resp.msgs[0].content
         else:
@@ -375,7 +373,7 @@ async def handle_new_task_state(
                 "[LIFECYCLE] Multi-turn: calling question_confirm for new task"
             )
             is_multi_turn_complex = await question_confirm(
-                state.question_agent, new_task_content, state.task_lock
+                new_task_content, state.options, state.task_lock
             )
             logger.info(
                 "[LIFECYCLE] Multi-turn: "
@@ -405,7 +403,7 @@ async def handle_new_task_state(
                 )
 
                 try:
-                    simple_resp = state.question_agent.step(
+                    simple_resp = state.task_lock.question_agent.step(
                         simple_answer_prompt
                     )
                     if simple_resp and simple_resp.msgs:
@@ -478,8 +476,8 @@ async def handle_new_task_state(
             logger.info(
                 "[LIFECYCLE] Multi-turn: building context for workforce"
             )
-            context_for_multi_turn = build_context_for_workforce(
-                state.task_lock, state.options
+            context_for_multi_turn = build_conversation_context(
+                state.task_lock
             )
 
             on_stream_batch, on_stream_text, stream_state = (
@@ -503,9 +501,8 @@ async def handle_new_task_state(
 
             # Generate proper LLM summary for multi-turn tasks
             try:
-                multi_turn_summary_agent = task_summary_agent(state.options)
                 new_summary_content = await asyncio.wait_for(
-                    summary_task(multi_turn_summary_agent, state.camel_task),
+                    summary_task(state.camel_task, state.options),
                     timeout=10,
                 )
                 logger.info(

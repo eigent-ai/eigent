@@ -23,11 +23,9 @@ from camel.models import ModelProcessingError
 from camel.tasks import Task
 from fastapi import Request
 
-from app.agent.factory import question_confirm_agent
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.model.chat import Chat, sse_json
-from app.service.chat_service.context import handle_passthrough_event
-from app.service.chat_service.lifecycle import (
+from app.service.chat_service.handlers import (
     handle_add_task,
     handle_budget_not_enough,
     handle_disconnect,
@@ -35,6 +33,7 @@ from app.service.chat_service.lifecycle import (
     handle_end,
     handle_install_mcp,
     handle_new_agent,
+    handle_passthrough_event,
     handle_pause,
     handle_remove_task,
     handle_resume,
@@ -75,7 +74,6 @@ class StepSolveState:
     workforce: Workforce | None = None
     camel_task: Task | None = None
     mcp: ListenChatAgent | None = None
-    question_agent: ListenChatAgent | None = None
     sub_tasks: list[Task] = field(default_factory=list)
     summary_task_content: str = ""
     last_completed_task_result: str = ""
@@ -84,7 +82,7 @@ class StepSolveState:
 
 
 def _initialize_state(state: StepSolveState) -> None:
-    """Initialize task_lock attributes and question_agent."""
+    """Initialize task_lock attributes."""
     if not hasattr(state.task_lock, "conversation_history"):
         state.task_lock.conversation_history = []
     if not hasattr(state.task_lock, "last_task_result"):
@@ -94,16 +92,6 @@ def _initialize_state(state: StepSolveState) -> None:
     if not hasattr(state.task_lock, "summary_generated"):
         state.task_lock.summary_generated = False
 
-    # Create or reuse persistent question_agent
-    if state.task_lock.question_agent is None:
-        state.task_lock.question_agent = question_confirm_agent(state.options)
-    else:
-        hist_len = len(state.task_lock.conversation_history)
-        logger.debug(
-            f"Reusing existing question_agent with {hist_len} history entries"
-        )
-
-    state.question_agent = state.task_lock.question_agent
     state.event_loop = asyncio.get_running_loop()
 
 

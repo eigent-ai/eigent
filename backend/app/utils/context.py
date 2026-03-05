@@ -16,11 +16,10 @@
 
 import logging
 
-from app.model.chat import Chat
 from app.service.task import TaskLock
 from app.utils.file_utils import list_files
 
-logger = logging.getLogger("chat_service")
+logger = logging.getLogger(__name__)
 
 
 def format_task_context(
@@ -227,16 +226,3 @@ def build_conversation_context(
         context += "\n"
 
     return context
-
-
-def build_context_for_workforce(
-    task_lock: TaskLock,
-    options: Chat,
-    task_content: str | None = None,
-) -> str:
-    """Build context information for workforce.
-    Instructs coordinator to actively load skills using list_skills/load_skill tools.
-    """
-    return build_conversation_context(
-        task_lock, header="=== CONVERSATION HISTORY ==="
-    )

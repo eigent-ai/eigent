@@ -15,21 +15,22 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from camel.tasks import Task
 
 from app.agent.agent_model import agent_model
-from app.agent.prompt import TASK_SUMMARY_SYS_PROMPT
+from app.agent.prompt import (
+    SUBTASKS_SUMMARY_PROMPT,
+    TASK_SUMMARY_PROMPT,
+    TASK_SUMMARY_SYS_PROMPT,
+)
 from app.model.chat import Chat
 
-if TYPE_CHECKING:
-    from app.agent.listen_chat_agent import ListenChatAgent
-
-logger = logging.getLogger("chat_service")
+logger = logging.getLogger(__name__)
 
 
-def task_summary_agent(options: Chat):
+def _create_summary_agent(options: Chat):
+    """Create a task summary agent."""
     return agent_model(
         "task_summary_agent",
         TASK_SUMMARY_SYS_PROMPT,
@@ -37,19 +38,10 @@ def task_summary_agent(options: Chat):
     )
 
 
-async def summary_task(agent: ListenChatAgent, task: Task) -> str:
-    prompt = f"""The user's task is:
----
-{task.to_string()}
----
-Your instructions are:
-1.  Come up with a short and descriptive name for this task.
-2.  Create a concise summary of the task's main points and objectives.
-3.  Return the task name and the summary, separated by a vertical bar (|).
-
-Example format: "Task Name|This is the summary of the task."
-Do not include any other text or formatting.
-"""
+async def summary_task(task: Task, options: Chat) -> str:
+    """Generate a short name and summary for a task."""
+    agent = _create_summary_agent(options)
+    prompt = TASK_SUMMARY_PROMPT.format(task_string=task.to_string())
     logger.debug("Generating task summary", extra={"task_id": task.id})
     try:
         res = agent.step(prompt)
@@ -65,17 +57,18 @@ Do not include any other text or formatting.
         raise
 
 
-async def summary_subtasks_result(agent: ListenChatAgent, task: Task) -> str:
-    """
-    Summarize the aggregated results from all subtasks into a concise summary.
+async def summary_subtasks_result(task: Task, options: Chat) -> str:
+    """Summarize the aggregated results from all subtasks.
 
     Args:
-        agent: The summary agent to use
         task: The main task containing subtasks and their aggregated results
+        options: Chat options for creating the summary agent
 
     Returns:
         A concise summary of all subtask results
     """
+    agent = _create_summary_agent(options)
+
     subtasks_info = ""
     for i, subtask in enumerate(task.subtasks, 1):
         subtasks_info += f"\n**Subtask {i}**\n"
@@ -83,26 +76,9 @@ async def summary_subtasks_result(agent: ListenChatAgent, task: Task) -> str:
         subtasks_info += f"Result: {subtask.result or 'No result'}\n"
         subtasks_info += "---\n"
 
-    prompt = f"""You are a professional summarizer. \
-Summarize the results of the following subtasks.
-
-Main Task: {task.content}
-
-Subtasks (with descriptions and results):
----
-{subtasks_info}
----
-
-Instructions:
-1. Provide a concise summary of what was accomplished
-2. Highlight key findings or outputs from each subtask
-3. Mention any important files created or actions taken
-4. Use bullet points or sections for clarity
-5. DO NOT repeat the task name in your summary - go straight to the results
-6. Keep it professional but conversational
-
-Summary:
-"""
+    prompt = SUBTASKS_SUMMARY_PROMPT.format(
+        task_content=task.content, subtasks_info=subtasks_info
+    )
 
     res = agent.step(prompt)
     summary = res.msgs[0].content
@@ -119,8 +95,7 @@ Summary:
 async def get_task_result_with_optional_summary(
     task: Task, options: Chat
 ) -> str:
-    """
-    Get the task result, with LLM summary if there are multiple subtasks.
+    """Get the task result, with LLM summary if there are multiple subtasks.
 
     Args:
         task: The task to get result from
@@ -138,10 +113,7 @@ async def get_task_result_with_optional_summary(
             "generating summary"
         )
         try:
-            summary_agent = task_summary_agent(options)
-            summarized_result = await summary_subtasks_result(
-                summary_agent, task
-            )
+            summarized_result = await summary_subtasks_result(task, options)
             result = summarized_result
             logger.info(f"Successfully generated summary for task {task.id}")
         except Exception as e:

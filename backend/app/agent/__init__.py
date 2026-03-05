@@ -23,11 +23,9 @@ from app.agent.factory import (
     mcp_agent,
     multi_modal_agent,
     question_confirm,
-    question_confirm_agent,
     social_media_agent,
     summary_subtasks_result,
     summary_task,
-    task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.tools import get_mcp_tools, get_toolkits
@@ -46,9 +44,7 @@ __all__ = [
     "mcp_agent",
     "multi_modal_agent",
     "question_confirm",
-    "question_confirm_agent",
     "social_media_agent",
     "summary_subtasks_result",
     "summary_task",
-    "task_summary_agent",
 ]
