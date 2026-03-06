@@ -59,19 +59,13 @@ export default function SettingPrivacy() {
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        let hasFalse = false;
         setSettings((prev) =>
-          prev.map((item, index) => {
-            if (!res[API_FIELDS[index]]) {
-              hasFalse = true;
-            }
-            return {
-              ...item,
-              checked: res[API_FIELDS[index]] || false,
-            };
-          })
+          prev.map((item, index) => ({
+            ...item,
+            checked: res[API_FIELDS[index]] || false,
+          }))
         );
-        setPrivacy(!hasFalse);
+        setPrivacy(res.all_required_granted);
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
   }, [API_FIELDS]);
