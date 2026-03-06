@@ -16,6 +16,7 @@ import animationData from '@/assets/animation/onboarding_success.json';
 import { AnimationJson } from '@/components/AnimationJson';
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
 import TopBar from '@/components/TopBar';
+import { useAuthHydration } from '@/hooks/useAuthHydration';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useAuthStore } from '@/store/authStore';
@@ -27,6 +28,7 @@ import HistorySidebar from '../HistorySidebar';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
 
 const Layout = () => {
+  const hasHydrated = useAuthHydration();
   const {
     initState,
     isFirstLaunch,
@@ -53,6 +55,8 @@ const Layout = () => {
   useInstallationSetup();
 
   useEffect(() => {
+    if (!chatStore) return;
+
     const handleBeforeClose = () => {
       const currentStatus =
         chatStore.tasks[chatStore.activeTaskId as string]?.status;
@@ -68,7 +72,7 @@ const Layout = () => {
     return () => {
       window.ipcRenderer.removeAllListeners('before-close');
     };
-  }, [chatStore.tasks, chatStore.activeTaskId]);
+  }, [chatStore, chatStore?.tasks, chatStore?.activeTaskId]);
 
   // Determine what to show based on states
   const shouldShowOnboarding =
@@ -82,9 +86,10 @@ const Layout = () => {
     shouldShowInstallScreen || initState !== 'done' || !isBackendReady;
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
-  if (!chatStore) {
-    console.log(chatStore);
-
+  // Wait for auth store hydration so initState/isFirstLaunch are correct
+  // and we don't briefly show install/onboarding then switch to main content
+  if (!hasHydrated || !chatStore) {
+    if (!chatStore) console.log(chatStore);
     return <div>Loading...</div>;
   }
 
