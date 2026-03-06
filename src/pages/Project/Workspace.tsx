@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
