@@ -23,6 +23,15 @@ import * as unzipper from 'unzipper';
 import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 interface FileInfo {
   path: string;
   name: string;
@@ -225,7 +234,7 @@ export class FileReader {
             const cellValue = cell
               ? this.getCellValue(cell, sharedStrings)
               : '';
-            html += `<td>${cellValue}</td>`;
+            html += `<td>${escapeHtml(String(cellValue))}</td>`;
           }
 
           html += '</tr>';
@@ -343,7 +352,7 @@ export class FileReader {
             for (const run of runs) {
               const text = run?.['a:t']?.[0];
               if (text) {
-                html += `<li>${text}</li>`;
+                html += `<li>${escapeHtml(String(text))}</li>`;
               }
             }
           }
@@ -378,7 +387,7 @@ export class FileReader {
         // Header row
         html += '<thead><tr style="background-color: #f5f5f5;">';
         headers.forEach((header) => {
-          html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">${header}</th>`;
+          html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">${escapeHtml(String(header))}</th>`;
         });
         html += '</tr></thead>';
 
@@ -387,7 +396,7 @@ export class FileReader {
         result.data.forEach((row: any) => {
           html += '<tr>';
           headers.forEach((header) => {
-            html += `<td style="border: 1px solid #ddd; padding: 8px;">${row[header] || ''}</td>`;
+            html += `<td style="border: 1px solid #ddd; padding: 8px;">${escapeHtml(String(row[header] || ''))}</td>`;
           });
           html += '</tr>';
         });

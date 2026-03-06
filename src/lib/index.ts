@@ -33,9 +33,9 @@ export function getProxyBaseURL() {
 }
 
 export function generateUniqueId(): string {
-  const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 10000);
-  return `${timestamp}-${random}`;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function debounce<T extends (...args: any[]) => void>(
@@ -69,9 +69,8 @@ export function capitalizeFirstLetter(input: string): string {
 
 export function hasStackKeys() {
   return (
-    import.meta.env.VITE_STACK_PROJECT_ID &&
-    import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY &&
-    import.meta.env.VITE_STACK_SECRET_SERVER_KEY
+    !!import.meta.env.VITE_STACK_PROJECT_ID &&
+    !!import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY
   );
 }
 
