@@ -513,11 +513,21 @@ class TaskLock:
         )
 
     def get_recent_context(self, max_entries: int = None) -> str:
-        """Get recent conversation context as a formatted string"""
-        if not self.conversation_history:
+        """Get recent conversation context as a formatted string.
+
+        Includes compressed summary from earlier conversation if available.
+        """
+        if not self.conversation_history and not self.last_task_summary:
             return ""
 
-        context = "=== Recent Conversation ===\n"
+        context = ""
+
+        # Add compressed summary from earlier conversation if available
+        if self.last_task_summary:
+            context += "=== Previous Conversation Summary ===\n"
+            context += f"{self.last_task_summary}\n\n"
+
+        context += "=== Recent Conversation ===\n"
         if max_entries is None:
             history_to_use = self.conversation_history
         else:
@@ -531,7 +541,8 @@ class TaskLock:
     ) -> tuple[int, int]:
         """Trim conversation history to bounded size.
 
-        Applies sliding window: keeps system messages and most recent entries.
+        Applies compression before trimming: older entries are summarized
+        instead of discarded, preserving context.
 
         Args:
             max_entries: Maximum number of conversation entries to keep
@@ -552,6 +563,19 @@ class TaskLock:
         regular_entries = [
             e for e in self.conversation_history if e.get("role") != "system"
         ]
+
+        # If there are many entries, compress older ones before trimming
+        compression_threshold = max_entries * 2  # Compress if 2x the limit
+        if len(regular_entries) > compression_threshold and not self.last_task_summary:
+            # Compress older entries into summary
+            keep_recent = max_entries
+            entries_compressed, summary = self.compress_conversation_history(
+                keep_recent=keep_recent, max_length=max_length // 4
+            )
+            # After compression, recount regular entries
+            regular_entries = [
+                e for e in self.conversation_history if e.get("role") != "system"
+            ]
 
         # First, trim by entry count (keep most recent)
         if len(regular_entries) > max_entries:
@@ -582,6 +606,59 @@ class TaskLock:
             )
 
         return removed, new_count
+
+    def compress_conversation_history(
+        self, keep_recent: int = 20, max_length: int = 50000
+    ) -> tuple[int, str]:
+        """Compress older conversation entries into a summary.
+
+        Moves older messages to a summary instead of discarding them,
+        preserving context while reducing token usage.
+
+        Args:
+            keep_recent: Number of recent entries to keep unchanged
+            max_length: Max length of summary to generate
+
+        Returns:
+            tuple: (entries_compressed, summary_text)
+        """
+        if not self.conversation_history or len(self.conversation_history) <= keep_recent:
+            return 0, ""
+
+        # Get entries to compress (everything except recent ones)
+        entries_to_compress = self.conversation_history[:-keep_recent]
+        recent_entries = self.conversation_history[-keep_recent:]
+
+        if not entries_to_compress:
+            return 0, ""
+
+        # Generate summary from older entries
+        summary_parts = []
+        for entry in entries_to_compress:
+            role = entry.get("role", "unknown")
+            content = str(entry.get("content", ""))[:500]  # Truncate long content
+            if content:
+                summary_parts.append(f"[{role}]: {content}")
+
+        # Create a simple summary (in production, this could use an LLM)
+        summary = "; ".join(summary_parts[:10])  # Take first 10 entries
+        if len(summary) > max_length:
+            summary = summary[:max_length] + "..."
+
+        # Store summary and replace older entries
+        self.last_task_summary = f"(Compressed {len(entries_to_compress)} previous entries): {summary}"
+        self.conversation_history = recent_entries
+
+        logger.info(
+            f"Compressed {len(entries_to_compress)} entries into summary",
+            extra={
+                "task_id": self.id,
+                "compressed_count": len(entries_to_compress),
+                "summary_length": len(self.last_task_summary),
+            },
+        )
+
+        return len(entries_to_compress), self.last_task_summary
 
 
 task_locks = dict[str, TaskLock]()
