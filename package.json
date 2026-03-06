@@ -75,6 +75,7 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
     "@xyflow/react": "^12.6.4",
+    "@docmentis/udoc-viewer": "^0.5.24",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "axios": "^1.9.0",
