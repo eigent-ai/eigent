@@ -592,7 +592,6 @@ export const Inputbox = ({
                 onFilesChange,
                 onAddFile,
                 disabled,
-                privacy,
                 useCloudModelInDev,
               }}
               onClose={() => handleExpandedDialogChange(false)}
