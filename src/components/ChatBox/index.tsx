@@ -22,6 +22,12 @@ import {
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
+import {
+  getStoredPrivacyEnabled,
+  isPrivacyAllEnabled,
+  PRIVACY_API_FIELDS,
+  setStoredPrivacyEnabled,
+} from '@/lib/privacy';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { ExecutionStatus } from '@/types';
@@ -45,7 +51,10 @@ export default function ChatBox(): JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [hasModel, setHasModel] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [privacy, setPrivacy] = useState<any>(false);
+  const { email } = useAuthStore();
+  const [privacy, setPrivacy] = useState<boolean>(() =>
+    getStoredPrivacyEnabled(email)
+  );
   const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
@@ -65,7 +74,12 @@ export default function ChatBox(): JSX.Element {
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        setPrivacy(res.all_required_granted);
+        const allEnabled =
+          res && typeof res.all_required_granted === 'boolean'
+            ? res.all_required_granted
+            : isPrivacyAllEnabled(res || {});
+        setPrivacy(allEnabled);
+        setStoredPrivacyEnabled(email, allEnabled);
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
 
@@ -81,7 +95,7 @@ export default function ChatBox(): JSX.Element {
         if (_hasApiKey && _hasApiId) setHasSearchKey(true);
       })
       .catch((err) => console.error('Failed to fetch configs:', err));
-  }, []);
+  }, [email]);
 
   // Refresh privacy status when dialog closes
   // useEffect(() => {
@@ -543,20 +557,12 @@ export default function ChatBox(): JSX.Element {
           }
         } else {
           if (!privacy) {
-            const API_FIELDS = [
-              'take_screenshot',
-              'access_local_software',
-              'access_your_address',
-              'password_storage',
-            ];
-            const requestData = {
-              [API_FIELDS[0]]: true,
-              [API_FIELDS[1]]: true,
-              [API_FIELDS[2]]: true,
-              [API_FIELDS[3]]: true,
-            };
+            const requestData = Object.fromEntries(
+              PRIVACY_API_FIELDS.map((k) => [k, true])
+            );
             proxyFetchPut('/api/user/privacy', requestData);
             setPrivacy(true);
+            setStoredPrivacyEnabled(email, true);
           }
 
           setTimeout(() => {
@@ -1084,20 +1090,12 @@ export default function ChatBox(): JSX.Element {
                       if (target.tagName === 'A') {
                         return;
                       }
-                      const API_FIELDS = [
-                        'take_screenshot',
-                        'access_local_software',
-                        'access_your_address',
-                        'password_storage',
-                      ];
-                      const requestData = {
-                        [API_FIELDS[0]]: true,
-                        [API_FIELDS[1]]: true,
-                        [API_FIELDS[2]]: true,
-                        [API_FIELDS[3]]: true,
-                      };
+                      const requestData = Object.fromEntries(
+                        PRIVACY_API_FIELDS.map((k) => [k, true])
+                      );
                       proxyFetchPut('/api/user/privacy', requestData);
                       setPrivacy(true);
+                      setStoredPrivacyEnabled(email, true);
                     }}
                     className="flex cursor-pointer items-center gap-1 rounded-md bg-surface-information px-sm py-xs"
                   >
