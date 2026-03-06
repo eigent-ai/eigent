@@ -283,7 +283,7 @@ export const issue619SseSequence = [
         tools: [
           'Video Downloader Toolkit',
           'Audio Analysis Toolkit',
-          'Image Analysis Toolkit',
+          'Screenshot Toolkit',
           'Open Ai Image Toolkit',
           'Human Toolkit',
           'Terminal Toolkit',
