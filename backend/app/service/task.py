@@ -58,6 +58,7 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
+    agent_end = "agent_end"  # backend -> user (single agent finished)
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -76,6 +77,7 @@ class ImprovePayload(BaseModel):
 
     question: str
     attaches: list[str] = []
+    target: str | None = None
 
 
 class ActionImproveData(BaseModel):
@@ -223,8 +225,18 @@ class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
 
 
+class ActionAgentEndData(BaseModel):
+    """Per-agent completion signal for @mention direct chat."""
+
+    action: Literal[Action.agent_end] = Action.agent_end
+    data: str | None = None
+    agent_id: str = ""
+    agent_name: str = ""
+
+
 class ActionEndData(BaseModel):
     action: Literal[Action.end] = Action.end
+    data: str | None = None
 
 
 class ActionTimeoutData(BaseModel):
@@ -351,6 +363,8 @@ class TaskLock:
     """Track if summary has been generated for this project"""
     current_task_id: str | None
     """Current task ID to be used in SSE responses"""
+    persistent_agents: dict[str, Any]
+    """Persistent agents for @mention direct chat (key: agent type name)"""
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -369,6 +383,7 @@ class TaskLock:
         self.last_task_summary = ""
         self.question_agent = None
         self.current_task_id = None
+        self.persistent_agents = {}
 
         logger.info(
             "Task lock initialized",
@@ -426,6 +441,35 @@ class TaskLock:
         self.background_tasks.add(task)
         task.add_done_callback(lambda t: self.background_tasks.discard(t))
 
+    async def cleanup_persistent_agents(self):
+        r"""Release all persistent agents and their resources (e.g. CDP)."""
+        if not self.persistent_agents:
+            return
+        logger.info(
+            "Cleaning up persistent agents",
+            extra={
+                "task_id": self.id,
+                "agents": list(self.persistent_agents.keys()),
+            },
+        )
+        for name, agent in self.persistent_agents.items():
+            try:
+                if (
+                    hasattr(agent, "_cdp_release_callback")
+                    and agent._cdp_release_callback
+                ):
+                    agent._cdp_release_callback(agent)
+                    logger.info(
+                        f"Released CDP for persistent agent {name}",
+                        extra={"task_id": self.id},
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to release CDP for persistent agent {name}: {e}",
+                    extra={"task_id": self.id},
+                )
+        self.persistent_agents.clear()
+
     async def cleanup(self):
         r"""Cancel all background tasks and clean up resources"""
         logger.info(
@@ -435,6 +479,10 @@ class TaskLock:
                 "background_tasks_count": len(self.background_tasks),
             },
         )
+
+        # Clean up persistent agents first
+        await self.cleanup_persistent_agents()
+
         for task in list(self.background_tasks):
             if not task.done():
                 task.cancel()

@@ -33,10 +33,15 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ExpandedInputBox } from './ExpandedInputBox';
+import {
+  BUILTIN_AGENTS,
+  MentionAgent,
+  MentionDropdown,
+} from './MentionDropdown';
 
 // Module-level singleton to track which InputBox instance has the expanded dialog open
 // This prevents multiple dialogs from opening when Cmd+P is pressed
@@ -80,6 +85,10 @@ export interface InputboxProps {
   privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
+  /** Active @mention target (e.g. "browser") — shown as a tag in the input */
+  mentionTarget?: string | null;
+  /** Callback when mention target changes */
+  onMentionTargetChange?: (target: string | null) => void;
   /** Callback when trigger is being created (for placeholder) */
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
@@ -141,9 +150,11 @@ export const Inputbox = ({
   allowDragDrop = false,
   privacy = true,
   useCloudModelInDev = false,
-  onTriggerCreating,
-  onTriggerCreated,
-  hideExpandButton = false,
+  mentionTarget,
+  onMentionTargetChange,
+  onTriggerCreating: _onTriggerCreating,
+  onTriggerCreated: _onTriggerCreated,
+  hideExpandButton: _hideExpandButton = false,
 }: InputboxProps) => {
   const { t } = useTranslation();
   const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -155,12 +166,16 @@ export const Inputbox = ({
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const hoverCloseTimerRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
+  const [mentionState, setMentionState] = useState<{
+    visible: boolean;
+    filter: string;
+    startIndex: number;
+  }>({ visible: false, filter: '', startIndex: -1 });
   const [isExpandedDialogOpen, setIsExpandedDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const instanceIdRef = useRef<string>(
-    `inputbox-${Math.random().toString(36).substr(2, 9)}`
-  );
+  const _expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reactId = React.useId();
+  const instanceIdRef = useRef<string>(`inputbox-${reactId}`);
 
   // Handle dialog open/close with singleton tracking
   const handleExpandedDialogChange = useCallback((open: boolean) => {
@@ -231,8 +246,56 @@ export const Inputbox = ({
   const hasContent = value.trim().length > 0 || files.length > 0;
   const isActive = isFocused || hasContent;
 
-  const handleTextChange = (newValue: string) => {
+  const handleTextChange = useCallback(
+    (newValue: string, cursorPos?: number) => {
+      onChange?.(newValue);
+
+      // Detect @ mention
+      const pos = cursorPos ?? newValue.length;
+      const textBeforeCursor = newValue.slice(0, pos);
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+      if (
+        lastAtIndex >= 0 &&
+        (lastAtIndex === 0 ||
+          textBeforeCursor[lastAtIndex - 1] === ' ' ||
+          textBeforeCursor[lastAtIndex - 1] === '\n')
+      ) {
+        const filterText = textBeforeCursor.slice(lastAtIndex + 1);
+        if (!filterText.includes(' ')) {
+          setMentionState({
+            visible: true,
+            filter: filterText,
+            startIndex: lastAtIndex,
+          });
+          return;
+        }
+      }
+      setMentionState({ visible: false, filter: '', startIndex: -1 });
+    },
+    [onChange]
+  );
+
+  const handleMentionSelect = (agent: MentionAgent) => {
+    // Remove the "@filter" text from the input and set the
+    // mention target as a rendered tag instead
+    const currentValue = value;
+    const before = currentValue.slice(0, mentionState.startIndex);
+    const afterFilterEnd =
+      mentionState.startIndex + 1 + mentionState.filter.length;
+    const after = currentValue.slice(afterFilterEnd);
+    const newValue = `${before}${after}`.trimStart();
     onChange?.(newValue);
+    onMentionTargetChange?.(agent.id);
+    setMentionState({ visible: false, filter: '', startIndex: -1 });
+
+    // Focus textarea
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+      }
+    });
   };
 
   const handleSend = () => {
@@ -246,6 +309,23 @@ export const Inputbox = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // When mention dropdown is open, let it handle navigation keys
+    if (mentionState.visible) {
+      if (['ArrowUp', 'ArrowDown', 'Tab', 'Escape', 'Enter'].includes(e.key)) {
+        e.preventDefault(); // Stop textarea from scrolling / inserting newline
+        return; // Let MentionDropdown's global handler handle these
+      }
+    }
+    // Backspace at cursor position 0 removes the mention tag
+    if (
+      e.key === 'Backspace' &&
+      mentionTarget &&
+      textareaRef.current?.selectionStart === 0 &&
+      textareaRef.current?.selectionEnd === 0
+    ) {
+      e.preventDefault();
+      onMentionTargetChange?.(null);
+    }
     if (e.key === 'Enter' && !e.shiftKey && !disabled && !isComposing) {
       e.preventDefault();
       handleSend();
@@ -354,15 +434,43 @@ export const Inputbox = ({
           </div>
         </div>
       )}
+      {/* @Mention Dropdown */}
+      <MentionDropdown
+        visible={mentionState.visible}
+        filter={mentionState.filter}
+        onSelect={handleMentionSelect}
+        onClose={() =>
+          setMentionState({ visible: false, filter: '', startIndex: -1 })
+        }
+      />
+
       {/* Text Input Area */}
       <div className="relative box-border flex w-full flex-1 items-start justify-center gap-2.5 px-0 pb-2 pt-2.5">
-        <div className="relative mx-2 box-border flex min-h-px min-w-px flex-1 items-center justify-center gap-2.5 py-0">
+        <div className="relative mx-2 box-border flex min-h-px min-w-px flex-1 items-center gap-2 py-0">
+          {/* @Mention Tag */}
+          {mentionTarget && (
+            <span
+              className="bg-info-primary/15 text-info-primary hover:bg-info-primary/25 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold transition-colors"
+              onClick={() => onMentionTargetChange?.(null)}
+              title="Click to remove"
+            >
+              @
+              {BUILTIN_AGENTS.find((a) => a.id === mentionTarget)?.label ??
+                mentionTarget}
+              <X size={12} className="opacity-60" />
+            </span>
+          )}
           <Textarea
             variant="none"
             size="default"
             ref={textareaRef}
             value={value}
-            onChange={(e) => handleTextChange(e.target.value)}
+            onChange={(e) =>
+              handleTextChange(
+                e.target.value,
+                e.target.selectionStart ?? undefined
+              )
+            }
             onKeyDown={handleKeyDown}
             onCompositionStart={() => setIsComposing(true)}
             onCompositionEnd={() => setIsComposing(false)}

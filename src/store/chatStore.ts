@@ -101,6 +101,8 @@ export interface ChatStore {
     delayTime?: number,
     messageContent?: string,
     messageAttaches?: File[],
+    target?: string,
+    displayContent?: string,
     executionId?: string,
     projectId?: string
   ) => Promise<void>;
@@ -505,6 +507,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       delayTime?: number,
       messageContent?: string,
       messageAttaches?: File[],
+      target?: string,
+      displayContent?: string,
       executionId?: string,
       projectId?: string
     ) => {
@@ -574,7 +578,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             targetChatStore.getState().addMessages(newTaskId, {
               id: generateUniqueId(),
               role: 'user',
-              content: messageContent,
+              content: displayContent || messageContent,
               attaches: messageAttaches || [],
             });
             targetChatStore.getState().setHasMessages(newTaskId, true);
@@ -826,6 +830,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               cdp_browsers: cdp_browsers,
               env_path: envPath,
               search_config: searchConfig,
+              target: target || null,
             })
           : undefined,
 
@@ -863,7 +868,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const isTaskSwitchingEvent =
             agentMessages.step === AgentStep.CONFIRMED ||
             agentMessages.step === AgentStep.NEW_TASK_STATE ||
-            agentMessages.step === AgentStep.END;
+            agentMessages.step === AgentStep.END ||
+            agentMessages.step === AgentStep.AGENT_END;
 
           const isMultiTurnSimpleAnswer =
             agentMessages.step === AgentStep.WAIT_CONFIRM;
@@ -910,8 +916,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const shouldCreateNewChat =
               project_id && (question || messageContent);
 
+            // Direct agent follow-up: reuse existing chatStore
+            // (continuous chat — don't create a new chatStore)
+            const isDirectFollowUp =
+              agentMessages.data?.direct === true && !skipFirstConfirm;
+            if (isDirectFollowUp) {
+              // Just reset status to RUNNING so the UI unblocks
+              // and SSE events are not filtered out
+              previousChatStore.setStatus(
+                currentTaskId,
+                ChatTaskStatus.RUNNING
+              );
+              previousChatStore.setIsPending(currentTaskId, false);
+            }
+
             //All except first confirmed event to reuse the existing chatStore
-            if (shouldCreateNewChat && !skipFirstConfirm) {
+            if (shouldCreateNewChat && !skipFirstConfirm && !isDirectFollowUp) {
               /**
                * For Tasks where appended to existing project by
                * reusing same projectId. Need to create new chatStore
@@ -930,6 +950,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 // Update references for both scenarios
                 updateLockedReferences(newChatStore, newTaskId);
                 newChatStore.getState().setIsPending(newTaskId, false);
+
+                // direct=true means @agent mode: skip task splitting
+                if (agentMessages.data?.direct === true) {
+                  newChatStore
+                    .getState()
+                    .setStatus(newTaskId, ChatTaskStatus.RUNNING);
+                }
 
                 // If nextExecutionId exists, pass it to new task
                 if (previousChatStore.tasks[currentTaskId]?.nextExecutionId) {
@@ -1025,9 +1052,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             } else {
               //NOTE: Triggered only with first "confirmed" in the project
               //Handle Original cases - with old chatStore
+              // direct=true means @agent mode: skip task splitting,
+              // go straight to RUNNING
+              const directAgent = agentMessages.data?.direct === true;
               previousChatStore.setStatus(
                 currentTaskId,
-                ChatTaskStatus.PENDING
+                directAgent ? ChatTaskStatus.RUNNING : ChatTaskStatus.PENDING
               );
               previousChatStore.setHasWaitComfirm(currentTaskId, false);
             }
@@ -1075,6 +1105,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStreamingDecomposeText,
             clearStreamingDecomposeText,
             setIsTaskEdit,
+            setActiveAgent,
+            setActiveWorkspace: _setActiveWorkspace,
           } = getCurrentChatStore();
 
           currentTaskId = getCurrentTaskId();
@@ -1505,6 +1537,34 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   status: AgentMessageStatus.RUNNING,
                 });
               }
+
+              // Direct agent mode: create synthetic task if agent
+              // has no tasks assigned (no workforce ASSIGN_TASK)
+              const isDirect =
+                taskAssigning[agentIndex].tasks.length === 0 && process_task_id;
+              if (isDirect) {
+                const syntheticTaskBase = {
+                  id: process_task_id,
+                  content: agentMessages.data.message || '',
+                  status: TaskStatus.RUNNING,
+                  agent: {
+                    agent_id: agent_id,
+                    status: AgentStatusValue.RUNNING,
+                  },
+                };
+                // Push separate copies so they don't share
+                // the same toolkits array reference
+                taskAssigning[agentIndex].tasks.push({
+                  ...syntheticTaskBase,
+                  toolkits: [],
+                } as any);
+                taskRunning.push({ ...syntheticTaskBase, toolkits: [] } as any);
+                // Activate agent in sidebar but stay on main page
+                // (don't setActiveWorkspace — that would switch to
+                // the browser/developer full-screen workspace panel)
+                setActiveAgent(currentTaskId, agent_id!);
+              }
+
               const taskIndex = taskRunning.findIndex(
                 (task) => task.id === process_task_id
               );
@@ -1512,12 +1572,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 taskRunning![taskIndex].agent!.status =
                   AgentStatusValue.RUNNING;
                 taskRunning![taskIndex]!.status = TaskStatus.RUNNING;
+                // Update task content for multi-turn direct agent
+                if (agentMessages.data.message) {
+                  taskRunning![taskIndex].content = agentMessages.data.message;
+                }
 
                 const task = taskAssigning[agentIndex].tasks.find(
                   (task: TaskInfo) => task.id === process_task_id
                 );
                 if (task) {
                   task.status = TaskStatus.RUNNING;
+                  if (agentMessages.data.message) {
+                    task.content = agentMessages.data.message;
+                  }
                 }
               }
               setTaskRunning(currentTaskId, [...taskRunning]);
@@ -1541,7 +1608,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               );
               if (taskIndex !== -1 && taskRunning[taskIndex].agent) {
                 taskRunning[taskIndex].agent!.status = 'completed';
+                taskRunning[taskIndex].status = TaskStatus.COMPLETED;
               }
+
+              // Also update taskAssigning task status
+              const assignedTask = taskAssigning[agentIndex].tasks.find(
+                (task: TaskInfo) => task.id === process_task_id
+              );
+              if (assignedTask) {
+                assignedTask.status = TaskStatus.COMPLETED;
+              }
+              taskAssigning[agentIndex].status = AgentStatusValue.COMPLETED;
 
               if (!type && historyId) {
                 const obj = {
@@ -2215,6 +2292,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          if (agentMessages.step === AgentStep.AGENT_END) {
+            // Per-agent completion — print result under the
+            // user's request. Do NOT set FINISHED; the real
+            // END event fires when ALL parallel agents finish.
+            const resultContent = agentMessages.data?.data || '';
+            if (resultContent) {
+              addMessages(currentTaskId, {
+                id: generateUniqueId(),
+                role: 'agent',
+                content: resultContent,
+                step: AgentStep.AGENT_END,
+                agent_name: agentMessages.data?.agent_name,
+                agent_id: agentMessages.data?.agent_id,
+              });
+            }
+            return;
+          }
+
           if (agentMessages.step === AgentStep.END) {
             // compute task time
             console.log(
@@ -2425,6 +2520,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       task.id === agentMessages.data.process_task_id
                   )
               );
+              if (assigneeAgentIndex === -1) return;
               const task = taskAssigning[assigneeAgentIndex].tasks.find(
                 (task: TaskInfo) =>
                   task.id === agentMessages.data.process_task_id
