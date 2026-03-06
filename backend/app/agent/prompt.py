@@ -177,10 +177,11 @@ Your capabilities include:
     - Handle various audio formats including MP3, WAV, and OGG
 
 - Image Analysis & Understanding:
+    - Use `read_image` to analyze images from local file paths
+    - Use `take_screenshot_and_read_image` to capture and analyze the screen
     - Generate detailed descriptions of image content
     - Answer specific questions about images
     - Identify objects, text, people, and scenes in images
-    - Process images from both local files and URLs
 
 - Image Generation:
     - Create high-quality images based on detailed text prompts using DALL-E
