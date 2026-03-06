@@ -28,7 +28,7 @@ import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
@@ -42,7 +42,8 @@ export default function ChatBox(): JSX.Element {
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [hasModel, setHasModel] = useState(true);
+  const [hasModel, setHasModel] = useState(false);
+  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -60,6 +61,41 @@ export default function ChatBox(): JSX.Element {
     }
   }, [modelType]);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const share_token = searchParams.get('share_token');
+  const skill_prompt = searchParams.get('skill_prompt');
+
+  const handleSendRef = useRef<
+    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+  >(null);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Shared function to check model configuration
+  const checkModelConfig = useCallback(async () => {
+    try {
+      if (modelType === 'cloud') {
+        // For cloud model, check if API key exists
+        const res = await proxyFetchGet('/api/user/key');
+        setHasModel(!!res.value);
+      } else if (modelType === 'local' || modelType === 'custom') {
+        // For local/custom model, check if provider exists
+        const res = await proxyFetchGet('/api/providers', { prefer: true });
+        const providerList = res.items || [];
+        setHasModel(providerList.length > 0);
+      } else {
+        setHasModel(false);
+      }
+    } catch (err) {
+      console.error('Failed to check model config:', err);
+      setHasModel(false);
+    } finally {
+      setIsConfigLoaded(true);
+    }
+  }, [modelType]);
+
+  // Check model config on mount and when modelType changes
   useEffect(() => {
     proxyFetchGet('/api/configs')
       .then((configsRes) => {
@@ -73,17 +109,29 @@ export default function ChatBox(): JSX.Element {
         if (_hasApiKey && _hasApiId) setHasSearchKey(true);
       })
       .catch((err) => console.error('Failed to fetch configs:', err));
-  }, []);
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const share_token = searchParams.get('share_token');
-  const skill_prompt = searchParams.get('skill_prompt');
+    checkModelConfig();
+  }, [modelType, checkModelConfig]);
 
-  const handleSendRef = useRef<
-    ((messageStr?: string, taskId?: string) => Promise<void>) | null
-  >(null);
+  // Re-check model config when returning from settings page
+  useEffect(() => {
+    // Check when location changes (user navigates)
+    if (location.pathname === '/') {
+      checkModelConfig();
+    }
+  }, [location.pathname, checkModelConfig]);
 
-  const navigate = useNavigate();
+  // Also check when window gains focus (user returns from settings)
+  useEffect(() => {
+    const handleFocus = () => {
+      checkModelConfig();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [checkModelConfig]);
 
   // Task time tracking
   const [taskTime, setTaskTime] = useState(
@@ -327,7 +375,7 @@ export default function ChatBox(): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
 
-    // Check model first, then privacy
+    // Check model configuration
     if (!hasModel) {
       toast.error('Please select a model first.');
       navigate('/history?tab=agents');
@@ -618,11 +666,11 @@ export default function ChatBox(): JSX.Element {
   }, [projectStore]);
 
   useEffect(() => {
-    // Wait for both config and privacy to be loaded before handling share token
-    if (share_token) {
+    // Wait for config to be loaded before handling share token
+    if (share_token && isConfigLoaded) {
       handleSendShare(share_token);
     }
-  }, [share_token, handleSendShare]);
+  }, [share_token, isConfigLoaded, handleSendShare]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -1023,7 +1071,7 @@ export default function ChatBox(): JSX.Element {
                   </div>
                 </div>
               ) : null}
-              {!hasModel && (
+              {hasModel && (
                 <div className="mr-2 flex flex-col items-center gap-2">
                   {[
                     {
