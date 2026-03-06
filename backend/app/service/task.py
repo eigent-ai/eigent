@@ -513,11 +513,21 @@ class TaskLock:
         )
 
     def get_recent_context(self, max_entries: int = None) -> str:
-        """Get recent conversation context as a formatted string"""
-        if not self.conversation_history:
+        """Get recent conversation context as a formatted string.
+
+        Includes compressed summary from earlier conversation if available.
+        """
+        if not self.conversation_history and not self.last_task_summary:
             return ""
 
-        context = "=== Recent Conversation ===\n"
+        context = ""
+
+        # Add compressed summary from earlier conversation if available
+        if self.last_task_summary:
+            context += "=== Previous Conversation Summary ===\n"
+            context += f"{self.last_task_summary}\n\n"
+
+        context += "=== Recent Conversation ===\n"
         if max_entries is None:
             history_to_use = self.conversation_history
         else:
@@ -526,8 +536,133 @@ class TaskLock:
             context += f"{entry['role']}: {entry['content']}\n"
         return context
 
+    def trim_conversation_history(
+        self, max_entries: int = 100, max_length: int = 200000
+    ) -> tuple[int, int]:
+        """Trim conversation history to bounded size.
+
+        Applies compression before trimming: older entries are summarized
+        instead of discarded, preserving context.
+
+        Args:
+            max_entries: Maximum number of conversation entries to keep
+            max_length: Maximum total character length
+
+        Returns:
+            tuple: (entries_removed, new_count)
+        """
+        if not self.conversation_history:
+            return 0, 0
+
+        original_count = len(self.conversation_history)
+
+        # Separate system messages from regular conversation
+        system_entries = [
+            e for e in self.conversation_history if e.get("role") == "system"
+        ]
+        regular_entries = [
+            e for e in self.conversation_history if e.get("role") != "system"
+        ]
+
+        # If there are many entries, compress older ones before trimming
+        compression_threshold = max_entries * 2  # Compress if 2x the limit
+        if len(regular_entries) > compression_threshold and not self.last_task_summary:
+            # Compress older entries into summary
+            keep_recent = max_entries
+            entries_compressed, summary = self.compress_conversation_history(
+                keep_recent=keep_recent, max_length=max_length // 4
+            )
+            # After compression, recount regular entries
+            regular_entries = [
+                e for e in self.conversation_history if e.get("role") != "system"
+            ]
+
+        # First, trim by entry count (keep most recent)
+        if len(regular_entries) > max_entries:
+            regular_entries = regular_entries[-max_entries:]
+
+        # Then, trim by total length if still exceeded
+        total_length = sum(len(str(e.get("content", ""))) for e in regular_entries)
+        while total_length > max_length and len(regular_entries) > 10:
+            # Remove oldest entries until under limit (keep at least 10)
+            regular_entries = regular_entries[1:]
+            total_length = sum(len(str(e.get("content", ""))) for e in regular_entries)
+
+        # Rebuild history with system messages at the start
+        self.conversation_history = system_entries + regular_entries
+
+        new_count = len(self.conversation_history)
+        removed = original_count - new_count
+
+        if removed > 0:
+            logger.info(
+                f"Trimmed {removed} entries from conversation history",
+                extra={
+                    "task_id": self.id,
+                    "original": original_count,
+                    "new": new_count,
+                    "total_length": total_length,
+                },
+            )
+
+        return removed, new_count
+
+    def compress_conversation_history(
+        self, keep_recent: int = 20, max_length: int = 50000
+    ) -> tuple[int, str]:
+        """Compress older conversation entries into a summary.
+
+        Moves older messages to a summary instead of discarding them,
+        preserving context while reducing token usage.
+
+        Args:
+            keep_recent: Number of recent entries to keep unchanged
+            max_length: Max length of summary to generate
+
+        Returns:
+            tuple: (entries_compressed, summary_text)
+        """
+        if not self.conversation_history or len(self.conversation_history) <= keep_recent:
+            return 0, ""
+
+        # Get entries to compress (everything except recent ones)
+        entries_to_compress = self.conversation_history[:-keep_recent]
+        recent_entries = self.conversation_history[-keep_recent:]
+
+        if not entries_to_compress:
+            return 0, ""
+
+        # Generate summary from older entries
+        summary_parts = []
+        for entry in entries_to_compress:
+            role = entry.get("role", "unknown")
+            content = str(entry.get("content", ""))[:500]  # Truncate long content
+            if content:
+                summary_parts.append(f"[{role}]: {content}")
+
+        # Create a simple summary (in production, this could use an LLM)
+        summary = "; ".join(summary_parts[:10])  # Take first 10 entries
+        if len(summary) > max_length:
+            summary = summary[:max_length] + "..."
+
+        # Store summary and replace older entries
+        self.last_task_summary = f"(Compressed {len(entries_to_compress)} previous entries): {summary}"
+        self.conversation_history = recent_entries
+
+        logger.info(
+            f"Compressed {len(entries_to_compress)} entries into summary",
+            extra={
+                "task_id": self.id,
+                "compressed_count": len(entries_to_compress),
+                "summary_length": len(self.last_task_summary),
+            },
+        )
+
+        return len(entries_to_compress), self.last_task_summary
+
 
 task_locks = dict[str, TaskLock]()
+_task_locks_lock = asyncio.Lock()  # Thread-safe access to task_locks
 # Cleanup task for removing stale task locks
 _cleanup_task: asyncio.Task | None = None
 task_index: dict[str, weakref.ref[Task]] = {}
@@ -539,6 +674,7 @@ def get_task_lock(id: str) -> TaskLock:
         raise ProgramException("Task not found")
     logger.debug("Task lock retrieved", extra={"task_id": id})
     return task_locks[id]
+
 
 
 def get_task_lock_if_exists(id: str) -> TaskLock | None:
@@ -557,6 +693,11 @@ def set_current_task_id(project_id: str, task_id: str) -> None:
 
 
 def create_task_lock(id: str) -> TaskLock:
+    """Create a new task lock (synchronous version for backward compatibility).
+
+    Note: This is not thread-safe and should only be used in tests
+    or single-threaded contexts. Use create_task_lock_async in production.
+    """
     if id in task_locks:
         logger.warning(
             "Attempting to create task lock that already exists",
@@ -567,11 +708,6 @@ def create_task_lock(id: str) -> TaskLock:
     logger.info("Creating new task lock", extra={"task_id": id})
     task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
 
-    # Start cleanup task if not running
-    # global _cleanup_task
-    # if _cleanup_task is None or _cleanup_task.done():
-    #     _cleanup_task = asyncio.create_task(_periodic_cleanup())
-
     logger.info(
         "Task lock created successfully",
         extra={"task_id": id, "total_task_locks": len(task_locks)},
@@ -579,39 +715,105 @@ def create_task_lock(id: str) -> TaskLock:
     return task_locks[id]
 
 
+async def create_task_lock_async(id: str) -> TaskLock:
+    """Create a new task lock with thread-safe access (async version)"""
+    async with _task_locks_lock:
+        if id in task_locks:
+            logger.warning(
+                "Attempting to create task lock that already exists",
+                extra={"task_id": id},
+            )
+            raise ProgramException("Task already exists")
+
+        logger.info("Creating new task lock", extra={"task_id": id})
+        task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
+
+        logger.info(
+            "Task lock created successfully",
+            extra={"task_id": id, "total_task_locks": len(task_locks)},
+        )
+        return task_locks[id]
+
+
 def get_or_create_task_lock(id: str) -> TaskLock:
-    """Get existing task lock or create a new one if it doesn't exist"""
+    """Get existing task lock or create a new one if it doesn't exist.
+
+    Synchronous version for backward compatibility.
+    Note: Not thread-safe, use get_or_create_task_lock_async in production.
+    """
     if id in task_locks:
         logger.debug("Using existing task lock", extra={"task_id": id})
         return task_locks[id]
-    logger.info("Task lock not found, creating new one", extra={"task_id": id})
-    return create_task_lock(id)
+    logger.info("Task lock not found, creating new", extra={"task_id": id})
+    task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
+    logger.info(
+        "Task lock created successfully",
+        extra={"task_id": id, "total_task_locks": len(task_locks)},
+    )
+    return task_locks[id]
+
+
+async def get_or_create_task_lock_async(id: str) -> TaskLock:
+    """Get existing task lock or create a new one if it doesn't exist.
+
+    Thread-safe implementation using asyncio.Lock (async version).
+    """
+    async with _task_locks_lock:
+        if id in task_locks:
+            logger.debug("Using existing task lock", extra={"task_id": id})
+            return task_locks[id]
+        logger.info("Task lock not found, creating new", extra={"task_id": id})
+        task_locks[id] = TaskLock(id=id, queue=asyncio.Queue(), human_input={})
+        logger.info(
+            "Task lock created successfully",
+            extra={"task_id": id, "total_task_locks": len(task_locks)},
+        )
+        return task_locks[id]
 
 
 async def delete_task_lock(id: str):
-    if id not in task_locks:
-        logger.warning(
-            "Attempting to delete non-existent task lock",
-            extra={"task_id": id},
+    """Delete a task lock with thread-safe access"""
+    async with _task_locks_lock:
+        if id not in task_locks:
+            logger.warning(
+                "Attempting to delete non-existent task lock",
+                extra={"task_id": id},
+            )
+            raise ProgramException("Task not found")
+
+        # Clean up background tasks before deletion
+        task_lock = task_locks[id]
+        logger.info(
+            "Cleaning up task lock",
+            extra={
+                "task_id": id,
+                "background_tasks": len(task_lock.background_tasks),
+            },
         )
-        raise ProgramException("Task not found")
 
-    # Clean up background tasks before deletion
-    task_lock = task_locks[id]
-    logger.info(
-        "Cleaning up task lock",
-        extra={
-            "task_id": id,
-            "background_tasks": len(task_lock.background_tasks),
-        },
-    )
-    await task_lock.cleanup()
+        # Try cleanup, but don't delete if it fails - log error instead
+        cleanup_success = True
+        try:
+            await task_lock.cleanup()
+        except Exception as e:
+            logger.error(
+                "Failed to cleanup task lock, but continuing with deletion",
+                extra={"task_id": id, "error": str(e)},
+            )
+            cleanup_success = False
 
-    del task_locks[id]
-    logger.info(
-        "Task lock deleted successfully",
-        extra={"task_id": id, "remaining_task_locks": len(task_locks)},
-    )
+        # Only delete if cleanup was successful
+        if cleanup_success:
+            del task_locks[id]
+            logger.info(
+                "Task lock deleted successfully",
+                extra={"task_id": id, "remaining_task_locks": len(task_locks)},
+            )
+        else:
+            logger.warning(
+                "Task lock retained due to cleanup failure",
+                extra={"task_id": id},
+            )
 
 
 def get_camel_task(id: str, tasks: list[Task]) -> None | Task:

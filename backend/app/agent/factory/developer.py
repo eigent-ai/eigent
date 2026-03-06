@@ -12,14 +12,12 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import platform
-
 from camel.messages import BaseMessage
 from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import DEVELOPER_SYS_PROMPT
+from app.agent.prompt import DEVELOPER_SYS_PROMPT, format_prompt
 from app.agent.toolkit.human_toolkit import HumanToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
@@ -103,11 +101,9 @@ async def developer_agent(options: Chat):
         *skill_toolkit.get_tools(),
         *search_tools,
     ]
-    system_message = DEVELOPER_SYS_PROMPT.format(
-        platform_system=platform.system(),
-        platform_machine=platform.machine(),
+    system_message = format_prompt(
+        DEVELOPER_SYS_PROMPT,
         working_directory=working_directory,
-        now_str=NOW_STR,
     )
 
     return agent_model(

@@ -13,6 +13,71 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 # flake8: noqa
 
+import datetime
+from functools import lru_cache
+
+from app.agent.utils import get_platform_info
+
+# Cache for formatted prompts (key: (prompt_name, working_directory))
+_prompt_cache: dict[tuple[str, str], str] = {}
+
+
+def _get_now_str() -> str:
+    """Get current time string (formatted per request since it changes)."""
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
+
+
+def format_prompt(
+    template: str,
+    working_directory: str,
+    include_platform: bool = True,
+    **kwargs,
+) -> str:
+    """Format a prompt template with cached platform info and dynamic fields.
+
+    Uses caching to avoid repeated formatting of static parts.
+
+    Args:
+        template: The prompt template string
+        working_directory: The working directory (dynamic, not cached)
+        include_platform: Whether to include platform info in formatting
+        **kwargs: Additional format arguments (e.g., external_browser_notice)
+
+    Returns:
+        Formatted prompt string
+    """
+    # Create cache key including additional kwargs
+    cache_key = (template[:50], working_directory, tuple(sorted(kwargs.items())))
+
+    if cache_key in _prompt_cache:
+        return _prompt_cache[cache_key]
+
+    # Build format kwargs
+    format_kwargs = {
+        "working_directory": working_directory,
+        "now_str": _get_now_str(),
+        **kwargs,
+    }
+
+    # Get cached platform info
+    if include_platform:
+        platform_system, platform_machine = get_platform_info()
+        format_kwargs["platform_system"] = platform_system
+        format_kwargs["platform_machine"] = platform_machine
+
+    # Format the prompt
+    result = template.format(**format_kwargs)
+
+    _prompt_cache[cache_key] = result
+    return result
+
+
+def clear_prompt_cache():
+    """Clear the prompt format cache."""
+    global _prompt_cache
+    _prompt_cache = {}
+
+
 SOCIAL_MEDIA_SYS_PROMPT = """\
 You are a Social Media Management Assistant with comprehensive capabilities
 across multiple platforms. You MUST use the `send_message_to_user` tool to

@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import platform
 import threading
 import uuid
 
@@ -21,7 +20,7 @@ from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.prompt import BROWSER_SYS_PROMPT, format_prompt
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 
@@ -31,7 +30,6 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.utils import NOW_STR
 from app.component.environment import env
 from app.model.chat import Chat
 from app.service.task import Agents
@@ -291,11 +289,9 @@ def browser_agent(options: Chat):
             "</external_browser_connection>\n"
         )
 
-    system_message = BROWSER_SYS_PROMPT.format(
-        platform_system=platform.system(),
-        platform_machine=platform.machine(),
+    system_message = format_prompt(
+        BROWSER_SYS_PROMPT,
         working_directory=working_directory,
-        now_str=NOW_STR,
         external_browser_notice=external_browser_notice,
     )
 

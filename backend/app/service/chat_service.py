@@ -473,28 +473,44 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_lock
                 )
                 if is_exceeded:
-                    logger.error(
-                        "Conversation history too long",
+                    # Try to trim conversation history first
+                    removed, new_count = task_lock.trim_conversation_history()
+                    logger.info(
+                        "Trimmed conversation history",
                         extra={
                             "project_id": options.project_id,
-                            "current_length": total_length,
-                            "max_length": 100000,
+                            "removed": removed,
+                            "new_count": new_count,
                         },
                     )
-                    ctx_msg = (
-                        "The conversation history "
-                        "is too long. Please create"
-                        " a new project to continue."
+
+                    # Check again after trimming
+                    is_exceeded, total_length = check_conversation_history_length(
+                        task_lock
                     )
-                    yield sse_json(
-                        "context_too_long",
-                        {
-                            "message": ctx_msg,
-                            "current_length": total_length,
-                            "max_length": 100000,
-                        },
-                    )
-                    continue
+                    if is_exceeded:
+                        logger.error(
+                            "Conversation history still too long after trimming",
+                            extra={
+                                "project_id": options.project_id,
+                                "current_length": total_length,
+                                "max_length": 100000,
+                            },
+                        )
+                        ctx_msg = (
+                            "The conversation history "
+                            "is too long. Please create"
+                            " a new project to continue."
+                        )
+                        yield sse_json(
+                            "context_too_long",
+                            {
+                                "message": ctx_msg,
+                                "current_length": total_length,
+                                "max_length": 100000,
+                            },
+                        )
+                        continue
 
                 # Determine task complexity: attachments
                 # mean workforce, otherwise let agent decide
@@ -1038,27 +1054,43 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_lock
                 )
                 if is_exceeded:
-                    logger.error(
-                        "Cannot start task: "
-                        "conversation history too "
-                        f"long ({total_length} chars)"
-                        " for project "
-                        f"{options.project_id}"
-                    )
-                    ctx_msg = (
-                        "The conversation history "
-                        "is too long. Please create"
-                        " a new project to continue."
-                    )
-                    yield sse_json(
-                        "context_too_long",
-                        {
-                            "message": ctx_msg,
-                            "current_length": total_length,
-                            "max_length": 100000,
+                    # Try to trim conversation history first
+                    removed, new_count = task_lock.trim_conversation_history()
+                    logger.info(
+                        "Trimmed conversation history",
+                        extra={
+                            "project_id": options.project_id,
+                            "removed": removed,
+                            "new_count": new_count,
                         },
                     )
-                    continue
+
+                    # Check again after trimming
+                    is_exceeded, total_length = check_conversation_history_length(
+                        task_lock
+                    )
+                    if is_exceeded:
+                        logger.error(
+                            "Cannot start task: "
+                            "conversation history still too "
+                            f"long ({total_length} chars)"
+                            " for project "
+                            f"{options.project_id}"
+                        )
+                        ctx_msg = (
+                            "The conversation history "
+                            "is too long. Please create"
+                            " a new project to continue."
+                        )
+                        yield sse_json(
+                            "context_too_long",
+                            {
+                                "message": ctx_msg,
+                                "current_length": total_length,
+                                "max_length": 100000,
+                            },
+                        )
+                        continue
 
                 if workforce is not None:
                     if workforce._state.name == "PAUSED":
