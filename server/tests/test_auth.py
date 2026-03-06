@@ -47,7 +47,7 @@ class TestAuthMustNoneTokenHandling:
         """auth_must should raise TokenException immediately when
         token is None, not pass it to jwt.decode()."""
         import asyncio
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from app.component.auth import auth_must
         from app.exception.exception import TokenException
@@ -88,8 +88,7 @@ class TestSnapshotEndpointAuthRequirements:
         sig = inspect.signature(list_chat_snapshots)
         param_names = list(sig.parameters.keys())
         assert "auth" in param_names, (
-            "list_chat_snapshots is missing the 'auth' parameter — "
-            "unauthenticated users can list all snapshots"
+            "list_chat_snapshots is missing the 'auth' parameter — unauthenticated users can list all snapshots"
         )
 
     def test_get_snapshot_requires_auth_dependency(self):
@@ -130,8 +129,7 @@ def test_create_share_link_requires_auth_dependency():
     sig = inspect.signature(create_share_link)
     param_names = list(sig.parameters.keys())
     assert "auth" in param_names, (
-        "create_share_link is missing the 'auth' parameter — "
-        "unauthenticated users can generate share tokens"
+        "create_share_link is missing the 'auth' parameter — unauthenticated users can generate share tokens"
     )
 
 

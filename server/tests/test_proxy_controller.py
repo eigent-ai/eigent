@@ -12,9 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from urllib.parse import quote_plus, urlparse, parse_qs
-
-import pytest
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 
 class TestGoogleSearchUrlEncoding:
