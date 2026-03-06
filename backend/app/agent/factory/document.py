@@ -11,14 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-import platform
-
 from camel.messages import BaseMessage
 from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import DOCUMENT_SYS_PROMPT
+from app.agent.prompt import DOCUMENT_SYS_PROMPT, format_prompt
 from app.agent.toolkit.excel_toolkit import ExcelToolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
@@ -32,7 +30,6 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
@@ -126,11 +123,9 @@ async def document_agent(options: Chat):
         *skill_toolkit.get_tools(),
         *search_tools,
     ]
-    system_message = DOCUMENT_SYS_PROMPT.format(
-        platform_system=platform.system(),
-        platform_machine=platform.machine(),
+    system_message = format_prompt(
+        DOCUMENT_SYS_PROMPT,
         working_directory=working_directory,
-        now_str=NOW_STR,
     )
 
     return agent_model(

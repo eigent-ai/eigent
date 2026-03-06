@@ -13,5 +13,17 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import datetime
+import platform
+from functools import lru_cache
 
 NOW_STR = datetime.datetime.now().strftime("%Y-%m-%d %H:00:00")
+
+
+@lru_cache(maxsize=1)
+def get_platform_info() -> tuple[str, str]:
+    """Get platform system and machine info (cached).
+
+    Returns:
+        tuple: (platform_system, platform_machine)
+    """
+    return (platform.system(), platform.machine())

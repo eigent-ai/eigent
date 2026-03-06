@@ -43,6 +43,9 @@ import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
 import { useProjectStore } from './projectStore';
 
+// Maximum number of messages to keep in chat history (sliding window)
+const MAX_MESSAGES = 100;
+
 interface Task {
   messages: Message[];
   type: string;
@@ -2519,6 +2522,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             try {
               if (activeSSEControllers[newTaskId]) {
+                activeSSEControllers[newTaskId].abort();
                 delete activeSSEControllers[newTaskId];
               }
             } catch (cleanupError) {
@@ -2564,6 +2568,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // Clean up AbortController on error with robust error handling
           try {
             if (activeSSEControllers[newTaskId]) {
+              activeSSEControllers[newTaskId].abort();
               delete activeSSEControllers[newTaskId];
               console.log(
                 `Cleaned up SSE controller for task ${newTaskId} after error`
@@ -2658,16 +2663,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
     },
     addMessages(taskId, message) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            messages: [...state.tasks[taskId].messages, message],
+      set((state) => {
+        const currentMessages = state.tasks[taskId]?.messages || [];
+        let newMessages = [...currentMessages, message];
+
+        // Apply sliding window to keep conversation history bounded
+        if (newMessages.length > MAX_MESSAGES) {
+          // Keep the most recent MAX_MESSAGES
+          newMessages = newMessages.slice(-MAX_MESSAGES);
+        }
+
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              messages: newMessages,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setAttaches(taskId, attaches) {
       set((state) => ({
@@ -3290,6 +3306,32 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
       } catch (error) {
         console.error('Error during timer cleanup in clearTasks:', error);
+      }
+
+      // Clean up all pending streaming decompose text timers
+      try {
+        Object.keys(streamingDecomposeTextTimers).forEach((taskId) => {
+          try {
+            if (streamingDecomposeTextTimers[taskId]) {
+              clearTimeout(streamingDecomposeTextTimers[taskId]);
+              delete streamingDecomposeTextTimers[taskId];
+            }
+          } catch (error) {
+            console.warn(
+              `Error clearing streaming timer for task ${taskId}:`,
+              error
+            );
+          }
+        });
+        // Also clear the buffer
+        Object.keys(streamingDecomposeTextBuffer).forEach((taskId) => {
+          delete streamingDecomposeTextBuffer[taskId];
+        });
+      } catch (error) {
+        console.error(
+          'Error during streaming timer cleanup in clearTasks:',
+          error
+        );
       }
 
       // Clean up all active SSE connections
