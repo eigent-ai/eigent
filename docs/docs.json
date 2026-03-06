@@ -79,6 +79,16 @@
             ]
           },
           {
+            "group": "Triggers",
+            "icon": "bolt",
+            "pages": [
+              "/triggers/main",
+              "/triggers/schedule",
+              "/triggers/slack",
+              "/triggers/webhook"
+            ]
+          },
+          {
             "group": "Troubleshooting",
             "icon": "question-circle",
             "pages": ["/troubleshooting/support", "/troubleshooting/bug"]
