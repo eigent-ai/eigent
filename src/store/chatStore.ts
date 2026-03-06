@@ -42,6 +42,7 @@ import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
+import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 
 interface Task {
@@ -1981,6 +1982,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.WRITE_FILE) {
             console.log('write_to_file', agentMessages.data);
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
+            // Mark inbox tab as having unviewed content
+            usePageTabStore.getState().markTabAsUnviewed('inbox');
             const { file_path } = agentMessages.data;
             const fileName =
               file_path?.replace(/\\/g, '/').split('/').pop() || '';
