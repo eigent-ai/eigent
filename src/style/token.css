@@ -820,6 +820,7 @@
     --task-fill-running: #1f2937;
     --log-default: #1f2937;
     --code-surface: #27272a;
+    --code-foreground: #e6edf3;
     --surface-error-subtle: rgba(153, 27, 27, 0.3);
     --surface-hover-subtle: rgba(55, 65, 81, 0.5);
     --surface-success-subtle: rgba(6, 95, 70, 0.35);

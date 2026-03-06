@@ -73,7 +73,7 @@ export const MarkDown = ({
       .trim();
     return (
       <div className="prose prose-sm markdown-container pointer-events-auto w-full select-text overflow-x-auto">
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-code-surface p-2 font-mono text-xs">
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-code-surface p-2 font-mono text-xs text-code-foreground">
           <code>{formattedHtml}</code>
         </pre>
       </div>
@@ -135,12 +135,12 @@ export const MarkDown = ({
             </a>
           ),
           code: ({ children }) => (
-            <code className="rounded bg-code-surface px-1 py-0.5 font-mono text-xs">
+            <code className="rounded bg-code-surface px-1 py-0.5 font-mono text-xs text-code-foreground">
               {children}
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-code-surface p-2 font-mono text-xs">
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-code-surface p-2 font-mono text-xs text-code-foreground">
               {children}
             </pre>
           ),
