@@ -711,53 +711,55 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         </div>
 
         {/* Execution Settings - Accordion */}
-        <Accordion type="single" collapsible className="w-full">
-          <AccordionItem value="execution-settings" className="border-none">
-            <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
-              <span className="text-sm font-bold text-text-heading">
-                {t('triggers.execution-settings')}
-              </span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="flex flex-col gap-4 rounded-lg bg-surface-disabled p-4 pt-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="max_per_hour"
-                    title={t('triggers.max-per-hour')}
-                    placeholder={t('triggers.max-per-hour-placeholder')}
-                    type="number"
-                    value={formData.max_executions_per_hour || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        max_executions_per_hour: e.target.value
-                          ? parseInt(e.target.value)
-                          : undefined,
-                      })
-                    }
-                    min={0}
-                  />
-                  <Input
-                    id="max_per_day"
-                    title={t('triggers.max-per-day')}
-                    placeholder={t('triggers.max-per-day-placeholder')}
-                    type="number"
-                    value={formData.max_executions_per_day || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        max_executions_per_day: e.target.value
-                          ? parseInt(e.target.value)
-                          : undefined,
-                      })
-                    }
-                    min={0}
-                  />
+        {formData?.trigger_type !== TriggerType.Schedule && (
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="execution-settings" className="border-none">
+              <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
+                <span className="text-sm font-bold text-text-heading">
+                  {t('triggers.execution-settings')}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="flex flex-col gap-4 rounded-lg bg-surface-disabled p-4 pt-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="max_per_hour"
+                      title={t('triggers.max-per-hour')}
+                      placeholder={t('triggers.max-per-hour-placeholder')}
+                      type="number"
+                      value={formData.max_executions_per_hour || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          max_executions_per_hour: e.target.value
+                            ? parseInt(e.target.value)
+                            : undefined,
+                        })
+                      }
+                      min={0}
+                    />
+                    <Input
+                      id="max_per_day"
+                      title={t('triggers.max-per-day')}
+                      placeholder={t('triggers.max-per-day-placeholder')}
+                      type="number"
+                      value={formData.max_executions_per_day || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          max_executions_per_day: e.target.value
+                            ? parseInt(e.target.value)
+                            : undefined,
+                        })
+                      }
+                      min={0}
+                    />
+                  </div>
                 </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
       </div>
     );
   };
