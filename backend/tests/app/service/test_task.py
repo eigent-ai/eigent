@@ -672,3 +672,107 @@ class TestTaskServiceWithLLM:
         # This test would run the complete workflow including periodic cleanup
         # Marked as very_slow for execution only in full test mode
         assert True  # Placeholder
+
+
+@pytest.mark.unit
+class TestContextCompression:
+    """Tests for context compression and preservation."""
+
+    @pytest.mark.asyncio
+    async def test_compress_creates_structured_summary(self):
+        """Test that compression creates structured summary with actions and topics."""
+        task_lock = TaskLock(
+            id="test-compress-123",
+            queue=asyncio.Queue(),
+            human_input={},
+        )
+        task_lock.conversation_history = [
+            {"role": "user", "content": "Create a file"},
+            {"role": "assistant", "content": "I'll create that file for you"},
+            {"role": "tool", "content": "File created: test.txt"},
+            {"role": "user", "content": "Now read it"},
+            {"role": "assistant", "content": "Reading the file..."},
+            {"role": "tool", "content": "File content: hello world"},
+            {"role": "user", "content": "Write hello"},
+            {"role": "assistant", "content": "Writing..."},
+            {"role": "tool", "content": "Wrote to file"},
+            {"role": "user", "content": "Delete it"},
+            {"role": "assistant", "content": "Deleting..."},
+            {"role": "tool", "content": "File deleted"},
+        ]
+
+        compressed_count, summary = task_lock.compress_conversation_history(keep_recent=5)
+
+        # Should have compressed 7 entries
+        assert compressed_count == 7
+        # Summary should contain message count
+        assert "7 msgs compressed" in summary
+        # Should extract file creation action
+        assert "file creation" in summary.lower() or "file reading" in summary.lower() or "writing" in summary.lower()
+        # Should have updated conversation_history
+        assert len(task_lock.conversation_history) == 5
+        # Should have stored summary
+        assert task_lock.last_task_summary != ""
+
+    @pytest.mark.asyncio
+    async def test_compress_no_change_when_small(self):
+        """Test that compression does nothing when history is small."""
+        task_lock = TaskLock(
+            id="test-compress-small",
+            queue=asyncio.Queue(),
+            human_input={},
+        )
+        task_lock.conversation_history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"},
+        ]
+
+        compressed_count, summary = task_lock.compress_conversation_history(keep_recent=5)
+
+        # Should not compress
+        assert compressed_count == 0
+        assert summary == ""
+        # History should be unchanged
+        assert len(task_lock.conversation_history) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_recent_context_includes_summary(self):
+        """Test that get_recent_context includes summary when available."""
+        task_lock = TaskLock(
+            id="test-context-summary",
+            queue=asyncio.Queue(),
+            human_input={},
+        )
+        task_lock.conversation_history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+        task_lock.last_task_summary = "[3 msgs compressed] Actions: file creation. Topics: testing"
+
+        context = task_lock.get_recent_context()
+
+        # Should include summary
+        assert "Previous Conversation Summary" in context
+        assert "3 msgs compressed" in context
+        # Should include recent messages
+        assert "Hello" in context
+        assert "Hi there!" in context
+
+    @pytest.mark.asyncio
+    async def test_get_recent_context_no_summary(self):
+        """Test that get_recent_context works without summary."""
+        task_lock = TaskLock(
+            id="test-context-no-summary",
+            queue=asyncio.Queue(),
+            human_input={},
+        )
+        task_lock.conversation_history = [
+            {"role": "user", "content": "Test message"},
+        ]
+        task_lock.last_task_summary = ""
+
+        context = task_lock.get_recent_context()
+
+        # Should include message but no summary header
+        assert "Test message" in context
+        assert "Previous Conversation Summary" not in context
