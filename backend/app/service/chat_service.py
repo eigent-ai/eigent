@@ -220,8 +220,31 @@ def build_conversation_context(
         Formatted context string with task history
         and files listed once at the end
     """
+    # Debug logging for context building
+    logger.info(
+        "Building conversation context",
+        extra={
+            "task_id": task_lock.id,
+            "history_len": len(task_lock.conversation_history),
+            "has_summary": bool(getattr(task_lock, "last_task_summary", "")),
+            "summary_len": len(getattr(task_lock, "last_task_summary", "") or ""),
+        },
+    )
+
     context = ""
     working_directories = set()  # Collect all unique working directories
+
+    # Include compressed summary if available
+    if getattr(task_lock, "last_task_summary", None):
+        summary = task_lock.last_task_summary
+        logger.debug(
+            "Including summary in context",
+            extra={
+                "task_id": task_lock.id,
+                "summary_length": len(summary),
+            },
+        )
+        context += f"=== Previous Conversation Summary ===\n{summary}\n\n"
 
     if task_lock.conversation_history:
         context = f"{header}\n"
@@ -267,6 +290,15 @@ def build_conversation_context(
                 context += "\n"
 
         context += "\n"
+
+    # Log the final context length
+    logger.debug(
+        "Conversation context built",
+        extra={
+            "task_id": task_lock.id,
+            "context_length": len(context),
+        },
+    )
 
     return context
 
