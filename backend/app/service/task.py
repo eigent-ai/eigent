@@ -524,6 +524,13 @@ class TaskLock:
 
         # Add compressed summary from earlier conversation if available
         if self.last_task_summary:
+            logger.debug(
+                "Including summary in context",
+                extra={
+                    "task_id": self.id,
+                    "summary_length": len(self.last_task_summary),
+                },
+            )
             context += "=== Previous Conversation Summary ===\n"
             context += f"{self.last_task_summary}\n\n"
 
@@ -534,6 +541,16 @@ class TaskLock:
             history_to_use = self.conversation_history[-max_entries:]
         for entry in history_to_use:
             context += f"{entry['role']}: {entry['content']}\n"
+
+        logger.debug(
+            "Context built",
+            extra={
+                "task_id": self.id,
+                "total_length": len(context),
+                "entries_included": len(history_to_use),
+            },
+        )
+
         return context
 
     def trim_conversation_history(
