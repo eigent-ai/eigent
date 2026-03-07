@@ -53,7 +53,9 @@ from app.service.task import (
     get_task_lock,
 )
 from app.utils.single_agent_worker import SingleAgentWorker
+from app.utils.single_agent_worker import SingleAgentWorker
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
+from app.utils.perf_timer import PerfTimer
 
 logger = logging.getLogger("workforce")
 
@@ -215,15 +217,20 @@ class Workforce(BaseWorkforce):
         self.set_channel(TaskChannel())
         self._state = WorkforceState.RUNNING
         task.state = TaskState.OPEN
-        subtasks = asyncio.run(
-            self.handle_decompose_append_task(
-                task,
-                reset=False,
-                coordinator_context=coordinator_context,
-                on_stream_batch=on_stream_batch,
-                on_stream_text=on_stream_text,
+        with PerfTimer(
+            "handle_decompose_append_task",
+            api_task_id=self.api_task_id,
+            task_id=task.id,
+        ):
+            subtasks = asyncio.run(
+                self.handle_decompose_append_task(
+                    task,
+                    reset=False,
+                    coordinator_context=coordinator_context,
+                    on_stream_batch=on_stream_batch,
+                    on_stream_text=on_stream_text,
+                )
             )
-        )
 
         logger.info(
             "[DECOMPOSE] Task decomposition completed",
@@ -252,7 +259,10 @@ class Workforce(BaseWorkforce):
         self.save_snapshot("Initial task decomposition")
 
         try:
-            await self.start()
+            async with PerfTimer(
+                "workforce_execution", api_task_id=self.api_task_id
+            ):
+                await self.start()
         except Exception as e:
             logger.error(
                 f"[WF-LIFECYCLE] Error in workforce execution: {e}",

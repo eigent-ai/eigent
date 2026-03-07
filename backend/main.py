@@ -12,6 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import time
+_module_load_start = time.perf_counter()
+
 import asyncio
 import atexit
 import os
@@ -171,4 +174,12 @@ def sync_cleanup():
 atexit.register(sync_cleanup)
 
 # Log successful initialization
+# Log successful initialization
 app_logger.info("Application initialization completed successfully")
+
+# Log performance metric for module load
+load_duration = (time.perf_counter() - _module_load_start) * 1000
+app_logger.info(
+    f"[PERF] backend_module_load completed in {load_duration:.2f}ms",
+    extra={"perf_operation": "backend_module_load", "perf_duration_ms": round(load_duration, 2)}
+)
