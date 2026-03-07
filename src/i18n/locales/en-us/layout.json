@@ -53,6 +53,8 @@
   "welcome": "Welcome",
   "delete-task": "Delete Task",
   "delete-task-confirmation": "Are you sure you want to delete this task? This action cannot be undone.",
+  "delete-success": "Task deleted successfully",
+  "delete-failed": "Failed to delete task",
   "delete": "Delete",
   "cancel": "Cancel",
   "continue": "Continue",

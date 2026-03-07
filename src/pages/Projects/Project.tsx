@@ -131,8 +131,12 @@ export default function Project() {
     navigate(`/`);
   };
 
-  const handleDelete = (id: string, callback?: () => void) => {
-    setCurHistoryId(id);
+  const handleDelete = (
+    historyId: string,
+    _task?: import('@/types/history').HistoryTask,
+    callback?: () => void
+  ) => {
+    setCurHistoryId(historyId);
     setDeleteModalOpen(true);
     if (callback) setDeleteCallback(callback);
   };
@@ -296,7 +300,9 @@ export default function Project() {
             onOngoingTaskResume={(taskId) =>
               handleTakeControl('resume', taskId)
             }
-            onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
+            onOngoingTaskDelete={(taskId) =>
+              handleDelete(taskId, undefined, () => {})
+            }
             onProjectDelete={handleProjectDelete}
             refreshTrigger={refreshTrigger}
           />

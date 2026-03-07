@@ -51,7 +51,7 @@ interface ProjectGroupProps {
     historyId: string,
     project?: ProjectGroupType
   ) => void;
-  onTaskDelete: (taskId: string) => void;
+  onTaskDelete: (historyId: string, task?: import('@/types/history').HistoryTask) => void;
   onTaskShare: (taskId: string) => void;
   activeTaskId?: string;
   searchValue?: string;
