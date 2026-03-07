@@ -4,7 +4,7 @@ version = "1.0"
 author_name = "eigent-ai"
 difficulty = "{difficulty}"
 category = "agent_benchmark"
-tags = [{tags}]
+tags = ["{tags}"]
 source = "eigent-bench"
 
 [verifier]
