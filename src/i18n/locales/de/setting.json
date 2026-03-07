@@ -1,6 +1,10 @@
 {
   "settings": "Einstellungen",
   "general": "Allgemein",
+  "human-in-the-loop": "Kontrolle",
+  "human-in-the-loop-title": "Kontrolle",
+  "terminal-approval": "Terminalbefehle genehmigen",
+  "terminal-approval-hint": "Ihre Genehmigung einholen, bevor potenziell gefährliche Terminalbefehle ausgeführt werden (z. B. rm, sudo, kill).",
   "privacy": "Datenschutz",
   "models": "Modelle",
   "mcp": "MCP & Tools",

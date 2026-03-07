@@ -24,9 +24,14 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import {
+  AgentStep,
+  ApprovalAction,
+  ChatTaskStatus,
+  TERMINAL_APPROVAL_STORAGE_KEY,
+} from '@/types/constants';
 import { ExecutionStatus } from '@/types';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { TriangleAlert } from 'lucide-react';
+import { Square, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -104,6 +109,10 @@ export default function ChatBox(): JSX.Element {
   const share_token = searchParams.get('share_token');
   const skill_prompt = searchParams.get('skill_prompt');
 
+  const [loading, setLoading] = useState(false);
+  const [isReplayLoading, setIsReplayLoading] = useState(false);
+  const [showFullCommand, setShowFullCommand] = useState(false);
+  const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
   const handleSendRef = useRef<
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
   >(null);
@@ -530,6 +539,11 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              hitl_options: {
+                terminal_approval:
+                  localStorage.getItem(TERMINAL_APPROVAL_STORAGE_KEY) ===
+                  'true',
+              },
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {
@@ -993,6 +1007,205 @@ export default function ChatBox(): JSX.Element {
             replayLoading={isReplayLoading}
             onReplay={handleReplay}
           />
+          {/* Dangerous command approval queue */}
+          {chatStore.activeTaskId &&
+            (chatStore.tasks[chatStore.activeTaskId]?.approvalQueue?.length ??
+              0) > 0 && (
+              <div className="mx-4 mb-2 flex flex-col gap-3 rounded-xl border border-border-secondary bg-surface-tertiary px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="text-body-sm font-medium text-text-heading">
+                    {t('chat.approval-prompt')}
+                  </div>
+                  {chatStore.tasks[chatStore.activeTaskId].approvalQueue
+                    .length > 1 && (
+                    <span className="rounded-full bg-surface-secondary px-2 py-0.5 text-body-xs text-text-secondary">
+                      {
+                        chatStore.tasks[chatStore.activeTaskId].approvalQueue
+                          .length
+                      }{' '}
+                      {t('chat.approval-pending')}
+                    </span>
+                  )}
+                </div>
+                {(() => {
+                  const current =
+                    chatStore.tasks[chatStore.activeTaskId].approvalQueue[0];
+                  const cmd = current?.command || '';
+                  const isLong = cmd.length > 100;
+                  return (
+                    <code
+                      className="break-all rounded bg-surface-secondary px-2 py-1 text-body-sm text-text-secondary"
+                      style={
+                        isLong && showFullCommand
+                          ? {
+                              maxHeight: '200px',
+                              overflowY: 'auto',
+                              display: 'block',
+                            }
+                          : undefined
+                      }
+                    >
+                      {!isLong || showFullCommand
+                        ? cmd
+                        : cmd.slice(0, 100) + '...'}
+                      {isLong && (
+                        <>
+                          {' '}
+                          <span
+                            className="cursor-pointer text-text-link underline"
+                            onClick={() => setShowFullCommand((v) => !v)}
+                          >
+                            {showFullCommand
+                              ? t('chat.show-less')
+                              : t('chat.show-more')}
+                          </span>
+                        </>
+                      )}
+                    </code>
+                  );
+                })()}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-surface-tertiary px-3 py-1.5 text-body-sm font-medium text-text-heading"
+                    style={{ border: '1px solid var(--border-secondary)' }}
+                    onClick={async () => {
+                      const taskId = chatStore.activeTaskId as string;
+                      const projectId = projectStore.activeProjectId;
+                      const current =
+                        chatStore.tasks[taskId]?.approvalQueue?.[0];
+                      if (!projectId || !current) return;
+                      await fetchPost(`/chat/${projectId}/approval`, {
+                        approval: ApprovalAction.APPROVE_ONCE,
+                        agent: current.agent,
+                        approval_id: current.approvalId,
+                      });
+                      chatStore.shiftApproval(taskId);
+                      setShowFullCommand(false);
+                    }}
+                  >
+                    {t('chat.approval-yes')}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-surface-tertiary px-3 py-1.5 text-body-sm font-medium text-text-heading"
+                    style={{ border: '1px solid var(--border-secondary)' }}
+                    onClick={async () => {
+                      const taskId = chatStore.activeTaskId as string;
+                      const projectId = projectStore.activeProjectId;
+                      const current =
+                        chatStore.tasks[taskId]?.approvalQueue?.[0];
+                      if (!projectId || !current) return;
+                      await fetchPost(`/chat/${projectId}/approval`, {
+                        approval: ApprovalAction.AUTO_APPROVE,
+                        agent: current.agent,
+                        approval_id: current.approvalId,
+                      });
+                      chatStore.clearAllApprovals(taskId);
+                      setShowFullCommand(false);
+                    }}
+                  >
+                    {t('chat.approval-all-yes')}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-surface-tertiary px-3 py-1.5 text-body-sm font-medium text-text-heading"
+                    style={{ border: '1px solid var(--border-secondary)' }}
+                    onClick={async () => {
+                      const taskId = chatStore.activeTaskId as string;
+                      const projectId = projectStore.activeProjectId;
+                      const current =
+                        chatStore.tasks[taskId]?.approvalQueue?.[0];
+                      if (!projectId || !current) return;
+                      // Send rejection first so the backend await unblocks
+                      await fetchPost(`/chat/${projectId}/approval`, {
+                        approval: ApprovalAction.REJECT,
+                        agent: current.agent,
+                        approval_id: current.approvalId,
+                      });
+                      chatStore.clearAllApprovals(taskId);
+                      setShowFullCommand(false);
+                      // Also stop the task — rejection means fail/stop entirely
+                      await fetchPost(`/chat/${projectId}/skip-task`, {
+                        project_id: projectId,
+                      });
+                    }}
+                  >
+                    {t('chat.approval-no')}
+                  </button>
+                </div>
+              </div>
+            )}
+          {chatStore.activeTaskId && (
+            <BottomBox
+              state={getBottomBoxState()}
+              queuedMessages={
+                isTaskBusy
+                  ? []
+                  : projectStore
+                      .getProjectById(projectStore.activeProjectId || '')
+                      ?.queuedMessages?.map((m) => ({
+                        id: m.task_id,
+                        content: m.content,
+                        timestamp: m.timestamp,
+                      })) || []
+              }
+              onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+              subtitle={
+                getBottomBoxState() === 'confirm'
+                  ? (() => {
+                      // Find the last message where role is "user"
+                      const messages =
+                        chatStore.tasks[chatStore.activeTaskId]?.messages || [];
+                      const lastUserMessage = messages
+                        .slice()
+                        .reverse()
+                        .find((msg) => msg.role === 'user');
+                      return (
+                        lastUserMessage?.content ||
+                        chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                      );
+                    })()
+                  : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+              }
+              onStartTask={() => handleConfirmTask()}
+              onEdit={handleEditQuery}
+              tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+              taskTime={taskTime}
+              taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+              onReplay={handleReplay}
+              replayDisabled={
+                chatStore.tasks[chatStore.activeTaskId]?.status !==
+                ChatTaskStatus.FINISHED
+              }
+              replayLoading={isReplayLoading}
+              onPauseResume={handlePauseResume}
+              pauseResumeLoading={isPauseResumeLoading}
+              loading={loading}
+              inputProps={{
+                value: message,
+                onChange: setMessage,
+                onSend: handleSend,
+                files:
+                  chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                    (f) => ({
+                      fileName: f.fileName,
+                      filePath: f.filePath,
+                    })
+                  ) || [],
+                onFilesChange: (files) =>
+                  chatStore.setAttaches(
+                    chatStore.activeTaskId as string,
+                    files as any
+                  ),
+                onAddFile: handleFileSelect,
+                placeholder: t('chat.ask-placeholder'),
+                disabled: isInputDisabled,
+                textareaRef: textareaRef,
+                allowDragDrop: true,
+                privacy: privacy,
+                useCloudModelInDev: useCloudModelInDev,
+              }}
         )}
 
         {/* Main Content Area - Flex 1 to take remaining space */}

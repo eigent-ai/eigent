@@ -33,6 +33,7 @@ import {
   AgentStatusValue,
   AgentStep,
   ChatTaskStatus,
+  TERMINAL_APPROVAL_STORAGE_KEY,
   TaskStatus,
   type ChatTaskStatusType,
 } from '@/types/constants';
@@ -76,6 +77,8 @@ interface Task {
   isTakeControl: boolean;
   isTaskEdit: boolean;
   isContextExceeded?: boolean;
+  // Queue of pending command approvals (supports concurrent requests)
+  approvalQueue: { command: string; agent: string; approvalId: string }[];
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
   // Trigger execution ID for tracking trigger task completion
@@ -121,6 +124,12 @@ export interface ChatStore {
   setTaskRunning: (taskId: string, taskRunning: TaskInfo[]) => void;
   setActiveAsk: (taskId: string, agentName: string) => void;
   setActiveAskList: (taskId: string, message: Message[]) => void;
+  pushApproval: (
+    taskId: string,
+    item: { command: string; agent: string; approvalId: string }
+  ) => void;
+  shiftApproval: (taskId: string) => void;
+  clearAllApprovals: (taskId: string) => void;
   addWebViewUrl: (
     taskId: string,
     webViewUrl: string,
@@ -368,6 +377,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshotsTemp: [],
             isTakeControl: false,
             isTaskEdit: false,
+            approvalQueue: [],
             streamingDecomposeText: '',
             executionId: undefined,
           },
@@ -815,6 +825,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               installed_mcp: { mcpServers: {} },
               language: systemLanguage,
               allow_local_system: true,
+              hitl_options: {
+                terminal_approval: (() => {
+                  try {
+                    return (
+                      localStorage.getItem(TERMINAL_APPROVAL_STORAGE_KEY) ===
+                      'true'
+                    );
+                  } catch {
+                    return false;
+                  }
+                })(),
+              },
               attaches: (
                 messageAttaches ||
                 targetChatStore.getState().tasks[newTaskId]?.attaches ||
@@ -1066,6 +1088,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             addFileList,
             setActiveAsk,
             setActiveAskList,
+            pushApproval,
+            shiftApproval,
+            clearAllApprovals,
             tasks,
             create: _create,
             setTaskTime,
@@ -1973,6 +1998,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             return;
           }
+          // Terminal command approval - no 30s auto-skip
+          if (agentMessages.step === AgentStep.COMMAND_APPROVAL) {
+            pushApproval(currentTaskId, {
+              command: agentMessages.data?.command ?? '',
+              agent: agentMessages.data?.agent ?? '',
+              approvalId: agentMessages.data?.approval_id ?? '',
+            });
+            return;
+          }
           // Write File
           if (agentMessages.step === AgentStep.WRITE_FILE) {
             console.log('write_to_file', agentMessages.data);
@@ -2398,6 +2432,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             setIsPending(currentTaskId, false);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
+            // Clear any pending approval prompts so they don't
+            // persist when the user re-enters the project.
+            clearAllApprovals(currentTaskId);
             // completed tasks move to history
             setUpdateCount();
 
@@ -2969,6 +3006,48 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           [taskId]: {
             ...state.tasks[taskId],
             activeAsk: agentName,
+          },
+        },
+      }));
+    },
+    pushApproval(
+      taskId: string,
+      item: { command: string; agent: string; approvalId: string }
+    ) {
+      set((state) => ({
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [taskId]: {
+            ...state.tasks[taskId],
+            approvalQueue: [
+              ...(state.tasks[taskId]?.approvalQueue ?? []),
+              item,
+            ],
+          },
+        },
+      }));
+    },
+    shiftApproval(taskId: string) {
+      set((state) => ({
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [taskId]: {
+            ...state.tasks[taskId],
+            approvalQueue: (state.tasks[taskId]?.approvalQueue ?? []).slice(1),
+          },
+        },
+      }));
+    },
+    clearAllApprovals(taskId: string) {
+      set((state) => ({
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [taskId]: {
+            ...state.tasks[taskId],
+            approvalQueue: [],
           },
         },
       }));

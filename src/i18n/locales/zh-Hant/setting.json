@@ -1,6 +1,10 @@
 {
   "settings": "設定",
   "general": "通用",
+  "human-in-the-loop": "人機協作",
+  "human-in-the-loop-title": "人機協作",
+  "terminal-approval": "終端命令審批",
+  "terminal-approval-hint": "啟用後，執行危險的終端命令（如 rm、sudo、kill 等）前需要您的確認。",
   "privacy": "隱私",
   "models": "模型",
   "mcp": "MCP & 工具",

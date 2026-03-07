@@ -21,7 +21,12 @@ from typing import Literal
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
-from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
+from app.hitl.config import HitlOptions
+from app.model.enums import (  # noqa: F401
+    DEFAULT_SUMMARY_PROMPT,
+    ApprovalAction,
+    Status,
+)
 from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
@@ -65,6 +70,7 @@ class Chat(BaseModel):
     cdp_browsers: list[dict] = Field(default_factory=list)
     max_retries: int = 3
     allow_local_system: bool = False
+    hitl_options: HitlOptions = HitlOptions()
     installed_mcp: McpServers = {"mcpServers": {}}
     bun_mirror: str = ""
     uvx_mirror: str = ""
@@ -141,6 +147,7 @@ class SupplementChat(BaseModel):
     question: str
     task_id: str | None = None
     attaches: list[str] = []
+    hitl_options: HitlOptions | None = None
 
 
 class HumanReply(BaseModel):

@@ -38,6 +38,7 @@ export const AgentStep = {
   REMOVE_TASK: 'remove_task',
   NOTICE: 'notice',
   ASK: 'ask',
+  COMMAND_APPROVAL: 'command_approval',
   SYNC: 'sync',
   NOTICE_CARD: 'notice_card',
   FAILED: 'failed',
@@ -45,6 +46,19 @@ export const AgentStep = {
 } as const;
 
 export type AgentStepType = (typeof AgentStep)[keyof typeof AgentStep];
+
+/**
+ * User responses for terminal command approval.
+ * Mirrors backend ApprovalAction enum in app/model/enums.py.
+ */
+export const ApprovalAction = {
+  APPROVE_ONCE: 'approve_once',
+  AUTO_APPROVE: 'auto_approve',
+  REJECT: 'reject',
+} as const;
+
+export type ApprovalActionType =
+  (typeof ApprovalAction)[keyof typeof ApprovalAction];
 
 /**
  * Status values on AgentMessage.status (SSE message lifecycle).
@@ -98,3 +112,8 @@ export const AgentStatusValue = {
 
 export type AgentStatusType =
   (typeof AgentStatusValue)[keyof typeof AgentStatusValue];
+
+/**
+ * localStorage key for the HITL terminal approval toggle.
+ */
+export const TERMINAL_APPROVAL_STORAGE_KEY = 'eigent_terminal_approval';

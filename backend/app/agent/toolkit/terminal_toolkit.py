@@ -19,6 +19,8 @@ import platform
 import shutil
 import subprocess
 import threading
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from camel.toolkits.terminal_toolkit import (
@@ -28,16 +30,24 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
+from app.hitl.terminal_command import (
+    is_dangerous_command,
+    validate_cd_within_working_dir,
+)
+from app.model.enums import ApprovalAction
 from app.service.task import (
     Action,
+    ActionCommandApprovalData,
     ActionTerminalData,
     Agents,
     get_task_lock,
+    get_task_lock_if_exists,
     process_task,
 )
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 logger = logging.getLogger("terminal_toolkit")
+
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
@@ -58,7 +68,7 @@ def get_terminal_base_venv_path() -> str:
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
     _thread_pool: ThreadPoolExecutor | None = None
-    _thread_local = threading.local()
+    _thread_local: threading.local = threading.local()
 
     def __init__(
         self,
@@ -69,7 +79,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         use_docker_backend: bool = False,
         docker_container_name: str | None = None,
         session_logs_dir: str | None = None,
-        safe_mode: bool = True,
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = True,
     ):
@@ -100,22 +109,30 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 max_workers=1, thread_name_prefix="terminal_toolkit"
             )
 
+        self._use_docker_backend = use_docker_backend
+        self._working_directory = working_directory
+
+        # safe_mode is read fresh from task_lock in shell_exec (see
+        # _get_terminal_approval), but we need an initial value for
+        # super().__init__.
+        task_lock = get_task_lock_if_exists(api_task_id)
+        terminal_approval = (
+            task_lock.hitl_options.terminal_approval if task_lock else False
+        )
+        camel_safe_mode = not terminal_approval
         super().__init__(
             timeout=timeout,
             working_directory=working_directory,
             use_docker_backend=use_docker_backend,
             docker_container_name=docker_container_name,
             session_logs_dir=session_logs_dir,
-            safe_mode=safe_mode,
+            safe_mode=camel_safe_mode,
             allowed_commands=allowed_commands,
             clone_current_env=True,
             install_dependencies=[],
         )
 
         # Auto-register with TaskLock for cleanup when task ends
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(api_task_id)
         if task_lock:
             task_lock.register_toolkit(self)
             logger.info(
@@ -349,7 +366,96 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 exc_info=True,
             )
 
-    def shell_exec(
+    def _get_terminal_approval(self) -> bool:
+        """Read terminal_approval from task_lock on every call.
+
+        This ensures the setting takes effect immediately when the user
+        toggles it between tasks (the task_lock is updated at POST /chat).
+        Also syncs Camel's safe_mode so it stays consistent.
+        """
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        enabled = (
+            task_lock.hitl_options.terminal_approval if task_lock else False
+        )
+        self.safe_mode = not enabled
+        return enabled
+
+    async def _request_user_approval(self, action_data) -> str | None:
+        """Send a command approval request to the frontend and wait.
+
+        Flow::
+
+            _request_user_approval (agent coroutine)
+              1. create_approval(approval_id)  → Future stored, agent will await it
+              2. put_queue(action_data)         → drops SSE event into shared queue
+              3. await future                   → agent suspends
+
+            SSE generator in chat_service.py (independently)
+              4. get_queue()                    → picks up the event
+              5. yield sse_json(...)            → sends command_approval to frontend
+
+            Frontend
+              6. shows approval card
+
+            User clicks "Approve Once" / "Auto Approve" / "Reject"
+              7. POST /approval → resolve_approval() or resolve_all_approvals_for_agent()
+              8. future.set_result(...)         → agent resumes at step 3
+
+        Args:
+            action_data (ActionCommandApprovalData): SSE payload containing
+                the command and agent name.  ``approval_id`` is injected into
+                ``action_data.data`` before the event is queued.
+
+        Returns:
+            None if the command is approved (approve_once or auto_approve).
+            An error string if the command is rejected.
+        """
+        task_lock = get_task_lock(self.api_task_id)
+        if task_lock.auto_approve.get(self.agent_name, False):
+            return None
+
+        # Each concurrent call gets its own Future keyed by approval_id.
+        # Use str concatenation (not f-string) so that Enum values like
+        # Agents.developer_agent produce "developer_agent_..." instead of
+        # "Agents.developer_agent_..." — the latter breaks startswith()
+        # matching in resolve_all_approvals_for_agent.
+        approval_id = self.agent_name + "_" + uuid.uuid4().hex[:12]
+        action_data.data["approval_id"] = approval_id
+        future = task_lock.create_approval(approval_id)
+
+        logger.info(
+            "[APPROVAL] Pushing approval event to SSE queue, "
+            "api_task_id=%s, agent=%s, approval_id=%s",
+            self.api_task_id,
+            self.agent_name,
+            approval_id,
+        )
+
+        await task_lock.put_queue(action_data)
+
+        logger.info("[APPROVAL] Event pushed, waiting for user response")
+
+        approval = await future
+
+        logger.info("[APPROVAL] Received response: %s", approval)
+
+        # Re-check: another concurrent call may have set auto_approve
+        # while this call was waiting on its Future.
+        if task_lock.auto_approve.get(self.agent_name, False):
+            return None
+
+        if approval == ApprovalAction.approve_once:
+            return None
+        if approval == ApprovalAction.auto_approve:
+            task_lock.auto_approve[self.agent_name] = True
+            # Unblock all other pending approvals for this agent
+            task_lock.resolve_all_approvals_for_agent(
+                self.agent_name, ApprovalAction.auto_approve
+            )
+            return None
+        return "Operation rejected by user. The task is being stopped."
+
+    async def shell_exec(
         self,
         command: str,
         id: str | None = None,
@@ -357,6 +463,25 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         timeout: float = 20.0,
     ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
+
+        When HITL terminal approval is on, commands that require user
+        confirmation trigger an approval request before execution.
+
+        .. note:: Async override of a sync base method
+
+            Camel's ``BaseTerminalToolkit.shell_exec`` is **sync-only** (no
+            async variant exists in the upstream library).  We override it
+            as ``async def`` so the HITL approval flow can ``await`` the
+            SSE queue and the approval-response queue — following the same
+            asyncio.Queue pattern used by ``HumanToolkit.ask_human_via_gui``.
+
+            Because the base method is sync and this override is async, the
+            ``listen_toolkit`` decorator applies a ``__wrapped__`` fix (see
+            ``toolkit_listen.py``) to ensure Camel's ``FunctionTool``
+            dispatches this method via ``async_call`` on the **main** event
+            loop, rather than via the sync ``__call__`` path which would run
+            it on a background loop where cross-loop ``asyncio.Queue`` awaits
+            silently fail.
 
         Args:
             command (str): The shell command to execute.
@@ -368,11 +493,27 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Returns:
             str: The output of the command execution.
         """
-        # Auto-generate ID if not provided
         if id is None:
-            import time
-
             id = f"auto_{int(time.time() * 1000)}"
+
+        if not self._use_docker_backend:
+            ok, err = validate_cd_within_working_dir(
+                command, self._working_directory
+            )
+            if not ok:
+                return err or "cd not allowed."
+
+        terminal_approval = self._get_terminal_approval()
+        is_dangerous = (
+            is_dangerous_command(command) if terminal_approval else False
+        )
+        if terminal_approval and is_dangerous:
+            approval_data = ActionCommandApprovalData(
+                data={"command": command, "agent": self.agent_name}
+            )
+            rejection = await self._request_user_approval(approval_data)
+            if rejection is not None:
+                return rejection
 
         result = super().shell_exec(
             id=id, command=command, block=block, timeout=timeout
