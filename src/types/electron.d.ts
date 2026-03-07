@@ -207,6 +207,25 @@ interface ElectronAPI {
     userId: string,
     skillName: string
   ) => Promise<{ success: boolean; error?: string }>;
+  // Saved accounts
+  credentialsSave: (
+    email: string,
+    token: string,
+    username: string,
+    userId: number
+  ) => Promise<{ success: boolean; error?: string }>;
+  credentialsLoad: () => Promise<{
+    success: boolean;
+    accounts: Array<{
+      email: string;
+      token: string;
+      username: string;
+      user_id: number;
+    }>;
+  }>;
+  credentialsRemove: (
+    email: string
+  ) => Promise<{ success: boolean; error?: string }>;
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;
   getCdpBrowsers: () => Promise<any[]>;
