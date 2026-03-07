@@ -227,7 +227,7 @@ export const MarkDown = memo(
       <>
         <div
           ref={contentRef}
-          className="markdown-body max-w-none overflow-hidden"
+          className="markdown-body max-w-none"
           dangerouslySetInnerHTML={{ __html: html }}
         />
 
