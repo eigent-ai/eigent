@@ -612,8 +612,10 @@ class TaskLock:
     ) -> tuple[int, str]:
         """Compress older conversation entries into a summary.
 
-        Moves older messages to a summary instead of discarding them,
-        preserving context while reducing token usage.
+        Creates a structured summary with:
+        - Number of conversations compressed
+        - Key actions (from tool calls)
+        - Main topics discussed
 
         Args:
             keep_recent: Number of recent entries to keep unchanged
@@ -632,21 +634,57 @@ class TaskLock:
         if not entries_to_compress:
             return 0, ""
 
-        # Generate summary from older entries
-        summary_parts = []
+        # Analyze entries for structured summary
+        actions = []
+        topics = set()
+        message_count = len(entries_to_compress)
+
         for entry in entries_to_compress:
             role = entry.get("role", "unknown")
-            content = str(entry.get("content", ""))[:500]  # Truncate long content
-            if content:
-                summary_parts.append(f"[{role}]: {content}")
+            content = str(entry.get("content", ""))
 
-        # Create a simple summary (in production, this could use an LLM)
-        summary = "; ".join(summary_parts[:10])  # Take first 10 entries
+            # Extract actions from tool calls
+            if role == "tool":
+                content_lower = content.lower()
+                if "created" in content_lower:
+                    actions.append("file creation")
+                elif "read" in content_lower:
+                    actions.append("file reading")
+                elif "wrote" in content_lower or "written" in content_lower:
+                    actions.append("file writing")
+                elif "executed" in content_lower or "run" in content_lower:
+                    actions.append("command execution")
+                elif "deleted" in content_lower:
+                    actions.append("file deletion")
+                elif "modified" in content_lower:
+                    actions.append("file modification")
+                elif "downloaded" in content_lower:
+                    actions.append("download")
+                elif "search" in content_lower or "found" in content_lower:
+                    actions.append("search")
+
+            # Simple topic extraction (first few words of user messages)
+            if role == "user" and content:
+                words = content.split()[:3]
+                if words:
+                    topics.add(words[0])
+
+        # Build structured summary
+        actions_str = ", ".join(set(actions)) if actions else "general interaction"
+        topics_str = ", ".join(topics) if topics else "various topics"
+
+        summary = (
+            f"[{message_count} msgs compressed] "
+            f"Actions: {actions_str}. "
+            f"Topics: {topics_str}"
+        )
+
+        # Truncate if needed
         if len(summary) > max_length:
             summary = summary[:max_length] + "..."
 
         # Store summary and replace older entries
-        self.last_task_summary = f"(Compressed {len(entries_to_compress)} previous entries): {summary}"
+        self.last_task_summary = summary
         self.conversation_history = recent_entries
 
         logger.info(
@@ -655,6 +693,8 @@ class TaskLock:
                 "task_id": self.id,
                 "compressed_count": len(entries_to_compress),
                 "summary_length": len(self.last_task_summary),
+                "actions": list(set(actions)),
+                "topics": list(topics),
             },
         )
 
