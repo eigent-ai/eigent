@@ -47,7 +47,7 @@ from app.service.task import (
     ActionSupplementData,
     ImprovePayload,
     delete_task_lock,
-    get_or_create_task_lock,
+    get_or_create_task_lock_async,
     get_task_lock,
     set_current_task_id,
     task_locks,
@@ -175,7 +175,7 @@ async def post(data: Chat, request: Request):
         },
     )
 
-    task_lock = get_or_create_task_lock(data.project_id)
+    task_lock = await get_or_create_task_lock_async(data.project_id)
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -251,7 +251,7 @@ async def post(data: Chat, request: Request):
 
 
 @router.post("/chat/{id}", name="improve chat")
-def improve(id: str, data: SupplementChat):
+async def improve(id: str, data: SupplementChat):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -268,17 +268,17 @@ def improve(id: str, data: SupplementChat):
             task_lock.background_tasks.clear()
         # Note: conversation_history and last_task_result are preserved
 
-        # Log context preservation
-        if hasattr(task_lock, "conversation_history"):
-            hist_len = len(task_lock.conversation_history)
-            chat_logger.info(
-                f"[CONTEXT] Preserved {hist_len} conversation entries"
-            )
-        if hasattr(task_lock, "last_task_result"):
-            result_len = len(task_lock.last_task_result)
-            chat_logger.info(
-                f"[CONTEXT] Preserved task result: {result_len} chars"
-            )
+        # Enhanced logging for context preservation
+        chat_logger.info(
+            "[CONTEXT] Task resumed for continuing conversation",
+            extra={
+                "task_id": id,
+                "conversation_entries": len(task_lock.conversation_history) if hasattr(task_lock, "conversation_history") else 0,
+                "has_summary": bool(getattr(task_lock, "last_task_summary", None)),
+                "summary_preview": task_lock.last_task_summary[:100] if task_lock.last_task_summary else "",
+                "result_length": len(task_lock.last_task_result) if task_lock.last_task_result else 0,
+            },
+        )
 
     # If task_id is provided, optimistically update
     # file_save_path (will be destroyed if task is
@@ -336,8 +336,7 @@ def improve(id: str, data: SupplementChat):
                 f" {e}"
             )
 
-    asyncio.run(
-        task_lock.put_queue(
+    await task_lock.put_queue(
             ActionImproveData(
                 data=ImprovePayload(
                     question=data.question,
@@ -346,7 +345,6 @@ def improve(id: str, data: SupplementChat):
                 new_task_id=data.task_id,
             )
         )
-    )
     chat_logger.info(
         "Improvement request queued with preserved context",
         extra={"project_id": id},
@@ -355,18 +353,18 @@ def improve(id: str, data: SupplementChat):
 
 
 @router.put("/chat/{id}", name="supplement task")
-def supplement(id: str, data: SupplementChat):
+async def supplement(id: str, data: SupplementChat):
     chat_logger.info("Chat supplement requested", extra={"task_id": id})
     task_lock = get_task_lock(id)
     if task_lock.status != Status.done:
         raise UserException(code.error, "Please wait task done")
-    asyncio.run(task_lock.put_queue(ActionSupplementData(data=data)))
+    await task_lock.put_queue(ActionSupplementData(data=data))
     chat_logger.debug("Supplement data queued", extra={"task_id": id})
     return Response(status_code=201)
 
 
 @router.delete("/chat/{id}", name="stop chat")
-def stop(id: str):
+async def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
     chat_logger.info(
@@ -386,7 +384,7 @@ def stop(id: str):
             " ActionStopData(Action.stop)"
             " to task_lock queue"
         )
-        asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
+        await task_lock.put_queue(ActionStopData(action=Action.stop))
         chat_logger.info(
             "[STOP-BUTTON] ActionStopData queued"
             " successfully, this will trigger"
@@ -405,19 +403,19 @@ def stop(id: str):
 
 
 @router.post("/chat/{id}/human-reply")
-def human_reply(id: str, data: HumanReply):
+async def human_reply(id: str, data: HumanReply):
     chat_logger.info(
         "Human reply received",
         extra={"task_id": id, "reply_length": len(data.reply)},
     )
     task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_human_input(data.agent, data.reply))
+    await task_lock.put_human_input(data.agent, data.reply)
     chat_logger.debug("Human reply processed", extra={"task_id": id})
     return Response(status_code=201)
 
 
 @router.post("/chat/{id}/install-mcp")
-def install_mcp(id: str, data: McpServers):
+async def install_mcp(id: str, data: McpServers):
     chat_logger.info(
         "Installing MCP servers",
         extra={
@@ -426,17 +424,15 @@ def install_mcp(id: str, data: McpServers):
         },
     )
     task_lock = get_task_lock(id)
-    asyncio.run(
-        task_lock.put_queue(
+    await task_lock.put_queue(
             ActionInstallMcpData(action=Action.install_mcp, data=data)
         )
-    )
     chat_logger.info("MCP installation queued", extra={"task_id": id})
     return Response(status_code=201)
 
 
 @router.post("/chat/{id}/add-task", name="add task to workforce")
-def add_task(id: str, data: AddTaskRequest):
+async def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(
         "Adding task to workforce for"
@@ -454,7 +450,7 @@ def add_task(id: str, data: AddTaskRequest):
             additional_info=data.additional_info,
             insert_position=data.insert_position,
         )
-        asyncio.run(task_lock.put_queue(add_task_action))
+        await task_lock.put_queue(add_task_action)
         return Response(status_code=201)
 
     except Exception as e:
@@ -466,7 +462,7 @@ def add_task(id: str, data: AddTaskRequest):
     "/chat/{project_id}/remove-task/{task_id}",
     name="remove task from workforce",
 )
-def remove_task(project_id: str, task_id: str):
+async def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
     chat_logger.info(
         f"Removing task {task_id} from workforce for project_id: {project_id}"
@@ -478,7 +474,7 @@ def remove_task(project_id: str, task_id: str):
         remove_task_action = ActionRemoveTaskData(
             task_id=task_id, project_id=project_id
         )
-        asyncio.run(task_lock.put_queue(remove_task_action))
+        await task_lock.put_queue(remove_task_action)
 
         chat_logger.info(
             "Task removal request queued for"
@@ -495,7 +491,7 @@ def remove_task(project_id: str, task_id: str):
 
 
 @router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
-def skip_task(project_id: str):
+async def skip_task(project_id: str):
     """
     Skip/Stop current task execution while preserving context.
     This endpoint is called when user clicks the Stop button.
@@ -533,7 +529,7 @@ def skip_task(project_id: str):
             " (preserves context,"
             " marks as done)"
         )
-        asyncio.run(task_lock.put_queue(skip_task_action))
+        await task_lock.put_queue(skip_task_action)
 
         chat_logger.info(
             "[STOP-BUTTON] Skip request"
