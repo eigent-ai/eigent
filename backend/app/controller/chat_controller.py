@@ -35,7 +35,7 @@ from app.model.chat import (
     SupplementChat,
     sse_json,
 )
-from app.service.chat_service import step_solve
+from app.service.chat_service.step_solve import step_solve
 from app.service.task import (
     Action,
     ActionAddTaskData,

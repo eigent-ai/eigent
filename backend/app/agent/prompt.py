@@ -220,6 +220,43 @@ multi-modal content across audio and visual domains."""
 TASK_SUMMARY_SYS_PROMPT = """\
 You are a helpful task assistant that can help users summarize the content of their tasks"""
 
+DEVELOPER_WORKER_DESCRIPTION = (
+    "Developer Agent: A master-level coding assistant with a powerful "
+    "terminal. It can write and execute code, manage files, automate "
+    "desktop tasks, and deploy web applications to solve complex "
+    "technical challenges."
+)
+
+BROWSER_WORKER_DESCRIPTION = (
+    "Browser Agent: Can search the web, extract webpage content, "
+    "simulate browser actions, and provide relevant information to "
+    "solve the given task."
+)
+
+DOCUMENT_WORKER_DESCRIPTION = (
+    "Document Agent: A document processing assistant skilled in creating "
+    "and modifying a wide range of file formats. It can generate "
+    "text-based files/reports (Markdown, JSON, YAML, HTML), "
+    "office documents (Word, PDF), presentations (PowerPoint), and "
+    "data files (Excel, CSV)."
+)
+
+MULTI_MODAL_WORKER_DESCRIPTION = (
+    "Multi-Modal Agent: A specialist in media processing. It can "
+    "analyze images and audio, transcribe speech, download videos, and "
+    "generate new images from text prompts."
+)
+
+AGENT_ENVIRONMENT_PROMPT = """\
+- You are now working in system {platform_system} with architecture \
+{platform_machine} at working directory `{working_directory}`. All local \
+file operations must occur here, but you can access files from any place \
+in the file system. For all file system operations, you MUST use absolute \
+paths to ensure precision and avoid ambiguity.
+The current date is {current_date}. For any date-related tasks, you MUST \
+use this as the current date.
+"""
+
 QUESTION_CONFIRM_SYS_PROMPT = """\
 You are a highly capable agent. Your primary function is to analyze a user's \
 request and determine the appropriate course of action. The current date is \
@@ -699,6 +736,68 @@ Your capabilities include:
 - When encountering verification challenges (like login, CAPTCHAs or
     robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>"""
+
+QUESTION_CONFIRM_PROMPT = """\
+{context_prompt}User Query: {user_query}
+
+Determine if this user query is a complex task or a simple question.
+
+**Complex task** (answer "yes"): Requires tools, code execution, \
+file operations, multi-step planning, or creating/modifying content
+- Examples: "create a file", "search for X", \
+"implement feature Y", "write code", "analyze data"
+
+**Simple question** (answer "no"): Can be answered directly \
+with knowledge or conversation history, no action needed
+- Examples: greetings ("hello", "hi"), \
+fact queries ("what is X?"), clarifications, status checks
+
+Answer only "yes" or "no". Do not provide any explanation.
+
+Is this a complex task? (yes/no):"""
+
+TASK_SUMMARY_PROMPT = """\
+The user's task is:
+---
+{task_string}
+---
+Your instructions are:
+1.  Come up with a short and descriptive name for this task.
+2.  Create a concise summary of the task's main points and objectives.
+3.  Return the task name and the summary, separated by a vertical bar (|).
+
+Example format: "Task Name|This is the summary of the task."
+Do not include any other text or formatting.
+"""
+
+SUBTASKS_SUMMARY_PROMPT = """\
+You are a professional summarizer. \
+Summarize the results of the following subtasks.
+
+Main Task: {task_content}
+
+Subtasks (with descriptions and results):
+---
+{subtasks_info}
+---
+
+Instructions:
+1. Provide a concise summary of what was accomplished
+2. Highlight key findings or outputs from each subtask
+3. Mention any important files created or actions taken
+4. Use bullet points or sections for clarity
+5. DO NOT repeat the task name in your summary - go straight to the results
+6. Keep it professional but conversational
+
+Summary:
+"""
+
+SIMPLE_ANSWER_PROMPT = """\
+{context_prompt}\
+User Query: {user_query}
+
+Provide a direct, helpful answer to this simple question.
+"""
 
 DEFAULT_SUMMARY_PROMPT = (
     "After completing the task, please generate"
