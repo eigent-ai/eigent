@@ -23,11 +23,11 @@ from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
 from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
-from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.openai_image_toolkit import OpenAIImageToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
@@ -56,9 +56,15 @@ def multi_modal_agent(options: Chat):
     video_download_toolkit = message_integration.register_toolkits(
         video_download_toolkit
     )
-    image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
-    image_analysis_toolkit = message_integration.register_toolkits(
-        image_analysis_toolkit
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id,
+        working_directory=working_directory,
+        agent_name=Agents.multi_modal_agent,
+    )
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit
     )
 
     terminal_toolkit = TerminalToolkit(
@@ -94,7 +100,7 @@ def multi_modal_agent(options: Chat):
 
     tools = [
         *video_download_toolkit.get_tools(),
-        *image_analysis_toolkit.get_tools(),
+        *screenshot_toolkit.get_tools(),
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.multi_modal_agent
         ),
@@ -160,12 +166,15 @@ def multi_modal_agent(options: Chat):
         tool_names=[
             VideoDownloaderToolkit.toolkit_name(),
             AudioAnalysisToolkit.toolkit_name(),
-            ImageAnalysisToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
             OpenAIImageToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             SearchToolkit.toolkit_name(),
             SkillToolkit.toolkit_name(),
+        ],
+        toolkits_to_register_agent=[
+            screenshot_toolkit_for_agent_registration,
         ],
     )
