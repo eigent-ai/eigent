@@ -83,6 +83,9 @@ export const ProjectSection = React.forwardRef<
     const activeTaskId = chatState.activeTaskId;
     const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
+    // Check if this is an instant replay (loaded from history with no delay)
+    const isInstantReplay = task?.type === 'replay' && task?.delayTime === 0;
+
     const messages = React.useMemo(() => {
       return task?.messages || [];
     }, [task?.messages]);
@@ -98,10 +101,10 @@ export const ProjectSection = React.forwardRef<
     return (
       <motion.div
         ref={ref}
-        initial={{ opacity: 0, y: 20 }}
+        initial={isInstantReplay ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3 }}
+        transition={isInstantReplay ? { duration: 0 } : { duration: 0.3 }}
         className="relative mb-8"
       >
         {/* User Query Groups */}
