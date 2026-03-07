@@ -57,21 +57,26 @@ def main():
     grader_weight = config.get("grader_weight", 0.5)
 
     # Run checker(s)
-    checker_score = 0.0
+    checker_count = len(config.get("checkers", []))
+    checker_passes = 0
     checker_results = []
     for checker_path in config.get("checkers", []):
         try:
             passed = run_checker(checker_path, args.working_dir)
             checker_results.append({"script": checker_path, "passed": passed})
             if passed:
-                checker_score = 1.0
+                checker_passes += 1
         except Exception as e:
             checker_results.append(
                 {"script": checker_path, "passed": False, "error": str(e)}
             )
+    checker_score = (
+        checker_passes / checker_count if checker_count > 0 else 0.0
+    )
 
     # Run grader(s)
-    grader_score = 0.0
+    grader_completed = 0
+    grader_total = 0
     grader_results = []
     for grader_path in config.get("graders", []):
         try:
@@ -83,8 +88,8 @@ def main():
                     "total": total,
                 }
             )
-            if total > 0:
-                grader_score = completed / total
+            grader_completed += completed
+            grader_total += total
         except Exception as e:
             grader_results.append(
                 {
@@ -94,6 +99,7 @@ def main():
                     "error": str(e),
                 }
             )
+    grader_score = grader_completed / grader_total if grader_total > 0 else 0.0
 
     # Compute weighted reward
     reward = checker_weight * checker_score + grader_weight * grader_score
