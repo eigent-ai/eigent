@@ -12,12 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Evaluation bridge: runs eigent checker + grader and outputs Harbor format.
-
-Reads config.json for task metadata, runs checker and grader scripts,
-computes weighted reward, and writes reward.txt + metrics.json.
-"""
-
 import argparse
 import importlib.util
 import json

@@ -12,12 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Eigent Benchmark adapter for Harbor.
-
-Reads eigent benchmark dataset JSON configs and generates
-Harbor-compatible task directories.
-"""
-
 from __future__ import annotations
 
 import json

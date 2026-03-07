@@ -12,8 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""CLI entry point for generating Harbor tasks from eigent benchmarks."""
-
 from __future__ import annotations
 
 import argparse
