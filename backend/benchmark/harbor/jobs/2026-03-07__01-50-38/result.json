@@ -1,0 +1,27 @@
+{
+  "id": "0e744db8-096a-461e-afc4-b062faa54b71",
+  "started_at": "2026-03-07T01:50:38.551528",
+  "finished_at": "2026-03-07T01:51:18.547924",
+  "n_total_trials": 1,
+  "stats": {
+    "n_trials": 1,
+    "n_errors": 0,
+    "evals": {
+      "claude-code__claude-haiku-4-5-20251001__eigent-bench": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "metrics": [
+          {
+            "mean": 1.0
+          }
+        ],
+        "reward_stats": {
+          "reward": {
+            "1.0": ["eigent-bench-0001__NA8UWX3"]
+          }
+        },
+        "exception_stats": {}
+      }
+    }
+  }
+}

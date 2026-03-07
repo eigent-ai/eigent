@@ -1,0 +1,94 @@
+{
+  "id": "742ae177-42b9-4b5a-b7d6-673c0dba1264",
+  "task_name": "eigent-bench-0000",
+  "trial_name": "eigent-bench-0000__yPkYXNd",
+  "trial_uri": "file:///Users/zecheng/code/eigent/backend/benchmark/harbor/jobs/2026-03-07__01-29-27/eigent-bench-0000__yPkYXNd",
+  "task_id": {
+    "path": "/Users/zecheng/code/eigent/backend/benchmark/harbor/datasets/eigent-bench/eigent-bench-0000"
+  },
+  "source": "eigent-bench",
+  "task_checksum": "f286df9d154c3785ff4e6e68d84780cd0aaedb8aa7f755eb10a9615c014fd464",
+  "config": {
+    "task": {
+      "path": "/Users/zecheng/code/eigent/backend/benchmark/harbor/datasets/eigent-bench/eigent-bench-0000",
+      "git_url": null,
+      "git_commit_id": null,
+      "overwrite": false,
+      "download_dir": null,
+      "source": "eigent-bench"
+    },
+    "trial_name": "eigent-bench-0000__yPkYXNd",
+    "trials_dir": "jobs/2026-03-07__01-29-27",
+    "timeout_multiplier": 1.0,
+    "agent_timeout_multiplier": null,
+    "verifier_timeout_multiplier": null,
+    "agent_setup_timeout_multiplier": null,
+    "environment_build_timeout_multiplier": null,
+    "agent": {
+      "name": "oracle",
+      "import_path": null,
+      "model_name": null,
+      "override_timeout_sec": null,
+      "override_setup_timeout_sec": null,
+      "max_timeout_sec": null,
+      "kwargs": {},
+      "env": {}
+    },
+    "environment": {
+      "type": "docker",
+      "import_path": null,
+      "force_build": false,
+      "delete": true,
+      "override_cpus": null,
+      "override_memory_mb": null,
+      "override_storage_mb": null,
+      "override_gpus": null,
+      "suppress_override_warnings": false,
+      "kwargs": {}
+    },
+    "verifier": {
+      "override_timeout_sec": null,
+      "max_timeout_sec": null,
+      "disable": false
+    },
+    "artifacts": [],
+    "job_id": "867d1511-5dcb-48b7-b86d-a23960f3f251"
+  },
+  "agent_info": {
+    "name": "oracle",
+    "version": "1.0.0",
+    "model_info": null
+  },
+  "agent_result": {
+    "n_input_tokens": null,
+    "n_cache_tokens": null,
+    "n_output_tokens": null,
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "exception_info": null,
+  "started_at": "2026-03-07T09:29:27.493610Z",
+  "finished_at": "2026-03-07T09:31:23.584302Z",
+  "environment_setup": {
+    "started_at": "2026-03-07T09:29:27.494365Z",
+    "finished_at": "2026-03-07T09:31:21.229934Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-03-07T09:31:21.229956Z",
+    "finished_at": "2026-03-07T09:31:21.229987Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-03-07T09:31:21.230025Z",
+    "finished_at": "2026-03-07T09:31:21.353647Z"
+  },
+  "verifier": {
+    "started_at": "2026-03-07T09:31:21.353820Z",
+    "finished_at": "2026-03-07T09:31:21.595572Z"
+  }
+}

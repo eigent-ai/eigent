@@ -1,0 +1,20 @@
+{
+  "reward": 0.0,
+  "checker_score": 0.0,
+  "grader_score": 0.0,
+  "checker_weight": 0.5,
+  "grader_weight": 0.5,
+  "checker_results": [
+    {
+      "script": "/tests/checker_2.py",
+      "passed": false
+    }
+  ],
+  "grader_results": [
+    {
+      "script": "/tests/grader_2.py",
+      "completed": 0,
+      "total": 9
+    }
+  ]
+}

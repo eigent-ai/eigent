@@ -1,0 +1,71 @@
+{
+  "job_name": "2026-03-07__01-24-36",
+  "jobs_dir": "jobs",
+  "n_attempts": 1,
+  "timeout_multiplier": 1.0,
+  "agent_timeout_multiplier": null,
+  "verifier_timeout_multiplier": null,
+  "agent_setup_timeout_multiplier": null,
+  "environment_build_timeout_multiplier": null,
+  "debug": false,
+  "orchestrator": {
+    "type": "local",
+    "n_concurrent_trials": 4,
+    "quiet": false,
+    "retry": {
+      "max_retries": 0,
+      "include_exceptions": null,
+      "exclude_exceptions": [
+        "VerifierTimeoutError",
+        "RewardFileNotFoundError",
+        "VerifierOutputParseError",
+        "AgentTimeoutError",
+        "RewardFileEmptyError"
+      ],
+      "wait_multiplier": 1.0,
+      "min_wait_sec": 1.0,
+      "max_wait_sec": 60.0
+    },
+    "kwargs": {}
+  },
+  "environment": {
+    "type": "docker",
+    "import_path": null,
+    "force_build": false,
+    "delete": true,
+    "override_cpus": null,
+    "override_memory_mb": null,
+    "override_storage_mb": null,
+    "override_gpus": null,
+    "suppress_override_warnings": false,
+    "kwargs": {}
+  },
+  "verifier": {
+    "override_timeout_sec": null,
+    "max_timeout_sec": null,
+    "disable": false
+  },
+  "metrics": [],
+  "agents": [
+    {
+      "name": "oracle",
+      "import_path": null,
+      "model_name": null,
+      "override_timeout_sec": null,
+      "override_setup_timeout_sec": null,
+      "max_timeout_sec": null,
+      "kwargs": {},
+      "env": {}
+    }
+  ],
+  "datasets": [
+    {
+      "task_names": null,
+      "exclude_task_names": null,
+      "n_tasks": null,
+      "path": "/Users/zecheng/code/eigent/backend/benchmark/harbor/datasets/eigent-bench"
+    }
+  ],
+  "tasks": [],
+  "artifacts": []
+}

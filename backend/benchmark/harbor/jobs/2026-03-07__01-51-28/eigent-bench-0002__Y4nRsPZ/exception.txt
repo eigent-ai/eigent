@@ -1,0 +1,48 @@
+Traceback (most recent call last):
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/agents/installed/base.py", line 156, in run
+    result = await environment.exec(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/environments/docker/docker.py", line 349, in exec
+    return await self._run_docker_compose_command(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/environments/docker/docker.py", line 197, in _run_docker_compose_command
+    stdout_bytes, stderr_bytes = await process.communicate()
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/subprocess.py", line 201, in communicate
+    stdin, stdout, stderr = await tasks.gather(stdin, stdout, stderr)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/subprocess.py", line 181, in _read_stream
+    output = await stream.read()
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/streams.py", line 706, in read
+    block = await self.read(self._limit)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/streams.py", line 713, in read
+    await self._wait_for_data('read')
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/streams.py", line 545, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/zecheng/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 259, in _execute_agent
+    await asyncio.wait_for(
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/zecheng/.local/share/uv/python/cpython-3.12.10-macos-aarch64-none/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/zecheng/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 483, in run
+    await self._execute_agent()
+  File "/Users/zecheng/.local/share/uv/tools/harbor/lib/python3.12/site-packages/harbor/trial/trial.py", line 268, in _execute_agent
+    raise AgentTimeoutError(
+harbor.trial.trial.AgentTimeoutError: Agent execution timed out after 600.0 seconds

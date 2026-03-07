@@ -1,0 +1,97 @@
+{
+  "id": "14cce6b7-3ef1-4083-8de6-7cb1eeae068a",
+  "task_name": "eigent-bench-0001",
+  "trial_name": "eigent-bench-0001__NA8UWX3",
+  "trial_uri": "file:///Users/zecheng/code/eigent/backend/benchmark/harbor/jobs/2026-03-07__01-50-38/eigent-bench-0001__NA8UWX3",
+  "task_id": {
+    "path": "datasets/eigent-bench/eigent-bench-0001"
+  },
+  "source": "eigent-bench",
+  "task_checksum": "a5f4e83d64b0d53f32967b3f6c8a2ce19e4cb4d183d5ef9eb0225dafa8c14e6b",
+  "config": {
+    "task": {
+      "path": "datasets/eigent-bench/eigent-bench-0001",
+      "git_url": null,
+      "git_commit_id": null,
+      "overwrite": false,
+      "download_dir": null,
+      "source": "eigent-bench"
+    },
+    "trial_name": "eigent-bench-0001__NA8UWX3",
+    "trials_dir": "jobs/2026-03-07__01-50-38",
+    "timeout_multiplier": 1.0,
+    "agent_timeout_multiplier": null,
+    "verifier_timeout_multiplier": null,
+    "agent_setup_timeout_multiplier": null,
+    "environment_build_timeout_multiplier": null,
+    "agent": {
+      "name": "claude-code",
+      "import_path": null,
+      "model_name": "anthropic/claude-haiku-4-5-20251001",
+      "override_timeout_sec": null,
+      "override_setup_timeout_sec": null,
+      "max_timeout_sec": null,
+      "kwargs": {},
+      "env": {}
+    },
+    "environment": {
+      "type": "docker",
+      "import_path": null,
+      "force_build": false,
+      "delete": true,
+      "override_cpus": null,
+      "override_memory_mb": null,
+      "override_storage_mb": null,
+      "override_gpus": null,
+      "suppress_override_warnings": false,
+      "kwargs": {}
+    },
+    "verifier": {
+      "override_timeout_sec": null,
+      "max_timeout_sec": null,
+      "disable": false
+    },
+    "artifacts": [],
+    "job_id": "0e744db8-096a-461e-afc4-b062faa54b71"
+  },
+  "agent_info": {
+    "name": "claude-code",
+    "version": "unknown",
+    "model_info": {
+      "name": "claude-haiku-4-5-20251001",
+      "provider": "anthropic"
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": null,
+    "n_cache_tokens": null,
+    "n_output_tokens": null,
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "verifier_result": {
+    "rewards": {
+      "reward": 1.0
+    }
+  },
+  "exception_info": null,
+  "started_at": "2026-03-07T09:50:38.553838Z",
+  "finished_at": "2026-03-07T09:51:18.544606Z",
+  "environment_setup": {
+    "started_at": "2026-03-07T09:50:38.555029Z",
+    "finished_at": "2026-03-07T09:50:44.040825Z"
+  },
+  "agent_setup": {
+    "started_at": "2026-03-07T09:50:44.040874Z",
+    "finished_at": "2026-03-07T09:50:55.802616Z"
+  },
+  "agent_execution": {
+    "started_at": "2026-03-07T09:50:55.802665Z",
+    "finished_at": "2026-03-07T09:51:16.787339Z"
+  },
+  "verifier": {
+    "started_at": "2026-03-07T09:51:16.789179Z",
+    "finished_at": "2026-03-07T09:51:17.035480Z"
+  }
+}

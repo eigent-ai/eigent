@@ -1,0 +1,2 @@
+export PATH="$HOME/.local/bin:$PATH"; claude --verbose --output-format=stream-json --permission-mode=bypassPermissions  --print -- 'Find what'"'"'s new in Python 3.13 for the `warnings` and `multiprocessing` modules. Create a markdown file named '"'"'python313_features.md'"'"' with each module name as a heading (#) and the exact text description from the official documentation as the content below each heading. Only make sure any code or script references are wrapped in backticks.
+' 2>&1 </dev/null | stdbuf -oL tee /logs/agent/claude-code.txt
