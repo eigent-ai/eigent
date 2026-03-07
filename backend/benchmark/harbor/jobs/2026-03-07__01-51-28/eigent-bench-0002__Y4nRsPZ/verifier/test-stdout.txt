@@ -1,9 +1,0 @@
-=========================================
-Running Eigent Benchmark Evaluation
-=========================================
-FAIL: /workspace/yc_w25_b2b_ai.csv does not exist
-MISS [2-10]: yc_w25_b2b_ai.csv does not exist
-Reward: 0.0000 (checker=0.00*0.5 + grader=0.00*0.5)
-=========================================
-Evaluation completed with exit code: 0
-=========================================

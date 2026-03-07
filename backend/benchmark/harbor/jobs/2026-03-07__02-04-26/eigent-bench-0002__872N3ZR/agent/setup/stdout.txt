@@ -1,87 +1,0 @@
-Get:1 http://deb.debian.org/debian trixie InRelease [140 kB]
-Get:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
-Get:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
-Get:4 http://deb.debian.org/debian trixie/main arm64 Packages [9607 kB]
-Get:5 http://deb.debian.org/debian trixie-updates/main arm64 Packages [5404 B]
-Get:6 http://deb.debian.org/debian-security trixie-security/main arm64 Packages [108 kB]
-Fetched 9952 kB in 1s (14.0 MB/s)
-Reading package lists...
-Reading package lists...
-Building dependency tree...
-Reading state information...
-curl is already the newest version (8.14.1-2+deb13u2).
-The following additional packages will be installed:
-  libproc2-0 linux-sysctl-defaults psmisc
-The following NEW packages will be installed:
-  libproc2-0 linux-sysctl-defaults procps psmisc
-0 upgraded, 4 newly installed, 0 to remove and 0 not upgraded.
-Need to get 1204 kB of archives.
-After this operation, 4527 kB of additional disk space will be used.
-Get:1 http://deb.debian.org/debian trixie/main arm64 linux-sysctl-defaults all 4.12 [5624 B]
-Get:2 http://deb.debian.org/debian trixie/main arm64 libproc2-0 arm64 2:4.0.4-9 [62.8 kB]
-Get:3 http://deb.debian.org/debian trixie/main arm64 procps arm64 2:4.0.4-9 [871 kB]
-Get:4 http://deb.debian.org/debian trixie/main arm64 psmisc arm64 23.7-2 [265 kB]
-Fetched 1204 kB in 0s (11.6 MB/s)
-Selecting previously unselected package linux-sysctl-defaults.
-(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 10882 files and directories currently installed.)
-Preparing to unpack .../linux-sysctl-defaults_4.12_all.deb ...
-Unpacking linux-sysctl-defaults (4.12) ...
-Selecting previously unselected package libproc2-0:arm64.
-Preparing to unpack .../libproc2-0_2%3a4.0.4-9_arm64.deb ...
-Unpacking libproc2-0:arm64 (2:4.0.4-9) ...
-Selecting previously unselected package procps.
-Preparing to unpack .../procps_2%3a4.0.4-9_arm64.deb ...
-Unpacking procps (2:4.0.4-9) ...
-Selecting previously unselected package psmisc.
-Preparing to unpack .../psmisc_23.7-2_arm64.deb ...
-Unpacking psmisc (23.7-2) ...
-Setting up psmisc (23.7-2) ...
-Setting up linux-sysctl-defaults (4.12) ...
-Setting up libproc2-0:arm64 (2:4.0.4-9) ...
-Setting up procps (2:4.0.4-9) ...
-Processing triggers for libc-bin (2.41-12+deb13u1) ...
-Setting up Claude Code...
-[?2026h
-Checking installation status...[?2026l[?2026h
-Installing Claude Code native build latest...[?2026l[?2026h
-Setting up launcher and shell integration...[?2026l[?2026h
-⚠ Setup notes:
-  • Native installation exists but ~/.local/bin is not in your PATH. Run:
-
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> your shell config file &&
-  source your shell config file
-[?2026l[?2026h
-✔ Claude Code successfully installed!
-
-  Version: 2.1.71
-
-  Location: ~/.local/bin/claude
-
-
-  Next: Run claude --help to get started
-
-⚠ Setup notes:
-  • Native installation exists but ~/.local/bin is not in your PATH. Run:
-
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> your shell config file &&
-  source your shell config file
-[?2026l[?2026h
-✔ Claude Code successfully installed!
-
-  Version: 2.1.71
-
-  Location: ~/.local/bin/claude
-
-
-  Next: Run claude --help to get started
-
-⚠ Setup notes:
-  • Native installation exists but ~/.local/bin is not in your PATH. Run:
-
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> your shell config file &&
-  source your shell config file
-[?2026l[?2026h
-[?2026l
-✅ Installation complete!
-
-2.1.71 (Claude Code)
