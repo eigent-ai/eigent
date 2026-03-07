@@ -542,7 +542,7 @@ code {
 
 /* Scoped file viewer: prevent file content CSS from affecting sidebar and app layout */
 .file-viewer-content {
-  contain: layout style;
+  contain: style;
   isolation: isolate;
 }
 
