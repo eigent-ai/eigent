@@ -46,6 +46,44 @@ class QuestionAnalysisResult(BaseModel):
     )
 
 
+class TaskAnalysisResult(BaseModel):
+    """Result of combined task analysis (complexity + summary).
+
+    Merges question_confirm (complexity) and summary_task (name/summary)
+    into one LLM call. See issue #1427.
+    """
+
+    is_complex: bool = Field(
+        description="True if complex task requiring tools/workforce, "
+        "False if simple question answerable directly."
+    )
+    task_name: str | None = Field(
+        default=None,
+        description="Short descriptive task name. For complex tasks: describe "
+        "the task. For simple questions: short label (e.g. 'Greeting', "
+        "'Fact Query').",
+    )
+    summary: str | None = Field(
+        default=None,
+        description="Concise task summary. Only when is_complex=True.",
+    )
+
+    def has_valid_prefetch_data(self) -> bool:
+        """Return True if prefetched summary can be used (skip summary_task).
+
+        When is_complex=True, task_name and summary must both be non-empty.
+        Otherwise we must fall back to calling summary_task.
+        """
+        if not self.is_complex:
+            return False
+        return bool(
+            self.task_name
+            and self.task_name.strip()
+            and self.summary
+            and self.summary.strip()
+        )
+
+
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 
