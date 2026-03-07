@@ -80,16 +80,34 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
 };
 
-/** Ordered list of workflow agents (name + icon) for use in skill scope and elsewhere. */
-export const WORKFLOW_AGENT_LIST: { name: string; icon: ReactNode }[] = [
-  { name: agentMap.developer_agent.name, icon: agentMap.developer_agent.icon },
-  { name: agentMap.browser_agent.name, icon: agentMap.browser_agent.icon },
-  { name: agentMap.document_agent.name, icon: agentMap.document_agent.icon },
+/** Ordered list of workflow agents (id + name + icon) for use in skill scope and elsewhere. */
+export const WORKFLOW_AGENT_LIST: {
+  id: WorkflowAgentType;
+  name: string;
+  icon: ReactNode;
+}[] = [
   {
+    id: 'developer_agent',
+    name: agentMap.developer_agent.name,
+    icon: agentMap.developer_agent.icon,
+  },
+  {
+    id: 'browser_agent',
+    name: agentMap.browser_agent.name,
+    icon: agentMap.browser_agent.icon,
+  },
+  {
+    id: 'document_agent',
+    name: agentMap.document_agent.name,
+    icon: agentMap.document_agent.icon,
+  },
+  {
+    id: 'multi_modal_agent',
     name: agentMap.multi_modal_agent.name,
     icon: agentMap.multi_modal_agent.icon,
   },
   {
+    id: 'social_media_agent',
     name: agentMap.social_media_agent.name,
     icon: agentMap.social_media_agent.icon,
   },
@@ -100,7 +118,8 @@ export function getWorkflowAgentDisplay(
   agentName: string
 ): { name: string; icon: ReactNode } | undefined {
   const entry = WORKFLOW_AGENT_LIST.find(
-    (a) => a.name.toLowerCase() === agentName.toLowerCase()
+    (a) => a.id.toLowerCase() === agentName.toLowerCase()
   );
-  return entry;
+  if (!entry) return undefined;
+  return { name: entry.name, icon: entry.icon };
 }

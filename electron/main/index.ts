@@ -352,6 +352,9 @@ app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
 
+// Disable Fontations (Rust-based font engine) to prevent crashes on macOS
+app.commandLine.appendSwitch('disable-features', 'Fontations');
+
 // ==================== Proxy configuration ====================
 // Read proxy from global .env file on startup
 proxyUrl = readGlobalEnvKey('HTTP_PROXY');
@@ -689,9 +692,10 @@ function registerIpcHandlers() {
   // Launch CDP browser with automatic port assignment
   ipcMain.handle('launch-cdp-browser', async () => {
     try {
-      // 1. Find available port (9223–9300) by checking no CDP browser is listening
+      // 1. Find available port (9224–9300) by checking no CDP browser is listening
+      // Port 9223 is reserved for the login browser
       let port: number | null = null;
-      for (let p = 9223; p < 9300; p++) {
+      for (let p = 9224; p < 9300; p++) {
         if (
           !cdp_browser_pool.some((b) => b.port === p) &&
           !(await isCdpPortAlive(p))
@@ -701,7 +705,7 @@ function registerIpcHandlers() {
         }
       }
       if (port === null) {
-        return { success: false, error: 'No available port in 9223-9299' };
+        return { success: false, error: 'No available port in 9224-9299' };
       }
 
       // 2. Find Playwright Chromium executable
