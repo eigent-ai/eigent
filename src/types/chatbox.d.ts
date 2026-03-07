@@ -114,6 +114,7 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    error_code?: string | null;
   }
 
   interface AgentMessage {
@@ -146,6 +147,7 @@ declare global {
       current_length?: number;
       max_length?: number;
       text?: string;
+      error_code?: string | null;
     };
     status?: AgentMessageStatusType;
   }
