@@ -16,7 +16,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 // type definition
-type InitState = 'permissions' | 'carousel' | 'done';
+type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type CloudModelType =
@@ -29,6 +29,7 @@ type CloudModelType =
   | 'gpt-5'
   | 'gpt-5.1'
   | 'gpt-5.2'
+  | 'gpt-5.4'
   | 'gpt-5-mini'
   | 'minimax_m2_5';
 
@@ -108,7 +109,7 @@ const authStore = create<AuthState>()(
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       preferredIDE: 'system',
-      initState: 'permissions',
+      initState: 'carousel',
       share_token: null,
       localProxyValue: null,
       workerListData: {},
