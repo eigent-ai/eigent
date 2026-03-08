@@ -58,6 +58,10 @@ from app.service.task import (
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory, list_files
+from app.utils.long_term_memory import (
+    MEMORY_ARCHITECTURE_PROMPT,
+    get_index_for_prompt,
+)
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
@@ -207,7 +211,8 @@ def check_conversation_history_length(
 
 
 def build_conversation_context(
-    task_lock: TaskLock, header: str = "=== CONVERSATION HISTORY ==="
+    task_lock: TaskLock,
+    header: str = "=== CONVERSATION HISTORY ===",
 ) -> str:
     """Build conversation context from task_lock history
     with files listed only once at the end.
@@ -217,14 +222,13 @@ def build_conversation_context(
         header: Header text for the context section
 
     Returns:
-        Formatted context string with task history
-        and files listed once at the end
+        Formatted context string with task history and files listed once at the end
     """
     context = ""
     working_directories = set()  # Collect all unique working directories
 
     if task_lock.conversation_history:
-        context = f"{header}\n"
+        context += f"{header}\n"
 
         for entry in task_lock.conversation_history:
             if entry["role"] == "task_result":
@@ -2415,6 +2419,13 @@ The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """
+
+    if getattr(data, "use_long_term_memory", False):
+        enhanced_description += MEMORY_ARCHITECTURE_PROMPT
+        # Snapshot at agent-creation time; .eigent/ may change during the session.
+        memory_index = get_index_for_prompt(working_directory)
+        if memory_index:
+            enhanced_description += "\n" + memory_index
 
     # Pass per-agent custom model config if available
     custom_model_config = getattr(data, "custom_model_config", None)
