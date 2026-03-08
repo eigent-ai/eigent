@@ -32,6 +32,7 @@ class UserPrivacySettings(BaseModel):
     access_local_software: bool | None = False
     access_your_address: bool | None = False
     password_storage: bool | None = False
+    help_improve: bool | None = False
 
     # Fields that must all be True for the user to proceed
     REQUIRED_FIELDS: ClassVar[list[str]] = [
