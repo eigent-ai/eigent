@@ -110,6 +110,11 @@ class OAuthStateManager:
                     state.completed_at = datetime.now()
                 logger.info(f"Updated {provider} OAuth status to {status}")
 
+    def remove_state(self, provider: str) -> None:
+        """Remove the state for a provider under lock"""
+        with self._lock:
+            self._states.pop(provider, None)
+
 
 # Global instance
 oauth_state_manager = OAuthStateManager()
