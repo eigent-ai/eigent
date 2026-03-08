@@ -473,6 +473,25 @@ export default function Login() {
                 />
               </div>
             </div>
+            <div className="w-full flex justify-end mb-4">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => {
+                  if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+                    navigate('/forgot-password');
+                  } else {
+                    window.open(
+                      'https://www.eigent.ai/forgot-password',
+                      '_blank',
+                      'noopener,noreferrer'
+                    );
+                  }
+                }}
+              >
+                {t('layout.forgot-password')}
+              </Button>
+            </div>
             <Button
               onClick={handleLogin}
               size="md"
