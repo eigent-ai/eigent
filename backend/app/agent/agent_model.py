@@ -112,6 +112,15 @@ def agent_model(
         else:
             model_config[k] = v
 
+    # Auto-inject prompt caching based on model platform
+    model_platform_enum = ModelPlatformType(
+        effective_config["model_platform"].lower()
+    )
+    if model_platform_enum == ModelPlatformType.ANTHROPIC:
+        model_config.setdefault("cache_control", "1h")
+    elif model_platform_enum == ModelPlatformType.OPENAI:
+        model_config.setdefault("prompt_cache_key", str(options.project_id))
+
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
     if agent_name == Agents.browser_agent:
