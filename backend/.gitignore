@@ -20,3 +20,4 @@ img
 uv_installing.lock
 uv_installed.lock
 benchmark/*_results.csv
+benchmark/harbor/jobs/

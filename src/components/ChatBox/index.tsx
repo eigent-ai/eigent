@@ -18,7 +18,6 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
-  proxyFetchPut,
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
@@ -34,7 +33,7 @@ import { ExecutionStatus } from '@/types';
 import { Square, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
@@ -48,12 +47,11 @@ export default function ChatBox(): JSX.Element {
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [hasModel, setHasModel] = useState(true);
+  const [hasModel, setHasModel] = useState(false);
+  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [privacy, setPrivacy] = useState<any>(false);
   const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const { modelType } = useAuthStore();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   useEffect(() => {
@@ -67,13 +65,43 @@ export default function ChatBox(): JSX.Element {
       setUseCloudModelInDev(false);
     }
   }, [modelType]);
-  useEffect(() => {
-    proxyFetchGet('/api/user/privacy')
-      .then((res) => {
-        setPrivacy(res.all_required_granted);
-      })
-      .catch((err) => console.error('Failed to fetch settings:', err));
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const share_token = searchParams.get('share_token');
+  const skill_prompt = searchParams.get('skill_prompt');
+
+  const handleSendRef = useRef<
+    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+  >(null);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Shared function to check model configuration
+  const checkModelConfig = useCallback(async () => {
+    try {
+      if (modelType === 'cloud') {
+        // For cloud model, check if API key exists
+        const res = await proxyFetchGet('/api/user/key');
+        setHasModel(!!res.value);
+      } else if (modelType === 'local' || modelType === 'custom') {
+        // For local/custom model, check if provider exists
+        const res = await proxyFetchGet('/api/providers', { prefer: true });
+        const providerList = res.items || [];
+        setHasModel(providerList.length > 0);
+      } else {
+        setHasModel(false);
+      }
+    } catch (err) {
+      console.error('Failed to check model config:', err);
+      setHasModel(false);
+    } finally {
+      setIsConfigLoaded(true);
+    }
+  }, [modelType]);
+
+  // Check model config on mount and when modelType changes
+  useEffect(() => {
     proxyFetchGet('/api/configs')
       .then((configsRes) => {
         const configs = Array.isArray(configsRes) ? configsRes : [];
@@ -86,28 +114,9 @@ export default function ChatBox(): JSX.Element {
         if (_hasApiKey && _hasApiId) setHasSearchKey(true);
       })
       .catch((err) => console.error('Failed to fetch configs:', err));
-  }, []);
 
-  // Refresh privacy status when dialog closes
-  // useEffect(() => {
-  // 	if (!privacyDialogOpen) {
-  // 		proxyFetchGet("/api/user/privacy")
-  // 			.then((res) => {
-  // 				let _privacy = 0;
-  // 				Object.keys(res).forEach((key) => {
-  // 					if (!res[key]) {
-  // 						_privacy++;
-  // 						return;
-  // 					}
-  // 				});
-  // 				setPrivacy(_privacy === 0 ? true : false);
-  // 			})
-  // 			.catch((err) => console.error("Failed to fetch settings:", err));
-  // 	}
-  // }, [privacyDialogOpen]);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const share_token = searchParams.get('share_token');
-  const skill_prompt = searchParams.get('skill_prompt');
+    checkModelConfig();
+  }, [modelType, checkModelConfig]);
 
   const [loading, setLoading] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
@@ -116,8 +125,25 @@ export default function ChatBox(): JSX.Element {
   const handleSendRef = useRef<
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
   >(null);
+  // Re-check model config when returning from settings page
+  useEffect(() => {
+    // Check when location changes (user navigates)
+    if (location.pathname === '/') {
+      checkModelConfig();
+    }
+  }, [location.pathname, checkModelConfig]);
 
-  const navigate = useNavigate();
+  // Also check when window gains focus (user returns from settings)
+  useEffect(() => {
+    const handleFocus = () => {
+      checkModelConfig();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [checkModelConfig]);
 
   // Task time tracking
   const [taskTime, setTaskTime] = useState(
@@ -235,9 +261,8 @@ export default function ChatBox(): JSX.Element {
 
     if (isTaskBusy) return true;
 
-    // Standard checks - check model first, then privacy
+    // Standard checks - check model
     if (!hasModel) return true;
-    if (!privacy) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
 
@@ -245,7 +270,6 @@ export default function ChatBox(): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
-    privacy,
     hasModel,
     useCloudModelInDev,
     isTaskBusy,
@@ -264,10 +288,6 @@ export default function ChatBox(): JSX.Element {
       if (!hasModel) {
         toast.error('Please select a model first.');
         navigate('/history?tab=agents');
-        return;
-      }
-      if (!privacy) {
-        toast.error('Please accept the privacy policy first.');
         return;
       }
 
@@ -299,7 +319,7 @@ export default function ChatBox(): JSX.Element {
         }
       }
     },
-    [chatStore, projectStore.activeProjectId, hasModel, privacy, navigate]
+    [chatStore, projectStore.activeProjectId, hasModel, navigate]
   );
 
   // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
@@ -367,14 +387,10 @@ export default function ChatBox(): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
 
-    // Check model first, then privacy
+    // Check model configuration
     if (!hasModel) {
       toast.error('Please select a model first.');
       navigate('/history?tab=agents');
-      return;
-    }
-    if (!privacy) {
-      toast.error('Please accept the privacy policy first.');
       return;
     }
     const tempMessageContent = messageStr || message;
@@ -556,23 +572,6 @@ export default function ChatBox(): JSX.Element {
             setMessage('');
           }
         } else {
-          if (!privacy) {
-            const API_FIELDS = [
-              'take_screenshot',
-              'access_local_software',
-              'access_your_address',
-              'password_storage',
-            ];
-            const requestData = {
-              [API_FIELDS[0]]: true,
-              [API_FIELDS[1]]: true,
-              [API_FIELDS[2]]: true,
-              [API_FIELDS[3]]: true,
-            };
-            proxyFetchPut('/api/user/privacy', requestData);
-            setPrivacy(true);
-          }
-
           setTimeout(() => {
             scrollToBottom();
           }, 200);
@@ -684,11 +683,11 @@ export default function ChatBox(): JSX.Element {
   }, [projectStore]);
 
   useEffect(() => {
-    // Wait for both config and privacy to be loaded before handling share token
-    if (share_token) {
+    // Wait for config to be loaded before handling share token
+    if (share_token && isConfigLoaded) {
       handleSendShare(share_token);
     }
-  }, [share_token, handleSendShare]);
+  }, [share_token, isConfigLoaded, handleSendShare]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -1266,7 +1265,6 @@ export default function ChatBox(): JSX.Element {
                   disabled: isInputDisabled,
                   textareaRef: textareaRef,
                   allowDragDrop: true,
-                  privacy: privacy,
                   useCloudModelInDev: useCloudModelInDev,
                 }}
               />
@@ -1289,61 +1287,7 @@ export default function ChatBox(): JSX.Element {
                   </div>
                 </div>
               ) : null}
-              {hasModel && !privacy ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={(e) => {
-                      const target = e.target as HTMLElement;
-                      if (target.tagName === 'A') {
-                        return;
-                      }
-                      const API_FIELDS = [
-                        'take_screenshot',
-                        'access_local_software',
-                        'access_your_address',
-                        'password_storage',
-                      ];
-                      const requestData = {
-                        [API_FIELDS[0]]: true,
-                        [API_FIELDS[1]]: true,
-                        [API_FIELDS[2]]: true,
-                        [API_FIELDS[3]]: true,
-                      };
-                      proxyFetchPut('/api/user/privacy', requestData);
-                      setPrivacy(true);
-                    }}
-                    className="flex cursor-pointer items-center gap-1 rounded-md bg-surface-information px-sm py-xs"
-                  >
-                    <TriangleAlert
-                      size={20}
-                      className="text-icon-information"
-                    />
-                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-information">
-                      {t('layout.by-messaging-eigent')}{' '}
-                      <a
-                        href="https://www.eigent.ai/terms-of-use"
-                        target="_blank"
-                        className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
-                        rel="noreferrer"
-                      >
-                        {t('layout.terms-of-use')}
-                      </a>{' '}
-                      {t('layout.and')}{' '}
-                      <a
-                        href="https://www.eigent.ai/privacy-policy"
-                        target="_blank"
-                        className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
-                        rel="noreferrer"
-                      >
-                        {t('layout.privacy-policy')}
-                      </a>
-                      .
-                    </span>
-                  </div>
-                </div>
-              ) : (
+              {hasModel && (
                 <div className="mr-2 flex flex-col items-center gap-2">
                   {[
                     {
@@ -1423,7 +1367,6 @@ export default function ChatBox(): JSX.Element {
               disabled: isInputDisabled,
               textareaRef: textareaRef,
               allowDragDrop: hasAnyMessages,
-              privacy: hasAnyMessages ? privacy : true,
               useCloudModelInDev: useCloudModelInDev,
             }}
           />
