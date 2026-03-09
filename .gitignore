@@ -64,3 +64,5 @@ resources/prebuilt/cache/
 *storybook.log
 storybook-static
 nul
+
+backend/benchmark/jobs/
