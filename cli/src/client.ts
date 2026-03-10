@@ -58,7 +58,7 @@ export class EigentClient {
       model_platform: this.config.modelPlatform,
       model_type: this.config.modelType,
       api_key: this.config.apiKey,
-      api_url: null,
+      api_url: this.config.apiEndpoint || null,
       language: 'en',
       allow_local_system: true,
       attaches: [],

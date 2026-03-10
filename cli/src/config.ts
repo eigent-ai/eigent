@@ -29,6 +29,7 @@ const DEFAULTS: CliConfig = {
   modelType: 'gpt-4o',
   email: 'cli@eigent.ai',
   workspace: process.cwd(),
+  apiEndpoint: null,
 };
 
 /**
@@ -72,6 +73,8 @@ export function loadConfig(): CliConfig {
   if (process.env.EIGENT_EMAIL) config.email = process.env.EIGENT_EMAIL;
   if (process.env.EIGENT_WORKSPACE)
     config.workspace = process.env.EIGENT_WORKSPACE;
+  if (process.env.EIGENT_API_ENDPOINT)
+    config.apiEndpoint = process.env.EIGENT_API_ENDPOINT;
 
   return config;
 }

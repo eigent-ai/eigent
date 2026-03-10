@@ -53,6 +53,7 @@ export interface CliConfig {
   modelType: string;
   email: string;
   workspace: string;
+  apiEndpoint: string | null;
 }
 
 export interface ChatPayload {
