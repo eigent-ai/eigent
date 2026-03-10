@@ -21,6 +21,7 @@ from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
+from app.model.model_platform import BEDROCK_CONVERSE_REGION
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
@@ -73,6 +74,16 @@ async def mcp_agent(options: Chat):
             )
         )
     )
+    extra_params = {
+        k: v
+        for k, v in (options.extra_params or {}).items()
+        if k not in ["model_platform", "model_type", "api_key", "url"]
+    }
+    api_url = options.api_url
+    if options.model_platform == "aws-bedrock-converse":
+        extra_params["region_name"] = BEDROCK_CONVERSE_REGION
+        api_url = api_url + "/bedrock"
+
     return ListenChatAgent(
         options.project_id,
         Agents.mcp_agent,
@@ -81,7 +92,7 @@ async def mcp_agent(options: Chat):
             model_platform=options.model_platform,
             model_type=options.model_type,
             api_key=options.api_key,
-            url=options.api_url,
+            url=api_url,
             model_config_dict=(
                 {
                     "user": str(options.project_id),
@@ -90,11 +101,7 @@ async def mcp_agent(options: Chat):
                 else None
             ),
             timeout=600,  # 10 minutes
-            **{
-                k: v
-                for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
-            },
+            **extra_params,
         ),
         # output_language=options.language,
         tools=tools,

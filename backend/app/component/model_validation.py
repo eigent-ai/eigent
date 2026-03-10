@@ -228,6 +228,8 @@ def create_agent(
     # Keep validation aligned with runtime Bedrock Converse initialization.
     if platform == "aws-bedrock-converse":
         kwargs["region_name"] = BEDROCK_CONVERSE_REGION
+        if url:
+            url = url + "/bedrock"
     if mtype is None:
         raise ValueError(f"Invalid model_type: {model_type}")
     if platform is None:
@@ -330,6 +332,8 @@ def validate_model_with_details(
         # Validation should use the same default region as normal agent startup.
         if model_platform == "aws-bedrock-converse":
             kwargs["region_name"] = BEDROCK_CONVERSE_REGION
+            if url:
+                url = url + "/bedrock"
         logger.debug(
             "Creating model",
             extra={"platform": model_platform, "model_type": model_type},
