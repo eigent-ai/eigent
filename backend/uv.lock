@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.11.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -242,7 +242,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.90a5" },
+    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=async-support-for-aws-bedwork-converse-api" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -284,9 +284,37 @@ wheels = [
 ]
 
 [[package]]
+name = "boto3"
+version = "1.42.65"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "botocore" },
+    { name = "jmespath" },
+    { name = "s3transfer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/c9/8ff8a901cf62374f1289cf36391f855e1702c70f545c28d1b57608a84ff2/boto3-1.42.65.tar.gz", hash = "sha256:c740af6bdaebcc1a00f3827a5729050bf6fc820ee148bf7d06f28db11c80e2a1", size = 112805, upload-time = "2026-03-10T19:44:58.255Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/bb/ace5921655df51e3c9b787b3f0bd6aa25548e5cf1dabae02e53fa88f2d98/boto3-1.42.65-py3-none-any.whl", hash = "sha256:cc7f2e0aec6c68ee5b10232cf3e01326acf6100bc785a770385b61a0474b31f4", size = 140556, upload-time = "2026-03-10T19:44:55.433Z" },
+]
+
+[[package]]
+name = "botocore"
+version = "1.42.65"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jmespath" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2e/81/2c832e2117d24da4fe800861e8ddd19bbaa308623b1198eb2c2cc6fcd3d4/botocore-1.42.65.tar.gz", hash = "sha256:7d52c148df07f70c375eeda58f99b439c7c7836c25df74cccfba3bb6e12444d2", size = 14970239, upload-time = "2026-03-10T19:44:43.686Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/9e/2ca03a55408c0820d7f0a04ae52bc6dfc7e4fff1f007a90135a68e056c93/botocore-1.42.65-py3-none-any.whl", hash = "sha256:0283c332ce00cbd1b894e86b7bed89dd624a5ca3a4ee62ec4db3898d16652e98", size = 14644794, upload-time = "2026-03-10T19:44:37.442Z" },
+]
+
+[[package]]
 name = "camel-ai"
 version = "0.2.90a5"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/camel-ai/camel.git?rev=async-support-for-aws-bedwork-converse-api#3a0d46bd61ebb12dea3cf721c12407c7d87fa64b" }
 dependencies = [
     { name = "astor" },
     { name = "colorama" },
@@ -303,15 +331,12 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/ea/9daf0e01e4b88962bbcfbfaf8585452172c50c147b9d447096f77de87308/camel_ai-0.2.90a5.tar.gz", hash = "sha256:39284ce2b25f5cc43f5e2d3844b8e32136c3175de8e8b0fe68f2e52613a18af9", size = 1162881, upload-time = "2026-03-03T11:07:20.562Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/b7/84040f24ce8267d7b949b77a86ae12ce2e4373c9e6a8b1ef42af3f0f3823/camel_ai-0.2.90a5-py3-none-any.whl", hash = "sha256:2757ca62cdc4f9a9466bf1e78a360837954c721be21eb0c23d368a143f64ba3d", size = 1641236, upload-time = "2026-03-03T11:07:16.756Z" },
-]
 
 [package.optional-dependencies]
 eigent = [
     { name = "anthropic" },
     { name = "av" },
+    { name = "boto3" },
     { name = "datasets" },
     { name = "docx" },
     { name = "exa-py" },
@@ -1187,6 +1212,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/27/74/3446c652bffbd5e81ab354e388b1b5fc1d20daac34ee0ed11ff096b1b01a/jiter-0.12.0-graalpy311-graalpy242_311_native-macosx_11_0_arm64.whl", hash = "sha256:41da8def934bf7bec16cb24bd33c0ca62126d2d45d81d17b864bd5ad721393c3", size = 305877, upload-time = "2025-11-09T20:49:12.269Z" },
     { url = "https://files.pythonhosted.org/packages/a1/f4/ed76ef9043450f57aac2d4fbeb27175aa0eb9c38f833be6ef6379b3b9a86/jiter-0.12.0-graalpy311-graalpy242_311_native-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9c44ee814f499c082e69872d426b624987dbc5943ab06e9bbaa4f81989fdb79e", size = 340419, upload-time = "2025-11-09T20:49:13.803Z" },
     { url = "https://files.pythonhosted.org/packages/21/01/857d4608f5edb0664aa791a3d45702e1a5bcfff9934da74035e7b9803846/jiter-0.12.0-graalpy311-graalpy242_311_native-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cd2097de91cf03eaa27b3cbdb969addf83f0179c6afc41bbc4513705e013c65d", size = 347212, upload-time = "2025-11-09T20:49:15.643Z" },
+]
+
+[[package]]
+name = "jmespath"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/59/322338183ecda247fb5d1763a6cbe46eff7222eaeebafd9fa65d4bf5cb11/jmespath-1.1.0.tar.gz", hash = "sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d", size = 27377, upload-time = "2026-01-22T16:35:26.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/2f/967ba146e6d58cf6a652da73885f52fc68001525b4197effc174321d70b4/jmespath-1.1.0-py3-none-any.whl", hash = "sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64", size = 20419, upload-time = "2026-01-22T16:35:24.919Z" },
 ]
 
 [[package]]
@@ -2373,6 +2407,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/da/8a/22b7beea3ee0d44b1916c0c1cb0ee3af23b700b6da9f04991899d0c555d4/rsa-4.9.1.tar.gz", hash = "sha256:e7bdbfdb5497da4c07dfd35530e1a902659db6ff241e39d9953cad06ebd0ae75", size = 29034, upload-time = "2025-04-16T09:51:18.218Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/8d/0133e4eb4beed9e425d9a98ed6e081a55d195481b7632472be1af08d2f6b/rsa-4.9.1-py3-none-any.whl", hash = "sha256:68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762", size = 34696, upload-time = "2025-04-16T09:51:17.142Z" },
+]
+
+[[package]]
+name = "s3transfer"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "botocore" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/04/74127fc843314818edfa81b5540e26dd537353b123a4edc563109d8f17dd/s3transfer-0.16.0.tar.gz", hash = "sha256:8e990f13268025792229cd52fa10cb7163744bf56e719e0b9cb925ab79abf920", size = 153827, upload-time = "2025-12-01T02:30:59.114Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/51/727abb13f44c1fcf6d145979e1535a35794db0f6e450a0cb46aa24732fe2/s3transfer-0.16.0-py3-none-any.whl", hash = "sha256:18e25d66fed509e3868dc1572b3f427ff947dd2c56f844a5bf09481ad3f3b2fe", size = 86830, upload-time = "2025-12-01T02:30:57.729Z" },
 ]
 
 [[package]]

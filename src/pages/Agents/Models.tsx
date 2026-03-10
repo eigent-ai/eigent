@@ -494,7 +494,7 @@ export default function SettingModels() {
     { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5.4', name: 'GPT-5.4' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
+    { id: 'claude-sonnet-4-5-bedrock', name: 'Claude Sonnet 4-5' },
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
 
@@ -1062,7 +1062,7 @@ export default function SettingModels() {
       'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
       grok: PROVIDER_AVATAR_URLS.grok,
       mistral: PROVIDER_AVATAR_URLS.mistral,
-      'aws-bedrock': bedrockImage,
+      'aws-bedrock-converse': bedrockImage,
       azure: azureImage,
       'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
       // Local models
@@ -1274,7 +1274,7 @@ export default function SettingModels() {
                   <SelectItem value="gpt-5-mini">
                     {t('setting.gpt-5-mini-name')}
                   </SelectItem>
-                  <SelectItem value="claude-sonnet-4-5">
+                  <SelectItem value="claude-sonnet-4-5-bedrock">
                     {t('setting.claude-sonnet-4-5-name')}
                   </SelectItem>
                   <SelectItem value="minimax_m2_5">

@@ -23,6 +23,9 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
     "llama.cpp": "openai-compatible-model",
 }
 
+# Bedrock Converse requires a region during model initialization.
+BEDROCK_CONVERSE_REGION: Final[str] = "us-west-2"
+
 
 def normalize_model_platform(platform: str) -> str:
     """Normalize provider aliases to supported model platform names."""

@@ -652,7 +652,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: cloud_model_type.includes('gpt')
             ? 'openai'
             : cloud_model_type.includes('claude')
-              ? 'aws-bedrock'
+              ? 'aws-bedrock-converse'
               : cloud_model_type.includes('gemini')
                 ? 'gemini'
                 : 'openai-compatible-model',
