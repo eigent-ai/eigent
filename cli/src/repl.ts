@@ -150,7 +150,7 @@ export async function startRepl(config: CliConfig): Promise<void> {
       client.abort();
       stream = null;
       client.newSession();
-      console.log(chalk.dim('Starting new conversation.'));
+      console.log(chalk.dim('Starting new project.'));
       showPrompt(rl);
       return;
     }
@@ -189,7 +189,6 @@ export async function startRepl(config: CliConfig): Promise<void> {
     // Overwrite readline echo with styled user input
     process.stdout.write('\x1B[1A\x1B[2K');
     console.log(chalk.bold.cyan('\u276F ') + chalk.bold(trimmed));
-    console.log();
 
     const timer = new TaskTimer();
     timer.start();
