@@ -31,11 +31,32 @@ import type { CliConfig, SSEEvent } from './types.js';
 import { AgentStep } from './types.js';
 
 const PROMPT = chalk.bold.cyan('\u276F ');
+const INPUT_BG = chalk.bgHex('#2a2a3a');
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+const SLASH_COMMANDS = [
+  { name: '/new', description: 'Start a new project' },
+  { name: '/workspace', description: 'Show or set workspace path' },
+  { name: '/project', description: 'Show current project ID' },
+  { name: '/stop', description: 'Stop the current task' },
+  { name: '/quit', description: 'Exit the CLI' },
+];
 
 function showPrompt(rl: readline.Interface): void {
   const cols = process.stdout.columns || 80;
   console.log(chalk.dim('\u2500'.repeat(Math.min(cols, 80))));
   rl.prompt();
+}
+
+/** Overwrite readline echo with styled input (background color strip). */
+function echoInput(text: string): void {
+  const cols = process.stdout.columns || 80;
+  const prefix = '\u276F ';
+  const padding = Math.max(0, cols - prefix.length - text.length);
+  process.stdout.write('\x1B[1A\x1B[2K');
+  console.log(
+    INPUT_BG(chalk.bold.cyan(prefix) + chalk.bold(text) + ' '.repeat(padding))
+  );
 }
 
 function shortenPath(p: string): string {
@@ -59,36 +80,40 @@ export async function startRepl(config: CliConfig): Promise<void> {
     process.exit(1);
   }
 
-  console.log();
-  console.log(
-    chalk.bold.cyan('  ███████╗██╗ ██████╗ ███████╗███╗   ██╗████████╗')
-  );
-  console.log(
-    chalk.bold.cyan('  ██╔════╝██║██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝')
-  );
-  console.log(
-    chalk.bold.cyan('  █████╗  ██║██║  ███╗█████╗  ██╔██╗ ██║   ██║')
-  );
-  console.log(
-    chalk.bold.cyan('  ██╔══╝  ██║██║   ██║██╔══╝  ██║╚██╗██║   ██║')
-  );
-  console.log(
-    chalk.bold.cyan('  ███████╗██║╚██████╔╝███████╗██║ ╚████║   ██║')
-  );
-  console.log(
-    chalk.bold.cyan('  ╚══════╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝')
-  );
-  console.log();
-  console.log(
-    chalk.dim(
-      `  v0.1.0 | ${config.modelPlatform}/${config.modelType} | ${config.apiUrl}`
-    )
-  );
-  console.log(chalk.dim(`  workspace: ${workspace}`));
-  console.log(
-    chalk.dim('  /quit, /new, /project, /workspace <path>, Ctrl+C to stop')
-  );
-  console.log();
+  function showBanner(): void {
+    console.log();
+    console.log(
+      chalk.bold.cyan('  ███████╗██╗ ██████╗ ███████╗███╗   ██╗████████╗')
+    );
+    console.log(
+      chalk.bold.cyan('  ██╔════╝██║██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝')
+    );
+    console.log(
+      chalk.bold.cyan('  █████╗  ██║██║  ███╗█████╗  ██╔██╗ ██║   ██║')
+    );
+    console.log(
+      chalk.bold.cyan('  ██╔══╝  ██║██║   ██║██╔══╝  ██║╚██╗██║   ██║')
+    );
+    console.log(
+      chalk.bold.cyan('  ███████╗██║╚██████╔╝███████╗██║ ╚████║   ██║')
+    );
+    console.log(
+      chalk.bold.cyan('  ╚══════╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝')
+    );
+    console.log();
+    console.log(
+      chalk.dim(
+        `  v0.1.0 | ${config.modelPlatform}/${config.modelType} | ${config.apiUrl}`
+      )
+    );
+    console.log(chalk.dim(`  workspace: ${workspace}`));
+    console.log(
+      chalk.dim('  /quit, /new, /project, /workspace <path>, Ctrl+C to stop')
+    );
+    console.log();
+  }
+
+  showBanner();
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -96,7 +121,8 @@ export async function startRepl(config: CliConfig): Promise<void> {
     prompt: PROMPT,
   });
 
-  // Keypress handler for Ctrl+E (expand collapsed output)
+  // Keypress handler for Ctrl+E and "/" command picker trigger
+  let pickerActive = false;
   process.stdin.on('keypress', (_str: string, key: readline.Key) => {
     if (!isStreaming && key && key.ctrl && key.name === 'e') {
       const block = getLastCollapsedBlock();
@@ -106,6 +132,52 @@ export async function startRepl(config: CliConfig): Promise<void> {
         console.log(chalk.dim('--- End expanded output ---'));
         showPrompt(rl);
       }
+    }
+
+    // "/" typed on empty line → immediately open command picker
+    const currentLine = (rl as any).line as string | undefined;
+    if (_str === '/' && currentLine === '/' && !pickerActive && !isStreaming) {
+      pickerActive = true;
+
+      // Overwrite readline's echoed "❯ /" with styled version
+      process.stdout.write('\r\x1B[2K');
+      const cols = process.stdout.columns || 80;
+      const pfx = '\u276F ';
+      const pad = Math.max(0, cols - pfx.length - 1);
+      console.log(
+        INPUT_BG(chalk.bold.cyan(pfx) + chalk.bold('/') + ' '.repeat(pad))
+      );
+
+      // Open picker (it handles stdin takeover internally)
+      pickCommand('')
+        .then(async (picked) => {
+          pickerActive = false;
+          // Clear readline's internal buffer so it doesn't have stale "/"
+          (rl as any).line = '';
+          (rl as any).cursor = 0;
+
+          if (picked) {
+            // Overwrite the "❯ /" line with the picked command
+            process.stdout.write('\x1B[1A\x1B[2K');
+            const pad2 = Math.max(0, cols - pfx.length - picked.length);
+            console.log(
+              INPUT_BG(
+                chalk.bold.cyan(pfx) + chalk.bold(picked) + ' '.repeat(pad2)
+              )
+            );
+            await handleMessage(picked, true);
+          } else {
+            // Cancelled — erase the styled "/" line, show clean prompt
+            process.stdout.write('\x1B[1A\x1B[2K');
+            showPrompt(rl);
+          }
+        })
+        .catch(() => {
+          pickerActive = false;
+          (rl as any).line = '';
+          (rl as any).cursor = 0;
+          showPrompt(rl);
+        });
     }
   });
 
@@ -125,11 +197,162 @@ export async function startRepl(config: CliConfig): Promise<void> {
     }
   });
 
-  async function handleMessage(input: string): Promise<void> {
+  /**
+   * Interactive command picker using raw stdin data events.
+   * Bypasses readline/keypress entirely — parses ANSI escape sequences
+   * from raw bytes for maximum reliability.
+   */
+  function pickCommand(initialFilter: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      let selected = 0;
+      let filter = initialFilter;
+      let lastDrawn = 0;
+      let resolved = false;
+
+      function getFiltered() {
+        return SLASH_COMMANDS.filter((c) => c.name.startsWith('/' + filter));
+      }
+
+      function drawMenu(): void {
+        if (lastDrawn > 0) {
+          process.stdout.write(`\x1B[${lastDrawn}A\x1B[J`);
+        }
+        const filtered = getFiltered();
+        if (filtered.length === 0) {
+          lastDrawn = 0;
+        } else {
+          for (let i = 0; i < filtered.length; i++) {
+            const cmd = filtered[i];
+            if (i === selected) {
+              console.log(
+                `  ${chalk.cyan('\u25B8')} ${chalk.cyan.bold(cmd.name.padEnd(13))}${cmd.description}`
+              );
+            } else {
+              console.log(
+                `    ${chalk.dim(cmd.name.padEnd(13))}${chalk.dim(cmd.description)}`
+              );
+            }
+          }
+          lastDrawn = filtered.length;
+        }
+      }
+
+      function updateInputLine(): void {
+        const cols = process.stdout.columns || 80;
+        const text = '/' + filter;
+        const pfx = '\u276F ';
+        const pad = Math.max(0, cols - pfx.length - text.length);
+        // Move up past menu + input line, clear everything below
+        process.stdout.write(`\x1B[${lastDrawn + 1}A\x1B[J`);
+        console.log(
+          INPUT_BG(chalk.bold.cyan(pfx) + chalk.bold(text) + ' '.repeat(pad))
+        );
+        lastDrawn = 0;
+        drawMenu();
+      }
+
+      function finish(result: string | null): void {
+        if (resolved) return;
+        resolved = true;
+        process.stdin.removeListener('data', onData);
+        if (lastDrawn > 0) {
+          process.stdout.write(`\x1B[${lastDrawn}A\x1B[J`);
+        }
+        // Restore all saved listeners and resume readline
+        for (const fn of savedDataListeners) {
+          process.stdin.on('data', fn as (...args: any[]) => void);
+        }
+        for (const fn of savedKpListeners) {
+          process.stdin.on('keypress', fn as (...args: any[]) => void);
+        }
+        rl.resume();
+        resolve(result);
+      }
+
+      function onData(buf: Buffer): void {
+        const s = buf.toString();
+        const filtered = getFiltered();
+
+        if (s === '\x1B[A' || s === '\x1BOA') {
+          // Arrow up
+          if (filtered.length > 0) {
+            selected = (selected - 1 + filtered.length) % filtered.length;
+            drawMenu();
+          }
+        } else if (s === '\x1B[B' || s === '\x1BOB') {
+          // Arrow down
+          if (filtered.length > 0) {
+            selected = (selected + 1) % filtered.length;
+            drawMenu();
+          }
+        } else if (s === '\r' || s === '\n') {
+          // Enter
+          if (filtered.length > 0 && selected < filtered.length) {
+            finish(filtered[selected].name);
+          } else if (filter.length > 0) {
+            // No match — return typed text as plain input
+            finish('/' + filter);
+          } else {
+            finish(null);
+          }
+        } else if (s === '\x1B') {
+          // Escape
+          finish(null);
+        } else if (s === '\x03') {
+          // Ctrl+C
+          finish(null);
+        } else if (s === '\x7F' || s === '\b') {
+          // Backspace
+          if (filter.length > 0) {
+            filter = filter.slice(0, -1);
+            selected = 0;
+            updateInputLine();
+          } else {
+            finish(null);
+          }
+        } else if (s.length === 1 && s >= ' ') {
+          // Regular character — type to filter
+          filter += s;
+          selected = 0;
+          updateInputLine();
+        }
+      }
+
+      // Save and remove ALL data + keypress listeners to prevent
+      // emitKeypressEvents interference with our raw data handler
+      const savedKpListeners = process.stdin.rawListeners('keypress').slice();
+      const savedDataListeners = process.stdin.rawListeners('data').slice();
+      process.stdin.removeAllListeners('keypress');
+      process.stdin.removeAllListeners('data');
+
+      // Pause readline (releases stdin), then take raw control
+      rl.pause();
+      if (process.stdin.isTTY && process.stdin.setRawMode) {
+        process.stdin.setRawMode(true);
+      }
+
+      // Register handler before resume to avoid missing events
+      process.stdin.on('data', onData);
+      process.stdin.resume();
+
+      // Draw initial menu
+      drawMenu();
+    });
+  }
+
+  async function handleMessage(
+    input: string,
+    fromPicker = false
+  ): Promise<void> {
     const trimmed = input.trim();
     if (!trimmed) {
       showPrompt(rl);
       return;
+    }
+
+    // Overwrite readline echo with styled input (bg color strip)
+    if (!fromPicker) {
+      echoInput(trimmed);
     }
 
     // Slash commands
@@ -150,6 +373,8 @@ export async function startRepl(config: CliConfig): Promise<void> {
       client.abort();
       stream = null;
       client.newSession();
+      console.clear();
+      showBanner();
       console.log(chalk.dim('Starting new project.'));
       showPrompt(rl);
       return;
@@ -186,16 +411,30 @@ export async function startRepl(config: CliConfig): Promise<void> {
       return;
     }
 
-    // Overwrite readline echo with styled user input
-    process.stdout.write('\x1B[1A\x1B[2K');
-    console.log(chalk.bold.cyan('\u276F ') + chalk.bold(trimmed));
-
     const timer = new TaskTimer();
     timer.start();
     clearBlocks();
 
     isStreaming = true;
     let hasConfirmed = false;
+
+    // Spinner while waiting for first response
+    let spinnerIdx = 0;
+    const spinner = setInterval(() => {
+      const frame = chalk.cyan(
+        SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length]
+      );
+      process.stdout.write(`\r\x1B[2K  ${frame} ${chalk.dim('Thinking...')}`);
+      spinnerIdx++;
+    }, 80);
+    let spinnerCleared = false;
+    function clearSpinner(): void {
+      if (!spinnerCleared) {
+        spinnerCleared = true;
+        clearInterval(spinner);
+        process.stdout.write('\r\x1B[2K');
+      }
+    }
 
     try {
       if (!stream) {
@@ -212,6 +451,7 @@ export async function startRepl(config: CliConfig): Promise<void> {
         const { value: event, done } = await stream.next();
         if (done || !event) break;
 
+        clearSpinner();
         const rendered = renderEvent(event);
 
         if (rendered.output) {
@@ -261,6 +501,7 @@ export async function startRepl(config: CliConfig): Promise<void> {
         }
       }
     } catch (err: any) {
+      clearSpinner();
       if (err.name !== 'AbortError') {
         console.log(chalk.red(`Error: ${err.message}`));
       }
@@ -268,12 +509,14 @@ export async function startRepl(config: CliConfig): Promise<void> {
       stream = null;
     }
 
+    clearSpinner();
     isStreaming = false;
     console.log(chalk.dim(`\n\u2733 Completed in ${timer.format()}`));
     showPrompt(rl);
   }
 
   rl.on('line', (input) => {
+    if (pickerActive) return; // Picker is handling input
     handleMessage(input).catch((err) => {
       console.error(chalk.red(`Unexpected error: ${err.message}`));
       stream = null;
