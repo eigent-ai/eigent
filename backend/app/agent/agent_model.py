@@ -126,7 +126,7 @@ def agent_model(
         )
         if model_platform_enum in {
             ModelPlatformType.ANTHROPIC,
-            ModelPlatformType.AWS_BEDROCK_CONVERSE
+            ModelPlatformType.AWS_BEDROCK_CONVERSE,
         }:
             model_config.setdefault("cache_control", "1h")
         elif model_platform_enum == ModelPlatformType.OPENAI:
