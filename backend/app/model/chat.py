@@ -78,6 +78,9 @@ class Chat(BaseModel):
     search_config: dict[str, str] | None = None
     # User identifier for user-specific skill configurations
     user_id: str | None = None
+    # Optional workspace directory — when set, agents work in this
+    # directory instead of the default ~/eigent/<email>/... path
+    workspace: str | None = None
 
     @field_validator("model_type")
     @classmethod
@@ -119,17 +122,20 @@ class Chat(BaseModel):
         return self.api_url is not None and "44.247.171.124" in self.api_url
 
     def file_save_path(self, path: str | None = None):
-        email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(
-            "."
-        )
-        # Use project-based structure: project_{project_id}/task_{task_id}
-        save_path = (
-            Path.home()
-            / "eigent"
-            / email
-            / f"project_{self.project_id}"
-            / f"task_{self.task_id}"
-        )
+        if self.workspace:
+            save_path = Path(self.workspace)
+        else:
+            email = re.sub(
+                r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]
+            ).strip(".")
+            # Use project-based structure: project_{project_id}/task_{task_id}
+            save_path = (
+                Path.home()
+                / "eigent"
+                / email
+                / f"project_{self.project_id}"
+                / f"task_{self.task_id}"
+            )
         if path is not None:
             save_path = save_path / path
         save_path.mkdir(parents=True, exist_ok=True)

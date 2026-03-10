@@ -259,25 +259,57 @@ Our aim is to make the developer setup as straightforward as possible. If you en
 
 ## Quick Start 🚀
 
+### 1. Frontend Setup
+
 ```bash
 git clone https://github.com/eigent-ai/eigent.git
 cd eigent
 npm install
-npm run dev
-
-# In a separate terminal, start the backend server
-cd server
-docker compose up -d
-# Stream the logs if you needed
-docker compose logs -f
 ```
 
-To run the application locally in developer mode:
+### 2. Backend Setup
 
-1. Configure `.env.development`:
+```bash
+cd server
+
+# Start Docker services (PostgreSQL and Redis)
+docker compose -f docker-compose.dev.yml up -d
+
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env and uncomment/set the following:
+#   database_url=postgresql://postgres:123456@localhost:5432/eigent
+#   redis_url=redis://localhost:6379/0
+```
+
+### 3. Run Database Migrations
+
+```bash
+cd server
+uv run alembic upgrade head
+```
+
+### 4. Start the Backend Server
+
+```bash
+cd server
+uv run uvicorn main:api --host 0.0.0.0 --port 3001 --reload
+```
+
+### 5. Start the Frontend Dev Server
+
+```bash
+# In a separate terminal, from the project root
+npm run dev
+```
+
+### 6. Configure Frontend Proxy
+
+Configure `.env.development`:
    - Set `VITE_USE_LOCAL_PROXY=true`
    - Set `VITE_PROXY_URL=http://localhost:3001`
-1. Go to the settings to specify your model key and model type.
+
+Then go to the settings to specify your model key and model type.
 
 ## Common Actions 🔄
 

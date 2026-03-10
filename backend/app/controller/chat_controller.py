@@ -186,6 +186,10 @@ async def post(data: Chat, request: Request):
 
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
+
+    # Store workspace on task_lock so follow-up tasks preserve it
+    if data.workspace:
+        task_lock.workspace = data.workspace
     os.environ["OPENAI_API_KEY"] = data.api_key
     os.environ["OPENAI_API_BASE_URL"] = (
         data.api_url or "https://api.openai.com/v1"
@@ -290,18 +294,26 @@ def improve(id: str, data: SupplementChat):
             # Get current environment values needed to construct new path
             current_email = None
 
-            # Extract email from current file_save_path if available
-            current_file_save_path = os.environ.get("file_save_path", "")
-            if current_file_save_path:
-                path_parts = Path(current_file_save_path).parts
-                if len(path_parts) >= 3 and "eigent" in path_parts:
-                    eigent_index = path_parts.index("eigent")
-                    if eigent_index + 1 < len(path_parts):
-                        current_email = path_parts[eigent_index + 1]
+            # If using a custom workspace, keep it as-is
+            if hasattr(task_lock, "workspace") and task_lock.workspace:
+                new_folder_path = Path(task_lock.workspace)
+                new_folder_path.mkdir(parents=True, exist_ok=True)
+                task_lock.new_folder_path = new_folder_path
+                os.environ["file_save_path"] = str(new_folder_path)
+                current_email = "__workspace__"
+            else:
+                # Extract email from current file_save_path if available
+                current_file_save_path = os.environ.get("file_save_path", "")
+                if current_file_save_path:
+                    path_parts = Path(current_file_save_path).parts
+                    if len(path_parts) >= 3 and "eigent" in path_parts:
+                        eigent_index = path_parts.index("eigent")
+                        if eigent_index + 1 < len(path_parts):
+                            current_email = path_parts[eigent_index + 1]
 
             # If we have the necessary info, update
             # the file_save_path
-            if current_email and id:
+            if current_email and current_email != "__workspace__" and id:
                 # Create new path using the existing
                 # pattern: email/project_{id}/task_{id}
                 new_folder_path = (
