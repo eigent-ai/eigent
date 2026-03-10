@@ -311,8 +311,10 @@ def improve(id: str, data: SupplementChat):
                         if eigent_index + 1 < len(path_parts):
                             current_email = path_parts[eigent_index + 1]
 
-            # If we have the necessary info, update
-            # the file_save_path
+            # Only rewrite file_save_path for web-app users (real email).
+            # CLI (dev mode only) sets email to "__workspace__" so files
+            # stay in the local workspace directory instead of the
+            # ~/eigent/{email}/... structure used by the web app.
             if current_email and current_email != "__workspace__" and id:
                 # Create new path using the existing
                 # pattern: email/project_{id}/task_{id}
