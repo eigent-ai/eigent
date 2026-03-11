@@ -79,6 +79,8 @@ export default function SettingGeneral() {
   const [proxyUrl, setProxyUrl] = useState('');
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
+  const [initialProxyUrl, setInitialProxyUrl] = useState<string | null>(null);
+  const hasProxyChanged = proxyUrl.trim() !== (initialProxyUrl ?? '').trim();
 
   useEffect(() => {
     const platform = window.electronAPI.getPlatform();
@@ -165,6 +167,9 @@ export default function SettingGeneral() {
           const result = await window.electronAPI.readGlobalEnv('HTTP_PROXY');
           if (result?.value) {
             setProxyUrl(result.value);
+            setInitialProxyUrl(result.value);
+          } else {
+            setInitialProxyUrl('');
           }
         } catch (_error) {
           console.log('No proxy configured');
@@ -219,6 +224,7 @@ export default function SettingGeneral() {
         );
         if (!result?.success) throw new Error('envRemove returned no success');
       }
+      setInitialProxyUrl(trimmed);
       setProxyNeedsRestart(true);
       toast.success(t('setting.proxy-saved-restart-required'));
     } catch (error) {
@@ -358,8 +364,11 @@ export default function SettingGeneral() {
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.network-proxy')}
             </div>
-            <div className="mb-4 text-sm leading-13 text-text-secondary">
+            <div className="mb-1 text-sm leading-13 text-text-secondary">
               {t('setting.network-proxy-description')}
+            </div>
+            <div className="mb-3 text-xs leading-13 text-text-secondary">
+              {t('setting.network-proxy-helper')}
             </div>
           </div>
           <Input
@@ -383,7 +392,10 @@ export default function SettingGeneral() {
                     ? () => window.electronAPI?.restartApp()
                     : handleSaveProxy
                 }
-                disabled={!proxyNeedsRestart && isProxySaving}
+                disabled={
+                  (!proxyNeedsRestart && isProxySaving) ||
+                  (!proxyNeedsRestart && !hasProxyChanged)
+                }
               >
                 {proxyNeedsRestart
                   ? t('setting.restart-to-apply')

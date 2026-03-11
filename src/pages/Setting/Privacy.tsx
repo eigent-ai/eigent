@@ -18,24 +18,60 @@ import { Switch } from '@/components/ui/switch';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 export default function SettingPrivacy() {
   const [helpImprove, setHelpImprove] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const { t } = useTranslation();
   const [isHowWeHandleOpen, setIsHowWeHandleOpen] = useState(false);
 
   useEffect(() => {
-    proxyFetchGet('/api/user/privacy')
-      .then((res) => {
-        setHelpImprove(res.help_improve || false);
-      })
-      .catch((err) => console.error('Failed to fetch settings:', err));
-  }, []);
+    let isCancelled = false;
 
-  const handleToggleHelpImprove = (checked: boolean) => {
+    const loadPrivacySettings = async () => {
+      try {
+        const res = await proxyFetchGet('/api/user/privacy');
+        if (!isCancelled) {
+          setHelpImprove(Boolean(res?.help_improve));
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          // Log to console for debugging while keeping user feedback localized
+          // eslint-disable-next-line no-console
+          console.error('Failed to fetch settings:', err);
+          toast.error(t('setting.load-failed'));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadPrivacySettings();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [t]);
+
+  const handleToggleHelpImprove = async (checked: boolean) => {
+    // Optimistically update UI but revert on failure
+    const previousValue = helpImprove;
     setHelpImprove(checked);
-    proxyFetchPut('/api/user/privacy', { help_improve: checked }).catch((err) =>
-      console.error('Failed to update settings:', err)
-    );
+    setIsSaving(true);
+
+    try {
+      await proxyFetchPut('/api/user/privacy', { help_improve: checked });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to update settings:', err);
+      setHelpImprove(previousValue);
+      toast.error(t('setting.save-failed'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -121,11 +157,19 @@ export default function SettingPrivacy() {
               <div className="text-body-sm font-normal text-text-body">
                 {t('setting.help-improve-eigent-description')}
               </div>
+              {!isLoading && (
+                <div className="text-body-xs text-text-secondary">
+                  {helpImprove
+                    ? t('setting.enabled')
+                    : t('setting.disabled')}
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-center">
               <Switch
                 checked={helpImprove}
                 onCheckedChange={handleToggleHelpImprove}
+                disabled={isLoading || isSaving}
               />
             </div>
           </div>
