@@ -184,13 +184,11 @@ export const useInstallationSetup = () => {
             startBackendPolling();
           }
 
-          if (initState !== 'done') {
-            if (!result.isInstalled && initState === 'permissions') {
-              console.log(
-                '[useInstallationSetup] Tools not installed and initState is permissions, setting to carousel'
-              );
-              setInitState('carousel');
-            }
+          if (initState !== 'done' && !result.isInstalled) {
+            console.log(
+              '[useInstallationSetup] Tools not installed, ensuring carousel state'
+            );
+            setInitState('carousel');
           }
         }
         return result;

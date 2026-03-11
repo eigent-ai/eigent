@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from typing import ClassVar
+
 from pydantic import BaseModel
 from sqlalchemy import JSON
 from sqlmodel import Column, Field
@@ -30,7 +32,23 @@ class UserPrivacySettings(BaseModel):
     access_local_software: bool | None = False
     access_your_address: bool | None = False
     password_storage: bool | None = False
+    help_improve: bool | None = False
+
+    # Fields that must all be True for the user to proceed
+    REQUIRED_FIELDS: ClassVar[list[str]] = [
+        'take_screenshot',
+        'access_local_software',
+        'access_your_address',
+        'password_storage',
+    ]
 
     @classmethod
     def default_settings(cls) -> dict:
-        return cls().model_dump()
+        instance = cls()
+        return {**instance.model_dump(), "all_required_granted": instance.all_required_granted()}
+
+    def all_required_granted(self) -> bool:
+        return all(getattr(self, f) for f in self.REQUIRED_FIELDS)
+
+    def to_response(self) -> dict:
+        return {**self.model_dump(), "all_required_granted": self.all_required_granted()}

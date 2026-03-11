@@ -77,7 +77,7 @@ def get_privacy(session: Session = Depends(session), auth: Auth = Depends(auth_m
         return UserPrivacySettings.default_settings()
 
     logger.debug("Privacy settings retrieved", extra={"user_id": user_id})
-    return model.pricacy_setting
+    return UserPrivacySettings(**model.pricacy_setting).to_response()
 
 
 @router.put("/user/privacy", name="update user privacy")
@@ -97,7 +97,7 @@ def put_privacy(data: UserPrivacySettings, session: Session = Depends(session), 
         model.save(session)
         logger.info("Privacy settings created", extra={"user_id": user_id})
 
-    return model.pricacy_setting
+    return UserPrivacySettings(**model.pricacy_setting).to_response()
 
 
 @router.get("/user/current_credits", name="get user current credits")
