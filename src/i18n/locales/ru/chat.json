@@ -61,5 +61,16 @@
   "model-error-invalid-api-key": "Your API key is invalid or expired. Please update it in",
   "model-error-model-not-found": "The configured model was not found. Please check your settings in",
   "model-error-quota-exceeded": "You've exceeded your API quota. Please check your plan or update your key in",
-  "model-error-open-settings": "Open Model Settings"
+  "model-error-open-settings": "Open Model Settings",
+  "drop-files-to-attach": "Перетащите файлы для прикрепления",
+  "expand-input": "Развернуть ввод (⌘P)",
+  "message-cannot-be-empty": "Сообщение не может быть пустым",
+  "no-agents-added": "Агенты не добавлены",
+  "queued-tasks": "Задачи в очереди",
+  "remove-file": "Удалить файл",
+  "remove-queued-message": "Удалить сообщение из очереди",
+  "splitting-tasks": "Разделение задач",
+  "start-task": "Начать задачу",
+  "task-completed-card-subtitle": "Автоматизируйте вашу задачу с помощью триггера",
+  "task-completed-card-title": "Задача выполнена"
 }

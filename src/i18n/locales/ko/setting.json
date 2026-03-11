@@ -191,5 +191,9 @@
   "preferred-ide-description": "에이전트 프로젝트 폴더를 열 때 사용할 애플리케이션을 선택합니다.",
   "system-file-manager": "시스템 파일 관리자",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "Eigent 개선에 도움주기",
+  "help-improve-eigent-description": "서비스 개선을 위해 Eigent가 익명의 오류 로그와 사용 데이터를 수집하도록 허용합니다. 이는 선택 사항이며 언제든지 변경할 수 있습니다.",
+  "we-only-use-the-essential-data-needed-to-run-your-tasks": "작업 실행에 필요한 필수 데이터만 사용합니다"
 }

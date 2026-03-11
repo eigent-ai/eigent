@@ -208,5 +208,8 @@
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
   "system-file-manager": "系统文件管理器",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "帮助改进 Eigent",
+  "help-improve-eigent-description": "允许 Eigent 收集匿名错误日志和使用数据以改进服务。此项为可选，可随时更改。"
 }

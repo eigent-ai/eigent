@@ -191,5 +191,9 @@
   "preferred-ide-description": "اختر التطبيق الذي سيتم استخدامه عند فتح مجلدات مشاريع الوكيل.",
   "system-file-manager": "مدير ملفات النظام",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "ساعد في تحسين Eigent",
+  "help-improve-eigent-description": "اسمح لـ Eigent بجمع سجلات الأخطاء المجهولة وبيانات الاستخدام لتحسين الخدمة. هذا اختياري ويمكن تغييره في أي وقت.",
+  "we-only-use-the-essential-data-needed-to-run-your-tasks": "نحن نستخدم فقط البيانات الأساسية اللازمة لتنفيذ مهامك"
 }

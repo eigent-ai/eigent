@@ -191,5 +191,9 @@
   "preferred-ide-description": "Elija qué aplicación usar al abrir las carpetas de proyectos del agente.",
   "system-file-manager": "Administrador de archivos del sistema",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "Ayuda a mejorar Eigent",
+  "help-improve-eigent-description": "Permite que Eigent recopile registros de errores anónimos y datos de uso para mejorar el servicio. Esto es opcional y se puede cambiar en cualquier momento.",
+  "we-only-use-the-essential-data-needed-to-run-your-tasks": "Solo utilizamos los datos esenciales necesarios para ejecutar tus tareas"
 }

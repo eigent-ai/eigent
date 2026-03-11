@@ -191,5 +191,9 @@
   "preferred-ide-description": "Wählen Sie die Anwendung aus, die beim Öffnen von Agent-Projektordnern verwendet werden soll.",
   "system-file-manager": "System-Dateimanager",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "Helfen Sie, Eigent zu verbessern",
+  "help-improve-eigent-description": "Erlauben Sie Eigent, anonyme Fehlerprotokolle und Nutzungsdaten zu sammeln, um den Dienst zu verbessern. Dies ist optional und kann jederzeit geändert werden.",
+  "we-only-use-the-essential-data-needed-to-run-your-tasks": "Wir verwenden nur die für die Ausführung Ihrer Aufgaben erforderlichen Daten"
 }

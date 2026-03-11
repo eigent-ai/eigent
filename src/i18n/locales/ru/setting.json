@@ -191,5 +191,9 @@
   "preferred-ide-description": "Выберите приложение для открытия папок проектов агента.",
   "system-file-manager": "Системный файловый менеджер",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "Помогите улучшить Eigent",
+  "help-improve-eigent-description": "Разрешите Eigent собирать анонимные журналы ошибок и данные об использовании для улучшения сервиса. Это необязательно и может быть изменено в любое время.",
+  "we-only-use-the-essential-data-needed-to-run-your-tasks": "Мы используем только необходимые данные для выполнения ваших задач"
 }

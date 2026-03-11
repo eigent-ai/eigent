@@ -191,5 +191,9 @@
   "preferred-ide-description": "エージェントプロジェクトフォルダを開くときに使用するアプリケーションを選択します。",
   "system-file-manager": "システムファイルマネージャー",
   "api-key-invalid-or-expired": "API Key Invalid or Expired — please re-verify",
-  "default-model-unavailable": "Default model unavailable — please select another"
+  "default-model-unavailable": "Default model unavailable — please select another",
+  "gpt-5.4-name": "GPT-5.4",
+  "help-improve-eigent": "Eigentの改善に協力する",
+  "help-improve-eigent-description": "サービス向上のため、Eigentが匿名のエラーログと使用状況データを収集することを許可します。これは任意であり、いつでも変更できます。",
+  "we-only-use-the-essential-data-needed-to-run-your-tasks": "タスクを実行するために必要な最小限のデータのみを使用します"
 }
