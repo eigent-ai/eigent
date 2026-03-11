@@ -212,7 +212,8 @@ interface ElectronAPI {
     email: string,
     token: string,
     username: string,
-    userId: number
+    userId: number,
+    password: string
   ) => Promise<{ success: boolean; error?: string }>;
   credentialsLoad: () => Promise<{
     success: boolean;
@@ -221,6 +222,7 @@ interface ElectronAPI {
       token: string;
       username: string;
       user_id: number;
+      password: string;
     }>;
   }>;
   credentialsRemove: (

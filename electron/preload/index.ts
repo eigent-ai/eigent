@@ -206,8 +206,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     email: string,
     token: string,
     username: string,
-    userId: number
-  ) => ipcRenderer.invoke('credentials-save', email, token, username, userId),
+    userId: number,
+    password: string
+  ) =>
+    ipcRenderer.invoke(
+      'credentials-save',
+      email,
+      token,
+      username,
+      userId,
+      password
+    ),
   credentialsLoad: () => ipcRenderer.invoke('credentials-load'),
   credentialsRemove: (email: string) =>
     ipcRenderer.invoke('credentials-remove', email),

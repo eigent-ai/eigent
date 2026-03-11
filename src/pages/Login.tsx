@@ -58,7 +58,13 @@ export default function Login() {
   const [platform, setPlatform] = useState<string>('');
   const [rememberMe, setRememberMe] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState<
-    Array<{ email: string; token: string; username: string; user_id: number }>
+    Array<{
+      email: string;
+      token: string;
+      username: string;
+      user_id: number;
+      password: string;
+    }>
   >([]);
   const [showSavedAccounts, setShowSavedAccounts] = useState(false);
   const savedAccountsRef = useRef<HTMLDivElement>(null);
@@ -130,10 +136,23 @@ export default function Login() {
   );
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    if (field === 'email') {
+      const trimmed = value.trim();
+      const exactMatch = savedAccounts.find(
+        (a) => a.email.toLowerCase() === trimmed.toLowerCase()
+      );
+      const passwordToFill = exactMatch?.password ?? '';
+      setFormData((prev) => ({
+        ...prev,
+        email: value,
+        password: passwordToFill,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+    }
 
     if (errors[field as keyof typeof errors]) {
       setErrors((prev) => ({
@@ -155,18 +174,13 @@ export default function Login() {
       setShowSavedAccounts(hasMatch && savedAccounts.length > 0);
     }
   };
-
-  // Load saved accounts on mount
+  // Load saved accounts on mount (for suggestions only; do not pre-fill form)
   useEffect(() => {
     (async () => {
       try {
         const result = await window.electronAPI.credentialsLoad();
         if (result.success && result.accounts.length > 0) {
           setSavedAccounts(result.accounts);
-          setRememberMe(true);
-          // Pre-fill email from the most recent saved account
-          const latest = result.accounts[result.accounts.length - 1];
-          setFormData((prev) => ({ ...prev, email: latest.email }));
         }
       } catch {
         // Non-critical: silently ignore load failures
@@ -193,27 +207,26 @@ export default function Login() {
     token: string;
     username: string;
     user_id: number;
+    password: string;
   }) => {
     setShowSavedAccounts(false);
-    setAuth({
-      token: account.token,
-      username: account.username,
+    setFormData({
       email: account.email,
-      user_id: account.user_id,
+      password: account.password || '',
     });
-    // TODO: avoid hardcoding 'cloud' — save and restore the user's model type preference per account
-    setModelType('cloud');
-    const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
-    setLocalProxyValue(localProxyValue);
-    navigate('/');
+    setErrors({ email: '', password: '' });
+    setGeneralError('');
+    // Password remains hidden; user clicks "Sign In" to log in
   };
 
   const handleRemoveAccount = async (e: React.MouseEvent, email: string) => {
     e.stopPropagation();
     await window.electronAPI.credentialsRemove(email);
-    const updated = savedAccounts.filter((a) => a.email !== email);
+    const updated = savedAccounts.filter(
+      (a) => a.email.toLowerCase() !== email.toLowerCase()
+    );
     setSavedAccounts(updated);
-    if (formData.email === email) {
+    if (formData.email.toLowerCase() === email.toLowerCase()) {
       setFormData({ email: '', password: '' });
     }
   };
@@ -241,17 +254,19 @@ export default function Login() {
         return;
       }
 
-      // Save or remove this account based on remember me preference.
-      // Awaited so the file write completes before we navigate away.
+      // Save account only when "Remember me" is checked. Do not remove when unchecked:
+      // once saved, the account stays until the user explicitly removes it from the list.
       if (rememberMe) {
-        await window.electronAPI.credentialsSave(
+        const saveResult = await window.electronAPI.credentialsSave(
           formData.email,
           data.token,
-          data.username,
-          data.user_id
+          data.username ?? '',
+          data.user_id ?? 0,
+          formData.password
         );
-      } else {
-        await window.electronAPI.credentialsRemove(formData.email);
+        if (!saveResult.success) {
+          // Best-effort: still allow login; credentials may not persist (e.g. encryption unavailable)
+        }
       }
 
       setAuth({ email: formData.email, ...data });
@@ -260,8 +275,7 @@ export default function Login() {
       const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
       setLocalProxyValue(localProxyValue);
       navigate('/');
-    } catch (error: any) {
-      console.error('Login failed:', error);
+    } catch {
       setGeneralError(
         t('layout.login-failed-please-check-your-email-and-password')
       );
@@ -285,15 +299,13 @@ export default function Login() {
           setGeneralError(errorMessage);
           return;
         }
-        console.log('data', data);
         setModelType('cloud');
         setAuth({ email: formData.email, ...data });
         // Record VITE_USE_LOCAL_PROXY value at login
         const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
         setLocalProxyValue(localProxyValue);
         navigate('/');
-      } catch (error: any) {
-        console.error('Login failed:', error);
+      } catch {
         setGeneralError(
           t('layout.login-failed-please-check-your-email-and-password')
         );
@@ -315,11 +327,7 @@ export default function Login() {
   );
 
   const handleReloadBtn = async (type: string) => {
-    if (!app) {
-      console.error('Stack app not initialized');
-      return;
-    }
-    console.log('handleReloadBtn1', type);
+    if (!app) return;
     const cookies = document.cookie.split('; ');
     cookies.forEach((cookie) => {
       const [name] = cookie.split('=');
@@ -327,7 +335,6 @@ export default function Login() {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
       }
     });
-    console.log('handleReloadBtn2', type);
     await app.signInWithOAuth(type);
   };
 
@@ -335,12 +342,6 @@ export default function Login() {
     async (code: string) => {
       const code_verifier = localStorage.getItem('stack-oauth-outer-');
       const formData = new URLSearchParams();
-      console.log(
-        'import.meta.env.PROD',
-        import.meta.env.PROD
-          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
-      );
       formData.append(
         'redirect_uri',
         import.meta.env.PROD
@@ -367,10 +368,9 @@ export default function Login() {
             body: formData,
           }
         );
-        const data = await res.json(); // parse response data
+        const data = await res.json();
         return data.access_token;
-      } catch (error) {
-        console.error(error);
+      } catch {
         setIsLoading(false);
       }
     },
@@ -383,13 +383,28 @@ export default function Login() {
 
       lock = true;
       setIsLoading(true);
-      let accessToken = await handleGetToken(code);
+      const accessToken = await handleGetToken(code);
+      if (!accessToken) {
+        setGeneralError(
+          t('layout.login-failed-please-check-your-email-and-password')
+        );
+        setIsLoading(false);
+        lock = false;
+        return;
+      }
       handleLoginByStack(accessToken);
       setTimeout(() => {
         lock = false;
       }, 1500);
     },
-    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
+    [
+      location.pathname,
+      handleLoginByStack,
+      handleGetToken,
+      setIsLoading,
+      setGeneralError,
+      t,
+    ]
   );
 
   useEffect(() => {
@@ -548,11 +563,8 @@ export default function Login() {
                     note={errors.email}
                     onEnter={handleLogin}
                     onFocus={() => {
-                      const input = formData.email.toLowerCase();
-                      const hasMatch = savedAccounts.some((a) =>
-                        a.email.toLowerCase().startsWith(input)
-                      );
-                      if (hasMatch) {
+                      // Show suggestions when user focuses email field and we have saved accounts
+                      if (savedAccounts.length > 0) {
                         setShowSavedAccounts(true);
                       }
                     }}
