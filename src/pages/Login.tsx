@@ -56,7 +56,9 @@ export default function Login() {
   const [generalError, setGeneralError] = useState('');
   const titlebarRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem('rememberMe') === 'true'
+  );
   const [savedAccounts, setSavedAccounts] = useState<
     Array<{
       email: string;
@@ -619,7 +621,13 @@ export default function Login() {
                   <input
                     type="checkbox"
                     checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
+                    onChange={(e) => {
+                      setRememberMe(e.target.checked);
+                      localStorage.setItem(
+                        'rememberMe',
+                        String(e.target.checked)
+                      );
+                    }}
                     className="h-4 w-4 cursor-pointer rounded border-border-tertiary accent-[#0D0D0D]"
                   />
                   <span className="text-label-md text-text-secondary">
