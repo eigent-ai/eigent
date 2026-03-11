@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { type ChatTaskStatusType } from '@/types/constants';
-import { BoxAction } from './BoxAction';
+import { useTranslation } from 'react-i18next';
 import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
@@ -41,14 +41,8 @@ interface BottomBoxProps {
   onEdit?: () => void;
 
   // Task info
-  tokens?: number;
   taskTime?: string;
   taskStatus?: ChatTaskStatusType;
-
-  // Replay
-  onReplay?: () => void;
-  replayDisabled?: boolean;
-  replayLoading?: boolean;
 
   // Pause/Resume
   onPauseResume?: () => void;
@@ -68,19 +62,11 @@ export default function BottomBox({
   subtitle,
   onStartTask,
   onEdit,
-  tokens = 0,
-  taskTime,
-  taskStatus,
-  onReplay,
-  replayDisabled,
-  replayLoading,
-  onPauseResume,
-  pauseResumeLoading,
   inputProps,
-  loading,
+  loading = false,
 }: BottomBoxProps) {
-  // const { t } = useTranslation();
-  const enableQueuedBox = false; //TODO: Enable queued box https://github.com/eigent-ai/eigent/issues/684
+  const { t } = useTranslation();
+  const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
   let backgroundClass = 'bg-input-bg-default';
@@ -100,7 +86,7 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`flex w-full flex-col gap-2 rounded-t-lg p-2 ${backgroundClass}`}
+        className={`flex w-full flex-col rounded-t-lg p-2 ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
         {state === 'splitting' && <BoxHeaderSplitting />}
@@ -115,20 +101,6 @@ export default function BottomBox({
 
         {/* Inputbox (always visible) */}
         <Inputbox {...inputProps} />
-
-        {/* BoxAction (visible after initial input, when task has started) */}
-        {state !== 'input' && (
-          <BoxAction
-            tokens={tokens}
-            taskTime={taskTime}
-            status={taskStatus}
-            disabled={replayDisabled}
-            loading={replayLoading}
-            onReplay={onReplay}
-            onPauseResume={onPauseResume}
-            pauseResumeLoading={pauseResumeLoading}
-          />
-        )}
       </div>
     </div>
   );

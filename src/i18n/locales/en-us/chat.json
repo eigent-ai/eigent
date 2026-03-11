@@ -48,9 +48,20 @@
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "We're experiencing high traffic. Please try again in a few moments.",
   "new-project": "Untitled Project",
   "no-reply-received-task-continue": "No reply received, task continue",
+  "splitting-tasks": "Splitting Tasks",
+  "start-task": "Start Task",
+  "message-cannot-be-empty": "Message cannot be empty",
+  "remove-file": "Remove file",
+  "drop-files-to-attach": "Drop files to attach",
+  "expand-input": "Expand input (⌘P)",
+  "queued-tasks": "Queued Tasks",
+  "remove-queued-message": "Remove queued message",
+  "no-agents-added": "No agents added",
   "open-in-ide": "Open in IDE",
   "open-in-vscode": "Open in VS Code",
   "open-in-cursor": "Open in Cursor",
   "open-in-file-manager": "Open in File Manager",
-  "failed-to-open-folder": "Failed to open folder"
+  "failed-to-open-folder": "Failed to open folder",
+  "task-completed-card-title": "Task completed",
+  "task-completed-card-subtitle": "Automate your task with a trigger"
 }

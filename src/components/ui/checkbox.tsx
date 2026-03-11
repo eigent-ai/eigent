@@ -1,0 +1,42 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import * as CheckboxPrimitives from '@radix-ui/react-checkbox';
+import { Check } from 'lucide-react';
+import * as React from 'react';
+
+import { cn } from '@/lib/utils';
+
+const Checkbox = React.forwardRef<
+  React.ElementRef<typeof CheckboxPrimitives.Root>,
+  React.ComponentPropsWithoutRef<typeof CheckboxPrimitives.Root>
+>(({ className, ...props }, ref) => (
+  <CheckboxPrimitives.Root
+    ref={ref}
+    className={cn(
+      'focus-visible:ring-ring peer h-4 w-4 shrink-0 rounded border border-solid border-input-border-default bg-input-bg-default transition-colors hover:border-input-border-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-switch-on-fill-track-fill data-[state=checked]:bg-switch-on-fill-track-fill data-[state=checked]:text-switch-on-fill-thumb-fill',
+      className
+    )}
+    {...props}
+  >
+    <CheckboxPrimitives.Indicator
+      className={cn('flex items-center justify-center text-current')}
+    >
+      <Check className="h-3.5 w-3.5" />
+    </CheckboxPrimitives.Indicator>
+  </CheckboxPrimitives.Root>
+));
+Checkbox.displayName = CheckboxPrimitives.Root.displayName;
+
+export { Checkbox };

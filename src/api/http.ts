@@ -98,6 +98,7 @@ async function handleResponse(
     if (!resData) {
       return null;
     }
+
     const { code, text } = resData;
     // showCreditsToast()
     if (code === 1 || code === 300) {
@@ -119,6 +120,14 @@ async function handleResponse(
       // logout()
       // window.location.href = '#/login'
       throw new Error(text);
+    }
+
+    if (!res.ok) {
+      const err: any = new Error(
+        resData?.detail || resData?.message || `HTTP error ${res.status}`
+      );
+      err.response = { data: resData, status: res.status };
+      throw err;
     }
 
     return resData;

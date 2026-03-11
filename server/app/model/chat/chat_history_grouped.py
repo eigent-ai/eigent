@@ -32,6 +32,7 @@ class ProjectGroup(BaseModel):
     total_completed_tasks: int = 0
     total_ongoing_tasks: int = 0
     average_tokens_per_task: int = 0
+    total_triggers: int = 0
 
     @model_validator(mode="after")
     def calculate_averages(self):

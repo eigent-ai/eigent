@@ -1,0 +1,145 @@
+# ============================================================
+# Delete Chat History — cascade trigger deletion tests
+#
+# Flow:
+#  1. Login to get a Bearer token
+#  2. Create a project with 2 histories + 1 trigger
+#  3. Delete the FIRST history  → trigger must NOT be deleted
+#  4. Verify trigger still exists
+#  5. Delete the LAST history   → trigger MUST be deleted
+#  6. Verify trigger is gone (404)
+#  7. Edge case: delete a non-existent history (404)
+# ============================================================
+
+@baseUrl = http://localhost:3001/api
+@projectId = test-project-cascade-001
+
+# ── Step 0: get a Bearer token ──────────────────────────────
+# @name login
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "testpassword123"
+}
+
+###
+
+# Paste the token from the login response below:
+@token = {{login.response.body.token}}
+
+# ── Step 1: create history A (first task in project) ────────
+# @name createHistoryA
+POST {{baseUrl}}/chat/history
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "task_id": "task-a-001",
+  "project_id": "{{projectId}}",
+  "project_name": "Cascade Test Project",
+  "question": "First task in project",
+  "model_platform": "anthropic",
+  "model_type": "claude-3-5-haiku-20241022",
+  "installed_mcp": "default",
+  "api_url": "local",
+  "language": "en",
+  "tokens": 100
+}
+
+###
+
+@historyIdA = {{createHistoryA.response.body.id}}
+
+# ── Step 2: create history B (second task, same project) ────
+# @name createHistoryB
+POST {{baseUrl}}/chat/history
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "task_id": "task-b-001",
+  "project_id": "{{projectId}}",
+  "project_name": "Cascade Test Project",
+  "question": "Second task in project",
+  "model_platform": "anthropic",
+  "model_type": "claude-3-5-haiku-20241022",
+  "installed_mcp": "default",
+  "api_url": "local",
+  "language": "en",
+  "tokens": 200
+}
+
+###
+
+@historyIdB = {{createHistoryB.response.body.id}}
+
+# ── Step 3: create a trigger linked to the project ──────────
+# @name createTrigger
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Cascade Test Trigger",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 9 * * 1",
+  "config": {
+    "max_failure_count": 5
+  }
+}
+
+###
+
+@triggerId = {{createTrigger.response.body.id}}
+
+# ── Step 4: verify project has 2 histories + 1 trigger ──────
+# Expect: task_count=2, total_triggers=1
+GET {{baseUrl}}/chat/histories/grouped/{{projectId}}
+Authorization: Bearer {{token}}
+
+###
+
+# ── Step 5: delete history A (NOT the last one) ─────────────
+# Expect: 204 No Content
+# Trigger must remain intact
+DELETE {{baseUrl}}/chat/history/{{historyIdA}}
+
+###
+
+# ── Step 6: confirm trigger still exists ────────────────────
+# Expect: 200 with trigger data
+GET {{baseUrl}}/trigger/{{triggerId}}
+Authorization: Bearer {{token}}
+
+###
+
+# ── Step 7: confirm project now has only 1 history ──────────
+# Expect: task_count=1
+GET {{baseUrl}}/chat/histories/grouped/{{projectId}}
+Authorization: Bearer {{token}}
+
+###
+
+# ── Step 8: delete history B (THE LAST one) ─────────────────
+# Expect: 204 No Content
+# Trigger MUST be deleted alongside it
+DELETE {{baseUrl}}/chat/history/{{historyIdB}}
+
+###
+
+# ── Step 9: confirm trigger is now gone (cascade worked) ─────
+# Expect: 404 Not Found
+GET {{baseUrl}}/trigger/{{triggerId}}
+Authorization: Bearer {{token}}
+
+###
+
+# ── Step 10: confirm project is gone from grouped list ───────
+# Expect: 404 Not Found
+GET {{baseUrl}}/chat/histories/grouped/{{projectId}}
+Authorization: Bearer {{token}}
+
+###

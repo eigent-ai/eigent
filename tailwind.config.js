@@ -528,6 +528,7 @@ module.exports = {
         'icon-information': 'var(--icon-information)',
         'icon-success': 'var(--icon-success)',
         'icon-warning': 'var(--icon-warning)',
+        'icon-caution': 'var(--icon-cuation)',
         'icon-cuation': 'var(--icon-cuation)',
         'icon-action-hover': 'var(--icon-action-hover)',
         'icon-multimodal': 'var(--icon-multimodal)',
