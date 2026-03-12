@@ -473,7 +473,7 @@ export default function Login() {
                 />
               </div>
             </div>
-            <div className="w-full flex justify-end mb-4">
+            <div className="mb-4 flex w-full justify-end">
               <Button
                 variant="ghost"
                 size="xs"
@@ -482,7 +482,7 @@ export default function Login() {
                     navigate('/forgot-password');
                   } else {
                     window.open(
-                      'https://www.eigent.ai/forgot-password',
+                      'https://www.eigent.ai/signin',
                       '_blank',
                       'noopener,noreferrer'
                     );

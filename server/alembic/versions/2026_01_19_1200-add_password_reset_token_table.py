@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """add_password_reset_token_table
 
 Revision ID: add_password_reset_token
@@ -19,26 +33,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create password_reset_token table."""
-    op.create_table(
-        "password_reset_token",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("token", sa.String(255), nullable=False),
-        sa.Column("expires_at", sa.DateTime(), nullable=False),
-        sa.Column("used", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("deleted_at", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
-        sa.Column("updated_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
-        sa.ForeignKeyConstraint(["user_id"], ["user.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("ix_password_reset_token_user_id", "password_reset_token", ["user_id"])
-    op.create_index("ix_password_reset_token_token", "password_reset_token", ["token"], unique=True)
+    """No-op.
+
+    The password_reset_token flow is no longer used.
+    """
+    pass
 
 
 def downgrade() -> None:
-    """Drop password_reset_token table."""
-    op.drop_index("ix_password_reset_token_token", table_name="password_reset_token")
-    op.drop_index("ix_password_reset_token_user_id", table_name="password_reset_token")
-    op.drop_table("password_reset_token")
+    """No-op."""
+    pass
