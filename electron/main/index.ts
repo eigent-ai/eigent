@@ -72,6 +72,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAIN_DIST = path.join(__dirname, '../..');
 const RENDERER_DIST = path.join(MAIN_DIST, 'dist');
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+/** When set to '1', allows multiple Electron instances in dev (e.g. multiple `npm run dev`). Default: single-instance. */
+const EIGENT_DEV_MULTI_INSTANCE = process.env.EIGENT_DEV_MULTI_INSTANCE === '1';
+const skipSingleInstanceInDev = Boolean(
+  VITE_DEV_SERVER_URL && EIGENT_DEV_MULTI_INSTANCE
+);
 const VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(MAIN_DIST, 'public')
   : RENDERER_DIST;
@@ -209,9 +214,8 @@ if (os.release().startsWith('6.1')) app.disableHardwareAcceleration();
 // Set application name for Windows 10+ notifications
 if (process.platform === 'win32') app.setAppUserModelId(app.getName());
 
-// Only enforce single-instance in production. In dev, a second instance (e.g. second
-// npm run dev) would quit here and take its dev server down; skip so multiple dev instances work.
-if (!VITE_DEV_SERVER_URL && !app.requestSingleInstanceLock()) {
+// Enforce single-instance unless in dev with EIGENT_DEV_MULTI_INSTANCE=1 (allows multiple npm run dev).
+if (!skipSingleInstanceInDev && !app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
 }
@@ -305,8 +309,8 @@ function processQueuedProtocolUrls() {
 
 // ==================== single instance lock ====================
 const setupSingleInstanceLock = () => {
-  if (VITE_DEV_SERVER_URL) {
-    // Dev: allow multiple instances so a second npm run dev doesn't quit and kill its dev server
+  if (skipSingleInstanceInDev) {
+    // Dev with EIGENT_DEV_MULTI_INSTANCE=1: allow multiple instances
     return;
   }
   const gotLock = app.requestSingleInstanceLock();
