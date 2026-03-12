@@ -2338,10 +2338,14 @@ const ensureEigentDirectories = () => {
 const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
 const SKILL_FILE = 'SKILL.md';
 
-const getExampleSkillsSourceDir = (): string =>
-  app.isPackaged
-    ? path.join(process.resourcesPath, 'example-skills')
-    : path.join(app.getAppPath(), 'resources', 'example-skills');
+const getExampleSkillsSourceDir = (): string => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'example-skills');
+  }
+  const devPath = path.join(MAIN_DIST, 'resources', 'example-skills');
+  if (existsSync(devPath)) return devPath;
+  return path.join(app.getAppPath(), 'resources', 'example-skills');
+};
 
 async function copyDirRecursive(src: string, dst: string): Promise<void> {
   await fsp.mkdir(dst, { recursive: true });
@@ -2360,27 +2364,32 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
 }
 
 async function seedDefaultSkillsIfEmpty(): Promise<void> {
-  if (!existsSync(SKILLS_ROOT)) return;
-  const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
-  const hasAnySkill = entries.some(
-    (e) => e.isDirectory() && !e.name.startsWith('.')
-  );
-  if (hasAnySkill) return;
+  if (!existsSync(SKILLS_ROOT)) {
+    await fsp.mkdir(SKILLS_ROOT, { recursive: true });
+  }
   const exampleDir = getExampleSkillsSourceDir();
   if (!existsSync(exampleDir)) {
     log.warn('Example skills source dir missing:', exampleDir);
     return;
   }
   const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
+  let copiedCount = 0;
   for (const e of sourceEntries) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
-    const srcDir = path.join(exampleDir, e.name);
     const destDir = path.join(SKILLS_ROOT, e.name);
+    if (existsSync(destDir)) continue; // Skip if user already has this skill
+    const srcDir = path.join(exampleDir, e.name);
     await copyDirRecursive(srcDir, destDir);
+    copiedCount++;
   }
-  log.info('Seeded default skills to ~/.eigent/skills from', exampleDir);
+  if (copiedCount > 0) {
+    log.info(
+      `Seeded ${copiedCount} default skill(s) to ~/.eigent/skills from`,
+      exampleDir
+    );
+  }
 }
 
 /** Truncate a single path component to fit within the 255-byte filesystem limit. */
