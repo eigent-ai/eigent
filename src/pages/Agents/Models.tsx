@@ -64,6 +64,7 @@ import azureImage from '@/assets/model/azure.svg';
 import bedrockImage from '@/assets/model/bedrock.svg';
 import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
+import ernieImage from '@/assets/model/ernie.png';
 import geminiImage from '@/assets/model/gemini.svg';
 import llamaCppImage from '@/assets/model/llamacpp.svg';
 import lmstudioImage from '@/assets/model/lmstudio.svg';
@@ -1055,6 +1056,7 @@ export default function SettingModels() {
       openrouter: openrouterImage,
       'tongyi-qianwen': qwenImage,
       deepseek: deepseekImage,
+      ernie: ernieImage,
       minimax: minimaxImage,
       'z.ai': zaiImage,
       moonshot: moonshotImage,
