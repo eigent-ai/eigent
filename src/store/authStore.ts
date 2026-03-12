@@ -26,6 +26,8 @@ type CloudModelType =
   | 'gpt-4.1-mini'
   | 'gpt-4.1'
   | 'claude-sonnet-4-5'
+  | 'claude-sonnet-4-6'
+  | 'claude-opus-4-6'
   | 'gpt-5'
   | 'gpt-5.1'
   | 'gpt-5.2'
