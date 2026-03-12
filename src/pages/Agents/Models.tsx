@@ -64,6 +64,7 @@ import azureImage from '@/assets/model/azure.svg';
 import bedrockImage from '@/assets/model/bedrock.svg';
 import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
+import ernieImage from '@/assets/model/ernie.png';
 import geminiImage from '@/assets/model/gemini.svg';
 import llamaCppImage from '@/assets/model/llamacpp.svg';
 import lmstudioImage from '@/assets/model/lmstudio.svg';
@@ -492,8 +493,11 @@ export default function SettingModels() {
     { id: 'gpt-5', name: 'GPT-5' },
     { id: 'gpt-5.1', name: 'GPT-5.1' },
     { id: 'gpt-5.2', name: 'GPT-5.2' },
+    { id: 'gpt-5.4', name: 'GPT-5.4' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
+    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
 
@@ -1054,6 +1058,7 @@ export default function SettingModels() {
       openrouter: openrouterImage,
       'tongyi-qianwen': qwenImage,
       deepseek: deepseekImage,
+      ernie: ernieImage,
       minimax: minimaxImage,
       'z.ai': zaiImage,
       moonshot: moonshotImage,
@@ -1267,11 +1272,20 @@ export default function SettingModels() {
                   <SelectItem value="gpt-5.2">
                     {t('setting.gpt-5.2-name')}
                   </SelectItem>
+                  <SelectItem value="gpt-5.4">
+                    {t('setting.gpt-5.4-name')}
+                  </SelectItem>
                   <SelectItem value="gpt-5-mini">
                     {t('setting.gpt-5-mini-name')}
                   </SelectItem>
                   <SelectItem value="claude-sonnet-4-5">
                     {t('setting.claude-sonnet-4-5-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-sonnet-4-6">
+                    {t('setting.claude-sonnet-4-6-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-opus-4-6">
+                    {t('setting.claude-opus-4-6-name')}
                   </SelectItem>
                   <SelectItem value="minimax_m2_5">
                     {t('setting.minimax-m2-5-name')}
