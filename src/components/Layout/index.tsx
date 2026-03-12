@@ -44,6 +44,7 @@ const Layout = () => {
     error,
     backendError,
     isInstalling,
+    isBackendReady,
     shouldShowInstallScreen,
     retryInstallation,
     retryBackend,
@@ -73,10 +74,12 @@ const Layout = () => {
   const shouldShowOnboarding =
     initState === 'done' && isFirstLaunch && !isInstalling;
 
+  // Show install screen if: installation UI is active, user hasn't finished setup,
+  // or backend hasn't passed health check yet.
+  // isBackendReady defaults to false on each app launch (non-persisted),
+  // so the main UI is gated until health check passes — no race condition.
   const actualShouldShowInstallScreen =
-    shouldShowInstallScreen ||
-    initState !== 'done' ||
-    installationState === 'waiting-backend';
+    shouldShowInstallScreen || initState !== 'done' || !isBackendReady;
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
   if (!chatStore) {

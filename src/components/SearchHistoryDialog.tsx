@@ -28,7 +28,7 @@ import {
   CommandSeparator,
 } from '@/components/ui/command';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { replayProject } from '@/lib';
+import { loadProjectFromHistory } from '@/lib';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { useGlobalStore } from '@/store/globalStore';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -46,32 +46,33 @@ export function SearchHistoryDialog() {
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   const navigate = useNavigate();
-  const handleSetActive = (
+  const handleSetActive = async (
     projectId: string,
     question: string,
-    historyId: string
+    historyId: string,
+    project?: { tasks: { task_id: string }[]; project_name?: string }
   ) => {
-    const project = projectStore.getProjectById(projectId);
-    //If project exists
-    if (project) {
-      // if there is record, show result
+    const existingProject = projectStore.getProjectById(projectId);
+    if (existingProject) {
       projectStore.setHistoryId(projectId, historyId);
       projectStore.setActiveProject(projectId);
       navigate(`/`);
       setOpen(false);
     } else {
-      // if there is no record, execute replay
-      handleReplay(projectId, question, historyId);
+      setOpen(false);
+      const taskIdsList = project?.tasks
+        ?.map((t) => t.task_id)
+        .filter(Boolean) || [projectId];
+      await loadProjectFromHistory(
+        projectStore,
+        navigate,
+        projectId,
+        question,
+        historyId,
+        taskIdsList,
+        project?.project_name
+      );
     }
-  };
-
-  const handleReplay = async (
-    projectId: string,
-    question: string,
-    historyId: string
-  ) => {
-    setOpen(false);
-    await replayProject(projectStore, navigate, projectId, question, historyId);
   };
 
   const handleDelete = (taskId: string) => {
@@ -130,7 +131,11 @@ export function SearchHistoryDialog() {
                    * after update instead.
                    */
                   onSelect={() =>
-                    handleSetActive(task.task_id, task.question, task.id)
+                    handleSetActive(
+                      task.task_id,
+                      task.question,
+                      String(task.id)
+                    )
                   }
                 >
                   <ScanFace />

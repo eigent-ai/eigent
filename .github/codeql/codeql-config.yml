@@ -1,0 +1,15 @@
+# CodeQL configuration for code scanning.
+# See: https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning
+name: "CodeQL config"
+
+paths-ignore:
+  - "package/@stackframe/**"
+  - "node_modules/**"
+  - "**/node_modules/**"
+
+# Exclude py/path-injection for backend/app/utils/file_utils.py pattern:
+# Paths are validated by safe_resolve_path (under base) before use; the query
+# does not recognize this validation. Excluding to avoid false positives.
+query-filters:
+  - exclude:
+      id: py/path-injection

@@ -22,7 +22,7 @@ import {
 import { Tag } from '@/components/ui/tag';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { replayProject } from '@/lib/replay';
+import { loadProjectFromHistory } from '@/lib/replay';
 import { useProjectStore } from '@/store/projectStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
@@ -30,11 +30,13 @@ import { motion } from 'framer-motion';
 import {
   Edit,
   Hash,
+  Loader2,
   MoreHorizontal,
   Pin,
   Sparkle,
   Sparkles,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,7 +48,8 @@ interface ProjectGroupProps {
   onTaskSelect: (
     projectId: string,
     question: string,
-    historyId: string
+    historyId: string,
+    project?: ProjectGroupType
   ) => void;
   onTaskDelete: (taskId: string) => void;
   onTaskShare: (taskId: string) => void;
@@ -82,6 +85,7 @@ export default function ProjectGroup({
   const { chatStore } = useChatStoreAdapter();
   const [_isExpanded, _setIsExpanded] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
 
   // Filter tasks based on search value
   const filteredTasks = project.tasks.filter((task) =>
@@ -108,7 +112,7 @@ export default function ProjectGroup({
   const _hasIssue = hasHumanInLoop;
 
   // Handler to navigate to project
-  const handleProjectClick = (e: React.MouseEvent) => {
+  const handleProjectClick = async (e: React.MouseEvent) => {
     // Don't trigger if clicking on interactive elements (buttons, dropdowns)
     if ((e.target as HTMLElement).closest('button, [role="menuitem"]')) {
       return;
@@ -122,26 +126,39 @@ export default function ProjectGroup({
       projectStore.setActiveProject(project.project_id);
       navigate('/');
     } else {
-      // Project doesn't exist, trigger replay to recreate it
-      // Get the first task's question and use the first task's ID as history ID
+      // Project doesn't exist, load final state (no replay animation)
       const firstTask = project.tasks?.[0];
       if (firstTask) {
         const question = firstTask.question || project.last_prompt || '';
         const historyId = firstTask.id?.toString() || '';
-        const taskIdsList = [project.project_id];
+        const taskIdsList = project.tasks
+          ?.map((t) => t.task_id)
+          .filter(Boolean) || [project.project_id];
 
-        replayProject(
-          projectStore,
-          navigate,
-          project.project_id,
-          question,
-          historyId,
-          taskIdsList
-        );
+        setIsLoadingProject(true);
+        try {
+          await loadProjectFromHistory(
+            projectStore,
+            navigate,
+            project.project_id,
+            question,
+            historyId,
+            taskIdsList,
+            project.project_name
+          );
+        } catch (error) {
+          console.error('Failed to load project:', error);
+        } finally {
+          setIsLoadingProject(false);
+        }
       } else {
-        console.warn('No tasks found in project, cannot replay');
-        // Fallback: try to set as active anyway (may create a new project)
-        projectStore.setActiveProject(project.project_id);
+        // No tasks to replay - project has triggers but no tasks
+        // Create an empty project with this ID and navigate to it
+        projectStore.createProject(
+          project.project_name || 'Project',
+          'Project with triggers',
+          project.project_id
+        );
         navigate('/');
       }
     }
@@ -173,7 +190,7 @@ export default function ProjectGroup({
       : 0;
 
   // Trigger count is 0 for now (disabled)
-  const _triggerCount = 0;
+  // const _triggerCount = 0;
 
   // Handle project edit - open dialog
   const handleProjectEdit = (e?: React.MouseEvent) => {
@@ -200,8 +217,13 @@ export default function ProjectGroup({
       <motion.div
         transition={{ duration: 0.2, ease: 'easeOut' }}
         onClick={handleProjectClick}
-        className="h-full cursor-pointer overflow-hidden rounded-xl border border-solid border-border-disabled bg-project-surface-default backdrop-blur-sm transition-colors hover:bg-project-surface-hover"
+        className={`relative h-full overflow-hidden rounded-xl border border-solid border-border-disabled bg-project-surface-default backdrop-blur-sm transition-colors hover:bg-project-surface-hover ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer hover:bg-project-surface-hover'}`}
       >
+        {isLoadingProject && (
+          <div className="bg-white/50 absolute inset-0 z-10 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-icon-primary" />
+          </div>
+        )}
         {/* Project Card */}
         <div className="flex h-full flex-col">
           {/* Header with menu */}
@@ -336,9 +358,19 @@ export default function ProjectGroup({
                 {/* Task count */}
                 <TooltipSimple content="Tasks">
                   <div className="flex items-center gap-1">
-                    <Pin className="h-4 w-4 text-icon-secondary" />
+                    <Pin className="h-4 w-4 text-icon-primary" />
                     <span className="text-body-sm font-semibold text-text-body">
                       {project.task_count}
+                    </span>
+                  </div>
+                </TooltipSimple>
+
+                {/* Trigger count */}
+                <TooltipSimple content="Triggers">
+                  <div className="flex items-center gap-1">
+                    <Zap className="h-4 w-4 text-icon-warning" />
+                    <span className="text-body-sm font-semibold text-text-warning">
+                      {project.total_triggers || 0}
                     </span>
                   </div>
                 </TooltipSimple>
@@ -354,8 +386,13 @@ export default function ProjectGroup({
   return (
     <div
       onClick={handleProjectClick}
-      className="hover:perfect-shadow cursor-pointer overflow-hidden rounded-xl border border-solid border-border-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover"
+      className={`hover:perfect-shadow relative overflow-hidden rounded-xl border border-solid border-border-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer'}`}
     >
+      {isLoadingProject && (
+        <div className="bg-white/50 absolute inset-0 z-10 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-icon-primary" />
+        </div>
+      )}
       {/* Project */}
       <div className="flex w-full items-center justify-between px-6 py-4">
         {/* Start: Folder icon and project name - Fixed width */}
@@ -392,6 +429,13 @@ export default function ProjectGroup({
             <Tag variant="default" size="sm" className="min-w-10">
               <Pin />
               <span>{project.task_count}</span>
+            </Tag>
+          </TooltipSimple>
+
+          <TooltipSimple content="Triggers">
+            <Tag variant="warning" size="sm" className="min-w-10">
+              <Zap />
+              <span>{project.total_triggers || 0}</span>
             </Tag>
           </TooltipSimple>
         </div>

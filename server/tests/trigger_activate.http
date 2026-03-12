@@ -1,0 +1,298 @@
+# ============================================================
+# Trigger Activation Limits — .http test file
+#
+# Tests that:
+#  A) Normal (schedule) triggers auto-activate on creation,
+#     but fall back to inactive once the project limit (5) is hit.
+#  B) Auth-required (slack) triggers auto-set to pending_verification,
+#     but fall back to inactive once the project limit is hit.
+#  C) Explicit POST activate returns 400 when the limit is reached.
+#  D) After deactivating one, activation succeeds again.
+#
+# Limits under test:
+#   • MAX_ACTIVE_PER_PROJECT = 5
+#   • MAX_ACTIVE_PER_USER   = 25  (not exercised here — same idea)
+# ============================================================
+
+@baseUrl = http://localhost:3001/api
+@projectId = trigger-limit-test-project-001
+
+# ── Step 0: Login ────────────────────────────────────────────
+# @name login
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "testpassword123"
+}
+
+###
+
+@token = {{login.response.body.token}}
+
+# =============================================================
+# PART A — Normal (schedule) triggers: auto-activate up to limit
+# =============================================================
+
+# ── A1: Create schedule trigger 1 → expect status = "active" ─
+# @name createSchedule1
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Schedule Trigger 1",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 9 * * 1",
+  "task_prompt": "Run weekly task 1"
+}
+
+###
+
+@scheduleId1 = {{createSchedule1.response.body.id}}
+# → Expect: status = "active"
+
+# ── A2: Create schedule trigger 2 → expect status = "active" ─
+# @name createSchedule2
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Schedule Trigger 2",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 10 * * 2",
+  "task_prompt": "Run weekly task 2"
+}
+
+###
+
+@scheduleId2 = {{createSchedule2.response.body.id}}
+# → Expect: status = "active"
+
+# ── A3: Create schedule trigger 3 → expect status = "active" ─
+# @name createSchedule3
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Schedule Trigger 3",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 11 * * 3",
+  "task_prompt": "Run weekly task 3"
+}
+
+###
+
+@scheduleId3 = {{createSchedule3.response.body.id}}
+# → Expect: status = "active"
+
+# ── A4: Create schedule trigger 4 → expect status = "active" ─
+# @name createSchedule4
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Schedule Trigger 4",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 12 * * 4",
+  "task_prompt": "Run weekly task 4"
+}
+
+###
+
+@scheduleId4 = {{createSchedule4.response.body.id}}
+# → Expect: status = "active"
+
+# ── A5: Create schedule trigger 5 → expect status = "active" ─
+# @name createSchedule5
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Schedule Trigger 5",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 13 * * 5",
+  "task_prompt": "Run weekly task 5"
+}
+
+###
+
+@scheduleId5 = {{createSchedule5.response.body.id}}
+# → Expect: status = "active"
+# Project now has 5 active triggers — limit reached
+
+# ── A6: Create schedule trigger 6 → expect status = "inactive" (limit) ─
+# @name createSchedule6
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Schedule Trigger 6 (over limit)",
+  "project_id": "{{projectId}}",
+  "trigger_type": "schedule",
+  "custom_cron_expression": "0 14 * * 6",
+  "task_prompt": "Run weekly task 6"
+}
+
+###
+
+@scheduleId6 = {{createSchedule6.response.body.id}}
+# → Expect: status = "inactive"  (auto-activate suppressed by project limit)
+
+# =============================================================
+# PART B — Auth-required (Slack) trigger: pending_verification
+#          suppressed to inactive when limit already reached
+# =============================================================
+
+# ── B1: Create slack trigger → expect status = "inactive" (limit already hit) ─
+# @name createSlack1
+POST {{baseUrl}}/trigger/
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Slack Trigger (over limit)",
+  "project_id": "{{projectId}}",
+  "trigger_type": "slack_trigger",
+  "task_prompt": "Handle slack event",
+  "config": {
+    "event_types": ["message"],
+    "include_bot_messages": false
+  }
+}
+
+###
+
+@slackId1 = {{createSlack1.response.body.id}}
+# → Expect: status = "inactive"  (would normally be "pending_verification",
+#   but project already at 5 active triggers so it stays inactive)
+
+# =============================================================
+# PART C — Explicit activation blocked at limit
+# =============================================================
+
+# ── C1: Try to activate schedule trigger 6 → expect 400 ─────
+# @name activateSchedule6
+POST {{baseUrl}}/trigger/{{scheduleId6}}/activate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 400 — "Maximum number of concurrent active triggers (5) reached for this project"
+
+# ── C2: Try to activate the slack trigger → expect 400 ──────
+# @name activateSlack1
+POST {{baseUrl}}/trigger/{{slackId1}}/activate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 400 — "Maximum number of concurrent active triggers (5) reached for this project"
+
+# =============================================================
+# PART D — Deactivate one, then activation succeeds
+# =============================================================
+
+# ── D1: Deactivate schedule trigger 1 → frees a slot ────────
+# @name deactivateSchedule1
+POST {{baseUrl}}/trigger/{{scheduleId1}}/deactivate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 200, status = "inactive"
+
+# ── D2: Activate schedule trigger 6 → should succeed now ────
+# @name activateSchedule6After
+POST {{baseUrl}}/trigger/{{scheduleId6}}/activate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 200, status = "active"
+
+# ── D3: Try to activate slack trigger → project at 5 again → 400
+# @name activateSlack1Again
+POST {{baseUrl}}/trigger/{{slackId1}}/activate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 400 — limit reached again (we filled the freed slot)
+
+# ── D4: Deactivate another to make room for the slack trigger ─
+# @name deactivateSchedule2
+POST {{baseUrl}}/trigger/{{scheduleId2}}/deactivate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 200, status = "inactive"
+
+# ── D5: Activate slack trigger → should go to pending_verification ─
+# @name activateSlack1Final
+POST {{baseUrl}}/trigger/{{slackId1}}/activate
+Authorization: Bearer {{token}}
+
+###
+
+# → Expect: 401 with detail.message = "Authentication required for this trigger type"
+#   and trigger status = "pending_verification"
+#   (auth-required triggers return 401 to prompt the user to authenticate)
+
+# =============================================================
+# CLEANUP — Delete all triggers created during this test
+# =============================================================
+
+# @name deleteSchedule1
+DELETE {{baseUrl}}/trigger/{{scheduleId1}}
+Authorization: Bearer {{token}}
+
+###
+
+# @name deleteSchedule2
+DELETE {{baseUrl}}/trigger/{{scheduleId2}}
+Authorization: Bearer {{token}}
+
+###
+
+# @name deleteSchedule3
+DELETE {{baseUrl}}/trigger/{{scheduleId3}}
+Authorization: Bearer {{token}}
+
+###
+
+# @name deleteSchedule4
+DELETE {{baseUrl}}/trigger/{{scheduleId4}}
+Authorization: Bearer {{token}}
+
+###
+
+# @name deleteSchedule5
+DELETE {{baseUrl}}/trigger/{{scheduleId5}}
+Authorization: Bearer {{token}}
+
+###
+
+# @name deleteSchedule6
+DELETE {{baseUrl}}/trigger/{{scheduleId6}}
+Authorization: Bearer {{token}}
+
+###
+
+# @name deleteSlack1
+DELETE {{baseUrl}}/trigger/{{slackId1}}
+Authorization: Bearer {{token}}
+
+###

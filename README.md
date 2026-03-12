@@ -37,7 +37,7 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 - ✅ **Zero Setup** - No technical configuration required
 - ✅ **Multi-Agent Coordination** - Handle complex multi-agent workflows
 - ✅ **Enterprise Feature** - SSO/Access control
-- ✅ **Local Deploymen**t
+- ✅ **Local Deployment**
 - ✅ **Open Source**
 - ✅ **Custom Model Support**
 - ✅ **MCP Integration**
@@ -70,12 +70,12 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 - [🗺️ Roadmap - Open Source Cowork](#%EF%B8%8F-roadmap---open-source-Cowork)
 - [📖 Contributing](#-contributing)
   - [Main Contributors](#main-contributors)
-  - [Distinguished amabssador](#distinguished-amabssador)
+  - [Distinguished ambassador](#distinguished-ambassador)
 - [Ecosystem](#ecosystem)
 - [📄 Open Source License](#-open-source-license)
 - [🌐 Community & contact](#-community--contact)
 
-#### 
+####
 
 <br/>
 

@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
 import {
   Node as FlowNode,
   NodeTypes,
@@ -23,12 +22,13 @@ import {
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Node as CustomNodeComponent } from './node';
+import { createWorkflowWheelHandler } from './workflowWheelHandler';
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { useWorkerList } from '@/store/authStore';
+import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import '@xyflow/react/dist/style.css';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface NodeData {
@@ -49,8 +49,10 @@ const VIEWPORT_ANIMATION_DURATION = 500;
 
 export default function Workflow({
   taskAssigning,
+  onMoveViewport,
 }: {
   taskAssigning: Agent[];
+  onMoveViewport?: (direction: 'left' | 'right') => void;
 }) {
   const { t } = useTranslation();
   //Get Chatstore for the active project's task
@@ -120,7 +122,7 @@ export default function Workflow({
         tools: [
           'Video Downloader Toolkit',
           'Audio Analysis Toolkit',
-          'Image Analysis Toolkit',
+          'Screenshot Toolkit',
           'Open AI Image Toolkit',
           'Human Toolkit',
           'Terminal Toolkit',
@@ -297,7 +299,7 @@ export default function Workflow({
             },
             position: isEditMode
               ? node.position
-              : { x: index * (342 + 20) + 8, y: 16 },
+              : { x: index * (342 + 20) + 8, y: 6 },
           };
         } else {
           return {
@@ -360,26 +362,38 @@ export default function Workflow({
     setTimeout(() => {
       setIsAnimating(false);
     }, VIEWPORT_ANIMATION_DURATION);
+    // Call the callback if provided
+    if (onMoveViewport) {
+      onMoveViewport(dx > 0 ? 'left' : 'right');
+    }
   };
 
   const _handleShare = async (taskId: string) => {
     share(taskId);
   };
 
+  // Register moveViewport callbacks with the store
+  const { setMoveLeft, setMoveRight } = useWorkflowViewportStore();
+  useEffect(() => {
+    setMoveLeft(() => moveViewport(200));
+    setMoveRight(() => moveViewport(-200));
+    return () => {
+      setMoveLeft(null);
+      setMoveRight(null);
+    };
+  }, [setMoveLeft, setMoveRight, isAnimating, clampViewportX]);
+
   useEffect(() => {
     const container: HTMLElement | null =
       document.querySelector('.react-flow__pane');
     if (!container) return;
 
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY !== 0 && !isEditMode) {
-        e.preventDefault();
-
-        const { x, y, zoom } = getViewport();
-        const nextX = clampViewportX(x - e.deltaY);
-        setViewport({ x: nextX, y, zoom }, { duration: 0 });
-      }
-    };
+    const onWheel = createWorkflowWheelHandler({
+      isEditMode,
+      getViewport,
+      setViewport,
+      clampViewportX,
+    });
 
     container.addEventListener('wheel', onWheel, { passive: false });
 
@@ -394,65 +408,6 @@ export default function Workflow({
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center">
-      <div className="flex w-full items-center justify-between">
-        <div className="text-lg font-bold leading-relaxed text-text-body">
-          {t('workforce.your-ai-workforce')}
-        </div>
-        <div className="flex items-center justify-center gap-sm">
-          {/* <Button
-						variant="outline"
-						size="icon"
-						className="border border-solid border-menutabs-border-active bg-menutabs-bg-default p-2"
-						onClick={() => {
-							if (isEditMode) {
-								// save current viewport state
-								setLastViewport(getViewport());
-								// restore original state
-								setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 500 });
-								// reset node positions
-								setNodes((nodes: CustomNode[]) => {
-									let currentX = 8;
-									return nodes.map((node: CustomNode) => {
-										const nodeWidth = node.data.isExpanded ? 560 : 280;
-										const newPosition = { x: currentX, y: 16 };
-										currentX += nodeWidth + 20;
-
-										return {
-											...node,
-											position: newPosition,
-										};
-									});
-								});
-								setIsEditMode(false);
-							} else {
-								// enter edit mode
-								setViewport({ x: 0, y: 0, zoom: 0.5 }, { duration: 500 });
-								setIsEditMode(true);
-							}
-						}}
-					>
-						<SquareStack />
-					</Button> */}
-          <div className="justify-cneter flex items-center gap-1 rounded-lg border border-solid border-menutabs-border-active bg-menutabs-bg-default p-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                moveViewport(200);
-              }}
-            >
-              <ChevronLeft className="h-4 w-4 text-icon-primary" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => moveViewport(-200)}
-            >
-              <ChevronRight className="h-4 w-4 text-icon-primary" />
-            </Button>
-          </div>
-        </div>
-      </div>
       <div className="h-full w-full" ref={containerRef}>
         <ReactFlow
           nodes={nodes}

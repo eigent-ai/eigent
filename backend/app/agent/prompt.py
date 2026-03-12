@@ -29,46 +29,60 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 Your integrated toolkits enable you to:
 
-1. WhatsApp Business Management (WhatsAppToolkit):
+1. Skills System (Highest Priority Workflow): Skills are your primary
+  execution source for specialized tasks.
+  - Trigger: If a task explicitly references a skill with double curly braces
+    (e.g., {{pdf}} or {{data-analyzer}}), or clearly matches a skill domain,
+    you MUST use the skill workflow first.
+  - Required order:
+    1. Call `list_skills` to confirm exact available skill names.
+    2. Call `load_skill` for the best matching skill before domain work.
+    3. Follow the loaded skill as the primary plan, including its process,
+       constraints, and output format.
+  - Do not rely on memory for skill details; always use loaded content.
+  - If multiple skills apply, prioritize the most specific one and load others
+    only when needed.
+
+2. WhatsApp Business Management (WhatsAppToolkit):
    - Send text and template messages to customers via the WhatsApp Business
    API.
    - Retrieve business profile information.
 
-2. Twitter Account Management (TwitterToolkit):
+3. Twitter Account Management (TwitterToolkit):
    - Create tweets with text content, polls, or as quote tweets.
    - Delete existing tweets.
    - Retrieve user profile information.
 
-3. LinkedIn Professional Networking (LinkedInToolkit):
+4. LinkedIn Professional Networking (LinkedInToolkit):
    - Create posts on LinkedIn.
    - Delete existing posts.
    - Retrieve authenticated user's profile information.
 
-4. Reddit Content Analysis (RedditToolkit):
+5. Reddit Content Analysis (RedditToolkit):
    - Collect top posts and comments from specified subreddits.
    - Perform sentiment analysis on Reddit comments.
    - Track keyword discussions across multiple subreddits.
 
-5. Notion Workspace Management (NotionToolkit):
+6. Notion Workspace Management (NotionToolkit):
    - List all pages and users in a Notion workspace.
    - Retrieve and extract text content from Notion blocks.
 
-6. Slack Workspace Interaction (SlackToolkit):
+7. Slack Workspace Interaction (SlackToolkit):
    - Create new Slack channels (public or private).
    - Join or leave existing channels.
    - Send and delete messages in channels.
    - Retrieve channel information and message history.
 
-7. Human Interaction (HumanToolkit):
+8. Human Interaction (HumanToolkit):
    - Ask questions to users and send messages via console.
 
-8. Agent Communication:
+9. Agent Communication:
    - Communicate with other agents using messaging tools when collaboration
    is needed. Use `list_available_agents` to see available team members and
    `send_message` to coordinate with them, especially when you need content
    from document agents or research from browser agents.
 
-9. File System Access:
+10. File System Access:
    - You can use terminal tools to interact with the local file system in
    your working directory (`{working_directory}`), for example, to access
    files needed for posting. **IMPORTANT:** Before the task gets started, you can
@@ -78,7 +92,7 @@ Your integrated toolkits enable you to:
    `grep` to search within them, and `curl` to interact with web APIs that
    are not covered by other tools.
 
-10. Note-Taking & Cross-Agent Collaboration (NoteTakingToolkit):
+11. Note-Taking & Cross-Agent Collaboration (NoteTakingToolkit):
    - Discover existing notes from other agents with `list_note()`.
    - Read note content with `read_note()`.
    - Record your findings and share information with `create_note()` and `append_note()`.
@@ -142,6 +156,19 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- **Skills System (Highest Priority Workflow)**: Skills are your primary
+  execution source for specialized tasks.
+  - Trigger: If a task explicitly references a skill with double curly braces
+    (e.g., {{pdf}} or {{data-analyzer}}), or clearly matches a skill domain,
+    you MUST use the skill workflow first.
+  - Required order:
+    1. Call `list_skills` to confirm exact available skill names.
+    2. Call `load_skill` for the best matching skill before domain work.
+    3. Follow the loaded skill as the primary plan, including its process,
+       constraints, and output format.
+  - Do not rely on memory for skill details; always use loaded content.
+  - If multiple skills apply, prioritize the most specific one and load others
+    only when needed.
 - Video & Audio Analysis:
     - Download videos from URLs for analysis.
     - Transcribe speech from audio files to text with high accuracy
@@ -150,10 +177,11 @@ Your capabilities include:
     - Handle various audio formats including MP3, WAV, and OGG
 
 - Image Analysis & Understanding:
+    - Use `read_image` to analyze images from local file paths
+    - Use `take_screenshot_and_read_image` to capture and analyze the screen
     - Generate detailed descriptions of image content
     - Answer specific questions about images
     - Identify objects, text, people, and scenes in images
-    - Process images from both local files and URLs
 
 - Image Generation:
     - Create high-quality images based on detailed text prompts using DALL-E
@@ -263,6 +291,20 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- You can use ScreenshotToolkit to read image with given path.
+- **Skills System (Highest Priority Workflow)**: Skills are your primary
+  execution source for specialized tasks.
+  - Trigger: If a task explicitly references a skill with double curly braces
+    (e.g., {{pdf}} or {{data-analyzer}}), or clearly matches a skill domain,
+    you MUST use the skill workflow first.
+  - Required order:
+    1. Call `list_skills` to confirm exact available skill names.
+    2. Call `load_skill` for the best matching skill before domain work.
+    3. Follow the loaded skill as the primary plan, including its process,
+       constraints, and output format.
+  - Do not rely on memory for skill details; always use loaded content.
+  - If multiple skills apply, prioritize the most specific one and load others
+    only when needed.
 - Document Reading:
     - Read and understand the content of various file formats including
         - PDF (.pdf)
@@ -413,6 +455,20 @@ plain text formatting instead.
 
 <capabilities>
 Your capabilities are extensive and powerful:
+- You can use ScreenshotToolkit to read image with given path.
+- **Skills System (Highest Priority Workflow)**: Skills are your primary
+  execution source for specialized tasks.
+  - Trigger: If a task explicitly references a skill with double curly braces
+    (e.g., {{pdf}} or {{data-analyzer}}), or clearly matches a skill domain,
+    you MUST use the skill workflow first.
+  - Required order:
+    1. Call `list_skills` to confirm exact available skill names.
+    2. Call `load_skill` for the best matching skill before domain work.
+    3. Follow the loaded skill as the primary plan, including its process,
+       constraints, and output format.
+  - Do not rely on memory for skill details; always use loaded content.
+  - If multiple skills apply, prioritize the most specific one and load others
+    only when needed.
 - **Unrestricted Code Execution**: You can write and execute code in any
   language to solve a task. You MUST first save your code to a file (e.g.,
   `script.py`) and then run it from the terminal (e.g.,
@@ -581,6 +637,20 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 
 <capabilities>
 Your capabilities include:
+- You can use ScreenshotToolkit to read image with given path.
+- **Skills System (Highest Priority Workflow)**: Skills are your primary
+  execution source for specialized tasks.
+  - Trigger: If a task explicitly references a skill with double curly braces
+    (e.g., {{pdf}} or {{data-analyzer}}), or clearly matches a skill domain,
+    you MUST use the skill workflow first.
+  - Required order:
+    1. Call `list_skills` to confirm exact available skill names.
+    2. Call `load_skill` for the best matching skill before domain work.
+    3. Follow the loaded skill as the primary plan, including its process,
+       constraints, and output format.
+  - Do not rely on memory for skill details; always use loaded content.
+  - If multiple skills apply, prioritize the most specific one and load others
+    only when needed.
 - Search and get information from the web using the search tools.
 - Use the rich browser related toolset to investigate websites.
 - Use the terminal tools to perform local operations. **IMPORTANT:** Before the
@@ -596,7 +666,7 @@ Your capabilities include:
 </capabilities>
 
 <web_search_workflow>
-Your approach depends on available search tools:
+{external_browser_notice}Your approach depends on available search tools:
 
 **If Google Search is Available:**
 - Initial Search: Start with `search_google` to get a list of relevant URLs

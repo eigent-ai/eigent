@@ -71,7 +71,7 @@ export function TaskCard({
   const activeTaskId = chatStore?.activeTaskId as string;
   const activeTask = chatStore?.tasks?.[activeTaskId];
   const activeTaskStatus = activeTask?.status;
-  const activeWorkSpace = activeTask?.activeWorkSpace;
+  const activeWorkspace = activeTask?.activeWorkspace;
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -116,12 +116,12 @@ export function TaskCard({
   }, [activeTaskStatus]);
 
   useEffect(() => {
-    if (activeWorkSpace === 'workflow') {
+    if (activeWorkspace === 'workflow') {
       setIsExpanded(false);
     } else {
       setIsExpanded(true);
     }
-  }, [activeWorkSpace]);
+  }, [activeWorkspace]);
 
   // Improved height calculation logic
   useEffect(() => {
@@ -185,7 +185,7 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 pl-sm transition-all duration-300">
+      <div className="flex h-auto w-full flex-col gap-2 px-sm transition-all duration-300">
         <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm">
           <div className="absolute left-0 top-0 w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
@@ -387,7 +387,7 @@ export function TaskCard({
                             }
 
                             // Set the active workspace and agent
-                            chatStore.setActiveWorkSpace(
+                            chatStore.setActiveWorkspace(
                               chatStore.activeTaskId as string,
                               'workflow'
                             );
@@ -461,7 +461,7 @@ export function TaskCard({
                         </div>
                         <div className="flex flex-1 flex-col items-start justify-center">
                           <div
-                            className={`w-full whitespace-pre-line break-words ${
+                            className={`overflow-wrap-anywhere w-full whitespace-pre-line break-words ${
                               task.status === TaskStatus.FAILED
                                 ? 'text-text-cuation-default'
                                 : task.status === TaskStatus.BLOCKED

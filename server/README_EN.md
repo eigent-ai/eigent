@@ -20,7 +20,7 @@
 
 Note: All the above data is stored in the local PostgreSQL volume in Docker (see “Data Persistence” below). If you configure external models or remote MCP, requests go to the third-party services you specify.
 
-______________________________________________________________________
+---
 
 ### Quick Start (Docker)
 
@@ -28,7 +28,14 @@ ______________________________________________________________________
 
 - **Docker Desktop**: Installed and running
 - **Python**: 3.10.\* (3.10.15 recommended)
-- **Node.js**: >=18.0.0 \<23.0.0
+- **Node.js**: >=18.0.0 <23.0.0
+
+#### Hosting Configuration for Triggers
+
+**Important**: If you plan to use **app triggers** (incoming webhooks), you must host this server with a **publicly accessible domain**. App triggers require external services to reach your server via HTTPS callback URLs.
+
+- For local development, you can use tools like `ngrok` to expose your local server
+- For production, deploy with a proper domain and SSL certificate
 
 #### Setup Steps
 
@@ -38,8 +45,14 @@ ______________________________________________________________________
 cd server
 # Copy .env.example to .env(or create .env according to .env.example)
 cp .env.example .env
-docker compose up -d
+# Environment variables from .env are automatically passed to Docker images
+docker-compose up --build -d
 ```
+
+**Notes:**
+
+- Database migrations are automatically run by Alembic on container startup
+- All environment variables defined in `.env` are passed to the Docker images
 
 2. Start Frontend (Local Mode)
 
@@ -91,7 +104,7 @@ docker logs -f eigent_api | cat
 docker logs -f eigent_postgres | cat
 ```
 
-______________________________________________________________________
+---
 
 ### Developer Mode (Optional)
 
@@ -110,7 +123,7 @@ export database_url=postgresql://postgres:123456@localhost:5432/eigent
 uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 ```
 
-______________________________________________________________________
+---
 
 ### Others
 

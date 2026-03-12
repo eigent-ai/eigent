@@ -15,19 +15,26 @@
 import logging
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.component.error_format import normalize_error_to_openai_format
-from app.component.model_validation import create_agent
-from app.model.chat import PLATFORM_MAPPING
+from app.component.model_validation import (
+    ValidationErrorType,
+    ValidationStage,
+    validate_model_with_details,
+)
+from app.model.model_platform import NormalizedModelPlatform
 
 logger = logging.getLogger("model_controller")
+
 
 router = APIRouter()
 
 
 class ValidateModelRequest(BaseModel):
-    model_platform: str = Field("OPENAI", description="Model platform")
+    model_platform: NormalizedModelPlatform = Field(
+        "OPENAI", description="Model platform"
+    )
     model_type: str = Field("GPT_4O_MINI", description="Model type")
     api_key: str | None = Field(None, description="API key")
     url: str | None = Field(None, description="Model URL")
@@ -37,11 +44,9 @@ class ValidateModelRequest(BaseModel):
     extra_params: dict | None = Field(
         None, description="Extra model parameters"
     )
-
-    @field_validator("model_platform")
-    @classmethod
-    def map_model_platform(cls, v: str) -> str:
-        return PLATFORM_MAPPING.get(v, v)
+    include_diagnostics: bool = Field(
+        False, description="Include detailed diagnostic information"
+    )
 
 
 class ValidateModelResponse(BaseModel):
@@ -50,11 +55,41 @@ class ValidateModelResponse(BaseModel):
     error_code: str | None = Field(None, description="Error code")
     error: dict | None = Field(None, description="OpenAI-style error object")
     message: str = Field(..., description="Message")
+    error_type: str | None = Field(None, description="Detailed error type")
+    failed_stage: str | None = Field(
+        None, description="Stage where validation failed"
+    )
+    successful_stages: list[str] | None = Field(
+        None, description="Stages that succeeded"
+    )
+    diagnostic_info: dict | None = Field(
+        None, description="Diagnostic information"
+    )
+    model_response_info: dict | None = Field(
+        None, description="Model response information"
+    )
+    tool_call_info: dict | None = Field(
+        None, description="Tool call information"
+    )
+    validation_stages: dict[str, bool] | None = Field(
+        None, description="Validation stages status"
+    )
 
 
 @router.post("/model/validate")
 async def validate_model(request: ValidateModelRequest):
-    """Validate model configuration and tool call support."""
+    """Validate model configuration and tool call support with detailed error messages.
+
+    This endpoint validates a model configuration and provides detailed error messages
+    to help users understand the root cause of validation failures. It checks:
+    1. Initialization (model type and platform)
+    2. Model creation (authentication, network, model availability)
+    3. Agent creation
+    4. Model call execution
+    5. Tool call execution
+
+    Returns detailed diagnostic information if include_diagnostics is True.
+    """
     platform = request.model_platform
     model_type = request.model_type
     has_custom_url = request.url is not None
@@ -67,6 +102,7 @@ async def validate_model(request: ValidateModelRequest):
             "model_type": model_type,
             "has_url": has_custom_url,
             "has_config": has_config,
+            "include_diagnostics": request.include_diagnostics,
         },
     )
 
@@ -79,12 +115,15 @@ async def validate_model(request: ValidateModelRequest):
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "Invalid key. Validation failed.",
+                "message": "Invalid key. Validation failed. Please provide a valid API key.",
                 "error_code": "invalid_api_key",
+                "error_type": ValidationErrorType.AUTHENTICATION_ERROR.value,
+                "failed_stage": ValidationStage.INITIALIZATION.value,
                 "error": {
                     "type": "invalid_request_error",
-                    "param": None,
+                    "param": "api_key",
                     "code": "invalid_api_key",
+                    "message": "API key cannot be empty. Please provide a valid API key.",
                 },
             },
         )
@@ -93,10 +132,10 @@ async def validate_model(request: ValidateModelRequest):
         extra = request.extra_params or {}
 
         logger.debug(
-            "Creating agent for validation",
+            "Starting detailed model validation",
             extra={"platform": platform, "model_type": model_type},
         )
-        agent = create_agent(
+        validation_result = validate_model_with_details(
             platform,
             model_type,
             api_key=request.api_key,
@@ -105,23 +144,129 @@ async def validate_model(request: ValidateModelRequest):
             **extra,
         )
 
-        logger.debug(
-            "Agent created, executing test step",
-            extra={"platform": platform, "model_type": model_type},
-        )
-        response = agent.step(
-            input_message="""
-            Get the content of https://www.camel-ai.org,
-            you must use the get_website_content tool to get the content ,
-            i just want to verify the get_website_content tool is working,
-            you must call the get_website_content tool only once.
-            """
-        )
+        # Build response message based on validation result
+        # Prefer raw error messages from providers as they are usually clear and informative
+        if validation_result.is_tool_calls:
+            message = "Validation successful. Model supports tool calling and tool execution completed successfully."
+        elif validation_result.is_valid:
+            if (
+                validation_result.error_type
+                == ValidationErrorType.TOOL_CALL_NOT_SUPPORTED
+            ):
+                message = "Model call succeeded, but this model does not support tool calling functionality. Please try with another model that supports tool calls."
+            elif (
+                validation_result.error_type
+                == ValidationErrorType.TOOL_CALL_EXECUTION_FAILED
+            ):
+                # Use raw error message if available, otherwise use the formatted one
+                message = (
+                    validation_result.raw_error_message
+                    or validation_result.error_message
+                    or "Tool call execution failed."
+                )
+            else:
+                message = (
+                    validation_result.raw_error_message
+                    or validation_result.error_message
+                    or "Model call succeeded, but tool call validation failed. Please check the model configuration."
+                )
+        else:
+            # Use raw error message as primary message - provider errors are usually clear
+            # Only add context for specific cases where it's helpful
+            if validation_result.raw_error_message:
+                message = validation_result.raw_error_message
+            elif validation_result.error_message:
+                message = validation_result.error_message
+            else:
+                message = "Model validation failed. Please check your configuration and try again."
 
+        # Convert error type to error code for backward compatibility
+        error_code = None
+        error_obj = None
+
+        if validation_result.error_type:
+            error_code = validation_result.error_type.value
+
+            # Create OpenAI-style error object
+            error_obj = {
+                "type": "invalid_request_error",
+                "param": None,
+                "code": validation_result.error_type.value,
+                "message": validation_result.error_message or message,
+            }
+
+            # Add specific error details if available
+            if validation_result.error_details:
+                error_obj["details"] = validation_result.error_details
+
+        # Build response
+        response_data = {
+            "is_valid": validation_result.is_valid,
+            "is_tool_calls": validation_result.is_tool_calls,
+            "error_code": error_code,
+            "error": error_obj,
+            "message": message,
+        }
+
+        # Include detailed diagnostic information if requested
+        if request.include_diagnostics:
+            response_data["error_type"] = (
+                validation_result.error_type.value
+                if validation_result.error_type
+                else None
+            )
+            response_data["failed_stage"] = (
+                validation_result.failed_stage.value
+                if validation_result.failed_stage
+                else None
+            )
+            response_data["successful_stages"] = [
+                stage.value for stage in validation_result.successful_stages
+            ]
+            response_data["diagnostic_info"] = (
+                validation_result.diagnostic_info
+            )
+            response_data["model_response_info"] = (
+                validation_result.model_response_info
+            )
+            response_data["tool_call_info"] = validation_result.tool_call_info
+            response_data["validation_stages"] = {
+                stage.value: success
+                for stage, success in validation_result.validation_stages.items()
+            }
+
+        result = ValidateModelResponse(**response_data)
+
+        # Use error or warning log level if there's an issue
+        log_extra = {
+            "platform": platform,
+            "model_type": model_type,
+            "is_valid": validation_result.is_valid,
+            "is_tool_calls": validation_result.is_tool_calls,
+            "error_type": validation_result.error_type.value
+            if validation_result.error_type
+            else None,
+            "failed_stage": validation_result.failed_stage.value
+            if validation_result.failed_stage
+            else None,
+        }
+
+        if not validation_result.is_valid:
+            logger.error("Model validation completed", extra=log_extra)
+        elif validation_result.error_type:
+            logger.warning("Model validation completed", extra=log_extra)
+        else:
+            logger.info("Model validation completed", extra=log_extra)
+
+        return result
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        # Normalize error to OpenAI-style error structure
+        # Fallback error handling for unexpected errors
         logger.error(
-            "Model validation failed",
+            "Unexpected error during model validation",
             extra={
                 "platform": platform,
                 "model_type": model_type,
@@ -129,52 +274,18 @@ async def validate_model(request: ValidateModelRequest):
             },
             exc_info=True,
         )
+
         message, error_code, error_obj = normalize_error_to_openai_format(e)
 
         raise HTTPException(
-            status_code=400,
+            status_code=500,
             detail={
-                "message": message,
-                "error_code": error_code,
-                "error": error_obj,
+                "message": f"Unexpected error during validation: {message}",
+                "error_code": error_code or "internal_error",
+                "error": error_obj
+                or {
+                    "type": "internal_error",
+                    "message": str(e),
+                },
             },
         )
-
-    # Check validation results
-    is_valid = bool(response)
-    is_tool_calls = False
-
-    if response and hasattr(response, "info") and response.info:
-        tool_calls = response.info.get("tool_calls", [])
-        if tool_calls and len(tool_calls) > 0:
-            expected = (
-                "Tool execution completed"
-                " successfully for"
-                " https://www.camel-ai.org,"
-                " Website Content:"
-                " Welcome to CAMEL AI!"
-            )
-            is_tool_calls = tool_calls[0].result == expected
-
-    no_tool_msg = (
-        "This model doesn't support tool calls. please try with another model."
-    )
-    result = ValidateModelResponse(
-        is_valid=is_valid,
-        is_tool_calls=is_tool_calls,
-        message="Validation Success" if is_tool_calls else no_tool_msg,
-        error_code=None,
-        error=None,
-    )
-
-    logger.info(
-        "Model validation completed",
-        extra={
-            "platform": platform,
-            "model_type": model_type,
-            "is_valid": is_valid,
-            "is_tool_calls": is_tool_calls,
-        },
-    )
-
-    return result

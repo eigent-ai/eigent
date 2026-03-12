@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
+  processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
+    ipcRenderer.invoke('process-dropped-files', fileData),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   triggerMenuAction: (action: string) =>
     ipcRenderer.send('menu-action', action),
   onExecuteAction: (callback: (action: string) => void) =>
@@ -155,6 +158,49 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-project-folder-path', email, projectId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
+  setBrowserPort: (port: number, isExternal?: boolean) =>
+    ipcRenderer.invoke('set-browser-port', port, isExternal),
+  getBrowserPort: () => ipcRenderer.invoke('get-browser-port'),
+  getCdpBrowsers: () => ipcRenderer.invoke('get-cdp-browsers'),
+  addCdpBrowser: (port: number, isExternal: boolean, name?: string) =>
+    ipcRenderer.invoke('add-cdp-browser', port, isExternal, name),
+  removeCdpBrowser: (browserId: string, closeBrowser?: boolean) =>
+    ipcRenderer.invoke('remove-cdp-browser', browserId, closeBrowser ?? true),
+  launchCdpBrowser: () => ipcRenderer.invoke('launch-cdp-browser'),
+  onCdpPoolChanged: (callback: (browsers: any[]) => void) => {
+    const channel = 'cdp-pool-changed';
+    const listener = (_event: any, browsers: any[]) => callback(browsers);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  // Skills
+  getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
+  skillsScan: () => ipcRenderer.invoke('skills-scan'),
+  skillWrite: (skillDirName: string, content: string) =>
+    ipcRenderer.invoke('skill-write', skillDirName, content),
+  skillDelete: (skillDirName: string) =>
+    ipcRenderer.invoke('skill-delete', skillDirName),
+  skillRead: (filePath: string) => ipcRenderer.invoke('skill-read', filePath),
+  skillListFiles: (skillDirName: string) =>
+    ipcRenderer.invoke('skill-list-files', skillDirName),
+  skillImportZip: (
+    zipPathOrBuffer: string | ArrayBuffer,
+    replacements?: string[]
+  ) => ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer, replacements),
+  openSkillFolder: (skillName: string) =>
+    ipcRenderer.invoke('open-skill-folder', skillName),
+  skillConfigInit: (userId: string) =>
+    ipcRenderer.invoke('skill-config-init', userId),
+  skillConfigLoad: (userId: string) =>
+    ipcRenderer.invoke('skill-config-load', userId),
+  skillConfigToggle: (userId: string, skillName: string, enabled: boolean) =>
+    ipcRenderer.invoke('skill-config-toggle', userId, skillName, enabled),
+  skillConfigUpdate: (userId: string, skillName: string, skillConfig: any) =>
+    ipcRenderer.invoke('skill-config-update', userId, skillName, skillConfig),
+  skillConfigDelete: (userId: string, skillName: string) =>
+    ipcRenderer.invoke('skill-config-delete', userId, skillName),
 });
 
 // --------- Preload scripts loading ---------
