@@ -26,6 +26,7 @@ def test_normalize_model_platform_maps_known_aliases():
     assert normalize_model_platform("grok") == "openai-compatible-model"
     assert normalize_model_platform("z.ai") == "openai-compatible-model"
     assert normalize_model_platform("ModelArk") == "openai-compatible-model"
+    assert normalize_model_platform("ernie") == "openai-compatible-model"
     assert normalize_model_platform("llama.cpp") == "openai-compatible-model"
 
 
@@ -44,7 +45,7 @@ def test_normalized_model_platform_type_applies_in_pydantic_model():
         optional_model_platform: NormalizedOptionalModelPlatform = None
 
     item = _Model(
-        model_platform="llama.cpp",
+        model_platform="ernie",
         optional_model_platform="ModelArk",
     )
 

@@ -15,122 +15,27 @@
 import { proxyFetchGet, proxyFetchPut } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { useAuthStore } from '@/store/authStore';
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 export default function SettingPrivacy() {
-  const { email } = useAuthStore();
-  const [_privacy, setPrivacy] = useState(false);
+  const [helpImprove, setHelpImprove] = useState(false);
   const { t } = useTranslation();
-  const API_FIELDS = useMemo(
-    () => [
-      'take_screenshot',
-      'access_local_software',
-      'access_your_address',
-      'password_storage',
-    ],
-    []
-  );
-  const [settings, setSettings] = useState([
-    {
-      title: t('setting.allow-agent-to-take-screenshots'),
-      description: t('setting.allow-agent-to-take-screenshots-description'),
-      checked: false,
-    },
-    {
-      title: t('setting.allow-agent-to-access-local-software'),
-      description: t(
-        'setting.allow-agent-to-access-local-software-description'
-      ),
-      checked: false,
-    },
-    {
-      title: t('setting.allow-agent-to-access-your-address'),
-      description: t('setting.allow-agent-to-access-your-address-description'),
-      checked: false,
-    },
-    {
-      title: t('setting.password-storage'),
-      description: t('setting.password-storage-description'),
-      checked: false,
-    },
-  ]);
+  const [isHowWeHandleOpen, setIsHowWeHandleOpen] = useState(false);
+
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
-        let hasFalse = false;
-        setSettings((prev) =>
-          prev.map((item, index) => {
-            if (!res[API_FIELDS[index]]) {
-              hasFalse = true;
-            }
-            return {
-              ...item,
-              checked: res[API_FIELDS[index]] || false,
-            };
-          })
-        );
-        setPrivacy(!hasFalse);
+        setHelpImprove(res.help_improve || false);
       })
       .catch((err) => console.error('Failed to fetch settings:', err));
-  }, [API_FIELDS]);
+  }, []);
 
-  const handleTurnOnAll = (type: boolean) => {
-    const newSettings = settings.map((item) => ({
-      ...item,
-      checked: type,
-    }));
-    setSettings(newSettings);
-    setPrivacy(type);
-    const requestData = {
-      [API_FIELDS[0]]: type,
-      [API_FIELDS[1]]: type,
-      [API_FIELDS[2]]: type,
-      [API_FIELDS[3]]: type,
-    };
-
-    proxyFetchPut('/api/user/privacy', requestData);
-  };
-
-  const _handleToggle = (index: number) => {
-    setSettings((prev) => {
-      const newSettings = [...prev];
-      newSettings[index] = {
-        ...newSettings[index],
-        checked: !newSettings[index].checked,
-      };
-      return newSettings;
-    });
-
-    const requestData = {
-      [API_FIELDS[0]]: settings[0].checked,
-      [API_FIELDS[1]]: settings[1].checked,
-      [API_FIELDS[2]]: settings[2].checked,
-      [API_FIELDS[3]]: settings[3].checked,
-    };
-
-    requestData[API_FIELDS[index]] = !settings[index].checked;
-
-    proxyFetchPut('/api/user/privacy', requestData).catch((err) =>
+  const handleToggleHelpImprove = (checked: boolean) => {
+    setHelpImprove(checked);
+    proxyFetchPut('/api/user/privacy', { help_improve: checked }).catch((err) =>
       console.error('Failed to update settings:', err)
     );
-  };
-
-  const [logFolder, setLogFolder] = useState('');
-  const [isHowWeHandleOpen, setIsHowWeHandleOpen] = useState(false);
-  useEffect(() => {
-    window.ipcRenderer
-      .invoke('get-log-folder', email)
-      .then((logFolder: any) => {
-        setLogFolder(logFolder);
-      });
-  }, [email]);
-
-  const _handleOpenFolder = () => {
-    if (logFolder) {
-      window.ipcRenderer.invoke('reveal-in-folder', logFolder + '/');
-    }
   };
 
   return (
@@ -206,21 +111,21 @@ export default function SettingPrivacy() {
           )}
         </div>
 
-        {/* Enable Privacy Permissions Settings Section */}
+        {/* Help Improve Eigent Section */}
         <div className="rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex items-center justify-between gap-md">
             <div className="flex flex-col gap-2">
               <div className="text-body-base font-bold text-text-heading">
-                {t('setting.enable-privacy-permissions-settings')}
+                {t('setting.help-improve-eigent')}
               </div>
               <div className="text-body-sm font-normal text-text-body">
-                {t('setting.enable-privacy-permissions-settings-description')}
+                {t('setting.help-improve-eigent-description')}
               </div>
             </div>
             <div className="flex items-center justify-center">
               <Switch
-                checked={_privacy}
-                onCheckedChange={() => handleTurnOnAll(!_privacy)}
+                checked={helpImprove}
+                onCheckedChange={handleToggleHelpImprove}
               />
             </div>
           </div>

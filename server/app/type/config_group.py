@@ -37,7 +37,6 @@ class ConfigGroup(str, Enum):
     GOOGLE_CALENDAR = "Google Calendar"
     GOOGLE_DRIVE_MCP = "Google Drive MCP"
     GOOGLE_GMAIL_MCP = "Google Gmail"
-    IMAGE_ANALYSIS = "Image Analysis"
     MCP_SEARCH = "MCP Search"
     PPTX = "PPTX"
     RAG = "RAG"
