@@ -129,7 +129,7 @@ if (os.platform() === 'darwin') {
           objc_msgSend_long(
             visualEffectView,
             selSetBlendingMode,
-            NSVisualEffectBlendingMode.BehindWindow
+            NSVisualEffectBlendingMode.WithinWindow
           );
           objc_msgSend_long(visualEffectView, selSetState, 1);
           objc_msgSend_long(visualEffectView, selSetAutoresizingMask, 18);
