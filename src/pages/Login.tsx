@@ -34,7 +34,13 @@ export default function Login() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
-  const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
+  const {
+    setAuth,
+    setModelType,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+  } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
@@ -98,6 +104,9 @@ export default function Login() {
 
       setAuth({ email: data.email, ...data });
       setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+      setModelType('custom');
+      setInitState('done');
+      setIsFirstLaunch(false);
       navigate('/');
     } catch (error: any) {
       console.error('Auto login failed:', error);
@@ -272,17 +281,15 @@ export default function Login() {
     };
   }, []);
 
-  // Hybrid/app mode: get auth callback URL from Electron and open signin page
+  // Hybrid/app mode: prepare auth callback URL on mount (don't auto-open browser)
   useEffect(() => {
     if (IS_LOCAL_MODE) return;
 
-    const openSignin = async () => {
+    const prepareCallbackUrl = async () => {
       let cbUrl: string;
       if (import.meta.env.PROD) {
-        // Production (packaged app): use eigent:// custom protocol
         cbUrl = 'eigent://auth/callback';
       } else {
-        // Dev mode: use local HTTP server (eigent:// doesn't route to existing dev process)
         cbUrl = 'eigent://auth/callback';
         try {
           const url = await window.ipcRenderer?.invoke('get-auth-callback-url');
@@ -292,14 +299,9 @@ export default function Login() {
         }
       }
       setCallbackUrl(cbUrl);
-      window.open(
-        `https://www.eigent.ai/signin?callbackUrl=${encodeURIComponent(cbUrl)}`,
-        '_blank',
-        'noopener,noreferrer'
-      );
     };
 
-    openSignin();
+    prepareCallbackUrl();
   }, []);
 
   // Render local mode: "Start Eigent" button only
@@ -341,17 +343,20 @@ export default function Login() {
       <div className="mb-4 text-heading-lg font-bold text-text-heading">
         {t('layout.login')}
       </div>
-      <p className="mb-6 text-center text-label-md text-text-secondary">
-        {t('layout.logging-in')}...
-      </p>
+      {isLoading && (
+        <p className="mb-6 text-center text-label-md text-text-secondary">
+          {t('layout.logging-in')}...
+        </p>
+      )}
       <Button
-        onClick={() =>
+        onClick={() => {
+          setIsLoading(true);
           window.open(
             `https://www.eigent.ai/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
             '_blank',
             'noopener,noreferrer'
-          )
-        }
+          );
+        }}
         size="lg"
         variant="primary"
         className="w-full rounded-full"

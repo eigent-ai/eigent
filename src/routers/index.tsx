@@ -64,8 +64,16 @@ const ProtectedRoute = () => {
     initialized: false,
   });
 
-  const { token, localProxyValue, logout, setAuth, setLocalProxyValue } =
-    useAuthStore();
+  const {
+    token,
+    localProxyValue,
+    logout,
+    setAuth,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+    setModelType,
+  } = useAuthStore();
   useEffect(() => {
     // Check VITE_USE_LOCAL_PROXY value on app startup
     if (token) {
@@ -88,6 +96,9 @@ const ProtectedRoute = () => {
           if (data && data.token) {
             setAuth({ email: data.email, ...data });
             setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+            setModelType('custom');
+            setInitState('done');
+            setIsFirstLaunch(false);
             dispatch({
               type: 'INITIALIZE',
               payload: { isAuthenticated: true },
