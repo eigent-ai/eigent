@@ -157,6 +157,42 @@ async def by_stack_auth(
         return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
 
 
+@router.post("/auto-login", name="auto login for local mode")
+async def auto_login(session: Session = Depends(session)) -> LoginResponse:
+    """
+    Auto login for fully local mode (VITE_USE_LOCAL_PROXY=true).
+    Returns the most recently active user, or creates a default admin user if none exists.
+    """
+    # Find the most recently active user
+    user = User.by(
+        User.status == Status.Normal,
+        order_by=User.updated_at.desc(),
+        limit=1,
+        s=session,
+    ).one_or_none()
+
+    if not user:
+        # Create default admin user
+        with session as s:
+            try:
+                user = User(
+                    email="admin@eigent.local",
+                    username="admin",
+                    nickname="Admin",
+                )
+                s.add(user)
+                s.commit()
+                s.refresh(user)
+                logger.info("Default admin user created", extra={"user_id": user.id})
+            except Exception as e:
+                s.rollback()
+                logger.error("Failed to create default admin user", extra={"error": str(e)}, exc_info=True)
+                raise UserException(code.error, _("Failed to create default user"))
+
+    logger.info("Auto login successful", extra={"user_id": user.id, "email": user.email})
+    return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
+
+
 @router.post("/register", name="register by email/password")
 async def register(data: RegisterIn, session: Session = Depends(session)):
     email = data.email
