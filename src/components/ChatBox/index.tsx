@@ -985,6 +985,13 @@ export default function ChatBox(): JSX.Element {
         {chatStore.activeTaskId && (
           <HeaderBox
             tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+            totalTokens={
+              projectStore.activeProjectId
+                ? projectStore.getProjectTotalTokens(
+                    projectStore.activeProjectId
+                  )
+                : undefined
+            }
             status={chatStore.tasks[chatStore.activeTaskId]?.status}
             replayLoading={isReplayLoading}
             onReplay={handleReplay}
