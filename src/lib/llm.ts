@@ -23,6 +23,12 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Google Gemini model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [
+      'gemini-2.5-pro-preview-06-05',
+      'gemini-2.5-flash-preview-05-20',
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+    ],
   },
   {
     id: 'openai',
@@ -32,6 +38,15 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'OpenAI model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [
+      'gpt-4.1',
+      'gpt-4.1-mini',
+      'gpt-4.1-nano',
+      'o3',
+      'o4-mini',
+      'gpt-4o',
+      'gpt-4o-mini',
+    ],
   },
   {
     id: 'anthropic',
@@ -41,6 +56,12 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Anthropic Claude API configuration',
     is_valid: false,
     model_type: '',
+    suggestedModels: [
+      'claude-opus-4-20250514',
+      'claude-sonnet-4-20250514',
+      'claude-3-7-sonnet-20250219',
+      'claude-3-5-haiku-20241022',
+    ],
   },
   {
     id: 'openrouter',
@@ -50,6 +71,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'OpenRouter model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
   {
     id: 'tongyi-qianwen',
@@ -59,6 +81,13 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Qwen model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [
+      'qwen-max',
+      'qwen-plus',
+      'qwen-turbo',
+      'qwen3-235b-a22b',
+      'qwen3-32b',
+    ],
   },
   {
     id: 'deepseek',
@@ -68,6 +97,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'DeepSeek model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: ['deepseek-chat', 'deepseek-reasoner'],
   },
   {
     id: 'minimax',
@@ -77,6 +107,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Minimax model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
   {
     id: 'z.ai',
@@ -86,6 +117,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Z.ai model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: ['glm-4-plus', 'glm-4-flash', 'glm-4'],
   },
   {
     id: 'moonshot',
@@ -95,6 +127,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Kimi model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: ['moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'],
   },
   {
     id: 'ModelArk',
@@ -104,6 +137,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'ModelArk model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
   {
     id: 'samba-nova',
@@ -113,6 +147,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'SambaNova model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
   {
     id: 'grok',
@@ -122,6 +157,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Grok model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: ['grok-3', 'grok-3-mini', 'grok-2'],
   },
   {
     id: 'mistral',
@@ -131,6 +167,12 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Mistral model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: [
+      'mistral-large-latest',
+      'mistral-medium-latest',
+      'mistral-small-latest',
+      'codestral-latest',
+    ],
   },
   {
     id: 'aws-bedrock',
@@ -141,6 +183,7 @@ export const INIT_PROVODERS: Provider[] = [
     hostPlaceHolder: 'e.g. https://bedrock-runtime.{{region}}.amazonaws.com',
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
   {
     id: 'azure',
@@ -163,6 +206,7 @@ export const INIT_PROVODERS: Provider[] = [
     ],
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
   {
     id: 'ernie',
@@ -172,6 +216,7 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Baidu Ernie model configuration.',
     is_valid: false,
     model_type: '',
+    suggestedModels: ['ernie-4.5-8k', 'ernie-4.0-turbo-8k', 'ernie-3.5-8k'],
   },
   {
     id: 'openai-compatible-model',
@@ -182,5 +227,6 @@ export const INIT_PROVODERS: Provider[] = [
     hostPlaceHolder: 'e.g. https://api.x.ai/v1',
     is_valid: false,
     model_type: '',
+    suggestedModels: [],
   },
 ];

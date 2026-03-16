@@ -73,7 +73,14 @@ async def post(data: ProviderIn, session: Session = Depends(session), auth: Auth
     """Create a new provider."""
     user_id = auth.user.id
     try:
-        model = Provider(**data.model_dump(), user_id=user_id)
+        dump = data.model_dump()
+        # Ensure model_types always contains model_type for consistency
+        if dump.get("model_type"):
+            existing = dump.get("model_types") or []
+            if dump["model_type"] not in existing:
+                existing = [dump["model_type"]] + existing
+            dump["model_types"] = existing
+        model = Provider(**dump, user_id=user_id)
         model.save(session)
         logger.info(
             "Provider created", extra={"user_id": user_id, "provider_id": model.id, "provider_name": data.provider_name}
@@ -102,6 +109,13 @@ async def put(id: int, data: ProviderIn, session: Session = Depends(session), au
         model.endpoint_url = data.endpoint_url
         model.encrypted_config = data.encrypted_config
         model.is_vaild = data.is_vaild
+        # Sync model_types: merge incoming list with existing, ensure model_type is included
+        incoming_types = data.model_types or []
+        existing_types = model.model_types or []
+        merged = list(dict.fromkeys(incoming_types or existing_types))
+        if data.model_type and data.model_type not in merged:
+            merged = [data.model_type] + merged
+        model.model_types = merged if merged else None
         model.save(session)
         session.refresh(model)
         logger.info(

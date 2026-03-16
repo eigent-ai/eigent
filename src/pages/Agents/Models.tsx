@@ -49,11 +49,14 @@ import {
   EyeOff,
   Key,
   Loader2,
+  Plus,
   RotateCcw,
   Server,
   Settings,
+  Star,
+  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -97,6 +100,109 @@ import {
   VLLM_PROVIDER_ID,
 } from './localModels';
 
+function ModelTypeInput({
+  suggestedModels,
+  existingModels,
+  placeholder,
+  onAdd,
+}: {
+  suggestedModels: string[];
+  existingModels: string[];
+  placeholder: string;
+  onAdd: (model: string) => void;
+}) {
+  const [value, setValue] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const availableSuggestions = suggestedModels.filter(
+    (m) =>
+      !existingModels.includes(m) &&
+      m.toLowerCase().includes(value.toLowerCase())
+  );
+
+  const handleAdd = () => {
+    const trimmed = value.trim();
+    if (trimmed && !existingModels.includes(trimmed)) {
+      onAdd(trimmed);
+      setValue('');
+      setShowSuggestions(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            ref={inputRef}
+            type="text"
+            className="w-full rounded-lg border border-solid border-border-secondary bg-surface-primary px-3 py-2 text-body-sm text-text-body placeholder:text-text-label focus:border-border-action focus:outline-none"
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleAdd}
+          disabled={!value.trim()}
+          className="flex-shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      {showSuggestions && availableSuggestions.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-solid border-border-secondary bg-surface-primary shadow-lg">
+          <div className="max-h-[200px] overflow-y-auto py-1">
+            {availableSuggestions.map((model) => (
+              <button
+                key={model}
+                type="button"
+                className="flex w-full items-center px-3 py-1.5 text-left text-body-sm text-text-body hover:bg-fill-fill-transparent-hover"
+                onClick={() => {
+                  onAdd(model);
+                  setValue('');
+                  setShowSuggestions(false);
+                  inputRef.current?.focus();
+                }}
+              >
+                {model}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Sidebar tab types
 type SidebarTab =
   | 'cloud'
@@ -134,6 +240,7 @@ export default function SettingModels() {
       apiHost: p.apiHost,
       is_valid: p.is_valid ?? false,
       model_type: p.model_type ?? '',
+      model_types: [] as string[],
       externalConfig: p.externalConfig
         ? p.externalConfig.map((ec) => ({ ...ec }))
         : undefined,
@@ -281,11 +388,13 @@ export default function SettingModels() {
                 ...fi,
                 provider_id: found.id,
                 apiKey: found.api_key || '',
-                // Fall back to provider's default API host if endpoint_url is empty
                 apiHost: found.endpoint_url || item.apiHost,
                 is_valid: !!found?.is_valid,
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
+                model_types:
+                  found.model_types ??
+                  (found.model_type ? [found.model_type] : []),
                 externalConfig: fi.externalConfig
                   ? fi.externalConfig.map((ec) => {
                       if (
@@ -387,12 +496,13 @@ export default function SettingModels() {
       return `${t('setting.eigent-cloud')} / ${modelName}`;
     }
 
-    // Check for custom model preference
     const preferredIdx = form.findIndex((f) => f.prefer);
     if (preferredIdx !== -1) {
       const item = items[preferredIdx];
-      const modelType = form[preferredIdx].model_type || '';
-      return `${t('setting.custom-model')} / ${item.name}${modelType ? ` (${modelType})` : ''}`;
+      const activeModel = form[preferredIdx].model_type || '';
+      const totalModels = form[preferredIdx].model_types?.length || 0;
+      const suffix = totalModels > 1 ? ` +${totalModels - 1}` : '';
+      return `${t('setting.custom-model')} / ${item.name}${activeModel ? ` (${activeModel}${suffix})` : ''}`;
     }
 
     // Check for local model preference
@@ -520,7 +630,10 @@ export default function SettingModels() {
     } else {
       newErrors[idx].apiHost = '';
     }
-    if (!model_type || model_type.trim() === '') {
+    if (
+      (!model_type || model_type.trim() === '') &&
+      (!form[idx].model_types || form[idx].model_types.length === 0)
+    ) {
       newErrors[idx].model_type = t('setting.model-type-can-not-be-empty');
       hasError = true;
     } else {
@@ -587,6 +700,7 @@ export default function SettingModels() {
       endpoint_url: form[idx].apiHost,
       is_valid: form[idx].is_valid,
       model_type: form[idx].model_type,
+      model_types: form[idx].model_types,
     };
     if (externalConfig) {
       data.encrypted_config = {};
@@ -614,10 +728,11 @@ export default function SettingModels() {
               ...fi,
               provider_id: found.id,
               apiKey: found.api_key || '',
-              // Fall back to provider's default API host if endpoint_url is empty
               apiHost: found.endpoint_url || item.apiHost,
               is_valid: !!found.is_valid,
               prefer: found.prefer ?? false,
+              model_type: found.model_type ?? fi.model_type,
+              model_types: found.model_types ?? fi.model_types,
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
                     if (
@@ -969,10 +1084,10 @@ export default function SettingModels() {
           const item = items[i];
           return {
             apiKey: '',
-            // Restore provider's default API host instead of clearing it
             apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
+            model_types: [],
             externalConfig: item.externalConfig
               ? item.externalConfig.map((ec) => ({ ...ec, value: '' }))
               : undefined,
@@ -1401,29 +1516,101 @@ export default function SettingModels() {
                 );
               }}
             />
-            {/* Model Type Setting */}
-            <Input
-              id={`modelType-${item.id}`}
-              size="default"
-              title={t('setting.model-type-setting')}
-              state={errors[idx]?.model_type ? 'error' : 'default'}
-              note={errors[idx]?.model_type ?? undefined}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
-              value={form[idx].model_type}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) =>
-                  f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
-                );
-                setErrors((errs) =>
-                  errs.map((er, i) =>
-                    i === idx ? { ...er, model_type: '' } : er
-                  )
-                );
-              }}
-            />
+            {/* Models Management */}
+            <div className="flex w-full flex-col gap-2">
+              <div className="text-body-sm font-medium text-text-heading">
+                {t('setting.model-type-setting')}
+              </div>
+              {errors[idx]?.model_type && (
+                <span className="text-label-sm text-text-error">
+                  {errors[idx].model_type}
+                </span>
+              )}
+              {/* Active model indicator + model chips */}
+              {form[idx].model_types.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {form[idx].model_types.map((m) => (
+                    <span
+                      key={m}
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-label-sm transition-colors ${
+                        m === form[idx].model_type
+                          ? 'border border-solid border-border-success bg-surface-success font-semibold text-text-success'
+                          : 'border border-solid border-border-secondary bg-surface-tertiary text-text-body'
+                      }`}
+                    >
+                      {m === form[idx].model_type && (
+                        <Star className="h-3 w-3 fill-current" />
+                      )}
+                      <button
+                        type="button"
+                        className="bg-transparent text-inherit hover:underline"
+                        onClick={() => {
+                          setForm((f) =>
+                            f.map((fi, i) =>
+                              i === idx ? { ...fi, model_type: m } : fi
+                            )
+                          );
+                        }}
+                        title={t('setting.set-as-default')}
+                      >
+                        {m}
+                      </button>
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full bg-transparent p-0.5 text-text-label hover:bg-fill-fill-transparent-hover hover:text-text-body"
+                        onClick={() => {
+                          setForm((f) =>
+                            f.map((fi, i) => {
+                              if (i !== idx) return fi;
+                              const newTypes = fi.model_types.filter(
+                                (mt) => mt !== m
+                              );
+                              const newActive =
+                                fi.model_type === m
+                                  ? newTypes[0] || ''
+                                  : fi.model_type;
+                              return {
+                                ...fi,
+                                model_types: newTypes,
+                                model_type: newActive,
+                              };
+                            })
+                          );
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Add model input with suggestions dropdown */}
+              <ModelTypeInput
+                suggestedModels={item.suggestedModels || []}
+                existingModels={form[idx].model_types}
+                placeholder={`${t('setting.enter-your-model-type')} ${item.name} ${t('setting.model-type')}`}
+                onAdd={(model) => {
+                  setForm((f) =>
+                    f.map((fi, i) => {
+                      if (i !== idx) return fi;
+                      if (fi.model_types.includes(model)) return fi;
+                      const newTypes = [...fi.model_types, model];
+                      const newActive = fi.model_type || model;
+                      return {
+                        ...fi,
+                        model_types: newTypes,
+                        model_type: newActive,
+                      };
+                    })
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+              />
+            </div>
             {/* externalConfig render */}
             {item.externalConfig &&
               form[idx].externalConfig &&
