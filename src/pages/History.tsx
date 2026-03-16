@@ -61,7 +61,7 @@ export default function Home() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const { username, email } = useAuthStore();
-  const displayName = username ?? email ?? '';
+  const displayName = username || email || '';
 
   // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
   const activeTab = useMemo(() => {
@@ -127,7 +127,7 @@ export default function Home() {
         cancelText={t('layout.cancel')}
       />
       {/* welcome text */}
-      <div className="from-surface-primary to-surface-primary px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
+      <div className="flex w-full flex-row bg-gradient-to-b from-surface-primary to-surface-primary px-20 pt-16">
         <WordCarousel
           words={[`${t('layout.welcome')}, ${welcomeName} !`]}
           className="text-heading-xl font-bold tracking-tight"
@@ -145,10 +145,10 @@ export default function Home() {
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
-        className={`border-border-disabled bg-bg-page-default px-20 pb-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid`}
+        className={`sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-border-disabled bg-bg-page-default px-20 pb-4 pt-10`}
       >
         <div className="mx-auto flex w-full flex-row items-center justify-between">
-          <div className="gap-2 flex items-center">
+          <div className="flex items-center gap-2">
             <MenuToggleGroup
               type="single"
               value={activeTab}
