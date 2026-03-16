@@ -417,7 +417,7 @@ export default function HistorySidebar() {
                           <Tag variant="info" size="sm">
                             <Hash className="h-3.5 w-3.5" />
                             <span className="text-xs">
-                              {project.total_tokens || 0}
+                              {(project.total_tokens || 0).toLocaleString()}
                             </span>
                           </Tag>
                         </TooltipSimple>
@@ -536,7 +536,7 @@ export default function HistorySidebar() {
                           <Tag variant="info" size="sm">
                             <Hash className="h-3.5 w-3.5" />
                             <span className="text-xs">
-                              {project.total_tokens || 0}
+                              {(project.total_tokens || 0).toLocaleString()}
                             </span>
                           </Tag>
                         </TooltipSimple>
