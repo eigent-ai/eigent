@@ -605,6 +605,7 @@ export default function SettingModels() {
     { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5.4', name: 'GPT-5.4' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
+    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
@@ -1392,6 +1393,9 @@ export default function SettingModels() {
                   </SelectItem>
                   <SelectItem value="gpt-5-mini">
                     {t('setting.gpt-5-mini-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-haiku-4-5">
+                    {t('setting.claude-haiku-4-5-name')}
                   </SelectItem>
                   <SelectItem value="claude-sonnet-4-5">
                     {t('setting.claude-sonnet-4-5-name')}
