@@ -24,8 +24,10 @@ from app.model.model_platform import (
 
 def test_normalize_model_platform_maps_known_aliases():
     assert normalize_model_platform("grok") == "openai-compatible-model"
-    assert normalize_model_platform("z.ai") == "openai-compatible-model"
+    assert normalize_model_platform("z.ai") == "zhipu"
     assert normalize_model_platform("ModelArk") == "openai-compatible-model"
+    assert normalize_model_platform("ernie") == "qianfan"
+    assert normalize_model_platform("llama.cpp") == "openai-compatible-model"
 
 
 def test_normalize_model_platform_keeps_non_alias_unchanged():
@@ -43,9 +45,9 @@ def test_normalized_model_platform_type_applies_in_pydantic_model():
         optional_model_platform: NormalizedOptionalModelPlatform = None
 
     item = _Model(
-        model_platform="grok",
+        model_platform="ernie",
         optional_model_platform="ModelArk",
     )
 
-    assert item.model_platform == "openai-compatible-model"
+    assert item.model_platform == "qianfan"
     assert item.optional_model_platform == "openai-compatible-model"

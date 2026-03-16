@@ -24,6 +24,7 @@ import React, {
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
+import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
@@ -56,6 +57,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
+  const [isCompletionReady, setIsCompletionReady] = useState(false);
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
 
@@ -121,6 +123,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
+
+  // Reset completion flag when active task or query group changes
+  useEffect(() => {
+    setIsCompletionReady(false);
+  }, [activeTaskId, queryGroup.queryId]);
 
   // Check if this is an instant replay (loaded from history with no delay).
   // Derived from the actual task state, not the conditional `task` variable,
@@ -316,7 +323,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   typewriter={!isInstantReplay}
                   id={message.id}
                   content={message.content}
-                  onTyping={() => {}}
+                  onTyping={() => {
+                    // Mark completion once the final END message finishes typing
+                    setIsCompletionReady(true);
+                  }}
                 />
                 {/* File List */}
                 {message.fileList && (
@@ -350,6 +360,21 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       </motion.div>
                     ))}
                   </div>
+                )}
+                {/* Task Completion Action Card - show only after markdown typing completes */}
+                {task?.status === 'finished' && isCompletionReady && (
+                  <TaskCompletionCard
+                    taskPrompt={queryGroup.userMessage?.content}
+                    onRerun={() => {
+                      // Focus the input for task refinement
+                      const inputElement = document.querySelector(
+                        '[data-chat-input]'
+                      ) as HTMLInputElement;
+                      if (inputElement) {
+                        inputElement.focus();
+                      }
+                    }}
+                  />
                 )}
               </motion.div>
             );

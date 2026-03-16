@@ -146,6 +146,18 @@ export default function HistorySidebar() {
     const taskIdsList = project?.tasks.map(
       (task: HistoryTask) => task.task_id
     ) || [projectId];
+
+    // If no tasks to replay, create an empty project
+    if (!taskIdsList || taskIdsList.length === 0) {
+      projectStore.createProject(
+        project?.project_name || 'Project',
+        'Project with triggers but no tasks',
+        projectId
+      );
+      navigate('/');
+      return;
+    }
+
     await loadProjectFromHistory(
       projectStore,
       navigate,
@@ -405,7 +417,7 @@ export default function HistorySidebar() {
                           <Tag variant="info" size="sm">
                             <Hash className="h-3.5 w-3.5" />
                             <span className="text-xs">
-                              {project.total_tokens || 0}
+                              {(project.total_tokens || 0).toLocaleString()}
                             </span>
                           </Tag>
                         </TooltipSimple>
@@ -524,7 +536,7 @@ export default function HistorySidebar() {
                           <Tag variant="info" size="sm">
                             <Hash className="h-3.5 w-3.5" />
                             <span className="text-xs">
-                              {project.total_tokens || 0}
+                              {(project.total_tokens || 0).toLocaleString()}
                             </span>
                           </Tag>
                         </TooltipSimple>

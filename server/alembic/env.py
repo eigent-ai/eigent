@@ -44,6 +44,7 @@ auto_import("app.model.user")
 auto_import("app.model.config")
 auto_import("app.model.chat")
 auto_import("app.model.provider")
+auto_import("app.model.trigger")
 
 # target_metadata = mymodel.Base.metadata
 target_metadata = SQLModel.metadata
@@ -97,7 +98,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = env_not_empty("database_url")
     context.configure(
         url=url,
         target_metadata=target_metadata,

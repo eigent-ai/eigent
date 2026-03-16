@@ -19,9 +19,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
-  agentMap,
   getWorkflowAgentDisplay,
   WORKFLOW_AGENT_LIST,
 } from '@/components/WorkFlow/agents';
@@ -67,21 +67,31 @@ type SkillListItemProps =
 export default function SkillListItem(props: SkillListItemProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { updateSkill } = useSkillsStore();
+  const { updateSkill, toggleSkill } = useSkillsStore();
   const { projectStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
   const [scopeOpen, setScopeOpen] = useState(false);
 
+  type AgentOption = {
+    value: string;
+    label: string;
+  };
+
   const allAgents = useMemo(() => {
-    const workflowNames = WORKFLOW_AGENT_LIST.map((a) => a.name);
-    const workerNames = workerList.map((w) => w.name);
-    const combined = [...workflowNames];
-    workerNames.forEach((name) => {
-      if (!combined.includes(name)) {
-        combined.push(name);
+    const workflowAgents: AgentOption[] = WORKFLOW_AGENT_LIST.filter(
+      (a) => a.id !== 'social_media_agent'
+    ).map((a) => ({ value: a.id, label: a.name }));
+    const workerAgents: AgentOption[] = workerList.map((w) => ({
+      value: w.name,
+      label: w.name,
+    }));
+    const combined = [...workflowAgents];
+    workerAgents.forEach((agent) => {
+      if (!combined.some((a) => a.value === agent.value)) {
+        combined.push(agent);
       }
     });
-    return combined.filter((name) => name !== agentMap.social_media_agent.name);
+    return combined;
   }, [workerList]);
 
   if (props.variant === 'placeholder') {
@@ -112,24 +122,6 @@ export default function SkillListItem(props: SkillListItemProps) {
 
   const { skill, onDelete } = props;
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffDays === 0) {
-      return t('layout.today');
-    } else if (diffDays === 1) {
-      return t('layout.yesterday');
-    } else if (diffDays < 30) {
-      return `${diffDays} ${t('layout.days-ago')}`;
-    } else {
-      return date.toLocaleDateString();
-    }
-  };
-
   const handleScopeChange = (scope: {
     isGlobal: boolean;
     selectedAgents: string[];
@@ -155,9 +147,11 @@ export default function SkillListItem(props: SkillListItemProps) {
     }
   };
 
-  const handleToggleAgent = (agentName: string) => {
+  const handleToggleAgent = (agentValue: string) => {
     if (isAllAgentsSelected) {
-      const newSelectedAgents = allAgents.filter((a) => a !== agentName);
+      const newSelectedAgents = allAgents
+        .filter((a) => a.value !== agentValue)
+        .map((a) => a.value);
       handleScopeChange({
         isGlobal: false,
         selectedAgents: newSelectedAgents,
@@ -165,10 +159,10 @@ export default function SkillListItem(props: SkillListItemProps) {
       return;
     }
 
-    const isSelected = skill.scope.selectedAgents.includes(agentName);
+    const isSelected = skill.scope.selectedAgents.includes(agentValue);
     const newSelectedAgents = isSelected
-      ? skill.scope.selectedAgents.filter((a) => a !== agentName)
-      : [...skill.scope.selectedAgents, agentName];
+      ? skill.scope.selectedAgents.filter((a) => a !== agentValue)
+      : [...skill.scope.selectedAgents, agentValue];
     handleScopeChange({
       isGlobal: false,
       selectedAgents: newSelectedAgents,
@@ -182,7 +176,9 @@ export default function SkillListItem(props: SkillListItemProps) {
   };
 
   return (
-    <div className="w-full flex-1 flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors">
+    <div
+      className={`w-full flex-1 flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
+    >
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
@@ -192,21 +188,28 @@ export default function SkillListItem(props: SkillListItemProps) {
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-md">
-          <span className="text-label-xs text-text-disabled">
-            {t('agents.added')} {formatDate(skill.addedAt)}
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Ellipsis className="h-4 w-4 text-icon-primary" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={handleTryInChat}>
-                <MessageSquare className="h-4 w-4" />
-                {t('agents.try-in-chat')}
-              </DropdownMenuItem>
-              {!skill.isExample && onDelete && (
+          <Switch
+            checked={skill.enabled}
+            onCheckedChange={() => toggleSkill(skill.id)}
+          />
+          <TooltipSimple content={t('agents.try-in-chat')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!skill.enabled}
+              onClick={skill.enabled ? handleTryInChat : undefined}
+            >
+              <MessageSquare className="h-4 w-4 text-icon-primary" />
+            </Button>
+          </TooltipSimple>
+          {!skill.isExample && onDelete && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Ellipsis className="h-4 w-4 text-icon-primary" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
                 <DropdownMenuItem
                   onClick={onDelete}
                   className="text-text-cuation focus:text-text-cuation"
@@ -214,9 +217,9 @@ export default function SkillListItem(props: SkillListItemProps) {
                   <Trash2 className="h-4 w-4" />
                   {t('layout.delete')}
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -266,19 +269,19 @@ export default function SkillListItem(props: SkillListItemProps) {
               All Agents
             </button>
 
-            {allAgents.map((agentName) => {
+            {allAgents.map((agent) => {
               const isSelected =
                 isAllAgentsSelected ||
-                skill.scope.selectedAgents.includes(agentName);
-              const display = getWorkflowAgentDisplay(agentName);
+                skill.scope.selectedAgents.includes(agent.value);
+              const display = getWorkflowAgentDisplay(agent.value);
               const icon = display?.icon ?? (
                 <Bot size={16} className="shrink-0 text-inherit" />
               );
               return (
                 <button
-                  key={agentName}
+                  key={agent.value}
                   type="button"
-                  onClick={() => handleToggleAgent(agentName)}
+                  onClick={() => handleToggleAgent(agent.value)}
                   className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                     isSelected
                       ? 'opacity-100 [&>svg]:text-icon-success'
@@ -286,7 +289,7 @@ export default function SkillListItem(props: SkillListItemProps) {
                   }`}
                 >
                   {isSelected ? <Check size={16} className="shrink-0" /> : icon}
-                  {agentName}
+                  {agent.label}
                 </button>
               );
             })}

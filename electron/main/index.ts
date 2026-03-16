@@ -50,6 +50,11 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import {
+  setRoundedCorners,
+  setTransparentTitlebar,
+  setVibrancy,
+} from './native/macos-window';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -351,6 +356,9 @@ app.commandLine.appendSwitch('force-gpu-mem-available-mb', '512');
 app.commandLine.appendSwitch('max_old_space_size', '4096');
 app.commandLine.appendSwitch('enable-features', 'MemoryPressureReduction');
 app.commandLine.appendSwitch('renderer-process-limit', '8');
+
+// Disable Fontations (Rust-based font engine) to prevent crashes on macOS
+app.commandLine.appendSwitch('disable-features', 'Fontations');
 
 // ==================== Proxy configuration ====================
 // Read proxy from global .env file on startup
@@ -689,9 +697,10 @@ function registerIpcHandlers() {
   // Launch CDP browser with automatic port assignment
   ipcMain.handle('launch-cdp-browser', async () => {
     try {
-      // 1. Find available port (9223–9300) by checking no CDP browser is listening
+      // 1. Find available port (9224–9300) by checking no CDP browser is listening
+      // Port 9223 is reserved for the login browser
       let port: number | null = null;
-      for (let p = 9223; p < 9300; p++) {
+      for (let p = 9224; p < 9300; p++) {
         if (
           !cdp_browser_pool.some((b) => b.port === p) &&
           !(await isCdpPortAlive(p))
@@ -701,7 +710,7 @@ function registerIpcHandlers() {
         }
       }
       if (port === null) {
-        return { success: false, error: 'No available port in 9223-9299' };
+        return { success: false, error: 'No available port in 9224-9299' };
       }
 
       // 2. Find Playwright Chromium executable
@@ -1380,12 +1389,14 @@ function registerIpcHandlers() {
       }
       await seedDefaultSkillsIfEmpty();
       const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
+      const exampleSkillsDir = getExampleSkillsSourceDir();
       const skills: Array<{
         name: string;
         description: string;
         path: string;
         scope: string;
         skillDirName: string;
+        isExample: boolean;
       }> = [];
       for (const e of entries) {
         if (!e.isDirectory() || e.name.startsWith('.')) continue;
@@ -1394,12 +1405,16 @@ function registerIpcHandlers() {
           const raw = await fsp.readFile(skillPath, 'utf-8');
           const meta = parseSkillFrontmatter(raw);
           if (meta) {
+            const isExample = existsSync(
+              path.join(exampleSkillsDir, e.name, SKILL_FILE)
+            );
             skills.push({
               name: meta.name,
               description: meta.description,
               path: skillPath,
               scope: 'user',
               skillDirName: e.name,
+              isExample,
             });
           }
         } catch (_) {
@@ -2328,10 +2343,14 @@ const ensureEigentDirectories = () => {
 const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
 const SKILL_FILE = 'SKILL.md';
 
-const getExampleSkillsSourceDir = (): string =>
-  app.isPackaged
-    ? path.join(process.resourcesPath, 'example-skills')
-    : path.join(app.getAppPath(), 'resources', 'example-skills');
+const getExampleSkillsSourceDir = (): string => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'example-skills');
+  }
+  const devPath = path.join(MAIN_DIST, 'resources', 'example-skills');
+  if (existsSync(devPath)) return devPath;
+  return path.join(app.getAppPath(), 'resources', 'example-skills');
+};
 
 async function copyDirRecursive(src: string, dst: string): Promise<void> {
   await fsp.mkdir(dst, { recursive: true });
@@ -2350,27 +2369,32 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
 }
 
 async function seedDefaultSkillsIfEmpty(): Promise<void> {
-  if (!existsSync(SKILLS_ROOT)) return;
-  const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
-  const hasAnySkill = entries.some(
-    (e) => e.isDirectory() && !e.name.startsWith('.')
-  );
-  if (hasAnySkill) return;
+  if (!existsSync(SKILLS_ROOT)) {
+    await fsp.mkdir(SKILLS_ROOT, { recursive: true });
+  }
   const exampleDir = getExampleSkillsSourceDir();
   if (!existsSync(exampleDir)) {
     log.warn('Example skills source dir missing:', exampleDir);
     return;
   }
   const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
+  let copiedCount = 0;
   for (const e of sourceEntries) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
-    const srcDir = path.join(exampleDir, e.name);
     const destDir = path.join(SKILLS_ROOT, e.name);
+    if (existsSync(destDir)) continue; // Skip if user already has this skill
+    const srcDir = path.join(exampleDir, e.name);
     await copyDirRecursive(srcDir, destDir);
+    copiedCount++;
   }
-  log.info('Seeded default skills to ~/.eigent/skills from', exampleDir);
+  if (copiedCount > 0) {
+    log.info(
+      `Seeded ${copiedCount} default skill(s) to ~/.eigent/skills from`,
+      exampleDir
+    );
+  }
 }
 
 /** Truncate a single path component to fit within the 255-byte filesystem limit. */
@@ -2664,15 +2688,12 @@ async function createWindow() {
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,
-    // macOS-only visual effects
-    vibrancy: isMac ? 'sidebar' : undefined,
-    visualEffectState: isMac ? 'active' : undefined,
-    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    // Solid background on Windows (respect dark/light mode), fully transparent on macOS for native vibrancy
     backgroundColor: isWindows
       ? nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
         : '#ffffff'
-      : '#f5f5f580',
+      : '#00000000',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
@@ -2695,6 +2716,28 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // Apply native macOS effects
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+          setVibrancy(win, 'HUDWindow');
+
+          // Apply rounded corners
+          setRoundedCorners(win, 20);
+
+          // Make titlebar transparent
+          setTransparentTitlebar(win);
+
+          log.info('[MacOS] Applied native visual effects');
+        } catch (error) {
+          log.error('[MacOS] Failed to apply native visual effects:', error);
+        }
+      }
+    });
+  }
 
   // ==================== Handle renderer crashes and failed loads ====================
   win.webContents.on('render-process-gone', (event, details) => {

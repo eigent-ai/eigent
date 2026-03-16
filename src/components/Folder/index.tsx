@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   CodeXml,
@@ -405,9 +404,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  // Reset hasFetchedRemote when activeTaskId changes
+  // Reset state when activeTaskId changes (e.g., new project created)
   useEffect(() => {
     hasFetchedRemote.current = false;
+    setSelectedFile(null);
+    setFileTree({ name: 'root', path: '', children: [], isFolder: true });
+    setFileGroups([{ folder: 'Reports', files: [] }]);
+    setExpandedFolders(new Set());
   }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
@@ -487,6 +490,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
         selectedFileChange(file as FileInfo, isShowSourceCode);
       }
+    } else if (!chatStoreSelectedFile && selectedFile) {
+      setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);
@@ -535,15 +540,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleBack}
-                  size="sm"
-                  variant="ghost"
-                  className={`flex items-center gap-2`}
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="text-primary whitespace-nowrap text-xl font-bold">
+                <span className="text-body-base text-primary whitespace-nowrap font-bold">
                   {t('chat.agent-folder')}
                 </span>
               </div>
@@ -709,10 +706,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         {/* content */}
         <div
-          className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
+          className={`flex min-h-0 flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
+            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
@@ -769,7 +766,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
                 ) : (
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
+                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
                     {selectedFile.content}
                   </pre>
                 )
@@ -784,7 +781,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 </div>
               )
             ) : (
-              <div className="flex h-full items-center justify-center text-text-secondary">
+              <div className="flex flex-1 items-center justify-center text-text-secondary">
                 <div className="text-center">
                   <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                   <p className="text-sm">
@@ -800,18 +797,57 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   );
 }
 
+function toFileUrl(filePath: string): string {
+  if (
+    filePath.startsWith('file://') ||
+    filePath.startsWith('localfile://') ||
+    filePath.startsWith('http://') ||
+    filePath.startsWith('https://') ||
+    filePath.startsWith('blob:') ||
+    filePath.startsWith('data:')
+  ) {
+    return filePath;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  // Windows UNC path: //server/share/path/to/file
+  if (normalizedPath.startsWith('//')) {
+    const withoutLeadingSlashes = normalizedPath.replace(/^\/+/, '');
+    const [host, ...pathSegments] = withoutLeadingSlashes.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath ? `file://${host}/${encodedPath}` : `file://${host}/`;
+  }
+
+  const hasWindowsDrive = /^[A-Za-z]:\//.test(normalizedPath);
+  if (hasWindowsDrive) {
+    const [drive, ...pathSegments] = normalizedPath.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath
+      ? `file:///${drive}/${encodedPath}`
+      : `file:///${drive}/`;
+  }
+
+  const encodedPath = normalizedPath
+    .split('/')
+    .map((segment, index) =>
+      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
+    )
+    .join('/');
+  return `file://${encodedPath}`;
+}
+
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    const filePath = selectedFile.isRemote
-      ? (selectedFile.content as string)
-      : selectedFile.path;
-
-    window.electronAPI
-      .readFileAsDataUrl(filePath)
-      .then(setSrc)
-      .catch((err: any) => console.error('Image load error:', err));
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc((selectedFile.content as string) || selectedFile.path);
+      return;
+    }
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
@@ -819,6 +855,7 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
       src={src}
       alt={selectedFile.name}
       className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Image load error:', err)}
     />
   );
 }
@@ -827,25 +864,13 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    window.electronAPI
-      .readFileAsDataUrl(selectedFile.path)
-      .then((dataUrl: string) => {
-        if (!cancelled) setSrc(dataUrl);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        console.error('Audio load error:', err);
-        setSrc('');
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
@@ -853,7 +878,12 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
       <p className="text-sm font-medium text-text-primary">
         {selectedFile.name}
       </p>
-      <audio controls src={src} className="w-full">
+      <audio
+        controls
+        src={src}
+        className="w-full"
+        onError={(err) => console.error('Audio load error:', err)}
+      >
         Your browser does not support audio playback.
       </audio>
     </div>
@@ -864,29 +894,22 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    window.electronAPI
-      .readFileAsDataUrl(selectedFile.path)
-      .then((dataUrl: string) => {
-        if (!cancelled) setSrc(dataUrl);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        console.error('Video load error:', err);
-        setSrc('');
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
-    <video controls src={src} className="max-h-full max-w-full object-contain">
+    <video
+      controls
+      src={src}
+      className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Video load error:', err)}
+    >
       Your browser does not support video playback.
     </video>
   );

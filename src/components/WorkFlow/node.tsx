@@ -15,6 +15,7 @@
 import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { getToolkitIcon } from '@/lib/toolkitIcons';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
   AgentStatusValue,
@@ -24,7 +25,6 @@ import {
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Bot,
   Circle,
   CircleCheckBig,
   CircleSlash,
@@ -132,10 +132,14 @@ export function Node({ id, data }: NodeProps) {
   );
   const runningTaskId = runningTask?.id;
   const runningTaskToolkitsLength = runningTask?.toolkits?.length;
-  const activeTaskId = chatStore?.activeTaskId;
+  const activeTaskId = chatStore?.activeTaskId as string;
   const activeAgent = activeTaskId
     ? chatStore?.tasks?.[activeTaskId]?.activeAgent
     : undefined;
+
+  // Helper to safely access task properties
+  const getCurrentTask = () =>
+    activeTaskId ? chatStore?.tasks?.[activeTaskId] : undefined;
 
   useEffect(() => {
     setIsExpanded(data.isExpanded);
@@ -255,10 +259,51 @@ export function Node({ id, data }: NodeProps) {
 
   const logRef = useRef<HTMLDivElement>(null);
   const rePortRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef(true);
+  const scrollThresholdPx = 60;
 
   const wheelHandler = useCallback((e: WheelEvent) => {
     e.stopPropagation();
   }, []);
+
+  // Auto-scroll log panel to latest when toolkits update (only if user was already at bottom)
+  const scrollLogToBottom = useCallback(() => {
+    const el = logRef.current;
+    if (!el || !wasAtBottomRef.current) return;
+    setTimeout(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 50);
+  }, []);
+
+  const toolkits = selectedTask?.toolkits;
+  const lastToolkit = toolkits?.[toolkits.length - 1];
+  const toolkitChangeKey = `${selectedTask?.id ?? ''}:${toolkits?.length ?? 0}:${lastToolkit?.toolkitId ?? ''}:${lastToolkit?.toolkitStatus ?? ''}`;
+
+  useEffect(() => {
+    if (!isExpanded || !toolkits?.length) return;
+    scrollLogToBottom();
+  }, [isExpanded, toolkits?.length, toolkitChangeKey, scrollLogToBottom]);
+
+  // Reset scroll-to-bottom flag when switching tasks so new task always starts at bottom
+  useEffect(() => {
+    wasAtBottomRef.current = true;
+  }, [selectedTask?.id]);
+
+  // Track whether user has scrolled up so we don't override manual reading
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el || !isExpanded) return;
+    const onScroll = () => {
+      const { scrollTop, clientHeight, scrollHeight } = el;
+      wasAtBottomRef.current =
+        scrollTop + clientHeight >= scrollHeight - scrollThresholdPx;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [isExpanded, selectedTask?.id]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -319,6 +364,26 @@ export function Node({ id, data }: NodeProps) {
   const toolkitLabels =
     agentToolkits[data.agent?.type as keyof typeof agentToolkits] ||
     (customToolkits.length > 0 ? customToolkits : ['No Toolkits']);
+  const browserImages = (data.img || []).filter((img) => img?.img).slice(0, 4);
+  const browserImageGridClass =
+    browserImages.length === 1
+      ? 'grid-cols-1 grid-rows-1'
+      : browserImages.length === 2
+        ? 'grid-cols-2 grid-rows-1'
+        : 'grid-cols-2 grid-rows-2';
+  const browserPlaceholderCount =
+    browserImages.length >= 3 ? Math.max(0, 4 - browserImages.length) : 0;
+  const terminalTasks = (data.agent?.tasks || [])
+    .filter((task) => task.terminal && task.terminal.length > 0)
+    .slice(0, 4);
+  const terminalGridClass =
+    terminalTasks.length === 1
+      ? 'grid-cols-1 grid-rows-1'
+      : terminalTasks.length === 2
+        ? 'grid-cols-2 grid-rows-1'
+        : 'grid-cols-2 grid-rows-2';
+  const terminalPlaceholderCount =
+    terminalTasks.length >= 3 ? Math.max(0, 4 - terminalTasks.length) : 0;
 
   return chatStore ? (
     <>
@@ -349,7 +414,7 @@ export function Node({ id, data }: NodeProps) {
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
         } flex overflow-hidden rounded-xl border border-solid border-worker-border-default bg-worker-surface-primary ${
-          chatStore.tasks[chatStore.activeTaskId as string].activeAgent === id
+          getCurrentTask()?.activeAgent === id
             ? `${agentMap[data.type]?.borderColor} z-50`
             : 'z-10 border-worker-border-default'
         } transition-all duration-300 ease-in-out ${
@@ -372,8 +437,7 @@ export function Node({ id, data }: NodeProps) {
                 {isExpanded ? <SquareChevronLeft /> : <SquareCode />}
               </Button>
               {!Object.keys(agentMap).find((key) => key === data.type) &&
-                chatStore.tasks[chatStore.activeTaskId as string].messages
-                  .length === 0 && (
+                getCurrentTask()?.messages?.length === 0 && (
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -430,7 +494,7 @@ export function Node({ id, data }: NodeProps) {
             ))}
           </div>
           <div
-            className="max-h-[180px]"
+            className="mb-2 max-h-[180px] px-3"
             onClick={() => {
               chatStore.setActiveWorkspace(
                 chatStore.activeTaskId as string,
@@ -440,71 +504,66 @@ export function Node({ id, data }: NodeProps) {
               window.electronAPI.hideAllWebview();
             }}
           >
-            {/* {data.img.length} */}
-            {data.img && data.img.filter((img) => img?.img).length > 0 && (
-              <div className="relative flex h-[180px] max-w-[260px] flex-wrap items-center justify-start gap-1 overflow-hidden">
-                {data.img
-                  .filter((img) => img?.img)
-                  .slice(0, 4)
-                  .map(
-                    (img, index) =>
-                      img.img && (
-                        <img
-                          key={index}
-                          className={`${
-                            data.img.length === 1
-                              ? 'flex-1'
-                              : data.img.length === 2
-                                ? 'h-full max-w-[calc(50%-8px)]'
-                                : 'h-[calc(50%-8px)] max-w-[calc(50%-8px)]'
-                          } min-w-[calc(50%-8px)] rounded-sm object-cover`}
-                          src={img.img}
-                          alt={data.type}
-                        />
-                      )
-                  )}
+            {browserImages.length > 0 && (
+              <div
+                className={`grid h-[180px] w-full gap-1 overflow-hidden ${browserImageGridClass}`}
+              >
+                {browserImages.map((img, index) => (
+                  <div
+                    key={`${img.img}-${index}`}
+                    className="relative h-full w-full overflow-hidden rounded-lg"
+                  >
+                    <img
+                      className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      src={img.img}
+                      alt={data.type}
+                    />
+                  </div>
+                ))}
+                {Array.from({ length: browserPlaceholderCount }).map(
+                  (_, index) => (
+                    <div
+                      key={`browser-placeholder-${index}`}
+                      className="h-full w-full rounded-sm bg-surface-primary"
+                    />
+                  )
+                )}
               </div>
             )}
             {data.type === 'document_agent' &&
               data?.agent?.tasks &&
               data.agent.tasks.length > 0 && (
                 <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
-                  <div className="absolute left-0 top-0 h-[500px] w-[500px] origin-top-left scale-[0.3]">
+                  <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
                     <Folder data={data.agent as Agent} />
                   </div>
                 </div>
               )}
 
-            {data.type === 'developer_agent' &&
-              data?.agent?.tasks &&
-              data?.agent?.tasks?.filter(
-                (task) => task.terminal && task.terminal.length > 0
-              )?.length > 0 && (
-                <div className="relative flex h-[180px] w-full flex-wrap items-center justify-start gap-1 overflow-hidden">
-                  {data.agent?.tasks
-                    .filter((task) => task.terminal && task.terminal.length > 0)
-                    .slice(0, 4)
-                    .map((task) => {
-                      return (
-                        <div
-                          key={task.id}
-                          className={`${
-                            data.agent?.tasks.filter(
-                              (task) =>
-                                task.terminal && task.terminal.length > 0
-                            ).length === 1
-                              ? 'h-full min-w-full'
-                              : 'h-[calc(50%-8px)] min-w-[calc(50%-8px)]'
-                          } relative flex-1 overflow-hidden rounded-sm object-cover`}
-                        >
-                          <div className="absolute left-0 top-0 h-[500px] w-[800px] origin-top-left scale-x-[0.4] scale-y-[0.3]">
-                            <Terminal content={task.terminal} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
+            {data.type === 'developer_agent' && terminalTasks.length > 0 && (
+              <div
+                className={`grid h-[180px] w-full gap-1 overflow-hidden ${terminalGridClass}`}
+              >
+                {terminalTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="relative h-full w-full overflow-hidden rounded-lg object-cover"
+                  >
+                    <div className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
+                      <Terminal content={task.terminal} />
+                    </div>
+                  </div>
+                ))}
+                {Array.from({ length: terminalPlaceholderCount }).map(
+                  (_, index) => (
+                    <div
+                      key={`terminal-placeholder-${index}`}
+                      className="h-full w-full rounded-lg bg-surface-primary"
+                    />
+                  )
+                )}
+              </div>
+            )}
           </div>
           {data.agent?.tasks && data.agent?.tasks.length > 0 && (
             <div className="flex flex-col items-start justify-between gap-1 border-[0px] border-t border-solid border-task-border-default px-3 py-sm">
@@ -569,6 +628,9 @@ export function Node({ id, data }: NodeProps) {
           >
             {data.agent?.tasks &&
               filterTasks.map((task) => {
+                const lastActiveToolkit = task.toolkits
+                  ?.filter((tool: any) => tool.toolkitName !== 'notice')
+                  .at(-1);
                 return (
                   <div
                     onClick={() => {
@@ -712,34 +774,28 @@ export function Node({ id, data }: NodeProps) {
                       {task?.status === TaskStatus.RUNNING && (
                         <div className="duration-400 mt-xs flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2">
                           {/* active toolkit */}
-                          {task.toolkits &&
-                            task.toolkits.length > 0 &&
-                            task.toolkits
-                              .filter(
-                                (tool: any) => tool.toolkitName !== 'notice'
-                              )
-                              .at(-1)?.toolkitStatus ===
-                              AgentStatusValue.RUNNING && (
-                              <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                                {agentMap[data.type]?.icon ?? (
-                                  <Bot className="h-3 w-3" />
-                                )}
-                                <div
-                                  className={`${
-                                    chatStore.tasks[
-                                      chatStore.activeTaskId as string
-                                    ].activeWorkspace
-                                      ? '!w-[100px]'
-                                      : '!w-[500px]'
-                                  } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
-                                >
-                                  <ShinyText
-                                    text={task.toolkits?.[0].toolkitName}
-                                    className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-text-primary"
-                                  />
-                                </div>
+                          {lastActiveToolkit?.toolkitStatus ===
+                            AgentStatusValue.RUNNING && (
+                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                              {getToolkitIcon(
+                                lastActiveToolkit.toolkitName ?? ''
+                              )}
+                              <div
+                                className={`${
+                                  chatStore.tasks[
+                                    chatStore.activeTaskId as string
+                                  ].activeWorkspace
+                                    ? '!w-[100px]'
+                                    : '!w-[500px]'
+                                } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-text-primary`}
+                              >
+                                <ShinyText
+                                  text={task.toolkits?.[0].toolkitName}
+                                  className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-text-primary"
+                                />
                               </div>
-                            )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -838,7 +894,7 @@ export function Node({ id, data }: NodeProps) {
                                             }`}
                                           />
                                         ) : (
-                                          agentMap[data.type]?.icon
+                                          getToolkitIcon(toolkit.toolkitName)
                                         )}
                                         <span className="flex items-center gap-sm text-nowrap text-label-xs font-bold text-text-primary">
                                           {toolkit.toolkitName}

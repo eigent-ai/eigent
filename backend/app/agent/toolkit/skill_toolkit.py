@@ -22,18 +22,24 @@ User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import TypedDict
 
-from camel.toolkits.function_tool import FunctionTool
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
 
 logger = logging.getLogger(__name__)
 
-SKILL_FILENAME = "SKILL.md"
 SKILL_CONFIG_FILENAME = "skills-config.json"
 
-# Unified scope naming
-SkillScope = Literal["repo", "user", "system"]
+
+class SkillScopeConfig(TypedDict, total=False):
+    isGlobal: bool
+    selectedAgents: list[str]
+
+
+class SkillEntryConfig(TypedDict, total=False):
+    enabled: bool
+    scope: SkillScopeConfig
+    agents: list[str]
 
 
 def _get_user_config_path(user_id: str | None = None) -> Path:
@@ -53,7 +59,7 @@ def _get_user_config_path(user_id: str | None = None) -> Path:
         return Path.home() / ".eigent" / SKILL_CONFIG_FILENAME
 
 
-def _load_skill_config(config_path: Path) -> dict[str, dict]:
+def _load_skill_config(config_path: Path) -> dict[str, SkillEntryConfig]:
     """Load skill configuration from JSON file."""
     if not config_path.exists():
         logger.debug(f"No config file at: {config_path}")
@@ -73,7 +79,7 @@ def _load_skill_config(config_path: Path) -> dict[str, dict]:
 def _get_merged_skill_config(
     working_directory: Path | None = None,
     user_id: str | None = None,
-) -> dict[str, dict]:
+) -> dict[str, SkillEntryConfig]:
     """Get merged skill configuration (user-global + project-level).
 
     Priority: Project-level > User-global
@@ -108,7 +114,9 @@ def _get_merged_skill_config(
     return config
 
 
-def _is_skill_enabled(skill_name: str, config: dict[str, dict]) -> bool:
+def _is_skill_enabled(
+    skill_name: str, config: dict[str, SkillEntryConfig]
+) -> bool:
     """Check if a skill is enabled according to config."""
     if not config or skill_name not in config:
         return True  # Not configured = enabled by default
@@ -120,7 +128,7 @@ def _is_skill_enabled(skill_name: str, config: dict[str, dict]) -> bool:
 def _is_agent_allowed(
     skill_name: str,
     agent_name: str | None,
-    config: dict[str, dict],
+    config: dict[str, SkillEntryConfig],
 ) -> bool:
     """Check if an agent is allowed to use this skill.
 
@@ -174,6 +182,33 @@ def _is_agent_allowed(
     return agent_name in allowed_agents
 
 
+def _build_allowed_skills(
+    config: dict[str, SkillEntryConfig],
+    agent_name: str | None,
+) -> set[str] | None:
+    """Build allowed skill set for CAMEL SkillToolkit filtering.
+
+    Args:
+        config: Skill configuration
+        agent_name: Name of the agent requesting the skill
+
+    Returns:
+        None if no filtering should be applied (all skills allowed),
+        otherwise a set of allowed skill names.
+    """
+    if not config:
+        return None
+
+    allowed: set[str] = set()
+    for skill_name in config:
+        if not _is_skill_enabled(skill_name, config):
+            continue
+        if not _is_agent_allowed(skill_name, agent_name, config):
+            continue
+        allowed.add(skill_name)
+    return allowed
+
+
 class SkillToolkit(BaseSkillToolkit):
     """Enhanced SkillToolkit with Eigent-specific features.
 
@@ -215,12 +250,20 @@ class SkillToolkit(BaseSkillToolkit):
         self.api_task_id = api_task_id
         self.agent_name = agent_name
         self.user_id = user_id
+        resolved_wd = (
+            Path(working_directory).resolve()
+            if working_directory
+            else Path.cwd().resolve()
+        )
+        config = _get_merged_skill_config(resolved_wd, self.user_id)
+        allowed_skills = _build_allowed_skills(config, self.agent_name)
         logger.info(
             f"Initialized SkillToolkit for agent '{agent_name}' "
             f"in task '{api_task_id}' (user_id={user_id or 'legacy'})"
         )
         super().__init__(
             working_directory=working_directory,
+            allowed_skills=allowed_skills,
             timeout=timeout,
         )
 
@@ -257,80 +300,3 @@ class SkillToolkit(BaseSkillToolkit):
         )
 
         return roots
-
-    def _apply_access_control(
-        self, skills: dict[str, dict[str, str]]
-    ) -> dict[str, dict[str, str]]:
-        """Apply agent-based access control to discovered skills.
-
-        Args:
-            skills: Dict of discovered skills from base class
-
-        Returns:
-            Filtered dict of skills based on configuration
-        """
-        # Load merged config (user + project)
-        config = _get_merged_skill_config(self.working_directory, self.user_id)
-
-        if not config:
-            # No config = all skills available
-            return skills
-
-        filtered = {}
-        for name, metadata in skills.items():
-            skill_name = metadata["name"]
-
-            # Check if skill is enabled
-            if not _is_skill_enabled(skill_name, config):
-                logger.debug(
-                    f"Skill '{skill_name}' disabled for user "
-                    f"'{self.user_id or 'legacy'}'"
-                )
-                continue
-
-            # Check if agent is allowed
-            if not _is_agent_allowed(skill_name, self.agent_name, config):
-                logger.debug(
-                    f"Skill '{skill_name}' not allowed for agent "
-                    f"'{self.agent_name}'"
-                )
-                continue
-
-            filtered[name] = metadata
-
-        logger.debug(
-            f"Access control: {len(skills)} -> {len(filtered)} skills "
-            f"(agent={self.agent_name}, user={self.user_id or 'legacy'})"
-        )
-
-        return filtered
-
-    def _get_skills(self) -> dict[str, dict[str, str]]:
-        """Override to apply access control to discovered skills.
-
-        Returns:
-            Dict of skills after applying access control
-        """
-        # Get skills from base class (with caching)
-        skills = super()._get_skills()
-
-        # Apply Eigent-specific access control
-        return self._apply_access_control(skills)
-
-    def get_tools(self) -> list[FunctionTool]:
-        """Return skill tools with access control applied.
-
-        The returned tools will respect:
-        - User-specific configurations (~/.eigent/<user_id>/skills-config.json)
-        - Project-level configurations (.eigent/skills-config.json)
-        - Agent-based access restrictions
-
-        Returns:
-            List of FunctionTool instances for skill operations
-        """
-        tools = super().get_tools()
-        logger.debug(
-            f"Created {len(tools)} skill tools for agent '{self.agent_name}' "
-            f"(user_id={self.user_id or 'legacy'})"
-        )
-        return tools
