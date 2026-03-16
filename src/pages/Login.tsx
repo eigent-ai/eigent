@@ -18,13 +18,12 @@ import { useStackApp } from '@stackframe/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Input } from '@/components/ui/input';
-
-import { proxyFetchPost } from '@/api/http';
+import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import eyeOff from '@/assets/eye-off.svg';
 import eye from '@/assets/eye.svg';
 import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
+import { Input } from '@/components/ui/input';
 import WindowControls from '@/components/WindowControls';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
@@ -33,27 +32,29 @@ import background from '@/assets/background.png';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 
 const HAS_STACK_KEYS = hasStackKeys();
+const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
 
 export default function Login() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
-  const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
+  const {
+    setAuth,
+    setModelType,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+  } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const [hidePassword, setHidePassword] = useState(true);
   const { t } = useTranslation();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
-  const [errors, setErrors] = useState({
-    email: '',
-    password: '',
-  });
+  const [hidePassword, setHidePassword] = useState(true);
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [errors, setErrors] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [generalError, setGeneralError] = useState('');
+  const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
   const [rememberMe, setRememberMe] = useState(
@@ -71,71 +72,25 @@ export default function Login() {
   const [showSavedAccounts, setShowSavedAccounts] = useState(false);
   const savedAccountsRef = useRef<HTMLDivElement>(null);
 
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  const validateEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const validateForm = () => {
     const newErrors = {
-      email: '',
-      password: '',
+      email: formData.email
+        ? validateEmail(formData.email)
+          ? ''
+          : t('layout.please-enter-a-valid-email-address')
+        : t('layout.please-enter-email-address'),
+      password: formData.password
+        ? formData.password.length >= 8
+          ? ''
+          : t('layout.password-must-be-at-least-8-characters')
+        : t('layout.please-enter-password'),
     };
-
-    if (!formData.email) {
-      newErrors.email = t('layout.please-enter-email-address');
-    } else if (!validateEmail(formData.email)) {
-      newErrors.email = t('layout.please-enter-a-valid-email-address');
-    }
-
-    if (!formData.password) {
-      newErrors.password = t('layout.please-enter-password');
-    } else if (formData.password.length < 8) {
-      newErrors.password = t('layout.password-must-be-at-least-8-characters');
-    }
-
     setErrors(newErrors);
     return !newErrors.email && !newErrors.password;
   };
-
-  const getLoginErrorMessage = useCallback(
-    (data: any) => {
-      if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
-        return '';
-      }
-
-      if (data.code === 0) {
-        return '';
-      }
-
-      if (data.code === 10) {
-        return (
-          data.text ||
-          t('layout.login-failed-please-check-your-email-and-password')
-        );
-      }
-
-      if (
-        data.code === 1 &&
-        Array.isArray(data.error) &&
-        data.error.length > 0
-      ) {
-        const firstError = data.error[0];
-        if (typeof firstError === 'string') {
-          return firstError;
-        }
-        if (typeof firstError?.msg === 'string') {
-          return firstError.msg;
-        }
-        if (typeof firstError?.message === 'string') {
-          return firstError.message;
-        }
-      }
-
-      return data.text || t('layout.login-failed-please-try-again');
-    },
-    [t]
-  );
 
   const handleInputChange = (field: string, value: string) => {
     if (field === 'email') {
@@ -150,24 +105,12 @@ export default function Login() {
         password: passwordToFill,
       }));
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
+      setFormData((prev) => ({ ...prev, [field]: value }));
     }
-
     if (errors[field as keyof typeof errors]) {
-      setErrors((prev) => ({
-        ...prev,
-        [field]: '',
-      }));
+      setErrors((prev) => ({ ...prev, [field]: '' }));
     }
-
-    if (generalError) {
-      setGeneralError('');
-    }
-
-    // Show/hide saved accounts dropdown based on email prefix match
+    if (generalError) setGeneralError('');
     if (field === 'email') {
       const input = value.toLowerCase();
       const hasMatch = savedAccounts.some((a) =>
@@ -176,7 +119,7 @@ export default function Login() {
       setShowSavedAccounts(hasMatch && savedAccounts.length > 0);
     }
   };
-  // Load saved accounts on mount (for suggestions only; do not pre-fill form)
+
   useEffect(() => {
     (async () => {
       try {
@@ -185,12 +128,11 @@ export default function Login() {
           setSavedAccounts(result.accounts);
         }
       } catch {
-        // Non-critical: silently ignore load failures
+        // Non-critical
       }
     })();
   }, []);
 
-  // Close saved accounts dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -218,7 +160,6 @@ export default function Login() {
     });
     setErrors({ email: '', password: '' });
     setGeneralError('');
-    // Password remains hidden; user clicks "Sign In" to log in
   };
 
   const handleRemoveAccount = async (e: React.MouseEvent, email: string) => {
@@ -237,11 +178,9 @@ export default function Login() {
     a.email.toLowerCase().startsWith(formData.email.toLowerCase())
   );
 
+  // Form login (cloud/hybrid): email + password → /api/login
   const handleLogin = async () => {
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateForm()) return;
     setGeneralError('');
     setIsLoading(true);
     try {
@@ -249,15 +188,11 @@ export default function Login() {
         email: formData.email,
         password: formData.password,
       });
-
       const errorMessage = getLoginErrorMessage(data);
       if (errorMessage) {
         setGeneralError(errorMessage);
         return;
       }
-
-      // Save account only when "Remember me" is checked. Do not remove when unchecked:
-      // once saved, the account stays until the user explicitly removes it from the list.
       if (rememberMe) {
         const saveResult = await window.electronAPI.credentialsSave(
           formData.email,
@@ -267,15 +202,12 @@ export default function Login() {
           formData.password
         );
         if (!saveResult.success) {
-          // Best-effort: still allow login; credentials may not persist (e.g. encryption unavailable)
+          // Best-effort: still allow login
         }
       }
-
       setAuth({ email: formData.email, ...data });
       setModelType('cloud');
-      // Record VITE_USE_LOCAL_PROXY value at login
-      const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
-      setLocalProxyValue(localProxyValue);
+      setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
       navigate('/');
     } catch {
       setGeneralError(
@@ -286,6 +218,31 @@ export default function Login() {
     }
   };
 
+  // Local mode: single button → /api/auto-login
+  const handleAutoLogin = async () => {
+    setGeneralError('');
+    setIsLoading(true);
+    try {
+      const data = await proxyFetchPost('/api/auto-login', {});
+      const errorMessage = getLoginErrorMessage(data);
+      if (errorMessage) {
+        setGeneralError(errorMessage);
+        return;
+      }
+      setAuth({ email: data.email, ...data });
+      setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+      setModelType('custom');
+      setInitState('done');
+      setIsFirstLaunch(false);
+      navigate('/');
+    } catch {
+      setGeneralError(t('layout.login-failed-please-try-again'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Hybrid/app mode: handle Stack Auth callback (reuse existing OAuth flow)
   const handleLoginByStack = useCallback(
     async (token: string) => {
       try {
@@ -302,8 +259,7 @@ export default function Login() {
           return;
         }
         setModelType('cloud');
-        setAuth({ email: formData.email, ...data });
-        // Record VITE_USE_LOCAL_PROXY value at login
+        setAuth({ email: data.email, ...data });
         const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
         setLocalProxyValue(localProxyValue);
         navigate('/');
@@ -316,7 +272,6 @@ export default function Login() {
       }
     },
     [
-      formData.email,
       navigate,
       setAuth,
       setModelType,
@@ -409,6 +364,45 @@ export default function Login() {
     ]
   );
 
+  // Listen for direct token callback from Electron (eigent.ai login redirect)
+  useEffect(() => {
+    const handleTokenReceived = async (_event: any, token: string) => {
+      if (!token) return;
+      setIsLoading(true);
+      // Temporarily set token so proxyFetchGet can use it for auth
+      setAuth({ email: '', token, username: '', user_id: 0 });
+      setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+      try {
+        const userInfo = await proxyFetchGet('/api/user');
+        if (userInfo && userInfo.email) {
+          setAuth({
+            token,
+            email: userInfo.email,
+            username:
+              userInfo.username ||
+              userInfo.nickname ||
+              userInfo.fullname ||
+              userInfo.email?.split('@')[0] ||
+              '',
+            user_id:
+              userInfo.id || JSON.parse(atob(token.split('.')[1])).id || 0,
+          });
+        }
+      } catch {
+        // Non-critical: still navigate
+      }
+      setIsLoading(false);
+      navigate('/', { replace: true });
+    };
+
+    window.ipcRenderer?.on('auth-token-received', handleTokenReceived);
+
+    return () => {
+      window.ipcRenderer?.off('auth-token-received', handleTokenReceived);
+    };
+  }, [setAuth, setLocalProxyValue, navigate]);
+
+  // Listen for auth code callback from Electron (Stack Auth OAuth flow)
   useEffect(() => {
     window.ipcRenderer?.on('auth-code-received', handleAuthCode);
 
@@ -429,7 +423,6 @@ export default function Login() {
   // Handle before-close event for login page
   useEffect(() => {
     const handleBeforeClose = () => {
-      // On login page, always close directly without confirmation
       window.electronAPI.closeWindow(true);
     };
 
@@ -439,6 +432,91 @@ export default function Login() {
       window.ipcRenderer?.off('before-close', handleBeforeClose);
     };
   }, []);
+
+  // Hybrid/app mode: prepare auth callback URL on mount (don't auto-open browser)
+  useEffect(() => {
+    if (IS_LOCAL_MODE) return;
+
+    const prepareCallbackUrl = async () => {
+      let cbUrl: string;
+      if (import.meta.env.PROD) {
+        cbUrl = 'eigent://auth/callback';
+      } else {
+        cbUrl = 'eigent://auth/callback';
+        try {
+          const url = await window.ipcRenderer?.invoke('get-auth-callback-url');
+          if (url) cbUrl = url;
+        } catch (e) {
+          // Fallback to eigent:// protocol
+        }
+      }
+      setCallbackUrl(cbUrl);
+    };
+
+    prepareCallbackUrl();
+  }, []);
+
+  // Render local mode: "Start Eigent" button only
+  const renderLocalMode = () => (
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+      <img
+        src={eigentLogo}
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+      />
+      <div className="mb-8 text-heading-lg font-bold text-text-heading">
+        Eigent
+      </div>
+      {generalError && (
+        <p className="mb-4 mt-1 text-label-md text-text-cuation">
+          {generalError}
+        </p>
+      )}
+      <Button
+        onClick={handleAutoLogin}
+        size="lg"
+        variant="primary"
+        className="w-full rounded-full"
+        disabled={isLoading}
+      >
+        <span className="flex-1">
+          {isLoading ? t('layout.logging-in') : 'Start Eigent'}
+        </span>
+      </Button>
+    </div>
+  );
+
+  // Render hybrid/app mode: waiting for external login callback
+  const renderHybridMode = () => (
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+      <img
+        src={eigentLogo}
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+      />
+      <div className="mb-4 text-heading-lg font-bold text-text-heading">
+        {t('layout.login')}
+      </div>
+      {isLoading && (
+        <p className="mb-6 text-center text-label-md text-text-secondary">
+          {t('layout.logging-in')}...
+        </p>
+      )}
+      <Button
+        onClick={() => {
+          setIsLoading(true);
+          window.open(
+            `https://www.eigent.ai/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
+            '_blank',
+            'noopener,noreferrer'
+          );
+        }}
+        size="lg"
+        variant="primary"
+        className="w-full rounded-full"
+      >
+        <span className="flex-1">{t('layout.log-in')}</span>
+      </Button>
+    </div>
+  );
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
@@ -484,171 +562,174 @@ export default function Login() {
             backgroundPosition: 'center',
           }}
         >
-          <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
-            <img
-              src={eigentLogo}
-              className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
-            />
-            <div className="mb-4 flex items-end justify-between self-stretch">
-              <div className="text-heading-lg font-bold text-text-heading">
-                {t('layout.login')}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
-                    navigate('/signup');
-                  } else {
-                    window.open(
-                      'https://www.eigent.ai/signup',
-                      '_blank',
-                      'noopener,noreferrer'
-                    );
-                  }
-                }}
-              >
-                {t('layout.sign-up')}
-              </Button>
-            </div>
-            {HAS_STACK_KEYS && (
-              <div className="w-full pt-6">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => handleReloadBtn('google')}
-                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-                  disabled={isLoading}
-                >
-                  <img src={google} className="h-5 w-5" />
-                  <span className="ml-2">
-                    {t('layout.continue-with-google-login')}
-                  </span>
-                </Button>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => handleReloadBtn('github')}
-                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
-                  disabled={isLoading}
-                >
-                  <img src={github2} className="h-5 w-5" />
-                  <span className="ml-2">
-                    {t('layout.continue-with-github-login')}
-                  </span>
-                </Button>
-              </div>
-            )}
-            {HAS_STACK_KEYS && (
-              <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
-                {t('layout.or')}
-              </div>
-            )}
-            <div className="flex w-full flex-col gap-4">
-              {generalError && (
-                <p className="mb-4 mt-1 text-label-md text-text-cuation">
-                  {generalError}
-                </p>
-              )}
-              <div className="relative mb-4 flex w-full flex-col gap-4">
-                <div className="relative" ref={savedAccountsRef}>
-                  <Input
-                    id="email"
-                    type="email"
-                    size="default"
-                    title={t('layout.email')}
-                    placeholder={t('layout.enter-your-email')}
-                    required
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    state={errors.email ? 'error' : undefined}
-                    note={errors.email}
-                    onEnter={handleLogin}
-                    onFocus={() => {
-                      // Show suggestions when user focuses email field and we have saved accounts
-                      if (savedAccounts.length > 0) {
-                        setShowSavedAccounts(true);
-                      }
-                    }}
+          {IS_LOCAL_MODE
+            ? renderLocalMode()
+            : (() => (
+                <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+                  <img
+                    src={eigentLogo}
+                    className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
                   />
-                  {showSavedAccounts && filteredAccounts.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border-tertiary bg-surface-primary shadow-lg">
-                      <div className="px-3 py-2 text-label-sm text-text-secondary">
-                        {t('layout.saved-accounts')}
-                      </div>
-                      {filteredAccounts.map((account) => (
-                        <div
-                          key={account.email}
-                          className="flex cursor-pointer items-center justify-between px-3 py-2 hover:bg-surface-secondary"
-                          onClick={() => handleSelectAccount(account)}
-                        >
-                          <span className="text-label-md text-text-primary">
-                            {account.email}
-                          </span>
-                          <button
-                            className="text-label-sm text-text-secondary hover:text-text-primary"
-                            onClick={(e) =>
-                              handleRemoveAccount(e, account.email)
-                            }
-                          >
-                            {t('layout.remove-account')}
-                          </button>
-                        </div>
-                      ))}
+                  <div className="mb-4 flex items-end justify-between self-stretch">
+                    <div className="text-heading-lg font-bold text-text-heading">
+                      {t('layout.login')}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (IS_LOCAL_MODE) {
+                          navigate('/signup');
+                        } else {
+                          window.open(
+                            'https://www.eigent.ai/signup',
+                            '_blank',
+                            'noopener,noreferrer'
+                          );
+                        }
+                      }}
+                    >
+                      {t('layout.sign-up')}
+                    </Button>
+                  </div>
+                  {HAS_STACK_KEYS && (
+                    <div className="w-full pt-6">
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        onClick={() => handleReloadBtn('google')}
+                        className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                        disabled={isLoading}
+                      >
+                        <img src={google} className="h-5 w-5" />
+                        <span className="ml-2">
+                          {t('layout.continue-with-google-login')}
+                        </span>
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        onClick={() => handleReloadBtn('github')}
+                        className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                        disabled={isLoading}
+                      >
+                        <img src={github2} className="h-5 w-5" />
+                        <span className="ml-2">
+                          {t('layout.continue-with-github-login')}
+                        </span>
+                      </Button>
                     </div>
                   )}
+                  {HAS_STACK_KEYS && (
+                    <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
+                      {t('layout.or')}
+                    </div>
+                  )}
+                  <div className="flex w-full flex-col gap-4">
+                    {generalError && (
+                      <p className="mb-4 mt-1 text-label-md text-text-cuation">
+                        {generalError}
+                      </p>
+                    )}
+                    <div className="relative mb-4 flex w-full flex-col gap-4">
+                      <div className="relative" ref={savedAccountsRef}>
+                        <Input
+                          id="email"
+                          type="email"
+                          size="default"
+                          title={t('layout.email')}
+                          placeholder={t('layout.enter-your-email')}
+                          required
+                          value={formData.email}
+                          onChange={(e) =>
+                            handleInputChange('email', e.target.value)
+                          }
+                          state={errors.email ? 'error' : undefined}
+                          note={errors.email}
+                          onEnter={handleLogin}
+                          onFocus={() => {
+                            if (savedAccounts.length > 0) {
+                              setShowSavedAccounts(true);
+                            }
+                          }}
+                        />
+                        {showSavedAccounts && filteredAccounts.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border-tertiary bg-surface-primary shadow-lg">
+                            <div className="px-3 py-2 text-label-sm text-text-secondary">
+                              {t('layout.saved-accounts')}
+                            </div>
+                            {filteredAccounts.map((account) => (
+                              <div
+                                key={account.email}
+                                className="flex cursor-pointer items-center justify-between px-3 py-2 hover:bg-surface-secondary"
+                                onClick={() => handleSelectAccount(account)}
+                              >
+                                <span className="text-label-md text-text-primary">
+                                  {account.email}
+                                </span>
+                                <button
+                                  className="text-label-sm text-text-secondary hover:text-text-primary"
+                                  onClick={(e) =>
+                                    handleRemoveAccount(e, account.email)
+                                  }
+                                >
+                                  {t('layout.remove-account')}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Input
+                        id="password"
+                        title={t('layout.password')}
+                        size="default"
+                        type={hidePassword ? 'password' : 'text'}
+                        required
+                        placeholder={t('layout.enter-your-password')}
+                        value={formData.password}
+                        onChange={(e) =>
+                          handleInputChange('password', e.target.value)
+                        }
+                        state={errors.password ? 'error' : undefined}
+                        note={errors.password}
+                        backIcon={<img src={hidePassword ? eye : eyeOff} />}
+                        onBackIconClick={() => setHidePassword(!hidePassword)}
+                        onEnter={handleLogin}
+                      />
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={rememberMe}
+                          onChange={(e) => {
+                            setRememberMe(e.target.checked);
+                            localStorage.setItem(
+                              'rememberMe',
+                              String(e.target.checked)
+                            );
+                          }}
+                          className="h-4 w-4 cursor-pointer rounded border-border-tertiary accent-[#0D0D0D]"
+                        />
+                        <span className="text-label-md text-text-secondary">
+                          {t('layout.remember-me')}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleLogin}
+                    size="md"
+                    variant="primary"
+                    type="submit"
+                    className="w-full rounded-full"
+                    disabled={isLoading}
+                  >
+                    <span className="flex-1">
+                      {isLoading ? t('layout.logging-in') : t('layout.log-in')}
+                    </span>
+                  </Button>
                 </div>
-
-                <Input
-                  id="password"
-                  title={t('layout.password')}
-                  size="default"
-                  type={hidePassword ? 'password' : 'text'}
-                  required
-                  placeholder={t('layout.enter-your-password')}
-                  value={formData.password}
-                  onChange={(e) =>
-                    handleInputChange('password', e.target.value)
-                  }
-                  state={errors.password ? 'error' : undefined}
-                  note={errors.password}
-                  backIcon={<img src={hidePassword ? eye : eyeOff} />}
-                  onBackIconClick={() => setHidePassword(!hidePassword)}
-                  onEnter={handleLogin}
-                />
-
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => {
-                      setRememberMe(e.target.checked);
-                      localStorage.setItem(
-                        'rememberMe',
-                        String(e.target.checked)
-                      );
-                    }}
-                    className="h-4 w-4 cursor-pointer rounded border-border-tertiary accent-[#0D0D0D]"
-                  />
-                  <span className="text-label-md text-text-secondary">
-                    {t('layout.remember-me')}
-                  </span>
-                </label>
-              </div>
-            </div>
-            <Button
-              onClick={handleLogin}
-              size="md"
-              variant="primary"
-              type="submit"
-              className="w-full rounded-full"
-              disabled={isLoading}
-            >
-              <span className="flex-1">
-                {isLoading ? t('layout.logging-in') : t('layout.log-in')}
-              </span>
-            </Button>
-          </div>
+              ))()}
         </div>
       </div>
     </div>

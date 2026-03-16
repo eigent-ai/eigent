@@ -60,6 +60,7 @@ class LoginByPasswordIn(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     email: EmailStr
+    redirect_url: str | None = None
 
 
 class UserIn(BaseModel):
