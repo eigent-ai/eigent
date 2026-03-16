@@ -77,7 +77,7 @@ FALSE_POSITIVE_INDICATORS = [
 
 SKIP_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv",
-    "env", "dist", "build", "vendor", ".bundle",
+    "dist", "build", "vendor", ".bundle",
     ".tox", ".mypy_cache", ".pytest_cache",
 }
 
@@ -101,6 +101,11 @@ SKIP_EXTENSIONS = {
 MAX_FILE_SIZE = 1_000_000
 
 
+def should_skip(path: Path, root: Path) -> bool:
+    """Return True if path should be skipped (e.g. .git, node_modules)."""
+    return any(part in SKIP_DIRS for part in path.relative_to(root).parts)
+
+
 def is_test_file(filepath: Path) -> bool:
     """Return True if filepath is under a test directory or matches test patterns."""
     parts = set(filepath.parts)
@@ -116,11 +121,12 @@ def is_false_positive(line: str) -> bool:
     return any(indicator in lower for indicator in FALSE_POSITIVE_INDICATORS)
 
 
-def scan_file(filepath: Path, include_tests: bool = False) -> list:
+def scan_file(filepath: Path, root: Path, include_tests: bool = False) -> list:
     """Scan a single file for hardcoded secrets.
 
     Args:
         filepath: Path to the file to scan.
+        root: Project root directory for relative path calculation.
         include_tests: If False, skip files in test dirs or matching test patterns.
 
     Returns:
@@ -130,7 +136,7 @@ def scan_file(filepath: Path, include_tests: bool = False) -> list:
     findings = []
     if filepath.suffix.lower() in SKIP_EXTENSIONS:
         return findings
-    if any(part in SKIP_DIRS for part in filepath.parts):
+    if should_skip(filepath, root):
         return findings
     if not include_tests and is_test_file(filepath):
         return findings
@@ -144,9 +150,6 @@ def scan_file(filepath: Path, include_tests: bool = False) -> list:
 
     lines = content.splitlines()
     for line_num, line in enumerate(lines, 1):
-        stripped = line.lstrip()
-        if stripped.startswith("#") or stripped.startswith("//"):
-            continue
         if is_false_positive(line):
             continue
 
@@ -183,7 +186,7 @@ def scan_project(project_dir, include_tests: bool = False) -> tuple:
     for filepath in root.rglob("*"):
         if not filepath.is_file():
             continue
-        results = scan_file(filepath, include_tests)
+        results = scan_file(filepath, root, include_tests)
         all_findings.extend(results)
         scanned += 1
 

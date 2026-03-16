@@ -97,7 +97,7 @@ CONFIG_ISSUES = [
 
 SKIP_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv",
-    "env", ".env", "dist", "build", ".tox", ".mypy_cache",
+    ".env", "dist", "build", ".tox", ".mypy_cache",
     ".pytest_cache", "vendor", ".bundle",
 }
 
@@ -111,9 +111,9 @@ SKIP_EXTENSIONS = {
 MAX_FILE_SIZE = 1_000_000  # 1 MB
 
 
-def should_skip(path: Path) -> bool:
+def should_skip(path: Path, root: Path) -> bool:
     """Return True if path should be skipped (e.g. .git, node_modules)."""
-    return any(part in SKIP_DIRS for part in path.parts)
+    return any(part in SKIP_DIRS for part in path.relative_to(root).parts)
 
 
 def scan_file(filepath: Path) -> list:
@@ -257,7 +257,7 @@ def scan_project(project_dir) -> tuple:
     for filepath in root.rglob("*"):
         if not filepath.is_file():
             continue
-        if should_skip(filepath):
+        if should_skip(filepath, root):
             continue
         all_findings.extend(scan_file(filepath))
         scanned += 1
