@@ -25,6 +25,7 @@ type CloudModelType =
   | 'gemini-3-flash-preview'
   | 'gpt-4.1-mini'
   | 'gpt-4.1'
+  | 'claude-haiku-4-5'
   | 'claude-sonnet-4-5'
   | 'claude-sonnet-4-6'
   | 'claude-opus-4-6'
