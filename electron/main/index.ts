@@ -50,6 +50,11 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import {
+  setRoundedCorners,
+  setTransparentTitlebar,
+  setVibrancy,
+} from './native/macos-window';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -2691,15 +2696,12 @@ async function createWindow() {
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,
-    // macOS-only visual effects
-    vibrancy: isMac ? 'sidebar' : undefined,
-    visualEffectState: isMac ? 'active' : undefined,
-    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    // Solid background on Windows (respect dark/light mode), fully transparent on macOS for native vibrancy
     backgroundColor: isWindows
       ? nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
         : '#ffffff'
-      : '#f5f5f580',
+      : '#00000000',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
@@ -2722,6 +2724,28 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // Apply native macOS effects
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+          setVibrancy(win, 'HUDWindow');
+
+          // Apply rounded corners
+          setRoundedCorners(win, 20);
+
+          // Make titlebar transparent
+          setTransparentTitlebar(win);
+
+          log.info('[MacOS] Applied native visual effects');
+        } catch (error) {
+          log.error('[MacOS] Failed to apply native visual effects:', error);
+        }
+      }
+    });
+  }
 
   // ==================== Handle renderer crashes and failed loads ====================
   win.webContents.on('render-process-gone', (event, details) => {
