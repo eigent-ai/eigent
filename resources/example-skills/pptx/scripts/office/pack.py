@@ -90,12 +90,12 @@ def _run_validation(
     validators = []
 
     if suffix == ".docx":
-        author = "eigent"
+        author = "Claude"
         if infer_author_func:
             try:
                 author = infer_author_func(unpacked_dir, original_file)
             except ValueError as e:
-                print(f"Warning: {e} Using default author 'eigent'.", file=sys.stderr)
+                print(f"Warning: {e} Using default author 'Claude'.", file=sys.stderr)
 
         validators = [
             DOCXSchemaValidator(unpacked_dir, original_file),
