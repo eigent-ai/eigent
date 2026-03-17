@@ -57,6 +57,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
+  const [isCompletionReady, setIsCompletionReady] = useState(false);
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
 
@@ -122,6 +123,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
+
+  // Reset completion flag when active task or query group changes
+  useEffect(() => {
+    setIsCompletionReady(false);
+  }, [activeTaskId, queryGroup.queryId]);
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -305,7 +311,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   }
                   id={message.id}
                   content={message.content}
-                  onTyping={() => {}}
+                  onTyping={() => {
+                    // Mark completion once the final END message finishes typing
+                    setIsCompletionReady(true);
+                  }}
                 />
                 {/* File List */}
                 {message.fileList && (
@@ -340,8 +349,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     ))}
                   </div>
                 )}
-                {/* Task Completion Action Card */}
-                {task?.status === 'finished' && (
+                {/* Task Completion Action Card - show only after markdown typing completes */}
+                {task?.status === 'finished' && isCompletionReady && (
                   <TaskCompletionCard
                     taskPrompt={queryGroup.userMessage?.content}
                     onRerun={() => {
