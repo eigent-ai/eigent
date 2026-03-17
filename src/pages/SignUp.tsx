@@ -32,6 +32,7 @@ import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
 
 const HAS_STACK_KEYS = hasStackKeys();
+const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
 export default function SignUp() {
   // Always call hooks unconditionally - React Hooks must be called in the same order
@@ -40,6 +41,25 @@ export default function SignUp() {
   const { setAuth, initState: _initState } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Local mode: no signup needed, redirect to home
+  useEffect(() => {
+    if (IS_LOCAL_MODE) {
+      navigate('/', { replace: true });
+    }
+  }, [navigate]);
+
+  // Hybrid/app mode without Stack keys: redirect to external signup
+  useEffect(() => {
+    if (!IS_LOCAL_MODE && !HAS_STACK_KEYS) {
+      window.open(
+        'https://www.eigent.ai/signup',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      navigate('/login', { replace: true });
+    }
+  }, [navigate]);
   const [hidePassword, setHidePassword] = useState(true);
   const { t } = useTranslation();
   const [formData, setFormData] = useState({
@@ -434,19 +454,6 @@ export default function SignUp() {
               </span>
             </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() =>
-              window.open(
-                'https://www.eigent.ai/privacy-policy',
-                '_blank',
-                'noopener,noreferrer'
-              )
-            }
-          >
-            {t('layout.privacy-policy')}
-          </Button>
         </div>
       </div>
     </div>
