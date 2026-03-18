@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { proxyFetchPost } from '@/api/http';
 import { useAuthStore } from '@/store/authStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
@@ -24,6 +25,8 @@ const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
 const Home = lazy(() => import('@/pages/Home'));
 const History = lazy(() => import('@/pages/History'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
+
+const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 
 interface AuthState {
   loading: boolean;
@@ -62,7 +65,16 @@ const ProtectedRoute = () => {
     initialized: false,
   });
 
-  const { token, localProxyValue, logout } = useAuthStore();
+  const {
+    token,
+    localProxyValue,
+    logout,
+    setAuth,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+    setModelType,
+  } = useAuthStore();
   useEffect(() => {
     // Check VITE_USE_LOCAL_PROXY value on app startup
     if (token) {
@@ -78,8 +90,38 @@ const ProtectedRoute = () => {
       }
     }
 
+    // Local mode: auto-login when no token
+    if (IS_LOCAL_MODE && !token) {
+      proxyFetchPost('/api/auto-login', {})
+        .then((data) => {
+          if (data && data.token) {
+            setAuth({ email: data.email, ...data });
+            setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+            setModelType('custom');
+            setInitState('done');
+            setIsFirstLaunch(false);
+            dispatch({
+              type: 'INITIALIZE',
+              payload: { isAuthenticated: true },
+            });
+          } else {
+            dispatch({
+              type: 'INITIALIZE',
+              payload: { isAuthenticated: false },
+            });
+          }
+        })
+        .catch(() => {
+          dispatch({
+            type: 'INITIALIZE',
+            payload: { isAuthenticated: false },
+          });
+        });
+      return;
+    }
+
     dispatch({ type: 'INITIALIZE', payload: { isAuthenticated: !!token } });
-  }, [token, localProxyValue, logout]);
+  }, [token, localProxyValue, logout, setAuth, setLocalProxyValue]);
 
   if (state.loading || !state.initialized) {
     return (

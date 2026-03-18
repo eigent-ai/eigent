@@ -50,6 +50,11 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import {
+  setRoundedCorners,
+  setTransparentTitlebar,
+  setVibrancy,
+} from './native/macos-window';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -466,10 +471,12 @@ function handleProtocolUrl(url: string) {
 function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
+  const token = urlObj.searchParams.get('token');
   const share_token = urlObj.searchParams.get('share_token');
 
   log.info('urlObj', urlObj);
   log.info('code', code);
+  log.info('token', token);
   log.info('share_token', share_token);
 
   if (win && !win.isDestroyed()) {
@@ -481,6 +488,12 @@ function processProtocolUrl(url: string) {
       const code = urlObj.searchParams.get('code');
       log.info('protocol oauth', provider, code);
       win.webContents.send('oauth-authorized', { provider, code });
+      return;
+    }
+
+    if (token) {
+      log.info('protocol token received');
+      win.webContents.send('auth-token-received', token);
       return;
     }
 
@@ -517,6 +530,58 @@ function processQueuedProtocolUrls() {
       processProtocolUrl(url);
     });
   }
+}
+
+// ==================== auth callback server ====================
+// Local HTTP server for receiving auth callbacks from external login (eigent.ai)
+// Works in both dev and production mode, avoids eigent:// protocol issues in dev
+let authCallbackServer: http.Server | null = null;
+let authCallbackPort: number | null = null;
+
+async function startAuthCallbackServer() {
+  if (authCallbackServer) return authCallbackPort;
+
+  const port = await findAvailablePort(19836, 19900);
+
+  authCallbackServer = http.createServer((req, res) => {
+    const url = new URL(req.url || '', `http://localhost:${port}`);
+
+    if (url.pathname === '/auth/callback') {
+      const token = url.searchParams.get('token');
+      log.info('Auth callback URL:', req.url);
+      log.info('Auth callback token present:', !!token);
+      log.info('Auth callback win available:', !!win && !win.isDestroyed());
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`
+        <!DOCTYPE html>
+        <html><head><title>Login Successful</title>
+        <style>
+          body { font-family: -apple-system, system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f4f4f9; color: #333; }
+          .container { padding: 40px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; }
+        </style></head>
+        <body><div class="container">
+          <h1>Login Successful</h1>
+          <p>You can close this tab and return to Eigent.</p>
+        </div></body></html>
+      `);
+
+      if (token && win && !win.isDestroyed()) {
+        log.info('Auth callback received token');
+        win.webContents.send('auth-token-received', token);
+        win.show();
+        win.focus();
+      }
+    } else {
+      res.writeHead(404);
+      res.end('Not Found');
+    }
+  });
+
+  authCallbackServer.listen(port);
+  authCallbackPort = port;
+  log.info(`Auth callback server started on port ${port}`);
+  return port;
 }
 
 // ==================== single instance lock ====================
@@ -598,6 +663,12 @@ const checkManagerInstance = (manager: any, name: string) => {
 };
 
 function registerIpcHandlers() {
+  // ==================== auth callback ====================
+  ipcMain.handle('get-auth-callback-url', async () => {
+    const port = await startAuthCallbackServer();
+    return `http://localhost:${port}/auth/callback`;
+  });
+
   // ==================== basic info handler ====================
   ipcMain.handle('get-browser-port', () => {
     log.info('Getting browser port');
@@ -2338,10 +2409,14 @@ const ensureEigentDirectories = () => {
 const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
 const SKILL_FILE = 'SKILL.md';
 
-const getExampleSkillsSourceDir = (): string =>
-  app.isPackaged
-    ? path.join(process.resourcesPath, 'example-skills')
-    : path.join(app.getAppPath(), 'resources', 'example-skills');
+const getExampleSkillsSourceDir = (): string => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'example-skills');
+  }
+  const devPath = path.join(MAIN_DIST, 'resources', 'example-skills');
+  if (existsSync(devPath)) return devPath;
+  return path.join(app.getAppPath(), 'resources', 'example-skills');
+};
 
 async function copyDirRecursive(src: string, dst: string): Promise<void> {
   await fsp.mkdir(dst, { recursive: true });
@@ -2360,27 +2435,32 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
 }
 
 async function seedDefaultSkillsIfEmpty(): Promise<void> {
-  if (!existsSync(SKILLS_ROOT)) return;
-  const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
-  const hasAnySkill = entries.some(
-    (e) => e.isDirectory() && !e.name.startsWith('.')
-  );
-  if (hasAnySkill) return;
+  if (!existsSync(SKILLS_ROOT)) {
+    await fsp.mkdir(SKILLS_ROOT, { recursive: true });
+  }
   const exampleDir = getExampleSkillsSourceDir();
   if (!existsSync(exampleDir)) {
     log.warn('Example skills source dir missing:', exampleDir);
     return;
   }
   const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
+  let copiedCount = 0;
   for (const e of sourceEntries) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
-    const srcDir = path.join(exampleDir, e.name);
     const destDir = path.join(SKILLS_ROOT, e.name);
+    if (existsSync(destDir)) continue; // Skip if user already has this skill
+    const srcDir = path.join(exampleDir, e.name);
     await copyDirRecursive(srcDir, destDir);
+    copiedCount++;
   }
-  log.info('Seeded default skills to ~/.eigent/skills from', exampleDir);
+  if (copiedCount > 0) {
+    log.info(
+      `Seeded ${copiedCount} default skill(s) to ~/.eigent/skills from`,
+      exampleDir
+    );
+  }
 }
 
 /** Truncate a single path component to fit within the 255-byte filesystem limit. */
@@ -2674,15 +2754,12 @@ async function createWindow() {
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,
-    // macOS-only visual effects
-    vibrancy: isMac ? 'sidebar' : undefined,
-    visualEffectState: isMac ? 'active' : undefined,
-    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    // Solid background on Windows (respect dark/light mode), fully transparent on macOS for native vibrancy
     backgroundColor: isWindows
       ? nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
         : '#ffffff'
-      : '#f5f5f580',
+      : '#00000000',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
@@ -2705,6 +2782,28 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  // Apply native macOS effects
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
+          setVibrancy(win, 'HUDWindow');
+
+          // Apply rounded corners
+          setRoundedCorners(win, 20);
+
+          // Make titlebar transparent
+          setTransparentTitlebar(win);
+
+          log.info('[MacOS] Applied native visual effects');
+        } catch (error) {
+          log.error('[MacOS] Failed to apply native visual effects:', error);
+        }
+      }
+    });
+  }
 
   // ==================== Handle renderer crashes and failed loads ====================
   win.webContents.on('render-process-gone', (event, details) => {
