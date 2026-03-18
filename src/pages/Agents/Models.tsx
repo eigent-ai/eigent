@@ -116,15 +116,13 @@ function ModelTypeInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const availableSuggestions = suggestedModels.filter(
-    (m) =>
-      !existingModels.includes(m) &&
-      m.toLowerCase().includes(value.toLowerCase())
+  const availableSuggestions = suggestedModels.filter((m) =>
+    m.toLowerCase().includes(value.toLowerCase())
   );
 
   const handleAdd = () => {
     const trimmed = value.trim();
-    if (trimmed && !existingModels.includes(trimmed)) {
+    if (trimmed) {
       onAdd(trimmed);
       setValue('');
       setShowSuggestions(false);
@@ -190,7 +188,6 @@ function ModelTypeInput({
                   onAdd(model);
                   setValue('');
                   setShowSuggestions(false);
-                  inputRef.current?.focus();
                 }}
               >
                 {model}
@@ -500,9 +497,7 @@ export default function SettingModels() {
     if (preferredIdx !== -1) {
       const item = items[preferredIdx];
       const activeModel = form[preferredIdx].model_type || '';
-      const totalModels = form[preferredIdx].model_types?.length || 0;
-      const suffix = totalModels > 1 ? ` +${totalModels - 1}` : '';
-      return `${t('setting.custom-model')} / ${item.name}${activeModel ? ` (${activeModel}${suffix})` : ''}`;
+      return `${t('setting.custom-model')} / ${item.name}${activeModel ? ` (${activeModel})` : ''}`;
     }
 
     // Check for local model preference
@@ -1597,13 +1592,10 @@ export default function SettingModels() {
                   setForm((f) =>
                     f.map((fi, i) => {
                       if (i !== idx) return fi;
-                      if (fi.model_types.includes(model)) return fi;
-                      const newTypes = [...fi.model_types, model];
-                      const newActive = fi.model_type || model;
                       return {
                         ...fi,
-                        model_types: newTypes,
-                        model_type: newActive,
+                        model_types: [model],
+                        model_type: model,
                       };
                     })
                   );
