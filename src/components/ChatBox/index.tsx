@@ -984,13 +984,12 @@ export default function ChatBox(): JSX.Element {
         {/* Header Box - Always visible */}
         {chatStore.activeTaskId && (
           <HeaderBox
-            tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
             totalTokens={
               projectStore.activeProjectId
                 ? projectStore.getProjectTotalTokens(
                     projectStore.activeProjectId
                   )
-                : undefined
+                : 0
             }
             status={chatStore.tasks[chatStore.activeTaskId]?.status}
             replayLoading={isReplayLoading}

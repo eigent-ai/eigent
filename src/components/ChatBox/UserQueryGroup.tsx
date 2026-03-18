@@ -12,9 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import tokenDarkIcon from '@/assets/token-dark.svg';
+import tokenLightIcon from '@/assets/token-light.svg';
+import { useAuthStore } from '@/store/authStore';
 import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { FileText } from 'lucide-react';
 import React, {
   useEffect,
@@ -22,6 +25,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
@@ -29,6 +33,7 @@ import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
+import { AnimatedTokenNumber } from './TokenUtils';
 
 interface QueryGroup {
   queryId: string;
@@ -54,6 +59,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   onQueryActive,
   index,
 }) => {
+  const { t } = useTranslation();
+  const { appearance } = useAuthStore();
+  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
@@ -69,6 +77,28 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       const taskId = state.activeTaskId;
       if (!taskId || !state.tasks[taskId]) return '';
       return state.tasks[taskId].streamingDecomposeText || '';
+    }
+  );
+
+  // Subscribe to live token count for the current task
+  const liveTokens = useSyncExternalStore(
+    (callback) => chatStore.subscribe(callback),
+    () => {
+      const state = chatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId || !state.tasks[taskId]) return 0;
+      return state.tasks[taskId].tokens || 0;
+    }
+  );
+
+  // Subscribe to task status for visibility control
+  const taskStatus = useSyncExternalStore(
+    (callback) => chatStore.subscribe(callback),
+    () => {
+      const state = chatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId || !state.tasks[taskId]) return '';
+      return state.tasks[taskId].status || '';
     }
   );
 
@@ -291,6 +321,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           </motion.div>
         </motion.div>
       )}
+
+      {/* Live token count – visible only while the task is running */}
+      <AnimatePresence>
+        {task && taskStatus === ChatTaskStatus.RUNNING && (
+          <motion.div
+            key="live-token-count"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="mt-6 flex items-center justify-end gap-1 px-sm py-1 text-xs text-text-label"
+          >
+            <span>{t('chat.current-task')}</span>
+            <span>·</span>
+            <AnimatedTokenNumber value={liveTokens} />
+            <span>{t('chat.tokens')}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
