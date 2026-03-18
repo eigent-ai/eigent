@@ -1,6 +1,7 @@
 ---
 name: skill-creator
 description: Guide for creating effective skills. Use when creating a new skill or updating an existing skill that extends agent capabilities with specialized knowledge, workflows, or tool integrations.
+license: Proprietary. LICENSE.txt has complete terms
 ---
 
 # Skill Creator
