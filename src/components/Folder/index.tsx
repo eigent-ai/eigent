@@ -30,8 +30,10 @@ import {
   Search,
   SquareTerminal,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
+
+const PdfViewer = lazy(() => import('./PdfViewer'));
 
 import { proxyFetchGet } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
@@ -709,12 +711,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           className={`flex min-h-0 flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
+            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'h-full' : ''} ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
                 selectedFile.type === 'md' && !isShowSourceCode ? (
-                  <div className="prose prose-sm max-w-none">
+                  <div className="prose prose-sm max-w-none overflow-hidden">
                     <MarkDown
                       content={selectedFile.content || ''}
                       enableTypewriter={false}
@@ -726,11 +728,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     />
                   </div>
                 ) : selectedFile.type === 'pdf' ? (
-                  <iframe
-                    src={selectedFile.content as string}
-                    className="h-full w-full border-0"
-                    title={selectedFile.name}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center">
+                        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+                      </div>
+                    }
+                  >
+                    <PdfViewer content={selectedFile.content as string} />
+                  </Suspense>
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
                     selectedFile.type
                   ) ? (

@@ -106,6 +106,7 @@
     "postprocessing": "^6.37.8",
     "react-day-picker": "^9.13.0",
     "react-markdown": "^10.1.0",
+    "react-pdf": "^10.4.1",
     "react-resizable-panels": "^3.0.4",
     "react-router-dom": "^7.6.0",
     "remark-gfm": "^4.0.1",
