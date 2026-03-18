@@ -52,6 +52,8 @@
   "welcome": "Bienvenido",
   "delete-task": "Eliminar Tarea",
   "delete-task-confirmation": "¿Estás seguro de que quieres eliminar esta tarea? Esta acción no se puede deshacer.",
+  "delete-success": "Tarea eliminada correctamente",
+  "delete-failed": "No se pudo eliminar la tarea",
   "delete": "Eliminar",
   "cancel": "Cancelar",
   "continue": "Continuar",

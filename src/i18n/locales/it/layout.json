@@ -52,6 +52,8 @@
   "welcome": "Benvenuto",
   "delete-task": "Elimina Attività",
   "delete-task-confirmation": "Sei sicuro di voler eliminare questa attività? Questa azione non può essere annullata.",
+  "delete-success": "Attività eliminata con successo",
+  "delete-failed": "Impossibile eliminare l'attività",
   "delete": "Elimina",
   "cancel": "Annulla",
   "continue": "Continua",

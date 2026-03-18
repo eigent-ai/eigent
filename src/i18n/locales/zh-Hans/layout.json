@@ -55,6 +55,8 @@
   "welcome": "欢迎",
   "delete-task": "删除任务",
   "delete-task-confirmation": "您确定要删除此任务吗？此操作无法撤销。",
+  "delete-success": "任务删除成功",
+  "delete-failed": "删除任务失败",
   "delete": "删除",
   "cancel": "取消",
   "continue": "继续",

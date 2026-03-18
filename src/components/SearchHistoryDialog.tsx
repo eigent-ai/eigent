@@ -38,6 +38,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from './ui/button';
 import { DialogTitle } from './ui/dialog';
 import {
@@ -47,10 +48,36 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 
+type IpcRendererLike = {
+  invoke: (
+    channel: string,
+    email: string,
+    taskId: string,
+    projectId?: string
+  ) => Promise<void>;
+};
+
+function getIpcRenderer(): IpcRendererLike | undefined {
+  const w = window as unknown as { ipcRenderer?: IpcRendererLike };
+  return w.ipcRenderer;
+}
+
+type HistoryListItem = HistoryTask & {
+  tasks?: { task_id: string }[];
+  project_name?: string;
+  project_id?: string;
+};
+
 export function SearchHistoryDialog() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [historyTasks, setHistoryTasks] = useState<any[]>([]);
+  const [historyTasks, setHistoryTasks] = useState<HistoryListItem[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    historyId: string;
+    task: HistoryTask | undefined;
+    callback: () => void;
+  } | null>(null);
   const { history_type } = useGlobalStore();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -93,25 +120,12 @@ export function SearchHistoryDialog() {
     try {
       await proxyFetchDelete(`/api/chat/history/${historyId}`);
 
-      if (
-        task?.task_id &&
-        (window as unknown as { ipcRenderer?: object }).ipcRenderer
-      ) {
+      const ipcRenderer = getIpcRenderer();
+      if (task?.task_id && ipcRenderer) {
         const { email } = getAuthStore();
         const safeEmail = email ?? '';
         try {
-          await (
-            window as unknown as {
-              ipcRenderer: {
-                invoke: (
-                  a: string,
-                  b: string,
-                  c: string,
-                  d?: string
-                ) => Promise<void>;
-              };
-            }
-          ).ipcRenderer.invoke(
+          await ipcRenderer.invoke(
             'delete-task-files',
             safeEmail,
             task.task_id,
@@ -133,6 +147,25 @@ export function SearchHistoryDialog() {
   const handleShare = async (taskId: string) => {
     setOpen(false);
     await share(taskId);
+  };
+
+  const openDeleteConfirm = (
+    historyId: string,
+    task: HistoryTask | undefined,
+    callback: () => void
+  ) => {
+    setPendingDelete({ historyId, task, callback });
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    void handleDelete(
+      pendingDelete.historyId,
+      pendingDelete.task,
+      pendingDelete.callback
+    );
+    setPendingDelete(null);
   };
 
   useEffect(() => {
@@ -172,7 +205,7 @@ export function SearchHistoryDialog() {
             </div>
           ) : (
             <CommandGroup heading="Today">
-              {historyTasks.map((task) => (
+              {historyTasks.map((task: HistoryListItem) => (
                 <CommandItem
                   key={task.id}
                   className="flex cursor-pointer items-center justify-between gap-2"
@@ -200,14 +233,14 @@ export function SearchHistoryDialog() {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 flex-shrink-0"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e: any) => e.stopPropagation()}
                       >
                         <Ellipsis className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        onClick={(e) => {
+                        onClick={(e: any) => {
                           e.stopPropagation();
                           handleShare(task.task_id || String(task.id));
                         }}
@@ -217,17 +250,15 @@ export function SearchHistoryDialog() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-text-cuation"
-                        onClick={async (e) => {
+                        onClick={async (e: any) => {
                           e.stopPropagation();
-                          await handleDelete(
-                            String(task.id),
-                            task,
-                            () => {
-                              setHistoryTasks((prev) =>
-                                prev.filter((t) => t.id !== task.id)
-                              );
-                            }
-                          );
+                          openDeleteConfirm(String(task.id), task, () => {
+                            setHistoryTasks((prev: HistoryListItem[]) =>
+                              prev.filter(
+                                (t: HistoryListItem) => t.id !== task.id
+                              )
+                            );
+                          });
                         }}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
@@ -242,6 +273,19 @@ export function SearchHistoryDialog() {
           <CommandSeparator />
         </CommandList>
       </CommandDialog>
+      <AlertDialog
+        isOpen={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setPendingDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title={t('layout.delete-task')}
+        message={t('layout.delete-task-confirmation')}
+        confirmText={t('layout.delete')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="cuation"
+      />
     </>
   );
 }

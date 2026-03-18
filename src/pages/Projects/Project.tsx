@@ -19,6 +19,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchHistoryTasks } from '@/service/historyApi';
+import { HistoryTask } from '@/types/history';
 import { ChatTaskStatus } from '@/types/constants';
 import { Bird, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -133,7 +134,7 @@ export default function Project() {
 
   const handleDelete = (
     historyId: string,
-    _task?: import('@/types/history').HistoryTask,
+    _task?: HistoryTask,
     callback?: () => void
   ) => {
     setCurHistoryId(historyId);

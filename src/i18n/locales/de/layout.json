@@ -52,6 +52,8 @@
   "welcome": "Willkommen",
   "delete-task": "Aufgabe löschen",
   "delete-task-confirmation": "Sind Sie sicher, dass Sie diese Aufgabe löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
+  "delete-success": "Aufgabe erfolgreich gelöscht",
+  "delete-failed": "Aufgabe konnte nicht gelöscht werden",
   "delete": "Löschen",
   "cancel": "Abbrechen",
   "continue": "Fortfahren",

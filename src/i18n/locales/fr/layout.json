@@ -52,6 +52,8 @@
   "welcome": "Bienvenue",
   "delete-task": "Supprimer la Tâche",
   "delete-task-confirmation": "Êtes-vous sûr de vouloir supprimer cette tâche ? Cette action ne peut pas être annulée.",
+  "delete-success": "Tâche supprimée avec succès",
+  "delete-failed": "Échec de la suppression de la tâche",
   "delete": "Supprimer",
   "cancel": "Annuler",
   "continue": "Continuer",

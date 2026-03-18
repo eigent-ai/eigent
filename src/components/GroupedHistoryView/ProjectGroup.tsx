@@ -25,7 +25,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib/replay';
 import { useProjectStore } from '@/store/projectStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { ProjectGroup as ProjectGroupType } from '@/types/history';
+import { HistoryTask, ProjectGroup as ProjectGroupType } from '@/types/history';
 import { motion } from 'framer-motion';
 import {
   Edit,
@@ -51,7 +51,7 @@ interface ProjectGroupProps {
     historyId: string,
     project?: ProjectGroupType
   ) => void;
-  onTaskDelete: (historyId: string, task?: import('@/types/history').HistoryTask) => void;
+  onTaskDelete: (historyId: string, task?: HistoryTask) => void;
   onTaskShare: (taskId: string) => void;
   activeTaskId?: string;
   searchValue?: string;
