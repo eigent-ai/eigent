@@ -404,9 +404,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  // Reset hasFetchedRemote when activeTaskId changes
+  // Reset state when activeTaskId changes (e.g., new project created)
   useEffect(() => {
     hasFetchedRemote.current = false;
+    setSelectedFile(null);
+    setFileTree({ name: 'root', path: '', children: [], isFolder: true });
+    setFileGroups([{ folder: 'Reports', files: [] }]);
+    setExpandedFolders(new Set());
   }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
@@ -486,6 +490,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
         selectedFileChange(file as FileInfo, isShowSourceCode);
       }
+    } else if (!chatStoreSelectedFile && selectedFile) {
+      setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);
@@ -700,10 +706,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         {/* content */}
         <div
-          className={`min-h-0 flex-1 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
+          className={`flex min-h-0 flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
+            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
@@ -760,7 +766,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
                 ) : (
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
+                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
                     {selectedFile.content}
                   </pre>
                 )
@@ -775,7 +781,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 </div>
               )
             ) : (
-              <div className="flex h-full items-center justify-center text-text-secondary">
+              <div className="flex flex-1 items-center justify-center text-text-secondary">
                 <div className="text-center">
                   <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                   <p className="text-sm">

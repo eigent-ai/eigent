@@ -9,6 +9,8 @@ const startUrl = args[2] || 'https://www.google.com';
 
 // This must be called before app.ready
 app.commandLine.appendSwitch('remote-debugging-port', cdpPort);
+app.commandLine.appendSwitch('password-store', 'basic');
+app.commandLine.appendSwitch('use-mock-keychain');
 
 console.log('[ELECTRON BROWSER] Starting with:');
 console.log('  Chrome version:', process.versions.chrome);
@@ -36,8 +38,14 @@ app.whenReady().then(async () => {
 
   // Check command line switches
   console.log('[ELECTRON BROWSER] Command line switches:');
-  console.log('  user-data-dir:', app.commandLine.getSwitchValue('user-data-dir'));
-  console.log('  remote-debugging-port:', app.commandLine.getSwitchValue('remote-debugging-port'));
+  console.log(
+    '  user-data-dir:',
+    app.commandLine.getSwitchValue('user-data-dir')
+  );
+  console.log(
+    '  remote-debugging-port:',
+    app.commandLine.getSwitchValue('remote-debugging-port')
+  );
 
   // Log partition session info
   const userLoginSession = session.fromPartition('persist:user_login');
@@ -46,7 +54,12 @@ app.whenReady().then(async () => {
   console.log('  Session storage path:', userLoginSession.getStoragePath());
 
   // Check if Cookies file exists
-  const cookiesPath = path.join(app.getPath('userData'), 'Partitions', 'user_login', 'Cookies');
+  const cookiesPath = path.join(
+    app.getPath('userData'),
+    'Partitions',
+    'user_login',
+    'Cookies'
+  );
   console.log('[ELECTRON BROWSER] Cookies path:', cookiesPath);
   console.log('[ELECTRON BROWSER] Cookies exists:', fs.existsSync(cookiesPath));
   if (fs.existsSync(cookiesPath)) {
@@ -60,8 +73,8 @@ app.whenReady().then(async () => {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webviewTag: true
-    }
+      webviewTag: true,
+    },
   });
 
   // Create navigation bar and webview HTML
@@ -305,9 +318,14 @@ app.whenReady().then(async () => {
     setInterval(async () => {
       try {
         const cookies = await userLoginSession.cookies.get({});
-        console.log('[ELECTRON BROWSER] Current cookies count:', cookies.length);
+        console.log(
+          '[ELECTRON BROWSER] Current cookies count:',
+          cookies.length
+        );
         if (cookies.length > 0) {
-          console.log('[ELECTRON BROWSER] Cookie domains:', [...new Set(cookies.map(c => c.domain))]);
+          console.log('[ELECTRON BROWSER] Cookie domains:', [
+            ...new Set(cookies.map((c) => c.domain)),
+          ]);
         }
       } catch (error) {
         console.error('[ELECTRON BROWSER] Failed to get cookies:', error);
@@ -327,7 +345,10 @@ app.whenReady().then(async () => {
 
       // Log cookies before flush
       const cookiesBeforeFlush = await userLoginSession.cookies.get({});
-      console.log('[ELECTRON BROWSER] Cookies count before flush:', cookiesBeforeFlush.length);
+      console.log(
+        '[ELECTRON BROWSER] Cookies count before flush:',
+        cookiesBeforeFlush.length
+      );
 
       // Flush storage
       console.log('[ELECTRON BROWSER] Flushing storage data...');
@@ -335,12 +356,23 @@ app.whenReady().then(async () => {
       console.log('[ELECTRON BROWSER] Storage data flushed successfully');
 
       // Check cookies file after flush
-      const cookiesPath = path.join(app.getPath('userData'), 'Partitions', 'user_login', 'Cookies');
+      const cookiesPath = path.join(
+        app.getPath('userData'),
+        'Partitions',
+        'user_login',
+        'Cookies'
+      );
       if (fs.existsSync(cookiesPath)) {
         const stats = fs.statSync(cookiesPath);
-        console.log('[ELECTRON BROWSER] Cookies file size after flush:', stats.size, 'bytes');
+        console.log(
+          '[ELECTRON BROWSER] Cookies file size after flush:',
+          stats.size,
+          'bytes'
+        );
       } else {
-        console.log('[ELECTRON BROWSER] WARNING: Cookies file does not exist after flush!');
+        console.log(
+          '[ELECTRON BROWSER] WARNING: Cookies file does not exist after flush!'
+        );
       }
     } catch (error) {
       console.error('[ELECTRON BROWSER] Failed to flush storage data:', error);
@@ -368,9 +400,14 @@ app.on('before-quit', async (event) => {
 
     // Log cookies before flush
     const cookiesBeforeQuit = await userLoginSession.cookies.get({});
-    console.log('[ELECTRON BROWSER] Cookies count before quit:', cookiesBeforeQuit.length);
+    console.log(
+      '[ELECTRON BROWSER] Cookies count before quit:',
+      cookiesBeforeQuit.length
+    );
     if (cookiesBeforeQuit.length > 0) {
-      console.log('[ELECTRON BROWSER] Cookie domains before quit:', [...new Set(cookiesBeforeQuit.map(c => c.domain))]);
+      console.log('[ELECTRON BROWSER] Cookie domains before quit:', [
+        ...new Set(cookiesBeforeQuit.map((c) => c.domain)),
+      ]);
     }
 
     // Flush storage
