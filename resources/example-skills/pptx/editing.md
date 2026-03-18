@@ -30,7 +30,7 @@ When using an existing presentation as a template:
 
 3. **Unpack**: `python scripts/office/unpack.py template.pptx unpacked/`
 
-4. **Build presentation** (do this in the main task flow):
+4. **Build presentation** :
    - Delete unwanted slides (remove from `<p:sldIdLst>`)
    - Duplicate slides you want to reuse (`add_slide.py`)
    - Reorder slides in `<p:sldIdLst>`
