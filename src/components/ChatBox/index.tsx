@@ -77,11 +77,11 @@ export default function ChatBox(): JSX.Element {
     try {
       if (modelType === 'cloud') {
         // For cloud model, check if API key exists
-        const res = await proxyFetchGet('/api/user/key');
+        const res = await proxyFetchGet('/api/v1/user/key');
         setHasModel(!!res.value);
       } else if (modelType === 'local' || modelType === 'custom') {
         // For local/custom model, check if provider exists
-        const res = await proxyFetchGet('/api/providers', { prefer: true });
+        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
         const providerList = res.items || [];
         setHasModel(providerList.length > 0);
       } else {
@@ -97,7 +97,7 @@ export default function ChatBox(): JSX.Element {
 
   // Check model config on mount and when modelType changes
   useEffect(() => {
-    proxyFetchGet('/api/configs')
+    proxyFetchGet('/api/v1/configs')
       .then((configsRes) => {
         const configs = Array.isArray(configsRes) ? configsRes : [];
         const _hasApiKey = configs.find(
@@ -283,7 +283,7 @@ export default function ChatBox(): JSX.Element {
       let taskId: string = token.split('__')[1];
       chatStore.create(taskId, 'share');
       chatStore.setHasMessages(taskId, true);
-      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
+      const res = await proxyFetchGet(`/api/v1/chat/share/info/${_token}`);
       if (res?.question) {
         chatStore.addMessages(taskId, {
           id: generateUniqueId(),
@@ -852,7 +852,7 @@ export default function ChatBox(): JSX.Element {
     const history_id = projectStore.getHistoryId(projectId);
     if (history_id) {
       try {
-        await proxyFetchDelete(`/api/chat/history/${history_id}`);
+        await proxyFetchDelete(`/api/v1/chat/history/${history_id}`);
       } catch (error) {
         console.error(
           `Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`,
