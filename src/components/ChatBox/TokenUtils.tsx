@@ -21,9 +21,33 @@ import React, { useEffect, useState } from 'react';
  *   1 000 – 999 999 → "1.2K"
  *   ≥ 1 000 000    → "2.3M"
  */
+const TOKEN_UNITS = [
+  { threshold: 1_000_000_000_000, suffix: 'T' },
+  { threshold: 1_000_000_000, suffix: 'B' },
+  { threshold: 1_000_000, suffix: 'M' },
+  { threshold: 1_000, suffix: 'K' },
+] as const;
+
 export function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  if (!Number.isFinite(n)) return '0';
+
+  for (let index = 0; index < TOKEN_UNITS.length; index++) {
+    const unit = TOKEN_UNITS[index];
+
+    if (Math.abs(n) < unit.threshold) {
+      continue;
+    }
+
+    const rounded = Number((n / unit.threshold).toFixed(1));
+    const higherUnit = TOKEN_UNITS[index - 1];
+
+    if (Math.abs(rounded) >= 1000 && higherUnit) {
+      return `${(n / higherUnit.threshold).toFixed(1)}${higherUnit.suffix}`;
+    }
+
+    return `${rounded.toFixed(1)}${unit.suffix}`;
+  }
+
   return String(Math.round(n));
 }
 
