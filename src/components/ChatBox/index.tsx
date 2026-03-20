@@ -29,6 +29,7 @@ import {
   ChatTaskStatus,
   TERMINAL_APPROVAL_STORAGE_KEY,
 } from '@/types/constants';
+import type { VanillaChatStore } from '@/store/chatStore';
 import { ExecutionStatus } from '@/types';
 import { Square, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -38,6 +39,15 @@ import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
+
+const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
+  const chatState = chatStore.getState();
+  return Object.values(chatState.tasks).reduce(
+    (total, task) =>
+      total + (typeof task.tokens === 'number' ? task.tokens : 0),
+    0
+  );
+};
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
@@ -155,6 +165,7 @@ export default function ChatBox(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+  const [projectTotalTokens, setProjectTotalTokens] = useState(0);
 
   const activeTaskId = chatStore?.activeTaskId;
   const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
@@ -203,6 +214,49 @@ export default function ChatBox(): JSX.Element {
     if (!projectStore.activeProjectId) return [];
     return projectStore.getAllChatStores(projectStore.activeProjectId);
   }, [projectStore]);
+
+  useEffect(() => {
+    if (!projectStore.activeProjectId) {
+      setProjectTotalTokens(0);
+      return;
+    }
+
+    const chatTotals = new Map<string, number>();
+    let nextProjectTotalTokens = 0;
+
+    getAllChatStoresMemoized.forEach(({ chatId, chatStore }) => {
+      const chatTotalTokens = getChatStoreTotalTokens(chatStore);
+      chatTotals.set(chatId, chatTotalTokens);
+      nextProjectTotalTokens += chatTotalTokens;
+    });
+
+    setProjectTotalTokens(nextProjectTotalTokens);
+
+    const unsubscribers = getAllChatStoresMemoized.map(
+      ({ chatId, chatStore }) =>
+        chatStore.subscribe((state) => {
+          const nextChatTotalTokens = Object.values(state.tasks).reduce(
+            (total, task) =>
+              total + (typeof task.tokens === 'number' ? task.tokens : 0),
+            0
+          );
+          const previousChatTotalTokens = chatTotals.get(chatId) ?? 0;
+
+          if (nextChatTotalTokens === previousChatTotalTokens) {
+            return;
+          }
+
+          chatTotals.set(chatId, nextChatTotalTokens);
+          nextProjectTotalTokens +=
+            nextChatTotalTokens - previousChatTotalTokens;
+          setProjectTotalTokens(nextProjectTotalTokens);
+        })
+    );
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [projectStore.activeProjectId, getAllChatStoresMemoized]);
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
@@ -1001,7 +1055,7 @@ export default function ChatBox(): JSX.Element {
         {/* Header Box - Always visible */}
         {chatStore.activeTaskId && (
           <HeaderBox
-            tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+            totalTokens={projectTotalTokens}
             status={chatStore.tasks[chatStore.activeTaskId]?.status}
             replayLoading={isReplayLoading}
             onReplay={handleReplay}
