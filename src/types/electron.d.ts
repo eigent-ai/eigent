@@ -14,6 +14,7 @@
 
 interface IpcRenderer {
   getPlatform: () => string;
+  getArch: () => string;
   minimizeWindow: () => void;
   toggleMaximizeWindow: () => void;
   closeWindow: () => void;
@@ -50,6 +51,7 @@ interface ElectronAPI {
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;
+  getArch: () => string;
   getHomeDir: () => Promise<string>;
   createWebView: (id: string, url: string) => Promise<any>;
   hideWebView: (id: string) => Promise<any>;

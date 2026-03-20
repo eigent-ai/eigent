@@ -2718,6 +2718,8 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 // ==================== window create ====================
 async function createWindow() {
   const isMac = process.platform === 'darwin';
+  const isAppleSilicon = isMac && process.arch === 'arm64';
+  const supportsTransparency = isAppleSilicon;
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
@@ -2749,23 +2751,23 @@ async function createWindow() {
     height: 800,
     minWidth: 1050,
     minHeight: 650,
-    // Use native frame on Windows for better native integration
-    frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
-    // Only use transparency on macOS and Linux (not supported well on Windows)
-    transparent: !isWindows,
-    // Solid background on Windows (respect dark/light mode), fully transparent on macOS for native vibrancy
-    backgroundColor: isWindows
-      ? nativeTheme.shouldUseDarkColors
+    // Only use transparency on Apple Silicon Macs (older Macs/Windows/Linux have rendering issues)
+    transparent: supportsTransparency,
+    // Solid background for non-transparent mode, fully transparent on Apple Silicon for native vibrancy
+    backgroundColor: supportsTransparency
+      ? '#00000000'
+      : nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
-        : '#ffffff'
-      : '#00000000',
+        : '#ffffff',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
-    // Rounded corners on macOS and Linux (as original)
-    roundedCorners: !isWindows,
+    // Rounded corners on Apple Silicon Macs (transparent mode)
+    roundedCorners: supportsTransparency,
+    // Non-transparent platforms need a frame except macOS (which uses hidden titleBarStyle)
+    frame: isMac ? false : isWindows ? true : false,
     // Windows-specific options
     ...(isWindows && {
       autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
@@ -2783,8 +2785,8 @@ async function createWindow() {
     },
   });
 
-  // Apply native macOS effects
-  if (process.platform === 'darwin') {
+  // Apply native macOS visual effects only on Apple Silicon (transparent mode support)
+  if (supportsTransparency) {
     win.once('ready-to-show', () => {
       if (win && !win.isDestroyed()) {
         try {
@@ -2797,7 +2799,7 @@ async function createWindow() {
           // Make titlebar transparent
           setTransparentTitlebar(win);
 
-          log.info('[MacOS] Applied native visual effects');
+          log.info('[MacOS] Applied native visual effects (Apple Silicon)');
         } catch (error) {
           log.error('[MacOS] Failed to apply native visual effects:', error);
         }

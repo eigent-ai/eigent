@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onExecuteAction: (callback: (action: string) => void) =>
     ipcRenderer.on('execute-action', (event, action) => callback(action)),
   getPlatform: () => process.platform,
+  getArch: () => process.arch,
   getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
   createWebView: (id: string, url: string) =>
     ipcRenderer.invoke('create-webview', id, url),

@@ -42,6 +42,7 @@ yarn.lock
 .env.development
 
 .cursor
+.claude
 
 # Public directory (large media files)
 public/
