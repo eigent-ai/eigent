@@ -13,18 +13,62 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from camel.agents import (
-    AgentCallback,
-    AgentEvent,
-    StepCompletedEvent,
-    StepFailedEvent,
-    StepStartedEvent,
-    ToolCompletedEvent,
-    ToolFailedEvent,
-    ToolStartedEvent,
-)
+try:
+    from camel.agents import (
+        AgentCallback,
+        AgentEvent,
+        StepCompletedEvent,
+        StepFailedEvent,
+        StepStartedEvent,
+        ToolCompletedEvent,
+        ToolFailedEvent,
+        ToolStartedEvent,
+    )
+except ImportError:
+
+    @dataclass
+    class AgentEvent:
+        agent_id: str | None = None
+        role_name: str | None = None
+
+    @dataclass
+    class StepStartedEvent(AgentEvent):
+        input_summary: str | None = None
+
+    @dataclass
+    class StepCompletedEvent(AgentEvent):
+        output_summary: str | None = None
+        usage: dict[str, Any] | None = None
+
+    @dataclass
+    class StepFailedEvent(AgentEvent):
+        error_message: str = ""
+
+    @dataclass
+    class ToolStartedEvent(AgentEvent):
+        tool_name: str = ""
+        toolkit_name: str | None = None
+        input_summary: str | None = None
+
+    @dataclass
+    class ToolCompletedEvent(AgentEvent):
+        tool_name: str = ""
+        toolkit_name: str | None = None
+        output_summary: str | None = None
+
+    @dataclass
+    class ToolFailedEvent(AgentEvent):
+        tool_name: str = ""
+        toolkit_name: str | None = None
+        error_message: str = ""
+
+    class AgentCallback:
+        def handle_event(self, event: AgentEvent) -> None:
+            raise NotImplementedError
+
 
 from app.service.task import (
     ActionActivateAgentData,
@@ -106,8 +150,10 @@ class ListenChatAgentCallback(AgentCallback):
             ):
                 return toolkit_instance.toolkit_name()
 
-        if hasattr(tool, "func") and hasattr(tool.func, "func") and hasattr(
-            tool.func.func, "__self__"
+        if (
+            hasattr(tool, "func")
+            and hasattr(tool.func, "func")
+            and hasattr(tool.func.func, "__self__")
         ):
             toolkit_instance = tool.func.func.__self__
             if hasattr(toolkit_instance, "toolkit_name") and callable(

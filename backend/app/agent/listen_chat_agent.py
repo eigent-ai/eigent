@@ -13,13 +13,15 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import threading
 from collections.abc import Callable
 from threading import Event
 from typing import Any
 
-from camel.agents import ChatAgent, CloneContext
+from camel.agents import ChatAgent
+from camel.agents._types import ToolCallRequest
 from camel.agents.chat_agent import (
     AsyncStreamingChatAgentResponse,
     StreamingChatAgentResponse,
@@ -31,13 +33,25 @@ from camel.responses import ChatAgentResponse
 from camel.terminators import ResponseTerminator
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType, ModelType
+from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
-from app.agent.listen_chat_agent_callback import ListenChatAgentCallback
+from app.agent.listen_chat_agent_callback import (
+    ListenChatAgentCallback,
+    ToolCompletedEvent,
+    ToolFailedEvent,
+    ToolStartedEvent,
+)
 from app.service.task import get_task_lock, set_process_task
 
 # Logger for agent tracking
 logger = logging.getLogger("agent")
+
+
+class CloneContext(BaseModel):
+    session_id: str | None = None
+    execution_context: dict[str, Any] | None = None
+    resource_hints: dict[str, Any] | None = None
 
 
 class ListenChatAgent(ChatAgent):
@@ -99,7 +113,7 @@ class ListenChatAgent(ChatAgent):
         )
         self._listen_callback = ListenChatAgentCallback(self)
 
-        super().__init__(
+        super_init_kwargs = dict(
             system_message=system_message,
             model=model,
             memory=memory,
@@ -129,7 +143,23 @@ class ListenChatAgent(ChatAgent):
                 **self._user_execution_context,
             },
             execution_context_provider=self._build_dynamic_execution_context,
-            **kwargs,
+        )
+        supported_super_params = inspect.signature(
+            ChatAgent.__init__
+        ).parameters
+        super_init_kwargs.update(
+            {
+                key: value
+                for key, value in kwargs.items()
+                if key in supported_super_params
+            }
+        )
+        super().__init__(
+            **{
+                key: value
+                for key, value in super_init_kwargs.items()
+                if key in supported_super_params
+            }
         )
 
     def _build_static_execution_context(self) -> dict[str, Any]:
@@ -157,8 +187,31 @@ class ListenChatAgent(ChatAgent):
         self, response_gen: StreamingChatAgentResponse
     ):
         with set_process_task(self.process_task_id):
-            for chunk in response_gen:
-                yield chunk
+            yield from response_gen
+
+    def _clone_tools_with_context(
+        self, clone_context: CloneContext
+    ) -> tuple[list[FunctionTool], list[RegisteredAgentToolkit]]:
+        clone_tools = self._clone_tools
+        try:
+            parameters = tuple(
+                inspect.signature(clone_tools).parameters.values()
+            )
+        except (TypeError, ValueError):
+            parameters = ()
+
+        accepts_clone_context = any(
+            parameter.kind
+            in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            )
+            for parameter in parameters
+        ) or bool(parameters)
+
+        if accepts_clone_context:
+            return clone_tools(clone_context)
+        return clone_tools()
 
     async def _astream_with_process_context(
         self,
@@ -167,6 +220,89 @@ class ListenChatAgent(ChatAgent):
         with set_process_task(self.process_task_id):
             async for chunk in response_gen:
                 yield chunk
+
+    def _emit_tool_started(self, tool_call_request: ToolCallRequest) -> None:
+        self._listen_callback.handle_event(
+            ToolStartedEvent(
+                agent_id=self.agent_id,
+                role_name=self.role_name,
+                tool_name=tool_call_request.tool_name,
+                toolkit_name=None,
+                input_summary=str(tool_call_request.args),
+            )
+        )
+
+    def _emit_tool_finished(
+        self,
+        tool_call_request: ToolCallRequest,
+        result: ToolCallingRecord,
+    ) -> None:
+        event_kwargs = dict(
+            agent_id=self.agent_id,
+            role_name=self.role_name,
+            tool_name=tool_call_request.tool_name,
+            toolkit_name=None,
+        )
+        output = getattr(result, "result", None)
+        if isinstance(output, str) and output.startswith(
+            "Tool execution failed:"
+        ):
+            self._listen_callback.handle_event(
+                ToolFailedEvent(
+                    error_message=output,
+                    **event_kwargs,
+                )
+            )
+            return
+
+        self._listen_callback.handle_event(
+            ToolCompletedEvent(
+                output_summary="" if output is None else str(output),
+                **event_kwargs,
+            )
+        )
+
+    def _execute_tool(
+        self,
+        tool_call_request: ToolCallRequest,
+    ) -> ToolCallingRecord:
+        self._emit_tool_started(tool_call_request)
+        try:
+            result = super()._execute_tool(tool_call_request)
+        except Exception as exc:
+            self._listen_callback.handle_event(
+                ToolFailedEvent(
+                    agent_id=self.agent_id,
+                    role_name=self.role_name,
+                    tool_name=tool_call_request.tool_name,
+                    toolkit_name=None,
+                    error_message=str(exc),
+                )
+            )
+            raise
+        self._emit_tool_finished(tool_call_request, result)
+        return result
+
+    async def _aexecute_tool(
+        self,
+        tool_call_request: ToolCallRequest,
+    ) -> ToolCallingRecord:
+        self._emit_tool_started(tool_call_request)
+        try:
+            result = await super()._aexecute_tool(tool_call_request)
+        except Exception as exc:
+            self._listen_callback.handle_event(
+                ToolFailedEvent(
+                    agent_id=self.agent_id,
+                    role_name=self.role_name,
+                    tool_name=tool_call_request.tool_name,
+                    toolkit_name=None,
+                    error_message=str(exc),
+                )
+            )
+            raise
+        self._emit_tool_finished(tool_call_request, result)
+        return result
 
     def step(
         self,
@@ -223,8 +359,9 @@ class ListenChatAgent(ChatAgent):
             cdp_browsers = getattr(options, "cdp_browsers", [])
             if cdp_browsers and hasattr(self, "_browser_toolkit"):
                 need_cdp_clone = True
-                from app.agent.factory.browser import _cdp_pool_manager
                 from uuid import uuid4
+
+                from app.agent.factory.browser import _cdp_pool_manager
 
                 if not new_cdp_session:
                     new_cdp_session = str(uuid4())[:8]
@@ -259,8 +396,8 @@ class ListenChatAgent(ChatAgent):
                     f"http://localhost:{new_cdp_port}"
                 )
                 try:
-                    cloned_tools, toolkits_to_register = self._clone_tools(
-                        effective_clone_context
+                    cloned_tools, toolkits_to_register = (
+                        self._clone_tools_with_context(effective_clone_context)
                     )
                 except Exception:
                     _cdp_pool_manager.release_browser(
@@ -272,8 +409,8 @@ class ListenChatAgent(ChatAgent):
                         original_cdp_url
                     )
         else:
-            cloned_tools, toolkits_to_register = self._clone_tools(
-                effective_clone_context
+            cloned_tools, toolkits_to_register = (
+                self._clone_tools_with_context(effective_clone_context)
             )
 
         clone_execution_context = dict(self._user_execution_context)

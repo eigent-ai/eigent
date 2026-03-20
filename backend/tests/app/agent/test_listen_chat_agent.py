@@ -17,20 +17,19 @@ from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from camel.agents import (
-    ChatAgent,
-    CloneContext,
-    StepCompletedEvent,
-    StepFailedEvent,
-    StepStartedEvent,
-)
+from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
 from camel.messages import BaseMessage
 from camel.responses import ChatAgentResponse
 from camel.toolkits import FunctionTool
 from camel.types.agents import ToolCallingRecord
 
-from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.listen_chat_agent import CloneContext, ListenChatAgent
+from app.agent.listen_chat_agent_callback import (
+    StepCompletedEvent,
+    StepFailedEvent,
+    StepStartedEvent,
+)
 from app.model.chat import Chat
 
 _LCA = "app.agent.listen_chat_agent"
