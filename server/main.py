@@ -50,6 +50,11 @@ auto_include_routers(router, "", "app/domains")
 auto_include_routers(router, "", "app/api")
 api.include_router(router, prefix=f"{prefix}/v1")
 
+# Health check at root level for Docker healthcheck (GET /health)
+@api.get("/health", tags=["Health"])
+async def health_check():
+    return {"status": "ok", "service": "eigent-server"}
+
 # Backward-compatible webhook route (/api/webhook/...)
 from app.domains.trigger.api.webhook_controller import router as webhook_router
 api.include_router(webhook_router, prefix=prefix)
