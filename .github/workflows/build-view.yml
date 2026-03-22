@@ -113,6 +113,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
@@ -127,6 +128,7 @@ jobs:
           npx electron-builder --win --${{ matrix.arch }} --publish never
         env:
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
@@ -141,6 +143,7 @@ jobs:
           npx electron-builder --linux --${{ matrix.arch }} --publish never
         env:
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
