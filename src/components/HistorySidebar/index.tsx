@@ -67,7 +67,7 @@ export default function HistorySidebar() {
   useEffect(() => {
     if (!chatStore) return;
     fetchGroupedHistoryTasks(setHistoryTasks);
-  }, [chatStore?.updateCount, chatStore]);
+  }, [chatStore?.updateCount]);
 
   // Group ongoing tasks by project
   const ongoingProjects = useMemo(() => {
