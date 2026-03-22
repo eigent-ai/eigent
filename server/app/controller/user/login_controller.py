@@ -12,9 +12,12 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from fastapi import APIRouter, Depends, HTTPException, Form
+import logging
+
+from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi_babel import _
 from sqlmodel import Session
+
 from app.component import code
 from app.component.auth import Auth
 from app.component.database import session
@@ -24,23 +27,18 @@ from app.exception.exception import UserException
 from app.model.user.user import (
     LoginByPasswordIn,
     LoginResponse,
+    RegisterIn,
     Status,
     User,
-    RegisterIn,
 )
-from app.component.environment import env
-import logging
 
 logger = logging.getLogger("server_login_controller")
-
 
 router = APIRouter(tags=["Login/Registration"])
 
 
 @router.post("/login", name="login by email or password")
-async def by_password(
-    data: LoginByPasswordIn, session: Session = Depends(session)
-) -> LoginResponse:
+async def by_password(data: LoginByPasswordIn, session: Session = Depends(session)) -> LoginResponse:
     """
     User login with email and password
     """
@@ -52,9 +50,7 @@ async def by_password(
         raise UserException(code.password, _("Account or password error"))
 
     if not password_verify(data.password, user.password):
-        logger.warning(
-            "Login failed: invalid password", extra={"user_id": user.id, "email": email}
-        )
+        logger.warning("Login failed: invalid password", extra={"user_id": user.id, "email": email})
         raise UserException(code.password, _("Account or password error"))
 
     logger.info("User login successful", extra={"user_id": user.id, "email": email})
@@ -104,9 +100,7 @@ async def by_stack_auth(
         stack_id = await StackAuth.user_id(token)
         info = await StackAuth.user_info(token)
     except Exception as e:
-        logger.error(
-            "Stack auth failed", extra={"type": type, "error": str(e)}, exc_info=True
-        )
+        logger.error("Stack auth failed", extra={"type": type, "error": str(e)}, exc_info=True)
         raise HTTPException(500, detail=_("Authentication failed"))
 
     user = User.by(User.stack_id == stack_id, s=session).one_or_none()
@@ -139,9 +133,7 @@ async def by_stack_auth(
                         "stack_id": stack_id,
                     },
                 )
-                return LoginResponse(
-                    token=Auth.create_access_token(user.id), email=user.email
-                )
+                return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
             except Exception as e:
                 s.rollback()
                 logger.error(
@@ -165,14 +157,48 @@ async def by_stack_auth(
         return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
 
 
+@router.post("/auto-login", name="auto login for local mode")
+async def auto_login(session: Session = Depends(session)) -> LoginResponse:
+    """
+    Auto login for fully local mode (VITE_USE_LOCAL_PROXY=true).
+    Returns the most recently active user, or creates a default admin user if none exists.
+    """
+    # Find the most recently active user
+    user = User.by(
+        User.status == Status.Normal,
+        order_by=User.updated_at.desc(),
+        limit=1,
+        s=session,
+    ).one_or_none()
+
+    if not user:
+        # Create default admin user
+        with session as s:
+            try:
+                user = User(
+                    email="admin@eigent.local",
+                    username="admin",
+                    nickname="Admin",
+                )
+                s.add(user)
+                s.commit()
+                s.refresh(user)
+                logger.info("Default admin user created", extra={"user_id": user.id})
+            except Exception as e:
+                s.rollback()
+                logger.error("Failed to create default admin user", extra={"error": str(e)}, exc_info=True)
+                raise UserException(code.error, _("Failed to create default user"))
+
+    logger.info("Auto login successful", extra={"user_id": user.id, "email": user.email})
+    return LoginResponse(token=Auth.create_access_token(user.id), email=user.email)
+
+
 @router.post("/register", name="register by email/password")
 async def register(data: RegisterIn, session: Session = Depends(session)):
     email = data.email
 
     if User.by(User.email == email, s=session).one_or_none():
-        logger.warning(
-            "Registration failed: email already exists", extra={"email": email}
-        )
+        logger.warning("Registration failed: email already exists", extra={"email": email})
         raise UserException(code.error, _("Email already registered"))
 
     with session as s:

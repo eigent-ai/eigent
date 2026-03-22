@@ -15,9 +15,10 @@
 from enum import IntEnum
 
 from pydantic import BaseModel
-from app.model.abstract.model import AbstractModel, DefaultTimes
 from sqlalchemy_utils import ChoiceType
-from sqlmodel import Field, Column, String, TEXT, SmallInteger
+from sqlmodel import TEXT, Column, Field, SmallInteger, String
+
+from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
 class Status(IntEnum):

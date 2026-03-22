@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 from app.type.config_group import ConfigGroup
 
@@ -151,10 +152,6 @@ class ConfigInfo:
             "env_vars": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
             "toolkit": "google_gmail_native_toolkit",
         },
-        ConfigGroup.IMAGE_ANALYSIS.value: {
-            "env_vars": [],
-            "toolkit": "image_analysis_toolkit",
-        },
         ConfigGroup.MCP_SEARCH.value: {
             "env_vars": [],
             "toolkit": "mcp_search_toolkit",
@@ -162,6 +159,10 @@ class ConfigInfo:
         ConfigGroup.PPTX.value: {
             "env_vars": [],
             "toolkit": "pptx_toolkit",
+        },
+        ConfigGroup.RAG.value: {
+            "env_vars": ["OPENAI_API_KEY"],
+            "toolkit": "rag_toolkit",
         },
         ConfigGroup.REDDIT.value: {
             "env_vars": [

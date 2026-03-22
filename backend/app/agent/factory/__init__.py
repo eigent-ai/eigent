@@ -18,7 +18,7 @@ from app.agent.factory.document import document_agent
 from app.agent.factory.mcp import mcp_agent
 from app.agent.factory.multi_modal import multi_modal_agent
 from app.agent.factory.question_confirm import question_confirm_agent
-from app.agent.factory.social_medium import social_medium_agent
+from app.agent.factory.social_media import social_media_agent
 from app.agent.factory.task_summary import task_summary_agent
 
 __all__ = [
@@ -28,6 +28,6 @@ __all__ = [
     "mcp_agent",
     "multi_modal_agent",
     "question_confirm_agent",
-    "social_medium_agent",
+    "social_media_agent",
     "task_summary_agent",
 ]

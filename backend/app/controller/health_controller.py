@@ -12,14 +12,19 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
+<<<<<<< HEAD
 <<<<<<< HEAD
 from utils import traceroot_wrapper as traceroot
 =======
 from sqlalchemy import text
 import logging
 >>>>>>> 22fd45e11845bd7da55863bcd59260d410e6af81
+=======
+>>>>>>> upstream/main
 
 logger = logging.getLogger("health_controller")
 
@@ -33,6 +38,7 @@ class HealthResponse(BaseModel):
 
 @router.get("/health", name="health check", response_model=HealthResponse)
 async def health_check():
+<<<<<<< HEAD
     """
     Health check endpoint for verifying backend readiness.
     """
@@ -44,9 +50,19 @@ async def health_check():
         service="eigent",
     )
 
+=======
+    """Health check endpoint for verifying backend
+    is ready to accept requests."""
+    logger.debug("Health check requested")
+    response = HealthResponse(status="ok", service="eigent")
+>>>>>>> upstream/main
     logger.debug(
         "Health check completed",
         extra={"status": response.status, "service": response.service},
     )
+<<<<<<< HEAD
 
     return response
+=======
+    return response
+>>>>>>> upstream/main

@@ -13,13 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import IntEnum
-from typing import Optional
+
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, SmallInteger
-from sqlalchemy.orm import Mapped
-from sqlmodel import Field, JSON
+from sqlalchemy import Boolean, Column, SmallInteger, text
 from sqlalchemy_utils import ChoiceType
-from sqlalchemy import text
+from sqlmodel import JSON, Field
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
@@ -61,4 +60,4 @@ class ProviderOut(ProviderIn):
     id: int
     user_id: int
     prefer: bool
-    model_type: Optional[str] = None
+    model_type: str | None = None

@@ -12,136 +12,89 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useAuthStore } from '@/store/authStore';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useCallback, useEffect, useState, useRef } from 'react';
-import { useStackApp } from '@stackframe/react';
-import loginGif from '@/assets/login.gif';
 import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/store/authStore';
+import { useStackApp } from '@stackframe/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Input } from '@/components/ui/input';
-
-import github2 from '@/assets/github2.svg';
-import google from '@/assets/google.svg';
-import eye from '@/assets/eye.svg';
-import eyeOff from '@/assets/eye-off.svg';
-import { proxyFetchPost } from '@/api/http';
+import { proxyFetchGet, proxyFetchPost } from '@/api/http';
+import WindowControls from '@/components/WindowControls';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
-import WindowControls from '@/components/WindowControls';
+
+import background from '@/assets/background.png';
+import eigentLogo from '@/assets/logo/eigent_icon.png';
 
 const HAS_STACK_KEYS = hasStackKeys();
+const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
+
 export default function Login() {
-  const app = HAS_STACK_KEYS ? useStackApp() : null;
-  const { setAuth, setModelType, setLocalProxyValue } = useAuthStore();
+  // Always call hooks unconditionally - React Hooks must be called in the same order
+  const stackApp = useStackApp();
+  const app = HAS_STACK_KEYS ? stackApp : null;
+  const {
+    setAuth,
+    setModelType,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+  } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const [hidePassword, setHidePassword] = useState(true);
   const { t } = useTranslation();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
-  const [errors, setErrors] = useState({
-    email: '',
-    password: '',
-  });
   const [isLoading, setIsLoading] = useState(false);
   const [generalError, setGeneralError] = useState('');
+  const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
 
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validateForm = () => {
-    const newErrors = {
-      email: '',
-      password: '',
-    };
-
-    if (!formData.email) {
-      newErrors.email = t('layout.please-enter-email-address');
-    } else if (!validateEmail(formData.email)) {
-      newErrors.email = t('layout.please-enter-a-valid-email-address');
-    }
-
-    if (!formData.password) {
-      newErrors.password = t('layout.please-enter-password');
-    } else if (formData.password.length < 8) {
-      newErrors.password = t('layout.password-must-be-at-least-8-characters');
-    }
-
-    setErrors(newErrors);
-    return !newErrors.email && !newErrors.password;
-  };
-
-  const getLoginErrorMessage = (data: any) => {
-    if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
-      return '';
-    }
-
-    if (data.code === 0) {
-      return '';
-    }
-
-    if (data.code === 10) {
-      return (
-        data.text ||
-        t('layout.login-failed-please-check-your-email-and-password')
-      );
-    }
-
-    if (data.code === 1 && Array.isArray(data.error) && data.error.length > 0) {
-      const firstError = data.error[0];
-      if (typeof firstError === 'string') {
-        return firstError;
+  const getLoginErrorMessage = useCallback(
+    (data: any) => {
+      if (!data || typeof data !== 'object' || typeof data.code !== 'number') {
+        return '';
       }
-      if (typeof firstError?.msg === 'string') {
-        return firstError.msg;
+
+      if (data.code === 0) {
+        return '';
       }
-      if (typeof firstError?.message === 'string') {
-        return firstError.message;
+
+      if (data.code === 10) {
+        return (
+          data.text ||
+          t('layout.login-failed-please-check-your-email-and-password')
+        );
       }
-    }
 
-    return data.text || t('layout.login-failed-please-try-again');
-  };
+      if (
+        data.code === 1 &&
+        Array.isArray(data.error) &&
+        data.error.length > 0
+      ) {
+        const firstError = data.error[0];
+        if (typeof firstError === 'string') {
+          return firstError;
+        }
+        if (typeof firstError?.msg === 'string') {
+          return firstError.msg;
+        }
+        if (typeof firstError?.message === 'string') {
+          return firstError.message;
+        }
+      }
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+      return data.text || t('layout.login-failed-please-try-again');
+    },
+    [t]
+  );
 
-    if (errors[field as keyof typeof errors]) {
-      setErrors((prev) => ({
-        ...prev,
-        [field]: '',
-      }));
-    }
-
-    if (generalError) {
-      setGeneralError('');
-    }
-  };
-
-  //
-  const handleLogin = async () => {
-    if (!validateForm()) {
-      return;
-    }
-
+  // Auto login for local mode - calls /api/auto-login
+  const handleAutoLogin = async () => {
     setGeneralError('');
     setIsLoading(true);
     try {
-      const data = await proxyFetchPost('/api/login', {
-        email: formData.email,
-        password: formData.password,
-      });
+      const data = await proxyFetchPost('/api/auto-login', {});
 
       const errorMessage = getLoginErrorMessage(data);
       if (errorMessage) {
@@ -149,109 +102,101 @@ export default function Login() {
         return;
       }
 
-      setAuth({ email: formData.email, ...data });
-      setModelType('cloud');
-      // Record VITE_USE_LOCAL_PROXY value at login
-      const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
-      setLocalProxyValue(localProxyValue);
+      setAuth({ email: data.email, ...data });
+      setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+      setModelType('custom');
+      setInitState('done');
+      setIsFirstLaunch(false);
       navigate('/');
     } catch (error: any) {
-      console.error('Login failed:', error);
-      setGeneralError(
-        t('layout.login-failed-please-check-your-email-and-password')
-      );
+      console.error('Auto login failed:', error);
+      setGeneralError(t('layout.login-failed-please-try-again'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLoginByStack = async (token: string) => {
-    try {
-      const data = await proxyFetchPost('/api/login-by_stack?token=' + token, {
-        token: token,
-      });
+  // Hybrid/app mode: handle Stack Auth callback (reuse existing OAuth flow)
+  const handleLoginByStack = useCallback(
+    async (token: string) => {
+      try {
+        const data = await proxyFetchPost(
+          '/api/login-by_stack?token=' + token,
+          {
+            token: token,
+          }
+        );
 
-      const errorMessage = getLoginErrorMessage(data);
-      if (errorMessage) {
-        setGeneralError(errorMessage);
-        return;
-      }
-      console.log('data', data);
-      setModelType('cloud');
-      setAuth({ email: formData.email, ...data });
-      // Record VITE_USE_LOCAL_PROXY value at login
-      const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
-      setLocalProxyValue(localProxyValue);
-      navigate('/');
-    } catch (error: any) {
-      console.error('Login failed:', error);
-      setGeneralError(
-        t('layout.login-failed-please-check-your-email-and-password')
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleReloadBtn = async (type: string) => {
-    if (!app) {
-      console.error('Stack app not initialized');
-      return;
-    }
-    console.log('handleReloadBtn1', type);
-    const cookies = document.cookie.split('; ');
-    cookies.forEach((cookie) => {
-      const [name] = cookie.split('=');
-      if (name.startsWith('stack-oauth-outer-')) {
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
-      }
-    });
-    console.log('handleReloadBtn2', type);
-    await app.signInWithOAuth(type);
-  };
-
-  const handleGetToken = async (code: string) => {
-    const code_verifier = localStorage.getItem('stack-oauth-outer-');
-    const formData = new URLSearchParams();
-    console.log(
-      'import.meta.env.PROD',
-      import.meta.env.PROD
-        ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-        : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
-    );
-    formData.append(
-      'redirect_uri',
-      import.meta.env.PROD
-        ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-        : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
-    );
-    formData.append('code_verifier', code_verifier || '');
-    formData.append('code', code);
-    formData.append('grant_type', 'authorization_code');
-    formData.append('client_id', 'aa49cdd0-318e-46bd-a540-0f1e5f2b391f');
-    formData.append(
-      'client_secret',
-      'pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8'
-    );
-
-    try {
-      const res = await fetch(
-        'https://api.stack-auth.com/api/v1/auth/oauth/token',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-          },
-          body: formData,
+        const errorMessage = getLoginErrorMessage(data);
+        if (errorMessage) {
+          setGeneralError(errorMessage);
+          return;
         }
+        setModelType('cloud');
+        setAuth({ email: data.email, ...data });
+        const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
+        setLocalProxyValue(localProxyValue);
+        navigate('/');
+      } catch (error: any) {
+        console.error('Login failed:', error);
+        setGeneralError(
+          t('layout.login-failed-please-check-your-email-and-password')
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      navigate,
+      setAuth,
+      setModelType,
+      setLocalProxyValue,
+      setGeneralError,
+      setIsLoading,
+      getLoginErrorMessage,
+      t,
+    ]
+  );
+
+  const handleGetToken = useCallback(
+    async (code: string) => {
+      const code_verifier = localStorage.getItem('stack-oauth-outer-');
+      const formData = new URLSearchParams();
+      formData.append(
+        'redirect_uri',
+        import.meta.env.PROD
+          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
+          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
       );
-      const data = await res.json(); // parse response data
-      return data.access_token;
-    } catch (error) {
-      console.error(error);
-      setIsLoading(false);
-    }
-  };
+      formData.append('code_verifier', code_verifier || '');
+      formData.append('code', code);
+      formData.append('grant_type', 'authorization_code');
+      formData.append('client_id', 'aa49cdd0-318e-46bd-a540-0f1e5f2b391f');
+      formData.append(
+        'client_secret',
+        'pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8'
+      );
+
+      try {
+        const res = await fetch(
+          'https://api.stack-auth.com/api/v1/auth/oauth/token',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            },
+            body: formData,
+          }
+        );
+        const data = await res.json();
+        return data.access_token;
+      } catch (error) {
+        console.error(error);
+        setIsLoading(false);
+      }
+    },
+    [setIsLoading]
+  );
 
   const handleAuthCode = useCallback(
     async (event: any, code: string) => {
@@ -265,16 +210,54 @@ export default function Login() {
         lock = false;
       }, 1500);
     },
-    [location.pathname]
+    [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
   );
 
+  // Listen for direct token callback from Electron (eigent.ai login redirect)
+  useEffect(() => {
+    const handleTokenReceived = async (_event: any, token: string) => {
+      if (!token) return;
+      setIsLoading(true);
+      // Temporarily set token so proxyFetchGet can use it for auth
+      setAuth({ email: '', token, username: '', user_id: 0 });
+      setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
+      try {
+        const userInfo = await proxyFetchGet('/api/user');
+        if (userInfo && userInfo.email) {
+          setAuth({
+            token,
+            email: userInfo.email,
+            username:
+              userInfo.username ||
+              userInfo.nickname ||
+              userInfo.fullname ||
+              userInfo.email?.split('@')[0] ||
+              '',
+            user_id:
+              userInfo.id || JSON.parse(atob(token.split('.')[1])).id || 0,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to fetch user info:', e);
+      }
+      navigate('/');
+    };
+
+    window.ipcRenderer?.on('auth-token-received', handleTokenReceived);
+
+    return () => {
+      window.ipcRenderer?.off('auth-token-received', handleTokenReceived);
+    };
+  }, [setAuth, setLocalProxyValue, navigate]);
+
+  // Listen for auth code callback from Electron (Stack Auth OAuth flow)
   useEffect(() => {
     window.ipcRenderer?.on('auth-code-received', handleAuthCode);
 
     return () => {
       window.ipcRenderer?.off('auth-code-received', handleAuthCode);
     };
-  }, []);
+  }, [handleAuthCode]);
 
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
@@ -288,7 +271,6 @@ export default function Login() {
   // Handle before-close event for login page
   useEffect(() => {
     const handleBeforeClose = () => {
-      // On login page, always close directly without confirmation
       window.electronAPI.closeWindow(true);
     };
 
@@ -299,35 +281,106 @@ export default function Login() {
     };
   }, []);
 
+  // Hybrid/app mode: prepare auth callback URL on mount (don't auto-open browser)
+  useEffect(() => {
+    if (IS_LOCAL_MODE) return;
+
+    const prepareCallbackUrl = async () => {
+      let cbUrl: string;
+      if (import.meta.env.PROD) {
+        cbUrl = 'eigent://auth/callback';
+      } else {
+        cbUrl = 'eigent://auth/callback';
+        try {
+          const url = await window.ipcRenderer?.invoke('get-auth-callback-url');
+          if (url) cbUrl = url;
+        } catch (e) {
+          // Fallback to eigent:// protocol
+        }
+      }
+      setCallbackUrl(cbUrl);
+    };
+
+    prepareCallbackUrl();
+  }, []);
+
+  // Render local mode: "Start Eigent" button only
+  const renderLocalMode = () => (
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+      <img
+        src={eigentLogo}
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+      />
+      <div className="mb-8 text-heading-lg font-bold text-text-heading">
+        Eigent
+      </div>
+      {generalError && (
+        <p className="mb-4 mt-1 text-label-md text-text-cuation">
+          {generalError}
+        </p>
+      )}
+      <Button
+        onClick={handleAutoLogin}
+        size="lg"
+        variant="primary"
+        className="w-full rounded-full"
+        disabled={isLoading}
+      >
+        <span className="flex-1">
+          {isLoading ? t('layout.logging-in') : 'Start Eigent'}
+        </span>
+      </Button>
+    </div>
+  );
+
+  // Render hybrid/app mode: waiting for external login callback
+  const renderHybridMode = () => (
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+      <img
+        src={eigentLogo}
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+      />
+      <div className="mb-4 text-heading-lg font-bold text-text-heading">
+        {t('layout.login')}
+      </div>
+      {isLoading && (
+        <p className="mb-6 text-center text-label-md text-text-secondary">
+          {t('layout.logging-in')}...
+        </p>
+      )}
+      <Button
+        onClick={() => {
+          setIsLoading(true);
+          window.open(
+            `https://www.eigent.ai/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
+            '_blank',
+            'noopener,noreferrer'
+          );
+        }}
+        size="lg"
+        variant="primary"
+        className="w-full rounded-full"
+      >
+        <span className="flex-1">{t('layout.log-in')}</span>
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="h-full flex flex-col relative overflow-hidden">
+    <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute top-0 left-0 right-0 flex !h-9 items-center justify-between pl-2 py-1 z-50"
+        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        {/* Left spacer for macOS */}
-        <div
-          className={`${
-            platform === 'darwin' ? 'w-[70px]' : 'w-0'
-          } flex items-center justify-center`}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          {platform === 'darwin' && (
-            <span className="text-label-md text-text-heading font-bold">
-              Eigent
-            </span>
-          )}
-        </div>
-
         {/* Center drag region */}
         <div
-          className="h-full flex-1 flex items-center"
+          className="flex h-full flex-1 items-center"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          <div className="flex-1 h-10"></div>
+          <div className="h-10 flex-1"></div>
         </div>
 
         {/* Right window controls */}
@@ -346,133 +399,18 @@ export default function Login() {
       </div>
 
       {/* Main content - image extends to top, form has padding */}
-      <div className={`p-2 flex items-center justify-center gap-2 h-full`}>
-        <div className="flex items-center justify-center h-full rounded-3xl bg-white-100%">
-          <img src={loginGif} className="rounded-3xl h-full object-cover" />
-        </div>
-        <div className="h-full flex-1 flex flex-col items-center justify-center pt-11">
-          <div className="flex-1 flex flex-col w-80 items-center justify-center">
-            <div className="flex self-stretch items-end justify-between mb-4">
-              <div className="text-text-heading text-heading-lg font-bold ">
-                {t('layout.login')}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
-                    navigate('/signup');
-                  } else {
-                    window.open(
-                      'https://www.eigent.ai/signup',
-                      '_blank',
-                      'noopener,noreferrer'
-                    );
-                  }
-                }}
-              >
-                {t('layout.sign-up')}
-              </Button>
-            </div>
-            {HAS_STACK_KEYS && (
-              <div className="w-full pt-6">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => handleReloadBtn('google')}
-                  className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
-                  disabled={isLoading}
-                >
-                  <img src={google} className="w-5 h-5" />
-                  <span className="ml-2">
-                    {t('layout.continue-with-google-login')}
-                  </span>
-                </Button>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => handleReloadBtn('github')}
-                  className="w-full rounded-[24px] mb-4 transition-all duration-300 ease-in-out text-[#F5F5F5] text-center font-inter text-[15px] font-bold leading-[22px] justify-center"
-                  disabled={isLoading}
-                >
-                  <img src={github2} className="w-5 h-5" />
-                  <span className="ml-2">
-                    {t('layout.continue-with-github-login')}
-                  </span>
-                </Button>
-              </div>
-            )}
-            {HAS_STACK_KEYS && (
-              <div className="mt-2 w-full text-[#222] text-center font-inter text-[15px]  font-medium leading-[22px] mb-6">
-                {t('layout.or')}
-              </div>
-            )}
-            <div className="flex flex-col gap-4 w-full">
-              {generalError && (
-                <p className="text-text-cuation text-label-md mt-1 mb-4">
-                  {generalError}
-                </p>
-              )}
-              <div className="flex flex-col gap-4 w-full mb-4 relative">
-                <Input
-                  id="email"
-                  type="email"
-                  size="default"
-                  title={t('layout.email')}
-                  placeholder={t('layout.enter-your-email')}
-                  required
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  state={errors.email ? 'error' : undefined}
-                  note={errors.email}
-                  onEnter={handleLogin}
-                />
-
-                <Input
-                  id="password"
-                  title={t('layout.password')}
-                  size="default"
-                  type={hidePassword ? 'password' : 'text'}
-                  required
-                  placeholder={t('layout.enter-your-password')}
-                  value={formData.password}
-                  onChange={(e) =>
-                    handleInputChange('password', e.target.value)
-                  }
-                  state={errors.password ? 'error' : undefined}
-                  note={errors.password}
-                  backIcon={<img src={hidePassword ? eye : eyeOff} />}
-                  onBackIconClick={() => setHidePassword(!hidePassword)}
-                  onEnter={handleLogin}
-                />
-              </div>
-            </div>
-            <Button
-              onClick={handleLogin}
-              size="md"
-              variant="primary"
-              type="submit"
-              className="w-full rounded-full"
-              disabled={isLoading}
-            >
-              <span className="flex-1">
-                {isLoading ? t('layout.logging-in') : t('layout.log-in')}
-              </span>
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() =>
-              window.open(
-                'https://www.eigent.ai/privacy-policy',
-                '_blank',
-                'noopener,noreferrer'
-              )
-            }
-          >
-            {t('layout.privacy-policy')}
-          </Button>
+      <div
+        className={`flex h-full items-center justify-center gap-2 px-2 pb-2 pt-10`}
+      >
+        <div
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary px-2 pb-2"
+          style={{
+            backgroundImage: `url(${background})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >
+          {IS_LOCAL_MODE ? renderLocalMode() : renderHybridMode()}
         </div>
       </div>
     </div>

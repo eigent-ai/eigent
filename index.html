@@ -4,9 +4,50 @@
 		<meta charset="UTF-8" />
 		<link rel="icon" type="image/x-icon" href="/favicon.ico" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!-- Content Security Policy: CDN allowlist for agent-generated HTML -->
 		<meta
 			http-equiv="Content-Security-Policy"
-			content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.amplitude.com;  worker-src 'self' blob:; child-src 'self' blob:;frame-src 'self' localfile: blob: data:;"
+			content="
+				script-src 'self' 'unsafe-inline' 'unsafe-eval'
+					https://cdn.amplitude.com
+					https://cdnjs.cloudflare.com
+					https://cdn.jsdelivr.net
+					https://unpkg.com
+					https://ajax.googleapis.com
+					https://code.jquery.com
+					https://stackpath.bootstrapcdn.com
+					https://cdn.tailwindcss.com
+					https://cdn.plot.ly
+					https://d3js.org
+					https://cdn.datatables.net
+					https://cdn.chart.js
+					https://cdn.canvasjs.com
+					https://cdn.amcharts.com
+					https://threejs.org
+					https://pixijs.download
+					https://cdn.babylonjs.com
+					https://aframe.io
+					https://cesium.com
+					https://cdn.lottiefiles.com
+					https://cdn.socket.io
+					https://cdn.firebase.com
+					https://maps.googleapis.com
+					https://api.mapbox.com
+					https://cdn.tiny.cloud
+					https://cdn.ckeditor.com
+					https://cdn.quilljs.com
+					https://cdn.mathjax.org
+					https://cdn.ethers.io
+					https://cdn.auth0.com
+					https://cdn.plyr.io
+					https://vjs.zencdn.net
+					https://cdn.dashjs.org
+					https://cdn.npmmirror.com
+					https://registry.npmmirror.com;
+				worker-src 'self' blob:;
+				child-src 'self' blob:;
+				frame-src 'self' localfile: blob: data:;
+			"
 		/>
 		<script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script><script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.8.0-min.js.gz"></script><script>window.amplitude.add(window.sessionReplay.plugin({sampleRate: 1}));window.amplitude.init('87ce6adbb14b24ffe1703d18bf405e40', {"autocapture":{"elementInteractions":true}});</script>
 		<title>Eigent</title>

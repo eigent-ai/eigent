@@ -12,17 +12,17 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from enum import IntEnum
-from typing import Optional
-from pydantic import BaseModel
-from sqlmodel import Relationship, SQLModel, Field, Column, col, select, Session
-from sqlalchemy_utils import ChoiceType
-from sqlalchemy import Boolean, SmallInteger, text
-from app.model.abstract.model import AbstractModel, DefaultTimes
-from datetime import date, datetime, timedelta
-from app.model.user.key import ModelType
-from app.component.database import session_make
 import logging
+from datetime import date, datetime
+from enum import IntEnum
+
+from pydantic import BaseModel
+from sqlalchemy import Boolean, SmallInteger, text
+from sqlalchemy_utils import ChoiceType
+from sqlmodel import Column, Field, Session, col, select
+
+from app.component.database import session_make
+from app.model.abstract.model import AbstractModel, DefaultTimes
 
 logger = logging.getLogger("user_credits_record")
 
@@ -271,7 +271,6 @@ class UserCreditsRecord(AbstractModel, DefaultTimes, table=True):
 
         remain = amount
         now = datetime.now()
-        consumed_from_daily = 0
         consumed_from_other = 0
 
         # 优先消耗daily
@@ -291,7 +290,6 @@ class UserCreditsRecord(AbstractModel, DefaultTimes, table=True):
             daily_records.balance += use
             session.add(daily_records)
             remain -= use
-            consumed_from_daily = use
             if remain == 0:
                 # 不生成新的消耗记录，只更新现有记录
                 return
@@ -378,12 +376,12 @@ class UserCreditsRecordWithChatOut(BaseModel):
     balance: int
     channel: CreditsChannel
     source_id: int
-    expire_at: Optional[datetime] = None
+    expire_at: datetime | None = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
     # 聊天历史相关字段（当channel为consume且source_id有效时）
-    chat_project_name: Optional[str] = None
-    chat_tokens: Optional[int] = None
+    chat_project_name: str | None = None
+    chat_tokens: int | None = None
 
 
 class UserCreditsRecordOut(BaseModel):

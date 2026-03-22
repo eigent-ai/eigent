@@ -13,14 +13,14 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import Enum, IntEnum
+
 from pydantic import BaseModel
 from sqlalchemy import String
-from sqlmodel import Field, Column, JSON, SQLModel, UniqueConstraint, Relationship, SmallInteger
-from app.model.abstract.model import DefaultTimes, AbstractModel
-from sqlalchemy.orm import Mapped
-from typing import Optional
 from sqlalchemy_utils import ChoiceType
-from app.model.mcp.mcp import McpInfo, Mcp
+from sqlmodel import JSON, Column, Field, Relationship, SmallInteger, SQLModel
+
+from app.model.abstract.model import AbstractModel, DefaultTimes
+from app.model.mcp.mcp import Mcp
 
 
 class Status(IntEnum):
@@ -57,9 +57,9 @@ class McpUser(AbstractModel, DefaultTimes, table=True):
 
 class McpUserIn(SQLModel):
     mcp_id: int
-    env: Optional[dict] = None
+    env: dict | None = None
     status: Status = Status.enable
-    mcp_key: Optional[str] = None
+    mcp_key: str | None = None
 
 
 class McpUserOut(SQLModel):
@@ -67,47 +67,47 @@ class McpUserOut(SQLModel):
     mcp_id: int
     mcp_name: str | None = None
     mcp_desc: str | None = None
-    command: Optional[str] = None
-    args: Optional[str] = None
-    env: Optional[dict] = None
+    command: str | None = None
+    args: str | None = None
+    env: dict | None = None
     status: int
     type: int
-    server_url: Optional[str] = None
+    server_url: str | None = None
     mcp_key: str
 
 
 class McpUserUpdate(BaseModel):
     mcp_name: str | None = None
     mcp_desc: str | None = None
-    status: Optional[int] = None
+    status: int | None = None
     type: McpType | None = None
-    env: Optional[dict] = None
-    server_url: Optional[str] = None
-    command: Optional[str] = None
-    args: Optional[str] = None
-    mcp_key: Optional[str] = None
+    env: dict | None = None
+    server_url: str | None = None
+    command: str | None = None
+    args: str | None = None
+    mcp_key: str | None = None
 
 
 class McpUserImport(BaseModel):
     mcp_id: int = 0
-    command: Optional[str] = None
-    args: Optional[str] = None
-    env: Optional[dict] = None
+    command: str | None = None
+    args: str | None = None
+    env: dict | None = None
     status: int = Status.enable
     type: int = McpType.Local
-    server_url: Optional[str] = None
-    mcp_key: Optional[str] = None
+    server_url: str | None = None
+    mcp_key: str | None = None
 
 
 class McpLocalImport(BaseModel):
     type: int = McpType.Local
     status: int = Status.enable
-    command: Optional[str] = None
-    args: Optional[str] = None
-    env: Optional[dict] = None
+    command: str | None = None
+    args: str | None = None
+    env: dict | None = None
 
 
 class McpRemoteImport(BaseModel):
     type: int = McpType.Remote
     status: int = Status.enable
-    server_url: Optional[str] = None
+    server_url: str | None = None

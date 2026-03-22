@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+
 class UserException(Exception):
     def __init__(self, code: int, description: str):
         self.code = code
@@ -32,3 +33,7 @@ class NoPermissionException(Exception):
 class ProgramException(Exception):
     def __init__(self, text: str):
         self.text = text
+
+
+class PathEscapesBaseError(ValueError):
+    """Raised when a path resolves outside its allowed base directory."""

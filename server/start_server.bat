@@ -19,7 +19,7 @@ uv --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo uv is not installed, attempting to install...
     echo Downloading and installing uv...
-    
+
     :: Try to install uv using PowerShell
     powershell -Command "irm https://astral.sh/uv/install.ps1 | iex" 2>nul
     if %errorlevel% neq 0 (
@@ -29,7 +29,7 @@ if %errorlevel% neq 0 (
         pause
         exit /b 1
     )
-    
+
     :: Refresh environment variables
     call refreshenv 2>nul
     if %errorlevel% neq 0 (
@@ -38,7 +38,7 @@ if %errorlevel% neq 0 (
         pause
         exit /b 1
     )
-    
+
     echo uv installation completed
 ) else (
     echo uv is already installed
@@ -110,4 +110,4 @@ echo ========================================
 
 uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 
-pause 
+pause

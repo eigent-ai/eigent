@@ -24,7 +24,7 @@ try {
 } catch {
     Write-Host "uv is not installed, attempting to install..." -ForegroundColor Yellow
     Write-Host "Downloading and installing uv..." -ForegroundColor Yellow
-    
+
     try {
         Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" | Invoke-Expression
         if ($LASTEXITCODE -eq 0) {
@@ -63,7 +63,7 @@ Write-Host "[3/5] Executing babel internationalization..." -ForegroundColor Yell
 try {
     uv run pybabel extract -F babel.cfg -o messages.pot .
     if ($LASTEXITCODE -ne 0) { throw "babel extract failed" }
-    
+
     # Check if Chinese translation files exist
     if (-not (Test-Path "lang\zh_CN\LC_MESSAGES\messages.po")) {
         Write-Host "Initializing Chinese translation files..." -ForegroundColor Yellow
@@ -74,11 +74,11 @@ try {
         uv run pybabel update -i messages.pot -d lang -l zh_CN
         if ($LASTEXITCODE -ne 0) { throw "babel update failed" }
     }
-    
+
     # Compile translation files
     uv run pybabel compile -d lang -l zh_CN
     if ($LASTEXITCODE -ne 0) { throw "babel compile failed" }
-    
+
     Write-Host "babel processing completed" -ForegroundColor Green
 } catch {
     Write-Host "babel processing failed: $($_.Exception.Message)" -ForegroundColor Red
@@ -114,4 +114,4 @@ try {
     Write-Host "Service startup failed: $($_.Exception.Message)" -ForegroundColor Red
     Read-Host "Press Enter to exit"
     exit 1
-} 
+}

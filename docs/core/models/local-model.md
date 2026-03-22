@@ -1,6 +1,6 @@
 ---
-title: "Models (Local Model)"
-description: "Configure and deploy your preferred LLM models with Eigent."
+title: Models (Local Model)
+description: Configure and deploy your preferred LLM models with Eigent.
 ---
 
 ## **Self-Host Model**
@@ -36,6 +36,11 @@ print(f"Server started on http://localhost:{port}")
 ```bash
 #Ollama https://github.com/ollama/ollama
 ollama pull qwen2.5:7b
+```
+
+```bash
+# LLaMA.cpp server https://github.com/ggml-org/llama.cpp/tree/master/tools/server
+./llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080
 ```
 
 2. Setting your model

@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "difficulty": "easy",
+    "description": "1) agent autonomously triggers search/browser to retrieve real data instead of hallucinating, 2) browser use with scrolling to locate specific modules, 3) instruction following for file creation with specific name and format.",
+    "tags": [
+      "browser",
+      "research",
+      "markdown",
+      "instruction-following",
+      "code-related"
+    ]
+  },
+  "data": {
+    "name": "1",
+    "question": "Find what's new in Python 3.13 for the `warnings` and `multiprocessing` modules. Create a markdown file named 'python313_features.md' with each module name as a heading (#) and the exact text description from the official documentation as the content below each heading. Only make sure any code or script references are wrapped in backticks.",
+    "env": {}
+  },
+  "tests": {
+    "checker": ["benchmark/checker/1.py"],
+    "grader": ["benchmark/grader/1.py"]
+  }
+}

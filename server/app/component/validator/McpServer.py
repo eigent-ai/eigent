@@ -12,18 +12,18 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from pydantic import BaseModel, ValidationError, field_validator
-from typing import Dict, List, Optional
+
+from pydantic import BaseModel, ValidationError
 
 
 class McpServerItem(BaseModel):
     command: str
-    args: List[str]
-    env: Optional[Dict[str, str]] = None
+    args: list[str]
+    env: dict[str, str] | None = None
 
 
 class McpServersModel(BaseModel):
-    mcpServers: Dict[str, McpServerItem]
+    mcpServers: dict[str, McpServerItem]
 
 
 class McpRemoteServer(BaseModel):

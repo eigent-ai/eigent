@@ -12,19 +12,30 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
 from datetime import datetime
 from typing import Any
-from sqlalchemy import delete
-from sqlmodel import Field, SQLModel, Session, col, func, TIMESTAMP, select, text
-from app.component import code
-from sqlalchemy.sql.expression import ColumnExpressionArgument
-from sqlalchemy.sql.base import ExecutableOption
-from sqlalchemy.orm import declared_attr
-from fastapi_babel import _
-from app.exception.exception import UserException
-from app.component.database import engine
+
 from convert_case import snake_case
-import logging
+from fastapi_babel import _
+from sqlalchemy import delete
+from sqlalchemy.orm import declared_attr
+from sqlalchemy.sql.base import ExecutableOption
+from sqlalchemy.sql.expression import ColumnExpressionArgument
+from sqlmodel import (
+    TIMESTAMP,
+    Field,
+    Session,
+    SQLModel,
+    col,
+    func,
+    select,
+    text,
+)
+
+from app.component import code
+from app.component.database import engine
+from app.exception.exception import UserException
 
 logger = logging.getLogger("abstract_model")
 
@@ -44,13 +55,16 @@ class AbstractModel(SQLModel):
         options: ExecutableOption | list[ExecutableOption] | None = None,
         s: Session,
     ):
-        logger.debug("Executing query by conditions", extra={
-            "model_class": cls.__name__,
-            "has_order_by": order_by is not None,
-            "limit": limit,
-            "offset": offset,
-            "has_options": options is not None
-        })
+        logger.debug(
+            "Executing query by conditions",
+            extra={
+                "model_class": cls.__name__,
+                "has_order_by": order_by is not None,
+                "limit": limit,
+                "offset": offset,
+                "has_options": options is not None,
+            },
+        )
         stmt = select(cls).where(*whereclause)
         if order_by is not None:
             stmt = stmt.order_by(order_by)
@@ -71,11 +85,9 @@ class AbstractModel(SQLModel):
         logger.debug("Checking if record exists", extra={"model_class": cls.__name__})
         res = s.exec(select(func.count("*")).where(*whereclause)).first()
         result = res is not None and res > 0
-        logger.debug("Record existence check result", extra={
-            "model_class": cls.__name__,
-            "exists": result,
-            "count": res
-        })
+        logger.debug(
+            "Record existence check result", extra={"model_class": cls.__name__, "exists": result, "count": res}
+        )
         return result
 
     @classmethod
@@ -106,19 +118,15 @@ class AbstractModel(SQLModel):
         stmt = delete(cls).where(*whereclause)
         result = s.connection().execute(stmt)
         s.commit()
-        logger.info("Records deleted", extra={
-            "model_class": cls.__name__,
-            "rows_affected": result.rowcount
-        })
+        logger.info("Records deleted", extra={"model_class": cls.__name__, "rows_affected": result.rowcount})
 
     def save(self, s: Session | None = None):
-        model_id = getattr(self, 'id', None)
+        model_id = getattr(self, "id", None)
         is_new = model_id is None
-        logger.info("Saving model", extra={
-            "model_class": self.__class__.__name__,
-            "model_id": model_id,
-            "is_new_record": is_new
-        })
+        logger.info(
+            "Saving model",
+            extra={"model_class": self.__class__.__name__, "model_id": model_id, "is_new_record": is_new},
+        )
 
         if s is None:
             with Session(engine, expire_on_commit=False) as s:
@@ -128,21 +136,23 @@ class AbstractModel(SQLModel):
             s.add(self)
             s.commit()
 
-        logger.info("Model saved successfully", extra={
-            "model_class": self.__class__.__name__,
-            "model_id": getattr(self, 'id', None),
-            "was_new_record": is_new
-        })
+        logger.info(
+            "Model saved successfully",
+            extra={
+                "model_class": self.__class__.__name__,
+                "model_id": getattr(self, "id", None),
+                "was_new_record": is_new,
+            },
+        )
 
     def delete(self, s: Session):
-        model_id = getattr(self, 'id', None)
+        model_id = getattr(self, "id", None)
         is_soft_delete = isinstance(self, DefaultTimes)
 
-        logger.info("Deleting model", extra={
-            "model_class": self.__class__.__name__,
-            "model_id": model_id,
-            "is_soft_delete": is_soft_delete
-        })
+        logger.info(
+            "Deleting model",
+            extra={"model_class": self.__class__.__name__, "model_id": model_id, "is_soft_delete": is_soft_delete},
+        )
 
         if isinstance(self, DefaultTimes):
             self.deleted_at = datetime.now()
@@ -151,11 +161,10 @@ class AbstractModel(SQLModel):
             s.delete(self)
             s.commit()
 
-        logger.info("Model deleted successfully", extra={
-            "model_class": self.__class__.__name__,
-            "model_id": model_id,
-            "was_soft_delete": is_soft_delete
-        })
+        logger.info(
+            "Model deleted successfully",
+            extra={"model_class": self.__class__.__name__, "model_id": model_id, "was_soft_delete": is_soft_delete},
+        )
 
     def update_fields(self, update_dict: dict):
         for k, v in update_dict.items():

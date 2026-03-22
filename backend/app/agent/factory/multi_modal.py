@@ -13,44 +13,59 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import platform
 
-from app.agent.agent_model import agent_model
-from app.agent.listen_chat_agent import logger
-from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
-from app.agent.utils import NOW_STR
-from app.model.chat import Chat
-from app.service.task import Agents
-from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
-from app.utils.toolkit.human_toolkit import HumanToolkit
-from app.utils.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
-# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.openai_image_toolkit import OpenAIImageToolkit
-from app.utils.toolkit.search_toolkit import SearchToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from camel.messages import BaseMessage
 from camel.models import OpenAIAudioModels
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
+
+from app.agent.agent_model import agent_model
+from app.agent.listen_chat_agent import logger
+from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
+from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
+from app.agent.toolkit.human_toolkit import HumanToolkit
+
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.openai_image_toolkit import OpenAIImageToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
+from app.agent.utils import NOW_STR
+from app.model.chat import Chat
+from app.service.task import Agents
+from app.utils.file_utils import get_working_directory
 
 
 def multi_modal_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
         f"Creating multi-modal agent for project: {options.project_id} "
-        f"in directory: {working_directory}")
+        f"in directory: {working_directory}"
+    )
 
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.multi_modal_agent).send_message_to_user)
+            options.project_id, Agents.multi_modal_agent
+        ).send_message_to_user
+    )
     video_download_toolkit = VideoDownloaderToolkit(
-        options.project_id, working_directory=working_directory)
+        options.project_id, working_directory=working_directory
+    )
     video_download_toolkit = message_integration.register_toolkits(
-        video_download_toolkit)
-    image_analysis_toolkit = ImageAnalysisToolkit(options.project_id)
-    image_analysis_toolkit = message_integration.register_toolkits(
-        image_analysis_toolkit)
+        video_download_toolkit
+    )
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id,
+        working_directory=working_directory,
+        agent_name=Agents.multi_modal_agent,
+    )
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -67,13 +82,33 @@ def multi_modal_agent(options: Chat):
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
+
+    skill_toolkit = SkillToolkit(
+        options.project_id,
+        Agents.multi_modal_agent,
+        working_directory=working_directory,
+        user_id=options.skill_config_user_id(),
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
+    search_tools = SearchToolkit.get_can_use_tools(
+        options.project_id, agent_name=Agents.multi_modal_agent
+    )
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
     tools = [
         *video_download_toolkit.get_tools(),
-        *image_analysis_toolkit.get_tools(),
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.multi_modal_agent),
+        *screenshot_toolkit.get_tools(),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.multi_modal_agent
+        ),
         *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
+        *skill_toolkit.get_tools(),
+        *search_tools,
     ]
     if options.is_cloud():
         # TODO: check llm has this model
@@ -88,7 +123,8 @@ def multi_modal_agent(options: Chat):
             url=options.api_url,
         )
         open_ai_image_toolkit = message_integration.register_toolkits(
-            open_ai_image_toolkit)
+            open_ai_image_toolkit
+        )
         tools = [
             *tools,
             *open_ai_image_toolkit.get_tools(),
@@ -109,7 +145,8 @@ def multi_modal_agent(options: Chat):
             ),
         )
         audio_analysis_toolkit = message_integration.register_toolkits(
-            audio_analysis_toolkit)
+            audio_analysis_toolkit
+        )
         tools.extend(audio_analysis_toolkit.get_tools())
 
     system_message = MULTI_MODAL_SYS_PROMPT.format(
@@ -130,11 +167,15 @@ def multi_modal_agent(options: Chat):
         tool_names=[
             VideoDownloaderToolkit.toolkit_name(),
             AudioAnalysisToolkit.toolkit_name(),
-            ImageAnalysisToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
             OpenAIImageToolkit.toolkit_name(),
             HumanToolkit.toolkit_name(),
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             SearchToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
+        ],
+        toolkits_to_register_agent=[
+            screenshot_toolkit_for_agent_registration,
         ],
     )

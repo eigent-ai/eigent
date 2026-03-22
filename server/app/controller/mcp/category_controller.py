@@ -12,13 +12,11 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Annotated
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlmodel import Session, col, select
 
 from app.component.database import session
 from app.model.mcp.category import Category, CategoryOut
-
 
 router = APIRouter(prefix="/mcp", tags=["Mcp Category"])
 

@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from typing import Annotated, Literal
+
 from pydantic import HttpUrl
 from pydantic.functional_serializers import PlainSerializer
 

@@ -3,17 +3,17 @@ name: Build
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
     paths-ignore:
-      - "**.md"
-      - "**.spec.js"
-      - ".idea"
-      - ".vscode"
-      - ".dockerignore"
-      - "Dockerfile"
-      - ".gitignore"
-      - ".github/**"
-      - "!.github/workflows/build.yml"
+      - '**.md'
+      - '**.spec.js'
+      - '.idea'
+      - '.vscode'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - '.gitignore'
+      - '.github/**'
+      - '!.github/workflows/build.yml'
 
 permissions:
   contents: write
@@ -29,6 +29,9 @@ jobs:
           - os: macos-latest
             arch: arm64
             artifact_name: macos-arm64
+          - os: macos-15-intel
+            arch: x64
+            artifact_name: macos-intel
           - os: windows-latest
             arch: x64
             artifact_name: windows-latest
@@ -38,7 +41,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           clean: true
 
@@ -93,17 +96,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
+      # Install LLVM 20 for macOS Intel - llvmlite 0.46.0 only supports LLVM 20 (not 21)
+      - name: Install LLVM 20 (macOS Intel)
+        if: runner.os == 'macOS' && matrix.arch == 'x64'
+        run: |
+          brew install llvm@20
+          echo "LLVM_DIR=$(brew --prefix llvm@20)/lib/cmake/llvm" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix llvm@20)/lib/cmake/llvm" >> $GITHUB_ENV
+
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
         timeout-minutes: 90
         run: |
-          # Increase file descriptor limit to prevent EMFILE errors during signing
-          # This is needed because electron-builder signs all files recursively,
-          # and Python venvs contain thousands of files
-          ulimit -n 65536 || ulimit -n 10240
-          echo "File descriptor limit set to: $(ulimit -n)"
-          npm run build -- --arch ${{ matrix.arch }}
+          # Set file descriptor limit to system maximum (hard limit) to prevent EMFILE during signing
+          HARD=$(ulimit -Hn 2>/dev/null)
+          if [ -n "$HARD" ] && [ "$HARD" != "unlimited" ]; then
+            ulimit -n "$HARD" 2>/dev/null || true
+          fi
+          ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
+          echo "File descriptor limit: $(ulimit -n) (hard: $(ulimit -Hn 2>/dev/null || echo 'N/A'))"
+          npm run build -- --${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CERT_P12 }}
@@ -112,6 +125,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
@@ -121,10 +135,11 @@ jobs:
       - name: Build Release Files (Windows without signing)
         if: runner.os == 'Windows'
         timeout-minutes: 90
-        run: npm run build -- --arch ${{ matrix.arch }}
+        run: npm run build -- --${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
@@ -138,6 +153,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
@@ -205,13 +221,19 @@ jobs:
     steps:
       - name: Create directories
         run: |
-          mkdir -p release/mac-arm64 release/win-x64 release/linux-x64
+          mkdir -p release/mac-arm64 release/mac-intel release/win-x64 release/linux-x64
 
       - name: Download mac-arm64 artifact
         uses: actions/download-artifact@v7
         with:
           name: release-macos-arm64-arm64
           path: temp-mac-arm64
+
+      - name: Download mac-intel artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: release-macos-intel-x64
+          path: temp-mac-intel
 
       - name: Download win-x64 artifact
         uses: actions/download-artifact@v7
@@ -236,6 +258,13 @@ jobs:
             find temp-mac-arm64 \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-arm64/ \; || true
           fi
 
+          # mac-intel - move dmg, zip, blockmap, and yml files
+          if [ -d "temp-mac-intel/release" ]; then
+            find temp-mac-intel/release \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-intel/ \; || true
+          else
+            find temp-mac-intel \( -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.zip" -o -name "*.zip.blockmap" -o -name "latest*.yml" \) -exec mv {} release/mac-intel/ \; || true
+          fi
+
           # win-x64 - move exe, blockmap, and yml files
           if [ -d "temp-win-x64/release" ]; then
             find temp-win-x64/release \( -name "*.exe" -o -name "*.exe.blockmap" -o -name "latest*.yml" \) -exec mv {} release/win-x64/ \; || true
@@ -251,12 +280,264 @@ jobs:
           fi
 
       # Create GitHub Release
+      - name: Prepare GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          # GitHub release assets must have unique filenames.
+          # Both mac folders contain latest-mac.yml, so stage assets with
+          # channel-specific manifest names for macOS and keep one compatibility file.
+          rm -rf gh-release-assets
+          mkdir -p gh-release-assets
+
+          copy_file() {
+            local src_file="$1"
+            local dst_name="$2"
+            [ -f "$src_file" ] || return 0
+
+            if [ -e "gh-release-assets/$dst_name" ]; then
+              echo "Duplicate release asset name detected: $dst_name"
+              echo "  existing: gh-release-assets/$dst_name"
+              echo "  incoming: $src_file"
+              exit 1
+            fi
+
+            cp -f "$src_file" "gh-release-assets/$dst_name"
+          }
+
+          copy_assets() {
+            local src_dir="$1"
+            local skip_name="${2:-}"
+            [ -d "$src_dir" ] || return 0
+
+            while IFS= read -r -d '' file; do
+              local name
+              name="$(basename "$file")"
+
+              if [ -n "$skip_name" ] && [ "$name" = "$skip_name" ]; then
+                continue
+              fi
+
+              copy_file "$file" "$name"
+            done < <(find "$src_dir" -maxdepth 1 -type f -print0)
+          }
+
+          # Stage all normal artifacts (exclude duplicate mac manifest names first).
+          copy_assets "release/mac-arm64" "latest-mac.yml"
+          copy_assets "release/mac-intel" "latest-mac.yml"
+          copy_assets "release/win-x64"
+          copy_assets "release/linux-x64"
+
+          # macOS updater channels configured in electron/main/update.ts:
+          # arm64 -> latest-arm64-mac.yml, x64 -> latest-x64-mac.yml
+          copy_file "release/mac-arm64/latest-mac.yml" "latest-arm64-mac.yml"
+          copy_file "release/mac-intel/latest-mac.yml" "latest-x64-mac.yml"
+
+          # Compatibility manifest for clients still using default latest-mac.yml.
+          copy_file "release/mac-intel/latest-mac.yml" "latest-mac.yml"
+
+          echo "Prepared GitHub release assets:"
+          ls -1 gh-release-assets
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: |
-            release/mac-arm64/*
-            release/win-x64/*
-            release/linux-x64/*
+            gh-release-assets/*
+
+      # Extract version from tag (e.g., v0.0.85 -> 0.0.88)
+      - name: Extract version
+        if: startsWith(github.ref, 'refs/tags/')
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      # Configure AWS credentials (skipped when AWS secrets not configured)
+      - name: Configure AWS credentials
+        id: aws-check
+        if: env.AWS_ACCESS_KEY_ID != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Upload to S3 - versioned directory (immutable; all files get long cache)
+      - name: Upload to S3 (versioned)
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+
+          echo "Uploading version $VERSION to S3 bucket: $BUCKET"
+
+          declare -a targets=(
+            "release/mac-arm64 mac-arm64"
+            "release/mac-intel mac-intel"
+            "release/win-x64 win-x64"
+            "release/linux-x64 linux-x64"
+          )
+          for t in "${targets[@]}"; do
+            src_dir="${t%% *}"
+            path_suffix="${t##* }"
+            if [ -d "$src_dir" ] && [ "$(ls -A "$src_dir")" ]; then
+              echo "Uploading $path_suffix files..."
+              aws s3 sync "$src_dir/" "s3://$BUCKET/releases/v$VERSION/$path_suffix/" \
+                --content-type "binary/octet-stream" \
+                --metadata-directive REPLACE \
+                --cache-control "public, max-age=31536000, immutable"
+            fi
+          done
+
+          echo "Version $VERSION uploaded successfully"
+
+      # Upload to S3 - latest directory
+      - name: Upload to S3 (latest)
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+
+          echo "Uploading latest release to S3 bucket: $BUCKET"
+
+          # Upload macOS ARM64 files to latest
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "Uploading latest macOS ARM64 files..."
+            aws s3 sync release/mac-arm64/ "s3://$BUCKET/releases/latest/mac-arm64/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/mac-arm64/ "s3://$BUCKET/releases/latest/mac-arm64/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload macOS Intel files to latest (if exists)
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "Uploading latest macOS Intel files..."
+            aws s3 sync release/mac-intel/ "s3://$BUCKET/releases/latest/mac-intel/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/mac-intel/ "s3://$BUCKET/releases/latest/mac-intel/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload Windows files to latest
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Uploading latest Windows files..."
+            aws s3 sync release/win-x64/ "s3://$BUCKET/releases/latest/win-x64/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/win-x64/ "s3://$BUCKET/releases/latest/win-x64/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          # Upload Linux files to latest
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Uploading latest Linux files..."
+            aws s3 sync release/linux-x64/ "s3://$BUCKET/releases/latest/linux-x64/" \
+              --delete \
+              --content-type "binary/octet-stream" \
+              --metadata-directive REPLACE \
+              --cache-control "public, max-age=300" \
+              --exclude "*.yml" \
+              --exclude "*.blockmap"
+
+            aws s3 sync release/linux-x64/ "s3://$BUCKET/releases/latest/linux-x64/" \
+              --delete \
+              --exclude "*" \
+              --include "*.yml" \
+              --include "*.blockmap" \
+              --cache-control "public, max-age=300"
+          fi
+
+          echo "Latest release uploaded successfully"
+
+      # Generate download URLs
+      - name: Generate download URLs
+        if: steps.aws-check.outcome == 'success'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.AWS_S3_BUCKET }}"
+          REGION="${{ secrets.AWS_REGION }}"
+
+          # Determine S3 endpoint based on region
+          if [[ "$REGION" == cn-* ]]; then
+            ENDPOINT="s3.$REGION.amazonaws.com.cn"
+          else
+            ENDPOINT="s3.$REGION.amazonaws.com"
+          fi
+
+          echo "================================"
+          echo "Download URLs for version v$VERSION"
+          echo "================================"
+          echo ""
+          echo "Versioned URLs:"
+
+          # Check which platforms exist and show URLs
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "macOS (ARM64):  https://$BUCKET.$ENDPOINT/releases/v$VERSION/mac-arm64/"
+          fi
+
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "macOS (Intel):  https://$BUCKET.$ENDPOINT/releases/v$VERSION/mac-intel/"
+          fi
+
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Windows (x64):  https://$BUCKET.$ENDPOINT/releases/v$VERSION/win-x64/"
+          fi
+
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Linux (x64):    https://$BUCKET.$ENDPOINT/releases/v$VERSION/linux-x64/"
+          fi
+
+          echo ""
+          echo "Latest URLs:"
+
+          if [ -d "release/mac-arm64" ] && [ "$(ls -A release/mac-arm64)" ]; then
+            echo "macOS (ARM64):  https://$BUCKET.$ENDPOINT/releases/latest/mac-arm64/"
+          fi
+
+          if [ -d "release/mac-intel" ] && [ "$(ls -A release/mac-intel)" ]; then
+            echo "macOS (Intel):  https://$BUCKET.$ENDPOINT/releases/latest/mac-intel/"
+          fi
+
+          if [ -d "release/win-x64" ] && [ "$(ls -A release/win-x64)" ]; then
+            echo "Windows (x64):  https://$BUCKET.$ENDPOINT/releases/latest/win-x64/"
+          fi
+
+          if [ -d "release/linux-x64" ] && [ "$(ls -A release/linux-x64)" ]; then
+            echo "Linux (x64):    https://$BUCKET.$ENDPOINT/releases/latest/linux-x64/"
+          fi
+
+          echo "================================"

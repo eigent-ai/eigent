@@ -13,10 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from typing import ClassVar
+
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlmodel import Field, select
 from sqlalchemy.orm import Mapped, query_expression
+from sqlmodel import Field, select
+
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 

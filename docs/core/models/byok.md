@@ -1,6 +1,6 @@
 ---
-title: "Bring Your Own Key (BYOK)"
-description: "Configure your own API keys to use various LLM providers with Eigent."
+title: Bring Your Own Key (BYOK)
+description: Configure your own API keys to use various LLM providers with Eigent.
 ---
 
 ## What is BYOK?
@@ -16,22 +16,18 @@ description: "Configure your own API keys to use various LLM providers with Eige
 ### Step 1: Get Your API Key
 
 1. Visit the [OpenAI API Keys page](https://platform.openai.com/api-keys)
-2. Click **"Create new secret key"**
-3. Copy the generated key (you won't be able to see it again)
+1. Click **"Create new secret key"**
+1. Copy the generated key (you won't be able to see it again)
 
 ### Step 2: Configure in Eigent
 
-1. Launch Eigent and go to **Settings** \> **Models**
-2. Find the **OpenAI** card in the Custom Model section
+1. Launch Eigent and go to **Agent** > **Models**
 
-   <img
-     src="/images/Screenshot2026-01-20at18.13.45.png"
-     alt="Screenshot 2026 01 20 At 18 13 45"
-     title="Screenshot 2026 01 20 At 18 13 45"
-     className="mr-auto"
-     style={{ width:"74%" }}
-   />
-3. Fill in the following fields:
+1. Find the **OpenAI** card in the Custom Model section
+
+![byok_1](/docs/images/byok_1.png)
+
+1. Fill in the following fields:
 
 | Field          | Value                     | Example                     |
 | -------------- | ------------------------- | --------------------------- |
@@ -40,7 +36,7 @@ description: "Configure your own API keys to use various LLM providers with Eige
 | **Model Type** | The model you want to use | `gpt-4o`, `gpt-4o-mini`     |
 
 4. Click **Save** to validate and store your configuration
-5. Click **Set as Default** to use this provider for your agents
+1. Click **Set as Default** to use this provider for your agents
 
 ## Configuration Fields
 
@@ -75,7 +71,7 @@ Eigent supports the following BYOK providers:
 | Provider              | Default API Host                                           | Official Documentation                                                                        |
 | --------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | **OpenAI**            | `https://api.openai.com/v1`                                | [OpenAI API Docs](https://platform.openai.com/docs/api-reference)                             |
-| **Anthropic**         | `https://api.anthropic.com/v1/`                            | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
+| **Anthropic**         | `https://api.anthropic.com/`                               | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
 | **Google Gemini**     | `https://generativelanguage.googleapis.com/v1beta/openai/` | [Gemini API Docs](https://ai.google.dev/gemini-api/docs)                                      |
 | **OpenRouter**        | `https://openrouter.ai/api/v1`                             | [OpenRouter Docs](https://openrouter.ai/docs)                                                 |
 | **Qwen (Alibaba)**    | `https://dashscope.aliyuncs.com/compatible-mode/v1`        | [Qwen API Docs](https://help.aliyun.com/zh/dashscope/developer-reference/api-details)         |

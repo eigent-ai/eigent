@@ -12,11 +12,14 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import os
+import re
 from pathlib import Path
-from app.component.babel import babel_configs, babel
-import re, os
-from fastapi_babel.middleware import Babel, LANGUAGES_PATTERN
+
+from fastapi_babel.middleware import LANGUAGES_PATTERN
 from pydantic_i18n import JsonLoader, PydanticI18n
+
+from app.component.babel import babel, babel_configs
 
 
 def get_language(lang_code: str | None = None):
@@ -40,7 +43,10 @@ def get_language(lang_code: str | None = None):
 
     matches = re.finditer(LANGUAGES_PATTERN, lang_code)
     languages = [
-        (f"{m.group(1)}{f'_{m.group(2)}' if m.group(2) else ''}", m.group(3) or "")
+        (
+            f"{m.group(1)}{f'_{m.group(2)}' if m.group(2) else ''}",
+            m.group(3) or "",
+        )
         for m in matches
     ]
     languages = sorted(
@@ -64,7 +70,9 @@ def get_language(lang_code: str | None = None):
 
     # Return language with explicit priority or default value
     return (
-        explicit_priority if explicit_priority else babel_configs.BABEL_DEFAULT_LOCALE
+        explicit_priority
+        if explicit_priority
+        else babel_configs.BABEL_DEFAULT_LOCALE
     )
 
 

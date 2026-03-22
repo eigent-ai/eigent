@@ -12,76 +12,103 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from "@/components/ui/button";
-import { Copy } from "lucide-react";
-import { useState } from "react";
+import { Button } from '@/components/ui/button';
+import { Check, Copy } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
+const COPIED_RESET_MS = 2000;
 
 interface FeedbackCardProps {
-	id: string;
-	title: string;
-	content: string;
-	onConfirm?: () => void;
-	onSkip?: () => void;
-	className?: string;
+  id: string;
+  title: string;
+  content: string;
+  onConfirm?: () => void;
+  onSkip?: () => void;
+  className?: string;
 }
 
 export function FeedbackCard({
-	id,
-	title,
-	content,
-	onConfirm,
-	onSkip,
-	className,
+  id,
+  title,
+  content,
+  onConfirm,
+  onSkip,
+  className,
 }: FeedbackCardProps) {
-	const [isHovered, setIsHovered] = useState(false);
+  const [_isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+  const { t } = useTranslation();
 
-	const handleCopy = () => {
-		navigator.clipboard.writeText(content);
-	};
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success(t('setting.copied-to-clipboard'));
+      setCopied(true);
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        setCopied(false);
+        timeoutRef.current = null;
+      }, COPIED_RESET_MS);
+    } catch {
+      toast.error(t('setting.failed-to-copy-to-clipboard'));
+    }
+  }, [content, t]);
 
-	return (
-		<div
-			key={id}
-			className={`bg-message-fill-secondary w-full rounded-xl border px-4 py-3 flex flex-col gap-4 items-center justify-center relative group overflow-hidden ${className || ""}`}
-			onMouseEnter={() => setIsHovered(true)}
-			onMouseLeave={() => setIsHovered(false)}
-		>
-			{/* Copy button - appears on hover */}
-			<div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-				<Button onClick={handleCopy} variant="ghost" size="icon">
-					<Copy className="w-4 h-4" />
-				</Button>
-			</div>
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
-			{/* Title */}
-			<p className="font-inter font-bold leading-normal text-sm text-text-body w-full">
-				{title}
-			</p>
+  return (
+    <div
+      key={id}
+      className={`bg-message-fill-secondary group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border px-4 py-3 ${className || ''}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Copy button - appears on hover */}
+      <div className="absolute bottom-1 right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        <Button onClick={handleCopy} variant="ghost" size="icon">
+          {copied ? (
+            <Check className="h-4 w-4 text-text-success" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
 
-			{/* Content */}
-			<p className="font-inter font-medium leading-normal text-sm text-text-body w-full">
-				{content}
-			</p>
+      {/* Title */}
+      <p className="w-full font-inter text-sm font-bold leading-normal text-text-body">
+        {title}
+      </p>
 
-			{/* Action buttons */}
-			<div className="flex gap-1 items-center w-full">
-				<Button
-					onClick={onConfirm}
-					variant="primary"
-					size="xs"
-					className="flex-1"
-				>
-					Answer Agent
-				</Button>
-				<Button
-					onClick={onSkip}
-					variant="ghost"
-					size="xs"
-					className="flex-1"
-				>
-					Skip
-				</Button>
-			</div>
-		</div>
-	);
+      {/* Content */}
+      <p className="w-full font-inter text-sm font-medium leading-normal text-text-body">
+        {content}
+      </p>
+
+      {/* Action buttons */}
+      <div className="flex w-full items-center gap-1">
+        <Button
+          onClick={onConfirm}
+          variant="primary"
+          size="xs"
+          className="flex-1"
+        >
+          Answer Agent
+        </Button>
+        <Button onClick={onSkip} variant="ghost" size="xs" className="flex-1">
+          Skip
+        </Button>
+      </div>
+    </div>
+  );
 }

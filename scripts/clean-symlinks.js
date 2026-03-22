@@ -13,6 +13,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+/* global console, process */
+
 /**
  * Clean invalid symbolic links before packaging
  * This script removes symbolic links that point outside the bundle
@@ -27,7 +29,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-const VENV_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'venv');
+// const VENV_DIR = path.join(projectRoot, 'resources', 'prebuilt', 'venv');
 
 /**
  * Check if a symlink is valid (points to an existing file within the bundle)
@@ -55,6 +57,7 @@ function isValidSymlink(symlinkPath, bundleRoot) {
 
     return true;
   } catch (error) {
+    console.error(`Error checking symlink: ${error}`);
     return false;
   }
 }
@@ -71,7 +74,13 @@ function fixPythonSymlinks(venvBinDir, bundleRoot) {
   const bundlePath = path.resolve(bundleRoot);
   const isWindows = process.platform === 'win32';
   const pythonNames = isWindows
-    ? ['python.exe', 'python3.exe', 'python3.10.exe', 'python3.11.exe', 'python3.12.exe']
+    ? [
+        'python.exe',
+        'python3.exe',
+        'python3.10.exe',
+        'python3.11.exe',
+        'python3.12.exe',
+      ]
     : ['python', 'python3', 'python3.10', 'python3.11', 'python3.12'];
 
   for (const pythonName of pythonNames) {
@@ -82,16 +91,23 @@ function fixPythonSymlinks(venvBinDir, bundleRoot) {
         const stats = fs.lstatSync(pythonSymlink);
         if (stats.isSymbolicLink()) {
           const target = fs.readlinkSync(pythonSymlink);
-          const resolvedPath = path.resolve(path.dirname(pythonSymlink), target);
+          const resolvedPath = path.resolve(
+            path.dirname(pythonSymlink),
+            target
+          );
 
           // If symlink points outside bundle (especially to cache), remove it
           if (!resolvedPath.startsWith(bundlePath)) {
-            console.log(`Removing invalid ${pythonName} symlink pointing to: ${target}`);
+            console.log(
+              `Removing invalid ${pythonName} symlink pointing to: ${target}`
+            );
             fs.unlinkSync(pythonSymlink);
           }
         }
       } catch (error) {
-        console.warn(`Warning: Could not process ${pythonName} symlink: ${error.message}`);
+        console.warn(
+          `Warning: Could not process ${pythonName} symlink: ${error.message}`
+        );
       }
     }
   }
@@ -127,7 +143,9 @@ function cleanSymlinks(dir, bundleRoot, removed = []) {
         }
       } catch (error) {
         // Ignore errors for individual files
-        console.warn(`Warning: Could not process ${fullPath}: ${error.message}`);
+        console.warn(
+          `Warning: Could not process ${fullPath}: ${error.message}`
+        );
       }
     }
   } catch (error) {
@@ -145,7 +163,11 @@ function main() {
 
   const bundleRoot = path.join(projectRoot, 'resources', 'prebuilt');
   const isWindows = process.platform === 'win32';
-  const venvBinDir = path.join(bundleRoot, 'venv', isWindows ? 'Scripts' : 'bin');
+  const venvBinDir = path.join(
+    bundleRoot,
+    'venv',
+    isWindows ? 'Scripts' : 'bin'
+  );
 
   // First, try to fix Python symlinks specifically
   if (fs.existsSync(venvBinDir)) {

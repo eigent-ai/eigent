@@ -12,18 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { toast } from "sonner";
-import { useTranslation } from "react-i18next";
+import i18n from '@/i18n';
+import { toast } from 'sonner';
+
 export function showTrafficToast() {
-	toast.dismiss();
-	const { t } = useTranslation();
-	toast(
-		<div>
-			{t("chat.we-re-experiencing-high-traffic-please-try-again-in-a-few-moments")}
-		</div>,
-		{
-			duration: 5000,
-			closeButton: true,
-		}
-	);
+  toast.dismiss();
+  toast(
+    <div>
+      {i18n.t(
+        'chat.we-re-experiencing-high-traffic-please-try-again-in-a-few-moments'
+      )}
+    </div>,
+    {
+      duration: 5000,
+      closeButton: true,
+    }
+  );
 }

@@ -13,10 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import json
-from fastapi import APIRouter, Depends, Request
-from fastapi_babel import _
-from fastapi.responses import HTMLResponse
 
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
 
 router = APIRouter(tags=["Redirect"])
 
@@ -75,7 +74,7 @@ def redirect_callback(code: str, request: Request):
                 const allCookies = {cookies_json};
                 const baseUrl = "eigent://callback?code={code}";
                 let finalUrl = baseUrl;
-                
+
                 // 自动跳转到应用
                 window.location.href = finalUrl;
             }})();

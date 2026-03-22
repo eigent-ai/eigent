@@ -177,7 +177,7 @@ var AccessTypeWithoutProjectId = createKnownErrorConstructor(
     400,
     deindent`
       The x-stack-access-type header was '${accessType}', but the x-stack-project-id header was not provided.
-      
+
       For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
     `,
     {
@@ -193,7 +193,7 @@ var AccessTypeRequired = createKnownErrorConstructor(
     400,
     deindent`
       You must specify an access level for this Stack project. Make sure project API keys are provided (eg. x-stack-publishable-client-key) and you set the x-stack-access-type header to 'client', 'server', or 'admin'.
-      
+
       For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
     `
   ],

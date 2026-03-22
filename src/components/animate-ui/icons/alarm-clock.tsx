@@ -14,13 +14,12 @@
 
 'use client';
 
-import * as React from 'react';
 import { motion, type Variants } from 'motion/react';
 
 import {
   getVariants,
-  useAnimateIconContext,
   IconWrapper,
+  useAnimateIconContext,
   type IconProps,
 } from '@/components/animate-ui/icons/icon';
 
@@ -253,9 +252,9 @@ function AlarmClock(props: AlarmClockProps) {
 }
 
 export {
-  animations,
   AlarmClock,
   AlarmClock as AlarmClockIcon,
-  type AlarmClockProps,
+  animations,
   type AlarmClockProps as AlarmClockIconProps,
+  type AlarmClockProps,
 };

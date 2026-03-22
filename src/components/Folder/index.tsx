@@ -12,29 +12,101 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useEffect, useRef, useState } from 'react';
-import {
-  ChevronsLeft,
-  Search,
-  FileText,
-  CodeXml,
-  ChevronLeft,
-  Download,
-  Folder as FolderIcon,
-  ChevronRight,
-  ChevronDown,
-} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsLeft,
+  CodeXml,
+  Download,
+  FileText,
+  Folder as FolderIcon,
+  Search,
+  SquareTerminal,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
 
-import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
-import { useAuthStore } from '@/store/authStore';
 import { proxyFetchGet } from '@/api/http';
-import { useTranslation } from 'react-i18next';
+import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { ZoomControls } from './ZoomControls';
+import {
+  deferInlineScriptsUntilLoad,
+  injectFontStyles,
+} from '@/lib/htmlFontStyles';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
-import { injectFontStyles } from '@/lib/htmlFontStyles';
+import { useAuthStore } from '@/store/authStore';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { ZoomControls } from './ZoomControls';
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
+
+type FileTypeTarget = {
+  name?: string;
+  path?: string;
+  type?: string;
+};
+const loggedFileTypeWarnings = new Set<string>();
+
+function getExt(value?: string) {
+  if (!value) return '';
+  const normalized = value.split(/[?#]/)[0];
+  const lastSegment = normalized.split('/').pop() || normalized;
+  if (!lastSegment.includes('.')) return '';
+  return lastSegment.split('.').pop()?.toLowerCase() || '';
+}
+
+function getFileType(file: FileTypeTarget) {
+  const extFromNameOrPath = getExt(file.name) || getExt(file.path);
+  const normalizedType = (file.type || '').replace(/^\./, '').toLowerCase();
+  const fileId = file.path || file.name || 'unknown-file';
+
+  if (!extFromNameOrPath && normalizedType) {
+    const key = `missing-ext|${fileId}|${normalizedType}`;
+    if (!loggedFileTypeWarnings.has(key)) {
+      loggedFileTypeWarnings.add(key);
+      console.warn(
+        `[Folder getFileType] extension missing in name/path, file.type fallback disabled: ${fileId} (type=${normalizedType})`
+      );
+    }
+  }
+
+  if (
+    extFromNameOrPath &&
+    normalizedType &&
+    normalizedType !== 'folder' &&
+    extFromNameOrPath !== normalizedType
+  ) {
+    const key = `mismatch|${fileId}|${extFromNameOrPath}|${normalizedType}`;
+    if (!loggedFileTypeWarnings.has(key)) {
+      loggedFileTypeWarnings.add(key);
+      console.warn(
+        `[Folder getFileType] extension/type mismatch for ${fileId}: inferred=${extFromNameOrPath}, type=${normalizedType}`
+      );
+    }
+  }
+
+  return extFromNameOrPath;
+}
+
+function isImageFile(file: FileTypeTarget) {
+  return IMAGE_EXTENSIONS.includes(getFileType(file));
+}
+function isAudioFile(file: FileTypeTarget) {
+  return AUDIO_EXTENSIONS.includes(getFileType(file));
+}
+function isVideoFile(file: FileTypeTarget) {
+  return VIDEO_EXTENSIONS.includes(getFileType(file));
+}
 
 // Type definitions
 interface FileTreeNode {
@@ -69,7 +141,7 @@ interface FileTreeProps {
   isShowSourceCode: boolean;
 }
 
-const FileTree: React.FC<FileTreeProps> = ({
+export const FileTree: React.FC<FileTreeProps> = ({
   node,
   level = 0,
   selectedFile,
@@ -103,29 +175,33 @@ const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`w-full flex items-center justify-start p-2 text-sm rounded-xl bg-fill-fill-transparent text-primary hover:bg-fill-fill-transparent-active transition-colors text-left backdrop-blur-lg ${
+              className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
                 selectedFile?.path === child.path
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
             >
-              {child.isFolder && (
-                <span className="w-4 h-4 flex items-center justify-center">
+              {child.isFolder ? (
+                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
                   {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className="h-4 w-4" />
                   ) : (
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="h-4 w-4" />
                   )}
                 </span>
+              ) : (
+                <span
+                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                  aria-hidden
+                />
               )}
-              {!child.isFolder && <span className="w-4" />}
 
               {child.isFolder ? (
-                <FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-600" />
+                <FolderIcon className="h-5 w-5 flex-shrink-0 text-yellow-600" />
               ) : child.icon ? (
-                <child.icon className="w-5 h-5 mr-2 flex-shrink-0" />
+                <child.icon className="h-5 w-5 flex-shrink-0" />
               ) : (
-                <FileText className="w-5 h-5 mr-2 flex-shrink-0" />
+                <FileText className="h-5 w-5 flex-shrink-0" />
               )}
 
               <span
@@ -170,17 +246,36 @@ function downloadByBrowser(url: string) {
     });
 }
 
-export default function Folder({ data }: { data?: Agent }) {
+export default function Folder({ data: _data }: { data?: Agent }) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
   const authStore = useAuthStore();
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [fileTree, setFileTree] = useState<FileTreeNode>({
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  });
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set()
+  );
+  const [fileGroups, setFileGroups] = useState<
+    {
+      folder: string;
+      files: FileInfo[];
+    }[]
+  >([
+    {
+      folder: 'Reports',
+      files: [],
+    },
+  ]);
+  const hasFetchedRemote = useRef(false);
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
     if (file.type === 'zip') {
@@ -216,6 +311,14 @@ export default function Folder({ data }: { data?: Agent }) {
       return;
     }
 
+    // For audio/video files, skip open-file — loaders handle reading themselves
+    if (isAudioFile(file) || isVideoFile(file)) {
+      setSelectedFile({ ...file });
+      chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+      setLoading(false);
+      return;
+    }
+
     // all other files call open-file interface, the backend handles download and parsing
     window.ipcRenderer
       .invoke('open-file', file.type, file.path, isShowSourceCode)
@@ -230,14 +333,11 @@ export default function Folder({ data }: { data?: Agent }) {
       });
   };
 
-  const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const isShowSourceCodeChange = () => {
     // all files can reload content
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
   };
-
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const buildFileTree = (files: FileInfo[]): FileTreeNode => {
     const root: FileTreeNode = {
@@ -263,7 +363,7 @@ export default function Folder({ data }: { data?: Agent }) {
       // Normalize paths to use forward slashes for cross-platform compatibility
       const normalizedRelativePath = (file.relativePath || '').replace(
         /\\/g,
-        '/',
+        '/'
       );
       const fullRelativePath = normalizedRelativePath
         ? `${normalizedRelativePath}/${file.name}`
@@ -292,17 +392,6 @@ export default function Folder({ data }: { data?: Agent }) {
     return root;
   };
 
-  const [fileTree, setFileTree] = useState<FileTreeNode>({
-    name: 'root',
-    path: '',
-    children: [],
-    isFolder: true,
-  });
-
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(),
-  );
-
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev);
@@ -315,32 +404,23 @@ export default function Folder({ data }: { data?: Agent }) {
     });
   };
 
-  const [fileGroups, setFileGroups] = useState<
-    {
-      folder: string;
-      files: FileInfo[];
-    }[]
-  >([
-    {
-      folder: 'Reports',
-      files: [],
-    },
-  ]);
-
-  const hasFetchedRemote = useRef(false);
-
-  // Reset hasFetchedRemote when activeTaskId changes
+  // Reset state when activeTaskId changes (e.g., new project created)
   useEffect(() => {
     hasFetchedRemote.current = false;
-  }, [chatStore.activeTaskId]);
+    setSelectedFile(null);
+    setFileTree({ name: 'root', path: '', children: [], isFolder: true });
+    setFileGroups([{ folder: 'Reports', files: [] }]);
+    setExpandedFolders(new Set());
+  }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
+    if (!chatStore) return;
     const setFileList = async () => {
       let res = null;
       res = await window.ipcRenderer.invoke(
         'get-project-file-list',
         authStore.email,
-        projectStore.activeProjectId as string,
+        projectStore.activeProjectId as string
       );
       let tree: any = null;
       if (
@@ -377,7 +457,7 @@ export default function Folder({ data }: { data?: Agent }) {
         if (chatStoreSelectedFile) {
           console.log(res, chatStoreSelectedFile);
           const file = res.find(
-            (item: any) => item.name === chatStoreSelectedFile.name,
+            (item: any) => item.name === chatStoreSelectedFile.name
           );
           console.log('file', file);
           if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
@@ -393,98 +473,156 @@ export default function Folder({ data }: { data?: Agent }) {
       });
     };
     setFileList();
-  }, [chatStore.tasks[chatStore.activeTaskId as string]?.taskAssigning]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning]);
+
+  const selectedFilePath =
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path;
 
   useEffect(() => {
+    if (!chatStore) return;
     const chatStoreSelectedFile =
       chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
       const file = fileGroups[0].files.find(
-        (item: any) => item.path === chatStoreSelectedFile.path,
+        (item: any) => item.path === chatStoreSelectedFile.path
       );
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
         selectedFileChange(file as FileInfo, isShowSourceCode);
       }
+    } else if (!chatStoreSelectedFile && selectedFile) {
+      setSelectedFile(null);
     }
-  }, [
-    chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile?.path,
-    fileGroups,
-    isShowSourceCode,
-    chatStore.activeTaskId,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);
+
+  if (!chatStore) {
+    return <div>Loading...</div>;
+  }
 
   const handleBack = () => {
-    chatStore.setActiveWorkSpace(chatStore.activeTaskId as string, 'workflow');
+    chatStore.setActiveWorkspace(chatStore.activeTaskId as string, 'workflow');
+  };
+
+  const handleOpenInIDE = async (ide: 'vscode' | 'cursor' | 'system') => {
+    try {
+      if (!authStore.email || !projectStore.activeProjectId) return;
+      const folderPath = await window.electronAPI.getProjectFolderPath(
+        authStore.email,
+        projectStore.activeProjectId
+      );
+      const result = await window.electronAPI.openInIDE(folderPath, ide);
+      if (!result.success) {
+        toast.error(result.error || t('chat.failed-to-open-folder'));
+      } else {
+        authStore.setPreferredIDE(ide);
+      }
+    } catch (error) {
+      console.error('Failed to open in IDE:', error);
+      toast.error(t('chat.failed-to-open-folder'));
+    }
   };
 
   return (
-    <div className="h-full w-full flex overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       {/* fileList */}
       <div
         className={`${
           isCollapsed ? 'w-16' : 'w-64'
-        } border-[0px] border-r border-r-zinc-200 border-zinc-300 !border-solid flex flex-col transition-all duration-300 ease-in-out flex-shrink-0`}
+        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-border-subtle-strong border-r-border-subtle transition-all duration-300 ease-in-out`}
       >
         {/* head */}
         <div
-          className={` py-2 border-b border-zinc-200 flex-shrink-0 ${
+          className={`flex-shrink-0 border-b border-border-subtle py-2 ${
             isCollapsed ? 'px-2' : 'pl-4 pr-2'
           }`}
         >
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleBack}
-                  size="sm"
-                  variant="ghost"
-                  className={`flex items-center gap-2`}
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="text-xl font-bold text-primary whitespace-nowrap">
+                <span className="text-body-base text-primary whitespace-nowrap font-bold">
                   {t('chat.agent-folder')}
                 </span>
               </div>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`${
-                isCollapsed ? 'w-full' : ''
-              } flex items-center justify-center`}
-              title={isCollapsed ? t('chat.open') : t('chat.close')}
-            >
-              <ChevronsLeft
-                className={`w-6 h-6 text-zinc-500 ${
-                  isCollapsed ? 'rotate-180' : ''
-                } transition-transform ease-in-out`}
-              />
-            </Button>
+            <div className="flex items-center">
+              {!isCollapsed &&
+                window.electronAPI?.getProjectFolderPath &&
+                window.electronAPI?.openInIDE && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('chat.open-in-ide')}
+                      >
+                        <SquareTerminal className="h-5 w-5 text-icon-secondary" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="z-50 border-dropdown-border bg-dropdown-bg"
+                    >
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('vscode')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-vscode')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('cursor')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-cursor')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleOpenInIDE('system')}
+                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      >
+                        {t('chat.open-in-file-manager')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className={`${
+                  isCollapsed ? 'w-full' : ''
+                } flex items-center justify-center`}
+                title={isCollapsed ? t('chat.open') : t('chat.close')}
+              >
+                <ChevronsLeft
+                  className={`h-6 w-6 text-icon-secondary ${
+                    isCollapsed ? 'rotate-180' : ''
+                  } transition-transform ease-in-out`}
+                />
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="px-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="flex-shrink-0 border-b border-border-subtle px-2">
             <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-primary" />
+              <Search className="text-primary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full pl-9 pr-2 py-2 text-sm border border-zinc-200 rounded-md border-solid focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-solid border-border-subtle py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-text-link"
               />
             </div>
           </div>
         )}
 
         {/* fileList */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {!isCollapsed ? (
             <div className="p-2">
               <div className="mb-2">
-                <div className="text-primary text-[10px] leading-4 font-bold px-2 py-1">
+                <div className="text-primary px-2 py-1 text-[10px] font-bold leading-4">
                   {t('chat.files')}
                 </div>
                 <FileTree
@@ -501,26 +639,26 @@ export default function Folder({ data }: { data?: Agent }) {
             </div>
           ) : (
             // Display simplified file icons when collapsed
-            <div className="p-2 space-y-2">
+            <div className="space-y-2 p-2">
               {fileGroups.map((group) =>
                 group.files.map((file) => (
                   <button
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
-                    className={`w-full flex items-center justify-center p-2 rounded-md hover:bg-fill-fill-primary-hover transition-colors ${
+                    className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
                       selectedFile?.name === file.name
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-zinc-600'
+                        ? 'bg-surface-information text-text-information'
+                        : 'text-text-secondary'
                     }`}
                     title={file.name}
                   >
                     {file.icon ? (
-                      <file.icon className="w-4 h-4" />
+                      <file.icon className="h-4 w-4" />
                     ) : (
-                      <FileText className="w-4 h-4" />
+                      <FileText className="h-4 w-4" />
                     )}
                   </button>
-                )),
+                ))
               )}
             </div>
           )}
@@ -528,10 +666,10 @@ export default function Folder({ data }: { data?: Agent }) {
       </div>
 
       {/* content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="px-4 py-2 border-b border-zinc-200 flex-shrink-0">
+          <div className="flex-shrink-0 border-b border-border-subtle px-4 py-2">
             <div className="flex h-[30px] items-center justify-between gap-2">
               <div
                 onClick={() => {
@@ -542,25 +680,25 @@ export default function Folder({ data }: { data?: Agent }) {
                   }
                   window.ipcRenderer.invoke(
                     'reveal-in-folder',
-                    selectedFile.path,
+                    selectedFile.path
                   );
                 }}
-                className="flex-1 min-w-0 overflow-hidden cursor-pointer flex items-center gap-2"
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden"
               >
-                <span className="block text-[15px] leading-[22px] font-medium text-primary overflow-hidden text-ellipsis whitespace-nowrap">
+                <span className="text-primary block overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-medium leading-[22px]">
                   {selectedFile.name}
                 </span>
                 <Button size="icon" variant="ghost">
-                  <Download className="w-4 h-4 text-zinc-500" />
+                  <Download className="h-4 w-4 text-icon-secondary" />
                 </Button>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
-                className=" flex-shrink-0"
+                className="flex-shrink-0"
                 onClick={() => isShowSourceCodeChange()}
               >
-                <CodeXml className="w-4 h-4 text-zinc-500" />
+                <CodeXml className="h-4 w-4 text-icon-secondary" />
               </Button>
             </div>
           </div>
@@ -568,10 +706,10 @@ export default function Folder({ data }: { data?: Agent }) {
 
         {/* content */}
         <div
-          className={`flex-1 min-h-0 ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'overflow-y-auto scrollbar'}`}
+          className={`flex min-h-0 flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`h-full ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'}`}
+            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
@@ -590,11 +728,11 @@ export default function Folder({ data }: { data?: Agent }) {
                 ) : selectedFile.type === 'pdf' ? (
                   <iframe
                     src={selectedFile.content as string}
-                    className="w-full h-full border-0"
+                    className="h-full w-full border-0"
                     title={selectedFile.name}
                   />
                 ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                    selectedFile.type,
+                    selectedFile.type
                   ) ? (
                   <FolderComponent selectedFile={selectedFile} />
                 ) : selectedFile.type === 'html' ? (
@@ -607,43 +745,45 @@ export default function Folder({ data }: { data?: Agent }) {
                     />
                   )
                 ) : selectedFile.type === 'zip' ? (
-                  <div className="flex items-center justify-center h-full text-zinc-500">
+                  <div className="flex h-full items-center justify-center text-text-secondary">
                     <div className="text-center">
-                      <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
+                      <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                       <p className="text-sm">
                         {t('folder.zip-file-is-not-supported-yet')}
                       </p>
                     </div>
                   </div>
-                ) : [
-                    'png',
-                    'jpg',
-                    'jpeg',
-                    'gif',
-                    'bmp',
-                    'webp',
-                    'svg',
-                  ].includes(selectedFile.type.toLowerCase()) ? (
-                  <div className="flex items-center justify-center h-full">
+                ) : isAudioFile(selectedFile) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <AudioLoader selectedFile={selectedFile} />
+                  </div>
+                ) : isVideoFile(selectedFile) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <VideoLoader selectedFile={selectedFile} />
+                  </div>
+                ) : isImageFile(selectedFile) ? (
+                  <div className="flex h-full items-center justify-center">
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
                 ) : (
-                  <pre className="text-sm text-zinc-700 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
                     {selectedFile.content}
                   </pre>
                 )
               ) : (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-sm text-zinc-500">{t('chat.loading')}</p>
+                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                    <p className="text-sm text-text-secondary">
+                      {t('chat.loading')}
+                    </p>
                   </div>
                 </div>
               )
             ) : (
-              <div className="flex items-center justify-center h-full text-zinc-500">
+              <div className="flex flex-1 items-center justify-center text-text-secondary">
                 <div className="text-center">
-                  <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-300" />
+                  <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>
@@ -657,26 +797,121 @@ export default function Folder({ data }: { data?: Agent }) {
   );
 }
 
+function toFileUrl(filePath: string): string {
+  if (
+    filePath.startsWith('file://') ||
+    filePath.startsWith('localfile://') ||
+    filePath.startsWith('http://') ||
+    filePath.startsWith('https://') ||
+    filePath.startsWith('blob:') ||
+    filePath.startsWith('data:')
+  ) {
+    return filePath;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  // Windows UNC path: //server/share/path/to/file
+  if (normalizedPath.startsWith('//')) {
+    const withoutLeadingSlashes = normalizedPath.replace(/^\/+/, '');
+    const [host, ...pathSegments] = withoutLeadingSlashes.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath ? `file://${host}/${encodedPath}` : `file://${host}/`;
+  }
+
+  const hasWindowsDrive = /^[A-Za-z]:\//.test(normalizedPath);
+  if (hasWindowsDrive) {
+    const [drive, ...pathSegments] = normalizedPath.split('/');
+    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
+    return encodedPath
+      ? `file:///${drive}/${encodedPath}`
+      : `file:///${drive}/`;
+  }
+
+  const encodedPath = normalizedPath
+    .split('/')
+    .map((segment, index) =>
+      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
+    )
+    .join('/');
+  return `file://${encodedPath}`;
+}
+
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
-    const filePath = selectedFile.isRemote
-      ? (selectedFile.content as string)
-      : selectedFile.path;
-
-    window.electronAPI
-      .readFileAsDataUrl(filePath)
-      .then(setSrc)
-      .catch((err: any) => console.error('Image load error:', err));
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc((selectedFile.content as string) || selectedFile.path);
+      return;
+    }
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
 
   return (
     <img
       src={src}
       alt={selectedFile.name}
-      className="max-w-full max-h-full object-contain"
+      className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Image load error:', err)}
     />
+  );
+}
+
+function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc(selectedFile.content || selectedFile.path);
+      return;
+    }
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
+  }, [selectedFile]);
+
+  return (
+    <div className="flex w-full flex-col items-center gap-4 px-8">
+      <p className="text-sm font-medium text-text-primary">
+        {selectedFile.name}
+      </p>
+      <audio
+        controls
+        src={src}
+        className="w-full"
+        onError={(err) => console.error('Audio load error:', err)}
+      >
+        Your browser does not support audio playback.
+      </audio>
+    </div>
+  );
+}
+
+function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    setSrc('');
+    if (selectedFile.isRemote) {
+      setSrc(selectedFile.content || selectedFile.path);
+      return;
+    }
+    // Use file:// source so Chromium can stream/seek large media files.
+    setSrc(toFileUrl(selectedFile.path));
+  }, [selectedFile]);
+
+  return (
+    <video
+      controls
+      src={src}
+      className="max-h-full max-w-full object-contain"
+      onError={(err) => console.error('Video load error:', err)}
+    >
+      Your browser does not support video playback.
+    </video>
   );
 }
 
@@ -796,10 +1031,10 @@ function HtmlRenderer({
       });
 
       const jsFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'js',
+        (f) => f.type?.toLowerCase() === 'js'
       );
       const cssFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'css',
+        (f) => f.type?.toLowerCase() === 'css'
       );
 
       // Check for dangerous Electron/Node.js patterns as defense-in-depth
@@ -853,7 +1088,7 @@ function HtmlRenderer({
             // Replace src with data URL
             const newAttributes = attributes.replace(
               /src\s*=\s*["'][^"']+["']/i,
-              `src="${dataUrl}"`,
+              `src="${dataUrl}"`
             );
             // Preserve the original tag format (self-closing or not)
             const isSelfClosing = imgTag.trim().endsWith('/>');
@@ -867,7 +1102,7 @@ function HtmlRenderer({
             // Keep original tag if image loading fails
             return { original: imgTag, processed: imgTag };
           }
-        }),
+        })
       );
 
       // Replace all img tags in HTML
@@ -875,7 +1110,7 @@ function HtmlRenderer({
       processedImages.forEach(({ original, processed }) => {
         processedHtmlContent = processedHtmlContent.replace(
           original,
-          processed,
+          processed
         );
       });
 
@@ -886,7 +1121,7 @@ function HtmlRenderer({
             'open-file',
             'css',
             cssFile.path,
-            false,
+            false
           );
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
@@ -894,11 +1129,11 @@ function HtmlRenderer({
             // Try to replace the external link tag with inline style
             const linkRegex = new RegExp(
               `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
-              'gi',
+              'gi'
             );
             const replacedCss = processedHtmlContent.replace(
               linkRegex,
-              styleTag,
+              styleTag
             );
             if (replacedCss !== processedHtmlContent) {
               processedHtmlContent = replacedCss;
@@ -907,7 +1142,7 @@ function HtmlRenderer({
               if (processedHtmlContent.includes('<head>')) {
                 processedHtmlContent = processedHtmlContent.replace(
                   '<head>',
-                  `<head>${styleTag}`,
+                  `<head>${styleTag}`
                 );
               } else {
                 processedHtmlContent = styleTag + processedHtmlContent;
@@ -926,18 +1161,18 @@ function HtmlRenderer({
             'open-file',
             'js',
             jsFile.path,
-            false,
+            false
           );
           if (jsContent) {
             // Replace external script tag with inline script
             const scriptRegex = new RegExp(
               `<script[^>]*src=["'](?:[^"']*[/\\\\])?${jsFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>\\s*</script>`,
-              'gi',
+              'gi'
             );
             const inlineScriptTag = `<script data-source="${jsFile.name}">${jsContent}</script>`;
             processedHtmlContent = processedHtmlContent.replace(
               scriptRegex,
-              inlineScriptTag,
+              inlineScriptTag
             );
           }
         } catch (error) {
@@ -951,8 +1186,12 @@ function HtmlRenderer({
         return;
       }
 
+      // Defer inline scripts until load when document has external scripts (e.g. Chart.js),
+      const htmlWithDeferredScripts =
+        deferInlineScriptsUntilLoad(processedHtmlContent);
+
       // Set the processed HTML with font styles - iframe sandbox provides security
-      setProcessedHtml(injectFontStyles(processedHtmlContent));
+      setProcessedHtml(injectFontStyles(htmlWithDeferredScripts));
     };
 
     processHtml();
@@ -975,7 +1214,7 @@ function HtmlRenderer({
   };
 
   return (
-    <div className="w-full h-full flex flex-col relative">
+    <div className="relative flex h-full w-full flex-col">
       {/* Floating notch-style zoom controls */}
       <ZoomControls
         zoom={zoom}
@@ -986,21 +1225,22 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="flex-1 min-h-0 bg-zinc-100 overflow-hidden"
+        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
         onWheel={handleWheel}
       >
         <div
-          className="origin-top-left transition-transform duration-150 h-full"
+          className="h-full origin-top-left transition-transform duration-150"
           style={{
             transform: `scale(${zoom / 100})`,
             width: `${10000 / zoom}%`,
             height: `${10000 / zoom}%`,
           }}
         >
+          {/*Security is maintained via CSP allowlist in index.html which restricts script sources. */}
           <iframe
             ref={iframeRef}
             srcDoc={processedHtml}
-            className="w-full h-full border-0 bg-white"
+            className="bg-white h-full w-full border-0"
             sandbox="allow-scripts allow-forms"
             title={selectedFile.name}
             tabIndex={0}

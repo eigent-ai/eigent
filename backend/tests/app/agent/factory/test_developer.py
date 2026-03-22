@@ -13,11 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from app.agent.factory import developer_agent
 from app.model.chat import Chat
-
+from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
 
@@ -29,18 +30,24 @@ async def test_developer_agent_creation(sample_chat_data):
 
     # Setup task lock in the registry before calling agent function
     from app.service.task import task_locks
+
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    with patch('app.agent.factory.developer.agent_model') as mock_agent_model, \
-         patch('asyncio.create_task'), \
-         patch('app.agent.factory.developer.HumanToolkit') as mock_human_toolkit, \
-         patch('app.agent.factory.developer.NoteTakingToolkit') as mock_note_toolkit, \
-         patch('app.agent.factory.developer.WebDeployToolkit') as mock_web_toolkit, \
-         patch('app.agent.factory.developer.ScreenshotToolkit') as mock_screenshot_toolkit, \
-         patch('app.agent.factory.developer.TerminalToolkit') as mock_terminal_toolkit, \
-         patch('app.agent.factory.developer.ToolkitMessageIntegration'):
-
+    _mod = "app.agent.factory.developer"
+    with (
+        patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
+        patch("asyncio.create_task"),
+        patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
+        patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
+        patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
+        patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
+        patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
+        patch(f"{_mod}.ToolkitMessageIntegration"),
+    ):
         # Mock all toolkit instances
         mock_human_toolkit.get_can_use_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []
@@ -55,10 +62,17 @@ async def test_developer_agent_creation(sample_chat_data):
 
         assert result is mock_agent
         mock_agent_model.assert_called_once()
+        mock_screenshot_toolkit.assert_called_once_with(
+            options.project_id,
+            working_directory="/tmp/test_workdir",
+            agent_name=Agents.developer_agent,
+        )
 
         # Should have called with development-related tools
         call_args = mock_agent_model.call_args
-        assert "developer_agent" in str(call_args[0][0])  # agent_name (enum contains this value)
+        assert "developer_agent" in str(
+            call_args[0][0]
+        )  # agent_name (enum contains this value)
         tools_arg = call_args[0][3]  # tools argument
         assert isinstance(tools_arg, list)
 
@@ -70,18 +84,24 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
 
     # Setup task lock in the registry before calling agent function
     from app.service.task import task_locks
+
     mock_task_lock = MagicMock()
     task_locks[options.task_id] = mock_task_lock
 
-    with patch('app.agent.factory.developer.agent_model') as mock_agent_model, \
-         patch('asyncio.create_task'), \
-         patch('app.agent.factory.developer.HumanToolkit') as mock_human_toolkit, \
-         patch('app.agent.factory.developer.NoteTakingToolkit') as mock_note_toolkit, \
-         patch('app.agent.factory.developer.WebDeployToolkit') as mock_web_toolkit, \
-         patch('app.agent.factory.developer.ScreenshotToolkit') as mock_screenshot_toolkit, \
-         patch('app.agent.factory.developer.TerminalToolkit') as mock_terminal_toolkit, \
-         patch('app.agent.factory.developer.ToolkitMessageIntegration'):
-
+    _mod = "app.agent.factory.developer"
+    with (
+        patch(f"{_mod}.agent_model") as mock_agent_model,
+        patch(
+            f"{_mod}.get_working_directory", return_value="/tmp/test_workdir"
+        ),
+        patch("asyncio.create_task"),
+        patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
+        patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
+        patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
+        patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
+        patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
+        patch(f"{_mod}.ToolkitMessageIntegration"),
+    ):
         # Mock all toolkit instances
         mock_human_toolkit.get_can_use_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []

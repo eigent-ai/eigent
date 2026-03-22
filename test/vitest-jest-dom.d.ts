@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Test types for vitest + jest-dom compatibility
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom';
 
 declare global {
   namespace Vi {

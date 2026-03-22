@@ -12,22 +12,24 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import json
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import NoResultFound
+
 from app import api
 from app.component import code
-from app.exception.exception import NoPermissionException, TokenException
-from app.component.pydantic.i18n import trans, get_language
-from app.exception.exception import UserException
-from sqlalchemy.exc import NoResultFound
+from app.component.pydantic.i18n import get_language, trans
+from app.exception.exception import (
+    NoPermissionException,
+    TokenException,
+    UserException,
+)
 
 
 @api.exception_handler(RequestValidationError)
 async def request_exception(request: Request, e: RequestValidationError):
-
     if (lang := get_language(request.headers.get("Accept-Language"))) is None:
         lang = "en_US"
     return JSONResponse(

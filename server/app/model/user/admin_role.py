@@ -14,6 +14,7 @@
 
 from pydantic import BaseModel
 from sqlmodel import Field
+
 from app.model.abstract.model import AbstractModel
 
 

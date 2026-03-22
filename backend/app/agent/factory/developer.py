@@ -14,30 +14,38 @@
 
 import platform
 
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
+
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DEVELOPER_SYS_PROMPT
+from app.agent.toolkit.human_toolkit import HumanToolkit
+
+# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
+from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
+from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.utils import NOW_STR
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
-from app.utils.toolkit.human_toolkit import HumanToolkit
-# TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
-from app.utils.toolkit.note_taking_toolkit import NoteTakingToolkit
-from app.utils.toolkit.screenshot_toolkit import ScreenshotToolkit
-from app.utils.toolkit.terminal_toolkit import TerminalToolkit
-from app.utils.toolkit.web_deploy_toolkit import WebDeployToolkit
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
 
 
 async def developer_agent(options: Chat):
     working_directory = get_working_directory(options)
-    logger.info(f"Creating developer agent for project: {options.project_id} "
-                f"in directory: {working_directory}")
+    logger.info(
+        f"Creating developer agent for project: {options.project_id} "
+        f"in directory: {working_directory}"
+    )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
-            options.project_id, Agents.developer_agent).send_message_to_user)
+            options.project_id, Agents.developer_agent
+        ).send_message_to_user
+    )
     note_toolkit = NoteTakingToolkit(
         api_task_id=options.project_id,
         agent_name=Agents.developer_agent,
@@ -46,11 +54,18 @@ async def developer_agent(options: Chat):
     note_toolkit = message_integration.register_toolkits(note_toolkit)
     web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
     web_deploy_toolkit = message_integration.register_toolkits(
-        web_deploy_toolkit)
-    screenshot_toolkit = ScreenshotToolkit(options.project_id,
-                                           working_directory=working_directory)
+        web_deploy_toolkit
+    )
+    screenshot_toolkit = ScreenshotToolkit(
+        options.project_id,
+        working_directory=working_directory,
+        agent_name=Agents.developer_agent,
+    )
+    # Save reference before registering for toolkits_to_register_agent
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
     screenshot_toolkit = message_integration.register_toolkits(
-        screenshot_toolkit)
+        screenshot_toolkit
+    )
 
     terminal_toolkit = TerminalToolkit(
         options.project_id,
@@ -61,13 +76,32 @@ async def developer_agent(options: Chat):
     )
     terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
+    skill_toolkit = SkillToolkit(
+        options.project_id,
+        Agents.developer_agent,
+        working_directory=working_directory,
+        user_id=options.skill_config_user_id(),
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
+    search_tools = SearchToolkit.get_can_use_tools(
+        options.project_id, agent_name=Agents.developer_agent
+    )
+    if search_tools:
+        search_tools = message_integration.register_functions(search_tools)
+    else:
+        search_tools = []
+
     tools = [
-        *HumanToolkit.get_can_use_tools(options.project_id,
-                                        Agents.developer_agent),
+        *HumanToolkit.get_can_use_tools(
+            options.project_id, Agents.developer_agent
+        ),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *terminal_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
+        *skill_toolkit.get_tools(),
+        *search_tools,
     ]
     system_message = DEVELOPER_SYS_PROMPT.format(
         platform_system=platform.system(),
@@ -89,5 +123,11 @@ async def developer_agent(options: Chat):
             TerminalToolkit.toolkit_name(),
             NoteTakingToolkit.toolkit_name(),
             WebDeployToolkit.toolkit_name(),
+            ScreenshotToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
+            SearchToolkit.toolkit_name(),
+        ],
+        toolkits_to_register_agent=[
+            screenshot_toolkit_for_agent_registration,
         ],
     )

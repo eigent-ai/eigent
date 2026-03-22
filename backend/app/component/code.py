@@ -22,7 +22,6 @@ token_expired = 12  # token expired
 token_invalid = 13  # token invalid
 token_blocked = 14  # token in block list
 
-
 form_error = 100  # form error
 
 no_permission_error = 300  # no permission

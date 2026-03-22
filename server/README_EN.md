@@ -1,7 +1,9 @@
 ### Purpose
+
 `server/` provides a local backend (FastAPI + PostgreSQL) to achieve complete separation between local and cloud environments. After deploying this service, sensitive data such as user registration, model provider configurations, tool settings, and chat history are stored on your machine and are not uploaded to our cloud unless you explicitly configure external services (e.g., cloud model providers or remote MCP servers).
 
 ### Services Provided (Main Modules)
+
 - Users & Accounts
   - `POST /register`: Email + password registration (local DB only)
   - `POST /login`: Email + password login; returns a locally issued token
@@ -23,45 +25,68 @@ Note: All the above data is stored in the local PostgreSQL volume in Docker (see
 ### Quick Start (Docker)
 
 #### Prerequisites
+
 - **Docker Desktop**: Installed and running
-- **Python**: 3.10.* (3.10.15 recommended)
+- **Python**: 3.10.\* (3.10.15 recommended)
 - **Node.js**: >=18.0.0 <23.0.0
+
+#### Hosting Configuration for Triggers
+
+**Important**: If you plan to use **app triggers** (incoming webhooks), you must host this server with a **publicly accessible domain**. App triggers require external services to reach your server via HTTPS callback URLs.
+
+- For local development, you can use tools like `ngrok` to expose your local server
+- For production, deploy with a proper domain and SSL certificate
 
 #### Setup Steps
 
-1) Start services
+1. Start services
+
 ```bash
 cd server
 # Copy .env.example to .env(or create .env according to .env.example)
 cp .env.example .env
-docker compose up -d
+# Environment variables from .env are automatically passed to Docker images
+docker-compose up --build -d
 ```
 
-2) Start Frontend (Local Mode)
+**Notes:**
+
+- Database migrations are automatically run by Alembic on container startup
+- All environment variables defined in `.env` are passed to the Docker images
+
+2. Start Frontend (Local Mode)
+
 - In the project root directory, create or modify `.env.development` to enable local mode and point to the local backend:
+
 ```bash
 VITE_BASE_URL=/api
 VITE_USE_LOCAL_PROXY=true
 VITE_PROXY_URL=http://localhost:3001
 ```
+
 - Start the frontend application:
+
 ```bash
 npm install
 npm run dev
 ```
 
 ### Open API docs
+
 - `http://localhost:3001/docs` (Swagger UI)
 
 ### Ports
+
 - API: Host `3001` → Container `5678`
 - PostgreSQL: Host `5432` → Container `5432`
 
 ### Data Persistence
+
 - DB data is stored in Docker volume `server_postgres_data` at `/var/lib/postgresql/data` inside the container
 - Database migrations run automatically on container startup (see `start.sh` → `alembic upgrade head`)
 
 ### Common Commands
+
 ```bash
 # List running containers
 docker ps
@@ -82,7 +107,9 @@ docker logs -f eigent_postgres | cat
 ---
 
 ### Developer Mode (Optional)
+
 You can run the API locally with hot-reload while keeping the database in Docker:
+
 ```bash
 # Stop API in container, keep DB
 docker stop eigent_api
@@ -99,9 +126,11 @@ uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 ---
 
 ### Others
+
 - API docs: `http://localhost:3001/docs`
 - Runtime logs: `/app/runtime/log/app.log` in the container
 - i18n (for developers)
+
 ```bash
 uv run pybabel extract -F babel.cfg -o messages.pot .
 uv run pybabel init -i messages.pot -d lang -l zh_CN
@@ -109,5 +138,3 @@ uv run pybabel compile -d lang -l zh_CN
 ```
 
 For a fully offline environment, only use local models and local MCP servers, and avoid configuring any external Providers or remote MCP addresses.
-
-

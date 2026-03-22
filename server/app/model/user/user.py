@@ -12,15 +12,16 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from datetime import datetime, date
+from datetime import date, datetime
 from enum import IntEnum
+
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import Integer, SmallInteger, text
 from sqlalchemy_utils import ChoiceType
-from pydantic import BaseModel, EmailStr, field_validator
-from sqlmodel import Field, Column
-from app.model.abstract.model import AbstractModel, DefaultTimes
-from typing import Optional
+from sqlmodel import Column, Field
+
 from app.component.encrypt import password_hash
+from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
 class Status(IntEnum):
@@ -59,6 +60,7 @@ class LoginByPasswordIn(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     email: EmailStr
+    redirect_url: str | None = None
 
 
 class UserIn(BaseModel):
@@ -71,11 +73,11 @@ class UserCreate(UserIn):
 
 class UserOut(BaseModel):
     email: EmailStr
-    avatar: Optional[str] = ""
-    username: Optional[str] = ""
-    nickname: Optional[str] = ""
-    fullname: Optional[str] = ""
-    work_desc: Optional[str] = ""
+    avatar: str | None = ""
+    username: str | None = ""
+    nickname: str | None = ""
+    fullname: str | None = ""
+    work_desc: str | None = ""
     credits: int
     status: Status
     created_at: datetime
@@ -90,7 +92,7 @@ class UpdatePassword(BaseModel):
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str
-    invite_code: Optional[str] = None
+    invite_code: str | None = None
 
     @field_validator("password", mode="before")
     def password_strength(cls, v):

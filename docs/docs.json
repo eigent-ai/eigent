@@ -68,20 +68,21 @@
                   "/core/models/byok",
                   "/core/models/local-model",
                   "/core/models/gemini",
-                  "/core/models/minimax"
+                  "/core/models/ernie",
+                  "/core/models/minimax",
+                  "/core/models/kimi",
+                  "/core/models/sambanova"
                 ]
               },
               "/core/tools",
-              "/core/workers"
+              "/core/workers",
+              "/core/agent-skills"
             ]
           },
           {
             "group": "Troubleshooting",
             "icon": "question-circle",
-            "pages": [
-              "/troubleshooting/support",
-              "/troubleshooting/bug"
-            ]
+            "pages": ["/troubleshooting/support", "/troubleshooting/bug"]
           }
         ]
       }

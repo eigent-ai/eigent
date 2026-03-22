@@ -14,13 +14,12 @@
 
 'use client';
 
-import * as React from 'react';
 import { motion, type Variants } from 'motion/react';
 
 import {
   getVariants,
-  useAnimateIconContext,
   IconWrapper,
+  useAnimateIconContext,
   type IconProps,
 } from '@/components/animate-ui/icons/icon';
 
@@ -102,6 +101,6 @@ export {
   animations,
   Compass,
   Compass as CompassIcon,
-  type CompassProps,
   type CompassProps as CompassIconProps,
+  type CompassProps,
 };

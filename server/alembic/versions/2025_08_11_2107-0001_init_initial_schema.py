@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-
 """initial schema
 
 Revision ID: 0001_init
@@ -20,30 +19,29 @@ Create Date: 2025-08-11 21:07:03.701363
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
+from sqlalchemy_utils.types import ChoiceType
+
+from alembic import op
 from app.model.chat.chat_history import ChatStatus
-from app.model.mcp.mcp import McpType
-from app.model.mcp.mcp import Status
+from app.model.mcp.mcp import McpType, Status
 from app.model.mcp.mcp_env import Status
-from app.model.mcp.mcp_user import McpType
-from app.model.mcp.mcp_user import Status
+from app.model.mcp.mcp_user import McpType, Status
 from app.model.provider.provider import VaildStatus
 from app.model.user.admin import Status
 from app.model.user.key import KeyStatus
 from app.model.user.role import RoleType
 from app.model.user.user import Status
 from app.model.user.user_credits_record import CreditsChannel
-from sqlalchemy_utils.types import ChoiceType
 
 # revision identifiers, used by Alembic.
 revision: str = "0001_init"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

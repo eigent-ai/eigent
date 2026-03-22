@@ -1,0 +1,10 @@
+{
+  "plugins": [
+    "prettier-plugin-organize-imports",
+    "prettier-plugin-tailwindcss"
+  ],
+  "tailwindFunctions": ["classNames"],
+  "tailwindConfig": "./tailwind.config.js",
+  "singleQuote": true,
+  "trailingComma": "es5"
+}

@@ -12,11 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from datetime import datetime
-from typing import Optional
-from sqlmodel import SQLModel, Field, Column, select
-from pydantic import BaseModel
 from enum import Enum
+
+from pydantic import BaseModel
+from sqlmodel import Field, select
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
 

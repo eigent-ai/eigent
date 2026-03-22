@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Button } from './button'
-import { Plus, Download, Trash2 } from 'lucide-react'
-import { expect, fn, userEvent, within } from 'storybook/test'
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Download, Plus, Trash2 } from 'lucide-react';
+import { expect, fn, userEvent, within } from 'storybook/test';
+import { Button } from './button';
 
 const meta: Meta<typeof Button> = {
   title: 'UI/Button',
@@ -53,53 +53,53 @@ const meta: Meta<typeof Button> = {
     variant: 'primary',
     size: 'md',
   },
-}
+};
 
-export default meta
+export default meta;
 
-type Story = StoryObj<typeof Button>
+type Story = StoryObj<typeof Button>;
 
 export const Primary: Story = {
   args: {
     variant: 'primary',
     children: 'Primary Button',
   },
-}
+};
 
 export const Secondary: Story = {
   args: {
     variant: 'secondary',
     children: 'Secondary Button',
   },
-}
+};
 
 export const Outline: Story = {
   args: {
     variant: 'outline',
     children: 'Outline Button',
   },
-}
+};
 
 export const Ghost: Story = {
   args: {
     variant: 'ghost',
     children: 'Ghost Button',
   },
-}
+};
 
 export const Success: Story = {
   args: {
     variant: 'success',
     children: 'Success Button',
   },
-}
+};
 
 export const Warning: Story = {
   args: {
     variant: 'warning',
     children: 'Warning Button',
   },
-}
+};
 
 export const Disabled: Story = {
   args: {
@@ -107,7 +107,7 @@ export const Disabled: Story = {
     children: 'Disabled Button',
     disabled: true,
   },
-}
+};
 
 export const WithIcon: Story = {
   render: (args) => (
@@ -118,7 +118,7 @@ export const WithIcon: Story = {
   args: {
     variant: 'primary',
   },
-}
+};
 
 export const IconOnly: Story = {
   render: (args) => (
@@ -130,7 +130,7 @@ export const IconOnly: Story = {
     variant: 'ghost',
     size: 'icon',
   },
-}
+};
 
 export const AllVariants: Story = {
   render: () => (
@@ -143,7 +143,7 @@ export const AllVariants: Story = {
       <Button variant="warning">Warning</Button>
     </div>
   ),
-}
+};
 
 export const AllSizes: Story = {
   render: () => (
@@ -168,7 +168,7 @@ export const AllSizes: Story = {
       </Button>
     </div>
   ),
-}
+};
 
 // Interaction test stories
 export const ClickInteraction: Story = {
@@ -178,20 +178,20 @@ export const ClickInteraction: Story = {
     onClick: fn(),
   },
   play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement)
-    const button = canvas.getByRole('button', { name: /click me/i })
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button', { name: /click me/i });
 
     // Test that button is visible and enabled
-    await expect(button).toBeVisible()
-    await expect(button).toBeEnabled()
+    await expect(button).toBeVisible();
+    await expect(button).toBeEnabled();
 
     // Click the button
-    await userEvent.click(button)
+    await userEvent.click(button);
 
     // Verify the onClick handler was called
-    await expect(args.onClick).toHaveBeenCalledTimes(1)
+    await expect(args.onClick).toHaveBeenCalledTimes(1);
   },
-}
+};
 
 export const DisabledInteraction: Story = {
   args: {
@@ -201,17 +201,17 @@ export const DisabledInteraction: Story = {
     onClick: fn(),
   },
   play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement)
-    const button = canvas.getByRole('button', { name: /disabled button/i })
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button', { name: /disabled button/i });
 
     // Test that button is visible but disabled
-    await expect(button).toBeVisible()
-    await expect(button).toBeDisabled()
+    await expect(button).toBeVisible();
+    await expect(button).toBeDisabled();
 
     // Verify the onClick handler was NOT called (disabled buttons block pointer events)
-    await expect(args.onClick).not.toHaveBeenCalled()
+    await expect(args.onClick).not.toHaveBeenCalled();
   },
-}
+};
 
 export const HoverInteraction: Story = {
   args: {
@@ -219,19 +219,19 @@ export const HoverInteraction: Story = {
     children: 'Hover Over Me',
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const button = canvas.getByRole('button', { name: /hover over me/i })
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button', { name: /hover over me/i });
 
     // Test initial state
-    await expect(button).toBeVisible()
+    await expect(button).toBeVisible();
 
     // Hover over the button
-    await userEvent.hover(button)
+    await userEvent.hover(button);
 
     // The button should still be visible after hover
-    await expect(button).toBeVisible()
+    await expect(button).toBeVisible();
 
     // Unhover
-    await userEvent.unhover(button)
+    await userEvent.unhover(button);
   },
-}
+};

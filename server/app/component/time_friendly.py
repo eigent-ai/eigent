@@ -23,7 +23,7 @@ def to_date(time: str, format: str | None = None):
             return arrow.get(time, format).date()
         else:
             return arrow.get(time).date()
-    except Exception as e:
+    except Exception:
         return None
 
 

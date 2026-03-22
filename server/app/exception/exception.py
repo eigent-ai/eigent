@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+
 class UserException(Exception):
     def __init__(self, code: int, description: str):
         self.code = code

@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "difficulty": "medium",
+    "description": "1) benchmark browser use capability with in-depth browser operations, 2) document generation with strict format constraints on the CSV generation, 3) implicit classification for each company's category.",
+    "tags": ["browser", "research", "data-extraction", "csv", "multi-step"]
+  },
+  "data": {
+    "name": "2",
+    "question": "Identify all B2B companies in the Y Combinator Winter 2025 batch whose product is related to AI. After you obtain the full company list, independently investigate each company's product information in detail and consolidate all findings into a clean, well-structured CSV file named 'yc_w25_b2b_ai.csv' with columns: company_name (in lowercase), product_description (100 chars max), ai_category (use a consistent set of values including 'ai-agents', 'ai-infrastructure', 'ai-developer-tools', 'ai-analytics', 'ai-security', 'ai-healthcare', 'ai-sales', 'ai-productivity', 'ai-customer-support', 'ai-coding', 'ai-data', 'ai-fintech', 'ai-legal', 'ai-hr', 'ai-marketing', and 'ai-other').",
+    "env": {}
+  },
+  "tests": {
+    "checker": ["benchmark/checker/2.py"],
+    "grader": ["benchmark/grader/2.py"]
+  }
+}

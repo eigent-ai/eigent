@@ -12,17 +12,22 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from sqlmodel import Session, create_engine
-from app.component.environment import env, env_or_fail
 import logging
+
+from sqlmodel import Session, create_engine
+
+from app.component.environment import env, env_or_fail
 
 logger = logging.getLogger("database")
 
-logger.info("Initializing database engine", extra={
-    "database_url_prefix": env_or_fail("database_url")[:20] + "...",
-    "debug_mode": env("debug") == "on",
-    "pool_size": 36
-})
+logger.info(
+    "Initializing database engine",
+    extra={
+        "database_url_prefix": env_or_fail("database_url")[:20] + "...",
+        "debug_mode": env("debug") == "on",
+        "pool_size": 36,
+    },
+)
 
 engine = create_engine(
     env_or_fail("database_url"),

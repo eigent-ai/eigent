@@ -930,11 +930,11 @@ var StackClientInterface = class {
   async _createNetworkError(cause, session, requestType) {
     return new Error(import_strings.deindent`
       Stack Auth is unable to connect to the server. Please check your internet connection and try again.
-      
+
       If the problem persists, please contact support and provide a screenshot of your entire browser console.
 
       ${cause}
-      
+
       ${JSON.stringify(await this.runNetworkDiagnostics(session, requestType), null, 2)}
     `, { cause });
   }

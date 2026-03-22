@@ -12,86 +12,106 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import React, { useState } from "react";
-import { MenuToggleGroup, MenuToggleItem } from "@/components/MenuButton/MenuButton";
-import { FileDown, Inbox, LayoutGrid, MessageCircleQuestion, Network, Settings2Icon } from "lucide-react";
-import giftIcon from "@/assets/gift.svg";
+import {
+  MenuToggleGroup,
+  MenuToggleItem,
+} from '@/components/MenuButton/MenuButton';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import {
+  FileDown,
+  Inbox,
+  LayoutGrid,
+  Network,
+  PinIcon,
+  Settings2Icon,
+  ZapIcon,
+} from 'lucide-react';
 
 // Icons - you can replace these with actual icon components
-const HomeIcon = () => (
-  <LayoutGrid/>
-);
+const HomeIcon = () => <LayoutGrid />;
 
-const WorkflowIcon = () => (
-  <Network/>  
-);
+const WorkflowIcon = () => <Network />;
 
-const InboxIcon = () => (
-  <Inbox/>
-);
+const InboxIcon = () => <Inbox />;
 
-const SettingsIcon = () => (
-  <Settings2Icon/>
-);
+const SettingsIcon = () => <Settings2Icon />;
 
-const BugIcon = () => (
-  <FileDown/>
-);
+const BugIcon = () => <FileDown />;
 
-const ReferIcon = () => (
-  <img src={giftIcon} alt="gift-icon" className="w-[20px] h-[20px]" />
-);
-
-const SupportIcon = () => (
-  <MessageCircleQuestion/>
+// Red dot notification indicator
+const RedDotIcon = () => (
+  <div className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
 );
 
 interface SideBarProps {
   className?: string;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
 }
 
-export default function SideBar({ className }: SideBarProps) {
-  const [activeItem, setActiveItem] = useState("home");
+export default function SideBar({
+  className,
+  activeTab,
+  onTabChange,
+}: SideBarProps) {
+  const { chatStore } = useChatStoreAdapter();
 
   const menuItems = [
-    { id: "home", icon: <HomeIcon />, label: "Home" },
-    { id: "workflow", icon: <WorkflowIcon />, label: "Workflow" },
-    { id: "inbox", icon: <InboxIcon />, label: "Inbox" },
-    { id: "settings", icon: <SettingsIcon />, label: "Settings" },
+    { id: 'tasks', icon: <PinIcon />, label: 'Tasks' },
+    { id: 'trigger', icon: <ZapIcon />, label: 'Trigger' },
+    { id: 'inbox', icon: <InboxIcon />, label: 'Inbox' },
   ];
 
-  const bottomItems = [
-    { id: "bug", icon: <BugIcon />, label: "Bug" },
-    { id: "refer", icon: <ReferIcon />, label: "Refer" },
-    { id: "support", icon: <SupportIcon />, label: "Support" },
-  ];
+  // Check if there are new files
+  const nuwFileNum = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]?.nuwFileNum || 0
+    : 0;
+
+  const hasNewFiles = nuwFileNum > 0;
+
+  // Handle tab change and reset notification when inbox is clicked
+  const handleTabChange = (tab: string) => {
+    if (tab === 'inbox' && chatStore?.activeTaskId) {
+      // Reset the new file counter when user views inbox
+      chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
+    }
+    onTabChange(tab);
+  };
 
   return (
-    <div className={`h-full flex flex-col items-center pl-1 gap-1 ${className}`}>
+    <div
+      className={`flex h-full flex-col items-center gap-1 pr-1 pt-2 ${className}`}
+    >
       {/* Main menu items */}
       <div className="flex flex-col gap-1">
-        <MenuToggleGroup type="single" orientation="vertical" value={activeItem} onValueChange={setActiveItem}>
+        <MenuToggleGroup
+          type="single"
+          orientation="vertical"
+          value={activeTab}
+          onValueChange={handleTabChange}
+        >
           {menuItems.map((item) => (
-            <MenuToggleItem
+            <TooltipSimple
               key={item.id}
-              value={item.id}
-              size="sm"
-              icon={item.icon}
-            />
-          ))}
-        </MenuToggleGroup>
-      </div>
-
-      {/* Bottom menu items */}
-      <div className="flex-1 flex flex-col justify-end">
-        <MenuToggleGroup type="single" orientation="vertical" value={activeItem} onValueChange={setActiveItem}>
-          {bottomItems.map((item) => (
-            <MenuToggleItem
-              key={item.id}
-              value={item.id}
-              size="sm"
-              icon={item.icon}
-            />
+              content={item.label}
+              side="right"
+              delayDuration={0}
+            >
+              <span>
+                <MenuToggleItem
+                  value={item.id}
+                  size="iconxs"
+                  icon={item.icon}
+                  subIcon={
+                    item.id === 'inbox' && hasNewFiles ? (
+                      <RedDotIcon />
+                    ) : undefined
+                  }
+                  showSubIcon={item.id === 'inbox' && hasNewFiles}
+                />
+              </span>
+            </TooltipSimple>
           ))}
         </MenuToggleGroup>
       </div>

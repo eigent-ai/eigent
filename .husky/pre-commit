@@ -1,2 +1,14 @@
 #!/usr/bin/env sh
 npx lint-staged
+
+# Run Python pre-commit checks if backend files are staged
+if git diff --cached --name-only | grep -q "^backend/"; then
+  echo "Running backend pre-commit checks..."
+  cd backend
+  # Get staged backend Python files, remove 'backend/' prefix for pre-commit
+  staged_files=$(git diff --cached --name-only | grep '^backend/.*\.py$' | sed 's|^backend/||')
+  if [ -n "$staged_files" ]; then
+    SKIP=no-commit-to-branch uv run pre-commit run --files $staged_files
+  fi
+  cd ..
+fi

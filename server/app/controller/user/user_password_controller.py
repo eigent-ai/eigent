@@ -12,7 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
+
 from fastapi import APIRouter, Depends
+from fastapi_babel import _
 from sqlmodel import Session
 
 from app.component import code
@@ -21,8 +24,6 @@ from app.component.database import session
 from app.component.encrypt import password_hash, password_verify
 from app.exception.exception import UserException
 from app.model.user.user import UpdatePassword, UserOut
-from fastapi_babel import _
-import logging
 
 logger = logging.getLogger("server_password_controller")
 
@@ -34,15 +35,15 @@ def update_password(data: UpdatePassword, auth: Auth = Depends(auth_must), sessi
     """Update user password after verifying current password."""
     user_id = auth.user.id
     model = auth.user
-    
+
     if not password_verify(data.password, model.password):
         logger.warning("Password update failed: incorrect current password", extra={"user_id": user_id})
         raise UserException(code.error, _("Password is incorrect"))
-    
+
     if data.new_password != data.re_new_password:
         logger.warning("Password update failed: new passwords do not match", extra={"user_id": user_id})
         raise UserException(code.error, _("The two passwords do not match"))
-    
+
     model.password = password_hash(data.new_password)
     model.save(session)
     logger.info("Password updated successfully", extra={"user_id": user_id})
