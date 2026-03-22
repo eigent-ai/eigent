@@ -1,11 +1,16 @@
+/*
+ * Copyright 2024 Eigent
+ *
+ * Licensed under the Apache License, Version 2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 import { useEffect, useState } from "react";
+import { fetchGet } from "@/api/http";
 
 type HealthResponse = {
   status: string;
   service: string;
-  database: {
-    status: string;
-  };
 };
 
 export default function Diagnostics() {
@@ -13,11 +18,7 @@ export default function Diagnostics() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((res) => {
-        if (!res.ok) throw new Error("Backend unreachable");
-        return res.json();
-      })
+    fetchGet("/health")
       .then(setData)
       .catch((err) => setError(err.message));
   }, []);
@@ -35,11 +36,7 @@ export default function Diagnostics() {
       <h2>System Diagnostics</h2>
 
       <p>Backend: ✅ Running</p>
-
-      <p>
-        Database:{" "}
-        {data.database.status === "ok" ? "✅ Connected" : "❌ Error"}
-      </p>
+      <p>Service: {data.service}</p>
     </div>
   );
 }
