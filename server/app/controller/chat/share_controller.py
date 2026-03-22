@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlmodel import Session, asc, select
 from app.component.database import session
@@ -8,15 +22,14 @@ from starlette.responses import StreamingResponse
 from app.model.chat.chat_share import ChatHistoryShareOut, ChatShare, ChatShareIn
 from app.model.chat.chat_step import ChatStep
 from app.model.chat.chat_history import ChatHistory
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("server_chat_share")
+logger = logging.getLogger("server_chat_share")
 
 router = APIRouter(prefix="/chat", tags=["Chat Share"])
 
 
 @router.get("/share/info/{token}", name="Get shared chat info", response_model=ChatHistoryShareOut)
-@traceroot.trace()
 def get_share_info(token: str, session: Session = Depends(session)):
     """
     Get shared chat history info by token, excluding sensitive data.
@@ -42,7 +55,6 @@ def get_share_info(token: str, session: Session = Depends(session)):
 
 
 @router.get("/share/playback/{token}", name="Playback shared chat via SSE")
-@traceroot.trace()
 async def share_playback(token: str, session: Session = Depends(session), delay_time: float = 0):
     """
     Playbacks the chat history via a sharing token (SSE).
@@ -95,7 +107,6 @@ async def share_playback(token: str, session: Session = Depends(session), delay_
 
 
 @router.post("/share", name="Generate sharable link for a task(1 day expiration)")
-@traceroot.trace()
 def create_share_link(data: ChatShareIn):
     """Generate sharing token with 1-day expiration for task."""
     try:

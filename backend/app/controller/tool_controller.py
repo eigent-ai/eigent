@@ -1,16 +1,47 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from typing import Optional
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from app.utils.toolkit.notion_mcp_toolkit import NotionMCPToolkit
 from app.utils.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
+from app.utils.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.utils.oauth_state_manager import oauth_state_manager
-from utils import traceroot_wrapper as traceroot
+import logging
+
+
 from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
     HybridBrowserToolkit as BaseHybridBrowserToolkit,
 )
 from app.utils.cookie_manager import CookieManager
+
+
 import os
+import time
 import uuid
 
-logger = traceroot.get_logger("tool_controller")
+
+class LinkedInTokenRequest(BaseModel):
+    r"""Request model for saving LinkedIn OAuth token."""
+    access_token: str
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+    scope: Optional[str] = None
+
+
+logger = logging.getLogger("tool_controller")
 router = APIRouter()
 
 
@@ -104,10 +135,81 @@ async def install_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to install {tool}: {str(e)}"
             )
+    elif tool == "linkedin":
+        try:
+            # Check if LinkedIn is already authenticated
+            if LinkedInToolkit.is_authenticated():
+                # Check if token is expired
+                if LinkedInToolkit.is_token_expired():
+                    logger.info("LinkedIn token has expired")
+                    return {
+                        "success": False,
+                        "status": "token_expired",
+                        "message": "LinkedIn token has expired. Please re-authenticate via OAuth.",
+                        "toolkit_name": "LinkedInToolkit",
+                        "requires_auth": True,
+                        "oauth_url": "/api/oauth/linkedin/login"
+                    }
+
+                try:
+                    toolkit = LinkedInToolkit("install_auth")
+                    tools = [tool_func.func.__name__ for tool_func in toolkit.get_tools()]
+
+                    # Try to get profile to verify token is valid
+                    profile = toolkit.get_profile_safe()
+
+                    # Check if token is expiring soon
+                    token_warning = None
+                    if LinkedInToolkit.is_token_expiring_soon():
+                        token_info = LinkedInToolkit.get_token_info()
+                        if token_info and token_info.get("expires_at"):
+                            days_remaining = (token_info["expires_at"] - int(time.time())) // (24 * 60 * 60)
+                            token_warning = f"Token expires in {days_remaining} days. Consider re-authenticating soon."
+
+                    logger.info(f"Successfully initialized LinkedIn toolkit with {len(tools)} tools")
+                    result = {
+                        "success": True,
+                        "tools": tools,
+                        "message": f"Successfully installed {tool} toolkit",
+                        "count": len(tools),
+                        "toolkit_name": "LinkedInToolkit",
+                        "profile": profile if "error" not in profile else None
+                    }
+                    if token_warning:
+                        result["warning"] = token_warning
+                    return result
+                except Exception as e:
+                    logger.warning(f"LinkedIn token may be invalid: {e}")
+                    # Token exists but may be expired/invalid
+                    return {
+                        "success": False,
+                        "status": "token_invalid",
+                        "message": "LinkedIn token may be expired or invalid. Please re-authenticate via OAuth.",
+                        "toolkit_name": "LinkedInToolkit",
+                        "requires_auth": True,
+                        "oauth_url": "/api/oauth/linkedin/login"
+                    }
+            else:
+                # No credentials - need OAuth authorization
+                logger.info("No LinkedIn credentials found, OAuth required")
+                return {
+                    "success": False,
+                    "status": "not_configured",
+                    "message": "LinkedIn OAuth required. Redirect user to OAuth login.",
+                    "toolkit_name": "LinkedInToolkit",
+                    "requires_auth": True,
+                    "oauth_url": "/api/oauth/linkedin/login"
+                }
+        except Exception as e:
+            logger.error(f"Failed to install {tool} toolkit: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to install {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'linkedin']"
         )
 
 
@@ -134,6 +236,14 @@ async def list_available_tools():
                 "description": "Google Calendar integration for managing events and schedules",
                 "toolkit_class": "GoogleCalendarToolkit",
                 "requires_auth": True
+            },
+            {
+                "name": "linkedin",
+                "display_name": "LinkedIn",
+                "description": "LinkedIn integration for creating posts, managing profile, and social media automation",
+                "toolkit_class": "LinkedInToolkit",
+                "requires_auth": True,
+                "oauth_url": "/api/oauth/linkedin/login"
             }
         ]
     }
@@ -295,10 +405,140 @@ async def uninstall_tool(tool: str):
                 status_code=500,
                 detail=f"Failed to uninstall {tool}: {str(e)}"
             )
+    elif tool == "linkedin":
+        try:
+            # Clear LinkedIn token
+            success = LinkedInToolkit.clear_token()
+
+            if success:
+                return {
+                    "success": True,
+                    "message": f"Successfully uninstalled {tool} and cleaned up authentication tokens"
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": f"Uninstalled {tool} (no tokens found to clean up)"
+                }
+        except Exception as e:
+            logger.error(f"Failed to uninstall {tool}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to uninstall {tool}: {str(e)}"
+            )
     else:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar']"
+            detail=f"Tool '{tool}' not found. Available tools: ['notion', 'google_calendar', 'linkedin']"
+        )
+
+
+@router.post("/linkedin/save-token", name="save linkedin token")
+async def save_linkedin_token(token_request: LinkedInTokenRequest):
+    r"""Save LinkedIn OAuth token after successful authorization.
+
+    Args:
+        token_request: Token data containing access_token and optionally refresh_token
+
+    Returns:
+        Save result with tool information
+    """
+    try:
+        token_data = token_request.model_dump(exclude_none=True)
+
+        # Save the token
+        success = LinkedInToolkit.save_token(token_data)
+
+        if success:
+            # Verify the token works by initializing toolkit
+            try:
+                toolkit = LinkedInToolkit("install_auth")
+                tools = [tool_func.func.__name__ for tool_func in toolkit.get_tools()]
+                profile = toolkit.get_profile_safe()
+
+                return {
+                    "success": True,
+                    "message": "LinkedIn token saved successfully",
+                    "tools": tools,
+                    "count": len(tools),
+                    "profile": profile if "error" not in profile else None
+                }
+            except Exception as e:
+                logger.warning(f"Token saved but verification failed: {e}")
+                return {
+                    "success": True,
+                    "message": "LinkedIn token saved (verification pending)",
+                    "warning": str(e)
+                }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to save LinkedIn token"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save LinkedIn token: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save token: {str(e)}"
+        )
+
+
+@router.get("/linkedin/status", name="get linkedin status")
+async def get_linkedin_status():
+    r"""Get current LinkedIn authentication status and token info.
+
+    Returns:
+        Status information including authentication state and token expiry
+    """
+    try:
+        is_authenticated = LinkedInToolkit.is_authenticated()
+
+        if not is_authenticated:
+            return {
+                "authenticated": False,
+                "status": "not_configured",
+                "message": "LinkedIn not configured. OAuth required.",
+                "oauth_url": "/api/oauth/linkedin/login"
+            }
+
+        token_info = LinkedInToolkit.get_token_info()
+        is_expired = LinkedInToolkit.is_token_expired()
+        is_expiring_soon = LinkedInToolkit.is_token_expiring_soon()
+
+        result = {
+            "authenticated": True,
+            "status": "expired" if is_expired else ("expiring_soon" if is_expiring_soon else "valid"),
+        }
+
+        if token_info:
+            if token_info.get("expires_at"):
+                current_time = int(time.time())
+                expires_at = token_info["expires_at"]
+                seconds_remaining = max(0, expires_at - current_time)
+                days_remaining = seconds_remaining // (24 * 60 * 60)
+                result["expires_at"] = expires_at
+                result["days_remaining"] = days_remaining
+
+            if token_info.get("saved_at"):
+                result["saved_at"] = token_info["saved_at"]
+
+        if is_expired:
+            result["message"] = "Token has expired. Please re-authenticate."
+            result["oauth_url"] = "/api/oauth/linkedin/login"
+        elif is_expiring_soon:
+            result["message"] = f"Token expires in {result.get('days_remaining', 'unknown')} days. Consider re-authenticating."
+            result["oauth_url"] = "/api/oauth/linkedin/login"
+        else:
+            result["message"] = "LinkedIn is connected and token is valid."
+
+        return result
+    except Exception as e:
+        logger.error(f"Failed to get LinkedIn status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get status: {str(e)}"
         )
 
 
@@ -347,410 +587,13 @@ async def open_browser_login():
                 "note": "Your login data will be saved in the profile."
             }
         
-        # Create Electron browser script with .cjs extension for CommonJS
+        # Use static Electron browser script
         electron_script_path = os.path.join(os.path.dirname(__file__), "electron_browser.cjs")
-        electron_script_content = '''
-const { app, BrowserWindow, ipcMain } = require('electron');
-const path = require('path');
 
-// Parse command line arguments
-const args = process.argv.slice(2);
-const userDataDir = args[0];
-const cdpPort = args[1];
-const startUrl = args[2] || 'https://www.google.com';
+        # Verify script exists
+        if not os.path.exists(electron_script_path):
+            raise FileNotFoundError(f"Electron browser script not found: {electron_script_path}")
 
-// This must be called before app.ready
-app.commandLine.appendSwitch('remote-debugging-port', cdpPort);
-
-console.log('[ELECTRON BROWSER] Starting with:');
-console.log('  Chrome version:', process.versions.chrome);
-console.log('  User data dir (requested):', userDataDir);
-console.log('  CDP port:', cdpPort);
-console.log('  Start URL:', startUrl);
-
-// Set app paths - must be done before app.ready
-// Do NOT use commandLine.appendSwitch('user-data-dir') as it conflicts with setPath
-app.setPath('userData', userDataDir);
-app.setPath('sessionData', userDataDir);
-
-app.whenReady().then(async () => {
-  const { session } = require('electron');
-  const fs = require('fs');
-  const path = require('path');
-
-  // Log actual paths being used
-  console.log('[ELECTRON BROWSER] Actual paths:');
-  console.log('  app.getPath("userData"):', app.getPath('userData'));
-  console.log('  app.getPath("sessionData"):', app.getPath('sessionData'));
-  console.log('  app.getPath("cache"):', app.getPath('cache'));
-  console.log('  app.getPath("temp"):', app.getPath('temp'));
-  console.log('  process.argv:', process.argv);
-
-  // Check command line switches
-  console.log('[ELECTRON BROWSER] Command line switches:');
-  console.log('  user-data-dir:', app.commandLine.getSwitchValue('user-data-dir'));
-  console.log('  remote-debugging-port:', app.commandLine.getSwitchValue('remote-debugging-port'));
-
-  // Log partition session info
-  const userLoginSession = session.fromPartition('persist:user_login');
-  console.log('[ELECTRON BROWSER] Session info:');
-  console.log('  Partition: persist:user_login');
-  console.log('  Session storage path:', userLoginSession.getStoragePath());
-
-  // Check if Cookies file exists
-  const cookiesPath = path.join(app.getPath('userData'), 'Partitions', 'user_login', 'Cookies');
-  console.log('[ELECTRON BROWSER] Cookies path:', cookiesPath);
-  console.log('[ELECTRON BROWSER] Cookies exists:', fs.existsSync(cookiesPath));
-  if (fs.existsSync(cookiesPath)) {
-    const stats = fs.statSync(cookiesPath);
-    console.log('[ELECTRON BROWSER] Cookies file size:', stats.size, 'bytes');
-  }
-  const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    title: 'Eigent Browser - Login',
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      webviewTag: true
-    }
-  });
-
-  // Create navigation bar and webview
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      overflow: hidden;
-    }
-    
-    #nav-bar {
-      display: flex;
-      align-items: center;
-      padding: 8px;
-      background: #f5f5f5;
-      border-bottom: 1px solid #ddd;
-      gap: 8px;
-    }
-    
-    button {
-      padding: 6px 12px;
-      border: 1px solid #ccc;
-      background: white;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    
-    button:hover:not(:disabled) {
-      background: #f0f0f0;
-    }
-    
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    #url-input {
-      flex: 1;
-      padding: 8px 12px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    
-    #url-input:focus {
-      outline: none;
-      border-color: #4285f4;
-    }
-    
-    #webview {
-      flex: 1;
-      width: 100%;
-      border: none;
-    }
-    
-    .nav-icon {
-      font-size: 16px;
-    }
-    
-    #loading-indicator {
-      width: 20px;
-      height: 20px;
-      border: 2px solid #f3f3f3;
-      border-top: 2px solid #4285f4;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      display: none;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .loading #loading-indicator {
-      display: block;
-    }
-    
-    .loading #reload-btn .nav-icon {
-      display: none;
-    }
-  </style>
-</head>
-<body>
-  <div id="nav-bar">
-    <button id="back-btn" title="Back">
-      <span class="nav-icon">←</span>
-    </button>
-    <button id="forward-btn" title="Forward">
-      <span class="nav-icon">→</span>
-    </button>
-    <button id="reload-btn" title="Reload">
-      <span class="nav-icon">↻</span>
-      <div id="loading-indicator"></div>
-    </button>
-    <button id="home-btn" title="Home">
-      <span class="nav-icon">🏠</span>
-    </button>
-    <input type="text" id="url-input" placeholder="Enter URL..." />
-    <button id="go-btn">Go</button>
-    <button id="linkedin-btn" style="background: #0077B5; color: white; border-color: #0077B5;">
-      LinkedIn
-    </button>
-    <button id="info-btn" title="Show Info">ℹ️</button>
-  </div>
-  
-  <webview id="webview" src="${startUrl}" partition="persist:user_login"></webview>
-  
-  <div id="info-panel" style="display: none; position: absolute; top: 50px; right: 10px; background: white; border: 1px solid #ccc; padding: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; max-width: 400px; font-size: 12px;">
-    <h4 style="margin: 0 0 10px 0;">Browser Info</h4>
-    <div id="info-content"></div>
-    <button onclick="document.getElementById('info-panel').style.display='none'" style="margin-top: 10px;">Close</button>
-  </div>
-  
-  <script>
-    const webview = document.getElementById('webview');
-    const backBtn = document.getElementById('back-btn');
-    const forwardBtn = document.getElementById('forward-btn');
-    const reloadBtn = document.getElementById('reload-btn');
-    const homeBtn = document.getElementById('home-btn');
-    const urlInput = document.getElementById('url-input');
-    const goBtn = document.getElementById('go-btn');
-    const linkedinBtn = document.getElementById('linkedin-btn');
-    const navBar = document.getElementById('nav-bar');
-    const infoBtn = document.getElementById('info-btn');
-    const infoPanel = document.getElementById('info-panel');
-    const infoContent = document.getElementById('info-content');
-    
-    // Show info panel
-    infoBtn.addEventListener('click', () => {
-      const { ipcRenderer } = require('electron');
-      
-      // Get browser info
-      const info = {
-        'Chrome Version': process.versions.chrome,
-        'Electron Version': process.versions.electron,
-        'Node Version': process.versions.node,
-        'User Data Dir (requested)': '${userDataDir}',
-        'CDP Port': '${cdpPort}',
-        'Platform': process.platform,
-        'Architecture': process.arch
-      };
-      
-      // Also check webview partition info
-      const partition = webview.partition || 'default';
-      info['WebView Partition'] = partition;
-      
-      // Format info as HTML
-      let html = '<table style="width: 100%; border-collapse: collapse;">';
-      for (const [key, value] of Object.entries(info)) {
-        html += '<tr><td style="padding: 4px; border-bottom: 1px solid #eee;"><strong>' + key + ':</strong></td><td style="padding: 4px; border-bottom: 1px solid #eee; word-break: break-all;">' + value + '</td></tr>';
-      }
-      html += '</table>';
-      
-      infoContent.innerHTML = html;
-      infoPanel.style.display = 'block';
-    });
-    
-    // Update navigation buttons
-    function updateNavButtons() {
-      backBtn.disabled = !webview.canGoBack();
-      forwardBtn.disabled = !webview.canGoForward();
-    }
-    
-    // Navigate to URL
-    function navigateToUrl() {
-      let url = urlInput.value.trim();
-      if (!url) return;
-      
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://' + url;
-      }
-      
-      webview.loadURL(url);
-    }
-    
-    // Event listeners
-    backBtn.addEventListener('click', () => webview.goBack());
-    forwardBtn.addEventListener('click', () => webview.goForward());
-    reloadBtn.addEventListener('click', () => webview.reload());
-    homeBtn.addEventListener('click', () => webview.loadURL('${startUrl}'));
-    goBtn.addEventListener('click', navigateToUrl);
-    linkedinBtn.addEventListener('click', () => webview.loadURL('https://www.linkedin.com'));
-    
-    urlInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        navigateToUrl();
-      }
-    });
-    
-    // WebView events
-    webview.addEventListener('did-start-loading', () => {
-      navBar.classList.add('loading');
-    });
-    
-    webview.addEventListener('did-stop-loading', () => {
-      navBar.classList.remove('loading');
-      updateNavButtons();
-    });
-    
-    webview.addEventListener('did-navigate', (e) => {
-      urlInput.value = e.url;
-      updateNavButtons();
-    });
-    
-    webview.addEventListener('did-navigate-in-page', (e) => {
-      urlInput.value = e.url;
-      updateNavButtons();
-    });
-    
-    webview.addEventListener('new-window', (e) => {
-      // Open new windows in the same webview
-      e.preventDefault();
-      webview.loadURL(e.url);
-    });
-    
-    // Initialize
-    updateNavButtons();
-  </script>
-</body>
-</html>`;
-
-  win.loadURL('data:text/html;charset=UTF-8,' + encodeURIComponent(html));
-
-  // Show window when ready
-  win.once('ready-to-show', () => {
-    win.show();
-
-    // Log cookies periodically to track changes
-    setInterval(async () => {
-      try {
-        const cookies = await userLoginSession.cookies.get({});
-        console.log('[ELECTRON BROWSER] Current cookies count:', cookies.length);
-        if (cookies.length > 0) {
-          console.log('[ELECTRON BROWSER] Cookie domains:', [...new Set(cookies.map(c => c.domain))]);
-        }
-      } catch (error) {
-        console.error('[ELECTRON BROWSER] Failed to get cookies:', error);
-      }
-    }, 5000); // Check every 5 seconds
-  });
-  
-  win.on('closed', async () => {
-    console.log('[ELECTRON BROWSER] Window closed, preparing to quit...');
-
-    // Flush storage data before quitting to ensure cookies are saved
-    try {
-      const { session } = require('electron');
-      const fs = require('fs');
-      const path = require('path');
-      const userLoginSession = session.fromPartition('persist:user_login');
-
-      // Log cookies before flush
-      const cookiesBeforeFlush = await userLoginSession.cookies.get({});
-      console.log('[ELECTRON BROWSER] Cookies count before flush:', cookiesBeforeFlush.length);
-
-      // Flush storage
-      console.log('[ELECTRON BROWSER] Flushing storage data...');
-      await userLoginSession.flushStorageData();
-      console.log('[ELECTRON BROWSER] Storage data flushed successfully');
-
-      // Check cookies file after flush
-      const cookiesPath = path.join(app.getPath('userData'), 'Partitions', 'user_login', 'Cookies');
-      if (fs.existsSync(cookiesPath)) {
-        const stats = fs.statSync(cookiesPath);
-        console.log('[ELECTRON BROWSER] Cookies file size after flush:', stats.size, 'bytes');
-      } else {
-        console.log('[ELECTRON BROWSER] WARNING: Cookies file does not exist after flush!');
-      }
-    } catch (error) {
-      console.error('[ELECTRON BROWSER] Failed to flush storage data:', error);
-    }
-    app.quit();
-  });
-});
-
-let isQuitting = false;
-
-app.on('before-quit', async (event) => {
-  if (isQuitting) return;
-
-  // Prevent immediate quit to allow storage flush and cookie sync
-  event.preventDefault();
-  isQuitting = true;
-
-  console.log('[ELECTRON BROWSER] before-quit event triggered');
-
-  try {
-    const { session } = require('electron');
-    const fs = require('fs');
-    const path = require('path');
-    const userLoginSession = session.fromPartition('persist:user_login');
-
-    // Log cookies before flush
-    const cookiesBeforeQuit = await userLoginSession.cookies.get({});
-    console.log('[ELECTRON BROWSER] Cookies count before quit:', cookiesBeforeQuit.length);
-    if (cookiesBeforeQuit.length > 0) {
-      console.log('[ELECTRON BROWSER] Cookie domains before quit:', [...new Set(cookiesBeforeQuit.map(c => c.domain))]);
-    }
-
-    // Flush storage
-    console.log('[ELECTRON BROWSER] Flushing storage on quit...');
-    await userLoginSession.flushStorageData();
-    console.log('[ELECTRON BROWSER] Storage data flushed on quit');
-  } catch (error) {
-    console.error('[ELECTRON BROWSER] Failed to sync cookies:', error);
-  } finally {
-    console.log('[ELECTRON BROWSER] Exiting now...');
-    // Force quit after sync
-    app.exit(0);
-  }
-});
-
-app.on('window-all-closed', () => {
-  if (!isQuitting) {
-    app.quit();
-  }
-});
-'''
-        
-        # Write the Electron script
-        with open(electron_script_path, 'w') as f:
-            f.write(electron_script_content)
-        
-        # Find Electron executable
-        # Try to use the same Electron version as the main app
         electron_cmd = "npx"
         electron_args = [
             electron_cmd,
@@ -775,7 +618,9 @@ app.on('window-all-closed', () => {
             cwd=app_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Redirect stderr to stdout
-            universal_newlines=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',  # Replace undecodable chars instead of crashing
             bufsize=1  # Line buffered
         )
 
@@ -791,17 +636,7 @@ app.on('window-all-closed', () => {
         # Wait a bit for Electron to start
         import asyncio
         await asyncio.sleep(3)
-        
-        # Clean up the script file after a delay
-        async def cleanup_script():
-            await asyncio.sleep(10)
-            try:
-                os.remove(electron_script_path)
-            except:
-                pass
-        
-        asyncio.create_task(cleanup_script())
-        
+
         logger.info(f"[PROFILE USER LOGIN] Electron browser launched with PID {process.pid}")
 
         return {

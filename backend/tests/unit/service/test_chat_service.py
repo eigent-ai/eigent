@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import os
@@ -816,8 +830,7 @@ class TestChatServiceIntegration:
         
         mock_workforce = MagicMock()
         
-        with patch("app.service.chat_service.construct_workforce", return_value=(mock_workforce, MagicMock())), \
-             patch("app.utils.agent.get_task_lock", return_value=mock_task_lock):
+        with patch("app.service.chat_service.construct_workforce", return_value=(mock_workforce, MagicMock())):
             # Should exit immediately if request is disconnected
             responses = []
             async for response in step_solve(options, mock_request, mock_task_lock):
@@ -836,11 +849,10 @@ class TestChatServiceIntegration:
         # Mock get_queue to raise an exception
         mock_task_lock.get_queue = AsyncMock(side_effect=Exception("Queue error"))
         
-        with patch("app.utils.agent.get_task_lock", return_value=mock_task_lock):
-            responses = []
-            async for response in step_solve(options, mock_request, mock_task_lock):
-                responses.append(response)
-                break  # Exit after first iteration
+        responses = []
+        async for response in step_solve(options, mock_request, mock_task_lock):
+            responses.append(response)
+            break  # Exit after first iteration
             
             # Should handle the error and exit gracefully
             assert len(responses) == 0

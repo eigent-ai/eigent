@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from enum import Enum
 import json
 from pathlib import Path
@@ -5,9 +19,9 @@ import re
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from camel.types import ModelType, RoleType
-from utils import traceroot_wrapper as traceroot
+import logging
 
-logger = traceroot.get_logger("chat_model")
+logger = logging.getLogger("chat_model")
 
 
 class Status(str, Enum):
@@ -36,6 +50,7 @@ McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 PLATFORM_MAPPING = {
     "Z.ai": "openai-compatible-model",
+    "ModelArk": "openai-compatible-model",
 }
 
 class Chat(BaseModel):
@@ -122,12 +137,32 @@ class UpdateData(BaseModel):
     task: list[TaskContent]
 
 
+class AgentModelConfig(BaseModel):
+    """Optional per-agent model configuration to override the default task model."""
+    model_platform: str | None = None
+    model_type: str | None = None
+    api_key: str | None = None
+    api_url: str | None = None
+    extra_params: dict | None = None
+
+    def has_custom_config(self) -> bool:
+        """Check if any custom model configuration is set."""
+        return any([
+            self.model_platform is not None,
+            self.model_type is not None,
+            self.api_key is not None,
+            self.api_url is not None,
+            self.extra_params is not None,
+        ])
+
+
 class NewAgent(BaseModel):
     name: str
     description: str
     tools: list[str]
     mcp_tools: McpServers | None
     env_path: str | None = None
+    custom_model_config: AgentModelConfig | None = None
 
 
 class AddTaskRequest(BaseModel):
