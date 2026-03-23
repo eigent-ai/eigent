@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 120
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -46,14 +47,14 @@ jobs:
       - name: Clean build outputs (non-Windows)
         if: "!contains(matrix.os, 'self-hosted') && runner.os != 'Windows'"
         run: |
-          rm -rf release dist out build .vite
+          rm -rf release dist out .vite
           rm -rf node_modules/.cache || true
 
       - name: Clean build outputs (Windows)
         if: "!contains(matrix.os, 'self-hosted') && runner.os == 'Windows'"
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force release, dist, out, build, .vite -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force release, dist, out, .vite -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force node_modules/.cache -ErrorAction SilentlyContinue
 
       - name: Setup Node.js
