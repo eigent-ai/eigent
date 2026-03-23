@@ -475,7 +475,7 @@
     --text-success-default: var(--text-success);
     --text-caution: var(--text-cuation);
     --text-cuation-default: var(--text-cuation);
-    --surface-primary: var(--colors-off-white-50);
+    --surface-primary: var(--colors-off-white-80);
     --surface-secondary: var(--colors-off-white-50);
     --surface-success: var(--colors-green-50);
     --surface-information: var(--colors-blue-50);
