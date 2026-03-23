@@ -12,35 +12,39 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import tokenDarkIcon from '@/assets/token-dark.svg';
+import tokenLightIcon from '@/assets/token-light.svg';
 import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/store/authStore';
 import { PlayCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { AnimatedTokenNumber } from '../TokenUtils';
 
 interface HeaderBoxProps {
-  /** Token count to display */
-  tokens: number;
-  /** Task status for determining what button to show */
+  /** Total token count for the current project */
+  totalTokens?: number;
+  /** Task status – controls visibility of replay button */
   status?: 'running' | 'finished' | 'pending' | 'pause';
-  /** Whether replay is loading */
+  /** Whether the replay action is in a loading state */
   replayLoading?: boolean;
-  /** Callback when replay button is clicked */
+  /** Callback fired when the replay button is clicked */
   onReplay?: () => void;
-  /** Optional class name */
+  /** Optional extra class names for the outer container */
   className?: string;
 }
 
 export function HeaderBox({
-  tokens,
+  totalTokens = 0,
   status,
   replayLoading = false,
   onReplay,
   className,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
+  const { appearance } = useAuthStore();
+  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
 
-  // Replay button only appears when task is finished
   const showReplayButton = status === 'finished';
-  // Replay button is disabled when task is running or pending
   const isReplayDisabled =
     status === 'running' || status === 'pending' || status === 'pause';
 
@@ -48,27 +52,34 @@ export function HeaderBox({
     <div
       className={`flex h-[44px] w-full flex-row items-center justify-between px-3 ${className || ''}`}
     >
-      <div className="flex items-center gap-md">
-        <div className="text-body-base font-bold leading-relaxed text-text-body">
-          Chat
-        </div>
-        <div className="text-xs font-semibold leading-17 text-text-information">
-          # {(tokens || 0).toLocaleString()}
-        </div>
+      {/* Left: title + replay button */}
+      <div className="flex items-center gap-2">
+        <span className="text-body-base font-bold leading-relaxed text-text-body">
+          {t('chat.chat-title')}
+        </span>
+
+        {showReplayButton && (
+          <Button
+            onClick={onReplay}
+            disabled={isReplayDisabled || replayLoading}
+            variant="ghost"
+            size="sm"
+            className="no-drag rounded-full bg-surface-information font-semibold !text-text-information"
+          >
+            <PlayCircle className="mr-1 h-3.5 w-3.5" />
+            {replayLoading ? t('common.loading') : t('chat.replay')}
+          </Button>
+        )}
       </div>
 
-      {showReplayButton && (
-        <Button
-          onClick={onReplay}
-          disabled={isReplayDisabled || replayLoading}
-          variant="ghost"
-          size="sm"
-          className="no-drag rounded-full bg-surface-information font-semibold !text-text-information"
-        >
-          <PlayCircle />
-          {replayLoading ? t('common.loading') : t('chat.replay')}
-        </Button>
-      )}
+      {/* Right: project total token count */}
+      <div className="flex items-center gap-1 text-text-label">
+        <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
+        <span className="text-xs font-medium">
+          {t('chat.token-total-label')}{' '}
+          <AnimatedTokenNumber value={totalTokens} />
+        </span>
+      </div>
     </div>
   );
 }
