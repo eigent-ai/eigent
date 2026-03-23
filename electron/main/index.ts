@@ -50,6 +50,7 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import { setRoundedCorners } from './native/macos-window';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -2736,8 +2737,7 @@ async function createWindow() {
   );
 
   // Platform-specific window configuration
-  // Windows: Use native frame for better native feel, solid background
-  // macOS: Use frameless with transparency and vibrancy effects
+  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -2749,15 +2749,16 @@ async function createWindow() {
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,
-    // macOS-only visual effects
-    vibrancy: isMac ? 'sidebar' : undefined,
-    visualEffectState: isMac ? 'active' : undefined,
-    // Solid background on Windows (respect dark/light mode), semi-transparent on macOS/Linux
+    // Solid on Windows; macOS solid without vibrancy; Linux unchanged semi-transparent tint
     backgroundColor: isWindows
       ? nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
         : '#ffffff'
-      : '#f5f5f580',
+      : isMac
+        ? nativeTheme.shouldUseDarkColors
+          ? '#1e1e1e'
+          : '#f5f5f5'
+        : '#f5f5f580',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
@@ -2780,6 +2781,18 @@ async function createWindow() {
       spellcheck: false,
     },
   });
+
+  if (process.platform === 'darwin') {
+    win.once('ready-to-show', () => {
+      if (win && !win.isDestroyed()) {
+        try {
+          setRoundedCorners(win, 20);
+        } catch (error) {
+          log.error('[MacOS] Failed to apply rounded corners:', error);
+        }
+      }
+    });
+  }
 
   // ==================== Handle renderer crashes and failed loads ====================
   win.webContents.on('render-process-gone', (event, details) => {
