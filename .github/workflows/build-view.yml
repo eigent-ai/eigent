@@ -122,40 +122,6 @@ jobs:
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
           USE_NPM_INSTALL_BUN: 'true'
 
-      # Inspect payload size/file count before signing to diagnose EMFILE
-      - name: Inspect app payload before signing (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "==== Release size ===="
-          du -sh release || true
-
-          echo "==== Release file count ===="
-          find release | wc -l || true
-
-          APP_PATH=$(find release -name "*.app" -type d | head -1)
-
-          if [ -n "$APP_PATH" ]; then
-            echo "App found: $APP_PATH"
-
-            echo "==== App size ===="
-            du -sh "$APP_PATH" || true
-
-            echo "==== App file count ===="
-            find "$APP_PATH" | wc -l || true
-
-            if [ -d "$APP_PATH/Contents/Resources/prebuilt/venv" ]; then
-              echo "==== Embedded venv size ===="
-              du -sh "$APP_PATH/Contents/Resources/prebuilt/venv" || true
-
-              echo "==== Embedded venv file count ===="
-              find "$APP_PATH/Contents/Resources/prebuilt/venv" | wc -l || true
-            fi
-          else
-            echo "❌ No .app found after prebuild"
-            ls -la release/ || true
-            exit 1
-          fi
-
       # Step for macOS builds with signing
       - name: Build Release Files (macOS with signing)
         if: runner.os == 'macOS'
