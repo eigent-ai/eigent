@@ -163,6 +163,7 @@
   "google-custom-search-api": "Google 맞춤 검색 API",
   "google-cloud-console": "Google Cloud Console",
   "connect": "연결",
+  "disconnect": "연결 해제",
   "setting": "설정",
   "all": "전체",
   "mcp-market": "MCP 마켓",

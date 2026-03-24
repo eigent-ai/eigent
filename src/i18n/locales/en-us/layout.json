@@ -70,7 +70,6 @@
   "env-should-not-empty": "env should not empty",
   "loading": "...",
   "value-error": "Value error,",
-  "connect": "Connect",
   "name-your-agent": "Name Your Agent",
   "add-an-agent-name": "add an agent name...",
   "im-an-agent-specially-designed-for": "I'm an agent specially designed for...",
