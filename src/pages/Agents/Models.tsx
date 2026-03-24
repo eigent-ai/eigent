@@ -17,7 +17,6 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
   proxyFetchPost,
-  proxyFetchPut,
 } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import {
@@ -386,7 +385,7 @@ export default function SettingModels() {
                 provider_id: found.id,
                 apiKey: found.api_key || '',
                 apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
+                is_valid: found?.is_vaild === 2,
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 model_types:
@@ -454,19 +453,6 @@ export default function SettingModels() {
           setLocalTypes(types);
           setLocalProviderIds(providerIds);
         }
-        if (modelType === 'cloud') {
-          setCloudPrefer(true);
-          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-          setLocalPrefer(false);
-        } else if (modelType === 'local') {
-          setLocalEnabled(true);
-          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-          setLocalPrefer(true);
-          setCloudPrefer(false);
-        } else {
-          setLocalPrefer(false);
-          setCloudPrefer(false);
-        }
       } catch (e) {
         console.error('Error fetching providers:', e);
         // ignore error
@@ -477,7 +463,21 @@ export default function SettingModels() {
       fetchSubscription();
       updateCredits();
     }
-  }, [items, modelType, fetchModelsForPlatform]);
+  }, [items, fetchModelsForPlatform]);
+
+  // Sync prefer UI flags when modelType changes
+  useEffect(() => {
+    if (modelType === 'cloud') {
+      setCloudPrefer(true);
+      setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+      setLocalPrefer(false);
+    } else if (modelType === 'local') {
+      setLocalEnabled(true);
+      setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+      setLocalPrefer(true);
+      setCloudPrefer(false);
+    }
+  }, [modelType]);
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -694,7 +694,7 @@ export default function SettingModels() {
       provider_name: item.id,
       api_key: form[idx].apiKey,
       endpoint_url: form[idx].apiHost,
-      is_valid: form[idx].is_valid,
+      is_vaild: 2,
       model_type: form[idx].model_type,
       model_types: form[idx].model_types,
     };
@@ -704,31 +704,49 @@ export default function SettingModels() {
         data.encrypted_config[ec.key] = ec.value;
       });
     }
+    const savedModelType = form[idx].model_type;
+    const savedModelTypes = form[idx].model_types;
     try {
       if (provider_id) {
-        await proxyFetchPut(`/api/v1/provider/${provider_id}`, data);
-      } else {
-        await proxyFetchPost('/api/v1/provider', data);
+        // DELETE + POST to work around remote server's _UPDATABLE_FIELDS
+        // not including model_type / model_types in PUT
+        await proxyFetchDelete(`/api/v1/provider/${provider_id}`);
       }
-      // add: refresh provider list after saving, update form and switch editable status
+      const created = await proxyFetchPost('/api/v1/provider', data);
+      const newProviderId = created?.id;
+
+      // Always set this provider as preferred using the correct new ID
+      if (newProviderId) {
+        await proxyFetchPost('/api/v1/provider/prefer', {
+          provider_id: newProviderId,
+        });
+      }
+
+      // Refresh provider list after saving
       const res = await proxyFetchGet('/api/v1/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
+
       setForm((f) =>
         f.map((fi, i) => {
-          const item = items[i];
+          const curItem = items[i];
           const found = providerList.find(
-            (p: any) => p.provider_name === item.id
+            (p: any) => p.provider_name === curItem.id
           );
           if (found) {
+            const isCurrentProvider = i === idx;
             return {
               ...fi,
               provider_id: found.id,
               apiKey: found.api_key || '',
-              apiHost: found.endpoint_url || item.apiHost,
-              is_valid: !!found.is_valid,
-              prefer: found.prefer ?? false,
-              model_type: found.model_type ?? fi.model_type,
-              model_types: found.model_types ?? fi.model_types,
+              apiHost: found.endpoint_url || curItem.apiHost,
+              is_valid: found?.is_vaild === 2,
+              prefer: isCurrentProvider ? true : false,
+              model_type: isCurrentProvider
+                ? savedModelType
+                : (found.model_type ?? fi.model_type),
+              model_types: isCurrentProvider
+                ? savedModelTypes
+                : (found.model_types ?? fi.model_types),
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
                     if (
@@ -746,16 +764,19 @@ export default function SettingModels() {
         })
       );
 
-      // Check if this was a pending default model selection
+      // Update UI state directly (avoid handleSwitch which reads stale form state)
+      setModelType('custom');
+      setActiveModelIdx(idx);
+      setLocalEnabled(false);
+      setCloudPrefer(false);
+      setLocalPrefer(false);
+
       if (
         pendingDefaultModel &&
         pendingDefaultModel.category === 'custom' &&
         pendingDefaultModel.modelId === item.id
       ) {
-        await handleSwitch(idx, true);
         setPendingDefaultModel(null);
-      } else {
-        handleSwitch(idx, true);
       }
     } finally {
       setLoading(null);
@@ -900,9 +921,10 @@ export default function SettingModels() {
         },
       };
 
-      // Update or create provider
+      // DELETE + POST to work around remote server ignoring model_type in PUT
       if (currentProviderId) {
-        await proxyFetchPut(`/api/v1/provider/${currentProviderId}`, data);
+        await proxyFetchDelete(`/api/v1/provider/${currentProviderId}`);
+        await proxyFetchPost('/api/v1/provider', data);
       } else {
         await proxyFetchPost('/api/v1/provider', data);
       }
