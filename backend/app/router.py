@@ -73,6 +73,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         },
     ]
 
+    app.include_router(health_controller.router, tags=["Health"])
+    logger.info(
+        "Registered Health router at root level for Docker health checks"
+    )
+
     for config in routers_config:
         app.include_router(
             config["router"], prefix=prefix, tags=config["tags"]

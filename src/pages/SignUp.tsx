@@ -131,7 +131,7 @@ export default function SignUp() {
     setGeneralError('');
     setIsLoading(true);
     try {
-      const data = await proxyFetchPost('/api/register', {
+      const data = await proxyFetchPost('/api/v1/register', {
         email: formData.email,
         password: formData.password,
         invite_code: formData.invite_code,
@@ -175,7 +175,7 @@ export default function SignUp() {
     async (token: string) => {
       try {
         const data = await proxyFetchPost(
-          '/api/login-by_stack?token=' + token,
+          '/api/v1/login-by_stack?token=' + token,
           {
             token: token,
             invite_code: localStorage.getItem('invite_code') || '',
@@ -224,14 +224,14 @@ export default function SignUp() {
       console.log(
         'import.meta.env.PROD',
         import.meta.env.PROD
-          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+          ? `${import.meta.env.VITE_BASE_URL}/api/v1/redirect/callback`
+          : `${import.meta.env.VITE_PROXY_URL}/api/v1/redirect/callback`
       );
       formData.append(
         'redirect_uri',
         import.meta.env.PROD
-          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+          ? `${import.meta.env.VITE_BASE_URL}/api/v1/redirect/callback`
+          : `${import.meta.env.VITE_PROXY_URL}/api/v1/redirect/callback`
       );
       formData.append('code_verifier', code_verifier || '');
       formData.append('code', code);
