@@ -20,9 +20,9 @@ import {
   TooltipSimple,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { CircleAlert, Settings2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Cable, CircleAlert, Settings2, X } from 'lucide-react';
 
-import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
 import {
   Select,
   SelectContent,
@@ -36,8 +36,9 @@ import {
 } from '@/hooks/useIntegrationManagement';
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
+import { cn } from '@/lib/utils';
 import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type IntegrationListVariant = 'select' | 'manage';
@@ -90,9 +91,22 @@ export default function IntegrationList({
   const [activeMcp, setActiveMcp] = useState<any | null>(null);
   const isSelectMode = variant === 'select';
 
+  // Per-item error state for status dot
+  const [errorKeys, setErrorKeys] = useState<Record<string, boolean>>({});
+  const errorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const markError = useCallback((key: string) => {
+    setErrorKeys((prev) => ({ ...prev, [key]: true }));
+    if (errorTimers.current[key]) clearTimeout(errorTimers.current[key]);
+    errorTimers.current[key] = setTimeout(() => {
+      setErrorKeys((prev) => ({ ...prev, [key]: false }));
+    }, 4000);
+  }, []);
+
   // Use shared hook for integration management
   const {
     installed,
+    configsHydrated: installStateReady,
     fetchInstalled,
     saveEnvAndConfig,
     handleUninstall,
@@ -140,7 +154,12 @@ export default function IntegrationList({
       }
 
       if (installed[item.key]) return;
-      await item.onInstall();
+      try {
+        await item.onInstall();
+      } catch {
+        markError(item.key);
+        return;
+      }
       // Only refresh in select mode
       if (isSelectMode) {
         await fetchInstalled();
@@ -152,6 +171,7 @@ export default function IntegrationList({
       isSelectMode,
       onShowEnvConfig,
       fetchInstalled,
+      markError,
     ]
   );
 
@@ -294,7 +314,12 @@ export default function IntegrationList({
     : 'flex flex-col w-full items-start justify-start gap-4';
 
   const itemClassName = isSelectMode
-    ? 'cursor-pointer hover:bg-surface-hover-subtle px-3 py-2 flex justify-between'
+    ? cn(
+        'px-3 py-2 flex justify-between',
+        installStateReady
+          ? 'cursor-pointer hover:bg-surface-hover-subtle'
+          : 'cursor-wait opacity-70'
+      )
     : 'w-full px-6 py-4 bg-surface-tertiary rounded-2xl';
 
   const titleClassName = isSelectMode
@@ -312,6 +337,16 @@ export default function IntegrationList({
       {sortedItems.map((item) => {
         const isInstalled = !!installed[item.key];
         const isComingSoon = COMING_SOON_ITEMS.includes(item.name);
+        const leadStatusDotClass = cn(
+          'mr-2 h-3 w-3 shrink-0 rounded-full',
+          !installStateReady
+            ? 'bg-icon-secondary'
+            : errorKeys[item.key]
+              ? 'bg-icon-warning'
+              : isInstalled
+                ? 'bg-icon-success'
+                : 'bg-icon-secondary'
+        );
 
         return (
           <div key={item.key} className="w-full">
@@ -320,38 +355,27 @@ export default function IntegrationList({
               onClick={
                 isSelectMode
                   ? () => {
-                      if (!isComingSoon) {
-                        if (item.env_vars.length === 0 || isInstalled) {
-                          // Ensure toolkit field is passed and normalized for known cases
-                          const normalizedToolkit =
-                            item.name === 'Notion'
-                              ? 'notion_mcp_toolkit'
-                              : item.toolkit;
-                          addOption?.(
-                            { ...item, toolkit: normalizedToolkit },
-                            true
-                          );
-                        } else {
-                          handleInstall(item);
-                        }
+                      if (!installStateReady || isComingSoon) return;
+                      if (item.env_vars.length === 0 || isInstalled) {
+                        const normalizedToolkit =
+                          item.name === 'Notion'
+                            ? 'notion_mcp_toolkit'
+                            : item.toolkit;
+                        addOption?.(
+                          { ...item, toolkit: normalizedToolkit },
+                          true
+                        );
+                      } else {
+                        handleInstall(item);
                       }
                     }
                   : undefined
               }
             >
               {isSelectMode ? (
-                <div className="flex items-center gap-xs">
+                <div className="gap-xs flex items-center">
                   {(isSelectMode || showStatusDot) && (
-                    <img
-                      src={ellipseIcon}
-                      alt="icon"
-                      className="mr-2 h-3 w-3"
-                      style={{
-                        filter: isInstalled
-                          ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
-                          : 'none',
-                      }}
-                    />
+                    <div className={leadStatusDotClass} aria-hidden />
                   )}
                   <div className={titleClassName}>{item.name}</div>
                   <div className="flex items-center">
@@ -361,19 +385,10 @@ export default function IntegrationList({
                   </div>
                 </div>
               ) : (
-                <div className="flex w-full flex-row items-center justify-between gap-xs">
-                  <div className="flex flex-row items-center gap-xs">
+                <div className="gap-xs flex w-full flex-row items-center justify-between">
+                  <div className="gap-xs flex flex-row items-center">
                     {showStatusDot && (
-                      <img
-                        src={ellipseIcon}
-                        alt="icon"
-                        className="mr-2 h-3 w-3"
-                        style={{
-                          filter: isInstalled
-                            ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
-                            : 'none',
-                        }}
-                      />
+                      <div className={leadStatusDotClass} aria-hidden />
                     )}
                     <div className={titleClassName}>{item.name}</div>
                     <div className="flex items-center">
@@ -387,7 +402,7 @@ export default function IntegrationList({
                       </Tooltip>
                     </div>
                   </div>
-                  <div className="flex flex-row items-center gap-md">
+                  <div className="gap-md flex flex-row items-center">
                     {showConfigButton && (
                       <Button
                         type="button"
@@ -404,59 +419,35 @@ export default function IntegrationList({
                       </Button>
                     )}
                     {showInstallButton && (
-                      <Button
-                        type="button"
-                        disabled={isComingSoon}
-                        variant={
-                          isComingSoon
-                            ? 'ghost'
-                            : isInstalled
-                              ? 'outline'
-                              : 'primary'
-                        }
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          return isInstalled
-                            ? handleUninstall(item)
-                            : handleInstall(item);
-                        }}
-                      >
-                        {isComingSoon
-                          ? t(`${translationNamespace}.coming-soon`)
-                          : isInstalled
-                            ? t(`${translationNamespace}.uninstall`)
-                            : t(`${translationNamespace}.install`)}
-                      </Button>
+                      <InstallButton
+                        item={item}
+                        isComingSoon={isComingSoon}
+                        installStateReady={installStateReady}
+                        isInstalled={isInstalled}
+                        onInstall={handleInstall}
+                        onUninstall={handleUninstall}
+                        translationNamespace={translationNamespace}
+                      />
                     )}
                   </div>
                 </div>
               )}
               {isSelectMode && item.env_vars.length !== 0 && (
-                <Button
-                  disabled={isComingSoon}
-                  variant={isInstalled ? 'secondary' : 'primary'}
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    return isInstalled
-                      ? handleUninstall(item)
-                      : handleInstall(item);
-                  }}
-                >
-                  {isComingSoon
-                    ? t(`${translationNamespace}.coming-soon`)
-                    : isInstalled
-                      ? t(`${translationNamespace}.uninstall`)
-                      : t(`${translationNamespace}.install`)}
-                </Button>
+                <InstallButton
+                  item={item}
+                  isComingSoon={isComingSoon}
+                  installStateReady={installStateReady}
+                  isInstalled={isInstalled}
+                  onInstall={handleInstall}
+                  onUninstall={handleUninstall}
+                  translationNamespace={translationNamespace}
+                />
               )}
             </div>
 
             {!isSelectMode && showSelect && (
-              <div className="mt-6 flex w-full flex-row items-center gap-md border-x-0 border-b-0 border-solid border-border-secondary pt-6">
-                <div className="flex w-full flex-row items-center justify-between gap-md">
+              <div className="mt-6 gap-md border-border-secondary pt-6 flex w-full flex-row items-center border-x-0 border-b-0 border-solid">
+                <div className="gap-md flex w-full flex-row items-center justify-between">
                   <div className="text-body-md text-text-body">
                     {' '}
                     Default {item.name}
@@ -485,5 +476,120 @@ export default function IntegrationList({
         );
       })}
     </div>
+  );
+}
+
+// ── Connect / Disconnect button with hover X icon ──
+
+function InstallButton({
+  item,
+  isComingSoon,
+  installStateReady,
+  isInstalled,
+  onInstall,
+  onUninstall,
+  translationNamespace,
+}: {
+  item: IntegrationItem;
+  isComingSoon: boolean;
+  installStateReady: boolean;
+  isInstalled: boolean;
+  onInstall: (item: IntegrationItem) => void;
+  onUninstall: (item: IntegrationItem) => void;
+  translationNamespace: string;
+}) {
+  const { t } = useTranslation();
+  const [hovered, setHovered] = useState(false);
+
+  // Coming soon
+  if (isComingSoon) {
+    return (
+      <Button type="button" disabled variant="ghost" size="sm" rounded="full">
+        {t(`${translationNamespace}.coming-soon`)}
+      </Button>
+    );
+  }
+
+  if (!installStateReady) {
+    return (
+      <Button
+        type="button"
+        disabled
+        variant="primary"
+        size="sm"
+        rounded="full"
+        className="min-w-[5.5rem]"
+      >
+        {t('setting.loading')}
+      </Button>
+    );
+  }
+
+  // Connected → ghost "Disconnect" with leading X on hover
+  if (isInstalled) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        rounded="full"
+        className="transition-all duration-200"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onUninstall(item);
+        }}
+      >
+        <AnimatePresence>
+          {hovered && (
+            <motion.span
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              className="inline-flex overflow-hidden"
+            >
+              <X className="h-3.5 w-3.5" />
+            </motion.span>
+          )}
+        </AnimatePresence>
+        {t(`${translationNamespace}.disconnect`)}
+      </Button>
+    );
+  }
+
+  // Not connected → "Connect" with leading Cable icon on hover
+  return (
+    <Button
+      type="button"
+      variant="primary"
+      size="sm"
+      rounded="full"
+      className="transition-all duration-200"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onInstall(item);
+      }}
+    >
+      <AnimatePresence>
+        {hovered && (
+          <motion.span
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: 'auto' }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="inline-flex overflow-hidden"
+          >
+            <Cable className="h-3.5 w-3.5" />
+          </motion.span>
+        )}
+      </AnimatePresence>
+      {t(`${translationNamespace}.connect`)}
+    </Button>
   );
 }

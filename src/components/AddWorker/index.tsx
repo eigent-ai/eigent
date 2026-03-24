@@ -469,8 +469,8 @@ export function AddWorker({
           {showEnvConfig ? (
             // environment configuration interface
             <>
-              <DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
-                <div className="flex items-center gap-md">
+              <DialogContentSection className="gap-3 bg-white-100% p-md flex flex-col">
+                <div className="gap-md flex items-center">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
                     <div className="text-base font-bold leading-9 text-text-action">
@@ -490,7 +490,7 @@ export function AddWorker({
                               verticalAlign: 'middle',
                             }}
                           />
-                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                          <span className="text-xs font-medium leading-normal line-clamp-1 items-center justify-center self-stretch overflow-hidden break-words text-ellipsis">
                             {getGithubRepoName(activeMcp?.home_page)}
                           </span>
                         </div>
@@ -498,7 +498,7 @@ export function AddWorker({
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-sm">
+                <div className="gap-sm flex flex-col">
                   {Object.keys(activeMcp?.install_command?.env || {}).map(
                     (key) => (
                       <div key={key}>
@@ -553,7 +553,9 @@ export function AddWorker({
                 onCancel={handleCloseMcpEnvSetting}
                 onConfirm={handleConfigureMcpEnvSetting}
                 cancelButtonVariant="ghost"
+                cancelButtonRounded="full"
                 confirmButtonVariant="primary"
+                confirmButtonRounded="full"
               ></DialogFooter>
               {/* hidden but keep rendering ToolSelect component */}
               <div style={{ display: 'none' }}>
@@ -568,10 +570,10 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="flex flex-col gap-3 bg-white-100% p-md">
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-sm">
-                    <div className="flex h-16 w-16 items-center justify-center">
+              <DialogContentSection className="gap-3 bg-white-100% p-md flex flex-col">
+                <div className="gap-4 flex flex-col">
+                  <div className="gap-sm flex items-center">
+                    <div className="h-16 w-16 flex items-center justify-center">
                       <Bot size={32} className="text-icon-primary" />
                     </div>
                     <Input
@@ -608,10 +610,10 @@ export function AddWorker({
                 />
 
                 {/* Model Configuration Section */}
-                <div className="mt-2 flex flex-col gap-2">
+                <div className="mt-2 gap-2 flex flex-col">
                   <button
                     type="button"
-                    className="flex items-center gap-1 text-sm text-text-body hover:text-text-action"
+                    className="gap-1 text-sm text-text-body hover:text-text-action flex items-center"
                     onClick={() => setShowModelConfig(!showModelConfig)}
                   >
                     {showModelConfig ? (
@@ -623,8 +625,8 @@ export function AddWorker({
                   </button>
 
                   {showModelConfig && (
-                    <div className="flex flex-col gap-3 rounded-lg bg-surface-tertiary-subtle p-3">
-                      <label className="flex items-center gap-2 text-sm">
+                    <div className="gap-3 rounded-lg bg-surface-tertiary-subtle p-3 flex flex-col">
+                      <label className="gap-2 text-sm flex items-center">
                         <input
                           type="checkbox"
                           checked={useCustomModel}
@@ -636,7 +638,7 @@ export function AddWorker({
 
                       {useCustomModel && (
                         <>
-                          <div className="flex flex-col gap-1">
+                          <div className="gap-1 flex flex-col">
                             <label className="text-xs text-text-body">
                               {t('workforce.model-platform')}
                             </label>
@@ -662,7 +664,7 @@ export function AddWorker({
                             </Select>
                           </div>
 
-                          <div className="flex flex-col gap-1">
+                          <div className="gap-1 flex flex-col">
                             <label className="text-xs text-text-body">
                               {t('workforce.model-type')}
                             </label>

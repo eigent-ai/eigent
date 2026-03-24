@@ -27,6 +27,12 @@ interface MCPListItemProps {
   loading: boolean;
 }
 
+function mcpUserLeadDotClass(status: number): string {
+  if (status === 1) return 'bg-icon-success';
+  if (status === 2 || status === 0) return 'bg-icon-secondary';
+  return 'bg-icon-warning';
+}
+
 export default function MCPListItem({
   item,
   onSetting: _onSetting,
@@ -39,7 +45,10 @@ export default function MCPListItem({
   return (
     <div className="mb-4 gap-4 rounded-2xl bg-surface-tertiary p-4 flex items-center justify-between">
       <div className="gap-xs flex items-center">
-        <div className="mx-xs h-3 w-3 bg-green-500 rounded-full"></div>
+        <div
+          className={`mx-xs h-3 w-3 shrink-0 rounded-full ${mcpUserLeadDotClass(item.status ?? 2)}`}
+          aria-hidden
+        />
         <div className="text-base font-bold leading-9 text-text-primary">
           {item.mcp_name}
         </div>

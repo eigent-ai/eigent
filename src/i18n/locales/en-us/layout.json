@@ -81,6 +81,8 @@
   "coming-soon": "Coming Soon",
   "uninstall": "Uninstall",
   "install": "Install",
+  "connect": "Connect",
+  "disconnect": "Disconnect",
   "installed": "Installed",
   "installing": "Installing",
   "agent-tool": "Agent Tool",

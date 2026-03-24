@@ -42,6 +42,8 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
   // Configs cache
   const [configs, setConfigs] = useState<any[]>([]);
+  /** False until the first configs fetch finishes — avoids flashing Connect before real install state. */
+  const [configsHydrated, setConfigsHydrated] = useState(false);
   // Lock to prevent concurrent OAuth processing
   const isLockedRef = useRef(false);
   // Cache OAuth event when items are not ready
@@ -57,9 +59,13 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       const configsRes = await proxyFetchGet('/api/v1/configs');
       if (!ignore) {
         setConfigs(Array.isArray(configsRes) ? configsRes : []);
+        setConfigsHydrated(true);
       }
     } catch (_e) {
-      if (!ignore) setConfigs([]);
+      if (!ignore) {
+        setConfigs([]);
+        setConfigsHydrated(true);
+      }
     }
   }, []);
 
@@ -72,8 +78,10 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     };
   }, [fetchInstalled]);
 
-  // Recalculate installed status when items or configs change
+  // Recalculate installed status when items or configs change (only after first configs load)
   useEffect(() => {
+    if (!configsHydrated) return;
+
     const map: { [key: string]: boolean } = {};
 
     items.forEach((item) => {
@@ -107,7 +115,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     });
 
     setInstalled(map);
-  }, [items, configs]);
+  }, [items, configs, configsHydrated]);
 
   // Save environment variable and config
   const saveEnvAndConfig = useCallback(
@@ -371,6 +379,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   return {
     installed,
     configs,
+    configsHydrated,
     callBackUrl,
     fetchInstalled,
     saveEnvAndConfig,
