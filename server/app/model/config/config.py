@@ -15,7 +15,7 @@
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from app.type.config_group import ConfigGroup
+from app.shared.types.config_group import ConfigGroup
 
 
 class Config(AbstractModel, DefaultTimes, table=True):
