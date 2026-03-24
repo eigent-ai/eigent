@@ -14,14 +14,17 @@
 
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
+import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import UpdateElectron from '@/components/update';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useInitialChatPanelLayout } from '@/hooks/useInitialChatPanelLayout';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ImperativePanelHandle } from 'react-resizable-panels';
 
 import { AddWorker } from '@/components/AddWorker';
 import {
@@ -41,7 +44,7 @@ import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import Overview from './Project/Triggers';
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import {
@@ -138,6 +141,14 @@ export default function Home() {
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatPanelRef = useRef<ImperativePanelHandle>(null);
+
+  useInitialChatPanelLayout(
+    'home-main-panel-group',
+    chatPanelRef,
+    isChatBoxVisible,
+    `${isChatBoxVisible}-${chatPanelPosition}`
+  );
 
   const toggleChatBox = () => {
     setIsChatBoxVisible((prev) => !prev);
@@ -479,8 +490,10 @@ export default function Home() {
   return (
     <ReactFlowProvider>
       <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
+        <ProjectPageSidebar chatStore={chatStore} />
         <div className="min-h-0 min-w-0 gap-4 relative flex h-full flex-1 items-center justify-center overflow-hidden">
           <ResizablePanelGroup
+            id="home-main-panel-group"
             direction="horizontal"
             key={`${isChatBoxVisible}-${chatPanelPosition}`}
             className="gap-0.5 w-full items-center justify-center"
@@ -489,9 +502,10 @@ export default function Home() {
             {isChatBoxVisible && chatPanelPosition === 'left' && (
               <>
                 <ResizablePanel
+                  ref={chatPanelRef}
                   defaultSize={30}
-                  minSize={20}
-                  className="h-full"
+                  minSize={10}
+                  className="min-h-0 h-full min-w-[360px]"
                 >
                   <ChatBox />
                 </ResizablePanel>
@@ -831,9 +845,10 @@ export default function Home() {
                   className="custom-resizable-handle"
                 />
                 <ResizablePanel
+                  ref={chatPanelRef}
                   defaultSize={30}
-                  minSize={20}
-                  className="h-full"
+                  minSize={10}
+                  className="min-h-0 h-full min-w-[360px]"
                 >
                   <ChatBox />
                 </ResizablePanel>

@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
@@ -24,13 +24,23 @@ import {
 } from '@/components/ui/resizable';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useInitialChatPanelLayout } from '@/hooks/useInitialChatPanelLayout';
 import { ReactFlowProvider } from '@xyflow/react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ImperativePanelHandle } from 'react-resizable-panels';
 
 export default function Tasks() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
+  const chatPanelRef = useRef<ImperativePanelHandle>(null);
+
+  useInitialChatPanelLayout(
+    'workspace-chat-panel-group',
+    chatPanelRef,
+    isChatBoxVisible,
+    isChatBoxVisible ? 'with-chat' : 'without-chat'
+  );
 
   useEffect(() => {
     const activeTaskId = chatStore.activeTaskId;
@@ -172,14 +182,20 @@ export default function Tasks() {
 
   return (
     <ReactFlowProvider>
-      <div className="relative flex h-full min-h-0 min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
+      <div className="min-h-0 min-w-0 gap-2 rounded-2xl border-border-tertiary bg-surface-secondary relative flex h-full flex-1 items-center justify-center overflow-hidden border-solid">
         <ResizablePanelGroup
+          id="workspace-chat-panel-group"
           direction="horizontal"
           key={isChatBoxVisible ? 'with-chat' : 'without-chat'}
         >
           {isChatBoxVisible && (
             <>
-              <ResizablePanel defaultSize={30} minSize={20}>
+              <ResizablePanel
+                ref={chatPanelRef}
+                defaultSize={30}
+                minSize={10}
+                className="min-h-0 min-w-[360px]"
+              >
                 <ChatBox />
               </ResizablePanel>
               <ResizableHandle
@@ -191,7 +207,7 @@ export default function Tasks() {
           <ResizablePanel>
             {chatStore.tasks[chatStore.activeTaskId as string]
               ?.activeWorkspace && (
-              <div className="flex h-full w-full flex-1 flex-col duration-300 animate-in fade-in-0 slide-in-from-right-2">
+              <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 flex-col duration-300">
                 {chatStore.tasks[
                   chatStore.activeTaskId as string
                 ]?.taskAssigning?.find(
@@ -200,16 +216,16 @@ export default function Tasks() {
                     chatStore.tasks[chatStore.activeTaskId as string]
                       .activeWorkspace
                 )?.type === 'browser_agent' && (
-                  <div className="flex h-full w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 duration-300">
                     <BrowserAgentWorkspace />
                   </div>
                 )}
                 {chatStore.tasks[chatStore.activeTaskId as string]
                   ?.activeWorkspace === 'workflow' && (
-                  <div className="flex h-full w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 items-center justify-center duration-300">
                     <div className="relative flex h-full w-full flex-col">
                       {/*filter blur */}
-                      <div className="pointer-events-none absolute inset-0 bg-transparent"></div>
+                      <div className="inset-0 pointer-events-none absolute bg-transparent"></div>
                       <div className="relative z-10 h-full w-full">
                         <Workflow
                           taskAssigning={
@@ -229,17 +245,17 @@ export default function Tasks() {
                     chatStore.tasks[chatStore.activeTaskId as string]
                       .activeWorkspace
                 )?.type === 'developer_agent' && (
-                  <div className="flex h-full w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 duration-300">
                     <TerminalAgentWorkspace />
                     {/* <Terminal content={[]} /> */}
                   </div>
                 )}
                 {chatStore.tasks[chatStore.activeTaskId as string]
                   .activeWorkspace === 'documentWorkSpace' && (
-                  <div className="flex h-full w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                    <div className="relative flex h-full w-full flex-col pb-2">
+                  <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 items-center justify-center duration-300">
+                    <div className="pb-2 relative flex h-full w-full flex-col">
                       {/*filter blur */}
-                      <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
+                      <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
                       <div className="relative z-10 h-full w-full">
                         <Folder />
                       </div>
@@ -254,10 +270,10 @@ export default function Tasks() {
                     chatStore.tasks[chatStore.activeTaskId as string]
                       .activeWorkspace
                 )?.type === 'document_agent' && (
-                  <div className="flex h-full w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 items-center justify-center duration-300">
                     <div className="relative flex h-full w-full flex-col">
                       {/*filter blur */}
-                      <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
+                      <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
                       <div className="relative z-10 h-full w-full">
                         <Folder
                           data={chatStore.tasks[
@@ -276,10 +292,10 @@ export default function Tasks() {
                 {/* Inbox Workspace */}
                 {chatStore.tasks[chatStore.activeTaskId as string]
                   .activeWorkspace === 'inbox' && (
-                  <div className="flex h-full w-full flex-1 items-center justify-center duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 items-center justify-center duration-300">
                     <div className="relative flex h-full w-full flex-col">
                       {/*filter blur */}
-                      <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
+                      <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
                       <div className="relative z-10 h-full w-full">
                         <Folder />
                       </div>

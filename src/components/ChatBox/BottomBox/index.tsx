@@ -69,7 +69,7 @@ export default function BottomBox({
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
-  let backgroundClass = 'bg-input-bg-default';
+  let backgroundClass = 'bg-transparent';
   if (state === 'splitting') backgroundClass = 'bg-input-bg-spliting';
   else if (state === 'confirm') backgroundClass = 'bg-input-bg-confirm';
 
@@ -77,7 +77,7 @@ export default function BottomBox({
     <div className="relative z-50 flex w-full flex-col">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
-        <div className="pointer-events-auto z-50 px-2">
+        <div className="px-2 pointer-events-auto z-50">
           <QueuedBox
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
@@ -85,9 +85,7 @@ export default function BottomBox({
         </div>
       )}
       {/* BoxMain */}
-      <div
-        className={`flex w-full flex-col rounded-t-lg p-2 ${backgroundClass}`}
-      >
+      <div className={`rounded-lg p-2 flex w-full flex-col ${backgroundClass}`}>
         {/* BoxHeader variants */}
         {state === 'splitting' && <BoxHeaderSplitting />}
         {state === 'confirm' && (

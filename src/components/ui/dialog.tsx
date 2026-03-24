@@ -38,7 +38,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'bg-black/50 fixed inset-0 z-50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      'bg-black/50 inset-0 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50',
       className
     )}
     {...props}
@@ -76,6 +76,8 @@ interface DialogContentProps
   onClose?: () => void;
   /** Overlay behind the dialog: 'default' (transparent) or 'dark' (black overlay) */
   overlayVariant?: DialogOverlayVariant;
+  /** Merged onto the overlay (e.g. `backdrop-blur-none` to disable default blur) */
+  overlayClassName?: string;
 }
 
 const DialogContent = React.forwardRef<
@@ -92,13 +94,17 @@ const DialogContent = React.forwardRef<
       closeButtonIcon,
       onClose,
       overlayVariant = 'default',
+      overlayClassName,
       ...props
     },
     ref
   ) => (
     <DialogPortal>
       <DialogOverlay
-        className={overlayVariant === 'dark' ? 'bg-black/40' : undefined}
+        className={cn(
+          overlayVariant === 'dark' ? 'bg-black/40' : undefined,
+          overlayClassName
+        )}
         style={
           overlayVariant === 'dark'
             ? { backgroundColor: 'rgba(0, 0, 0, 0.4)' }
@@ -121,7 +127,7 @@ const DialogContent = React.forwardRef<
               variant="ghost"
               size="icon"
               className={cn(
-                'absolute right-4 top-4 focus:outline-none focus:ring-0 focus:ring-offset-0',
+                'right-4 top-4 absolute focus:ring-0 focus:ring-offset-0 focus:outline-none',
                 closeButtonClassName
               )}
               onClick={onClose}
@@ -165,12 +171,12 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
     <div
       ref={ref}
       className={cn(
-        'relative flex w-full shrink-0 items-center justify-between gap-2 overflow-hidden rounded-t-xl bg-popup-surface p-4',
+        'gap-2 rounded-t-xl bg-popup-surface p-4 relative flex w-full shrink-0 items-center justify-between overflow-hidden',
         className
       )}
       {...props}
     >
-      <div className="flex items-center gap-2">
+      <div className="gap-2 flex items-center">
         {showBackButton && (
           <Button
             variant="ghost"
@@ -181,11 +187,11 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
             <ChevronLeft className="h-4 w-4 text-icon-primary" />
           </Button>
         )}
-        <div className="flex flex-col text-center sm:text-left">
+        <div className="sm:text-left flex flex-col text-center">
           {title && (
-            <div className="flex items-center gap-1">
+            <div className="gap-1 flex items-center">
               <DialogPrimitive.Title asChild>
-                <span className="my-[1px] text-body-md font-bold text-text-heading">
+                <span className="text-body-md font-bold text-text-heading my-[1px]">
                   {title}
                 </span>
               </DialogPrimitive.Title>
@@ -216,7 +222,7 @@ const DialogContentSection = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('min-h-0 flex-1 p-4', className)} {...props} />
+  <div ref={ref} className={cn('min-h-0 p-4 flex-1', className)} {...props} />
 ));
 DialogContentSection.displayName = 'DialogContentSection';
 
@@ -328,9 +334,9 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
       <div
         ref={footerRef}
         className={cn(
-          'relative flex w-full shrink-0 items-center justify-end gap-2 px-4 pb-4 pt-2',
+          'gap-2 px-4 pb-4 pt-2 relative flex w-full shrink-0 items-center justify-end',
           hasScrollbar &&
-            'border-x-0 border-b-0 border-t-[0.5px] border-solid border-border-secondary',
+            'border-border-secondary border-x-0 border-t-[0.5px] border-b-0 border-solid',
           className
         )}
         {...props}

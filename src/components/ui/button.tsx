@@ -46,7 +46,7 @@ const buttonVariants = cva(
         sm: 'inline-flex justify-start items-center gap-1 px-2 py-1 rounded-md text-label-sm font-medium [&_svg]:size-[16px]',
         md: 'inline-flex justify-start items-center gap-2 px-4 py-2 rounded-md text-label-md font-medium [&_svg]:size-[24px]',
         lg: 'inline-flex justify-start items-center gap-sm px-4 py-2 rounded-md text-label-lg font-bold [&_svg]:size-[24px]',
-        icon: 'inline-flex justify-start items-center gap-1 px-1 py-1 rounded-md [&_svg]:size-10',
+        icon: 'inline-flex justify-center items-center gap-1 px-1 py-1 rounded-md [&_svg]:size-10',
       },
     },
     defaultVariants: {

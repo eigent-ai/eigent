@@ -19,15 +19,20 @@ import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import SkillDeleteDialog from './components/SkillDeleteDialog';
 import SkillListItem from './components/SkillListItem';
 import SkillUploadDialog from './components/SkillUploadDialog';
 
 export default function Skills() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { skills, syncFromDisk } = useSkillsStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [skillDialogMode, setSkillDialogMode] = useState<'upload' | 'create'>(
+    'upload'
+  );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<Skill | null>(null);
 
@@ -36,6 +41,16 @@ export default function Skills() {
     // No-op on web; in Electron this will scan ~/.eigent/skills
     syncFromDisk();
   }, [syncFromDisk]);
+
+  useEffect(() => {
+    const action = searchParams.get('skillAction');
+    if (action !== 'create' && action !== 'upload') return;
+    setSkillDialogMode(action);
+    setUploadDialogOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('skillAction');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const yourSkills = useMemo(() => {
     return skills
@@ -75,17 +90,17 @@ export default function Skills() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
+      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('agents.skills')}
         </div>
       </div>
 
       {/* Content Section */}
-      <div className="mb-12 flex flex-col gap-6">
-        <div className="flex w-full flex-col items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+      <div className="mb-12 gap-6 flex flex-col">
+        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
           <Tabs defaultValue="your-skills" className="w-full">
-            <div className="sticky top-[84px] z-10 flex w-full items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary">
+            <div className="gap-4 border-border-secondary bg-surface-secondary sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
                 variant="outline"
                 className="h-auto flex-1 justify-start border-0 bg-transparent"
@@ -103,7 +118,7 @@ export default function Skills() {
                   {t('agents.example-skills')}
                 </TabsTrigger>
               </TabsList>
-              <div className="flex items-center gap-2">
+              <div className="gap-2 flex items-center">
                 <SearchInput
                   variant="icon"
                   value={searchQuery}
@@ -113,7 +128,10 @@ export default function Skills() {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => setUploadDialogOpen(true)}
+                  onClick={() => {
+                    setSkillDialogMode('upload');
+                    setUploadDialogOpen(true);
+                  }}
                 >
                   <Plus className="h-4 w-4" />
                   {t('agents.add-skill')}
@@ -133,11 +151,16 @@ export default function Skills() {
                     !searchQuery ? t('agents.add-your-first-skill') : undefined
                   }
                   onAddClick={
-                    !searchQuery ? () => setUploadDialogOpen(true) : undefined
+                    !searchQuery
+                      ? () => {
+                          setSkillDialogMode('upload');
+                          setUploadDialogOpen(true);
+                        }
+                      : undefined
                   }
                 />
               ) : (
-                <div className="flex flex-col gap-3">
+                <div className="gap-3 flex flex-col">
                   {yourSkills.map((skill) => (
                     <SkillListItem
                       key={skill.id}
@@ -159,7 +182,7 @@ export default function Skills() {
                   }
                 />
               ) : (
-                <div className="flex flex-col gap-3">
+                <div className="gap-3 flex flex-col">
                   {exampleSkills.map((skill) => (
                     <SkillListItem
                       key={skill.id}
@@ -177,6 +200,7 @@ export default function Skills() {
       {/* Upload Dialog */}
       <SkillUploadDialog
         open={uploadDialogOpen}
+        mode={skillDialogMode}
         onClose={() => setUploadDialogOpen(false)}
       />
 

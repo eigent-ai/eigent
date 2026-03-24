@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { AnimatePresence } from 'framer-motion';
 import React, {
   useCallback,
@@ -175,6 +176,27 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       }
     };
   }, []);
+
+  // Scroll to a specific query group when triggered from the sidebar
+  const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
+  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
+
+  useEffect(() => {
+    if (!scrollToQueryId || !containerRef.current) return;
+
+    const el = containerRef.current.querySelector(
+      `[data-query-id="${scrollToQueryId}"]`
+    );
+    if (el) {
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+      container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+    }
+
+    setScrollToQueryId(null);
+  }, [scrollToQueryId, setScrollToQueryId]);
 
   return (
     <div

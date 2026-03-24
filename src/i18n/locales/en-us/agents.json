@@ -46,5 +46,12 @@
   "custom-skill": "Custom skill",
   "delete-skill": "Delete Skill",
   "delete-skill-confirmation": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
-  "skill-deleted-success": "Skill deleted successfully!"
+  "skill-deleted-success": "Skill deleted successfully!",
+  "create-skill": "Create a skill",
+  "upload-skill": "Upload a skill",
+  "browse-skills": "Browse skills",
+  "create-skill-default-name": "New skill",
+  "create-skill-default-description": "Describe what this skill does.",
+  "save-skill": "Save skill",
+  "compose-skill-hint": "Edit SKILL.md (YAML frontmatter with name and description is required), then save."
 }

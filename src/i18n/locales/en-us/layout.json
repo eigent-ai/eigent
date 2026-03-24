@@ -245,5 +245,8 @@
   "restart-required": "Restart Required",
   "restart-required-message": "Restart the application to enable your cookie domain changes.",
   "restart": "Restart",
-  "cookie-count": "{{count}} Cookies"
+  "cookie-count": "{{count}} Cookies",
+  "add-new-mcp": "Add new MCP",
+  "browse-mcps": "Browse MCPs",
+  "browser-settings": "Browser settings"
 }

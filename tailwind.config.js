@@ -540,6 +540,8 @@ module.exports = {
         'icon-on-hover': 'var(--icon-on-hover)',
         'icon-on-action': 'var(--icon-on-action)',
         'icon-secondary': 'var(--icon-secondary)',
+        /** Muted icons aligned with label text (e.g. row affordances) */
+        'icon-label': 'var(--text-label)',
 
         'fill-default': 'var(--fill-default)',
         'fill-fill-primary': 'var(--fill-fill-primary)',
