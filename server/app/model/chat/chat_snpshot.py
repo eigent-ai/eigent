@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import Column, Integer, text
 from sqlmodel import Field
 
-from app.component.sqids import encode_user_id
+from app.core.sqids import encode_user_id
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 
@@ -68,3 +68,11 @@ class ChatSnapshotIn(BaseModel):
         with open(file_path, "wb") as f:
             f.write(base64.b64decode(image_base64))
         return f"/public/upload/{user_dir}/{api_task_id}/{filename}"
+
+
+class ChatSnapshotUpdate(BaseModel):
+    """Update model - only updatable fields."""
+    api_task_id: str | None = None
+    camel_task_id: str | None = None
+    browser_url: str | None = None
+    image_path: str | None = None

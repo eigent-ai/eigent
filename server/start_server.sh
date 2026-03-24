@@ -96,14 +96,39 @@ else
     exit 1
 fi
 
-# Start service
-echo -e "${YELLOW}[5/5] Starting FastAPI service...${NC}"
+# Cleanup function to stop background processes on exit
+cleanup() {
+    echo -e "\n${YELLOW}Shutting down services...${NC}"
+    if [ -n "$CELERY_WORKER_PID" ] && kill -0 "$CELERY_WORKER_PID" 2>/dev/null; then
+        kill "$CELERY_WORKER_PID" 2>/dev/null
+        echo -e "${GREEN}Celery worker stopped${NC}"
+    fi
+    if [ -n "$CELERY_BEAT_PID" ] && kill -0 "$CELERY_BEAT_PID" 2>/dev/null; then
+        kill "$CELERY_BEAT_PID" 2>/dev/null
+        echo -e "${GREEN}Celery beat stopped${NC}"
+    fi
+    exit 0
+}
+trap cleanup SIGINT SIGTERM
+
+# Start services
+echo -e "${YELLOW}[5/7] Starting Celery worker...${NC}"
+uv run celery -A app.core.celery worker --loglevel=info --queues=celery,poll_trigger_schedules,check_execution_timeouts &
+CELERY_WORKER_PID=$!
+echo -e "${GREEN}Celery worker started (PID: $CELERY_WORKER_PID)${NC}"
+
+echo -e "${YELLOW}[6/7] Starting Celery beat...${NC}"
+uv run celery -A app.core.celery beat --loglevel=info &
+CELERY_BEAT_PID=$!
+echo -e "${GREEN}Celery beat started (PID: $CELERY_BEAT_PID)${NC}"
+
+echo -e "${YELLOW}[7/7] Starting FastAPI service...${NC}"
 echo -e "${CYAN}Service will start at http://localhost:3001${NC}"
-echo -e "${CYAN}Press Ctrl+C to stop the service${NC}"
+echo -e "${CYAN}Press Ctrl+C to stop all services${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 if ! uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0; then
     echo -e "${RED}Service startup failed${NC}"
-    read -p "Press Enter to exit"
+    cleanup
     exit 1
 fi
