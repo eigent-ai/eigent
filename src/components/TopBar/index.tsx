@@ -111,7 +111,7 @@ function HeaderWin() {
 
   const getReferFriendsLink = async () => {
     try {
-      const res: any = await proxyFetchGet('/api/user/invite_code');
+      const res: any = await proxyFetchGet('/api/v1/user/invite_code');
       if (res?.invite_code) {
         const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
         await navigator.clipboard.writeText(inviteLink);
@@ -158,7 +158,7 @@ function HeaderWin() {
       // Delete from history using historyId
       if (historyId && task.status !== ChatTaskStatus.FINISHED) {
         try {
-          await proxyFetchDelete(`/api/chat/history/${historyId}`);
+          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
           // Remove from local store
           chatStore.removeTask(taskId);
         } catch (error) {

@@ -459,9 +459,9 @@ export function TaskCard({
                             <Circle size={16} className="text-icon-secondary" />
                           )}
                         </div>
-                        <div className="flex flex-1 flex-col items-start justify-center">
+                        <div className="flex min-w-0 flex-1 flex-col items-start justify-center">
                           <div
-                            className={`overflow-wrap-anywhere w-full whitespace-pre-line break-words ${
+                            className={`w-full min-w-0 whitespace-pre-line break-words [overflow-wrap:anywhere] ${
                               task.status === TaskStatus.FAILED
                                 ? 'text-text-cuation-default'
                                 : task.status === TaskStatus.BLOCKED

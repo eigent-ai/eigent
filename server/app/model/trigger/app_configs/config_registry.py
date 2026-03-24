@@ -21,7 +21,7 @@ Used for validation and JSON schema generation.
 
 from typing import Type, Optional, Dict, Any, TYPE_CHECKING
 
-from app.type.trigger_types import TriggerType
+from app.shared.types.trigger_types import TriggerType
 from app.model.trigger.app_configs.base_config import BaseTriggerConfig
 from app.model.trigger.app_configs.slack_config import SlackTriggerConfig
 from app.model.trigger.app_configs.webhook_config import WebhookTriggerConfig
