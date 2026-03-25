@@ -242,7 +242,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], git = "https://github.com/camel-ai/camel.git?rev=async-support-for-aws-bedwork-converse-api" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.90" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -285,36 +285,36 @@ wheels = [
 
 [[package]]
 name = "boto3"
-version = "1.42.65"
+version = "1.42.67"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "botocore" },
     { name = "jmespath" },
     { name = "s3transfer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1e/c9/8ff8a901cf62374f1289cf36391f855e1702c70f545c28d1b57608a84ff2/boto3-1.42.65.tar.gz", hash = "sha256:c740af6bdaebcc1a00f3827a5729050bf6fc820ee148bf7d06f28db11c80e2a1", size = 112805, upload-time = "2026-03-10T19:44:58.255Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/b3/3b5c929df4e46572d2721f0cef7b9fc85fc9d68b659b46df2724ad2606f6/boto3-1.42.67.tar.gz", hash = "sha256:d4123ceb3be36c5cb7ddccc7a7c43701e1fb6af612ef46e3b5d667daf5447d4b", size = 112820, upload-time = "2026-03-12T19:43:40.444Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/bb/ace5921655df51e3c9b787b3f0bd6aa25548e5cf1dabae02e53fa88f2d98/boto3-1.42.65-py3-none-any.whl", hash = "sha256:cc7f2e0aec6c68ee5b10232cf3e01326acf6100bc785a770385b61a0474b31f4", size = 140556, upload-time = "2026-03-10T19:44:55.433Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/d8/41d7657896de9fe3ef666221180dcbcdc9e3f418b88084aba0c9abf0bb0a/boto3-1.42.67-py3-none-any.whl", hash = "sha256:aa900216bdc48bbd0115ed7128a4baed5548c6a60673160a38df8a8566df57cd", size = 140557, upload-time = "2026-03-12T19:43:38.174Z" },
 ]
 
 [[package]]
 name = "botocore"
-version = "1.42.65"
+version = "1.42.67"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jmespath" },
     { name = "python-dateutil" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/81/2c832e2117d24da4fe800861e8ddd19bbaa308623b1198eb2c2cc6fcd3d4/botocore-1.42.65.tar.gz", hash = "sha256:7d52c148df07f70c375eeda58f99b439c7c7836c25df74cccfba3bb6e12444d2", size = 14970239, upload-time = "2026-03-10T19:44:43.686Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/6a/0326ea8a726e9061d0aff941bc89ff93a1e832f492e6b3d7419301a56c1e/botocore-1.42.67.tar.gz", hash = "sha256:ee307f30fcb798d244fb35a87847b274e1e1f72cd5f7f2e31bd1826df0c45295", size = 14983149, upload-time = "2026-03-12T19:43:27.244Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/9e/2ca03a55408c0820d7f0a04ae52bc6dfc7e4fff1f007a90135a68e056c93/botocore-1.42.65-py3-none-any.whl", hash = "sha256:0283c332ce00cbd1b894e86b7bed89dd624a5ca3a4ee62ec4db3898d16652e98", size = 14644794, upload-time = "2026-03-10T19:44:37.442Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/0b/cfe18326230476a0b8e3529609190448f2b46453469b07ae95fc57f90fc6/botocore-1.42.67-py3-none-any.whl", hash = "sha256:a94317d2ce83deae230964beb2729639455de65595d0154f285b0ccfd29780cd", size = 14655819, upload-time = "2026-03-12T19:43:21.952Z" },
 ]
 
 [[package]]
 name = "camel-ai"
-version = "0.2.90a5"
-source = { git = "https://github.com/camel-ai/camel.git?rev=async-support-for-aws-bedwork-converse-api#3a0d46bd61ebb12dea3cf721c12407c7d87fa64b" }
+version = "0.2.90"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
     { name = "colorama" },
@@ -330,6 +330,10 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tiktoken" },
     { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/b3/da958646c69b42cfafd3fc081b77bb19bb625773766da6ffa2d77c9c66e0/camel_ai-0.2.90.tar.gz", hash = "sha256:43f11673390cc8d4451d6b1bb2913ddef6131f411f47da02d16a3989c8096d02", size = 1212904, upload-time = "2026-03-22T08:37:04.611Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/e2/7005080797edcc760dcf7695ece29f97e18189ea2c56cd7514592801f0c9/camel_ai-0.2.90-py3-none-any.whl", hash = "sha256:9998c434779a1a847d9ccddce1c069f22fb9667b19ba06a2452c479882169082", size = 1700705, upload-time = "2026-03-22T08:37:02.259Z" },
 ]
 
 [package.optional-dependencies]
