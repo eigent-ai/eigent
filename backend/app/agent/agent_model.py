@@ -86,10 +86,8 @@ def agent_model(
         effective_config.get("model_platform") == "aws-bedrock-converse"
         and options.is_cloud()
     ):
-        effective_config["api_url"], extra_params = (
-            patch_bedrock_cloud_config(
-                effective_config["api_url"], extra_params
-            )
+        effective_config["api_url"], extra_params = patch_bedrock_cloud_config(
+            effective_config["api_url"], extra_params
         )
     init_param_keys = {
         "api_version",

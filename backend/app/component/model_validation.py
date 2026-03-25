@@ -19,7 +19,6 @@ from typing import Any
 from camel.agents import ChatAgent
 from camel.models import ModelFactory, ModelProcessingError
 
-
 logger = logging.getLogger("model_validation")
 
 # Expected result from tool execution for validation
