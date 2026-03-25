@@ -61,6 +61,9 @@ RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 RUN sed -i 's/\r$//' /app/celery/worker/start && chmod +x /app/celery/worker/start
 RUN sed -i 's/\r$//' /app/celery/beat/start && chmod +x /app/celery/beat/start
 
+# Bake a build timestamp into the image for stale-image detection at startup
+RUN echo "EIGENT_IMAGE_BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')" > /app/.image_env
+
 # Reset the entrypoint, don't invoke `uv`
 ENTRYPOINT []
 
