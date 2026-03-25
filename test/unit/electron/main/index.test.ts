@@ -157,10 +157,14 @@ vi.mock('../../../../electron/main/update', () => ({
 
 vi.mock('../../../../electron/main/init', () => ({
   checkToolInstalled: vi.fn(),
-  installDependencies: vi.fn(),
   killProcessOnPort: vi.fn(),
   startBackend: vi.fn(),
   findAvailablePort: vi.fn(),
+}));
+
+vi.mock('../../../../electron/main/install-deps', () => ({
+  checkAndInstallDepsOnUpdate: vi.fn(),
+  getInstallationStatus: vi.fn(),
 }));
 
 // Other internal mocks...
@@ -188,6 +192,7 @@ vi.mock('tree-kill', () => ({ default: vi.fn() }));
 
 // Import the mocked functions
 import * as initModule from '../../../../electron/main/init';
+import * as installDepsModule from '../../../../electron/main/install-deps';
 import * as envUtil from '../../../../electron/main/utils/envUtil';
 import * as mcpConfig from '../../../../electron/main/utils/mcpConfig';
 
@@ -195,6 +200,7 @@ import * as mcpConfig from '../../../../electron/main/utils/mcpConfig';
 const mockedEnvUtil = vi.mocked(envUtil);
 const mockedMcpConfig = vi.mocked(mcpConfig);
 const mockedInitModule = vi.mocked(initModule);
+const mockedInstallDeps = vi.mocked(installDepsModule);
 
 describe('Electron Main Index Functions', () => {
   beforeEach(() => {
@@ -671,9 +677,7 @@ describe('Electron Main Index Functions', () => {
         minHeight: 800,
         frame: false,
         transparent: true,
-        vibrancy: 'sidebar',
-        visualEffectState: 'active',
-        backgroundColor: '#00000000',
+        backgroundColor: '#f5f5f5',
         titleBarStyle: 'hidden',
         trafficLightPosition: { x: 10, y: 10 },
         roundedCorners: true,
@@ -696,14 +700,12 @@ describe('Electron Main Index Functions', () => {
         height: 800,
         minWidth: 1200,
         minHeight: 800,
-        frame: false,
-        transparent: true,
-        vibrancy: 'sidebar',
-        visualEffectState: 'active',
-        backgroundColor: '#00000000',
+        frame: true,
+        transparent: false,
+        backgroundColor: '#ffffff',
         titleBarStyle: undefined,
         trafficLightPosition: undefined,
-        roundedCorners: true,
+        roundedCorners: false,
       };
 
       expect(mockConfig.titleBarStyle).toBeUndefined();
@@ -1030,7 +1032,9 @@ describe('Electron Main Index Functions', () => {
     });
 
     it('should handle mcp-list', async () => {
-      const mockData = { mcp1: { version: '1.0' } };
+      const mockData = {
+        mcpServers: { mcp1: { command: 'echo', args: [] } },
+      };
       mockedMcpConfig.readMcpConfig.mockResolvedValue(mockData);
       const mockHandler = vi.fn(() => mockedMcpConfig.readMcpConfig());
       mockIpcMain.handle('mcp-list', mockHandler);
@@ -1182,10 +1186,13 @@ describe('Electron Main Index Functions', () => {
 
   describe('Backend and Dependency Handlers', () => {
     it('should handle check-tool-installed', async () => {
-      mockedInitModule.checkToolInstalled.mockResolvedValue(true);
+      mockedInitModule.checkToolInstalled.mockResolvedValue({
+        success: true,
+        message: 'Tools exist already',
+      });
       const mockHandler = vi.fn(async () => {
-        const isInstalled = await mockedInitModule.checkToolInstalled();
-        return { success: true, isInstalled };
+        const status = await mockedInitModule.checkToolInstalled();
+        return { success: true, isInstalled: status.success };
       });
       mockIpcMain.handle('check-tool-installed', mockHandler);
 
@@ -1195,18 +1202,27 @@ describe('Electron Main Index Functions', () => {
     });
 
     it('should handle installation triggering', async () => {
-      // Create a mock handler that actually calls installDependencies
       const mockHandler = vi.fn(async () => {
-        const result = await mockedInitModule.installDependencies();
-        return result;
+        return await mockedInstallDeps.checkAndInstallDepsOnUpdate({
+          win: null,
+          forceInstall: true,
+        });
       });
       mockIpcMain.handle('install-dependencies', mockHandler);
       mockIpcMain.handle('frontend-ready', mockHandler);
 
-      mockedInitModule.installDependencies.mockResolvedValue(true);
+      mockedInstallDeps.checkAndInstallDepsOnUpdate.mockResolvedValue({
+        success: true,
+        message: 'ok',
+      });
 
       await mockHandler();
-      expect(mockedInitModule.installDependencies).toHaveBeenCalled();
+      expect(
+        mockedInstallDeps.checkAndInstallDepsOnUpdate
+      ).toHaveBeenCalledWith({
+        win: null,
+        forceInstall: true,
+      });
     });
   });
 
@@ -1291,7 +1307,10 @@ describe('Electron Main Index Functions', () => {
      */
     const path = require('node:path');
 
-    const isPathAllowed = (filePath: string, allowedBases: string[]): boolean => {
+    const isPathAllowed = (
+      filePath: string,
+      allowedBases: string[]
+    ): boolean => {
       const resolvedPath = path.resolve(filePath);
       return allowedBases.some((base: string) => {
         const resolvedBase = path.resolve(base);
@@ -1305,11 +1324,15 @@ describe('Electron Main Index Functions', () => {
     const ALLOWED_BASES = ['/home/user', '/mock/user/data', '/tmp'];
 
     it('should allow files within home directory', () => {
-      expect(isPathAllowed('/home/user/documents/file.pdf', ALLOWED_BASES)).toBe(true);
+      expect(
+        isPathAllowed('/home/user/documents/file.pdf', ALLOWED_BASES)
+      ).toBe(true);
     });
 
     it('should allow files within userData directory', () => {
-      expect(isPathAllowed('/mock/user/data/cache/image.png', ALLOWED_BASES)).toBe(true);
+      expect(
+        isPathAllowed('/mock/user/data/cache/image.png', ALLOWED_BASES)
+      ).toBe(true);
     });
 
     it('should allow files within temp directory', () => {
@@ -1343,7 +1366,9 @@ describe('Electron Main Index Functions', () => {
 
     it('should block paths that are prefixes but not subdirectories', () => {
       // /home/user-evil should NOT match /home/user
-      expect(isPathAllowed('/home/user-evil/file.txt', ALLOWED_BASES)).toBe(false);
+      expect(isPathAllowed('/home/user-evil/file.txt', ALLOWED_BASES)).toBe(
+        false
+      );
     });
   });
 
