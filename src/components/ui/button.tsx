@@ -18,13 +18,33 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+export type ButtonContent = 'text' | 'icon-only';
+export type ButtonTextWeight = 'normal' | 'medium' | 'semibold' | 'bold';
+/** Corner style; uses Tailwind important so it wins over variant/size radii. */
+export type ButtonRadius = 'lg' | 'full';
+
+/** Icon box (width/height) paired with text weight when `textWeight` is set */
+const TEXT_WEIGHT_CLASSES: Record<ButtonTextWeight, string> = {
+  normal: '!font-normal [&_svg:not([class*="size-"])]:!size-[14px]',
+  medium: '!font-medium [&_svg:not([class*="size-"])]:!size-[15px]',
+  semibold: '!font-semibold [&_svg:not([class*="size-"])]:!size-[16px]',
+  bold: '!font-bold [&_svg:not([class*="size-"])]:!size-[18px]',
+};
+
+const RADIUS_CLASSES: Record<ButtonRadius, string> = {
+  lg: '!rounded-lg',
+  full: '!rounded-full',
+};
+
+type ButtonSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg';
+
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap transition-all duration-200 ease-in-out disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20  aria-invalid:border-destructive",
+  'inline-flex items-center whitespace-nowrap transition-all duration-200 ease-in-out disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 aria-invalid:border-destructive shrink-0',
   {
     variants: {
       variant: {
         primary:
-          'bg-button-primary-fill-default !text-button-primary-text-default font-bold rounded-xs shadow-button-shadow hover:bg-button-primary-fill-hover active:bg-button-primary-fill-active focus:bg-button-primary-fill-hover focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer ',
+          'bg-button-primary-fill-default !text-button-primary-text-default font-bold rounded-xs shadow-button-shadow hover:bg-button-primary-fill-hover active:bg-button-primary-fill-active focus:bg-button-primary-fill-hover focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer',
         secondary:
           'bg-button-secondary-fill-default !text-button-secondary-text-default font-bold rounded-xs shadow-button-shadow hover:bg-button-secondary-fill-hover active:bg-button-secondary-fill-active focus:bg-button-secondary-hover focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer',
         outline:
@@ -41,40 +61,157 @@ const buttonVariants = cva(
           'bg-button-fill-warning !text-button-fill-warning-foreground font-bold rounded-xs shadow-button-shadow focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer',
       },
       size: {
-        xxs: 'inline-flex justify-start items-center gap-1 px-1 py-0.5 rounded-md text-label-xs font-bold [&_svg]:size-16',
-        xs: 'inline-flex justify-start items-center gap-1 px-2 py-1 rounded-md text-label-xs font-bold [&_svg]:size-10',
-        sm: 'inline-flex justify-start items-center gap-1 px-2 py-1 rounded-md text-label-sm font-medium [&_svg]:size-[16px]',
-        md: 'inline-flex justify-start items-center gap-2 px-4 py-2 rounded-md text-label-md font-medium [&_svg]:size-[24px]',
-        lg: 'inline-flex justify-start items-center gap-sm px-4 py-2 rounded-md text-label-lg font-bold [&_svg]:size-[24px]',
-        icon: 'inline-flex justify-start items-center gap-1 px-1 py-1 rounded-md [&_svg]:size-10',
+        xxs: 'rounded-md text-label-xs',
+        xs: 'rounded-md text-label-xs',
+        sm: 'rounded-md text-label-sm',
+        md: 'rounded-md text-label-md',
+        lg: 'rounded-md text-label-lg',
+      },
+      /**
+       * `text`: label + optional icon; shares fixed min-height with `icon-only` per size.
+       * `icon-only`: fixed square (equal width/height) with centered icon.
+       */
+      layout: {
+        text: 'justify-start gap-1',
+        'icon-only': 'justify-center gap-0',
       },
     },
+    compoundVariants: [
+      {
+        size: 'xxs',
+        layout: 'text',
+        class:
+          'box-border min-h-5 px-1 py-0 font-bold [&_svg:not([class*="size-"])]:size-[14px]',
+      },
+      {
+        size: 'xs',
+        layout: 'text',
+        class:
+          'box-border min-h-6 px-1.5 py-0 font-bold [&_svg:not([class*="size-"])]:size-[14px]',
+      },
+      {
+        size: 'sm',
+        layout: 'text',
+        class:
+          'box-border min-h-[28px] px-2 py-0 font-medium [&_svg:not([class*="size-"])]:size-[16px]',
+      },
+      {
+        size: 'md',
+        layout: 'text',
+        class:
+          'box-border min-h-[32px] gap-2 px-4 py-0 font-medium [&_svg:not([class*="size-"])]:size-[24px]',
+      },
+      {
+        size: 'lg',
+        layout: 'text',
+        class:
+          'box-border min-h-[36px] gap-sm px-4 py-0 font-bold [&_svg:not([class*="size-"])]:size-[24px]',
+      },
+      {
+        size: 'xxs',
+        layout: 'icon-only',
+        class:
+          'box-border h-5 w-5 min-h-5 min-w-5 shrink-0 p-1 font-bold [&_svg:not([class*="size-"])]:size-[12px]',
+      },
+      {
+        size: 'xs',
+        layout: 'icon-only',
+        class:
+          'box-border h-6 w-6 min-h-6 min-w-6 shrink-0 p-[5px] font-bold [&_svg:not([class*="size-"])]:size-[14px]',
+      },
+      {
+        size: 'sm',
+        layout: 'icon-only',
+        class:
+          'box-border h-[28px] w-[28px] min-h-[28px] min-w-[28px] shrink-0 p-1.5 font-bold [&_svg:not([class*="size-"])]:size-[16px]',
+      },
+      {
+        size: 'md',
+        layout: 'icon-only',
+        class:
+          'box-border h-[32px] w-[32px] min-h-[32px] min-w-[32px] shrink-0 p-1.5 font-bold [&_svg:not([class*="size-"])]:size-[20px]',
+      },
+      {
+        size: 'lg',
+        layout: 'icon-only',
+        class:
+          'box-border h-[36px] w-[36px] min-h-[36px] min-w-[36px] shrink-0 p-1.5 font-bold [&_svg:not([class*="size-"])]:size-[24px]',
+      },
+    ],
     defaultVariants: {
       variant: 'primary',
       size: 'md',
+      layout: 'text',
     },
   }
 );
 
-const Button = React.forwardRef<
-  HTMLButtonElement,
-  React.ComponentProps<'button'> &
-    VariantProps<typeof buttonVariants> & { asChild?: boolean }
->(({ className, variant, size, asChild = false, children, ...props }, ref) => {
-  const Comp = asChild ? Slot : 'button';
+export type ButtonProps = React.ComponentProps<'button'> &
+  Omit<VariantProps<typeof buttonVariants>, 'layout' | 'size'> & {
+    asChild?: boolean;
+    /** Text + optional icon (default). `icon-only`: fixed square per `size`, same outer height as text. */
+    buttonContent?: ButtonContent;
+    /** Overrides label weight and default icon size (when SVG has no explicit size class). */
+    textWeight?: ButtonTextWeight;
+    /** `lg` = rounded corners; `full` = pill / circle (icon-only). */
+    buttonRadius?: ButtonRadius;
+    /**
+     * @deprecated Use `size="xs"` with `buttonContent="icon-only"` instead.
+     */
+    size?: ButtonSize | 'icon';
+  };
 
-  return (
-    <Comp
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      ref={ref}
-      {...props}
-    >
-      {children}
-      {/* {variant === "primary" && <div />} */}
-    </Comp>
-  );
-});
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      className,
+      variant,
+      size: sizeProp = 'md',
+      buttonContent,
+      textWeight,
+      buttonRadius,
+      asChild = false,
+      children,
+      ...props
+    },
+    ref
+  ) => {
+    const Comp = asChild ? Slot : 'button';
+
+    const legacyIcon = sizeProp === 'icon';
+    const resolvedSize: ButtonSize = legacyIcon
+      ? 'sm'
+      : (sizeProp as ButtonSize);
+    const resolvedLayout =
+      buttonContent === 'icon-only'
+        ? 'icon-only'
+        : buttonContent === 'text'
+          ? 'text'
+          : legacyIcon
+            ? 'icon-only'
+            : 'text';
+
+    return (
+      <Comp
+        data-slot="button"
+        className={cn(
+          buttonVariants({
+            variant,
+            size: resolvedSize,
+            layout: resolvedLayout,
+          }),
+          textWeight ? TEXT_WEIGHT_CLASSES[textWeight] : null,
+          buttonRadius ? RADIUS_CLASSES[buttonRadius] : null,
+          className
+        )}
+        ref={ref}
+        {...props}
+      >
+        {children}
+      </Comp>
+    );
+  }
+);
 
 Button.displayName = 'Button';
 

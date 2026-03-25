@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
+import { Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { MentionAgentListIcon } from './MentionAgentIcons';
 
 export interface MentionAgent {
   id: string;
@@ -21,11 +23,42 @@ export interface MentionAgent {
   description: string;
 }
 
+/** Design tokens for @-mention agents (workforce = camel accent). */
+export const AGENT_MENTION_THEME: Record<string, { chip: string }> = {
+  workforce: {
+    chip: 'border !border-border-camel/50 !bg-tag-fill-camel !text-text-camel hover:!bg-tag-surface-hover shadow-none',
+  },
+  browser: {
+    chip: 'border !border-border-browser/50 !bg-tag-fill-browser !text-text-browser hover:!bg-tag-surface-hover shadow-none',
+  },
+  dev: {
+    chip: 'border !border-border-developer/50 !bg-tag-fill-developer !text-text-developer hover:!bg-tag-surface-hover shadow-none',
+  },
+  doc: {
+    chip: 'border !border-border-document/50 !bg-tag-fill-document !text-text-document hover:!bg-tag-surface-hover shadow-none',
+  },
+  media: {
+    chip: 'border !border-border-multimodal/50 !bg-tag-fill-multimodal !text-text-multimodal hover:!bg-tag-surface-hover shadow-none',
+  },
+};
+
+const DEFAULT_AGENT_THEME = {
+  chip: 'border !border-input-border-default !bg-input-bg-input !text-text-body hover:!bg-surface-hover-subtle shadow-none',
+};
+
+export function getAgentMentionTheme(agentId: string) {
+  return AGENT_MENTION_THEME[agentId] ?? DEFAULT_AGENT_THEME;
+}
+
+/** Shared shell for agent list (border, surface, shadow). Pair with overflow-* per host. */
+export const MENTION_DROPDOWN_PANEL_CLASS =
+  'text-popover-foreground w-48 border-input-border-default rounded-xl bg-input-bg-default p-1 shadow-md gap-1 z-50 border border-solid';
+
 export const BUILTIN_AGENTS: MentionAgent[] = [
   {
     id: 'workforce',
     label: 'Workforce',
-    description: 'Task decomposition & multi-agent collaboration',
+    description: 'Multi-agent coordination',
   },
   {
     id: 'browser',
@@ -54,6 +87,10 @@ interface MentionDropdownProps {
   filter: string;
   onSelect: (agent: MentionAgent) => void;
   onClose: () => void;
+  /** When true, render as a plain list (e.g. inside Popover) instead of floating above a relative parent */
+  inline?: boolean;
+  /** Current agent (e.g. mention target): row shows check and selected background */
+  selectedAgentId?: string | null;
 }
 
 export const MentionDropdown = ({
@@ -61,14 +98,18 @@ export const MentionDropdown = ({
   filter,
   onSelect,
   onClose,
+  inline = false,
+  selectedAgentId,
 }: MentionDropdownProps) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const filterLower = filter.toLowerCase();
   const filteredAgents = BUILTIN_AGENTS.filter(
     (agent) =>
-      agent.id.toLowerCase().includes(filter.toLowerCase()) ||
-      agent.label.toLowerCase().includes(filter.toLowerCase())
+      agent.id.toLowerCase().includes(filterLower) ||
+      agent.label.toLowerCase().includes(filterLower) ||
+      agent.description.toLowerCase().includes(filterLower)
   );
 
   // Reset selection when filter changes
@@ -122,35 +163,48 @@ export const MentionDropdown = ({
     <div
       ref={listRef}
       className={cn(
-        'absolute bottom-full left-0 z-50 mb-1 w-64',
-        'rounded-lg border border-dropdown-border bg-dropdown-bg shadow-perfect',
-        'max-h-[240px] overflow-auto py-1'
+        inline
+          ? 'max-h-[280px] w-full overflow-x-hidden overflow-y-auto'
+          : cn(
+              MENTION_DROPDOWN_PANEL_CLASS,
+              'left-0 mb-2 absolute bottom-full max-h-[280px] -translate-x-[8px] overflow-x-hidden overflow-y-auto'
+            )
       )}
     >
-      {filteredAgents.map((agent, index) => (
-        <div
-          key={agent.id}
-          className={cn(
-            'flex cursor-pointer flex-col gap-0.5 px-3 py-2 transition-colors',
-            index === selectedIndex
-              ? 'bg-dropdown-item-bg-hover'
-              : 'hover:bg-dropdown-item-bg-hover'
-          )}
-          onMouseEnter={() => setSelectedIndex(index)}
-          onMouseDown={(e) => {
-            e.preventDefault(); // Prevent textarea blur
-            onSelect(agent);
-          }}
-        >
-          <span className="text-sm font-medium text-text-body">
-            @{agent.id}
-            <span className="ml-2 text-xs font-normal text-text-label">
-              {agent.label}
+      {filteredAgents.map((agent, index) => {
+        const isValue = selectedAgentId != null && agent.id === selectedAgentId;
+        const isKeyboardFocused = index === selectedIndex;
+        return (
+          <div
+            key={agent.id}
+            className={cn(
+              // Match SelectItem / PopoverItem: pr-8 for check, menutabs hover / highlight
+              'gap-2 rounded-xl py-1.5 pl-2 pr-8 text-sm hover:bg-menutabs-fill-hover focus-visible:bg-accent focus-visible:text-accent-foreground relative flex w-full cursor-pointer items-center transition-colors outline-none select-none',
+              (isValue || isKeyboardFocused) && 'bg-menutabs-fill-hover'
+            )}
+            onMouseEnter={() => setSelectedIndex(index)}
+            onMouseDown={(e) => {
+              e.preventDefault(); // Prevent textarea blur
+              onSelect(agent);
+            }}
+          >
+            <MentionAgentListIcon agentId={agent.id} />
+            <span
+              className={cn(
+                'min-w-0 text-sm font-medium flex-1 truncate capitalize',
+                agent.id === 'workforce' ? 'text-text-camel' : 'text-text-body'
+              )}
+            >
+              {agent.id}
             </span>
-          </span>
-          <span className="text-xs text-text-label">{agent.description}</span>
-        </div>
-      ))}
+            {isValue && (
+              <span className="right-2 h-3.5 w-3.5 absolute flex shrink-0 items-center justify-center">
+                <Check className="h-4 w-4" aria-hidden />
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };

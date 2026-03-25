@@ -123,7 +123,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <textarea
             data-scrollbar="ui-textarea"
             className={cn(
-              'border-input placeholder:text-text-label/20 focus-visible:ring-ring flex min-h-[60px] w-full rounded-lg border bg-transparent py-2 pl-3 pr-3 text-body-sm shadow-sm [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50',
+              'border-input placeholder:text-text-label/20 focus-visible:ring-ring rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
               className
             )}
             style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
@@ -164,7 +164,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
       <>
         <div className={cn('w-full', stateCls.container)}>
           {title ? (
-            <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+            <div className="mb-1.5 gap-1 text-body-sm font-bold text-text-heading flex items-center">
               <span>{title}</span>
               {required && <span className="text-text-body">*</span>}
               {tooltip && (
@@ -177,17 +177,17 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
 
           <div
             className={cn(
-              'relative flex items-start rounded-lg border border-solid shadow-sm transition-all',
+              'rounded-lg shadow-sm relative flex items-start border border-solid transition-all',
               // Only apply hover/focus visuals when not in error or success state
               state !== 'error' &&
                 state !== 'success' &&
-                'focus-within:bg-input-bg-input focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
+                'focus-within:bg-input-bg-input focus-within:ring-input-border-focus hover:bg-input-bg-hover hover:ring-input-border-hover focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
               stateCls.field,
               sizeClasses[size]
             )}
           >
             {leadingIcon ? (
-              <span className="pointer-events-none absolute left-2 top-2 inline-flex h-5 w-5 items-center justify-center text-icon-primary">
+              <span className="left-2 top-2 h-5 w-5 text-icon-primary pointer-events-none absolute inline-flex items-center justify-center">
                 {leadingIcon}
               </span>
             ) : null}
@@ -221,7 +221,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             {backIcon ? (
               <Button
                 variant="ghost"
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 type="button"
                 tabIndex={-1}
                 disabled={disabled}
@@ -234,7 +235,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             {trailingButton ? (
               <div
                 className={cn(
-                  'absolute right-2 top-2',
+                  'right-2 top-2 absolute',
                   backIcon ? '-mr-7' : ''
                 )}
               >

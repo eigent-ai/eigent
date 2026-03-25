@@ -17,6 +17,7 @@ import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { FloatingAction } from './FloatingAction';
+import { shouldHideStopForCompletedDirectAgents } from './mentionRouting';
 import { UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
@@ -102,7 +103,7 @@ export const ProjectSection = React.forwardRef<
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.3 }}
-        className="relative mb-8"
+        className="mb-8 relative"
       >
         {/* User Query Groups */}
         <div className="space-y-0">
@@ -127,6 +128,7 @@ export const ProjectSection = React.forwardRef<
             // onResume={onPauseResume}  // Commented out - temporary not needed
             onSkip={onSkip}
             loading={isPauseResumeLoading}
+            hideStop={shouldHideStopForCompletedDirectAgents(task)}
           />
         )}
       </motion.div>

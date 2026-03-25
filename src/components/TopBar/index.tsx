@@ -225,6 +225,8 @@ function HeaderWin() {
               <Button
                 variant="ghost"
                 size="xs"
+                buttonRadius="full"
+                buttonContent="icon-only"
                 className="no-drag rounded-full"
                 onClick={() => navigate('/')}
               >
@@ -241,11 +243,13 @@ function HeaderWin() {
               >
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="xs"
+                  buttonRadius="full"
+                  buttonContent="icon-only"
                   className="no-drag rounded-full"
                   onClick={() => navigate('/history')}
                 >
-                  <House className="h-4 w-4" />
+                  <House className="size-4" />
                 </Button>
               </TooltipSimple>
               <TooltipSimple
@@ -255,11 +259,13 @@ function HeaderWin() {
               >
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="xs"
+                  buttonRadius="full"
+                  buttonContent="icon-only"
                   className="no-drag rounded-full"
                   onClick={createNewProject}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="size-4" />
                 </Button>
               </TooltipSimple>
             </div>
@@ -275,14 +281,17 @@ function HeaderWin() {
                   <Button
                     id="active-task-title-btn"
                     variant="ghost"
-                    className="no-drag text-base font-bold rounded-full"
                     onClick={toggle}
-                    size="sm"
+                    size="xs"
+                    buttonRadius="full"
+                    buttonContent="text"
+                    textWeight="semibold"
+                    className="no-drag text-label-sm"
                   >
                     <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
                       {t('layout.new-project')}
                     </span>
-                    <ChevronDown />
+                    <ChevronDown className="size-4" />
                   </Button>
                 </TooltipSimple>
               ) : (
@@ -294,14 +303,17 @@ function HeaderWin() {
                   <Button
                     id="active-task-title-btn"
                     variant="ghost"
-                    size="sm"
-                    className="no-drag text-base font-bold"
+                    size="xs"
+                    textWeight="semibold"
+                    buttonRadius="full"
+                    buttonContent="text"
+                    className="no-drag text-label-sm"
                     onClick={toggle}
                   >
                     <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
                       {activeTaskTitle}
                     </span>
-                    <ChevronDown />
+                    <ChevronDown className="size-4" />
                   </Button>
                 </TooltipSimple>
               )}
@@ -333,9 +345,12 @@ function HeaderWin() {
                     onClick={() => setEndDialogOpen(true)}
                     variant="ghost"
                     size="xs"
-                    className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
+                    buttonRadius="full"
+                    buttonContent="text"
+                    textWeight="semibold"
+                    className="no-drag bg-surface-cuation !text-text-cuation text-label-xs justify-center"
                   >
-                    <Power />
+                    <Power className="size-4" />
                     {t('layout.end-project')}
                   </Button>
                 </TooltipSimple>
@@ -354,7 +369,10 @@ function HeaderWin() {
                     }
                     variant="ghost"
                     size="xs"
-                    className="no-drag bg-surface-information !text-text-information rounded-full"
+                    buttonRadius="full"
+                    buttonContent="text"
+                    textWeight="semibold"
+                    className="no-drag bg-surface-information !text-text-information"
                   >
                     {t('layout.share')}
                   </Button>
@@ -370,10 +388,12 @@ function HeaderWin() {
                   <Button
                     onClick={exportLog}
                     variant="ghost"
-                    size="icon"
+                    size="xs"
+                    buttonRadius="full"
+                    buttonContent="icon-only"
                     className="no-drag rounded-full"
                   >
-                    <FileDown className="h-4 w-4" />
+                    <FileDown className="size-4" />
                   </Button>
                 </TooltipSimple>
               )}
@@ -385,13 +405,15 @@ function HeaderWin() {
               <Button
                 onClick={getReferFriendsLink}
                 variant="ghost"
-                size="icon"
+                size="xs"
+                buttonRadius="full"
+                buttonContent="icon-only"
                 className="no-drag rounded-full"
               >
                 <img
                   src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
                   alt="gift-icon"
-                  className="h-4 w-4"
+                  className="size-4"
                 />
               </Button>
             </TooltipSimple>
@@ -403,10 +425,12 @@ function HeaderWin() {
               <Button
                 onClick={() => navigate('/history?tab=settings')}
                 variant="ghost"
-                size="icon"
+                size="xs"
+                buttonRadius="full"
+                buttonContent="icon-only"
                 className="no-drag rounded-full"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="size-4" />
               </Button>
             </TooltipSimple>
           </div>
@@ -430,19 +454,19 @@ function HeaderWin() {
             className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
-            <Minus className="h-4 w-4" />
+            <Minus className="size-4" />
           </div>
           <div
             className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
-            <Square className="h-4 w-4" />
+            <Square className="size-4" />
           </div>
           <div
             className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.closeWindow()}
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </div>
         </div>
       )}

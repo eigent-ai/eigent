@@ -351,7 +351,7 @@ export function WorkSpaceMenu({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className={`flex w-fit flex-row gap-2 pl-2`}
+              className={`gap-2 pl-2 flex w-fit flex-row`}
             >
               <MenuToggleGroup
                 type="single"
@@ -359,7 +359,7 @@ export function WorkSpaceMenu({
                 orientation="horizontal"
                 value={getCurrentTask()?.activeWorkspace as string}
                 onValueChange={onValueChange}
-                className="flex w-full items-center gap-2 pb-2"
+                className="gap-2 pb-2 flex w-full items-center"
               >
                 <AnimatePresence mode="popLayout">
                   {agentList.map((agent) => (
@@ -401,10 +401,12 @@ export function WorkSpaceMenu({
         </AnimatePresence>
         {/* Viewport Navigation Buttons */}
         {(moveLeft || moveRight) && (
-          <div className="absolute right-2 flex items-center pb-2">
+          <div className="right-2 pb-2 absolute flex items-center">
             <Button
               variant="ghost"
-              size="md"
+              buttonContent="icon-only"
+              size="sm"
+              buttonRadius="full"
               className="px-2"
               onClick={moveLeft || undefined}
             >
@@ -412,7 +414,9 @@ export function WorkSpaceMenu({
             </Button>
             <Button
               variant="ghost"
-              size="md"
+              buttonContent="icon-only"
+              size="sm"
+              buttonRadius="full"
               className="px-2"
               onClick={moveRight || undefined}
             >

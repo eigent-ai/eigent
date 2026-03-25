@@ -346,7 +346,8 @@ export default function Overview() {
               >
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="xs"
+                  buttonContent="icon-only"
                   className="opacity-70"
                   disabled={sortedTriggers.length === 0}
                   onClick={() => {

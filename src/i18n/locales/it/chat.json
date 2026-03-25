@@ -2,6 +2,8 @@
   "welcome-to-eigent": "Benvenuto in Eigent",
   "how-can-i-help-you": "Come posso aiutarti oggi?",
   "ask-placeholder": "Cosa devi realizzare oggi?",
+  "select-agent": "Seleziona un agente",
+  "clear-agent": "Rimuovi agente",
   "select-file": "Seleziona File",
   "all-files": "Tutti i File",
   "token": "Token",
@@ -54,6 +56,7 @@
   "remove-file": "Rimuovi file",
   "drop-files-to-attach": "Trascina i file da allegare",
   "expand-input": "Espandi input (⌘P)",
+  "collapse-input": "Comprimi input (⌘P)",
   "queued-tasks": "Compiti in coda",
   "remove-queued-message": "Rimuovi messaggio in coda",
   "no-agents-added": "Nessun agente aggiunto",
@@ -63,5 +66,8 @@
   "open-in-file-manager": "Apri nel gestore file",
   "failed-to-open-folder": "Impossibile aprire la cartella",
   "task-completed-card-title": "Compito completato",
-  "task-completed-card-subtitle": "Automatizza il tuo compito con un trigger"
+  "task-completed-card-subtitle": "Automatizza il tuo compito con un trigger",
+  "single-agent-working": "{{agent}} sta lavorando sodo",
+  "agent-outcome-expand": "Espandi",
+  "agent-outcome-collapse": "Comprimi"
 }

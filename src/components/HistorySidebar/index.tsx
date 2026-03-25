@@ -344,7 +344,7 @@ export default function HistorySidebar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-transparent"
+            className="inset-0 fixed z-40 bg-transparent"
             onClick={close}
           />
           {/* dropdown-style history panel under title bar */}
@@ -355,21 +355,21 @@ export default function HistorySidebar() {
             transition={{ type: 'spring', damping: 22, stiffness: 220 }}
             onMouseLeave={close}
             ref={panelRef}
-            className="bg-bg-surface-tertiary fixed z-50 flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-xl p-sm shadow-perfect backdrop-blur-xl"
+            className="bg-bg-surface-tertiary rounded-xl p-sm shadow-perfect backdrop-blur-xl fixed z-50 flex max-h-[70vh] w-[360px] flex-col overflow-hidden"
             style={{
               left: anchorStyle.left,
               top: anchorStyle.top,
             }}
           >
-            <div className="flex items-center justify-between py-2 pl-2">
+            <div className="py-2 pl-2 flex items-center justify-between">
               {/* Search */}
               <SearchInput value={searchValue} onChange={handleSearch} />
               <Button variant="ghost" size="md" onClick={createChat}>
-                <Plus className="text-icon-tertiary h-8 w-8 transition-all duration-300 group-hover:text-icon-primary" />
+                <Plus className="text-icon-tertiary h-8 w-8 group-hover:text-icon-primary transition-all duration-300" />
               </Button>
             </div>
             <div className="scrollbar-hide mt-2 min-h-0 flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-3 px-sm">
+              <div className="gap-3 px-sm flex flex-col">
                 {/* Ongoing Projects */}
                 {ongoingProjects
                   .filter(
@@ -389,30 +389,30 @@ export default function HistorySidebar() {
                         navigate(`/`);
                         close();
                       }}
-                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-project-surface-hover"
+                      className="gap-sm rounded-xl border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item hover:bg-project-surface-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
                     >
                       <Sparkles
                         size={20}
-                        className="flex-shrink-0 text-icon-information"
+                        className="text-icon-information flex-shrink-0"
                       />
 
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="min-w-0 gap-1 flex flex-1 flex-col">
                         <TooltipSimple
                           align="start"
-                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-surface-tertiary p-2 text-label-xs shadow-perfect"
+                          className="bg-surface-tertiary p-2 text-label-xs shadow-perfect pointer-events-auto w-[300px] text-wrap break-words select-text"
                           content={
                             <div>
                               {project.project_name || t('layout.new-project')}
                             </div>
                           }
                         >
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-text-heading">
+                          <span className="text-body-sm font-semibold text-text-heading block overflow-hidden text-ellipsis whitespace-nowrap">
                             {project.project_name || t('layout.new-project')}
                           </span>
                         </TooltipSimple>
                       </div>
 
-                      <div className="flex flex-shrink-0 items-center gap-2">
+                      <div className="gap-2 flex flex-shrink-0 items-center">
                         <TooltipSimple content={t('chat.token')}>
                           <Tag variant="info" size="sm">
                             <Hash className="h-3.5 w-3.5" />
@@ -435,7 +435,8 @@ export default function HistorySidebar() {
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
-                            size="icon"
+                            size="xs"
+                            buttonContent="icon-only"
                             onClick={(e) => e.stopPropagation()}
                             variant="ghost"
                             className="flex-shrink-0"
@@ -443,7 +444,7 @@ export default function HistorySidebar() {
                             <Ellipsis size={16} className="text-text-primary" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-dropdown-border bg-dropdown-bg p-sm">
+                        <PopoverContent className="border-dropdown-border bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button
@@ -504,17 +505,17 @@ export default function HistorySidebar() {
                         );
                       }}
                       key={project.project_id}
-                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-project-surface-hover"
+                      className="gap-sm rounded-xl border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item hover:bg-project-surface-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
                     >
                       <Sparkle
                         size={20}
-                        className="flex-shrink-0 text-icon-secondary"
+                        className="text-icon-secondary flex-shrink-0"
                       />
 
                       <div className="min-w-0 flex-1">
                         <TooltipSimple
                           align="start"
-                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-surface-tertiary p-2 text-label-xs shadow-perfect"
+                          className="bg-surface-tertiary p-2 text-label-xs shadow-perfect pointer-events-auto w-[300px] text-wrap break-words select-text"
                           content={
                             <div>
                               {project.last_prompt ||
@@ -523,7 +524,7 @@ export default function HistorySidebar() {
                             </div>
                           }
                         >
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-text-heading">
+                          <span className="text-body-sm font-semibold text-text-heading block overflow-hidden text-ellipsis whitespace-nowrap">
                             {project.last_prompt ||
                               project.project_name ||
                               t('layout.new-project')}
@@ -531,7 +532,7 @@ export default function HistorySidebar() {
                         </TooltipSimple>
                       </div>
 
-                      <div className="flex flex-shrink-0 items-center gap-2">
+                      <div className="gap-2 flex flex-shrink-0 items-center">
                         <TooltipSimple content={t('chat.token')}>
                           <Tag variant="info" size="sm">
                             <Hash className="h-3.5 w-3.5" />
@@ -554,7 +555,8 @@ export default function HistorySidebar() {
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
-                            size="icon"
+                            size="xs"
+                            buttonContent="icon-only"
                             onClick={(e) => e.stopPropagation()}
                             variant="ghost"
                             className="flex-shrink-0"
@@ -562,7 +564,7 @@ export default function HistorySidebar() {
                             <Ellipsis size={16} className="text-text-primary" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-dropdown-border bg-dropdown-bg p-sm">
+                        <PopoverContent className="border-dropdown-border bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button

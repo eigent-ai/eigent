@@ -185,9 +185,9 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 px-sm transition-all duration-300">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm">
-          <div className="absolute left-0 top-0 w-full bg-transparent">
+      <div className="gap-2 px-sm flex h-auto w-full flex-col transition-all duration-300">
+        <div className="rounded-xl bg-task-surface py-sm relative h-auto w-full overflow-hidden">
+          <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
           {summaryTask && (
@@ -197,8 +197,8 @@ export function TaskCard({
           )}
 
           {summaryTask && (
-            <div className={`flex items-center justify-between gap-2 px-sm`}>
-              <div className="flex items-center gap-2">
+            <div className={`gap-2 px-sm flex items-center justify-between`}>
+              <div className="gap-2 flex items-center">
                 {taskType === 1 && (
                   <TaskState
                     all={
@@ -290,14 +290,19 @@ export function TaskCard({
                 )}
               </div>
 
-              <div className="transition-all duration-300 ease-in-out">
+              <div className="ease-in-out transition-all duration-300">
                 {taskType === 1 && (
-                  <Button variant="ghost" size="icon" onClick={onAddTask}>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    buttonContent="icon-only"
+                    onClick={onAddTask}
+                  >
                     <Plus size={16} />
                   </Button>
                 )}
                 {taskType === 2 && (
-                  <div className="flex items-center gap-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
                     {(isExpanded || isAllTaskFinished) && (
                       <div className="text-xs font-medium leading-17 text-text-tertiary">
                         {taskRunning?.filter(
@@ -310,7 +315,8 @@ export function TaskCard({
                     )}
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="xs"
+                      buttonContent="icon-only"
                       onClick={() => setIsExpanded(!isExpanded)}
                     >
                       <ChevronDown
@@ -328,11 +334,11 @@ export function TaskCard({
 
           <div className="relative">
             {taskType === 1 && (
-              <div className="mt-sm flex flex-col px-sm duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4">
+              <div className="mt-sm px-sm ease-out animate-in fade-in-0 slide-in-from-bottom-4 flex flex-col duration-500">
                 {taskInfo.map((task, taskIndex) => (
                   <div
                     key={`task-${taskIndex}`}
-                    className="duration-300 animate-in fade-in-0 slide-in-from-left-2"
+                    className="animate-in fade-in-0 slide-in-from-left-2 duration-300"
                   >
                     <TaskItem
                       taskInfo={task}
@@ -348,13 +354,13 @@ export function TaskCard({
             {taskType === 2 && (
               <div
                 ref={contentRef}
-                className="overflow-hidden transition-all duration-300 ease-in-out"
+                className="ease-in-out overflow-hidden transition-all duration-300"
                 style={{
                   height: isExpanded ? contentHeight : 0,
                   opacity: isExpanded ? 1 : 0,
                 }}
               >
-                <div className="mt-sm flex flex-col gap-2 px-2">
+                <div className="mt-sm gap-2 px-2 flex flex-col">
                   {filterTasks.map((task: TaskInfo) => {
                     return (
                       <div
@@ -399,7 +405,7 @@ export function TaskCard({
                           }
                         }}
                         key={`taskList-${task.id}`}
-                        className={`flex gap-2 rounded-lg px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
+                        className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
                           task.status === TaskStatus.COMPLETED
                             ? 'bg-task-fill-success'
                             : task.status === TaskStatus.FAILED
@@ -461,7 +467,7 @@ export function TaskCard({
                         </div>
                         <div className="flex flex-1 flex-col items-start justify-center">
                           <div
-                            className={`overflow-wrap-anywhere w-full whitespace-pre-line break-words ${
+                            className={`overflow-wrap-anywhere w-full break-words whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
                                 ? 'text-text-cuation-default'
                                 : task.status === TaskStatus.BLOCKED

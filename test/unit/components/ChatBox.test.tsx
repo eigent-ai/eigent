@@ -86,6 +86,7 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
       <div data-testid="bottom-box">
         <input
           data-testid="message-input"
+          disabled={inputProps.disabled}
           placeholder={inputProps.placeholder}
           value={inputProps.value}
           onChange={(e) => inputProps.onChange(e.target.value)}
@@ -194,6 +195,7 @@ describe('ChatBox Component', async () => {
     getFormattedTaskTime: vi.fn(() => '00:00:00'),
     setAttaches: vi.fn(),
     setNextTaskId: vi.fn(),
+    setNextExecutionId: vi.fn(),
     removeTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
@@ -290,7 +292,6 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       expect(screen.getByText('Welcome to Eigent')).toBeInTheDocument();
-      expect(screen.getByText('How can I help you today?')).toBeInTheDocument();
     });
 
     it('should render bottom box component', () => {
@@ -317,7 +318,7 @@ describe('ChatBox Component', async () => {
   });
 
   describe('Privacy Dialog', () => {
-    it('should automatically accept privacy settings when incomplete', async () => {
+    it('should accept privacy settings when user clicks the terms banner', async () => {
       mockProxyFetchGet.mockImplementation((url: string) => {
         if (url === '/api/user/privacy') {
           return Promise.resolve({
@@ -335,13 +336,16 @@ describe('ChatBox Component', async () => {
       const user = userEvent.setup();
       renderChatBox();
 
-      // Type a message and send it
-      const input = screen.getByPlaceholderText('Type your message...');
-      await user.type(input, 'Test message');
-      const sendButton = screen.getByTestId('send-button');
-      await user.click(sendButton);
+      await waitFor(() => {
+        expect(
+          screen.getByText('By messaging Eigent', { exact: false })
+        ).toBeInTheDocument();
+      });
 
-      // When privacy is incomplete, it should automatically accept all permissions
+      await user.click(
+        screen.getByText('By messaging Eigent', { exact: false })
+      );
+
       await waitFor(() => {
         expect(mockProxyFetchPut).toHaveBeenCalledWith('/api/user/privacy', {
           take_screenshot: true,
@@ -463,6 +467,10 @@ describe('ChatBox Component', async () => {
 
       const messageInput = screen.getByTestId('message-input');
       const sendButton = screen.getByTestId('send-button');
+
+      await waitFor(() => {
+        expect(messageInput).not.toBeDisabled();
+      });
 
       await user.type(messageInput, 'Test message');
       await user.click(sendButton);
@@ -871,6 +879,11 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       const messageInput = screen.getByTestId('message-input');
+
+      await waitFor(() => {
+        expect(messageInput).not.toBeDisabled();
+      });
+
       await user.type(messageInput, 'Test message');
 
       // Click the send button instead of testing Ctrl+Enter

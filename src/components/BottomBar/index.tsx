@@ -14,7 +14,7 @@
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useTranslation } from 'react-i18next';
-import { WorkSpaceMenu } from '../WorkspaceMenu';
+import { WorkSpaceMenu } from '../WorkSpaceMenu';
 
 interface BottomBarProps {
   onToggleChatBox?: () => void;
@@ -23,7 +23,7 @@ interface BottomBarProps {
 
 // Red dot notification indicator
 const RedDotIcon = () => (
-  <div className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+  <div className="h-2 w-2 bg-red-500 shrink-0 rounded-full" />
 );
 
 function BottomBar({ onToggleChatBox, isChatBoxVisible }: BottomBarProps) {
@@ -51,7 +51,7 @@ function BottomBar({ onToggleChatBox, isChatBoxVisible }: BottomBarProps) {
     : null;
 
   return (
-    <div className="relative z-50 flex h-12 items-center justify-center pt-2">
+    <div className="h-12 pt-2 relative z-50 flex items-center justify-center">
       <WorkSpaceMenu
         onToggleChatBox={onToggleChatBox}
         isChatBoxVisible={isChatBoxVisible}

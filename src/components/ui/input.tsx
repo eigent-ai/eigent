@@ -128,7 +128,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     return (
       <div className={cn('w-full', stateCls.container)}>
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+          <div className="mb-1.5 gap-1 text-body-sm font-bold text-text-heading flex items-center">
             <span>{title}</span>
             {required && <span className="text-text-body">*</span>}
             {optional && (
@@ -146,17 +146,17 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
         <div
           className={cn(
-            'relative flex items-center rounded-lg border border-solid shadow-sm transition-colors',
+            'rounded-lg shadow-sm relative flex items-center border border-solid transition-colors',
             // Only apply hover/focus visuals when not in error state
             state !== 'error' &&
               state !== 'success' &&
-              'focus-within:bg-input-bg-input focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
+              'focus-within:bg-input-bg-input focus-within:ring-input-border-focus hover:bg-input-bg-hover hover:ring-input-border-hover focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
             stateCls.field,
             sizeClasses[size]
           )}
         >
           {leadingIcon ? (
-            <span className="pointer-events-none absolute left-2 inline-flex h-5 w-5 items-center justify-center text-icon-primary">
+            <span className="left-2 h-5 w-5 text-icon-primary pointer-events-none absolute inline-flex items-center justify-center">
               {leadingIcon}
             </span>
           ) : null}
@@ -167,7 +167,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             disabled={disabled}
             placeholder={placeholder}
             className={cn(
-              'peer w-full bg-transparent outline-none file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:transition-colors',
+              'peer file:text-sm file:font-medium w-full bg-transparent outline-none file:border-0 file:bg-transparent placeholder:transition-colors',
               stateCls.input,
               stateCls.placeholder,
               hasLeft ? 'pl-9' : 'pl-3',
@@ -187,9 +187,10 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               tabIndex={-1}
-              className="absolute right-2 inline-flex h-5 w-5 items-center justify-center rounded-full text-icon-primary focus:ring-0 disabled:opacity-50"
+              className="right-2 text-icon-primary absolute inline-flex items-center justify-center rounded-full focus:ring-0 disabled:opacity-50"
               disabled={disabled}
               onClick={onBackIconClick}
             >
@@ -198,7 +199,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           ) : null}
 
           {trailingButton ? (
-            <div className={cn('absolute right-2', backIcon ? '-mr-7' : '')}>
+            <div className={cn('right-2 absolute', backIcon ? '-mr-7' : '')}>
               {trailingButton}
             </div>
           ) : null}

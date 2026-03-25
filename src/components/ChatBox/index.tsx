@@ -37,13 +37,19 @@ import { ProjectChatContainer } from './ProjectChatContainer';
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
-  const [mentionTarget, setMentionTarget] = useState<string | null>(null);
+  const [mentionTarget, setMentionTarget] = useState<string | null>(
+    'workforce'
+  );
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
+  useEffect(() => {
+    setMentionTarget('workforce');
+  }, [projectStore.activeProjectId]);
+
   const { t } = useTranslation();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLDivElement>(null);
   const [hasModel, setHasModel] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [privacy, setPrivacy] = useState<any>(false);
@@ -1083,11 +1089,11 @@ export default function ChatBox(): JSX.Element {
   }
 
   return (
-    <div className="h-full w-full flex-none items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
+    <div className="rounded-2xl border-border-tertiary bg-surface-secondary h-full w-full flex-none items-center justify-center overflow-hidden border-solid">
       {/* Unified ChatBox Structure */}
       <div className="relative flex h-full w-full flex-col overflow-hidden">
-        {/* Header Box - Always visible */}
-        {chatStore.activeTaskId && (
+        {/* Header: hidden on new-project welcome state; shown once there is chat content */}
+        {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             tokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
             status={chatStore.tasks[chatStore.activeTaskId]?.status}
@@ -1096,230 +1102,230 @@ export default function ChatBox(): JSX.Element {
           />
         )}
 
-        {/* Main Content Area - Flex 1 to take remaining space */}
-        <div className="relative flex flex-1 flex-col overflow-hidden">
-          {/* Project Chat Container - Show when has messages (absolute, full height) */}
+        {/* Main: full-width scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
+        <div className="min-h-0 relative flex flex-1 flex-col overflow-hidden">
           <div
-            className={`absolute inset-0 flex h-full flex-col transition-all duration-300 ease-in-out ${
-              hasAnyMessages
-                ? 'pointer-events-auto translate-y-0 opacity-100'
-                : 'pointer-events-none -translate-y-4 opacity-0'
-            }`}
+            ref={scrollContainerRef}
+            className="scrollbar-always-visible min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
           >
-            <ProjectChatContainer
-              onSkip={handleSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
-            />
+            {hasAnyMessages ? (
+              <ProjectChatContainer
+                scrollContainerRef={scrollContainerRef}
+                onSkip={handleSkip}
+                isPauseResumeLoading={isPauseResumeLoading}
+              />
+            ) : (
+              <div className="px-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+                <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end">
+                  <div className="text-body-lg font-bold text-text-heading text-center">
+                    {t('layout.welcome-to-eigent')}
+                  </div>
+                </div>
+
+                {chatStore.activeTaskId && (
+                  <BottomBox
+                    state="input"
+                    queuedMessages={queuedMessages}
+                    onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                    inputProps={{
+                      value: message,
+                      onChange: setMessage,
+                      onSend: handleSend,
+                      files:
+                        chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                          (f) => ({
+                            fileName: f.fileName,
+                            filePath: f.filePath,
+                          })
+                        ) || [],
+                      onFilesChange: (files) =>
+                        chatStore.setAttaches(
+                          chatStore.activeTaskId as string,
+                          files as any
+                        ),
+                      onAddFile: handleFileSelect,
+                      placeholder: t('chat.ask-placeholder'),
+                      disabled: isInputDisabled,
+                      textareaRef: textareaRef,
+                      allowDragDrop: true,
+                      privacy: privacy,
+                      useCloudModelInDev: useCloudModelInDev,
+                      mentionTarget: mentionTarget,
+                      onMentionTargetChange: setMentionTarget,
+                    }}
+                  />
+                )}
+
+                <div className="mt-3 gap-2 flex h-[210px] flex-1 items-start justify-center">
+                  {!hasModel ? (
+                    <div className="gap-2 flex items-center">
+                      <div
+                        onClick={() => {
+                          navigate('/history?tab=agents');
+                        }}
+                        className="gap-2 rounded-md bg-surface-warning px-sm py-xs flex cursor-pointer items-center"
+                      >
+                        <TriangleAlert
+                          size={20}
+                          className="text-icon-warning"
+                        />
+                        <span className="text-xs font-medium text-text-warning flex-1 leading-[20px]">
+                          {t('layout.please-select-model')}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+                  {hasModel && !privacy ? (
+                    <div className="gap-2 flex items-center">
+                      <div
+                        onClick={(e) => {
+                          const target = e.target as HTMLElement;
+                          if (target.tagName === 'A') {
+                            return;
+                          }
+                          const API_FIELDS = [
+                            'take_screenshot',
+                            'access_local_software',
+                            'access_your_address',
+                            'password_storage',
+                          ];
+                          const requestData = {
+                            [API_FIELDS[0]]: true,
+                            [API_FIELDS[1]]: true,
+                            [API_FIELDS[2]]: true,
+                            [API_FIELDS[3]]: true,
+                          };
+                          proxyFetchPut('/api/user/privacy', requestData);
+                          setPrivacy(true);
+                        }}
+                        className="gap-1 rounded-md bg-surface-information px-sm py-xs flex cursor-pointer items-center"
+                      >
+                        <TriangleAlert
+                          size={20}
+                          className="text-icon-information"
+                        />
+                        <span className="text-xs font-medium text-text-information flex-1 leading-[20px]">
+                          {t('layout.by-messaging-eigent')}{' '}
+                          <a
+                            href="https://www.eigent.ai/terms-of-use"
+                            target="_blank"
+                            className="text-text-information underline"
+                            onClick={(e) => e.stopPropagation()}
+                            rel="noreferrer"
+                          >
+                            {t('layout.terms-of-use')}
+                          </a>{' '}
+                          {t('layout.and')}{' '}
+                          <a
+                            href="https://www.eigent.ai/privacy-policy"
+                            target="_blank"
+                            className="text-text-information underline"
+                            onClick={(e) => e.stopPropagation()}
+                            rel="noreferrer"
+                          >
+                            {t('layout.privacy-policy')}
+                          </a>
+                          .
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mr-2 gap-2 flex flex-col items-center">
+                      {[
+                        {
+                          label: t('layout.it-ticket-creation'),
+                          message: t('layout.it-ticket-creation-message'),
+                        },
+                        {
+                          label: t('layout.bank-transfer-csv-analysis'),
+                          message: t(
+                            'layout.bank-transfer-csv-analysis-message'
+                          ),
+                        },
+                        {
+                          label: t('layout.find-duplicate-files'),
+                          message: t('layout.find-duplicate-files-message'),
+                        },
+                      ].map(({ label, message }) => (
+                        <div
+                          key={label}
+                          className="rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium text-button-tertiery-text-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
+                          onClick={() => {
+                            setMessage(message);
+                          }}
+                        >
+                          <span>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Init State Container - Welcome + BottomBox + Suggestions (vertically centered) */}
-          <div
-            className={`flex flex-1 flex-col transition-all duration-300 ease-in-out ${
-              hasAnyMessages
-                ? 'pointer-events-none absolute inset-0 opacity-0'
-                : 'pointer-events-auto opacity-100'
-            }`}
-          >
-            {/* Welcome Message - Top area, flex-1 to push content down */}
-            <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4">
-              <div className="text-center text-body-lg font-bold text-text-heading">
-                {t('layout.welcome-to-eigent')}
+          {chatStore.activeTaskId && hasAnyMessages && (
+            <div className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center">
+              <div className="px-sm pointer-events-auto w-full max-w-[600px]">
+                <BottomBox
+                  state={getBottomBoxState()}
+                  queuedMessages={queuedMessages}
+                  onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  subtitle={
+                    getBottomBoxState() === 'confirm'
+                      ? (() => {
+                          const messages =
+                            chatStore.tasks[chatStore.activeTaskId]?.messages ||
+                            [];
+                          const lastUserMessage = messages
+                            .slice()
+                            .reverse()
+                            .find((msg) => msg.role === 'user');
+                          return (
+                            lastUserMessage?.content ||
+                            chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                          );
+                        })()
+                      : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                  }
+                  onStartTask={() => handleConfirmTask()}
+                  onEdit={handleEditQuery}
+                  taskTime={taskTime}
+                  taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+                  onPauseResume={handlePauseResume}
+                  pauseResumeLoading={isPauseResumeLoading}
+                  loading={loading}
+                  inputProps={{
+                    value: message,
+                    onChange: setMessage,
+                    onSend: handleSend,
+                    files:
+                      chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                        (f) => ({
+                          fileName: f.fileName,
+                          filePath: f.filePath,
+                        })
+                      ) || [],
+                    onFilesChange: (files) =>
+                      chatStore.setAttaches(
+                        chatStore.activeTaskId as string,
+                        files as any
+                      ),
+                    onAddFile: handleFileSelect,
+                    placeholder: t('chat.ask-placeholder'),
+                    disabled: isInputDisabled,
+                    textareaRef: textareaRef,
+                    allowDragDrop: true,
+                    privacy: privacy,
+                    useCloudModelInDev: useCloudModelInDev,
+                    mentionTarget: mentionTarget,
+                    onMentionTargetChange: setMentionTarget,
+                  }}
+                />
               </div>
             </div>
-
-            {/* Bottom Box - Center (init state only) */}
-            {chatStore.activeTaskId && (
-              <BottomBox
-                state="input"
-                queuedMessages={queuedMessages}
-                onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                inputProps={{
-                  value: message,
-                  onChange: setMessage,
-                  onSend: handleSend,
-                  files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
-                  onAddFile: handleFileSelect,
-                  placeholder: t('chat.ask-placeholder'),
-                  disabled: isInputDisabled,
-                  textareaRef: textareaRef,
-                  allowDragDrop: true,
-                  privacy: privacy,
-                  useCloudModelInDev: useCloudModelInDev,
-                  mentionTarget: mentionTarget,
-                  onMentionTargetChange: setMentionTarget,
-                }}
-              />
-            )}
-
-            {/* Suggestion Area - Bottom area, flex-1 to push content up */}
-            <div className="mt-3 flex h-[210px] flex-1 items-start justify-center gap-2">
-              {!hasModel ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={() => {
-                      navigate('/history?tab=agents');
-                    }}
-                    className="flex cursor-pointer items-center gap-2 rounded-md bg-surface-warning px-sm py-xs"
-                  >
-                    <TriangleAlert size={20} className="text-icon-warning" />
-                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-warning">
-                      {t('layout.please-select-model')}
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-              {hasModel && !privacy ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={(e) => {
-                      const target = e.target as HTMLElement;
-                      if (target.tagName === 'A') {
-                        return;
-                      }
-                      const API_FIELDS = [
-                        'take_screenshot',
-                        'access_local_software',
-                        'access_your_address',
-                        'password_storage',
-                      ];
-                      const requestData = {
-                        [API_FIELDS[0]]: true,
-                        [API_FIELDS[1]]: true,
-                        [API_FIELDS[2]]: true,
-                        [API_FIELDS[3]]: true,
-                      };
-                      proxyFetchPut('/api/user/privacy', requestData);
-                      setPrivacy(true);
-                    }}
-                    className="flex cursor-pointer items-center gap-1 rounded-md bg-surface-information px-sm py-xs"
-                  >
-                    <TriangleAlert
-                      size={20}
-                      className="text-icon-information"
-                    />
-                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-information">
-                      {t('layout.by-messaging-eigent')}{' '}
-                      <a
-                        href="https://www.eigent.ai/terms-of-use"
-                        target="_blank"
-                        className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
-                        rel="noreferrer"
-                      >
-                        {t('layout.terms-of-use')}
-                      </a>{' '}
-                      {t('layout.and')}{' '}
-                      <a
-                        href="https://www.eigent.ai/privacy-policy"
-                        target="_blank"
-                        className="text-text-information underline"
-                        onClick={(e) => e.stopPropagation()}
-                        rel="noreferrer"
-                      >
-                        {t('layout.privacy-policy')}
-                      </a>
-                      .
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="mr-2 flex flex-col items-center gap-2">
-                  {[
-                    {
-                      label: t('layout.it-ticket-creation'),
-                      message: t('layout.it-ticket-creation-message'),
-                    },
-                    {
-                      label: t('layout.bank-transfer-csv-analysis'),
-                      message: t('layout.bank-transfer-csv-analysis-message'),
-                    },
-                    {
-                      label: t('layout.find-duplicate-files'),
-                      message: t('layout.find-duplicate-files-message'),
-                    },
-                  ].map(({ label, message }) => (
-                    <div
-                      key={label}
-                      className="cursor-pointer rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium leading-none text-button-tertiery-text-default opacity-70 transition-all duration-300 hover:opacity-100"
-                      onClick={() => {
-                        setMessage(message);
-                      }}
-                    >
-                      <span>{label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
-
-        {/* Bottom Box - Show when has messages */}
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <BottomBox
-            state={hasAnyMessages ? getBottomBoxState() : 'input'}
-            queuedMessages={queuedMessages}
-            onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-            subtitle={
-              hasAnyMessages && getBottomBoxState() === 'confirm'
-                ? (() => {
-                    const messages =
-                      chatStore.tasks[chatStore.activeTaskId]?.messages || [];
-                    const lastUserMessage = messages
-                      .slice()
-                      .reverse()
-                      .find((msg) => msg.role === 'user');
-                    return (
-                      lastUserMessage?.content ||
-                      chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-                    );
-                  })()
-                : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-            }
-            onStartTask={() => handleConfirmTask()}
-            onEdit={handleEditQuery}
-            taskTime={taskTime}
-            taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-            onPauseResume={handlePauseResume}
-            pauseResumeLoading={isPauseResumeLoading}
-            loading={loading}
-            inputProps={{
-              value: message,
-              onChange: setMessage,
-              onSend: handleSend,
-              files:
-                chatStore.tasks[chatStore.activeTaskId]?.attaches?.map((f) => ({
-                  fileName: f.fileName,
-                  filePath: f.filePath,
-                })) || [],
-              onFilesChange: (files) =>
-                chatStore.setAttaches(
-                  chatStore.activeTaskId as string,
-                  files as any
-                ),
-              onAddFile: handleFileSelect,
-              placeholder: t('chat.ask-placeholder'),
-              disabled: isInputDisabled,
-              textareaRef: textareaRef,
-              allowDragDrop: hasAnyMessages,
-              privacy: hasAnyMessages ? privacy : true,
-              useCloudModelInDev: useCloudModelInDev,
-              mentionTarget: mentionTarget,
-              onMentionTargetChange: setMentionTarget,
-            }}
-          />
-        )}
       </div>
     </div>
   );

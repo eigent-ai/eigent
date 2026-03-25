@@ -41,7 +41,7 @@ import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import Overview from './Project/Triggers';
 
 import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import {
@@ -601,6 +601,9 @@ export default function Home() {
                         <Button
                           variant="primary"
                           size="sm"
+                          buttonRadius="lg"
+                          buttonContent="text"
+                          textWeight="medium"
                           className="w-24 rounded-lg items-center justify-center"
                           onClick={() => {
                             if (activeWorkspaceTab === 'workforce') {

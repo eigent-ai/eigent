@@ -175,14 +175,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
+              className={`text-primary gap-2 rounded-xl bg-fill-fill-transparent p-2 text-sm backdrop-blur-lg hover:bg-fill-fill-transparent-active flex w-full items-center justify-start text-left transition-colors ${
                 selectedFile?.path === child.path
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
             >
               {child.isFolder ? (
-                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                <span className="h-4 w-4 flex flex-shrink-0 items-center justify-center">
                   {isExpanded ? (
                     <ChevronDown className="h-4 w-4" />
                   ) : (
@@ -191,13 +191,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 </span>
               ) : (
                 <span
-                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                  className="h-4 w-4 flex flex-shrink-0 items-center justify-center"
                   aria-hidden
                 />
               )}
 
               {child.isFolder ? (
-                <FolderIcon className="h-5 w-5 flex-shrink-0 text-yellow-600" />
+                <FolderIcon className="h-5 w-5 text-yellow-600 flex-shrink-0" />
               ) : child.icon ? (
                 <child.icon className="h-5 w-5 flex-shrink-0" />
               ) : (
@@ -205,7 +205,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
               )}
 
               <span
-                className={`truncate text-[13px] leading-5 ${
+                className={`leading-5 truncate text-[13px] ${
                   child.isFolder ? 'font-semibold' : 'font-medium'
                 }`}
               >
@@ -523,18 +523,18 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       <div
         className={`${
           isCollapsed ? 'w-16' : 'w-64'
-        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-border-subtle-strong border-r-border-subtle transition-all duration-300 ease-in-out`}
+        } border-border-subtle-strong border-r-border-subtle ease-in-out flex flex-shrink-0 flex-col border-[0px] border-r !border-solid transition-all duration-300`}
       >
         {/* head */}
         <div
-          className={`flex-shrink-0 border-b border-border-subtle py-2 ${
+          className={`border-border-subtle py-2 flex-shrink-0 border-b ${
             isCollapsed ? 'px-2' : 'pl-4 pr-2'
           }`}
         >
           <div className="flex items-center justify-between">
             {!isCollapsed && (
-              <div className="flex items-center gap-2">
-                <span className="text-body-base text-primary whitespace-nowrap font-bold">
+              <div className="gap-2 flex items-center">
+                <span className="text-body-base text-primary font-bold whitespace-nowrap">
                   {t('chat.agent-folder')}
                 </span>
               </div>
@@ -547,7 +547,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="xs"
+                        buttonContent="icon-only"
                         title={t('chat.open-in-ide')}
                       >
                         <SquareTerminal className="h-5 w-5 text-icon-secondary" />
@@ -555,23 +556,23 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="end"
-                      className="z-50 border-dropdown-border bg-dropdown-bg"
+                      className="border-dropdown-border bg-dropdown-bg z-50"
                     >
                       <DropdownMenuItem
                         onClick={() => handleOpenInIDE('vscode')}
-                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                        className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                       >
                         {t('chat.open-in-vscode')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleOpenInIDE('cursor')}
-                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                        className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                       >
                         {t('chat.open-in-cursor')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleOpenInIDE('system')}
-                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                        className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                       >
                         {t('chat.open-in-file-manager')}
                       </DropdownMenuItem>
@@ -580,7 +581,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 )}
               <Button
                 variant="ghost"
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 onClick={() => setIsCollapsed(!isCollapsed)}
                 className={`${
                   isCollapsed ? 'w-full' : ''
@@ -590,7 +592,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 <ChevronsLeft
                   className={`h-6 w-6 text-icon-secondary ${
                     isCollapsed ? 'rotate-180' : ''
-                  } transition-transform ease-in-out`}
+                  } ease-in-out transition-transform`}
                 />
               </Button>
             </div>
@@ -599,13 +601,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         {/* Search Input*/}
         {!isCollapsed && (
-          <div className="flex-shrink-0 border-b border-border-subtle px-2">
+          <div className="border-border-subtle px-2 flex-shrink-0 border-b">
             <div className="relative">
-              <Search className="text-primary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
+              <Search className="text-primary left-3 h-4 w-4 absolute top-1/2 -translate-y-1/2 transform" />
               <input
                 type="text"
                 placeholder={t('chat.search')}
-                className="w-full rounded-md border border-solid border-border-subtle py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-text-link"
+                className="rounded-md border-border-subtle py-2 pl-9 pr-2 text-sm focus:ring-text-link w-full border border-solid focus:ring-2 focus:outline-none"
               />
             </div>
           </div>
@@ -616,7 +618,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           {!isCollapsed ? (
             <div className="p-2">
               <div className="mb-2">
-                <div className="text-primary px-2 py-1 text-[10px] font-bold leading-4">
+                <div className="text-primary px-2 py-1 font-bold leading-4 text-[10px]">
                   {t('chat.files')}
                 </div>
                 <FileTree
@@ -639,7 +641,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   <button
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
-                    className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
+                    className={`rounded-md p-2 hover:bg-fill-fill-primary-hover flex w-full items-center justify-center transition-colors ${
                       selectedFile?.name === file.name
                         ? 'bg-surface-information text-text-information'
                         : 'text-text-secondary'
@@ -660,11 +662,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       </div>
 
       {/* content */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-w-0 flex flex-1 flex-col overflow-hidden">
         {/* head */}
         {selectedFile && (
-          <div className="flex-shrink-0 border-b border-border-subtle px-4 py-2">
-            <div className="flex h-[30px] items-center justify-between gap-2">
+          <div className="border-border-subtle px-4 py-2 flex-shrink-0 border-b">
+            <div className="gap-2 flex h-[30px] items-center justify-between">
               <div
                 onClick={() => {
                   // if file is remote, don't call reveal-in-folder
@@ -677,18 +679,19 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     selectedFile.path
                   );
                 }}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden"
+                className="min-w-0 gap-2 flex flex-1 cursor-pointer items-center overflow-hidden"
               >
-                <span className="text-primary block overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-medium leading-[22px]">
+                <span className="text-primary font-medium block overflow-hidden text-[15px] leading-[22px] text-ellipsis whitespace-nowrap">
                   {selectedFile.name}
                 </span>
-                <Button size="icon" variant="ghost">
+                <Button size="xs" buttonContent="icon-only" variant="ghost">
                   <Download className="h-4 w-4 text-icon-secondary" />
                 </Button>
               </div>
               <Button
                 variant="ghost"
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 className="flex-shrink-0"
                 onClick={() => isShowSourceCodeChange()}
               >
@@ -739,9 +742,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     />
                   )
                 ) : selectedFile.type === 'zip' ? (
-                  <div className="flex h-full items-center justify-center text-text-secondary">
+                  <div className="text-text-secondary flex h-full items-center justify-center">
                     <div className="text-center">
-                      <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
+                      <FileText className="mb-4 h-12 w-12 text-text-tertiary mx-auto" />
                       <p className="text-sm">
                         {t('folder.zip-file-is-not-supported-yet')}
                       </p>
@@ -760,14 +763,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     <ImageLoader selectedFile={selectedFile} />
                   </div>
                 ) : (
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
+                  <pre className="font-mono text-sm text-text-primary overflow-x-auto break-words whitespace-pre-wrap">
                     {selectedFile.content}
                   </pre>
                 )
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                    <div className="mb-4 h-8 w-8 animate-spin border-blue-600 mx-auto rounded-full border-b-2"></div>
                     <p className="text-sm text-text-secondary">
                       {t('chat.loading')}
                     </p>
@@ -775,9 +778,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 </div>
               )
             ) : (
-              <div className="flex h-full items-center justify-center text-text-secondary">
+              <div className="text-text-secondary flex h-full items-center justify-center">
                 <div className="text-center">
-                  <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
+                  <FileText className="mb-4 h-12 w-12 text-text-tertiary mx-auto" />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>
@@ -868,7 +871,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   }, [selectedFile]);
 
   return (
-    <div className="flex w-full flex-col items-center gap-4 px-8">
+    <div className="gap-4 px-8 flex w-full flex-col items-center">
       <p className="text-sm font-medium text-text-primary">
         {selectedFile.name}
       </p>
@@ -1219,7 +1222,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
+        className="min-h-0 bg-code-surface flex-1 overflow-hidden"
         onWheel={handleWheel}
       >
         <div

@@ -14,31 +14,24 @@
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { AnimatePresence } from 'framer-motion';
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProjectSection } from './ProjectSection';
 
 interface ProjectChatContainerProps {
   className?: string;
-  // onPauseResume: () => void;  // Commented out - temporary not needed
+  /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   onSkip: () => void;
   isPauseResumeLoading: boolean;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = '',
-  // onPauseResume,  // Commented out - temporary not needed
+  scrollContainerRef,
   onSkip,
   isPauseResumeLoading,
 }) => {
   const { projectStore, chatStore } = useChatStoreAdapter();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
   const [lastMessageCount, setLastMessageCount] = useState(0);
 
@@ -59,18 +52,16 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
-    if (containerRef.current) {
-      setTimeout(() => {
-        // Double check containerRef is still valid before scrolling
-        if (containerRef.current) {
-          containerRef.current.scrollTo({
-            top: containerRef.current.scrollHeight,
-            behavior: 'smooth',
-          });
-        }
-      }, 100);
-    }
-  }, []);
+    if (!scrollContainerRef.current) return;
+    setTimeout(() => {
+      const root = scrollContainerRef.current;
+      if (!root) return;
+      root.scrollTo({
+        top: root.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 100);
+  }, [scrollContainerRef]);
 
   // Monitor for new user messages and auto-scroll
   useEffect(() => {
@@ -116,7 +107,8 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
 
   // Intersection Observer for scroll-based animations
   useEffect(() => {
-    if (!containerRef.current) return;
+    const root = scrollContainerRef.current;
+    if (!root) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -130,92 +122,58 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
         });
       },
       {
-        root: containerRef.current,
+        root,
         rootMargin: '-20% 0px -60% 0px', // Trigger when query is in upper portion
         threshold: 0.1,
       }
     );
 
-    // Observe all query groups
-    const queryGroups =
-      containerRef.current.querySelectorAll('[data-query-id]');
+    const queryGroups = root.querySelectorAll('[data-query-id]');
     queryGroups.forEach((group) => observer.observe(group));
 
     return () => {
       queryGroups.forEach((group) => observer.unobserve(group));
     };
-  }, [chatStores]);
-
-  // Handle scrollbar visibility on scroll
-  useEffect(() => {
-    const scrollContainer = containerRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      // Add scrolling class
-      scrollContainer.classList.add('scrolling');
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Remove scrolling class after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        scrollContainer.classList.remove('scrolling');
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
+  }, [chatStores, scrollContainerRef]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`scrollbar-always-visible relative z-10 flex flex-1 flex-col overflow-y-scroll ${className}`}
-    >
-      <AnimatePresence mode="popLayout">
-        {chatStores.map(({ chatId, chatStore }) => {
-          const chatState = chatStore.getState();
-          const activeTaskId = chatState.activeTaskId;
+    <div className={`relative z-10 w-full ${className}`}>
+      <div className="pl-3 pr-1.5 pt-0 mx-auto w-full max-w-[600px] pb-[max(8rem,min(45vh,22rem))]">
+        <AnimatePresence mode="popLayout">
+          {chatStores.map(({ chatId, chatStore }) => {
+            const chatState = chatStore.getState();
+            const activeTaskId = chatState.activeTaskId;
 
-          if (!activeTaskId || !chatState.tasks[activeTaskId]) {
-            return null;
-          }
+            if (!activeTaskId || !chatState.tasks[activeTaskId]) {
+              return null;
+            }
 
-          const task = chatState.tasks[activeTaskId];
-          const messages = task.messages || [];
+            const task = chatState.tasks[activeTaskId];
+            const messages = task.messages || [];
 
-          // Only render if there are actual user messages (not just empty or system messages)
-          const hasUserMessages = messages.some(
-            (msg: any) => msg.role === 'user' && msg.content
-          );
+            // Only render if there are actual user messages (not just empty or system messages)
+            const hasUserMessages = messages.some(
+              (msg: any) => msg.role === 'user' && msg.content
+            );
 
-          if (!hasUserMessages) {
-            return null;
-          }
+            if (!hasUserMessages) {
+              return null;
+            }
 
-          return (
-            <ProjectSection
-              key={chatId}
-              chatId={chatId}
-              chatStore={chatStore}
-              activeQueryId={activeQueryId}
-              onQueryActive={setActiveQueryId}
-              // onPauseResume={onPauseResume}  // Commented out - temporary not needed
-              onSkip={onSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
-            />
-          );
-        })}
-      </AnimatePresence>
+            return (
+              <ProjectSection
+                key={chatId}
+                chatId={chatId}
+                chatStore={chatStore}
+                activeQueryId={activeQueryId}
+                onQueryActive={setActiveQueryId}
+                onSkip={onSkip}
+                isPauseResumeLoading={isPauseResumeLoading}
+              />
+            );
+          })}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };
