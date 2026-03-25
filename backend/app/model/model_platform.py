@@ -28,6 +28,19 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
 BEDROCK_CONVERSE_REGION: Final[str] = "us-west-2"
 
 
+def patch_bedrock_cloud_config(
+    api_url: str, extra_params: dict
+) -> tuple[str, dict]:
+    """Patch API URL and extra_params for Bedrock Converse in cloud mode.
+
+    Appends '/bedrock' to the proxy URL and defaults the region.
+    Returns the updated (api_url, extra_params).
+    """
+    extra_params = dict(extra_params)
+    extra_params.setdefault("region_name", BEDROCK_CONVERSE_REGION)
+    return api_url + "/bedrock", extra_params
+
+
 def normalize_model_platform(platform: str) -> str:
     """Normalize provider aliases to supported model platform names."""
     return PLATFORM_ALIAS_MAPPING.get(platform, platform)

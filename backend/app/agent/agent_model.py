@@ -24,7 +24,7 @@ from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
-from app.model.model_platform import BEDROCK_CONVERSE_REGION
+from app.model.model_platform import patch_bedrock_cloud_config
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -81,11 +81,16 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
-    # Frontend does not provide Bedrock Converse region yet, so default it here.
-    if effective_config.get("model_platform") == "aws-bedrock-converse":
-        extra_params = dict(extra_params)
-        extra_params["region_name"] = BEDROCK_CONVERSE_REGION
-        effective_config["api_url"] = effective_config["api_url"] + "/bedrock"
+    # Cloud mode: inject default Bedrock region and adjust URL for proxy.
+    if (
+        effective_config.get("model_platform") == "aws-bedrock-converse"
+        and options.is_cloud()
+    ):
+        effective_config["api_url"], extra_params = (
+            patch_bedrock_cloud_config(
+                effective_config["api_url"], extra_params
+            )
+        )
     init_param_keys = {
         "api_version",
         "azure_ad_token",
@@ -96,6 +101,9 @@ def agent_model(
         "async_client",
         "azure_deployment_name",
         "region_name",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
     }
 
     init_params = {}

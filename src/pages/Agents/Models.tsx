@@ -507,7 +507,7 @@ export default function SettingModels() {
       form[idx];
     let hasError = false;
     const newErrors = [...errors];
-    if (items[idx].id !== 'local') {
+    if (items[idx].id !== 'local' && items[idx].id !== 'aws-bedrock-converse') {
       if (!apiKey || apiKey.trim() === '') {
         newErrors[idx].apiKey = t('setting.api-key-can-not-be-empty');
         hasError = true;
@@ -1067,6 +1067,7 @@ export default function SettingModels() {
       'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
       grok: PROVIDER_AVATAR_URLS.grok,
       mistral: PROVIDER_AVATAR_URLS.mistral,
+      'aws-bedrock': bedrockImage,
       'aws-bedrock-converse': bedrockImage,
       azure: azureImage,
       'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
@@ -1474,6 +1475,7 @@ export default function SettingModels() {
                     <Input
                       size="default"
                       title={ec.name}
+                      placeholder={ec.placeholder ?? `Enter your ${ec.name}`}
                       state={errors[idx]?.externalConfig ? 'error' : undefined}
                       note={errors[idx]?.externalConfig ?? undefined}
                       value={ec.value}

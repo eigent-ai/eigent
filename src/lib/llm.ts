@@ -133,12 +133,45 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: '',
   },
   {
-    id: 'aws-bedrock-converse',
+    id: 'aws-bedrock',
     name: 'AWS Bedrock',
     apiKey: '',
     apiHost: '',
     description: 'AWS Bedrock model configuration.',
     hostPlaceHolder: 'e.g. https://bedrock-runtime.{{region}}.amazonaws.com',
+    is_valid: false,
+    model_type: '',
+  },
+  {
+    id: 'aws-bedrock-converse',
+    name: 'AWS Bedrock Converse',
+    apiKey: '',
+    apiHost: '',
+    description:
+      'AWS Bedrock Converse model configuration. Auth: API Key (Bearer Token), or Access Key ID + Secret Access Key (+Session Token).',
+    hostPlaceHolder: 'e.g. https://bedrock-runtime.{{region}}.amazonaws.com',
+    externalConfig: [
+      {
+        key: 'region_name',
+        name: 'Region',
+        value: '',
+      },
+      {
+        key: 'aws_access_key_id',
+        name: 'Access Key ID',
+        value: '',
+      },
+      {
+        key: 'aws_secret_access_key',
+        name: 'Secret Access Key',
+        value: '',
+      },
+      {
+        key: 'aws_session_token',
+        name: 'Session Token (Optional)',
+        value: '',
+      },
+    ],
     is_valid: false,
     model_type: '',
   },

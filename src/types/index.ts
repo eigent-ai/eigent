@@ -16,6 +16,7 @@ type externalConfig = {
   key: string;
   name: string;
   value: string;
+  placeholder?: string;
   options?: {
     label: string;
     value: string;

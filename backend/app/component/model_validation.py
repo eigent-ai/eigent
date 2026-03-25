@@ -19,7 +19,6 @@ from typing import Any
 from camel.agents import ChatAgent
 from camel.models import ModelFactory, ModelProcessingError
 
-from app.model.model_platform import BEDROCK_CONVERSE_REGION
 
 logger = logging.getLogger("model_validation")
 
@@ -225,11 +224,6 @@ def create_agent(
     """
     platform = model_platform
     mtype = model_type
-    # Keep validation aligned with runtime Bedrock Converse initialization.
-    if platform == "aws-bedrock-converse":
-        kwargs["region_name"] = BEDROCK_CONVERSE_REGION
-        if url:
-            url = url + "/bedrock"
     if mtype is None:
         raise ValueError(f"Invalid model_type: {model_type}")
     if platform is None:
@@ -329,11 +323,6 @@ def validate_model_with_details(
     # Stage 2: Model Creation
     result.validation_stages[ValidationStage.MODEL_CREATION] = False
     try:
-        # Validation should use the same default region as normal agent startup.
-        if model_platform == "aws-bedrock-converse":
-            kwargs["region_name"] = BEDROCK_CONVERSE_REGION
-            if url:
-                url = url + "/bedrock"
         logger.debug(
             "Creating model",
             extra={"platform": model_platform, "model_type": model_type},

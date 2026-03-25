@@ -21,7 +21,7 @@ from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
-from app.model.model_platform import BEDROCK_CONVERSE_REGION
+from app.model.model_platform import patch_bedrock_cloud_config
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
@@ -80,9 +80,10 @@ async def mcp_agent(options: Chat):
         if k not in ["model_platform", "model_type", "api_key", "url"]
     }
     api_url = options.api_url
-    if options.model_platform == "aws-bedrock-converse":
-        extra_params["region_name"] = BEDROCK_CONVERSE_REGION
-        api_url = api_url + "/bedrock"
+    if options.model_platform == "aws-bedrock-converse" and options.is_cloud():
+        api_url, extra_params = patch_bedrock_cloud_config(
+            api_url, extra_params
+        )
 
     return ListenChatAgent(
         options.project_id,
