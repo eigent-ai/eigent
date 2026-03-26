@@ -24,13 +24,6 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { TooltipSimple } from '@/components/ui/tooltip';
-import {
   useTriggerCacheInvalidation,
   useUserTriggerCountQuery,
 } from '@/hooks/queries/useTriggerQueries';
@@ -46,32 +39,53 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { Trigger, TriggerStatus } from '@/types';
 import { motion } from 'framer-motion';
-import {
-  ArrowUpDown,
-  Plus,
-  SquareChevronRight,
-  SquareCode,
-} from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-const EXECUTION_LOGS_OPEN_STORAGE_KEY = 'triggers.executionLogs.open';
+export const EXECUTION_LOGS_OPEN_STORAGE_KEY = 'triggers.executionLogs.open';
 
-export default function Overview() {
-  const { t } = useTranslation();
-  const [sortBy, setSortBy] = useState<
-    'createdAt' | 'lastExecutionTime' | 'tokens'
-  >('createdAt');
-  const [selectedTriggerId, setSelectedTriggerId] = useState<number | null>(
-    null
-  );
-  const [isExecutionLogsOpen, setIsExecutionLogsOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return (
-      window.localStorage.getItem(EXECUTION_LOGS_OPEN_STORAGE_KEY) === 'true'
-    );
+export type TriggerSortKey = 'createdAt' | 'lastExecutionTime' | 'tokens';
+
+export function sortTriggersList(
+  triggers: Trigger[],
+  sortBy: TriggerSortKey
+): Trigger[] {
+  return [...triggers].sort((a, b) => {
+    switch (sortBy) {
+      case 'createdAt':
+        return (
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+        );
+      case 'lastExecutionTime':
+        return (
+          new Date(b.last_executed_at || 0).getTime() -
+          new Date(a.last_executed_at || 0).getTime()
+        );
+      default:
+        return 0;
+    }
   });
+}
+
+export type OverviewProps = {
+  sortBy: TriggerSortKey;
+  selectedTriggerId: number | null;
+  onSelectedTriggerIdChange: (id: number | null) => void;
+  isExecutionLogsOpen: boolean;
+  onExecutionLogsOpenChange: (open: boolean) => void;
+};
+
+export default function Overview({
+  sortBy,
+  selectedTriggerId,
+  onSelectedTriggerIdChange,
+  isExecutionLogsOpen,
+  onExecutionLogsOpenChange,
+}: OverviewProps) {
+  const { t } = useTranslation();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -117,51 +131,12 @@ export default function Overview() {
     fetchTriggers();
   }, [projectStore.activeProjectId]);
 
-  // Reset selected trigger when project changes
-  useEffect(() => {
-    setSelectedTriggerId(null);
-  }, [projectStore.activeProjectId]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      EXECUTION_LOGS_OPEN_STORAGE_KEY,
-      String(isExecutionLogsOpen)
-    );
-  }, [isExecutionLogsOpen]);
-
   // Update hasTriggers based on the trigger list
   useEffect(() => {
     setHasTriggers(triggers.length > 0);
   }, [triggers, setHasTriggers]);
 
-  // Sort triggers directly
-  const sortedTriggers = [...triggers].sort((a, b) => {
-    switch (sortBy) {
-      case 'createdAt':
-        return (
-          new Date(b.created_at || 0).getTime() -
-          new Date(a.created_at || 0).getTime()
-        );
-      case 'lastExecutionTime':
-        return (
-          new Date(b.last_executed_at || 0).getTime() -
-          new Date(a.last_executed_at || 0).getTime()
-        );
-      default:
-        return 0;
-    }
-  });
-
-  const getSortLabel = () => {
-    switch (sortBy) {
-      case 'createdAt':
-        return t('triggers.created-time');
-      case 'lastExecutionTime':
-        return t('triggers.last-execution-label');
-      case 'tokens':
-        return t('triggers.token-cost');
-    }
-  };
+  const sortedTriggers = sortTriggersList(triggers, sortBy);
 
   const handleToggleActive = async (trigger: Trigger) => {
     const newStatus =
@@ -220,11 +195,11 @@ export default function Overview() {
   const setSelectedTriggerIdWrapper = (triggerId: number) => {
     //Double Click to Edit
     if (triggerId === selectedTriggerId) {
-      handleEdit(triggers.find((t) => t.id === triggerId)!);
+      handleEdit(triggers.find((tr) => tr.id === triggerId)!);
       return;
     }
-    setSelectedTriggerId(triggerId);
-    setIsExecutionLogsOpen(true);
+    onSelectedTriggerIdChange(triggerId);
+    onExecutionLogsOpenChange(true);
   };
 
   const handleEdit = (trigger: Trigger) => {
@@ -246,8 +221,8 @@ export default function Overview() {
       deleteTrigger(deletingTrigger.id);
 
       if (selectedTriggerId === deletingTrigger.id) {
-        setSelectedTriggerId(null);
-        setIsExecutionLogsOpen(false);
+        onSelectedTriggerIdChange(null);
+        onExecutionLogsOpenChange(false);
       }
 
       // Add activity log
@@ -303,74 +278,6 @@ export default function Overview() {
       <div className="bg-surface-secondary px-2 pt-2 flex h-full flex-row">
         {/* Left Side: Trigger List */}
         <div className="min-w-0 flex flex-1 flex-col">
-          {/* Header */}
-          <div className="pb-4 pl-1 pt-2 flex w-full items-center justify-between">
-            <div className="text-body-sm font-bold text-text-heading">
-              {t('triggers.title')}
-            </div>
-            <div className="gap-1 pr-2 flex items-center">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="font-semibold opacity-50"
-                  >
-                    {getSortLabel()}
-                    <ArrowUpDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setSortBy('createdAt')}>
-                    {t('triggers.created-time')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => setSortBy('lastExecutionTime')}
-                  >
-                    {t('triggers.last-execution-label')}
-                  </DropdownMenuItem>
-                  {/* TODO: Support Token Cost */}
-                  {/* <DropdownMenuItem onClick={() => setSortBy("tokens")}>
-                                    {t('triggers.token-cost')}
-                                </DropdownMenuItem> */}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <TooltipSimple
-                content={
-                  isExecutionLogsOpen
-                    ? 'Fold execution logs'
-                    : 'Open execution logs'
-                }
-                delayDuration={300}
-                side="bottom"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="opacity-70"
-                  disabled={sortedTriggers.length === 0}
-                  onClick={() => {
-                    if (isExecutionLogsOpen) {
-                      setIsExecutionLogsOpen(false);
-                      return;
-                    }
-
-                    if (!selectedTriggerId && sortedTriggers.length > 0) {
-                      setSelectedTriggerId(sortedTriggers[0].id);
-                    }
-                    setIsExecutionLogsOpen(true);
-                  }}
-                >
-                  {isExecutionLogsOpen ? (
-                    <SquareChevronRight className="h-4 w-4" />
-                  ) : (
-                    <SquareCode className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipSimple>
-            </div>
-          </div>
-
           {/* List View Section */}
           <div className="scrollbar-always-visible flex h-full flex-col overflow-auto">
             <div className="gap-2 flex flex-col">

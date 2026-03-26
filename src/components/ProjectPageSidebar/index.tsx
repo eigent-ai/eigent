@@ -42,9 +42,8 @@ import {
   CircleHelp,
   Compass,
   Hammer,
-  House,
   Inbox,
-  Search,
+  LayoutGrid,
   WandSparkles,
   Zap,
 } from 'lucide-react';
@@ -80,7 +79,7 @@ function capitalizeFirstLetter(text: string): string {
 }
 
 const PROJECT_HUB_DROPDOWN_CONTENT_CLASS = cn(
-  'min-w-[11rem] -mb-2 flex flex-col gap-3 rounded-xl border-0 bg-fill-default p-1 shadow-md'
+  'min-w-[11rem] -mb-2 flex flex-col gap-1 rounded-xl border-0 bg-fill-default p-1 shadow-md'
 );
 
 const PROJECT_HUB_DROPDOWN_CONTENT_STYLE: CSSProperties = {
@@ -233,6 +232,9 @@ export default function ProjectPageSidebar({
 }: ProjectPageSidebarProps) {
   const collapsed = usePageTabStore((s) => s.projectSidebarCollapsed);
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
+  const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
   const projectStore = useProjectStore();
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -243,25 +245,20 @@ export default function ProjectPageSidebar({
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
 
-  const {
-    dashboardActive,
-    skillsHubActive,
-    connectorsHubActive,
-    browserHubActive,
-  } = useMemo(() => {
-    const path = location.pathname.replace(/\/$/, '');
-    const onHistory = path === '/history' || path.endsWith('/history');
-    const params = new URLSearchParams(location.search);
-    const rawTab = params.get('tab');
-    const tab = rawTab ? (HISTORY_TAB_ALIASES[rawTab] ?? rawTab) : null;
-    const section = params.get('section');
-    return {
-      dashboardActive: onHistory,
-      skillsHubActive: onHistory && tab === 'agents' && section === 'skills',
-      connectorsHubActive: onHistory && tab === 'connectors',
-      browserHubActive: onHistory && tab === 'browser',
-    };
-  }, [location.pathname, location.search]);
+  const { skillsHubActive, connectorsHubActive, browserHubActive } =
+    useMemo(() => {
+      const path = location.pathname.replace(/\/$/, '');
+      const onHistory = path === '/history' || path.endsWith('/history');
+      const params = new URLSearchParams(location.search);
+      const rawTab = params.get('tab');
+      const tab = rawTab ? (HISTORY_TAB_ALIASES[rawTab] ?? rawTab) : null;
+      const section = params.get('section');
+      return {
+        skillsHubActive: onHistory && tab === 'agents' && section === 'skills',
+        connectorsHubActive: onHistory && tab === 'connectors',
+        browserHubActive: onHistory && tab === 'browser',
+      };
+    }, [location.pathname, location.search]);
 
   const activeUpdateCount = chatStore.updateCount;
 
@@ -316,6 +313,17 @@ export default function ProjectPageSidebar({
     null
   );
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
@@ -516,26 +524,6 @@ export default function ProjectPageSidebar({
           transition={PROJECT_SIDEBAR_SPRING}
         >
           <div className="gap-2 flex shrink-0 flex-col">
-            <button
-              type="button"
-              onClick={() => navigate('/history')}
-              className={cn(
-                rowButtonClass,
-                'bg-surface-primary',
-                dashboardActive && 'bg-surface-tertiary'
-              )}
-              aria-label={t('layout.dashboard')}
-              aria-current={dashboardActive ? 'page' : undefined}
-            >
-              <House
-                className="h-4 w-4 text-icon-primary shrink-0"
-                aria-hidden
-              />
-              <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
-                {t('layout.dashboard')}
-              </span>
-            </button>
-
             <div className="gap-1 grid w-full grid-cols-3">
               <DropdownMenu
                 open={skillsMenuOpen}
@@ -693,26 +681,36 @@ export default function ProjectPageSidebar({
             <div className="gap-2 flex flex-col">
               <button
                 type="button"
-                onClick={() => setGlobalSearchOpen(true)}
-                className={rowButtonClass}
-                aria-label={t('dashboard.search')}
+                onClick={() => setActiveWorkspaceTab('workforce')}
+                className={cn(
+                  rowButtonClass,
+                  activeWorkspaceTab === 'workforce' && 'bg-surface-tertiary'
+                )}
+                aria-label={t('triggers.workspace')}
+                aria-current={
+                  activeWorkspaceTab === 'workforce' ? 'page' : undefined
+                }
               >
-                <Search
+                <LayoutGrid
                   className="h-4 w-4 text-icon-primary shrink-0"
                   aria-hidden
                 />
                 <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
-                  {t('layout.search')}
+                  {t('triggers.workspace')}
                 </span>
               </button>
               <button
                 type="button"
-                disabled
+                onClick={() => setActiveWorkspaceTab('inbox')}
                 className={cn(
                   rowButtonClass,
-                  'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50'
+                  activeWorkspaceTab === 'inbox' && 'bg-surface-tertiary',
+                  'relative'
                 )}
                 aria-label={t('layout.folder')}
+                aria-current={
+                  activeWorkspaceTab === 'inbox' ? 'page' : undefined
+                }
               >
                 <Inbox
                   className="h-4 w-4 text-icon-primary shrink-0"
@@ -721,15 +719,25 @@ export default function ProjectPageSidebar({
                 <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
                   {t('layout.folder')}
                 </span>
+                {unviewedTabs.has('inbox') && (
+                  <span
+                    className="h-2 w-2 bg-red-500 shrink-0 rounded-full"
+                    aria-hidden
+                  />
+                )}
               </button>
               <button
                 type="button"
-                disabled
+                onClick={() => setActiveWorkspaceTab('triggers')}
                 className={cn(
                   rowButtonClass,
-                  'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50'
+                  activeWorkspaceTab === 'triggers' && 'bg-surface-tertiary',
+                  'relative'
                 )}
                 aria-label={t('layout.triggers')}
+                aria-current={
+                  activeWorkspaceTab === 'triggers' ? 'page' : undefined
+                }
               >
                 <Zap
                   className="h-4 w-4 text-icon-primary shrink-0"
@@ -738,6 +746,12 @@ export default function ProjectPageSidebar({
                 <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
                   {t('layout.triggers')}
                 </span>
+                {unviewedTabs.has('triggers') && (
+                  <span
+                    className="h-2 w-2 bg-text-error shrink-0 rounded-full"
+                    aria-hidden
+                  />
+                )}
               </button>
             </div>
           </div>
@@ -772,14 +786,14 @@ export default function ProjectPageSidebar({
             <div className="gap-1 grid grid-cols-4">
               <button
                 type="button"
-                onClick={() => navigate('/history?tab=settings')}
+                onClick={() => navigate('/history?tab=agents&section=models')}
                 title={`${modelModeLine}\n${modelDetailLine}`}
                 className={cn(
                   rowButtonClass,
                   'h-12 min-h-12 bg-surface-primary col-span-3',
                   'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
                 )}
-                aria-label={t('layout.settings')}
+                aria-label={t('setting.models')}
               >
                 <span
                   className="h-7 w-7 flex shrink-0 items-center justify-center"

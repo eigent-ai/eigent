@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -33,6 +34,7 @@ import { ChatTaskStatus } from '@/types/constants';
 import {
   ChevronDown,
   ChevronLeft,
+  House,
   Minus,
   PanelLeft,
   PanelLeftClose,
@@ -94,6 +96,11 @@ function HeaderWin() {
     }
     return t('layout.new-project');
   }, [chatStore, summaryTask, t]);
+
+  const dashboardActive = useMemo(() => {
+    const path = location.pathname.replace(/\/$/, '');
+    return path === '/history' || path.endsWith('/history');
+  }, [location.pathname]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -221,11 +228,27 @@ function HeaderWin() {
               </Button>
             </div>
           )}
-          {location.pathname !== '/history' && (
+          {location.pathname === '/' && (
             <div className="pl-2 gap-1 flex items-center">
-              {location.pathname === '/' && (
-                <TooltipSimple
-                  content={
+              <TooltipSimple
+                content={
+                  projectSidebarCollapsed
+                    ? t('layout.expand-sidebar', {
+                        defaultValue: 'Expand sidebar',
+                      })
+                    : t('layout.collapse-sidebar', {
+                        defaultValue: 'Collapse sidebar',
+                      })
+                }
+                side="bottom"
+                align="center"
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="no-drag rounded-full"
+                  onClick={toggleProjectSidebarCollapsed}
+                  aria-label={
                     projectSidebarCollapsed
                       ? t('layout.expand-sidebar', {
                           defaultValue: 'Expand sidebar',
@@ -234,32 +257,33 @@ function HeaderWin() {
                           defaultValue: 'Collapse sidebar',
                         })
                   }
-                  side="bottom"
-                  align="center"
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="no-drag rounded-full"
-                    onClick={toggleProjectSidebarCollapsed}
-                    aria-label={
-                      projectSidebarCollapsed
-                        ? t('layout.expand-sidebar', {
-                            defaultValue: 'Expand sidebar',
-                          })
-                        : t('layout.collapse-sidebar', {
-                            defaultValue: 'Collapse sidebar',
-                          })
-                    }
-                  >
-                    {projectSidebarCollapsed ? (
-                      <PanelLeft className="h-4 w-4 text-icon-primary" />
-                    ) : (
-                      <PanelLeftClose className="h-4 w-4 text-icon-primary" />
-                    )}
-                  </Button>
-                </TooltipSimple>
-              )}
+                  {projectSidebarCollapsed ? (
+                    <PanelLeft className="h-4 w-4 text-icon-primary" />
+                  ) : (
+                    <PanelLeftClose className="h-4 w-4 text-icon-primary" />
+                  )}
+                </Button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={t('layout.dashboard')}
+                side="bottom"
+                align="center"
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    'no-drag rounded-full',
+                    dashboardActive && 'bg-surface-tertiary'
+                  )}
+                  onClick={() => navigate('/history')}
+                  aria-label={t('layout.dashboard')}
+                  aria-current={dashboardActive ? 'page' : undefined}
+                >
+                  <House className="h-4 w-4 text-icon-primary" aria-hidden />
+                </Button>
+              </TooltipSimple>
               <>
                 {activeTaskTitle === t('layout.new-project') ? (
                   <TooltipSimple
@@ -324,98 +348,93 @@ function HeaderWin() {
         </div>
 
         {/* right */}
-        {location.pathname !== '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag gap-1 relative z-50 flex h-full items-center`}
-          >
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] &&
-              ((chatStore.tasks[chatStore.activeTaskId as string]?.messages
-                ?.length || 0) > 0 ||
-                chatStore.tasks[chatStore.activeTaskId as string]
-                  ?.hasMessages ||
-                chatStore.tasks[chatStore.activeTaskId as string]?.status !==
-                  ChatTaskStatus.PENDING) && (
-                <TooltipSimple
-                  content={t('layout.end-project')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() => setEndDialogOpen(true)}
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
+        <div
+          className={`${
+            platform === 'darwin' && 'pr-2'
+          } no-drag gap-1 relative z-50 flex h-full items-center`}
+        >
+          {location.pathname !== '/history' && (
+            <>
+              {chatStore.activeTaskId &&
+                chatStore.tasks[chatStore.activeTaskId as string] &&
+                ((chatStore.tasks[chatStore.activeTaskId as string]?.messages
+                  ?.length || 0) > 0 ||
+                  chatStore.tasks[chatStore.activeTaskId as string]
+                    ?.hasMessages ||
+                  chatStore.tasks[chatStore.activeTaskId as string]?.status !==
+                    ChatTaskStatus.PENDING) && (
+                  <TooltipSimple
+                    content={t('layout.end-project')}
+                    side="bottom"
+                    align="end"
                   >
-                    <Power />
-                    {t('layout.end-project')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                ChatTaskStatus.FINISHED && (
-                <TooltipSimple
-                  content={t('layout.share')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() =>
-                      handleShare(chatStore.activeTaskId as string)
-                    }
-                    variant="ghost"
-                    size="icon"
-                    className="no-drag bg-surface-information !text-text-information rounded-full"
-                    aria-label={t('layout.share')}
+                    <Button
+                      onClick={() => setEndDialogOpen(true)}
+                      variant="ghost"
+                      size="xs"
+                      className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
+                    >
+                      <Power />
+                      {t('layout.end-project')}
+                    </Button>
+                  </TooltipSimple>
+                )}
+              {chatStore.activeTaskId &&
+                chatStore.tasks[chatStore.activeTaskId as string]?.status ===
+                  ChatTaskStatus.FINISHED && (
+                  <TooltipSimple
+                    content={t('layout.share')}
+                    side="bottom"
+                    align="end"
                   >
-                    <Share className="h-4 w-4" aria-hidden />
-                  </Button>
-                </TooltipSimple>
-              )}
-            <TooltipSimple
-              content={t('layout.refer-friends')}
-              side="bottom"
-              align="end"
-            >
-              <Button
-                onClick={getReferFriendsLink}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
+                    <Button
+                      onClick={() =>
+                        handleShare(chatStore.activeTaskId as string)
+                      }
+                      variant="ghost"
+                      size="icon"
+                      className="no-drag bg-surface-information !text-text-information rounded-full"
+                      aria-label={t('layout.share')}
+                    >
+                      <Share className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </TooltipSimple>
+                )}
+              <TooltipSimple
+                content={t('layout.refer-friends')}
+                side="bottom"
+                align="end"
               >
-                <img
-                  src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                  alt="gift-icon"
-                  className="h-4 w-4"
-                />
-              </Button>
-            </TooltipSimple>
-            <TooltipSimple
-              content={t('layout.settings')}
-              side="bottom"
-              align="end"
-            >
-              <Button
-                onClick={() => navigate('/history?tab=settings')}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
+                <Button
+                  onClick={getReferFriendsLink}
+                  variant="ghost"
+                  size="icon"
+                  className="no-drag rounded-full"
+                >
+                  <img
+                    src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
+                    alt="gift-icon"
+                    className="h-4 w-4"
+                  />
+                </Button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={t('layout.settings')}
+                side="bottom"
+                align="end"
               >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          </div>
-        )}
-        {location.pathname === '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag gap-1 relative z-50 flex h-full items-center`}
-          ></div>
-        )}
+                <Button
+                  onClick={() => navigate('/history?tab=settings')}
+                  variant="ghost"
+                  size="icon"
+                  className="no-drag rounded-full"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </TooltipSimple>
+            </>
+          )}
+        </div>
       </div>
       {/* Custom window controls only for Linux (Windows and macOS use native controls) */}
       {platform !== 'darwin' && platform !== 'win32' && (

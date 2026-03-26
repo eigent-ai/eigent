@@ -48,6 +48,8 @@
   "settings": "Settings",
   "general": "General",
   "workers": "Workers",
+  "chat-panel-left": "Show chat on the left",
+  "chat-panel-right": "Show chat on the right",
   "triggers": "Triggers",
   "folder": "Folder",
   "sidebar-model-manage-hint": "Manage in Agents → Models",

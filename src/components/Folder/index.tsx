@@ -22,7 +22,6 @@ import {
 import {
   ChevronDown,
   ChevronRight,
-  ChevronsLeft,
   CodeXml,
   Download,
   FileText,
@@ -30,7 +29,7 @@ import {
   Search,
   SquareTerminal,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
 
 import { proxyFetchGet } from '@/api/http';
@@ -98,6 +97,12 @@ function getFileType(file: FileTypeTarget) {
   return extFromNameOrPath;
 }
 
+function workingFolderBasename(path: string) {
+  const normalized = path.replace(/\\/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || normalized;
+}
+
 function isImageFile(file: FileTypeTarget) {
   return IMAGE_EXTENSIONS.includes(getFileType(file));
 }
@@ -117,6 +122,25 @@ interface FileTreeNode {
   icon?: React.ElementType;
   children?: FileTreeNode[];
   isRemote?: boolean;
+}
+
+function filterFileTree(node: FileTreeNode, query: string): FileTreeNode {
+  const q = query.trim().toLowerCase();
+  if (!q || !node.children?.length) {
+    return node;
+  }
+  const filteredChildren: FileTreeNode[] = [];
+  for (const child of node.children) {
+    if (child.isFolder) {
+      const filtered = filterFileTree(child, query);
+      if (filtered.children?.length) {
+        filteredChildren.push(filtered);
+      }
+    } else if (child.name.toLowerCase().includes(q)) {
+      filteredChildren.push(child);
+    }
+  }
+  return { ...node, children: filteredChildren };
 }
 
 interface FileInfo {
@@ -175,14 +199,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
+              className={`text-primary gap-2 rounded-xl bg-fill-fill-transparent p-2 text-sm backdrop-blur-lg hover:bg-fill-fill-transparent-active flex w-full items-center justify-start text-left transition-colors ${
                 selectedFile?.path === child.path
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
             >
               {child.isFolder ? (
-                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                <span className="h-4 w-4 flex flex-shrink-0 items-center justify-center">
                   {isExpanded ? (
                     <ChevronDown className="h-4 w-4" />
                   ) : (
@@ -191,13 +215,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 </span>
               ) : (
                 <span
-                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                  className="h-4 w-4 flex flex-shrink-0 items-center justify-center"
                   aria-hidden
                 />
               )}
 
               {child.isFolder ? (
-                <FolderIcon className="h-5 w-5 flex-shrink-0 text-yellow-600" />
+                <FolderIcon className="h-5 w-5 text-yellow-600 flex-shrink-0" />
               ) : child.icon ? (
                 <child.icon className="h-5 w-5 flex-shrink-0" />
               ) : (
@@ -205,7 +229,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
               )}
 
               <span
-                className={`truncate text-[13px] leading-5 ${
+                className={`leading-5 truncate text-[13px] ${
                   child.isFolder ? 'font-semibold' : 'font-medium'
                 }`}
               >
@@ -231,17 +255,21 @@ export const FileTree: React.FC<FileTreeProps> = ({
   );
 };
 
+type DownloadFileResult =
+  | { success: true; path: string }
+  | { success: false; error: string };
+
 function downloadByBrowser(url: string) {
   window.ipcRenderer
     .invoke('download-file', url)
-    .then((result) => {
+    .then((result: DownloadFileResult) => {
       if (result.success) {
         console.log('download-file success:', result.path);
       } else {
         console.error('download-file error:', result.error);
       }
     })
-    .catch((error) => {
+    .catch((error: unknown) => {
       console.error('download-file error:', error);
     });
 }
@@ -254,7 +282,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [workingFolderPath, setWorkingFolderPath] = useState<string | null>(
+    null
+  );
   const [fileTree, setFileTree] = useState<FileTreeNode>({
     name: 'root',
     path: '',
@@ -276,6 +307,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     },
   ]);
   const hasFetchedRemote = useRef(false);
+
+  const filteredFileTree = useMemo(
+    () => filterFileTree(fileTree, fileSearchQuery),
+    [fileTree, fileSearchQuery]
+  );
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
     if (file.type === 'zip') {
@@ -304,7 +340,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
           setLoading(false);
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.error('read-file-dataurl error:', error);
           setLoading(false);
         });
@@ -322,12 +358,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // all other files call open-file interface, the backend handles download and parsing
     window.ipcRenderer
       .invoke('open-file', file.type, file.path, isShowSourceCode)
-      .then((res) => {
+      .then((res: string) => {
         setSelectedFile({ ...file, content: res });
         chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
         setLoading(false);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.error('open-file error:', error);
         setLoading(false);
       });
@@ -412,6 +448,33 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     setFileGroups([{ folder: 'Reports', files: [] }]);
     setExpandedFolders(new Set());
   }, [chatStore?.activeTaskId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPath = async () => {
+      if (!authStore.email || !projectStore.activeProjectId) {
+        setWorkingFolderPath(null);
+        return;
+      }
+      if (typeof window.electronAPI?.getProjectFolderPath !== 'function') {
+        setWorkingFolderPath(null);
+        return;
+      }
+      try {
+        const folderPath = await window.electronAPI.getProjectFolderPath(
+          authStore.email,
+          projectStore.activeProjectId as string
+        );
+        if (!cancelled) setWorkingFolderPath(folderPath || null);
+      } catch {
+        if (!cancelled) setWorkingFolderPath(null);
+      }
+    };
+    void loadPath();
+    return () => {
+      cancelled = true;
+    };
+  }, [authStore.email, projectStore.activeProjectId]);
 
   useEffect(() => {
     if (!chatStore) return;
@@ -523,273 +586,221 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     }
   };
 
-  return (
-    <div className="flex h-full w-full overflow-hidden">
-      {/* fileList */}
-      <div
-        className={`${
-          isCollapsed ? 'w-16' : 'w-64'
-        } flex flex-shrink-0 flex-col border-[0px] border-r !border-solid border-border-subtle-strong border-r-border-subtle transition-all duration-300 ease-in-out`}
-      >
-        {/* head */}
-        <div
-          className={`flex-shrink-0 border-b border-border-subtle py-2 ${
-            isCollapsed ? 'px-2' : 'pl-4 pr-2'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            {!isCollapsed && (
-              <div className="flex items-center gap-2">
-                <span className="text-body-base text-primary whitespace-nowrap font-bold">
-                  {t('chat.agent-folder')}
-                </span>
-              </div>
-            )}
-            <div className="flex items-center">
-              {!isCollapsed &&
-                window.electronAPI?.getProjectFolderPath &&
-                window.electronAPI?.openInIDE && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title={t('chat.open-in-ide')}
-                      >
-                        <SquareTerminal className="h-5 w-5 text-icon-secondary" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="z-50 border-dropdown-border bg-dropdown-bg"
-                    >
-                      <DropdownMenuItem
-                        onClick={() => handleOpenInIDE('vscode')}
-                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
-                      >
-                        {t('chat.open-in-vscode')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleOpenInIDE('cursor')}
-                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
-                      >
-                        {t('chat.open-in-cursor')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleOpenInIDE('system')}
-                        className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
-                      >
-                        {t('chat.open-in-file-manager')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsCollapsed(!isCollapsed)}
-                className={`${
-                  isCollapsed ? 'w-full' : ''
-                } flex items-center justify-center`}
-                title={isCollapsed ? t('chat.open') : t('chat.close')}
-              >
-                <ChevronsLeft
-                  className={`h-6 w-6 text-icon-secondary ${
-                    isCollapsed ? 'rotate-180' : ''
-                  } transition-transform ease-in-out`}
-                />
-              </Button>
-            </div>
-          </div>
-        </div>
+  const folderHeaderTitle = workingFolderPath
+    ? workingFolderBasename(workingFolderPath)
+    : t('chat.agent-folder');
+  const canOpenInExternalEditor =
+    window.electronAPI?.getProjectFolderPath && window.electronAPI?.openInIDE;
 
-        {/* Search Input*/}
-        {!isCollapsed && (
-          <div className="flex-shrink-0 border-b border-border-subtle px-2">
-            <div className="relative">
-              <Search className="text-primary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
-              <input
-                type="text"
-                placeholder={t('chat.search')}
-                className="w-full rounded-md border border-solid border-border-subtle py-2 pl-9 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-text-link"
+  return (
+    <div className="flex h-full w-full flex-col overflow-hidden">
+      {/* header */}
+      <div className="border-border-tertiary gap-2 p-2 flex w-full shrink-0 items-center border-x-0 border-t-0 border-b border-solid">
+        <span
+          className="text-text-heading text-body-sm min-w-0 px-1 font-semibold line-clamp-1 flex-1 leading-none"
+          title={workingFolderPath ?? undefined}
+        >
+          {folderHeaderTitle}
+        </span>
+        <div className="h-7 w-32 max-w-xs rounded-lg relative min-w-[10rem] shrink-0">
+          <Search className="text-primary left-2 h-3.5 w-3.5 pointer-events-none absolute top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={fileSearchQuery}
+            onChange={(e) => setFileSearchQuery(e.target.value)}
+            placeholder={t('chat.search')}
+            className="border-border-subtle focus:ring-text-link h-7 rounded-lg py-0 pl-7 pr-2 text-sm w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
+            aria-label={t('chat.search')}
+          />
+        </div>
+        {canOpenInExternalEditor && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="primary"
+                size="sm"
+                className="h-7 gap-1 rounded-lg px-2 py-0 [&_svg]:size-3.5 shrink-0 items-center justify-center"
+              >
+                <SquareTerminal className="shrink-0" />
+                {t('chat.open-in-ide')}
+                <ChevronDown className="shrink-0 opacity-80" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="border-dropdown-border bg-dropdown-bg z-50"
+            >
+              <DropdownMenuItem
+                onClick={() => handleOpenInIDE('vscode')}
+                className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+              >
+                {t('chat.open-in-vscode')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleOpenInIDE('cursor')}
+                className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+              >
+                {t('chat.open-in-cursor')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleOpenInIDE('system')}
+                className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+              >
+                {t('chat.open-in-file-manager')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
+      <div className="min-h-0 flex flex-1 overflow-hidden">
+        {/* sidebar */}
+        <div className="border-border-tertiary w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="h-10 text-text-primary px-3 py-2 font-bold text-body-sm">
+              {t('chat.files')}
+            </div>
+            <div className="p-2">
+              <FileTree
+                node={filteredFileTree}
+                selectedFile={selectedFile}
+                expandedFolders={expandedFolders}
+                onToggleFolder={toggleFolder}
+                onSelectFile={(file) =>
+                  selectedFileChange(file, isShowSourceCode)
+                }
+                isShowSourceCode={isShowSourceCode}
               />
             </div>
           </div>
-        )}
-
-        {/* fileList */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {!isCollapsed ? (
-            <div className="p-2">
-              <div className="mb-2">
-                <div className="text-primary px-2 py-1 text-[10px] font-bold leading-4">
-                  {t('chat.files')}
-                </div>
-                <FileTree
-                  node={fileTree}
-                  selectedFile={selectedFile}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={toggleFolder}
-                  onSelectFile={(file) =>
-                    selectedFileChange(file, isShowSourceCode)
-                  }
-                  isShowSourceCode={isShowSourceCode}
-                />
-              </div>
-            </div>
-          ) : (
-            // Display simplified file icons when collapsed
-            <div className="space-y-2 p-2">
-              {fileGroups.map((group) =>
-                group.files.map((file) => (
-                  <button
-                    key={file.path}
-                    onClick={() => selectedFileChange(file, isShowSourceCode)}
-                    className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
-                      selectedFile?.name === file.name
-                        ? 'bg-surface-information text-text-information'
-                        : 'text-text-secondary'
-                    }`}
-                    title={file.name}
-                  >
-                    {file.icon ? (
-                      <file.icon className="h-4 w-4" />
-                    ) : (
-                      <FileText className="h-4 w-4" />
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          )}
         </div>
-      </div>
-
-      {/* content */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* head */}
-        {selectedFile && (
-          <div className="flex-shrink-0 border-b border-border-subtle px-4 py-2">
-            <div className="flex h-[30px] items-center justify-between gap-2">
-              <div
-                onClick={() => {
-                  // if file is remote, don't call reveal-in-folder
-                  if (selectedFile.isRemote) {
-                    downloadByBrowser(selectedFile.path);
-                    return;
-                  }
-                  window.ipcRenderer.invoke(
-                    'reveal-in-folder',
-                    selectedFile.path
-                  );
-                }}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden"
-              >
-                <span className="text-primary block overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-medium leading-[22px]">
-                  {selectedFile.name}
-                </span>
-                <Button size="icon" variant="ghost">
-                  <Download className="h-4 w-4 text-icon-secondary" />
-                </Button>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="flex-shrink-0"
-                onClick={() => isShowSourceCodeChange()}
-              >
-                <CodeXml className="h-4 w-4 text-icon-secondary" />
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* content */}
-        <div
-          className={`flex min-h-0 flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
-        >
+        <div className="min-w-0 flex flex-1 flex-col overflow-hidden">
+          {/* head */}
+          {selectedFile && (
+            <div className="px-3 py-2 flex-shrink-0">
+              <div className="gap-2 flex items-center justify-between">
+                <div
+                  onClick={() => {
+                    // if file is remote, don't call reveal-in-folder
+                    if (selectedFile.isRemote) {
+                      downloadByBrowser(selectedFile.path);
+                      return;
+                    }
+                    window.ipcRenderer.invoke(
+                      'reveal-in-folder',
+                      selectedFile.path
+                    );
+                  }}
+                  className="min-w-0 gap-2 flex flex-1 cursor-pointer items-center overflow-hidden"
+                >
+                  <span className="text-text-primary font-bold text-body-sm block overflow-hidden text-ellipsis whitespace-nowrap">
+                    {selectedFile.name}
+                  </span>
+                  <Button size="icon" variant="ghost">
+                    <Download className="h-4 w-4 text-icon-secondary" />
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="flex-shrink-0"
+                  onClick={() => isShowSourceCodeChange()}
+                >
+                  <CodeXml className="h-4 w-4 text-icon-secondary" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* content */}
           <div
-            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
+            className={`min-h-0 flex flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar'}`}
           >
-            {selectedFile ? (
-              !loading ? (
-                selectedFile.type === 'md' && !isShowSourceCode ? (
-                  <div className="prose prose-sm max-w-none">
-                    <MarkDown
-                      content={selectedFile.content || ''}
-                      enableTypewriter={false}
-                      contentBasePath={
-                        selectedFile.isRemote
-                          ? null
-                          : getDirPath(selectedFile.path)
-                      }
+            <div
+              className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'pl-4 py-2'} file-viewer-content`}
+            >
+              {selectedFile ? (
+                !loading ? (
+                  selectedFile.type === 'md' && !isShowSourceCode ? (
+                    <div className="prose prose-sm max-w-none">
+                      <MarkDown
+                        content={selectedFile.content || ''}
+                        enableTypewriter={false}
+                        contentBasePath={
+                          selectedFile.isRemote
+                            ? null
+                            : getDirPath(selectedFile.path)
+                        }
+                      />
+                    </div>
+                  ) : selectedFile.type === 'pdf' ? (
+                    <iframe
+                      src={selectedFile.content as string}
+                      className="h-full w-full border-0"
+                      title={selectedFile.name}
                     />
-                  </div>
-                ) : selectedFile.type === 'pdf' ? (
-                  <iframe
-                    src={selectedFile.content as string}
-                    className="h-full w-full border-0"
-                    title={selectedFile.name}
-                  />
-                ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                    selectedFile.type
-                  ) ? (
-                  <FolderComponent selectedFile={selectedFile} />
-                ) : selectedFile.type === 'html' ? (
-                  isShowSourceCode ? (
-                    <>{selectedFile.content}</>
+                  ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
+                      selectedFile.type
+                    ) ? (
+                    <FolderComponent selectedFile={selectedFile} />
+                  ) : selectedFile.type === 'html' ? (
+                    isShowSourceCode ? (
+                      <>{selectedFile.content}</>
+                    ) : (
+                      <HtmlRenderer
+                        selectedFile={selectedFile}
+                        projectFiles={fileGroups[0]?.files || []}
+                      />
+                    )
+                  ) : selectedFile.type === 'zip' ? (
+                    <div className="text-text-secondary flex h-full items-center justify-center">
+                      <div className="text-center">
+                        <FileText className="mb-4 h-12 w-12 text-text-tertiary mx-auto" />
+                        <p className="text-sm">
+                          {t('folder.zip-file-is-not-supported-yet')}
+                        </p>
+                      </div>
+                    </div>
+                  ) : isAudioFile(selectedFile) ? (
+                    <div className="flex h-full items-center justify-center">
+                      <AudioLoader selectedFile={selectedFile} />
+                    </div>
+                  ) : isVideoFile(selectedFile) ? (
+                    <div className="flex h-full items-center justify-center">
+                      <VideoLoader selectedFile={selectedFile} />
+                    </div>
+                  ) : isImageFile(selectedFile) ? (
+                    <div className="flex h-full items-center justify-center">
+                      <ImageLoader selectedFile={selectedFile} />
+                    </div>
                   ) : (
-                    <HtmlRenderer
-                      selectedFile={selectedFile}
-                      projectFiles={fileGroups[0]?.files || []}
-                    />
+                    <pre className="font-mono text-sm text-text-primary overflow-auto break-words whitespace-pre-wrap">
+                      {selectedFile.content}
+                    </pre>
                   )
-                ) : selectedFile.type === 'zip' ? (
-                  <div className="flex h-full items-center justify-center text-text-secondary">
+                ) : (
+                  <div className="flex h-full items-center justify-center">
                     <div className="text-center">
-                      <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
-                      <p className="text-sm">
-                        {t('folder.zip-file-is-not-supported-yet')}
+                      <div className="mb-4 h-8 w-8 animate-spin border-blue-600 mx-auto rounded-full border-b-2"></div>
+                      <p className="text-sm text-text-secondary">
+                        {t('chat.loading')}
                       </p>
                     </div>
                   </div>
-                ) : isAudioFile(selectedFile) ? (
-                  <div className="flex h-full items-center justify-center">
-                    <AudioLoader selectedFile={selectedFile} />
-                  </div>
-                ) : isVideoFile(selectedFile) ? (
-                  <div className="flex h-full items-center justify-center">
-                    <VideoLoader selectedFile={selectedFile} />
-                  </div>
-                ) : isImageFile(selectedFile) ? (
-                  <div className="flex h-full items-center justify-center">
-                    <ImageLoader selectedFile={selectedFile} />
-                  </div>
-                ) : (
-                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
-                    {selectedFile.content}
-                  </pre>
                 )
               ) : (
-                <div className="flex h-full items-center justify-center">
+                <div className="text-text-secondary flex flex-1 items-center justify-center">
                   <div className="text-center">
-                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
-                    <p className="text-sm text-text-secondary">
-                      {t('chat.loading')}
+                    <FileText className="mb-4 h-12 w-12 text-text-tertiary mx-auto" />
+                    <p className="text-sm">
+                      {t('chat.select-a-file-to-view-its-contents')}
                     </p>
                   </div>
                 </div>
-              )
-            ) : (
-              <div className="flex flex-1 items-center justify-center text-text-secondary">
-                <div className="text-center">
-                  <FileText className="mx-auto mb-4 h-12 w-12 text-text-tertiary" />
-                  <p className="text-sm">
-                    {t('chat.select-a-file-to-view-its-contents')}
-                  </p>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -874,7 +885,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   }, [selectedFile]);
 
   return (
-    <div className="flex w-full flex-col items-center gap-4 px-8">
+    <div className="gap-4 px-8 flex w-full flex-col items-center">
       <p className="text-sm font-medium text-text-primary">
         {selectedFile.name}
       </p>
@@ -1225,7 +1236,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
+        className="min-h-0 bg-code-surface flex-1 overflow-hidden"
         onWheel={handleWheel}
       >
         <div

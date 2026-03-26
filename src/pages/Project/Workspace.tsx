@@ -302,10 +302,7 @@ export default function Tasks() {
                     </div>
                   </div>
                 )}
-                <BottomBar
-                  onToggleChatBox={toggleChatBox}
-                  isChatBoxVisible={isChatBoxVisible}
-                />
+                <BottomBar />
               </div>
             )}
           </ResizablePanel>
