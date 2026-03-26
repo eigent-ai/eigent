@@ -3,4 +3,4 @@
 set -o errexit
 set -o nounset
 
-celery -A app.component.celery worker --loglevel=info --queues=celery,poll_trigger_schedules,check_execution_timeouts
+celery -A app.core.celery worker --loglevel=info --queues=celery,poll_trigger_schedules,check_execution_timeouts

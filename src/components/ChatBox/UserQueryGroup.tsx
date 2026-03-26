@@ -14,14 +14,10 @@
 
 import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, FileText } from 'lucide-react';
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
@@ -29,6 +25,7 @@ import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
 import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
+import { AnimatedTokenNumber } from './TokenUtils';
 
 /** Agent name map (backend name → display label) */
 const AGENT_LABEL: Record<string, string> = {
@@ -110,34 +107,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   onQueryActive,
   index,
 }) => {
+  const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
+  const [isCompletionReady, setIsCompletionReady] = useState(false);
   const chatState = chatStore.getState();
   const activeTaskId = chatState.activeTaskId;
-
-  // Subscribe to streaming decompose text separately for efficient updates
-  const streamingDecomposeText = useSyncExternalStore(
-    (callback) => chatStore.subscribe(callback),
-    () => {
-      const state = chatStore.getState();
-      const taskId = state.activeTaskId;
-      if (!taskId || !state.tasks[taskId]) return '';
-      return state.tasks[taskId].streamingDecomposeText || '';
-    }
-  );
+  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
   // Show task if this query group has a task message OR if it's the most recent user query during splitting
   // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
   // Exclude human-reply scenarios (when user is replying to an activeAsk)
   const isHumanReply =
     queryGroup.userMessage &&
-    activeTaskId &&
-    chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk ||
+    activeTask &&
+    (activeTask.activeAsk ||
       // Check if this user message follows an 'ask' message in the message sequence
       (() => {
-        const messages = chatState.tasks[activeTaskId].messages;
+        const messages = activeTask.messages;
         const userMessageIndex = messages.findIndex(
           (m: any) => m.id === queryGroup.userMessage.id
         );
@@ -154,30 +142,33 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const isLastUserQuery =
     !queryGroup.taskMessage &&
     !isHumanReply &&
-    activeTaskId &&
-    chatState.tasks[activeTaskId] &&
+    activeTask &&
     queryGroup.userMessage &&
     queryGroup.userMessage.id ===
-      chatState.tasks[activeTaskId].messages
-        .filter((m: any) => m.role === 'user')
-        .pop()?.id &&
+      activeTask.messages.filter((m: any) => m.role === 'user').pop()?.id &&
     // Only show during active phases (not finished)
-    chatState.tasks[activeTaskId].status !== ChatTaskStatus.FINISHED;
+    activeTask.status !== ChatTaskStatus.FINISHED;
 
   // Only show the fallback task box for the newest query while the agent is still splitting work.
   // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
   // Also, do not show fallback task if we are currently decomposing (streaming text).
+  const streamingDecomposeText = activeTask?.streamingDecomposeText || '';
   const isDecomposing = streamingDecomposeText.length > 0;
   const shouldShowFallbackTask =
     isLastUserQuery &&
-    activeTaskId &&
-    !chatState.tasks[activeTaskId].hasWaitComfirm &&
+    activeTask &&
+    !activeTask.hasWaitComfirm &&
     !isDecomposing;
 
   const task =
-    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
-      ? chatState.tasks[activeTaskId]
+    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTask
+      ? activeTask
       : null;
+
+  // Reset completion flag when active task or query group changes
+  useEffect(() => {
+    setIsCompletionReady(false);
+  }, [activeTaskId, queryGroup.queryId]);
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -343,6 +334,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
+      {/* Live token count – visible only while the task is running */}
+      <AnimatePresence>
+        {task && task.status === ChatTaskStatus.RUNNING && (
+          <motion.div
+            key="live-token-count"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="mt-6 flex items-center justify-end gap-1 px-sm py-1 text-xs text-text-label"
+          >
+            <span>{t('chat.current-task')}</span>
+            <span>·</span>
+            <AnimatedTokenNumber value={task.tokens || 0} />
+            <span>{t('chat.tokens')}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
         if (message.content.length > 0) {
@@ -362,7 +372,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   }
                   id={message.id}
                   content={message.content}
-                  onTyping={() => {}}
+                  onTyping={() => {
+                    // Mark completion once the final END message finishes typing
+                    setIsCompletionReady(true);
+                  }}
                 />
                 {/* File List */}
                 {message.fileList && (
@@ -397,8 +410,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     ))}
                   </div>
                 )}
-                {/* Task Completion Action Card */}
-                {task?.status === 'finished' && (
+                {/* Task Completion Action Card - show only after markdown typing completes */}
+                {task?.status === 'finished' && isCompletionReady && (
                   <TaskCompletionCard
                     taskPrompt={queryGroup.userMessage?.content}
                     onRerun={() => {
