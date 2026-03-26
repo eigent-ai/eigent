@@ -190,6 +190,7 @@
   "got-it": "知道了",
   "add-trigger": "添加觸發器",
   "trigger-limit-reached": "觸發器數量已達上限：每個項目 5 個，每個用戶 25 個",
+  "activation-limit-reached": "已達啟用上限：每個專案最多 5 個進行中的觸發器，每位使用者最多 25 個",
   "never": "從不",
   "duplicate": "複製",
   "no-task-prompt": "暫無提示詞",

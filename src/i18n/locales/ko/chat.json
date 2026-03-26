@@ -65,5 +65,7 @@
   "open-in-vscode": "VS Code에서 열기",
   "open-in-cursor": "Cursor에서 열기",
   "open-in-file-manager": "파일 관리자에서 열기",
-  "failed-to-open-folder": "폴더를 열 수 없습니다"
+  "failed-to-open-folder": "폴더를 열 수 없습니다",
+  "task-completed-card-title": "작업 완료",
+  "task-completed-card-subtitle": "트리거로 작업을 자동화하세요"
 }

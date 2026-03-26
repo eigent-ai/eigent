@@ -46,5 +46,12 @@
   "custom-skill": "Habilidad personalizada",
   "delete-skill": "Eliminar habilidad",
   "delete-skill-confirmation": "¿Está seguro de que desea eliminar \"{{name}}\"? Esta acción no se puede deshacer.",
-  "skill-deleted-success": "¡Habilidad eliminada exitosamente!"
+  "skill-deleted-success": "¡Habilidad eliminada exitosamente!",
+  "create-skill": "Crear una habilidad",
+  "upload-skill": "Subir una habilidad",
+  "browse-skills": "Explorar habilidades",
+  "create-skill-default-name": "Nueva habilidad",
+  "create-skill-default-description": "Describe qué hace esta habilidad.",
+  "save-skill": "Guardar habilidad",
+  "compose-skill-hint": "Edita SKILL.md (se requiere frontmatter YAML con nombre y descripción) y luego guarda."
 }

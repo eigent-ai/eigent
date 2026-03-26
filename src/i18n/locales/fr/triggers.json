@@ -190,6 +190,7 @@
   "got-it": "Got it",
   "add-trigger": "Add Trigger",
   "trigger-limit-reached": "Limite de déclencheurs atteinte : 5 par projet, 25 par utilisateur",
+  "activation-limit-reached": "Limite d'activation atteinte : 5 déclencheurs actifs maximum par projet, 25 par utilisateur",
   "never": "Never",
   "duplicate": "Duplicate",
   "no-task-prompt": "No task prompt",

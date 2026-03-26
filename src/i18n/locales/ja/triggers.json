@@ -190,6 +190,7 @@
   "got-it": "了解",
   "add-trigger": "トリガーを追加",
   "trigger-limit-reached": "トリガー制限に達しました：プロジェクトあたり5個、ユーザーあたり25個",
+  "activation-limit-reached": "有効化上限に達しました：プロジェクトあたりアクティブなトリガーは最大 5 件、ユーザーあたり 25 件までです",
   "never": "なし",
   "duplicate": "複製",
   "no-task-prompt": "タスクプロンプトなし",

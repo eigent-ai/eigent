@@ -21,7 +21,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInitialChatPanelLayout } from '@/hooks/useInitialChatPanelLayout';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, type Transition } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ImperativePanelHandle } from 'react-resizable-panels';
@@ -60,6 +60,14 @@ import {
 } from '@/components/ui/tooltip';
 
 import * as PopoverPrimitive from '@radix-ui/react-popover';
+
+/** Keep in sync with ProjectPageSidebar PROJECT_SIDEBAR_SPRING */
+const HOME_MAIN_LAYOUT_SPRING: Transition = {
+  type: 'spring',
+  stiffness: 380,
+  damping: 38,
+  mass: 0.85,
+};
 
 // Connection status icon component
 function ConnectionStatusIcon({
@@ -491,7 +499,11 @@ export default function Home() {
     <ReactFlowProvider>
       <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
         <ProjectPageSidebar chatStore={chatStore} />
-        <div className="min-h-0 min-w-0 gap-4 relative flex h-full flex-1 items-center justify-center overflow-hidden">
+        <motion.div
+          layout
+          transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
+          className="min-h-0 min-w-0 gap-4 relative flex h-full flex-1 items-center justify-center overflow-hidden"
+        >
           <ResizablePanelGroup
             id="home-main-panel-group"
             direction="horizontal"
@@ -855,7 +867,7 @@ export default function Home() {
               </>
             )}
           </ResizablePanelGroup>
-        </div>
+        </motion.div>
         <UpdateElectron />
       </div>
     </ReactFlowProvider>

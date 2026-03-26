@@ -46,5 +46,12 @@
   "custom-skill": "Competenza personalizzata",
   "delete-skill": "Elimina competenza",
   "delete-skill-confirmation": "Sei sicuro di voler eliminare \"{{name}}\"? Questa azione non può essere annullata.",
-  "skill-deleted-success": "Competenza eliminata con successo!"
+  "skill-deleted-success": "Competenza eliminata con successo!",
+  "create-skill": "Crea un'abilità",
+  "upload-skill": "Carica un'abilità",
+  "browse-skills": "Sfoglia le abilità",
+  "create-skill-default-name": "Nuova abilità",
+  "create-skill-default-description": "Descrivi cosa fa questa abilità.",
+  "save-skill": "Salva abilità",
+  "compose-skill-hint": "Modifica SKILL.md (è richiesto il frontmatter YAML con nome e descrizione), poi salva."
 }

@@ -28,21 +28,22 @@ import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import {
+  ChevronDown,
   ChevronLeft,
-  FileDown,
-  House,
   Minus,
   PanelLeft,
   PanelLeftClose,
   Plus,
   Power,
   Settings,
+  Share,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -63,6 +64,8 @@ function HeaderWin() {
   const toggleProjectSidebarCollapsed = usePageTabStore(
     (s) => s.toggleProjectSidebarCollapsed
   );
+  const historySidebarOpen = useSidebarStore((s) => s.isOpen);
+  const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
@@ -74,23 +77,6 @@ function HeaderWin() {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
   }, []);
-  const exportLog = async () => {
-    try {
-      const response = await window.electronAPI.exportLog();
-
-      if (!response.success) {
-        alert(t('layout.export-cancelled') + response.error);
-        return;
-      }
-      if (response.savedPath) {
-        window.location.href =
-          'https://github.com/eigent-ai/eigent/issues/new/choose';
-        alert(t('layout.log-saved') + response.savedPath);
-      }
-    } catch (e: any) {
-      alert(t('layout.export-error') + e.message);
-    }
-  };
 
   // create new project handler reused by plus icon and label
   const createNewProject = () => {
@@ -98,6 +84,16 @@ function HeaderWin() {
     projectStore.createProject('new project');
     navigate('/');
   };
+
+  const summaryTask =
+    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
+  const activeTaskTitle = useMemo(() => {
+    if (!chatStore) return t('layout.new-project');
+    if (chatStore.activeTaskId && summaryTask) {
+      return summaryTask.split('|')[0];
+    }
+    return t('layout.new-project');
+  }, [chatStore, summaryTask, t]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -264,20 +260,51 @@ function HeaderWin() {
                   </Button>
                 </TooltipSimple>
               )}
-              <TooltipSimple
-                content={t('layout.home')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={() => navigate('/history')}
-                >
-                  <House className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
+              <>
+                {activeTaskTitle === t('layout.new-project') ? (
+                  <TooltipSimple
+                    content={t('layout.new-project')}
+                    side="bottom"
+                    align="center"
+                  >
+                    <Button
+                      id="active-task-title-btn"
+                      variant="ghost"
+                      className="no-drag text-base font-bold rounded-full"
+                      onClick={toggleHistorySidebar}
+                      size="sm"
+                      aria-expanded={historySidebarOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
+                        {t('layout.new-project')}
+                      </span>
+                      <ChevronDown />
+                    </Button>
+                  </TooltipSimple>
+                ) : (
+                  <TooltipSimple
+                    content={activeTaskTitle}
+                    side="bottom"
+                    align="center"
+                  >
+                    <Button
+                      id="active-task-title-btn"
+                      variant="ghost"
+                      size="sm"
+                      className="no-drag text-base font-bold"
+                      onClick={toggleHistorySidebar}
+                      aria-expanded={historySidebarOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
+                        {activeTaskTitle}
+                      </span>
+                      <ChevronDown />
+                    </Button>
+                  </TooltipSimple>
+                )}
+              </>
               <TooltipSimple
                 content={t('layout.new-project')}
                 side="bottom"
@@ -340,27 +367,11 @@ function HeaderWin() {
                       handleShare(chatStore.activeTaskId as string)
                     }
                     variant="ghost"
-                    size="xs"
-                    className="no-drag bg-surface-information !text-text-information rounded-full"
-                  >
-                    {t('layout.share')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] && (
-                <TooltipSimple
-                  content={t('layout.report-bug')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={exportLog}
-                    variant="ghost"
                     size="icon"
-                    className="no-drag rounded-full"
+                    className="no-drag bg-surface-information !text-text-information rounded-full"
+                    aria-label={t('layout.share')}
                   >
-                    <FileDown className="h-4 w-4" />
+                    <Share className="h-4 w-4" aria-hidden />
                   </Button>
                 </TooltipSimple>
               )}

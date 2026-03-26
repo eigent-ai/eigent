@@ -12,50 +12,75 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { proxyFetchGet } from '@/api/http';
+import folderIcon from '@/assets/Folder.svg';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogContentSection,
+  DialogHeader,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   getTaskListShelfTone,
   type TaskListShelfTone,
 } from '@/lib/taskLifecycleUi';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
-import { useSidebarStore } from '@/store/sidebarStore';
 import { motion } from 'framer-motion';
 import {
-  ChevronRight,
+  CircleHelp,
   Compass,
-  Files,
   Hammer,
+  House,
+  Inbox,
   Search,
-  Sparkles,
+  WandSparkles,
+  Zap,
 } from 'lucide-react';
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 /** Match History.tsx tab normalization for sidebar “active hub” styling */
 const HISTORY_TAB_ALIASES: Record<string, string> = {
   mcp_tools: 'connectors',
 };
 
+const SUPPORT_EMAIL = 'info@eigent.ai';
+const GITHUB_NEW_ISSUE_URL =
+  'https://github.com/eigent-ai/eigent/issues/new/choose';
+
+function humanizeCloudModelId(id: string): string {
+  return id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function capitalizeFirstLetter(text: string): string {
+  const s = text.trim();
+  if (!s) return text;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 const PROJECT_HUB_DROPDOWN_CONTENT_CLASS = cn(
-  'min-w-[11rem] -mb-2 flex flex-col gap-1 rounded-xl border-0 bg-fill-default p-1 shadow-md'
+  'min-w-[11rem] -mb-2 flex flex-col gap-3 rounded-xl border-0 bg-fill-default p-1 shadow-md'
 );
 
 const PROJECT_HUB_DROPDOWN_CONTENT_STYLE: CSSProperties = {
@@ -65,7 +90,7 @@ const PROJECT_HUB_DROPDOWN_CONTENT_STYLE: CSSProperties = {
 };
 
 const PROJECT_HUB_DROPDOWN_ITEM_CLASS = cn(
-  'flex h-9 min-h-9 w-full shrink-0 cursor-pointer select-none items-center rounded-xl px-2.5 py-0 text-body-sm font-medium text-text-label outline-none',
+  'flex h-9 min-h-9 w-full shrink-0 cursor-pointer select-none items-center rounded-xl px-3 py-0 text-body-sm font-medium text-text-label outline-none',
   'hover:bg-surface-secondary hover:text-text-label',
   'data-[highlighted]:bg-surface-secondary data-[highlighted]:text-text-label',
   'focus:bg-surface-secondary focus:text-text-label'
@@ -83,61 +108,16 @@ const SHELF_TONE_ROW_CLASS: Record<TaskListShelfTone, string> = {
   default: 'bg-transparent hover:bg-surface-tertiary',
 };
 
-/** Collapsed rail width = icon square (Tailwind `h-9` / `w-9` = 36px) */
-const PROJECT_SIDEBAR_COLLAPSED_PX = 36;
-const PROJECT_SIDEBAR_EXPANDED_PX = 240;
-
-const projectSidebarWidthSpring = {
+const PROJECT_SIDEBAR_WIDTH_PX = 240;
+/** Matches Home main panel layout animation */
+const PROJECT_SIDEBAR_SPRING = {
   type: 'spring' as const,
-  stiffness: 260,
-  damping: 28,
-  mass: 1,
+  stiffness: 380,
+  damping: 38,
+  mass: 0.85,
 };
 
-const sidebarTextEase: [number, number, number, number] = [0.4, 0, 0.2, 1];
-
-function expandableTextTransition(expanded: boolean) {
-  return {
-    opacity: {
-      duration: 0.28,
-      ease: sidebarTextEase,
-      delay: expanded ? 0.08 : 0,
-    },
-    maxWidth: {
-      type: 'spring' as const,
-      stiffness: 380,
-      damping: 36,
-      mass: 0.9,
-      delay: expanded ? 0.03 : 0,
-    },
-  };
-}
-
-function SidebarExpandableLabel({
-  expanded,
-  className,
-  children,
-}: {
-  expanded: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <motion.span
-      className={cn('min-w-0 overflow-hidden', expanded && 'flex-1', className)}
-      initial={false}
-      animate={{
-        opacity: expanded ? 1 : 0,
-        maxWidth: expanded ? 280 : 0,
-      }}
-      transition={expandableTextTransition(expanded)}
-      style={{ whiteSpace: 'nowrap' }}
-      aria-hidden={!expanded}
-    >
-      {children}
-    </motion.span>
-  );
-}
+const SIDEBAR_EDGE_MARGIN_PX = 8;
 
 /** Horizontal drift speed for task query hover (~6px/s, capped) — readable marquee, not a snap. */
 const TASK_QUERY_SCROLL_PX_PER_SEC = 16;
@@ -183,7 +163,6 @@ function TaskQueryScrollLabel({
   const slideMs = taskQueryScrollDurationMs(scrollPx);
 
   return (
-    // Color on wrapper: twMerge drops `text-text-label` when merged with `text-body-sm` on the same node.
     <div
       ref={outerRef}
       className={cn('text-text-label min-w-0 w-full overflow-hidden')}
@@ -208,13 +187,11 @@ function TaskQueryScrollLabel({
 }
 
 function ProjectSidebarTaskListRow({
-  expanded,
   task,
   firstUserMessageId,
   active,
   setScrollToQueryId,
 }: {
-  expanded: boolean;
   task: ChatStore['tasks'][string];
   firstUserMessageId: string | null;
   active: boolean;
@@ -235,42 +212,13 @@ function ProjectSidebarTaskListRow({
       onMouseEnter={() => setRowHovered(true)}
       onMouseLeave={() => setRowHovered(false)}
       className={cn(
-        'no-drag h-9 rounded-xl min-w-0 gap-2 px-2.5 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
+        'no-drag h-8 rounded-xl min-w-0 gap-3 px-3 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
         SHELF_TONE_ROW_CLASS[shelfTone]
       )}
       aria-current={active ? 'true' : undefined}
     >
-      <SidebarExpandableLabel expanded={expanded}>
-        <TaskQueryScrollLabel queryLabel={queryLabel} rowHovered={rowHovered} />
-      </SidebarExpandableLabel>
+      <TaskQueryScrollLabel queryLabel={queryLabel} rowHovered={rowHovered} />
     </button>
-  );
-}
-
-function SidebarExpandableRow({
-  expanded,
-  children,
-}: {
-  expanded: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <motion.div
-      className={cn(
-        'min-w-0 gap-2 flex items-center overflow-hidden',
-        expanded && 'flex-1'
-      )}
-      initial={false}
-      animate={{
-        opacity: expanded ? 1 : 0,
-        maxWidth: expanded ? 560 : 0,
-      }}
-      transition={expandableTextTransition(expanded)}
-      aria-hidden={!expanded}
-      style={{ pointerEvents: expanded ? 'auto' : 'none' }}
-    >
-      {children}
-    </motion.div>
   );
 }
 
@@ -285,8 +233,6 @@ export default function ProjectPageSidebar({
 }: ProjectPageSidebarProps) {
   const collapsed = usePageTabStore((s) => s.projectSidebarCollapsed);
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
-  const historySidebarOpen = useSidebarStore((s) => s.isOpen);
-  const toggle = useSidebarStore((s) => s.toggle);
   const projectStore = useProjectStore();
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -295,36 +241,30 @@ export default function ProjectPageSidebar({
   const [skillsMenuOpen, setSkillsMenuOpen] = useState(false);
   const [connectorsMenuOpen, setConnectorsMenuOpen] = useState(false);
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
 
-  const { skillsHubActive, connectorsHubActive, browserHubActive } =
-    useMemo(() => {
-      const path = location.pathname.replace(/\/$/, '');
-      const onHistory = path === '/history' || path.endsWith('/history');
-      const params = new URLSearchParams(location.search);
-      const rawTab = params.get('tab');
-      const tab = rawTab ? (HISTORY_TAB_ALIASES[rawTab] ?? rawTab) : null;
-      const section = params.get('section');
-      return {
-        skillsHubActive: onHistory && tab === 'agents' && section === 'skills',
-        connectorsHubActive: onHistory && tab === 'connectors',
-        browserHubActive: onHistory && tab === 'browser',
-      };
-    }, [location.pathname, location.search]);
+  const {
+    dashboardActive,
+    skillsHubActive,
+    connectorsHubActive,
+    browserHubActive,
+  } = useMemo(() => {
+    const path = location.pathname.replace(/\/$/, '');
+    const onHistory = path === '/history' || path.endsWith('/history');
+    const params = new URLSearchParams(location.search);
+    const rawTab = params.get('tab');
+    const tab = rawTab ? (HISTORY_TAB_ALIASES[rawTab] ?? rawTab) : null;
+    const section = params.get('section');
+    return {
+      dashboardActive: onHistory,
+      skillsHubActive: onHistory && tab === 'agents' && section === 'skills',
+      connectorsHubActive: onHistory && tab === 'connectors',
+      browserHubActive: onHistory && tab === 'browser',
+    };
+  }, [location.pathname, location.search]);
 
-  const summaryTask =
-    chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask;
-
-  const activeTaskTitle = useMemo(() => {
-    if (chatStore.activeTaskId && summaryTask) {
-      return summaryTask.split('|')[0];
-    }
-    return t('layout.new-project');
-  }, [chatStore.activeTaskId, summaryTask, t]);
-
-  // Signal to recompute when the active chatStore mutates
   const activeUpdateCount = chatStore.updateCount;
 
-  /** Collect tasks from ALL chatStores in the active project so follow-up tasks appear in the sidebar. */
   const allTaskEntries = useMemo(() => {
     const pid = projectStore.activeProjectId;
     if (!pid) return [];
@@ -356,324 +296,570 @@ export default function ProjectPageSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectStore, activeUpdateCount]);
 
-  const expanded = !collapsed;
+  const rowButtonClass =
+    'no-drag h-8 rounded-xl hover:bg-surface-tertiary min-w-0 gap-3 px-3 w-full flex shrink-0 items-center text-left transition-colors';
+
+  const hubIconTabClass = (active: boolean) =>
+    cn(
+      'no-drag h-8 w-full min-w-0 rounded-xl bg-surface-primary',
+      'hover:bg-surface-tertiary flex cursor-pointer items-center justify-center transition-colors',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary',
+      active && 'bg-surface-tertiary'
+    );
+
+  const authToken = useAuthStore((s) => s.token);
+  const modelType = useAuthStore((s) => s.modelType);
+  const cloud_model_type = useAuthStore((s) => s.cloud_model_type);
+
+  const [credits, setCredits] = useState<number | null>(null);
+  const [customPlatformName, setCustomPlatformName] = useState<string | null>(
+    null
+  );
+  const [supportDialogOpen, setSupportDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+      setCredits(null);
+      return;
+    }
+    if (modelType !== 'cloud' || !authToken) {
+      setCredits(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await proxyFetchGet('/api/v1/user/current_credits');
+        if (!cancelled) {
+          const c = res?.credits;
+          setCredits(typeof c === 'number' ? c : null);
+        }
+      } catch {
+        if (!cancelled) setCredits(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, modelType]);
+
+  useEffect(() => {
+    if (modelType !== 'custom') {
+      setCustomPlatformName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await proxyFetchGet('/api/v1/providers', {
+          prefer: true,
+        });
+        const provider = res?.items?.[0];
+        const raw =
+          typeof provider?.provider_name === 'string'
+            ? provider.provider_name.trim()
+            : '';
+        if (!cancelled) {
+          setCustomPlatformName(raw || null);
+        }
+      } catch {
+        if (!cancelled) setCustomPlatformName(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modelType, authToken]);
+
+  const downloadLogs = async () => {
+    try {
+      const response = await window.electronAPI.exportLog();
+      if (!response.success) {
+        alert(t('layout.export-cancelled') + response.error);
+        return;
+      }
+      if (response.savedPath) {
+        toast.success(t('layout.log-saved') + response.savedPath);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(t('layout.export-error') + msg);
+    }
+  };
+
+  const reportBugOpenGithub = async () => {
+    try {
+      const response = await window.electronAPI.exportLog();
+      if (!response.success) {
+        alert(t('layout.export-cancelled') + response.error);
+        return;
+      }
+      if (response.savedPath) {
+        window.location.href = GITHUB_NEW_ISSUE_URL;
+        alert(t('layout.log-saved') + response.savedPath);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(t('layout.export-error') + msg);
+    }
+  };
+
+  const copySupportEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(SUPPORT_EMAIL);
+      toast.success(
+        t('layout.email-copied', {
+          defaultValue: 'Email copied to clipboard',
+        })
+      );
+    } catch {
+      toast.error(
+        t('layout.copy-failed', {
+          defaultValue: 'Could not copy email',
+        })
+      );
+    }
+  };
+
+  const modelModeLine = useMemo(() => {
+    if (modelType === 'cloud') {
+      return t('setting.eigent-cloud');
+    }
+    if (modelType === 'custom') {
+      return t('setting.custom-model');
+    }
+    return t('setting.local-model');
+  }, [modelType, t]);
+
+  const modelDetailLine = useMemo(() => {
+    if (modelType === 'cloud') {
+      const modelLabel = humanizeCloudModelId(cloud_model_type);
+      if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+        return t('layout.sidebar-model-manage-hint', {
+          defaultValue: 'Manage in Agents → Models',
+        });
+      }
+      if (credits != null) {
+        return `${modelLabel} · ${t('setting.credits')}: ${credits.toLocaleString()}`;
+      }
+      return `${modelLabel} · ${t('setting.credits')}: …`;
+    }
+    if (modelType === 'custom') {
+      if (customPlatformName) {
+        return capitalizeFirstLetter(customPlatformName);
+      }
+      return t('layout.sidebar-custom-platform-unknown', {
+        defaultValue: '—',
+      });
+    }
+    return t('layout.sidebar-model-manage-hint', {
+      defaultValue: 'Manage in Agents → Models',
+    });
+  }, [modelType, credits, customPlatformName, cloud_model_type, t]);
 
   return (
-    <motion.aside
-      initial={false}
-      animate={{
-        width: collapsed
-          ? PROJECT_SIDEBAR_COLLAPSED_PX
-          : PROJECT_SIDEBAR_EXPANDED_PX,
-      }}
-      transition={projectSidebarWidthSpring}
-      className={cn(
-        'min-h-0 mr-2 flex h-full shrink-0 flex-col overflow-x-hidden',
-        className
-      )}
-    >
-      <div className="bg-surface-primary mx-2 mb-1 rounded-xl h-[1.5px] flex-col overflow-hidden opacity-50"></div>
-      <div className="gap-1 flex shrink-0 flex-col">
-        <TooltipSimple
-          content={activeTaskTitle}
-          side="right"
-          enabled={collapsed}
-        >
-          <button
-            id="active-task-title-btn"
-            type="button"
-            onClick={toggle}
-            className={cn(
-              'no-drag rounded-xl h-9 flex shrink-0 cursor-pointer items-center text-left transition-colors duration-300',
-              historySidebarOpen
-                ? 'bg-surface-tertiary'
-                : SHELF_TONE_ROW_CLASS.default,
-              collapsed
-                ? 'w-9 gap-0 px-2.5 justify-center'
-                : 'min-w-0 gap-2 px-2.5 w-full'
-            )}
-            aria-expanded={historySidebarOpen}
-            aria-haspopup="dialog"
-          >
-            <Sparkles
-              className="h-4 w-4 text-icon-information shrink-0"
-              aria-hidden
-            />
-            <SidebarExpandableRow expanded={expanded}>
-              <span className="text-text-body min-w-0 text-body-sm font-bold flex-1 truncate">
-                {activeTaskTitle}
-              </span>
-              <ChevronRight
-                className="h-4 w-4 text-icon-label shrink-0"
-                aria-hidden
-              />
-            </SidebarExpandableRow>
-          </button>
-        </TooltipSimple>
-
-        <TooltipSimple
-          content={t('dashboard.search')}
-          side="right"
-          enabled={collapsed}
-        >
-          <button
-            type="button"
-            onClick={() => setGlobalSearchOpen(true)}
-            className={cn(
-              'no-drag h-9 rounded-xl hover:bg-surface-tertiary flex shrink-0 items-center text-left transition-colors',
-              collapsed
-                ? 'w-9 gap-0 px-2.5 justify-center'
-                : 'min-w-0 gap-2 px-2.5 w-full'
-            )}
-            aria-label={t('dashboard.search')}
-          >
-            <Search
-              className="h-4 w-4 text-icon-primary shrink-0"
-              aria-hidden
-            />
-            <SidebarExpandableLabel expanded={expanded}>
-              <span className="min-w-0 text-text-label text-body-sm font-medium block truncate">
-                {t('layout.search')}
-              </span>
-            </SidebarExpandableLabel>
-          </button>
-        </TooltipSimple>
-      </div>
-
+    <>
       <GlobalSearchDialog
         open={globalSearchOpen}
         onOpenChange={setGlobalSearchOpen}
       />
 
-      {!collapsed && (
-        <div className="min-h-0 my-2 border-border-secondary flex flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-            {allTaskEntries.length === 0 ? (
-              <p className="text-text-label text-xs px-2.5">
-                {t('layout.no-tasks', { defaultValue: 'No tasks' })}
-              </p>
-            ) : (
-              <div className="gap-1 flex flex-col">
-                {allTaskEntries.map(
-                  ({ chatId, taskId, task, firstUserMessageId }) => (
-                    <ProjectSidebarTaskListRow
-                      key={`${chatId}-${taskId}`}
-                      expanded={expanded}
-                      task={task}
-                      firstUserMessageId={firstUserMessageId}
-                      active={chatStore.activeTaskId === taskId}
-                      setScrollToQueryId={setScrollToQueryId}
-                    />
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="gap-1 mt-auto flex w-full shrink-0 flex-col">
-        <DropdownMenu open={skillsMenuOpen} onOpenChange={setSkillsMenuOpen}>
-          <TooltipSimple
-            content={t('agents.skills')}
-            side="right"
-            enabled={collapsed}
-          >
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'no-drag h-9 rounded-xl hover:bg-surface-tertiary flex shrink-0 items-center text-left transition-colors',
-                  (skillsHubActive || skillsMenuOpen) && 'bg-surface-tertiary',
-                  collapsed
-                    ? 'w-9 gap-0 px-2.5 justify-center'
-                    : 'min-w-0 gap-2 px-2.5 w-full'
-                )}
-                aria-label={t('agents.skills')}
-                aria-haspopup="menu"
-              >
-                <Files
-                  className="h-4 w-4 text-icon-primary shrink-0"
-                  aria-hidden
-                />
-                <SidebarExpandableRow expanded={expanded}>
-                  <span className="text-text-label min-w-0 text-body-sm font-medium flex-1 truncate">
-                    {t('agents.skills')}
-                  </span>
-                  <ChevronRight
-                    className="h-4 w-4 text-icon-label shrink-0"
-                    aria-hidden
-                  />
-                </SidebarExpandableRow>
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipSimple>
-          <DropdownMenuContent
-            side="right"
-            align="end"
-            sideOffset={8}
-            alignOffset={4}
-            className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-            style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
-          >
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() =>
-                navigate(
-                  '/history?tab=agents&section=skills&skillAction=create'
-                )
-              }
-            >
-              {t('agents.create-skill')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() =>
-                navigate(
-                  '/history?tab=agents&section=skills&skillAction=upload'
-                )
-              }
-            >
-              {t('agents.upload-skill')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() => navigate('/history?tab=agents&section=skills')}
-            >
-              {t('agents.browse-skills')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu
-          open={connectorsMenuOpen}
-          onOpenChange={setConnectorsMenuOpen}
+      <Dialog open={supportDialogOpen} onOpenChange={setSupportDialogOpen}>
+        <DialogContent
+          size="sm"
+          showCloseButton
+          onClose={() => setSupportDialogOpen(false)}
         >
-          <TooltipSimple
-            content={t('layout.connectors')}
-            side="right"
-            enabled={collapsed}
-          >
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'no-drag h-9 rounded-xl hover:bg-surface-tertiary flex shrink-0 items-center text-left transition-colors',
-                  (connectorsHubActive || connectorsMenuOpen) &&
-                    'bg-surface-tertiary',
-                  collapsed
-                    ? 'w-9 gap-0 px-2.5 justify-center'
-                    : 'min-w-0 gap-2 px-2.5 w-full'
-                )}
-                aria-label={t('layout.connectors')}
-                aria-haspopup="menu"
-              >
-                <Hammer
-                  className="h-4 w-4 text-icon-primary shrink-0"
-                  aria-hidden
-                />
-                <SidebarExpandableRow expanded={expanded}>
-                  <span className="text-text-label min-w-0 text-body-sm font-medium flex-1 truncate">
-                    {t('layout.connectors')}
-                  </span>
-                  <ChevronRight
-                    className="h-4 w-4 text-icon-label shrink-0"
-                    aria-hidden
-                  />
-                </SidebarExpandableRow>
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipSimple>
-          <DropdownMenuContent
-            side="right"
-            align="end"
-            sideOffset={8}
-            alignOffset={4}
-            className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-            style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
-          >
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() =>
-                navigate('/history?tab=connectors&connectorAction=add')
-              }
-            >
-              {t('layout.add-new-mcp')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() =>
-                navigate('/history?tab=connectors&connectorSection=mcp-tools')
-              }
-            >
-              {t('layout.browse-mcps')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <DialogHeader
+            title={t('layout.contact-support')}
+            subtitle={t('layout.contact-support-description')}
+          />
+          <DialogContentSection className="gap-3 flex flex-col">
+            <p className="text-label-sm text-text-label">
+              {t('layout.contact-support-body', {
+                defaultValue: 'Copy our support email and reach out anytime.',
+              })}
+            </p>
+            <div className="gap-2 flex flex-wrap items-center">
+              <code className="text-body-sm bg-surface-secondary text-text-body rounded-lg px-3 py-2 font-medium max-w-full truncate">
+                {SUPPORT_EMAIL}
+              </code>
+              <Button type="button" size="sm" onClick={copySupportEmail}>
+                {t('layout.copy-email', { defaultValue: 'Copy email' })}
+              </Button>
+            </div>
+          </DialogContentSection>
+        </DialogContent>
+      </Dialog>
 
-        <DropdownMenu open={browserMenuOpen} onOpenChange={setBrowserMenuOpen}>
-          <TooltipSimple
-            content={t('layout.browser')}
-            side="right"
-            enabled={collapsed}
-          >
-            <DropdownMenuTrigger asChild>
+      <motion.aside
+        initial={false}
+        animate={{
+          width: collapsed ? 0 : PROJECT_SIDEBAR_WIDTH_PX,
+          marginRight: collapsed ? 0 : SIDEBAR_EDGE_MARGIN_PX,
+        }}
+        transition={PROJECT_SIDEBAR_SPRING}
+        className={cn(
+          'min-h-0 flex h-full shrink-0 flex-col overflow-hidden',
+          className
+        )}
+        style={{ pointerEvents: collapsed ? 'none' : 'auto' }}
+        aria-hidden={collapsed}
+      >
+        <motion.div
+          className="min-h-0 flex h-full w-[240px] min-w-[240px] flex-col overflow-x-hidden"
+          initial={false}
+          animate={{
+            x: collapsed ? -18 : 0,
+            opacity: collapsed ? 0 : 1,
+          }}
+          transition={PROJECT_SIDEBAR_SPRING}
+        >
+          <div className="gap-2 flex shrink-0 flex-col">
+            <button
+              type="button"
+              onClick={() => navigate('/history')}
+              className={cn(
+                rowButtonClass,
+                'bg-surface-primary',
+                dashboardActive && 'bg-surface-tertiary'
+              )}
+              aria-label={t('layout.dashboard')}
+              aria-current={dashboardActive ? 'page' : undefined}
+            >
+              <House
+                className="h-4 w-4 text-icon-primary shrink-0"
+                aria-hidden
+              />
+              <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
+                {t('layout.dashboard')}
+              </span>
+            </button>
+
+            <div className="gap-1 grid w-full grid-cols-3">
+              <DropdownMenu
+                open={skillsMenuOpen}
+                onOpenChange={setSkillsMenuOpen}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={hubIconTabClass(
+                      skillsHubActive || skillsMenuOpen
+                    )}
+                    aria-label={t('agents.skills')}
+                    aria-haspopup="menu"
+                  >
+                    <WandSparkles
+                      className="h-4 w-4 text-icon-primary shrink-0"
+                      aria-hidden
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="right"
+                  align="start"
+                  sideOffset={8}
+                  alignOffset={0}
+                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
+                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+                >
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate(
+                        '/history?tab=agents&section=skills&skillAction=create'
+                      )
+                    }
+                  >
+                    {t('agents.create-skill')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate(
+                        '/history?tab=agents&section=skills&skillAction=upload'
+                      )
+                    }
+                  >
+                    {t('agents.upload-skill')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate('/history?tab=agents&section=skills')
+                    }
+                  >
+                    {t('agents.browse-skills')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu
+                open={connectorsMenuOpen}
+                onOpenChange={setConnectorsMenuOpen}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={hubIconTabClass(
+                      connectorsHubActive || connectorsMenuOpen
+                    )}
+                    aria-label={t('layout.connectors')}
+                    aria-haspopup="menu"
+                  >
+                    <Hammer
+                      className="h-4 w-4 text-icon-primary shrink-0"
+                      aria-hidden
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="right"
+                  align="start"
+                  sideOffset={8}
+                  alignOffset={0}
+                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
+                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+                >
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate('/history?tab=connectors&connectorAction=add')
+                    }
+                  >
+                    {t('layout.add-new-mcp')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate(
+                        '/history?tab=connectors&connectorSection=mcp-tools'
+                      )
+                    }
+                  >
+                    {t('layout.browse-mcps')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu
+                open={browserMenuOpen}
+                onOpenChange={setBrowserMenuOpen}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={hubIconTabClass(
+                      browserHubActive || browserMenuOpen
+                    )}
+                    aria-label={t('layout.browser')}
+                    aria-haspopup="menu"
+                  >
+                    <Compass
+                      className="h-4 w-4 text-icon-primary shrink-0"
+                      aria-hidden
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="right"
+                  align="start"
+                  sideOffset={8}
+                  alignOffset={0}
+                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
+                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+                >
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate('/history?tab=browser&browserAction=launch')
+                    }
+                  >
+                    {t('layout.open-new-browser')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() =>
+                      navigate('/history?tab=browser&browserSection=cdp')
+                    }
+                  >
+                    {t('layout.browser-settings')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="gap-2 flex flex-col">
               <button
                 type="button"
-                className={cn(
-                  'no-drag h-9 rounded-xl hover:bg-surface-tertiary flex shrink-0 items-center text-left transition-colors',
-                  (browserHubActive || browserMenuOpen) &&
-                    'bg-surface-tertiary',
-                  collapsed
-                    ? 'w-9 gap-0 px-2.5 justify-center'
-                    : 'min-w-0 gap-2 px-2.5 w-full'
-                )}
-                aria-label={t('layout.browser')}
-                aria-haspopup="menu"
+                onClick={() => setGlobalSearchOpen(true)}
+                className={rowButtonClass}
+                aria-label={t('dashboard.search')}
               >
-                <Compass
+                <Search
                   className="h-4 w-4 text-icon-primary shrink-0"
                   aria-hidden
                 />
-                <SidebarExpandableRow expanded={expanded}>
-                  <span className="text-text-label min-w-0 text-body-sm font-medium flex-1 truncate">
-                    {t('layout.browser')}
-                  </span>
-                  <ChevronRight
-                    className="h-4 w-4 text-icon-label shrink-0"
-                    aria-hidden
-                  />
-                </SidebarExpandableRow>
+                <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
+                  {t('layout.search')}
+                </span>
               </button>
-            </DropdownMenuTrigger>
-          </TooltipSimple>
-          <DropdownMenuContent
-            side="right"
-            align="end"
-            sideOffset={8}
-            alignOffset={4}
-            className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-            style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
-          >
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() =>
-                navigate('/history?tab=browser&browserAction=launch')
-              }
-            >
-              {t('layout.open-new-browser')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-              onSelect={() =>
-                navigate('/history?tab=browser&browserSection=cdp')
-              }
-            >
-              {t('layout.browser-settings')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </motion.aside>
+              <button
+                type="button"
+                disabled
+                className={cn(
+                  rowButtonClass,
+                  'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50'
+                )}
+                aria-label={t('layout.folder')}
+              >
+                <Inbox
+                  className="h-4 w-4 text-icon-primary shrink-0"
+                  aria-hidden
+                />
+                <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
+                  {t('layout.folder')}
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled
+                className={cn(
+                  rowButtonClass,
+                  'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50'
+                )}
+                aria-label={t('layout.triggers')}
+              >
+                <Zap
+                  className="h-4 w-4 text-icon-primary shrink-0"
+                  aria-hidden
+                />
+                <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
+                  {t('layout.triggers')}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-surface-tertiary mx-2 my-2 rounded-xl h-[1.5px] flex-col overflow-hidden opacity-80"></div>
+
+          <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+              {allTaskEntries.length === 0 ? (
+                <p className="text-text-label text-xs px-3">
+                  {t('layout.no-tasks', { defaultValue: 'No tasks' })}
+                </p>
+              ) : (
+                <div className="gap-2 flex flex-col">
+                  {allTaskEntries.map(
+                    ({ chatId, taskId, task, firstUserMessageId }) => (
+                      <ProjectSidebarTaskListRow
+                        key={`${chatId}-${taskId}`}
+                        task={task}
+                        firstUserMessageId={firstUserMessageId}
+                        active={chatStore.activeTaskId === taskId}
+                        setScrollToQueryId={setScrollToQueryId}
+                      />
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="border-border-secondary pt-2 mt-auto shrink-0 border-t">
+            <div className="gap-1 grid grid-cols-4">
+              <button
+                type="button"
+                onClick={() => navigate('/history?tab=settings')}
+                title={`${modelModeLine}\n${modelDetailLine}`}
+                className={cn(
+                  rowButtonClass,
+                  'h-12 min-h-12 bg-surface-primary col-span-3',
+                  'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
+                )}
+                aria-label={t('layout.settings')}
+              >
+                <span
+                  className="h-7 w-7 flex shrink-0 items-center justify-center"
+                  aria-hidden
+                >
+                  <img
+                    src={folderIcon}
+                    alt=""
+                    className="h-7 w-7 mt-1 shrink-0 object-contain"
+                    draggable={false}
+                  />
+                </span>
+                <div className="min-w-0 flex flex-1 flex-col justify-center leading-none">
+                  <div className="bg-surface-information rounded-md px-1 w-fit">
+                    <span className="text-text-information text-label-xs font-semibold leading-tight truncate text-nowrap">
+                      {modelModeLine}
+                    </span>
+                  </div>
+                  <span className="text-text-secondary leading-tight px-1 truncate text-[10px]">
+                    {modelDetailLine}
+                  </span>
+                </div>
+              </button>
+              <DropdownMenu open={helpMenuOpen} onOpenChange={setHelpMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      hubIconTabClass(helpMenuOpen),
+                      'h-12 min-h-12'
+                    )}
+                    aria-label={t('layout.help-and-support', {
+                      defaultValue: 'Help and support',
+                    })}
+                    aria-haspopup="menu"
+                  >
+                    <CircleHelp
+                      className="h-4 w-4 text-icon-primary shrink-0"
+                      aria-hidden
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="right"
+                  align="end"
+                  sideOffset={8}
+                  alignOffset={8}
+                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
+                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+                >
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() => setSupportDialogOpen(true)}
+                  >
+                    {t('layout.contact-support')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() => {
+                      void reportBugOpenGithub();
+                    }}
+                  >
+                    {t('layout.report-bug')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                    onSelect={() => {
+                      void downloadLogs();
+                    }}
+                  >
+                    {t('layout.download-logs', {
+                      defaultValue: 'Download logs',
+                    })}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </motion.div>
+      </motion.aside>
+    </>
   );
 }

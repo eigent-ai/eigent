@@ -306,19 +306,20 @@ export default function HistorySidebar() {
     const PANEL_WIDTH = 360;
     const GAP = 8;
     const MARGIN = 8;
-    /** Nudge panel up relative to #active-task-title-btn (project sidebar title control). */
-    const TOP_OFFSET = 12;
 
     const updateAnchor = () => {
       const btn = document.getElementById('active-task-title-btn');
       if (btn) {
         const rect = btn.getBoundingClientRect();
-        let left = rect.right + GAP;
-        const maxLeft = window.innerWidth - PANEL_WIDTH - MARGIN;
-        if (left > maxLeft) {
-          left = Math.max(MARGIN, maxLeft);
+        let left = rect.left;
+        if (left + PANEL_WIDTH > window.innerWidth - MARGIN) {
+          left = window.innerWidth - MARGIN - PANEL_WIDTH;
         }
-        setAnchorStyle({ left, top: rect.top - TOP_OFFSET });
+        if (left < MARGIN) {
+          left = MARGIN;
+        }
+        const top = rect.bottom + GAP;
+        setAnchorStyle({ left, top });
       }
     };
 
@@ -358,7 +359,7 @@ export default function HistorySidebar() {
             className="inset-0 fixed z-40 bg-transparent"
             onClick={close}
           />
-          {/* History panel to the right of the project title control */}
+          {/* History panel below the project title control (TopBar) */}
           <motion.div
             initial={false}
             animate={{ y: 0, opacity: 1 }}
