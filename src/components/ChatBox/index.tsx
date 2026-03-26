@@ -18,6 +18,7 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
+  proxyFetchPut,
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
@@ -44,9 +45,37 @@ const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
   );
 };
 
+const REQUIRED_PRIVACY_FIELDS = [
+  'take_screenshot',
+  'access_local_software',
+  'access_your_address',
+  'password_storage',
+] as const;
+
+const hasAcceptedPrivacyPolicy = (
+  privacySettings: Record<string, unknown> | null | undefined
+): boolean => {
+  if (!privacySettings) {
+    return false;
+  }
+
+  if (typeof privacySettings.accepted === 'boolean') {
+    return privacySettings.accepted;
+  }
+
+  if (typeof privacySettings.privacy === 'boolean') {
+    return privacySettings.privacy;
+  }
+
+  return REQUIRED_PRIVACY_FIELDS.every(
+    (field) => privacySettings[field] === true
+  );
+};
+
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
   const [mentionTarget, setMentionTarget] = useState<string | null>(null);
+  const [privacy, setPrivacy] = useState(false);
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -106,6 +135,16 @@ export default function ChatBox(): JSX.Element {
     }
   }, [modelType]);
 
+  const checkPrivacyConsent = useCallback(async () => {
+    try {
+      const res = await proxyFetchGet('/api/v1/user/privacy');
+      setPrivacy(hasAcceptedPrivacyPolicy(res));
+    } catch (err) {
+      console.error('Failed to check privacy consent:', err);
+      setPrivacy(false);
+    }
+  }, []);
+
   // Check model config on mount and when modelType changes
   useEffect(() => {
     proxyFetchGet('/api/v1/configs')
@@ -122,27 +161,30 @@ export default function ChatBox(): JSX.Element {
       .catch((err) => console.error('Failed to fetch configs:', err));
 
     checkModelConfig();
-  }, [modelType, checkModelConfig]);
+    checkPrivacyConsent();
+  }, [modelType, checkModelConfig, checkPrivacyConsent]);
 
   // Re-check model config when returning from settings page
   useEffect(() => {
     // Check when location changes (user navigates)
     if (location.pathname === '/') {
       checkModelConfig();
+      checkPrivacyConsent();
     }
-  }, [location.pathname, checkModelConfig]);
+  }, [location.pathname, checkModelConfig, checkPrivacyConsent]);
 
   // Also check when window gains focus (user returns from settings)
   useEffect(() => {
     const handleFocus = () => {
       checkModelConfig();
+      checkPrivacyConsent();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [checkModelConfig]);
+  }, [checkModelConfig, checkPrivacyConsent]);
 
   // Task time tracking
   const [taskTime, setTaskTime] = useState(
@@ -1228,25 +1270,27 @@ export default function ChatBox(): JSX.Element {
               {hasModel && !privacy ? (
                 <div className="flex items-center gap-2">
                   <div
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       const target = e.target as HTMLElement;
                       if (target.tagName === 'A') {
                         return;
                       }
-                      const API_FIELDS = [
-                        'take_screenshot',
-                        'access_local_software',
-                        'access_your_address',
-                        'password_storage',
-                      ];
                       const requestData = {
-                        [API_FIELDS[0]]: true,
-                        [API_FIELDS[1]]: true,
-                        [API_FIELDS[2]]: true,
-                        [API_FIELDS[3]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[0]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[1]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[2]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[3]]: true,
                       };
-                      proxyFetchPut('/api/user/privacy', requestData);
-                      setPrivacy(true);
+                      try {
+                        await proxyFetchPut(
+                          '/api/v1/user/privacy',
+                          requestData
+                        );
+                        setPrivacy(true);
+                      } catch (err) {
+                        console.error('Failed to update privacy consent:', err);
+                        toast.error('Failed to save privacy consent.');
+                      }
                     }}
                     className="flex cursor-pointer items-center gap-1 rounded-md bg-surface-information px-sm py-xs"
                   >
