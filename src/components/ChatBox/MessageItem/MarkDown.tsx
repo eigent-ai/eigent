@@ -58,12 +58,15 @@ export const MarkDown = memo(
     content,
     speed = 10,
     onTyping,
+    onMarkdownRenderComplete,
     enableTypewriter = true,
     contentBasePath,
   }: {
     content: string;
     speed?: number;
     onTyping?: () => void;
+    /** Fires once per stable `content` when full text is shown and markdown HTML has been applied (after typewriter catches up if enabled). */
+    onMarkdownRenderComplete?: () => void;
     enableTypewriter?: boolean;
     pTextSize?: string;
     olPadding?: string;
@@ -76,10 +79,15 @@ export const MarkDown = memo(
     const contentRef = useRef<HTMLDivElement>(null);
     const lastContentRef = useRef<string | null>(null);
     const typingCallbackRef = useRef(onTyping);
+    const renderCompleteRef = useRef(onMarkdownRenderComplete);
 
     useEffect(() => {
       typingCallbackRef.current = onTyping;
     }, [onTyping]);
+
+    useEffect(() => {
+      renderCompleteRef.current = onMarkdownRenderComplete;
+    }, [onMarkdownRenderComplete]);
 
     // Typewriter effect
     useEffect(() => {
@@ -132,6 +140,9 @@ export const MarkDown = memo(
           setHtml(
             `<pre class="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
           );
+          if (displayedContent === content && renderCompleteRef.current) {
+            renderCompleteRef.current();
+          }
           return;
         }
 
@@ -195,10 +206,13 @@ export const MarkDown = memo(
         // Sanitize HTML
         const sanitized = DOMPurify.sanitize(rawHtml);
         setHtml(sanitized);
+        if (displayedContent === content && renderCompleteRef.current) {
+          renderCompleteRef.current();
+        }
       };
 
       processMarkdown();
-    }, [displayedContent, contentBasePath]);
+    }, [displayedContent, content, contentBasePath]);
 
     // Add click handlers for images
     useEffect(() => {
@@ -238,14 +252,14 @@ export const MarkDown = memo(
         >
           <DialogContent
             size="lg"
-            className="flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center p-2"
+            className="p-2 flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center"
             showCloseButton
           >
             {previewImage && (
               <img
                 src={previewImage}
                 alt="Preview"
-                className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
+                className="rounded h-auto max-h-[90vh] w-auto max-w-full object-contain"
               />
             )}
           </DialogContent>

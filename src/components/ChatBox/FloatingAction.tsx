@@ -27,6 +27,8 @@ export interface FloatingActionProps {
   onSkip?: () => void;
   /** Loading state for pause/resume actions */
   loading?: boolean;
+  /** When true, do not show Stop even if status is still "running" (e.g. direct @-agent after AGENT_END). */
+  hideStop?: boolean;
   /** Additional CSS classes */
   className?: string;
 }
@@ -37,21 +39,22 @@ export const FloatingAction = ({
   // onResume,  // Commented out - temporary not needed
   onSkip,
   loading = false,
+  hideStop = false,
   className,
 }: FloatingActionProps) => {
   // Only show when task is running (removed pause state)
-  if (status !== ChatTaskStatus.RUNNING) {
+  if (status !== ChatTaskStatus.RUNNING || hideStop) {
     return null;
   }
 
   return (
     <div
       className={cn(
-        'pointer-events-none sticky bottom-2 left-0 right-0 top-2 z-20 mt-4 flex w-full items-center justify-center',
+        'bottom-2 left-0 right-0 top-2 mt-4 pointer-events-none sticky z-20 flex w-full items-center justify-center',
         className
       )}
     >
-      <div className="bg-bg-surface-primary/95 border-border-default pointer-events-auto flex items-center gap-2 rounded-full border p-1 shadow-[0px_4px_16px_rgba(0,0,0,0.12)] backdrop-blur-md">
+      <div className="bg-bg-surface-primary/95 border-border-default gap-2 p-1 backdrop-blur-md pointer-events-auto flex items-center rounded-full border shadow-[0px_4px_16px_rgba(0,0,0,0.12)]">
         {/* Always show Stop Task button when running (removed pause/resume logic) */}
         <Button
           variant="outline"

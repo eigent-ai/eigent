@@ -2,6 +2,8 @@
   "welcome-to-eigent": "歡迎使用 Eigent",
   "how-can-i-help-you": "今天有什麼可以幫你的嗎？",
   "ask-placeholder": "今天你需要完成什麼任務？",
+  "select-agent": "選擇智能體",
+  "clear-agent": "清除智能體",
   "select-file": "選擇文件",
   "all-files": "所有文件",
   "token": "Token",
@@ -58,6 +60,7 @@
   "remove-file": "移除文件",
   "drop-files-to-attach": "拖放文件以附加",
   "expand-input": "展開輸入 (⌘P)",
+  "collapse-input": "收起輸入 (⌘P)",
   "queued-tasks": "排隊任務",
   "remove-queued-message": "移除排隊訊息",
   "no-agents-added": "未添加智能體",
@@ -67,5 +70,8 @@
   "open-in-file-manager": "在檔案管理器中開啟",
   "failed-to-open-folder": "無法開啟資料夾",
   "task-completed-card-title": "任務已完成",
-  "task-completed-card-subtitle": "使用觸發器自動化您的任務"
+  "task-completed-card-subtitle": "使用觸發器自動化您的任務",
+  "single-agent-working": "{{agent}} 正在努力處理",
+  "agent-outcome-expand": "展開",
+  "agent-outcome-collapse": "收合"
 }

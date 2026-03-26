@@ -125,7 +125,8 @@ const DialogContent = React.forwardRef<
           <DialogPrimitive.Close asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               className={cn(
                 'right-4 top-4 absolute focus:ring-0 focus:ring-offset-0 focus:outline-none',
                 closeButtonClassName
@@ -180,9 +181,10 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
         {showBackButton && (
           <Button
             variant="ghost"
-            size="icon"
+            size="xs"
+            buttonContent="icon-only"
             onClick={onBackClick}
-            className="h-6 w-6 p-0 hover:bg-transparent"
+            className="hover:bg-transparent"
           >
             <ChevronLeft className="h-4 w-4 text-icon-primary" />
           </Button>

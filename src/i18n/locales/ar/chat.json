@@ -2,6 +2,8 @@
   "welcome-to-eigent": "Eigent أهلاً بك في",
   "how-can-i-help-you": "كيف يمكنني مساعدتك اليوم؟",
   "ask-placeholder": "ما الذي تحتاج إلى تحقيقه اليوم؟",
+  "select-agent": "اختر وكيلاً",
+  "clear-agent": "إزالة الوكيل",
   "select-file": "اختر ملف",
   "all-files": "كل الملفات",
   "token": "رمز",
@@ -58,6 +60,7 @@
   "remove-file": "إزالة الملف",
   "drop-files-to-attach": "أسقط الملفات للإرفاق",
   "expand-input": "توسيع الإدخال (⌘P)",
+  "collapse-input": "طي الإدخال (⌘P)",
   "queued-tasks": "المهام في قائمة الانتظار",
   "remove-queued-message": "إزالة الرسالة من قائمة الانتظار",
   "no-agents-added": "لم تتم إضافة وكلاء",
@@ -67,5 +70,8 @@
   "open-in-file-manager": "فتح في مدير الملفات",
   "failed-to-open-folder": "فشل في فتح المجلد",
   "task-completed-card-title": "تمت المهمة",
-  "task-completed-card-subtitle": "أتمت مهامك باستخدام الزناد"
+  "task-completed-card-subtitle": "أتمت مهامك باستخدام الزناد",
+  "single-agent-working": "{{agent}} يعمل بجد",
+  "agent-outcome-expand": "توسيع",
+  "agent-outcome-collapse": "طي"
 }

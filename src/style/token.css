@@ -174,6 +174,23 @@
     /* Gradient */
     --colors-gradient: #ffffff;
 
+    /* Neon (Workforce / camel brand) */
+    --colors-neon-50: #f2f2ff;
+    --colors-neon-100: #e9e7ff;
+    --colors-neon-200: #d5d3ff;
+    --colors-neon-300: #b5afff;
+    --colors-neon-400: #9081ff;
+    --colors-neon-500: #6d4fff;
+    --colors-neon-600: #5a2afd;
+    --colors-neon-700: #4c19e8;
+    --colors-neon-800: #4215cc;
+    --colors-neon-900: #36139f;
+    --colors-neon-950: #1e096c;
+    --colors-neon-default: #4c19e8;
+
+    /* Alias: same as --colors-neon-default */
+    --camel-color: var(--colors-neon-default);
+
     /* Component Tokens */
     /* Input Component */
     --input-bg-input: var(--surface-tertiary);
@@ -351,6 +368,7 @@
     /* Tag Component */
     --tag-surface: var(--button-tertiery-fill-default);
     --tag-fill-browser: var(--fill-browser);
+    --tag-fill-camel: var(--fill-camel);
     --tag-fill-developer: var(--fill-developer);
     --tag-fill-document: var(--fill-document);
     --tag-fill-multimodal: var(--fill-multimodal);
@@ -506,7 +524,10 @@
     --border-socialmedia: var(--colors-purple-default);
     --border-multimodal: var(--colors-fuchsia-default);
     --border-document: var(--colors-amber-default);
+    --border-camel: var(--colors-neon-500);
     --border-transparent: var(--colors-white-0);
+    --text-camel: var(--colors-neon-default);
+    --fill-camel: var(--colors-neon-100);
     --icon-primary: var(--colors-primary-default);
     --icon-action: var(--colors-primary-default);
     --icon-disabled: var(--colors-primary-3);
@@ -624,7 +645,10 @@
     --border-socialmedia: var(--colors-purple-default);
     --border-multimodal: var(--colors-fuchsia-default);
     --border-document: var(--colors-amber-default);
+    --border-camel: var(--colors-neon-500);
     --border-transparent: var(--colors-white-0);
+    --text-camel: var(--colors-neon-default);
+    --fill-camel: var(--colors-neon-100);
     --icon-primary: var(--colors-primary-default);
     --icon-action: var(--colors-primary-default);
     --icon-disabled: var(--colors-primary-3);
@@ -654,7 +678,7 @@
     --fill-fill-primary-disabled: var(--colors-primary-5);
     --fill-fill-tertiary: var(--colors-primary-1);
     --fill-fill-transparent: var(--colors-white-0);
-    --fill-fill-transparent-hover: var(--colors-white-80);
+    --fill-fill-transparent-hover: var(--colors-off-white-100);
     --fill-fill-tertiary-hover: var(--colors-primary-2);
     --fill-fill-tertiary-active: var(--colors-primary-3);
     --fill-fill-tertiary-disabled: var(--colors-primary-2);
@@ -751,7 +775,12 @@
     --border-socialmedia: rgba(216, 180, 254, 0.6);
     --border-multimodal: rgba(245, 168, 255, 0.6);
     --border-document: rgba(255, 212, 121, 0.6);
+    --border-camel: var(--colors-neon-500);
     --border-transparent: var(--colors-black-0);
+    /* Dark: lighter default for readability on dark surfaces */
+    --camel-color: var(--colors-neon-400);
+    --text-camel: var(--camel-color);
+    --fill-camel: var(--colors-neon-100);
     --icon-primary: #d0dcff;
     --icon-action: #f1f5ff;
     --icon-disabled: rgba(148, 163, 184, 0.4);

@@ -2,6 +2,8 @@
   "welcome-to-eigent": "Bienvenue chez Eigent",
   "how-can-i-help-you": "Comment puis-je vous aider aujourd'hui ?",
   "ask-placeholder": "Que devez-vous accomplir aujourd'hui ?",
+  "select-agent": "Sélectionner un agent",
+  "clear-agent": "Retirer l’agent",
   "select-file": "Sélectionner un fichier",
   "all-files": "Tous les fichiers",
   "token": "Jeton",
@@ -58,6 +60,7 @@
   "remove-file": "Supprimer le fichier",
   "drop-files-to-attach": "Déposez les fichiers à joindre",
   "expand-input": "Développer l'entrée (⌘P)",
+  "collapse-input": "Réduire l'entrée (⌘P)",
   "queued-tasks": "Tâches en file d'attente",
   "remove-queued-message": "Supprimer le message en file d'attente",
   "no-agents-added": "Aucun agent ajouté",
@@ -67,5 +70,8 @@
   "open-in-file-manager": "Ouvrir dans le gestionnaire de fichiers",
   "failed-to-open-folder": "Impossible d'ouvrir le dossier",
   "task-completed-card-title": "Tâche terminée",
-  "task-completed-card-subtitle": "Automatisez votre tâche avec un déclencheur"
+  "task-completed-card-subtitle": "Automatisez votre tâche avec un déclencheur",
+  "single-agent-working": "{{agent}} travaille dur",
+  "agent-outcome-expand": "Développer",
+  "agent-outcome-collapse": "Réduire"
 }

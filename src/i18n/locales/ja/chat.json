@@ -2,6 +2,8 @@
   "welcome-to-eigent": "Eigentへようこそ",
   "how-can-i-help-you": "本日はどのようなご用件でしょうか？",
   "ask-placeholder": "本日は何を達成したいですか？",
+  "select-agent": "エージェントを選択",
+  "clear-agent": "エージェントを解除",
   "select-file": "ファイルを選択",
   "all-files": "すべてのファイル",
   "token": "トークン",
@@ -58,6 +60,7 @@
   "remove-file": "ファイルを削除",
   "drop-files-to-attach": "ファイルをドロップして添付",
   "expand-input": "入力を展開 (⌘P)",
+  "collapse-input": "入力を折りたたむ (⌘P)",
   "queued-tasks": "キューに入れたタスク",
   "remove-queued-message": "キューに入れたメッセージを削除",
   "no-agents-added": "エージェントが追加されていません",
@@ -67,5 +70,8 @@
   "open-in-file-manager": "ファイルマネージャーで開く",
   "failed-to-open-folder": "フォルダを開けませんでした",
   "task-completed-card-title": "タスク完了",
-  "task-completed-card-subtitle": "トリガーでタスクを自動化"
+  "task-completed-card-subtitle": "トリガーでタスクを自動化",
+  "single-agent-working": "{{agent}}が処理中です",
+  "agent-outcome-expand": "展開",
+  "agent-outcome-collapse": "折りたたむ"
 }
