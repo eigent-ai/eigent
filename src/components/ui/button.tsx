@@ -180,7 +180,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const legacyIcon = sizeProp === 'icon';
     const resolvedSize: ButtonSize = legacyIcon
-      ? 'sm'
+      ? 'xs'
       : (sizeProp as ButtonSize);
     const resolvedLayout =
       buttonContent === 'icon-only'

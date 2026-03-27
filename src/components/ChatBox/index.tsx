@@ -37,7 +37,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
@@ -59,7 +59,8 @@ export default function ChatBox(): JSX.Element {
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const [hasModel, setHasModel] = useState(true);
+  const [hasModel, setHasModel] = useState(false);
+  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
   const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
@@ -68,9 +69,10 @@ export default function ChatBox(): JSX.Element {
   /** Assumed true once past login/onboarding; in-chat banner can still opt-in via PUT. */
   const [privacy, setPrivacy] = useState(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const { modelType } = useAuthStore();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
+  const location = useLocation();
+
   useEffect(() => {
     // Only show warning message, don't block functionality
     if (
@@ -90,29 +92,54 @@ export default function ChatBox(): JSX.Element {
     return () => clearTimeout(focusTimer);
   }, [workspaceChatFocusRequestId]);
 
+  // Shared function to check model configuration
+  const checkModelConfig = useCallback(async () => {
+    try {
+      if (modelType === 'cloud') {
+        const res = await proxyFetchGet('/api/v1/user/key');
+        setHasModel(!!res.value);
+      } else if (modelType === 'local' || modelType === 'custom') {
+        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+        const providerList = res.items || [];
+        setHasModel(providerList.length > 0);
+      } else {
+        setHasModel(false);
+      }
+    } catch (err) {
+      console.error('Failed to check model config:', err);
+      setHasModel(false);
+    } finally {
+      setIsConfigLoaded(true);
+    }
+  }, [modelType]);
+
+  // Check model config on mount and when modelType changes
   useEffect(() => {
     proxyFetchGet('/api/configs').catch((err) =>
       console.error('Failed to fetch configs:', err)
     );
-  }, []);
 
-  // Refresh privacy status when dialog closes
-  // useEffect(() => {
-  // 	if (!privacyDialogOpen) {
-  // 		proxyFetchGet("/api/user/privacy")
-  // 			.then((res) => {
-  // 				let _privacy = 0;
-  // 				Object.keys(res).forEach((key) => {
-  // 					if (!res[key]) {
-  // 						_privacy++;
-  // 						return;
-  // 					}
-  // 				});
-  // 				setPrivacy(_privacy === 0 ? true : false);
-  // 			})
-  // 			.catch((err) => console.error("Failed to fetch settings:", err));
-  // 	}
-  // }, [privacyDialogOpen]);
+    checkModelConfig();
+  }, [modelType, checkModelConfig]);
+
+  // Re-check model config when returning from settings page
+  useEffect(() => {
+    if (location.pathname === '/') {
+      checkModelConfig();
+    }
+  }, [location.pathname, checkModelConfig]);
+
+  // Also check when window gains focus (user returns from settings)
+  useEffect(() => {
+    const handleFocus = () => {
+      checkModelConfig();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [checkModelConfig]);
   const [searchParams, setSearchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
   const skill_prompt = searchParams.get('skill_prompt');

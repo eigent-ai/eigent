@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import folderIcon from '@/assets/Folder.svg';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,56 +20,27 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { TooltipSimple } from '@/components/ui/tooltip';
-import {
-  getTaskListShelfTone,
-  type TaskListShelfTone,
-} from '@/lib/taskLifecycleUi';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import {
-  useTriggerStore,
-  type WebSocketConnectionStatus,
-} from '@/store/triggerStore';
+import { useTriggerStore } from '@/store/triggerStore';
 import { motion } from 'framer-motion';
-import {
-  CircleHelp,
-  Inbox,
-  LayoutGrid,
-  PanelLeft,
-  PanelLeftClose,
-  Plus,
-  RefreshCw,
-  SquarePen,
-  Zap,
-  ZapOff,
-} from 'lucide-react';
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react';
+import { Inbox, LayoutGrid, Zap, ZapOff } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BottomAction } from './BottomAction';
+import { HeaderAction } from './HeaderAction';
+import {
+  NavTab,
+  NavTabReconnectSuffix,
+  triggerListenerLeadIconClass,
+} from './NavTab';
+import { TaskList } from './TaskList';
 
 /** Match History.tsx tab normalization for sidebar “active hub” styling */
 const HISTORY_TAB_ALIASES: Record<string, string> = {
@@ -101,35 +71,6 @@ function folderPathBasename(path: string): string {
   return parts[parts.length - 1] || normalized;
 }
 
-const PROJECT_HUB_DROPDOWN_CONTENT_CLASS = cn(
-  'min-w-[11rem] -mb-2 flex flex-col gap-1 rounded-xl border-0 bg-fill-default p-1 shadow-md'
-);
-
-const PROJECT_HUB_DROPDOWN_CONTENT_STYLE: CSSProperties = {
-  border: 'none',
-  borderRadius: 'var(--borderRadius-rounded-xl, 12px)',
-  background: 'var(--fill-default, #FFF)',
-};
-
-const PROJECT_HUB_DROPDOWN_ITEM_CLASS = cn(
-  'flex h-9 min-h-9 w-full shrink-0 cursor-pointer select-none items-center rounded-xl px-3 py-0 text-body-sm font-medium text-text-label outline-none',
-  'hover:bg-surface-secondary hover:text-text-label',
-  'data-[highlighted]:bg-surface-secondary data-[highlighted]:text-text-label',
-  'focus:bg-surface-secondary focus:text-text-label'
-);
-
-function taskUserQueryLabel(task: ChatStore['tasks'][string]): string {
-  const firstUser = task.messages.find((m) => m.role === 'user');
-  const text = firstUser?.content?.trim() ?? '';
-  return text || '…';
-}
-
-const SHELF_TONE_ROW_CLASS: Record<TaskListShelfTone, string> = {
-  splitting: 'bg-input-bg-spliting hover:brightness-[0.98]',
-  running: 'bg-input-bg-confirm hover:brightness-[0.98]',
-  default: 'bg-transparent hover:bg-surface-tertiary',
-};
-
 const PROJECT_SIDEBAR_WIDTH_PX = 240;
 /** Folded rail: tab row needs pl-3 + icon + pr-3 (no outer sidebar horizontal padding). */
 const PROJECT_SIDEBAR_FOLDED_WIDTH_PX = 40;
@@ -148,136 +89,6 @@ const SIDEBAR_LAYOUT_TWEEN = {
   duration: 0.34,
   ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
 };
-
-/** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
-const workspaceTabButtonClass = (active: boolean) =>
-  cn(
-    'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden',
-    'hover:bg-surface-tertiary focus-visible:ring-2 focus-visible:ring-border-secondary focus-visible:outline-none',
-    active && 'bg-surface-tertiary'
-  );
-
-const workspaceTabLabelClass =
-  'min-w-0 flex-1 truncate text-text-label text-body-sm font-medium';
-
-function triggerListenerLeadIconClass(
-  status: WebSocketConnectionStatus
-): string {
-  switch (status) {
-    case 'connected':
-      return 'text-green-500';
-    case 'connecting':
-      return 'text-yellow-500 animate-pulse';
-    case 'unhealthy':
-      return 'text-orange-500';
-    case 'disconnected':
-    default:
-      return 'text-icon-secondary';
-  }
-}
-
-/** Horizontal drift speed for task query hover (~6px/s, capped) — readable marquee, not a snap. */
-const TASK_QUERY_SCROLL_PX_PER_SEC = 16;
-const TASK_QUERY_SCROLL_MIN_MS = 10_000;
-const TASK_QUERY_SCROLL_MAX_MS = 90_000;
-
-function taskQueryScrollDurationMs(scrollPx: number): number {
-  if (scrollPx <= 0) return 300;
-  const proportional = (scrollPx / TASK_QUERY_SCROLL_PX_PER_SEC) * 1000;
-  return Math.min(
-    TASK_QUERY_SCROLL_MAX_MS,
-    Math.max(TASK_QUERY_SCROLL_MIN_MS, Math.round(proportional))
-  );
-}
-
-function TaskQueryScrollLabel({
-  queryLabel,
-  rowHovered,
-}: {
-  queryLabel: string;
-  rowHovered: boolean;
-}) {
-  const outerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLSpanElement>(null);
-  const [scrollPx, setScrollPx] = useState(0);
-
-  useLayoutEffect(() => {
-    const outer = outerRef.current;
-    const inner = innerRef.current;
-    if (!outer || !inner) return;
-
-    const measure = () => {
-      setScrollPx(Math.max(0, inner.scrollWidth - outer.clientWidth));
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(outer);
-    return () => ro.disconnect();
-  }, [queryLabel]);
-
-  const slide = rowHovered && scrollPx > 0;
-  const slideMs = taskQueryScrollDurationMs(scrollPx);
-
-  return (
-    <div
-      ref={outerRef}
-      className={cn('text-text-label min-w-0 w-full overflow-hidden')}
-    >
-      <span
-        ref={innerRef}
-        title={queryLabel}
-        className={cn(
-          'text-body-sm font-normal inline-block whitespace-nowrap first-letter:uppercase',
-          'transition-[transform]',
-          slide ? 'ease-linear' : 'ease-out duration-300'
-        )}
-        style={{
-          transform: slide ? `translateX(-${scrollPx}px)` : 'translateX(0)',
-          transitionDuration: slide ? `${slideMs}ms` : undefined,
-        }}
-      >
-        {queryLabel}
-      </span>
-    </div>
-  );
-}
-
-function ProjectSidebarTaskListRow({
-  task,
-  firstUserMessageId,
-  active,
-  setScrollToQueryId,
-}: {
-  task: ChatStore['tasks'][string];
-  firstUserMessageId: string | null;
-  active: boolean;
-  setScrollToQueryId: (id: string) => void;
-}) {
-  const [rowHovered, setRowHovered] = useState(false);
-  const queryLabel = taskUserQueryLabel(task);
-  const shelfTone = getTaskListShelfTone(task);
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (firstUserMessageId) {
-          setScrollToQueryId(firstUserMessageId);
-        }
-      }}
-      onMouseEnter={() => setRowHovered(true)}
-      onMouseLeave={() => setRowHovered(false)}
-      className={cn(
-        'no-drag h-8 rounded-xl min-w-0 gap-3 px-3 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
-        SHELF_TONE_ROW_CLASS[shelfTone]
-      )}
-      aria-current={active ? 'true' : undefined}
-    >
-      <TaskQueryScrollLabel queryLabel={queryLabel} rowHovered={rowHovered} />
-    </button>
-  );
-}
 
 export interface ProjectPageSidebarProps {
   chatStore: ChatStore;
@@ -390,25 +201,6 @@ export default function ProjectPageSidebar({
     // `chatStore` updates whenever the active chat store changes (adapter subscription).
     // Do not use `updateCount` alone — it only bumps on task completion, so the list would stay stale while chatting.
   }, [projectStore, activeProjectId, chatStore]);
-
-  const rowButtonBaseClass =
-    'no-drag h-8 rounded-xl hover:bg-surface-tertiary min-w-0 flex shrink-0 items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary';
-  const rowButtonClass = cn(rowButtonBaseClass, 'gap-3 px-3 w-full');
-
-  const hubIconTabClass = (active: boolean) =>
-    cn(
-      'no-drag h-8 w-full min-w-0 rounded-xl bg-surface-primary',
-      'hover:bg-surface-tertiary flex cursor-pointer items-center justify-center transition-colors',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary',
-      active && 'bg-surface-tertiary'
-    );
-
-  /** Hub tile shell without whole-area hover (split controls handle their own hover). */
-  const hubIconTabShellClass = (active: boolean) =>
-    cn(
-      'no-drag w-full min-w-0 rounded-xl bg-surface-primary transition-colors',
-      active && 'bg-surface-tertiary'
-    );
 
   const authToken = useAuthStore((s) => s.token);
   const email = useAuthStore((s) => s.email);
@@ -669,176 +461,58 @@ export default function ProjectPageSidebar({
       >
         <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-x-hidden">
           <div className="gap-2 flex w-full shrink-0 flex-col">
-            {!collapsed ? (
-              <div className="min-w-0 flex items-stretch">
-                <div
-                  className={cn(
-                    hubIconTabShellClass(historySidebarOpen),
-                    'h-8 min-h-8 min-w-0 flex flex-1 flex-row overflow-hidden'
-                  )}
-                >
-                  <TooltipSimple
-                    content={t('layout.collapse-sidebar', {
-                      defaultValue: 'Collapse sidebar',
-                    })}
-                    side="bottom"
-                    align="start"
-                  >
-                    <button
-                      type="button"
-                      className={cn(
-                        'no-drag min-h-0 w-10 flex h-full shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent transition-colors',
-                        historySidebarOpen
-                          ? 'hover:brightness-[0.98]'
-                          : 'hover:bg-surface-tertiary',
-                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-                      )}
-                      onClick={toggleProjectSidebarCollapsed}
-                      aria-label={t('layout.collapse-sidebar', {
-                        defaultValue: 'Collapse sidebar',
-                      })}
-                    >
-                      <PanelLeftClose
-                        className="h-4 w-4 text-icon-primary shrink-0"
-                        aria-hidden
-                      />
-                    </button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={activeTaskTitle}
-                    side="bottom"
-                    align="center"
-                  >
-                    <button
-                      id="sidebar-active-task-title-btn"
-                      type="button"
-                      className={cn(
-                        'no-drag min-h-0 min-w-0 border-border-tertiary flex h-full flex-1 cursor-pointer items-center border-x border-t border-b-0 border-solid bg-transparent text-left transition-colors',
-                        historySidebarOpen
-                          ? 'hover:brightness-[0.98]'
-                          : 'hover:bg-surface-tertiary',
-                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-                      )}
-                      onClick={toggleHistorySidebar}
-                      aria-expanded={historySidebarOpen}
-                      aria-haspopup="dialog"
-                    >
-                      <span className="min-w-0 text-text-body text-body-sm font-bold flex-1 truncate">
-                        {activeTaskTitle}
-                      </span>
-                    </button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={t('layout.new-project')}
-                    side="bottom"
-                    align="end"
-                  >
-                    <button
-                      type="button"
-                      className={cn(
-                        'no-drag w-10 flex h-full shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent transition-colors',
-                        historySidebarOpen
-                          ? 'hover:brightness-[0.98]'
-                          : 'hover:bg-surface-tertiary',
-                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-                      )}
-                      onClick={createNewProject}
-                      aria-label={t('layout.new-project')}
-                    >
-                      <Plus
-                        className="h-4 w-4 text-icon-primary shrink-0"
-                        aria-hidden
-                      />
-                    </button>
-                  </TooltipSimple>
-                </div>
-              </div>
-            ) : (
-              <TooltipSimple
-                content={t('layout.expand-sidebar', {
-                  defaultValue: 'Expand sidebar',
-                })}
-                side="right"
-                align="center"
-              >
-                <button
-                  type="button"
-                  className={cn(
-                    'no-drag h-8 min-h-8 rounded-xl flex w-full shrink-0 cursor-pointer items-center justify-start',
-                    'hover:bg-surface-tertiary border-0 bg-transparent',
-                    'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none',
-                    'px-3'
-                  )}
-                  onClick={toggleProjectSidebarCollapsed}
-                  aria-label={t('layout.expand-sidebar', {
-                    defaultValue: 'Expand sidebar',
-                  })}
-                >
-                  <PanelLeft
-                    className="h-4 w-4 text-icon-primary shrink-0"
-                    aria-hidden
-                  />
-                </button>
-              </TooltipSimple>
-            )}
+            <HeaderAction
+              collapsed={collapsed}
+              onToggleCollapsed={toggleProjectSidebarCollapsed}
+              expandAriaLabel={t('layout.expand-sidebar', {
+                defaultValue: 'Expand sidebar',
+              })}
+              expandTooltip={t('layout.expand-sidebar', {
+                defaultValue: 'Expand sidebar',
+              })}
+              collapseAriaLabel={t('layout.collapse-sidebar', {
+                defaultValue: 'Collapse sidebar',
+              })}
+              collapseTooltip={t('layout.collapse-sidebar', {
+                defaultValue: 'Collapse sidebar',
+              })}
+              historySidebarOpen={historySidebarOpen}
+              activeTaskTitle={activeTaskTitle}
+              onCenterClick={toggleHistorySidebar}
+              newProjectAriaLabel={t('layout.new-project')}
+              newProjectTooltip={t('layout.new-project')}
+              onNewProject={createNewProject}
+            />
 
             <div className="gap-2 min-w-0 flex w-full flex-col">
-              <TooltipSimple
-                content={t('triggers.workspace')}
-                side="right"
-                align="center"
-                enabled={collapsed}
-              >
-                <button
-                  type="button"
-                  onClick={() => setActiveWorkspaceTab('workforce')}
-                  className={workspaceTabButtonClass(
-                    activeWorkspaceTab === 'workforce'
-                  )}
-                  aria-label={t('triggers.workspace')}
-                  aria-current={
-                    activeWorkspaceTab === 'workforce' ? 'page' : undefined
-                  }
-                >
+              <NavTab
+                active={activeWorkspaceTab === 'workforce'}
+                onClick={() => setActiveWorkspaceTab('workforce')}
+                leading={
                   <LayoutGrid
                     className="h-4 w-4 text-icon-primary shrink-0"
                     aria-hidden
                   />
-                  <span className={workspaceTabLabelClass}>
-                    {t('triggers.workspace')}
-                  </span>
-                </button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={
-                  collapsed
-                    ? `${t('layout.folder')} · ${folderSettingTagLabel}`
-                    : t('layout.folder')
                 }
-                side="right"
-                align="center"
-                enabled={collapsed}
-              >
-                <button
-                  type="button"
-                  onClick={() => setActiveWorkspaceTab('inbox')}
-                  className={cn(
-                    workspaceTabButtonClass(activeWorkspaceTab === 'inbox'),
-                    'relative'
-                  )}
-                  aria-label={`${t('layout.folder')}, ${folderSettingTagLabel}`}
-                  aria-current={
-                    activeWorkspaceTab === 'inbox' ? 'page' : undefined
-                  }
-                >
+                label={t('triggers.workspace')}
+                collapsed={collapsed}
+                tooltip={t('triggers.workspace')}
+                tooltipEnabledWhenCollapsed
+                ariaLabel={t('triggers.workspace')}
+                ariaCurrentPage={activeWorkspaceTab === 'workforce'}
+              />
+              <NavTab
+                active={activeWorkspaceTab === 'inbox'}
+                onClick={() => setActiveWorkspaceTab('inbox')}
+                leading={
                   <Inbox
                     className="h-4 w-4 text-icon-primary shrink-0"
                     aria-hidden
                   />
-                  <span className={workspaceTabLabelClass}>
-                    {t('layout.folder')}
-                  </span>
-                  {!collapsed && (
+                }
+                label={t('layout.folder')}
+                trailing={
+                  !collapsed ? (
                     <span
                       className="bg-surface-secondary text-text-secondary rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]"
                       title={
@@ -850,131 +524,77 @@ export default function ProjectPageSidebar({
                     >
                       {folderSettingTagLabel}
                     </span>
-                  )}
-                  {unviewedTabs.has('inbox') && (
-                    <span
+                  ) : undefined
+                }
+                showNotificationDot={unviewedTabs.has('inbox')}
+                notificationDotClassName={
+                  collapsed ? 'top-1 right-1 h-2 w-2 absolute' : 'h-2 w-2'
+                }
+                collapsed={collapsed}
+                tooltip={
+                  collapsed
+                    ? `${t('layout.folder')} · ${folderSettingTagLabel}`
+                    : t('layout.folder')
+                }
+                tooltipEnabledWhenCollapsed
+                ariaLabel={`${t('layout.folder')}, ${folderSettingTagLabel}`}
+                ariaCurrentPage={activeWorkspaceTab === 'inbox'}
+                className="relative"
+              />
+              <NavTab
+                layout="split"
+                active={activeWorkspaceTab === 'triggers'}
+                onClick={() => setActiveWorkspaceTab('triggers')}
+                leading={
+                  triggersListenerConnected ? (
+                    <Zap
                       className={cn(
-                        'bg-red-500 shrink-0 rounded-full transition-all duration-300',
-                        collapsed ? 'top-1 right-1 h-2 w-2 absolute' : 'h-2 w-2'
+                        'h-4 w-4 shrink-0',
+                        triggerListenerLeadIconClass(wsConnectionStatus)
                       )}
                       aria-hidden
                     />
-                  )}
-                </button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={triggersTabTooltip}
-                side="right"
-                align="center"
-                enabled={collapsed}
-              >
-                <div
-                  className={cn(
-                    workspaceTabButtonClass(activeWorkspaceTab === 'triggers'),
-                    'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible'
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setActiveWorkspaceTab('triggers')}
-                    className={cn(
-                      'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 pl-3 pr-1 relative flex flex-1 items-center text-left outline-none',
-                      'focus-visible:ring-border-secondary hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-                    )}
-                    aria-label={triggersTabAriaLabel}
-                    aria-current={
-                      activeWorkspaceTab === 'triggers' ? 'page' : undefined
-                    }
-                  >
-                    {triggersListenerConnected ? (
-                      <Zap
-                        className={cn(
-                          'h-4 w-4 shrink-0',
-                          triggerListenerLeadIconClass(wsConnectionStatus)
-                        )}
-                        aria-hidden
-                      />
-                    ) : (
-                      <ZapOff
-                        className={cn(
-                          'h-4 w-4 shrink-0',
-                          triggerListenerLeadIconClass(wsConnectionStatus)
-                        )}
-                        aria-hidden
-                      />
-                    )}
-                    <span className={workspaceTabLabelClass}>
-                      {t('layout.triggers')}
+                  ) : (
+                    <ZapOff
+                      className={cn(
+                        'h-4 w-4 shrink-0',
+                        triggerListenerLeadIconClass(wsConnectionStatus)
+                      )}
+                      aria-hidden
+                    />
+                  )
+                }
+                label={t('layout.triggers')}
+                trailing={
+                  !collapsed && showTriggersDisconnectedTag ? (
+                    <span className="bg-surface-secondary text-text-error rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]">
+                      {t('layout.triggers-disconnected')}
                     </span>
-                    {!collapsed && showTriggersDisconnectedTag && (
-                      <span className="bg-surface-secondary text-text-error rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]">
-                        {t('layout.triggers-disconnected')}
-                      </span>
-                    )}
-                    {unviewedTabs.has('triggers') && (
-                      <span
-                        className={cn(
-                          'bg-text-error shrink-0 rounded-full transition-all duration-300',
-                          collapsed
-                            ? 'top-1 right-1 h-2 w-2 absolute'
-                            : 'h-2 w-2'
-                        )}
-                        aria-hidden
-                      />
-                    )}
-                  </button>
-                  {wsConnectionStatus !== 'connected' && !collapsed && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            'no-drag text-icon-secondary hover:bg-surface-tertiary h-8 w-8 rounded-xl flex shrink-0 items-center justify-center transition-colors outline-none',
-                            'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-                          )}
-                          aria-label={t('layout.triggers-reconnect-hint')}
-                        >
-                          <RefreshCw
-                            className={cn(
-                              'h-3.5 w-3.5',
-                              wsConnectionStatus === 'connecting' &&
-                                'animate-spin'
-                            )}
-                            aria-hidden
-                          />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-64 p-4"
-                        side="right"
-                        align="start"
-                      >
-                        <div className="gap-3 flex flex-col">
-                          <p className="text-body-sm text-text-body">
-                            {t('layout.triggers-reconnect-hint')}
-                          </p>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            className="w-full items-center justify-center"
-                            onClick={triggerReconnect}
-                          >
-                            <RefreshCw
-                              className={cn(
-                                'mr-2 h-4 w-4',
-                                wsConnectionStatus === 'connecting' &&
-                                  'animate-spin'
-                              )}
-                              aria-hidden
-                            />
-                            {t('layout.triggers-listener-reconnect')}
-                          </Button>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                </div>
-              </TooltipSimple>
+                  ) : undefined
+                }
+                showNotificationDot={unviewedTabs.has('triggers')}
+                notificationDotTone="attention"
+                notificationDotClassName={
+                  collapsed ? 'top-1 right-1 h-2 w-2 absolute' : 'h-2 w-2'
+                }
+                suffix={
+                  wsConnectionStatus !== 'connected' && !collapsed ? (
+                    <NavTabReconnectSuffix
+                      wsConnectionStatus={wsConnectionStatus}
+                      reconnectHint={t('layout.triggers-reconnect-hint')}
+                      reconnectButtonLabel={t(
+                        'layout.triggers-listener-reconnect'
+                      )}
+                      onReconnect={triggerReconnect}
+                    />
+                  ) : undefined
+                }
+                collapsed={collapsed}
+                tooltip={triggersTabTooltip}
+                tooltipEnabledWhenCollapsed
+                ariaLabel={triggersTabAriaLabel}
+                ariaCurrentPage={activeWorkspaceTab === 'triggers'}
+              />
             </div>
           </div>
 
@@ -990,173 +610,43 @@ export default function ProjectPageSidebar({
             transition={SIDEBAR_LAYOUT_TWEEN}
           />
 
-          {/* Task List */}
-          <div
-            className={cn(
-              'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
-              collapsed
-                ? 'max-h-0 pointer-events-none flex-none'
-                : 'min-h-0 flex-1'
-            )}
-            style={{ minHeight: 0 }}
-          >
-            <div
-              className={cn(
-                'gap-2 pl-3 pr-1.5 pb-1.5 pt-0 flex w-full shrink-0 items-center justify-between',
-                collapsed && 'hidden'
-              )}
-            >
-              <span className="text-text-label min-w-0 text-xs font-semibold truncate">
-                {t('layout.task-list-title', { defaultValue: 'Tasks' })}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                buttonContent="icon-only"
-                className="text-icon-primary shrink-0"
-                aria-label={t('layout.task-list-add-hint', {
-                  defaultValue: 'Open workspace and focus chat',
-                })}
-                onClick={() => requestWorkspaceChatFocus()}
-              >
-                <SquarePen className="size-3.5" aria-hidden />
-              </Button>
-            </div>
-            <div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto">
-              {allTaskEntries.length === 0 ? (
-                <p className="text-text-label px-3 text-xs w-full">
-                  {t('layout.no-tasks', { defaultValue: 'No tasks' })}
-                </p>
-              ) : (
-                <div className="gap-2 min-w-0 flex w-full flex-col">
-                  {allTaskEntries.map(
-                    ({ chatId, taskId, task, firstUserMessageId }) => (
-                      <ProjectSidebarTaskListRow
-                        key={`${chatId}-${taskId}`}
-                        task={task}
-                        firstUserMessageId={firstUserMessageId}
-                        active={chatStore.activeTaskId === taskId}
-                        setScrollToQueryId={setScrollToQueryId}
-                      />
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <TaskList
+            collapsed={collapsed}
+            entries={allTaskEntries}
+            activeTaskId={chatStore.activeTaskId}
+            setScrollToQueryId={setScrollToQueryId}
+            title={t('layout.task-list-title', { defaultValue: 'Tasks' })}
+            emptyLabel={t('layout.no-tasks', { defaultValue: 'No tasks' })}
+            addButtonAriaLabel={t('layout.task-list-add-hint', {
+              defaultValue: 'Open workspace and focus chat',
+            })}
+            onAddClick={() => requestWorkspaceChatFocus()}
+          />
 
-          {/* Bottom section - Profile and Help */}
-          <div className="border-border-secondary pt-2 mt-auto w-full shrink-0 border-t">
-            <div
-              className={cn(
-                'min-w-0 gap-1 grid w-full overflow-hidden',
-                collapsed
-                  ? 'grid-cols-1'
-                  : 'grid-cols-[minmax(0,3fr)_minmax(0,1fr)]'
-              )}
-            >
-              <div
-                className={cn(
-                  'min-h-0 min-w-0 overflow-hidden',
-                  collapsed &&
-                    'max-h-0 pointer-events-none overflow-hidden opacity-0'
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => navigate('/history?tab=agents&section=models')}
-                  title={`${modelModeLine}\n${modelDetailLine}`}
-                  className={cn(
-                    rowButtonClass,
-                    'bg-surface-primary w-full',
-                    'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
-                  )}
-                  aria-label={t('setting.models')}
-                >
-                  <span
-                    className="h-7 w-7 flex shrink-0 items-center justify-center"
-                    aria-hidden
-                  >
-                    <img
-                      src={folderIcon}
-                      alt=""
-                      className="h-7 w-7 mt-1 shrink-0 object-contain"
-                      draggable={false}
-                    />
-                  </span>
-                  <div className="min-w-0 flex flex-1 flex-col justify-center leading-none">
-                    <div className="bg-surface-information rounded-md px-1 w-fit">
-                      <span className="text-text-information text-label-xs font-semibold leading-tight truncate text-nowrap">
-                        {modelModeLine}
-                      </span>
-                    </div>
-                    <span className="text-text-secondary leading-tight px-1 truncate text-[10px]">
-                      {modelDetailLine}
-                    </span>
-                  </div>
-                </button>
-              </div>
-              <div className="min-h-0 min-w-0 flex w-full">
-                <DropdownMenu
-                  open={helpMenuOpen}
-                  onOpenChange={setHelpMenuOpen}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        hubIconTabClass(helpMenuOpen),
-                        collapsed && 'px-3 justify-start'
-                      )}
-                      aria-label={t('layout.help-and-support', {
-                        defaultValue: 'Help and support',
-                      })}
-                      aria-haspopup="menu"
-                    >
-                      <CircleHelp
-                        className="h-4 w-4 text-icon-primary shrink-0"
-                        aria-hidden
-                      />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    side="right"
-                    align="end"
-                    sideOffset={8}
-                    alignOffset={8}
-                    className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-                    style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
-                  >
-                    <DropdownMenuItem
-                      className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                      onSelect={() => setSupportDialogOpen(true)}
-                    >
-                      {t('layout.contact-support')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                      onSelect={() => {
-                        void reportBugOpenGithub();
-                      }}
-                    >
-                      {t('layout.report-bug')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                      onSelect={() => {
-                        void downloadLogs();
-                      }}
-                    >
-                      {t('layout.download-logs', {
-                        defaultValue: 'Download logs',
-                      })}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          </div>
+          <BottomAction
+            collapsed={collapsed}
+            onOpenModels={() => navigate('/history?tab=agents&section=models')}
+            modelsAriaLabel={t('setting.models')}
+            modelModeLine={modelModeLine}
+            modelDetailLine={modelDetailLine}
+            helpMenuOpen={helpMenuOpen}
+            onHelpMenuOpenChange={setHelpMenuOpen}
+            helpAriaLabel={t('layout.help-and-support', {
+              defaultValue: 'Help and support',
+            })}
+            onContactSupport={() => setSupportDialogOpen(true)}
+            onReportBug={() => {
+              void reportBugOpenGithub();
+            }}
+            onDownloadLogs={() => {
+              void downloadLogs();
+            }}
+            contactSupportLabel={t('layout.contact-support')}
+            reportBugLabel={t('layout.report-bug')}
+            downloadLogsLabel={t('layout.download-logs', {
+              defaultValue: 'Download logs',
+            })}
+          />
         </div>
       </motion.aside>
     </>
