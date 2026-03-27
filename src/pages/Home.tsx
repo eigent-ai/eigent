@@ -42,6 +42,8 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import {
   ArrowUpDown,
+  Maximize2,
+  Minimize2,
   Plus,
   SquareChevronRight,
   SquareCode,
@@ -484,7 +486,7 @@ export default function Home() {
                   />
                 </>
               )}
-            <ResizablePanel className="h-full w-full min-w-[600px]">
+            <ResizablePanel className="h-full w-full min-w-[300px]">
               {activeWorkspaceTab === 'workforce' && (
                 <div className="rounded-2xl border-border-tertiary bg-surface-secondary relative flex h-full w-full flex-col border-solid">
                   <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
@@ -493,7 +495,7 @@ export default function Home() {
                         {t('layout.aiWorkforce')}
                       </span>
                     </div>
-                    <div className="gap-2 flex shrink-0 items-center">
+                    <div className="gap-1 flex shrink-0 items-center">
                       <Button
                         variant="primary"
                         size="sm"
@@ -514,6 +516,44 @@ export default function Home() {
                         isOpen={addWorkerDialogOpen}
                         onOpenChange={setAddWorkerDialogOpen}
                       />
+                      <TooltipSimple
+                        content={
+                          isChatBoxVisible
+                            ? t('layout.expand-workforce', {
+                                defaultValue: 'Expand workforce',
+                              })
+                            : t('layout.minimize-workforce', {
+                                defaultValue: 'Minimize workforce',
+                              })
+                        }
+                        delayDuration={300}
+                        side="bottom"
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          buttonContent="icon-only"
+                          buttonRadius="lg"
+                          className="shrink-0"
+                          onClick={toggleChatBox}
+                          aria-pressed={isChatBoxVisible}
+                          aria-label={
+                            isChatBoxVisible
+                              ? t('layout.expand-workforce', {
+                                  defaultValue: 'Expand workforce',
+                                })
+                              : t('layout.minimize-workforce', {
+                                  defaultValue: 'Minimize workforce',
+                                })
+                          }
+                        >
+                          {isChatBoxVisible ? (
+                            <Maximize2 className="h-4 w-4" />
+                          ) : (
+                            <Minimize2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TooltipSimple>
                     </div>
                   </div>
                   <div className="min-h-0 w-full flex-1">

@@ -56,6 +56,7 @@ import {
   PanelLeftClose,
   Plus,
   RefreshCw,
+  SquarePen,
   Zap,
   ZapOff,
 } from 'lucide-react';
@@ -1019,7 +1020,7 @@ export default function ProjectPageSidebar({
                 })}
                 onClick={() => requestWorkspaceChatFocus()}
               >
-                <Plus className="size-3.5" aria-hidden />
+                <SquarePen className="size-3.5" aria-hidden />
               </Button>
             </div>
             <div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto">

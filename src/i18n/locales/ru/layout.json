@@ -48,6 +48,8 @@
   "settings": "Настройки",
   "general": "Общие",
   "aiWorkforce": "Рабочая сила ИИ",
+  "expand-workforce": "Расширить рабочую область",
+  "minimize-workforce": "Сузить рабочую область",
   "chat-panel-left": "Показать чат слева",
   "chat-panel-right": "Показать чат справа",
   "triggers": "Триггеры",

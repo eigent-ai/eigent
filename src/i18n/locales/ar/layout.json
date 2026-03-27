@@ -48,6 +48,8 @@
   "settings": "الإعدادات",
   "general": "عام",
   "aiWorkforce": "قوة عمل الذكاء الاصطناعي",
+  "expand-workforce": "توسيع منطقة العمل",
+  "minimize-workforce": "تصغير منطقة العمل",
   "chat-panel-left": "إظهار الدردشة على اليسار",
   "chat-panel-right": "إظهار الدردشة على اليمين",
   "triggers": "المحفزات",

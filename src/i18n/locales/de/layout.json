@@ -48,6 +48,8 @@
   "settings": "Einstellungen",
   "general": "Allgemein",
   "aiWorkforce": "KI-Workforce",
+  "expand-workforce": "Workforce-Bereich vergrößern",
+  "minimize-workforce": "Workforce-Bereich verkleinern",
   "chat-panel-left": "Chat links anzeigen",
   "chat-panel-right": "Chat rechts anzeigen",
   "triggers": "Trigger",

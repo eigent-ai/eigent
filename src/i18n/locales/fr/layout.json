@@ -48,6 +48,8 @@
   "settings": "Paramètres",
   "general": "Général",
   "aiWorkforce": "Main-d'œuvre IA",
+  "expand-workforce": "Agrandir l'espace Workforce",
+  "minimize-workforce": "Réduire l'espace Workforce",
   "chat-panel-left": "Afficher le chat à gauche",
   "chat-panel-right": "Afficher le chat à droite",
   "triggers": "Déclencheurs",

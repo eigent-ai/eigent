@@ -48,6 +48,8 @@
   "settings": "设置",
   "general": "通用",
   "aiWorkforce": "AI 劳动力",
+  "expand-workforce": "展开工作区",
+  "minimize-workforce": "收起工作区",
   "chat-panel-left": "在左侧显示聊天",
   "chat-panel-right": "在右侧显示聊天",
   "triggers": "触发器",

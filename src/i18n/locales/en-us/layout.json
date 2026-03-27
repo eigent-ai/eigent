@@ -48,6 +48,8 @@
   "settings": "Settings",
   "general": "General",
   "aiWorkforce": "AI Workforce",
+  "expand-workforce": "Expand workforce",
+  "minimize-workforce": "Minimize workforce",
   "chat-panel-left": "Show chat on the left",
   "chat-panel-right": "Show chat on the right",
   "triggers": "Triggers",

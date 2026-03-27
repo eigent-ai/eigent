@@ -28,13 +28,25 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
+
+/** Minimum scroll padding under messages (matches previous ~8rem floor). */
+const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
+/** Small gap between last message and BottomBox top. */
+const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
@@ -49,6 +61,10 @@ export default function ChatBox(): JSX.Element {
   );
   const [hasModel, setHasModel] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
+  const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
+    CHAT_SCROLL_BOTTOM_MIN_PX
+  );
   /** Assumed true once past login/onboarding; in-chat banner can still opt-in via PUT. */
   const [privacy, setPrivacy] = useState(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -179,6 +195,28 @@ export default function ChatBox(): JSX.Element {
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);
+
+  useLayoutEffect(() => {
+    if (!chatStore?.activeTaskId || !hasAnyMessages) return;
+
+    const el = bottomBoxOverlayRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const raw = el.getBoundingClientRect().height;
+      setScrollBottomInsetPx(
+        Math.max(
+          CHAT_SCROLL_BOTTOM_MIN_PX,
+          Math.round(raw) + CHAT_SCROLL_BOTTOM_GAP_PX
+        )
+      );
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [chatStore?.activeTaskId, hasAnyMessages]);
 
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -964,6 +1002,7 @@ export default function ChatBox(): JSX.Element {
             {hasAnyMessages ? (
               <ProjectChatContainer
                 scrollContainerRef={scrollContainerRef}
+                scrollBottomInsetPx={scrollBottomInsetPx}
                 onSkip={handleSkip}
                 isPauseResumeLoading={isPauseResumeLoading}
               />
@@ -1116,7 +1155,10 @@ export default function ChatBox(): JSX.Element {
           </div>
 
           {chatStore.activeTaskId && hasAnyMessages && (
-            <div className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center">
+            <div
+              ref={bottomBoxOverlayRef}
+              className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            >
               <div className="px-sm pointer-events-auto w-full max-w-[600px]">
                 <BottomBox
                   state={getBottomBoxState()}

@@ -48,6 +48,8 @@
   "settings": "Ajustes",
   "general": "General",
   "aiWorkforce": "Fuerza laboral de IA",
+  "expand-workforce": "Ampliar el espacio de trabajo",
+  "minimize-workforce": "Reducir el espacio de trabajo",
   "chat-panel-left": "Mostrar chat a la izquierda",
   "chat-panel-right": "Mostrar chat a la derecha",
   "triggers": "Disparadores",

@@ -48,6 +48,8 @@
   "settings": "設定",
   "general": "一般",
   "aiWorkforce": "AIワークフォース",
+  "expand-workforce": "ワークフォース表示領域を広げる",
+  "minimize-workforce": "ワークフォース表示領域を狭める",
   "chat-panel-left": "チャットを左側に表示",
   "chat-panel-right": "チャットを右側に表示",
   "triggers": "トリガー",

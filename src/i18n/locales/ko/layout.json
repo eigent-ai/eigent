@@ -48,6 +48,8 @@
   "settings": "설정",
   "general": "일반",
   "aiWorkforce": "AI 워크포스",
+  "expand-workforce": "워크포스 영역 넓히기",
+  "minimize-workforce": "워크포스 영역 줄이기",
   "chat-panel-left": "채팅을 왼쪽에 표시",
   "chat-panel-right": "채팅을 오른쪽에 표시",
   "triggers": "트리거",
