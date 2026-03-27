@@ -12,9 +12,19 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
+from app.service.task import (
+    ActionActivateAgentData,
+    ActionActivateToolkitData,
+    ActionBudgetNotEnough,
+    ActionDeactivateAgentData,
+    ActionDeactivateToolkitData,
+)
+from app.utils.event_loop_utils import _schedule_async_task
 from camel.agents import (
     AgentCallback,
     AgentEvent,
@@ -26,21 +36,11 @@ from camel.agents import (
     ToolStartedEvent,
 )
 
-from app.service.task import (
-    ActionActivateAgentData,
-    ActionActivateToolkitData,
-    ActionBudgetNotEnough,
-    ActionDeactivateAgentData,
-    ActionDeactivateToolkitData,
-)
-from app.utils.event_loop_utils import _schedule_async_task
-
 if TYPE_CHECKING:
+    from app.agent.listen_chat_agent import ListenChatAgent
     from camel.toolkits import FunctionTool
 
-    from app.agent.listen_chat_agent import ListenChatAgent
-
-logger = logging.getLogger("agent")
+logger = logging.getLogger("listen_chat_agent_callback")
 
 
 def _get_total_tokens(event: StepCompletedEvent) -> int:
@@ -51,33 +51,28 @@ def _get_total_tokens(event: StepCompletedEvent) -> int:
 class ListenChatAgentCallback(AgentCallback):
     """Bridge CAMEL agent lifecycle events into Eigent task actions."""
 
-    def __init__(self, agent: "ListenChatAgent") -> None:
+    def __init__(self, agent: ListenChatAgent) -> None:
         self._agent = agent
 
     def handle_event(self, event: AgentEvent) -> None:
         if isinstance(event, StepStartedEvent):
             self._handle_step_started(event)
-            return
-        if isinstance(event, StepCompletedEvent):
+        elif isinstance(event, StepCompletedEvent):
             self._handle_step_completed(event)
-            return
-        if isinstance(event, StepFailedEvent):
+        elif isinstance(event, StepFailedEvent):
             self._handle_step_failed(event)
-            return
-        if isinstance(event, ToolStartedEvent):
+        elif isinstance(event, ToolStartedEvent):
             self._handle_tool_started(event)
-            return
-        if isinstance(event, ToolCompletedEvent):
+        elif isinstance(event, ToolCompletedEvent):
             self._handle_tool_completed(event)
-            return
-        if isinstance(event, ToolFailedEvent):
+        elif isinstance(event, ToolFailedEvent):
             self._handle_tool_failed(event)
 
     def _queue_action(self, action) -> None:
         task_lock = self._agent._ensure_task_lock()
         _schedule_async_task(task_lock.put_queue(action))
 
-    def _resolve_tool(self, tool_name: str) -> "FunctionTool | None":
+    def _resolve_tool(self, tool_name: str) -> FunctionTool | None:
         return self._agent._internal_tools.get(tool_name)
 
     def _should_skip_toolkit_event(self, tool_name: str) -> bool:
