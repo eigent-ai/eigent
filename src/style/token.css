@@ -703,7 +703,7 @@
     --fill-scrollbar-light: var(--colors-primary-1);
     --fill-skeloten-default: var(--colors-primary-2);
     --fill-fill-information: var(--colors-blue-default);
-    --bg-page: var(--colors-primary-2);
+    --bg-page: var(--colors-primary-1);
     --bg-primary: var(--colors-primary-1);
     --bg-secondary: var(--colors-primary-2);
     --bg-tertiary: var(--colors-primary-3);
