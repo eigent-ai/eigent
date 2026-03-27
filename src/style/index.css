@@ -353,12 +353,14 @@ code {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
+  max-height: 25%;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
   background-color: rgba(156, 163, 175, 0.4);
   border-radius: 4px;
+  max-height: 25%;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
@@ -605,5 +607,32 @@ code {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+/* Chat: single-agent "working" — shimmer painted on the text glyphs only */
+.single-agent-text-shimmer {
+  color: transparent;
+  background: linear-gradient(
+    110deg,
+    var(--text-body) 0%,
+    var(--text-body) 35%,
+    var(--colors-primary-4) 50%,
+    var(--text-body) 65%,
+    var(--text-body) 100%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: single-agent-text-shimmer 2.5s ease-in-out infinite;
+}
+
+@keyframes single-agent-text-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -50% 0;
   }
 }

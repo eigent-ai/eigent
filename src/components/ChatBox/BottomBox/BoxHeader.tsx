@@ -14,6 +14,7 @@
 
 import { AnimateIcon } from '@/components/animate-ui/icons/icon';
 import { Orbit } from '@/components/animate-ui/icons/orbit';
+import { UserMessageRichContent } from '@/components/ChatBox/MessageItem/UserMessageRichContent';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
@@ -31,11 +32,11 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
   return (
     <div
       className={cn(
-        'mb-2 flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 gap-1 flex w-full flex-col items-start justify-center',
         className
       )}
     >
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center">
         <Button
           variant="ghost"
           size="sm"
@@ -50,8 +51,8 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
           </AnimateIcon>
         </Button>
 
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          <span className="whitespace-nowrap text-sm font-bold text-text-information">
+        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
+          <span className="text-sm font-bold text-text-information whitespace-nowrap">
             {t('chat.splitting-tasks')}
           </span>
         </div>
@@ -82,11 +83,11 @@ export const BoxHeaderConfirm = ({
   return (
     <div
       className={cn(
-        'mb-2 flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 gap-1 flex w-full flex-col items-start justify-center',
         className
       )}
     >
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center">
         <Button
           variant="ghost"
           size="sm"
@@ -96,14 +97,16 @@ export const BoxHeaderConfirm = ({
           <ChevronLeft size={16} className="text-icon-primary" />
         </Button>
 
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          {subtitle && (
-            <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-              <span className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal text-text-label">
-                {subtitle}
-              </span>
+        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
+          {subtitle ? (
+            <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden">
+              <UserMessageRichContent
+                content={subtitle}
+                variant="compact"
+                className="w-full"
+              />
             </div>
-          )}
+          ) : null}
         </div>
 
         <Button

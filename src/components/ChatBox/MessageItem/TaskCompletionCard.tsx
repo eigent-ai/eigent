@@ -15,17 +15,18 @@
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 interface TaskCompletionCardProps {
   taskPrompt?: string;
   onRerun?: () => void;
+  onDismiss?: () => void;
 }
 
 export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
   taskPrompt = '',
-  onRerun,
+  onDismiss,
 }) => {
   const { t } = useTranslation();
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
@@ -39,11 +40,26 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="flex w-full flex-row items-center gap-2 rounded-xl bg-surface-primary p-3"
+        transition={{ duration: 0.25 }}
+        className="group rounded-xl bg-surface-primary p-3 relative flex w-full flex-row items-center"
       >
-        {/* Description */}
-        <div className="flex w-full flex-col">
+        {onDismiss && (
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            buttonRadius="full"
+            buttonContent="icon-only"
+            onClick={onDismiss}
+            className="-top-2 -right-2 pointer-events-none absolute z-10 shrink-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+            aria-label={t('chat.close')}
+          >
+            <X />
+          </Button>
+        )}
+        <div
+          className={`min-w-0 gap-0.5 flex w-full flex-col ${onDismiss ? 'pr-10' : ''}`}
+        >
           <div className="text-label-sm font-bold leading-normal text-text-body">
             {t('chat.task-completed-card-title')}
           </div>
@@ -55,7 +71,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
           variant="primary"
           size="sm"
           onClick={handleAddTrigger}
-          className="h-fit rounded-lg"
+          className="rounded-lg h-fit"
         >
           <Plus className="h-4 w-4" />
           {t('triggers.add-trigger')}

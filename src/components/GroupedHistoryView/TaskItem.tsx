@@ -102,17 +102,17 @@ export default function TaskItem({
   return (
     <div
       onClick={onSelect}
-      className={` ${isActive ? '!bg-white-100%' : ''} relative flex h-14 w-full cursor-pointer items-center justify-between gap-md rounded-xl border border-solid border-border-disabled bg-white-30% p-3 shadow-history-item transition-all duration-300 hover:bg-white-100% ${!isLast ? 'mb-2' : ''} `}
+      className={` ${isActive ? '!bg-white-100%' : ''} h-14 gap-md rounded-xl border-border-disabled bg-white-30% p-3 shadow-history-item hover:bg-white-100% relative flex w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300 ${!isLast ? 'mb-2' : ''} `}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="min-w-0 gap-2 flex flex-1 items-center">
         <TooltipSimple content={t('layout.tasks')}>
           <Pin className="h-4 w-4 text-icon-primary" />
         </TooltipSimple>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="min-w-0 gap-1 flex flex-1 flex-col">
           <TooltipSimple
             align="start"
-            className="pointer-events-auto max-w-xs select-text text-wrap break-words bg-surface-tertiary p-2 text-label-xs shadow-perfect"
+            className="max-w-xs bg-surface-tertiary p-2 text-label-xs shadow-perfect pointer-events-auto text-wrap break-words select-text"
             content={
               <div className="space-y-1">
                 <div className="font-medium">
@@ -128,14 +128,14 @@ export default function TaskItem({
               </div>
             }
           >
-            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-text-body">
+            <span className="text-sm font-medium text-text-body block overflow-hidden text-ellipsis whitespace-nowrap">
               {task.summary || task.question || t('layout.new-project')}
             </span>
           </TooltipSimple>
         </div>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-2">
+      <div className="gap-2 flex flex-shrink-0 items-center">
         {!isOngoing && getStatusTag(task.status)}
 
         <Tag variant="info" size="sm">
@@ -165,7 +165,8 @@ export default function TaskItem({
           <Popover>
             <PopoverTrigger asChild>
               <Button
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 onClick={(e) => e.stopPropagation()}
                 variant="ghost"
                 className="rounded-full"
@@ -175,7 +176,7 @@ export default function TaskItem({
             </PopoverTrigger>
             <PopoverContent
               align="end"
-              className="w-[98px] rounded-[12px] border border-solid border-dropdown-border bg-dropdown-bg p-sm"
+              className="border-dropdown-border bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid"
             >
               <div className="space-y-1">
                 {!isOngoing && (

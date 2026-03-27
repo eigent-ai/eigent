@@ -2,6 +2,8 @@
   "welcome-to-eigent": "Eigent에 오신 것을 환영합니다",
   "how-can-i-help-you": "무엇을 도와드릴까요?",
   "ask-placeholder": "오늘 무엇을 달성하고 싶으신가요?",
+  "select-agent": "에이전트 선택",
+  "clear-agent": "에이전트 해제",
   "select-file": "파일 선택",
   "all-files": "모든 파일",
   "token": "토큰",
@@ -58,6 +60,7 @@
   "remove-file": "파일 제거",
   "drop-files-to-attach": "첨부할 파일을 여기에 놓으세요",
   "expand-input": "입력 확장 (⌘P)",
+  "collapse-input": "입력 접기 (⌘P)",
   "queued-tasks": "대기 중인 작업",
   "remove-queued-message": "대기 중인 메시지 제거",
   "no-agents-added": "에이전트가 추가되지 않았습니다",
@@ -67,5 +70,8 @@
   "open-in-file-manager": "파일 관리자에서 열기",
   "failed-to-open-folder": "폴더를 열 수 없습니다",
   "task-completed-card-title": "작업 완료",
-  "task-completed-card-subtitle": "트리거로 작업을 자동화하세요"
+  "task-completed-card-subtitle": "트리거로 작업을 자동화하세요",
+  "single-agent-working": "{{agent}}가 열심히 작업 중입니다",
+  "agent-outcome-expand": "펼치기",
+  "agent-outcome-collapse": "접기"
 }

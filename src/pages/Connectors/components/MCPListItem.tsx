@@ -71,7 +71,7 @@ export default function MCPListItem({
 						<PopoverTrigger asChild>
 							<Button
 								variant="ghost"
-								size="icon"
+								size="xs" buttonContent="icon-only"
 								onClick={() => setShowMenu((v) => !v)}
 								disabled={loading}
 							>

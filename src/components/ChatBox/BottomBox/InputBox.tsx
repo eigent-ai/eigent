@@ -19,7 +19,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Textarea } from '@/components/ui/textarea';
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
@@ -28,15 +27,17 @@ import {
   ArrowRight,
   FileText,
   Image,
+  Maximize2,
   Plus,
   UploadCloud,
   X,
   Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ExpandedInputBox } from './ExpandedInputBox';
+import { RichChatInput } from './RichChatInput';
 
 // Module-level singleton to track which InputBox instance has the expanded dialog open
 // This prevents multiple dialogs from opening when Cmd+P is pressed
@@ -72,10 +73,12 @@ export interface InputboxProps {
   disabled?: boolean;
   /** Additional CSS classes */
   className?: string;
-  /** Ref for textarea */
-  textareaRef?: React.RefObject<HTMLTextAreaElement>;
+  /** Ref for the rich text input surface (contenteditable) */
+  textareaRef?: React.RefObject<HTMLDivElement | null>;
   /** Allow drag and drop */
   allowDragDrop?: boolean;
+  /** Privacy mode enabled */
+  privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
   /** Callback when trigger is being created (for placeholder) */
@@ -84,6 +87,10 @@ export interface InputboxProps {
   onTriggerCreated?: (triggerData: TriggerInput) => void;
   /** Hide the expand button (used when InputBox is already inside ExpandedInputBox) */
   hideExpandButton?: boolean;
+  /** When true, show collapse control in the expand slot (expanded modal) */
+  isExpandedInput?: boolean;
+  /** Called when user collapses from expanded input (same control as expand) */
+  onCollapseExpanded?: () => void;
 }
 
 /**
@@ -94,7 +101,7 @@ export interface InputboxProps {
  * - **Focus/Input**: Active state with content, file attachments, and active send button
  *
  * Features:
- * - Auto-expanding textarea (up to 100px height)
+ * - Auto-expanding rich text input (links + #skills, up to 200px height)
  * - File attachment display (shows up to 5 files + count indicator)
  * - Action buttons (add file on left, send on right)
  * - Send button changes color based on content (gray when empty, green when has content)
@@ -137,13 +144,16 @@ export const Inputbox = ({
   className,
   textareaRef: externalTextareaRef,
   allowDragDrop = false,
+  privacy = true,
   useCloudModelInDev = false,
-  onTriggerCreating,
-  onTriggerCreated,
+  onTriggerCreating: _onTriggerCreating,
+  onTriggerCreated: _onTriggerCreated,
   hideExpandButton = false,
+  isExpandedInput = false,
+  onCollapseExpanded,
 }: InputboxProps) => {
   const { t } = useTranslation();
-  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -154,10 +164,8 @@ export const Inputbox = ({
   const [isComposing, setIsComposing] = useState(false);
   const [isExpandedDialogOpen, setIsExpandedDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const instanceIdRef = useRef<string>(
-    `inputbox-${Math.random().toString(36).substr(2, 9)}`
-  );
+  const reactId = React.useId();
+  const instanceIdRef = useRef<string>(`inputbox-${reactId}`);
 
   // Handle dialog open/close with singleton tracking
   const handleExpandedDialogChange = useCallback((open: boolean) => {
@@ -228,9 +236,12 @@ export const Inputbox = ({
   const hasContent = value.trim().length > 0 || files.length > 0;
   const isActive = isFocused || hasContent;
 
-  const handleTextChange = (newValue: string) => {
-    onChange?.(newValue);
-  };
+  const handleTextChange = useCallback(
+    (newValue: string, _cursorPos?: number) => {
+      onChange?.(newValue);
+    },
+    [onChange]
+  );
 
   const handleSend = () => {
     if (value.trim().length > 0 && !disabled) {
@@ -242,7 +253,7 @@ export const Inputbox = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !disabled && !isComposing) {
       e.preventDefault();
       handleSend();
@@ -257,9 +268,9 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="h-4 w-4 text-icon-primary" />;
+      return <Image className="size-3.5 text-icon-primary" />;
     }
-    return <FileText className="h-4 w-4 text-icon-primary" />;
+    return <FileText className="size-3.5 text-icon-primary" />;
   };
 
   // Drag & drop handlers
@@ -272,7 +283,7 @@ export const Inputbox = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || useCloudModelInDev) return;
+    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -281,7 +292,7 @@ export const Inputbox = ({
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || useCloudModelInDev) return;
+    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -301,7 +312,8 @@ export const Inputbox = ({
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
-    if (!allowDragDrop || useCloudModelInDev) return;
+    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
       if (dropped.length === 0) return;
@@ -332,7 +344,7 @@ export const Inputbox = ({
   return (
     <div
       className={cn(
-        'relative box-border flex w-full flex-col items-start rounded-2xl border border-solid border-input-border-default bg-input-bg-input px-2 pb-2 pt-0 transition-colors',
+        'rounded-3xl border-input-border-default bg-input-bg-input p-3 relative box-border flex w-full flex-col items-start border border-solid transition-colors',
         isFocused && 'border-input-border-focus',
         isDragging && 'border-info-primary bg-info-primary/10',
         className
@@ -343,60 +355,56 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="border-info-primary bg-info-primary/10 text-info-primary pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed backdrop-blur-sm">
+        <div className="border-info-primary bg-info-primary/10 text-info-primary inset-0 gap-2 rounded-2xl backdrop-blur-sm pointer-events-none absolute z-20 flex flex-col items-center justify-center border-2 border-dashed">
           <UploadCloud className="h-8 w-8" />
           <div className="text-sm font-semibold">
             {t('chat.drop-files-to-attach')}
           </div>
         </div>
       )}
-      {/* Text Input Area */}
-      <div className="relative box-border flex w-full flex-1 items-start justify-center gap-2.5 px-0 pb-2 pt-2.5">
-        <div className="relative mx-2 box-border flex min-h-px min-w-px flex-1 items-center justify-center gap-2.5 py-0">
-          <Textarea
-            variant="none"
-            size="default"
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => handleTextChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+      {/* Layer 1: Expand input controls */}
+      <div className="gap-2 relative box-border flex w-full items-center justify-end">
+        {isExpandedInput ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            textWeight="bold"
+            buttonRadius="full"
+            className="shrink-0 opacity-40"
+            onClick={() => onCollapseExpanded?.()}
             disabled={disabled}
-            placeholder={t('chat.ask-placeholder')}
-            className={cn(
-              'flex-1 resize-none',
-              'border-none shadow-none focus-visible:outline-none focus-visible:ring-0',
-              'max-h-[200px] min-h-[40px] px-0 py-0',
-              'scrollbar overflow-auto',
-              'placeholder:text-text-label',
-              isActive ? 'text-input-text-focus' : 'text-input-text-default'
-            )}
-            style={{
-              fontFamily: 'Inter',
-            }}
-            rows={1}
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = 'auto';
-              el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-            }}
-          />
-        </div>
+            title={t('chat.collapse-input')}
+          >
+            <X className="text-icon-primary size-3.5" />
+          </Button>
+        ) : !hideExpandButton ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            textWeight="bold"
+            buttonRadius="full"
+            className="shrink-0 opacity-40"
+            onClick={() => handleExpandedDialogChange(true)}
+            disabled={disabled}
+            title={t('chat.expand-input')}
+          >
+            <Maximize2 className="text-icon-primary size-3.5" />
+          </Button>
+        ) : null}
       </div>
 
-      {/* File Attachments (only show if has files) */}
+      {/* Layer 2: File attachments (only show if has files) */}
       {files.length > 0 && (
-        <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2 pt-0">
+        <div className="gap-1 pt-2 relative box-border flex w-full flex-wrap items-start">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;
             return (
               <div
                 key={file.filePath}
                 className={cn(
-                  'relative box-border flex h-auto max-w-32 items-center gap-0.5 rounded-lg bg-tag-surface pr-1'
+                  'max-w-24 gap-0.5 rounded-md bg-tag-surface pr-1 relative box-border flex h-auto items-center'
                 )}
                 onMouseEnter={() => setHoveredFilePath(file.filePath)}
                 onMouseLeave={() =>
@@ -409,7 +417,7 @@ export const Inputbox = ({
                 <a
                   href="#"
                   className={cn(
-                    'flex h-6 w-6 cursor-pointer items-center justify-center rounded-md'
+                    'h-6 w-6 rounded-md flex cursor-pointer items-center justify-center'
                   )}
                   onClick={(e) => {
                     e.preventDefault();
@@ -419,7 +427,7 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-4 text-icon-secondary" />
+                    <X className="size-3.5 text-icon-secondary" />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -428,7 +436,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <p
                   className={cn(
-                    "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body"
+                    "my-0 text-xs font-bold leading-tight text-text-body relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
                   )}
                   title={file.fileName}
                 >
@@ -442,34 +450,38 @@ export const Inputbox = ({
             <Popover open={isRemainingOpen} onOpenChange={setIsRemainingOpen}>
               <PopoverTrigger asChild>
                 <Button
-                  size="icon"
+                  size="xs"
                   variant="ghost"
-                  className="relative box-border flex h-auto items-center rounded-lg bg-tag-surface"
+                  buttonContent="text"
+                  textWeight="bold"
+                  buttonRadius="full"
+                  className="rounded-lg bg-tag-surface relative box-border flex h-auto items-center"
                   onMouseEnter={openRemainingPopover}
                   onMouseLeave={scheduleCloseRemainingPopover}
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body">
+                  <p className="my-0 text-xs font-bold leading-tight text-text-body font-['Inter'] whitespace-nowrap">
                     {remainingCount}+
                   </p>
                 </Button>
               </PopoverTrigger>
               <PopoverContent
                 align="end"
+                side="right"
                 sideOffset={4}
-                className="!w-auto max-w-40 rounded-md border border-dropdown-border bg-dropdown-bg p-1 shadow-perfect"
+                className="max-w-40 rounded-lg border-dropdown-border bg-dropdown-bg p-1 shadow-perfect !w-auto border"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
-                <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
+                <div className="scrollbar-hide gap-1 flex max-h-[176px] flex-col overflow-auto">
                   {files.slice(maxVisibleFiles).map((file) => {
                     const isHovered = hoveredFilePath === file.filePath;
                     return (
                       <div
                         key={file.filePath}
-                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-tag-surface px-1 py-0.5 transition-colors duration-300 hover:bg-tag-surface-hover"
+                        className="gap-1 rounded-lg bg-tag-surface px-1 py-0.5 hover:bg-tag-surface-hover flex cursor-pointer items-center transition-colors duration-300"
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
@@ -480,7 +492,7 @@ export const Inputbox = ({
                         <a
                           href="#"
                           className={cn(
-                            'flex h-6 w-6 cursor-pointer items-center justify-center rounded-md'
+                            'h-6 w-6 rounded-md flex cursor-pointer items-center justify-center'
                           )}
                           onClick={(e) => {
                             e.preventDefault();
@@ -498,7 +510,7 @@ export const Inputbox = ({
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body">
+                        <p className="my-0 text-xs font-bold leading-tight text-text-body flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap">
                           {file.fileName}
                         </p>
                       </div>
@@ -511,29 +523,65 @@ export const Inputbox = ({
         </div>
       )}
 
-      {/* Action Buttons */}
+      {/* Layer 3: Text input area */}
+      <div className="gap-2.5 py-3 relative box-border flex w-full flex-1 items-start justify-center">
+        <RichChatInput
+          ref={textareaRef as React.RefObject<HTMLDivElement>}
+          value={value}
+          onChange={(next, cursorPos) =>
+            handleTextChange(next, cursorPos ?? undefined)
+          }
+          onKeyDown={handleKeyDown}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => setIsComposing(false)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          disabled={disabled}
+          placeholder={t('chat.ask-placeholder')}
+          className={cn(
+            'border-none shadow-none focus-visible:ring-0',
+            'max-h-[200px] min-h-[40px]'
+          )}
+          textClassName={
+            isActive ? 'text-input-text-focus' : 'text-input-text-default'
+          }
+          style={{
+            fontFamily: 'Inter',
+            fontSize: '13px',
+            lineHeight: '20px',
+          }}
+          maxHeightPx={200}
+        />
+      </div>
+
+      {/* Layer 4: Action buttons */}
       <div className="relative flex w-full items-center justify-between">
         {/* Left: Add File Button and Add Trigger Button */}
-        <div className="relative flex items-center gap-1">
+        <div className="gap-1 relative flex items-center">
           <Button
-            variant="outline"
-            size="icon"
-            className="rounded-lg shadow-none"
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            textWeight="bold"
+            buttonRadius="lg"
             onClick={onAddFile}
-            disabled={disabled || useCloudModelInDev}
+            disabled={disabled || !privacy || useCloudModelInDev}
           >
-            <Plus size={16} className="text-icon-primary" />
+            <Plus className="text-icon-primary" />
           </Button>
 
           {/* Add Trigger Button - opens TriggerDialog */}
           <Button
             variant="ghost"
             size="xs"
+            buttonContent="text"
+            textWeight="bold"
+            buttonRadius="full"
             className="rounded-lg"
             disabled={disabled}
             onClick={() => setTriggerDialogOpen(true)}
           >
-            <Zap size={16} className="text-icon-primary" />
+            <Zap className="text-icon-primary" />
             {t('triggers.trigger-label')}
           </Button>
 
@@ -547,36 +595,25 @@ export const Inputbox = ({
         </div>
 
         {/* Right: Send Button */}
-        <div className="flex items-center gap-1">
-          {/* Expand Input Dialog Button - hidden when inside ExpandedInputBox */}
-          {/*{!hideExpandButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-lg"
-              onClick={() => handleExpandedDialogChange(true)}
-              disabled={disabled}
-              title={t('chat.expand-input')}
-            >
-              <Maximize size={16} className="text-icon-primary" />
-            </Button>
-          )}*/}
+        <div className="gap-1 flex items-center">
           <Button
-            size="icon"
+            size="xs"
+            buttonContent="icon-only"
+            textWeight="bold"
+            buttonRadius="full"
             variant={value.trim().length > 0 ? 'success' : 'secondary'}
             className="rounded-full"
             onClick={handleSend}
             disabled={disabled || value.trim().length === 0}
           >
             <ArrowRight
-              size={16}
               className={cn(
                 'text-button-primary-icon-default transition-transform duration-200',
                 value.trim().length > 0 && 'rotate-[-90deg]'
               )}
             />
             {/* Inner shadow highlight (from Figma design) */}
-            <div className="pointer-events-none absolute inset-0 shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
+            <div className="inset-0 pointer-events-none absolute shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
           </Button>
         </div>
 
@@ -592,6 +629,7 @@ export const Inputbox = ({
                 onFilesChange,
                 onAddFile,
                 disabled,
+                privacy,
                 useCloudModelInDev,
               }}
               onClose={() => handleExpandedDialogChange(false)}

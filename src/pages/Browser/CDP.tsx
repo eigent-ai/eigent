@@ -245,7 +245,8 @@ export default function CDP() {
                   </div>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="xs"
+                    buttonContent="icon-only"
                     onClick={() => setBrowserToRemove(browser)}
                     disabled={deletingBrowser === browser.id}
                     className="ml-3 flex-shrink-0"
