@@ -14,7 +14,7 @@
 - Config Center (store secrets/params required by tools/capabilities)
   - `GET /configs`, `POST /configs`, `PUT /configs/{id}`, `DELETE /configs/{id}`, `GET /config/info`
 - Chat & Data
-  - History, snapshots, sharing, etc. in `app/controller/chat/`, all persisted to local DB
+  - History, snapshots, sharing, etc. in `app/domains/chat/api/`, all persisted to local DB
 - MCP Management (import local/remote MCP servers)
   - `GET /mcps`, `POST /mcp/install`, `POST /mcp/import/{Local|Remote}`, etc.
 

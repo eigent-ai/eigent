@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { checkLocalServerStale } from '@/api/http';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
@@ -192,6 +193,10 @@ export default function Home() {
     // Reset input
     e.target.value = '';
   };
+
+  useEffect(() => {
+    checkLocalServerStale();
+  }, []);
 
   // Detect files and triggers when project loads
   useEffect(() => {
