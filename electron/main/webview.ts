@@ -21,6 +21,7 @@ interface WebViewInfo {
   currentUrl: string;
   isActive: boolean;
   isShow: boolean;
+  isAttached: boolean;
 }
 
 interface Size {
@@ -45,12 +46,68 @@ export class WebViewManager {
   // IPC handlers should be registered once in the main process
 
   public async captureWebview(webviewId: string) {
-    const webContents = this.webViews.get(webviewId);
-    if (!webContents) return null;
+    const webViewInfo = this.webViews.get(webviewId);
+    if (!webViewInfo || webViewInfo.view.webContents.isDestroyed()) return null;
 
-    const image = await webContents.view.webContents.capturePage();
-    const jpegBuffer = image.toJPEG(10);
-    return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
+    // If the view is attached (visible to user), use the fast capturePage path
+    if (webViewInfo.isAttached) {
+      const image = await webViewInfo.view.webContents.capturePage();
+      const jpegBuffer = image.toJPEG(10);
+      return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
+    }
+
+    // For detached views, use CDP Page.captureScreenshot which works
+    // independently of the native view hierarchy
+    try {
+      webViewInfo.view.webContents.debugger.attach('1.3');
+      const result = await webViewInfo.view.webContents.debugger.sendCommand(
+        'Page.captureScreenshot',
+        { format: 'jpeg', quality: 10 }
+      );
+      webViewInfo.view.webContents.debugger.detach();
+      return 'data:image/jpeg;base64,' + result.data;
+    } catch {
+      try {
+        webViewInfo.view.webContents.debugger.detach();
+      } catch {
+        // debugger was not attached, ignore
+      }
+      return null;
+    }
+  }
+
+  private getHiddenBounds(id: string): Size {
+    const numericId = Number.parseInt(id, 10);
+    const offset = Number.isFinite(numericId) ? numericId * 10 : 0;
+
+    return {
+      x: -10000 - offset,
+      y: -10000 - offset,
+      width: 1,
+      height: 1,
+    };
+  }
+
+  private hideNativeView(webview: WebViewInfo) {
+    // WebContentsView is a native child view and renders above the renderer DOM.
+    // Remove it from the child hierarchy entirely so macOS compositor cannot surface it.
+    webview.view.setVisible(false);
+    webview.view.setBounds(this.getHiddenBounds(webview.id));
+    this.detachFromWindow(webview);
+  }
+
+  private attachToWindow(webview: WebViewInfo) {
+    if (!webview.isAttached && this.win?.contentView) {
+      this.win.contentView.addChildView(webview.view);
+      webview.isAttached = true;
+    }
+  }
+
+  private detachFromWindow(webview: WebViewInfo) {
+    if (webview.isAttached && this.win?.contentView) {
+      this.win.contentView.removeChildView(webview.view);
+      webview.isAttached = false;
+    }
   }
 
   public setSize(size: Size) {
@@ -204,14 +261,9 @@ export class WebViewManager {
 
       // Set to muted state when created
       view.webContents.audioMuted = true;
-      let newId = Number(id);
-      view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
       view.setBorderRadius(16);
+      view.setVisible(false);
+      view.setBounds(this.getHiddenBounds(id));
 
       await view.webContents.loadURL(url);
 
@@ -222,6 +274,7 @@ export class WebViewManager {
         currentUrl: url,
         isActive: false,
         isShow: false,
+        isAttached: false,
       };
       // view.webContents.on("did-navigate", (event, url) => {
       //   const win = BrowserWindow.fromWebContents(event.sender);
@@ -257,12 +310,7 @@ export class WebViewManager {
           this.win?.webContents.send('url-updated', navigationUrl);
           return;
         }
-        webViewInfo.view.setBounds({
-          x: -1919,
-          y: -1079,
-          width: 1920,
-          height: 1080,
-        });
+        this.hideNativeView(webViewInfo);
         const activeSize = this.getActiveWebview().length;
         const allSize = Array.from(this.webViews.values()).length;
         const inactiveSize = allSize - activeSize;
@@ -306,10 +354,12 @@ export class WebViewManager {
 
         return { action: 'deny' };
       });
-      // Store in Map
+      // Store in Map but do NOT addChildView here.
+      // Views are only attached to the window when explicitly shown (showWebview).
+      // This prevents macOS compositor from briefly surfacing hidden native views
+      // above the main app UI.
       this.webViews.set(id, webViewInfo);
 
-      this.win?.contentView.addChildView(view);
       return { success: true, id, hidden: true };
     } catch (error: any) {
       console.error(`Failed to create hidden webview ${id}:`, error);
@@ -326,6 +376,8 @@ export class WebViewManager {
 
       const { x, y, width, height } = size;
       if (webViewInfo.isActive && webViewInfo.isShow) {
+        this.attachToWindow(webViewInfo);
+        webViewInfo.view.setVisible(true);
         webViewInfo.view.setBounds({
           x,
           y,
@@ -333,13 +385,7 @@ export class WebViewManager {
           height: Math.max(height, 100),
         });
       } else {
-        let newId = Number(id);
-        webViewInfo.view.setBounds({
-          x: -9999 + newId * 100,
-          y: -9999 + newId * 100,
-          width: Math.max(width, 100),
-          height: Math.max(height, 100),
-        });
+        this.hideNativeView(webViewInfo);
       }
 
       return { success: true };
@@ -354,14 +400,8 @@ export class WebViewManager {
     if (!webViewInfo) {
       return { success: false, error: `Webview with id ${id} not found` };
     }
-    let newId = Number(id);
-    webViewInfo.view.setBounds({
-      x: -9999 + newId * 100,
-      y: -9999 + newId * 100,
-      width: 100,
-      height: 100,
-    });
     webViewInfo.isShow = false;
+    this.hideNativeView(webViewInfo);
 
     if (
       webViewInfo.view.webContents &&
@@ -374,14 +414,8 @@ export class WebViewManager {
   }
   public hideAllWebview() {
     this.webViews.forEach((webview) => {
-      let newId = Number(webview.id);
-      webview.view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
       webview.isShow = false;
+      this.hideNativeView(webview);
 
       if (webview.view.webContents && !webview.view.webContents.isDestroyed()) {
         webview.view.webContents.setBackgroundThrottling(true);
@@ -405,6 +439,8 @@ export class WebViewManager {
     const currentUrl = webViewInfo.view.webContents.getURL();
     this.win?.webContents.send('url-updated', currentUrl);
     webViewInfo.isShow = true;
+    // Attach to window BEFORE making visible so the view can render
+    this.attachToWindow(webViewInfo);
     this.changeViewSize(id, this.size);
     console.log('showWebview', id, this.size);
 
@@ -447,10 +483,8 @@ export class WebViewManager {
         webViewInfo.view.webContents.session.clearCache();
       }
 
-      // remove webview from parent container
-      if (this.win?.contentView) {
-        this.win.contentView.removeChildView(webViewInfo.view);
-      }
+      // remove webview from parent container (if attached)
+      this.detachFromWindow(webViewInfo);
 
       // destroy webview
       webViewInfo.view.webContents.close();
