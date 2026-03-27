@@ -25,30 +25,89 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
-import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import {
-  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   House,
   Minus,
-  PanelLeft,
-  PanelLeftClose,
   Plus,
   Power,
   Settings,
   Share,
+  Sparkles,
   Square,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  NavigationType,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+} from 'react-router-dom';
 import { toast } from 'sonner';
+
+/** Tracks linear in-app history so back/forward buttons can enable/disable like a browser. */
+function useStackNavigationBounds() {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const seededRef = useRef(false);
+  const stackRef = useRef<string[]>([]);
+  const indexRef = useRef(0);
+  const [bounds, setBounds] = useState({
+    canGoBack: false,
+    canGoForward: false,
+  });
+
+  useEffect(() => {
+    const fullPath = `${location.pathname}${location.search}`;
+
+    if (!seededRef.current) {
+      seededRef.current = true;
+      stackRef.current = [fullPath];
+      indexRef.current = 0;
+      setBounds({ canGoBack: false, canGoForward: false });
+      return;
+    }
+
+    if (navigationType === NavigationType.Push) {
+      const stack = stackRef.current;
+      const idx = indexRef.current;
+      stackRef.current = [...stack.slice(0, idx + 1), fullPath];
+      indexRef.current = stackRef.current.length - 1;
+    } else if (navigationType === NavigationType.Replace) {
+      stackRef.current[indexRef.current] = fullPath;
+    } else {
+      const stack = stackRef.current;
+      let idx = indexRef.current;
+      if (idx > 0 && stack[idx - 1] === fullPath) {
+        indexRef.current = idx - 1;
+      } else if (idx < stack.length - 1 && stack[idx + 1] === fullPath) {
+        indexRef.current = idx + 1;
+      } else {
+        const found = stack.lastIndexOf(fullPath);
+        if (found !== -1) {
+          indexRef.current = found;
+        }
+      }
+    }
+
+    const i = indexRef.current;
+    const s = stackRef.current;
+    setBounds({
+      canGoBack: i > 0,
+      canGoForward: i < s.length - 1,
+    });
+  }, [location.pathname, location.search, navigationType]);
+
+  return bounds;
+}
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -57,14 +116,12 @@ function HeaderWin() {
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
+  const { canGoBack, canGoForward } = useStackNavigationBounds();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
   const projectSidebarCollapsed = usePageTabStore(
     (s) => s.projectSidebarCollapsed
-  );
-  const toggleProjectSidebarCollapsed = usePageTabStore(
-    (s) => s.toggleProjectSidebarCollapsed
   );
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
@@ -97,8 +154,8 @@ function HeaderWin() {
     return t('layout.new-project');
   }, [chatStore, summaryTask, t]);
 
-  const dashboardActive = useMemo(() => {
-    const path = location.pathname.replace(/\/$/, '');
+  const isHistoryRoute = useMemo(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/';
     return path === '/history' || path.endsWith('/history');
   }, [location.pathname]);
 
@@ -216,30 +273,48 @@ function HeaderWin() {
       {/* center */}
       <div className="drag pr-2 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
-          {location.pathname === '/history' && (
-            <div className="mr-1 flex items-center">
-              <Button
-                variant="ghost"
-                size="xs"
-                className="no-drag rounded-full"
-                onClick={() => navigate('/')}
-              >
-                <ChevronLeft className="h-4 w-4 text-text-label" />
-              </Button>
-            </div>
-          )}
-          {location.pathname === '/' && (
-            <div className="pl-2 gap-1 flex items-center">
+          <div className="no-drag gap-2 pl-2 flex items-center">
+            <div className="flex items-center">
+              {isHistoryRoute ? (
+                <TooltipSimple
+                  content={t('layout.home')}
+                  side="bottom"
+                  align="center"
+                >
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="no-drag rounded-full"
+                    onClick={() => navigate('/')}
+                    aria-label={t('layout.home')}
+                    aria-current="page"
+                  >
+                    <Sparkles
+                      className="h-4 w-4 text-icon-primary"
+                      aria-hidden
+                    />
+                  </Button>
+                </TooltipSimple>
+              ) : (
+                <TooltipSimple
+                  content={t('layout.dashboard')}
+                  side="bottom"
+                  align="center"
+                >
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="no-drag rounded-full"
+                    onClick={() => navigate('/history')}
+                    aria-label={t('layout.dashboard')}
+                    aria-current="page"
+                  >
+                    <House className="h-4 w-4 text-icon-primary" aria-hidden />
+                  </Button>
+                </TooltipSimple>
+              )}
               <TooltipSimple
-                content={
-                  projectSidebarCollapsed
-                    ? t('layout.expand-sidebar', {
-                        defaultValue: 'Expand sidebar',
-                      })
-                    : t('layout.collapse-sidebar', {
-                        defaultValue: 'Collapse sidebar',
-                      })
-                }
+                content={t('layout.back')}
                 side="bottom"
                 align="center"
               >
@@ -247,104 +322,77 @@ function HeaderWin() {
                   variant="ghost"
                   size="icon"
                   className="no-drag rounded-full"
-                  onClick={toggleProjectSidebarCollapsed}
-                  aria-label={
-                    projectSidebarCollapsed
-                      ? t('layout.expand-sidebar', {
-                          defaultValue: 'Expand sidebar',
-                        })
-                      : t('layout.collapse-sidebar', {
-                          defaultValue: 'Collapse sidebar',
-                        })
+                  disabled={!canGoBack}
+                  onClick={() => navigate(-1)}
+                  aria-label={t('layout.back')}
+                >
+                  <ChevronLeft
+                    className="h-4 w-4 text-icon-primary"
+                    aria-hidden
+                  />
+                </Button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={t('layout.forward')}
+                side="bottom"
+                align="center"
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="no-drag rounded-full"
+                  disabled={!canGoForward}
+                  onClick={() => navigate(1)}
+                  aria-label={t('layout.forward')}
+                >
+                  <ChevronRight
+                    className="h-4 w-4 text-icon-primary"
+                    aria-hidden
+                  />
+                </Button>
+              </TooltipSimple>
+            </div>
+            {location.pathname === '/' && projectSidebarCollapsed && (
+              <div className="no-drag ease-out animate-in fade-in-0 bg-surface-secondary inline-flex items-stretch overflow-hidden rounded-full duration-200">
+                <TooltipSimple
+                  content={
+                    activeTaskTitle === t('layout.new-project')
+                      ? t('layout.new-project')
+                      : activeTaskTitle
                   }
+                  side="bottom"
+                  align="center"
                 >
-                  {projectSidebarCollapsed ? (
-                    <PanelLeft className="h-4 w-4 text-icon-primary" />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4 text-icon-primary" />
-                  )}
-                </Button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={t('layout.dashboard')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'no-drag rounded-full',
-                    dashboardActive && 'bg-surface-tertiary'
-                  )}
-                  onClick={() => navigate('/history')}
-                  aria-label={t('layout.dashboard')}
-                  aria-current={dashboardActive ? 'page' : undefined}
-                >
-                  <House className="h-4 w-4 text-icon-primary" aria-hidden />
-                </Button>
-              </TooltipSimple>
-              <>
-                {activeTaskTitle === t('layout.new-project') ? (
-                  <TooltipSimple
-                    content={t('layout.new-project')}
-                    side="bottom"
-                    align="center"
+                  <button
+                    id="active-task-title-btn"
+                    type="button"
+                    className="no-drag min-w-0 px-2 text-label-sm font-bold !text-button-transparent-text-default hover:bg-button-transparent-fill-hover active:bg-button-transparent-fill-active focus-visible:ring-ring/50 flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
+                    onClick={toggleHistorySidebar}
+                    aria-expanded={historySidebarOpen}
+                    aria-haspopup="dialog"
                   >
-                    <Button
-                      id="active-task-title-btn"
-                      variant="ghost"
-                      className="no-drag text-base font-bold rounded-full"
-                      onClick={toggleHistorySidebar}
-                      size="sm"
-                      aria-expanded={historySidebarOpen}
-                      aria-haspopup="dialog"
-                    >
-                      <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
-                        {t('layout.new-project')}
-                      </span>
-                      <ChevronDown />
-                    </Button>
-                  </TooltipSimple>
-                ) : (
-                  <TooltipSimple
-                    content={activeTaskTitle}
-                    side="bottom"
-                    align="center"
-                  >
-                    <Button
-                      id="active-task-title-btn"
-                      variant="ghost"
-                      size="sm"
-                      className="no-drag text-base font-bold"
-                      onClick={toggleHistorySidebar}
-                      aria-expanded={historySidebarOpen}
-                      aria-haspopup="dialog"
-                    >
-                      <span className="inline-block max-w-[300px] overflow-hidden align-middle text-ellipsis whitespace-nowrap">
-                        {activeTaskTitle}
-                      </span>
-                      <ChevronDown />
-                    </Button>
-                  </TooltipSimple>
-                )}
-              </>
-              <TooltipSimple
-                content={t('layout.new-project')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={createNewProject}
+                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {activeTaskTitle}
+                    </span>
+                  </button>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.new-project')}
+                  side="bottom"
+                  align="center"
                 >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-            </div>
-          )}
+                  <button
+                    type="button"
+                    className="no-drag w-8 !text-button-transparent-text-default hover:bg-button-transparent-fill-hover active:bg-button-transparent-fill-active focus-visible:ring-ring/50 box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
+                    onClick={createNewProject}
+                    aria-label={t('layout.new-project')}
+                  >
+                    <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                  </button>
+                </TooltipSimple>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* right */}

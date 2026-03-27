@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "トリガーでタスクを自動化",
   "single-agent-working": "{{agent}}が処理中です",
   "agent-outcome-expand": "展開",
-  "agent-outcome-collapse": "折りたたむ"
+  "agent-outcome-collapse": "折りたたむ",
+  "input-attach-add-files-or-photos": "ファイルまたは写真を追加",
+  "input-attach-skills": "スキル",
+  "input-attach-menu-trigger": "ファイル・写真の追加、またはスキル・コネクタ・ブラウザを開く"
 }

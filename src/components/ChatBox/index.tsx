@@ -24,6 +24,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
@@ -43,6 +44,9 @@ export default function ChatBox(): JSX.Element {
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
+  const workspaceChatFocusRequestId = usePageTabStore(
+    (s) => s.workspaceChatFocusRequestId
+  );
   const [hasModel, setHasModel] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [privacy, setPrivacy] = useState<any>(false);
@@ -62,6 +66,14 @@ export default function ChatBox(): JSX.Element {
       setUseCloudModelInDev(false);
     }
   }, [modelType]);
+  useEffect(() => {
+    if (workspaceChatFocusRequestId === 0) return;
+    const focusTimer = window.setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 180);
+    return () => clearTimeout(focusTimer);
+  }, [workspaceChatFocusRequestId]);
+
   useEffect(() => {
     proxyFetchGet('/api/user/privacy')
       .then((res) => {
@@ -1056,9 +1068,9 @@ export default function ChatBox(): JSX.Element {
                 isPauseResumeLoading={isPauseResumeLoading}
               />
             ) : (
-              <div className="px-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+              <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
                 <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end">
-                  <div className="text-body-lg font-bold text-text-heading text-center">
+                  <div className="text-heading-base font-bold text-text-heading text-center">
                     {t('layout.welcome-to-eigent')}
                   </div>
                 </div>

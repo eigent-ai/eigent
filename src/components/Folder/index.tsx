@@ -26,6 +26,7 @@ import {
   Download,
   FileText,
   Folder as FolderIcon,
+  FolderOpen,
   Search,
   SquareTerminal,
 } from 'lucide-react';
@@ -596,61 +597,81 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
       <div className="border-border-tertiary gap-2 p-2 flex w-full shrink-0 items-center border-x-0 border-t-0 border-b border-solid">
-        <span
-          className="text-text-heading text-body-sm min-w-0 px-1 font-semibold line-clamp-1 flex-1 leading-none"
-          title={workingFolderPath ?? undefined}
-        >
-          {folderHeaderTitle}
-        </span>
-        <div className="h-7 w-32 max-w-xs rounded-lg relative min-w-[10rem] shrink-0">
-          <Search className="text-primary left-2 h-3.5 w-3.5 pointer-events-none absolute top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={fileSearchQuery}
-            onChange={(e) => setFileSearchQuery(e.target.value)}
-            placeholder={t('chat.search')}
-            className="border-border-subtle focus:ring-text-link h-7 rounded-lg py-0 pl-7 pr-2 text-sm w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
-            aria-label={t('chat.search')}
-          />
+        <div className="min-w-0 gap-1 flex max-w-[min(20rem,45%)] items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            disabled
+            className="shrink-0 cursor-not-allowed opacity-60"
+            aria-label={t('chat.choose-agent-work-folder', {
+              defaultValue: 'Choose folder for agent',
+            })}
+            title={t('chat.choose-agent-work-folder-placeholder', {
+              defaultValue: 'Choose a folder on your computer (coming soon)',
+            })}
+          >
+            <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          </Button>
+          <span
+            className="text-text-heading text-body-sm min-w-0 font-semibold truncate leading-none"
+            title={workingFolderPath ?? undefined}
+          >
+            {folderHeaderTitle}
+          </span>
         </div>
-        {canOpenInExternalEditor && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="primary"
-                size="sm"
-                className="h-7 gap-1 rounded-lg px-2 py-0 [&_svg]:size-3.5 shrink-0 items-center justify-center"
+        <div className="min-w-0 gap-2 ml-auto flex items-center">
+          <div className="h-7 w-32 max-w-xs rounded-lg relative min-w-[10rem] shrink-0">
+            <Search className="text-primary left-2 h-3.5 w-3.5 pointer-events-none absolute top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={fileSearchQuery}
+              onChange={(e) => setFileSearchQuery(e.target.value)}
+              placeholder={t('chat.search')}
+              className="border-border-subtle focus:ring-text-link h-7 rounded-lg py-0 pl-7 pr-2 text-sm w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
+              aria-label={t('chat.search')}
+            />
+          </div>
+          {canOpenInExternalEditor && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="h-7 gap-1 rounded-lg px-2 py-0 [&_svg]:size-3.5 shrink-0 items-center justify-center"
+                >
+                  <SquareTerminal className="shrink-0" />
+                  {t('chat.open-in-ide')}
+                  <ChevronDown className="shrink-0 opacity-80" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="border-dropdown-border bg-dropdown-bg z-50"
               >
-                <SquareTerminal className="shrink-0" />
-                {t('chat.open-in-ide')}
-                <ChevronDown className="shrink-0 opacity-80" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-dropdown-border bg-dropdown-bg z-50"
-            >
-              <DropdownMenuItem
-                onClick={() => handleOpenInIDE('vscode')}
-                className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
-              >
-                {t('chat.open-in-vscode')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleOpenInIDE('cursor')}
-                className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
-              >
-                {t('chat.open-in-cursor')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleOpenInIDE('system')}
-                className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
-              >
-                {t('chat.open-in-file-manager')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+                <DropdownMenuItem
+                  onClick={() => handleOpenInIDE('vscode')}
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                >
+                  {t('chat.open-in-vscode')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleOpenInIDE('cursor')}
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                >
+                  {t('chat.open-in-cursor')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleOpenInIDE('system')}
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                >
+                  {t('chat.open-in-file-manager')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
 
       <div className="min-h-0 flex flex-1 overflow-hidden">

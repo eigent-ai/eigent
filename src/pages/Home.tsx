@@ -39,18 +39,12 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import {
-  useTriggerStore,
-  WebSocketConnectionStatus,
-} from '@/store/triggerStore';
+import { useTriggerStore } from '@/store/triggerStore';
 import {
   ArrowUpDown,
   Plus,
-  RefreshCw,
   SquareChevronRight,
   SquareCode,
-  Zap,
-  ZapOff,
 } from 'lucide-react';
 import Overview, {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
@@ -60,22 +54,13 @@ import Overview, {
 
 import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
-import { Popover, PopoverContent } from '@/components/ui/popover';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { WorkSpaceMenu } from '@/components/WorkSpaceMenu';
 
 import BottomBar from '@/components/BottomBar';
-import * as PopoverPrimitive from '@radix-ui/react-popover';
 
 /** Keep in sync with ProjectPageSidebar PROJECT_SIDEBAR_SPRING */
 const HOME_MAIN_LAYOUT_SPRING: Transition = {
@@ -84,60 +69,6 @@ const HOME_MAIN_LAYOUT_SPRING: Transition = {
   damping: 38,
   mass: 0.85,
 };
-
-// Connection status icon component
-function ConnectionStatusIcon({
-  status,
-}: {
-  status: WebSocketConnectionStatus;
-}) {
-  const getStatusColor = () => {
-    switch (status) {
-      case 'connected':
-        return 'text-green-500';
-      case 'connecting':
-        return 'text-yellow-500 animate-pulse';
-      case 'unhealthy':
-        return 'text-orange-500';
-      case 'disconnected':
-      default:
-        return 'text-icon-secondary';
-    }
-  };
-
-  const getStatusTooltip = () => {
-    switch (status) {
-      case 'connected':
-        return 'Connected to trigger listener';
-      case 'connecting':
-        return 'Connecting...';
-      case 'unhealthy':
-        return 'Connection unhealthy - click refresh to reconnect';
-      case 'disconnected':
-      default:
-        return 'Disconnected from trigger listener';
-    }
-  };
-
-  const isConnected = status === 'connected';
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {isConnected ? (
-            <Zap className={`h-4 w-4 shrink-0 ${getStatusColor()}`} />
-          ) : (
-            <ZapOff className={`h-4 w-4 shrink-0 ${getStatusColor()}`} />
-          )}
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{getStatusTooltip()}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
 export default function Home() {
   const { t } = useTranslation();
@@ -152,8 +83,11 @@ export default function Home() {
     setHasAgentFiles,
     markTabAsUnviewed,
   } = usePageTabStore();
+  const workspaceChatFocusRequestId = usePageTabStore(
+    (s) => s.workspaceChatFocusRequestId
+  );
 
-  const { wsConnectionStatus, triggerReconnect, triggers } = useTriggerStore();
+  const { wsConnectionStatus, triggers } = useTriggerStore();
   const authStore = useAuthStore.getState();
 
   const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
@@ -202,6 +136,11 @@ export default function Home() {
   useEffect(() => {
     setTriggerSelectedId(null);
   }, [projectStore.activeProjectId]);
+
+  useEffect(() => {
+    if (workspaceChatFocusRequestId === 0) return;
+    setIsChatBoxVisible(true);
+  }, [workspaceChatFocusRequestId]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -558,18 +497,11 @@ export default function Home() {
             <ResizablePanel className="h-full w-full min-w-[600px]">
               {activeWorkspaceTab === 'workforce' && (
                 <div className="rounded-2xl border-border-tertiary bg-surface-secondary relative flex h-full w-full flex-col border-solid">
-                  <div className="gap-2 px-2 py-1.5 relative z-50 flex w-full shrink-0 items-center justify-between">
+                  <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
                     <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
                       <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
-                        {t('layout.workers')}
+                        {t('layout.aiWorkforce')}
                       </span>
-                      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-                        <WorkSpaceMenu
-                          embedInToolbar
-                          onToggleChatBox={toggleChatBox}
-                          isChatBoxVisible={isChatBoxVisible}
-                        />
-                      </div>
                     </div>
                     <div className="gap-2 flex shrink-0 items-center">
                       <Button
@@ -631,52 +563,15 @@ export default function Home() {
                   <div className="gap-2 px-2 py-2 flex w-full shrink-0 items-center justify-between">
                     <div className="text-text-heading min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
                       <span className="truncate">{t('triggers.title')}</span>
-                      {wsConnectionStatus !== 'connected' && (
-                        <Popover>
-                          <PopoverPrimitive.Trigger asChild>
-                            <button
-                              type="button"
-                              className="text-icon-secondary hover:bg-surface-tertiary h-8 w-8 rounded-md flex shrink-0 items-center justify-center transition-colors"
-                              aria-label="Reconnect to trigger listener"
-                            >
-                              <RefreshCw
-                                className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
-                              />
-                            </button>
-                          </PopoverPrimitive.Trigger>
-                          <PopoverContent
-                            className="w-64 p-4"
-                            side="bottom"
-                            align="start"
-                          >
-                            <div className="gap-3 flex flex-col">
-                              <p className="text-body-sm text-text-body">
-                                Reconnect to trigger listener
-                              </p>
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                className="w-full items-center justify-center"
-                                onClick={triggerReconnect}
-                              >
-                                <RefreshCw
-                                  className={`mr-2 h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
-                                />
-                                Reconnect
-                              </Button>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                      <ConnectionStatusIcon status={wsConnectionStatus} />
                     </div>
                     <div className="gap-2 flex shrink-0 items-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
-                            variant="ghost"
+                            variant="outline"
+                            buttonContent="text"
                             size="sm"
-                            className="font-semibold opacity-50"
+                            className="rounded-lg"
                           >
                             {triggerSortLabel}
                             <ArrowUpDown className="h-4 w-4" />

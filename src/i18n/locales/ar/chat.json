@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "أتمت مهامك باستخدام الزناد",
   "single-agent-working": "{{agent}} يعمل بجد",
   "agent-outcome-expand": "توسيع",
-  "agent-outcome-collapse": "طي"
+  "agent-outcome-collapse": "طي",
+  "input-attach-add-files-or-photos": "إضافة ملفات أو صور",
+  "input-attach-skills": "المهارات",
+  "input-attach-menu-trigger": "إضافة ملفات أو صور أو فتح المهارات أو الموصلات أو المتصفح"
 }

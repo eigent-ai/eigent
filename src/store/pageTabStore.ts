@@ -40,6 +40,21 @@ interface PageTabState {
   /** Set by the sidebar to tell the chat container to scroll to a specific query group */
   scrollToQueryId: string | null;
   setScrollToQueryId: (queryId: string | null) => void;
+  /**
+   * Optional absolute path override for the agent folder (per project).
+   * When unset for a project, the default Eigent project folder is used.
+   */
+  customAgentFolderPathByProjectId: Record<string, string>;
+  setProjectCustomAgentFolderPath: (
+    projectId: string,
+    path: string | null
+  ) => void;
+  /**
+   * Incremented when UI should switch to the workforce workspace and focus the chat input.
+   * ChatBox / Home listen to perform focus and ensure the chat panel is visible.
+   */
+  workspaceChatFocusRequestId: number;
+  requestWorkspaceChatFocus: () => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -82,11 +97,30 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       scrollToQueryId: null,
       setScrollToQueryId: (queryId) => set({ scrollToQueryId: queryId }),
+      customAgentFolderPathByProjectId: {},
+      setProjectCustomAgentFolderPath: (projectId, path) =>
+        set((state) => {
+          const next = { ...state.customAgentFolderPathByProjectId };
+          if (path == null || path === '') {
+            delete next[projectId];
+          } else {
+            next[projectId] = path;
+          }
+          return { customAgentFolderPathByProjectId: next };
+        }),
+      workspaceChatFocusRequestId: 0,
+      requestWorkspaceChatFocus: () =>
+        set((state) => ({
+          activeWorkspaceTab: 'workforce',
+          workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
+        })),
     }),
     {
       name: 'eigent-page-tab',
       partialize: (state) => ({
         projectSidebarCollapsed: state.projectSidebarCollapsed,
+        customAgentFolderPathByProjectId:
+          state.customAgentFolderPathByProjectId,
       }),
     }
   )

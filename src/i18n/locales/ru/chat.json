@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "Автоматизируйте вашу задачу с помощью триггера",
   "single-agent-working": "{{agent}} усердно работает",
   "agent-outcome-expand": "Развернуть",
-  "agent-outcome-collapse": "Свернуть"
+  "agent-outcome-collapse": "Свернуть",
+  "input-attach-add-files-or-photos": "Добавить файлы или фото",
+  "input-attach-skills": "Навыки",
+  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер"
 }

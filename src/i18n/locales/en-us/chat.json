@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "Automate your task with a trigger",
   "single-agent-working": "{{agent}} is working hard",
   "agent-outcome-expand": "Expand",
-  "agent-outcome-collapse": "Collapse"
+  "agent-outcome-collapse": "Collapse",
+  "input-attach-add-files-or-photos": "Add files or photos",
+  "input-attach-skills": "Skills",
+  "input-attach-menu-trigger": "Add files, photos, or open Skills, Connectors, or Browser"
 }

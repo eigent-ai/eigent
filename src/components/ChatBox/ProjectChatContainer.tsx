@@ -160,7 +160,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
 
   return (
     <div className={`relative z-10 w-full ${className}`}>
-      <div className="pl-3 pr-1.5 pt-0 mx-auto w-full max-w-[600px] pb-[max(8rem,min(45vh,22rem))]">
+      <div className="pl-3 pr-1 pt-0 mx-auto w-full max-w-[600px] pb-[max(8rem,min(45vh,22rem))]">
         <AnimatePresence mode="popLayout">
           {chatStores.map(({ chatId, chatStore }) => {
             const chatState = chatStore.getState();

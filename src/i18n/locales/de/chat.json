@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "Automatisieren Sie Ihre Aufgabe mit einem Trigger",
   "single-agent-working": "{{agent}} arbeitet mit Hochdruck",
   "agent-outcome-expand": "Erweitern",
-  "agent-outcome-collapse": "Einklappen"
+  "agent-outcome-collapse": "Einklappen",
+  "input-attach-add-files-or-photos": "Dateien oder Fotos hinzufügen",
+  "input-attach-skills": "Skills",
+  "input-attach-menu-trigger": "Dateien oder Fotos hinzufügen oder Skills, Connectors oder Browser öffnen"
 }

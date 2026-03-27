@@ -353,12 +353,12 @@ code {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
   max-height: 25%;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.4);
+  background-color: rgba(156, 163, 175, 0.3);
   border-radius: 4px;
   max-height: 25%;
 }

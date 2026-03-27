@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "Automatizza il tuo compito con un trigger",
   "single-agent-working": "{{agent}} sta lavorando sodo",
   "agent-outcome-expand": "Espandi",
-  "agent-outcome-collapse": "Comprimi"
+  "agent-outcome-collapse": "Comprimi",
+  "input-attach-add-files-or-photos": "Aggiungi file o foto",
+  "input-attach-skills": "Skill",
+  "input-attach-menu-trigger": "Aggiungi file o foto o apri Skill, Connettori o Browser"
 }

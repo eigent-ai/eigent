@@ -14,7 +14,6 @@
 
 import { proxyFetchGet } from '@/api/http';
 import folderIcon from '@/assets/Folder.svg';
-import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,6 +28,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import {
   getTaskListShelfTone,
   type TaskListShelfTone,
 } from '@/lib/taskLifecycleUi';
@@ -37,15 +42,22 @@ import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
+import { useSidebarStore } from '@/store/sidebarStore';
+import {
+  useTriggerStore,
+  type WebSocketConnectionStatus,
+} from '@/store/triggerStore';
 import { motion } from 'framer-motion';
 import {
   CircleHelp,
-  Compass,
-  Hammer,
   Inbox,
   LayoutGrid,
-  WandSparkles,
+  PanelLeft,
+  PanelLeftClose,
+  Plus,
+  RefreshCw,
   Zap,
+  ZapOff,
 } from 'lucide-react';
 import {
   useEffect,
@@ -78,6 +90,16 @@ function capitalizeFirstLetter(text: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function normalizeFolderPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function folderPathBasename(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/$/, '');
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || normalized;
+}
+
 const PROJECT_HUB_DROPDOWN_CONTENT_CLASS = cn(
   'min-w-[11rem] -mb-2 flex flex-col gap-1 rounded-xl border-0 bg-fill-default p-1 shadow-md'
 );
@@ -108,6 +130,8 @@ const SHELF_TONE_ROW_CLASS: Record<TaskListShelfTone, string> = {
 };
 
 const PROJECT_SIDEBAR_WIDTH_PX = 240;
+/** Folded rail: tab row needs pl-3 + icon + pr-3 (no outer sidebar horizontal padding). */
+const PROJECT_SIDEBAR_FOLDED_WIDTH_PX = 40;
 /** Matches Home main panel layout animation */
 const PROJECT_SIDEBAR_SPRING = {
   type: 'spring' as const,
@@ -117,6 +141,39 @@ const PROJECT_SIDEBAR_SPRING = {
 };
 
 const SIDEBAR_EDGE_MARGIN_PX = 8;
+
+/** Tween for properties that don’t interpolate well with springs (grid template, height auto). */
+const SIDEBAR_LAYOUT_TWEEN = {
+  duration: 0.34,
+  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+};
+
+/** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
+const workspaceTabButtonClass = (active: boolean) =>
+  cn(
+    'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden',
+    'hover:bg-surface-tertiary focus-visible:ring-2 focus-visible:ring-border-secondary focus-visible:outline-none',
+    active && 'bg-surface-tertiary'
+  );
+
+const workspaceTabLabelClass =
+  'min-w-0 flex-1 truncate text-text-label text-body-sm font-medium';
+
+function triggerListenerLeadIconClass(
+  status: WebSocketConnectionStatus
+): string {
+  switch (status) {
+    case 'connected':
+      return 'text-green-500';
+    case 'connecting':
+      return 'text-yellow-500 animate-pulse';
+    case 'unhealthy':
+      return 'text-orange-500';
+    case 'disconnected':
+    default:
+      return 'text-icon-secondary';
+  }
+}
 
 /** Horizontal drift speed for task query hover (~6px/s, capped) — readable marquee, not a snap. */
 const TASK_QUERY_SCROLL_PX_PER_SEC = 16;
@@ -231,11 +288,30 @@ export default function ProjectPageSidebar({
   className,
 }: ProjectPageSidebarProps) {
   const collapsed = usePageTabStore((s) => s.projectSidebarCollapsed);
+  const toggleProjectSidebarCollapsed = usePageTabStore(
+    (s) => s.toggleProjectSidebarCollapsed
+  );
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
+  const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
+  const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
+  const triggersListenerConnected = wsConnectionStatus === 'connected';
+  const showTriggersDisconnectedTag =
+    wsConnectionStatus === 'disconnected' || wsConnectionStatus === 'unhealthy';
   const projectStore = useProjectStore();
+  const activeProjectId = projectStore.activeProjectId;
+  const customFolderPath = usePageTabStore((s) =>
+    activeProjectId
+      ? s.customAgentFolderPathByProjectId[activeProjectId]
+      : undefined
+  );
+  const historySidebarOpen = useSidebarStore((s) => s.isOpen);
+  const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -259,6 +335,28 @@ export default function ProjectPageSidebar({
         browserHubActive: onHistory && tab === 'browser',
       };
     }, [location.pathname, location.search]);
+
+  const triggersTabTooltip = useMemo(() => {
+    const base = t('layout.triggers');
+    if (!collapsed) return base;
+    if (triggersListenerConnected) return base;
+    if (wsConnectionStatus === 'connecting') {
+      return `${base} — ${t('layout.triggers-connecting')}`;
+    }
+    if (wsConnectionStatus === 'unhealthy') {
+      return `${base} — ${t('layout.triggers-disconnected')}`;
+    }
+    return `${base} — ${t('layout.triggers-disconnected')}`;
+  }, [collapsed, t, triggersListenerConnected, wsConnectionStatus]);
+
+  const triggersTabAriaLabel = useMemo(() => {
+    const base = t('layout.triggers');
+    if (triggersListenerConnected) return base;
+    if (wsConnectionStatus === 'connecting') {
+      return `${base}, ${t('layout.triggers-connecting')}`;
+    }
+    return `${base}, ${t('layout.triggers-disconnected')}`;
+  }, [t, triggersListenerConnected, wsConnectionStatus]);
 
   const activeUpdateCount = chatStore.updateCount;
 
@@ -293,8 +391,9 @@ export default function ProjectPageSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectStore, activeUpdateCount]);
 
-  const rowButtonClass =
-    'no-drag h-8 rounded-xl hover:bg-surface-tertiary min-w-0 gap-3 px-3 w-full flex shrink-0 items-center text-left transition-colors';
+  const rowButtonBaseClass =
+    'no-drag h-8 rounded-xl hover:bg-surface-tertiary min-w-0 flex shrink-0 items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary';
+  const rowButtonClass = cn(rowButtonBaseClass, 'gap-3 px-3 w-full');
 
   const hubIconTabClass = (active: boolean) =>
     cn(
@@ -304,9 +403,21 @@ export default function ProjectPageSidebar({
       active && 'bg-surface-tertiary'
     );
 
+  /** Hub tile shell without whole-area hover (split controls handle their own hover). */
+  const hubIconTabShellClass = (active: boolean) =>
+    cn(
+      'no-drag w-full min-w-0 rounded-xl bg-surface-primary transition-colors',
+      active && 'bg-surface-tertiary'
+    );
+
   const authToken = useAuthStore((s) => s.token);
+  const email = useAuthStore((s) => s.email);
   const modelType = useAuthStore((s) => s.modelType);
   const cloud_model_type = useAuthStore((s) => s.cloud_model_type);
+
+  const [resolvedDefaultFolderPath, setResolvedDefaultFolderPath] = useState<
+    string | null
+  >(null);
 
   const [credits, setCredits] = useState<number | null>(null);
   const [customPlatformName, setCustomPlatformName] = useState<string | null>(
@@ -378,6 +489,39 @@ export default function ProjectPageSidebar({
       cancelled = true;
     };
   }, [modelType, authToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!email || !activeProjectId) {
+      setResolvedDefaultFolderPath(null);
+      return;
+    }
+    if (typeof window.electronAPI?.getProjectFolderPath !== 'function') {
+      setResolvedDefaultFolderPath(null);
+      return;
+    }
+    void window.electronAPI
+      .getProjectFolderPath(email, activeProjectId)
+      .then((p: string) => {
+        if (!cancelled) setResolvedDefaultFolderPath(p || null);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedDefaultFolderPath(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [email, activeProjectId]);
+
+  const folderSettingTagLabel = useMemo(() => {
+    const custom = customFolderPath?.trim();
+    if (!custom) return t('layout.default');
+    const def = resolvedDefaultFolderPath?.trim();
+    if (def && normalizeFolderPath(custom) === normalizeFolderPath(def)) {
+      return t('layout.default');
+    }
+    return folderPathBasename(custom);
+  }, [customFolderPath, resolvedDefaultFolderPath, t]);
 
   const downloadLogs = async () => {
     try {
@@ -465,13 +609,22 @@ export default function ProjectPageSidebar({
     });
   }, [modelType, credits, customPlatformName, cloud_model_type, t]);
 
+  const summaryTask =
+    chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask;
+  const activeTaskTitle = useMemo(() => {
+    if (chatStore.activeTaskId && summaryTask) {
+      return summaryTask.split('|')[0];
+    }
+    return t('layout.new-project');
+  }, [chatStore.activeTaskId, summaryTask, t]);
+
+  const createNewProject = () => {
+    projectStore.createProject('new project');
+    navigate('/');
+  };
+
   return (
     <>
-      <GlobalSearchDialog
-        open={globalSearchOpen}
-        onOpenChange={setGlobalSearchOpen}
-      />
-
       <Dialog open={supportDialogOpen} onOpenChange={setSupportDialogOpen}>
         <DialogContent
           size="sm"
@@ -503,269 +656,380 @@ export default function ProjectPageSidebar({
       <motion.aside
         initial={false}
         animate={{
-          width: collapsed ? 0 : PROJECT_SIDEBAR_WIDTH_PX,
-          marginRight: collapsed ? 0 : SIDEBAR_EDGE_MARGIN_PX,
+          width: collapsed
+            ? PROJECT_SIDEBAR_FOLDED_WIDTH_PX
+            : PROJECT_SIDEBAR_WIDTH_PX,
+          marginRight: SIDEBAR_EDGE_MARGIN_PX,
         }}
         transition={PROJECT_SIDEBAR_SPRING}
         className={cn(
           'min-h-0 flex h-full shrink-0 flex-col overflow-hidden',
           className
         )}
-        style={{ pointerEvents: collapsed ? 'none' : 'auto' }}
-        aria-hidden={collapsed}
       >
-        <motion.div
-          className="min-h-0 flex h-full w-[240px] min-w-[240px] flex-col overflow-x-hidden"
-          initial={false}
-          animate={{
-            x: collapsed ? -18 : 0,
-            opacity: collapsed ? 0 : 1,
-          }}
-          transition={PROJECT_SIDEBAR_SPRING}
-        >
-          <div className="gap-2 flex shrink-0 flex-col">
-            <div className="gap-1 grid w-full grid-cols-3">
-              <DropdownMenu
-                open={skillsMenuOpen}
-                onOpenChange={setSkillsMenuOpen}
-              >
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={hubIconTabClass(
-                      skillsHubActive || skillsMenuOpen
-                    )}
-                    aria-label={t('agents.skills')}
-                    aria-haspopup="menu"
-                  >
-                    <WandSparkles
-                      className="h-4 w-4 text-icon-primary shrink-0"
-                      aria-hidden
-                    />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="right"
-                  align="start"
-                  sideOffset={8}
-                  alignOffset={0}
-                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+        <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-x-hidden">
+          <div className="gap-2 flex w-full shrink-0 flex-col">
+            {!collapsed ? (
+              <div className="min-w-0 flex items-stretch">
+                <div
+                  className={cn(
+                    hubIconTabShellClass(historySidebarOpen),
+                    'h-8 min-h-8 min-w-0 flex flex-1 flex-row overflow-hidden'
+                  )}
                 >
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate(
-                        '/history?tab=agents&section=skills&skillAction=create'
-                      )
-                    }
+                  <TooltipSimple
+                    content={t('layout.collapse-sidebar', {
+                      defaultValue: 'Collapse sidebar',
+                    })}
+                    side="bottom"
+                    align="start"
                   >
-                    {t('agents.create-skill')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate(
-                        '/history?tab=agents&section=skills&skillAction=upload'
-                      )
-                    }
+                    <button
+                      type="button"
+                      className={cn(
+                        'no-drag min-h-0 w-10 flex h-full shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent transition-colors',
+                        historySidebarOpen
+                          ? 'hover:brightness-[0.98]'
+                          : 'hover:bg-surface-tertiary',
+                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                      )}
+                      onClick={toggleProjectSidebarCollapsed}
+                      aria-label={t('layout.collapse-sidebar', {
+                        defaultValue: 'Collapse sidebar',
+                      })}
+                    >
+                      <PanelLeftClose
+                        className="h-4 w-4 text-icon-primary shrink-0"
+                        aria-hidden
+                      />
+                    </button>
+                  </TooltipSimple>
+                  <TooltipSimple
+                    content={activeTaskTitle}
+                    side="bottom"
+                    align="center"
                   >
-                    {t('agents.upload-skill')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate('/history?tab=agents&section=skills')
-                    }
+                    <button
+                      id="sidebar-active-task-title-btn"
+                      type="button"
+                      className={cn(
+                        'no-drag min-h-0 min-w-0 border-border-tertiary flex h-full flex-1 cursor-pointer items-center border-x border-t border-b-0 border-solid bg-transparent text-left transition-colors',
+                        historySidebarOpen
+                          ? 'hover:brightness-[0.98]'
+                          : 'hover:bg-surface-tertiary',
+                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                      )}
+                      onClick={toggleHistorySidebar}
+                      aria-expanded={historySidebarOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <span className="min-w-0 text-text-body text-body-sm font-bold flex-1 truncate">
+                        {activeTaskTitle}
+                      </span>
+                    </button>
+                  </TooltipSimple>
+                  <TooltipSimple
+                    content={t('layout.new-project')}
+                    side="bottom"
+                    align="end"
                   >
-                    {t('agents.browse-skills')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu
-                open={connectorsMenuOpen}
-                onOpenChange={setConnectorsMenuOpen}
+                    <button
+                      type="button"
+                      className={cn(
+                        'no-drag w-10 flex h-full shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent transition-colors',
+                        historySidebarOpen
+                          ? 'hover:brightness-[0.98]'
+                          : 'hover:bg-surface-tertiary',
+                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                      )}
+                      onClick={createNewProject}
+                      aria-label={t('layout.new-project')}
+                    >
+                      <Plus
+                        className="h-4 w-4 text-icon-primary shrink-0"
+                        aria-hidden
+                      />
+                    </button>
+                  </TooltipSimple>
+                </div>
+              </div>
+            ) : (
+              <TooltipSimple
+                content={t('layout.expand-sidebar', {
+                  defaultValue: 'Expand sidebar',
+                })}
+                side="right"
+                align="center"
               >
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={hubIconTabClass(
-                      connectorsHubActive || connectorsMenuOpen
-                    )}
-                    aria-label={t('layout.connectors')}
-                    aria-haspopup="menu"
-                  >
-                    <Hammer
-                      className="h-4 w-4 text-icon-primary shrink-0"
-                      aria-hidden
-                    />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="right"
-                  align="start"
-                  sideOffset={8}
-                  alignOffset={0}
-                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+                <button
+                  type="button"
+                  className={cn(
+                    'no-drag h-8 min-h-8 rounded-xl flex w-full shrink-0 cursor-pointer items-center justify-start',
+                    'hover:bg-surface-tertiary border-0 bg-transparent',
+                    'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none',
+                    'px-3'
+                  )}
+                  onClick={toggleProjectSidebarCollapsed}
+                  aria-label={t('layout.expand-sidebar', {
+                    defaultValue: 'Expand sidebar',
+                  })}
                 >
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate('/history?tab=connectors&connectorAction=add')
-                    }
-                  >
-                    {t('layout.add-new-mcp')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate(
-                        '/history?tab=connectors&connectorSection=mcp-tools'
-                      )
-                    }
-                  >
-                    {t('layout.browse-mcps')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu
-                open={browserMenuOpen}
-                onOpenChange={setBrowserMenuOpen}
-              >
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={hubIconTabClass(
-                      browserHubActive || browserMenuOpen
-                    )}
-                    aria-label={t('layout.browser')}
-                    aria-haspopup="menu"
-                  >
-                    <Compass
-                      className="h-4 w-4 text-icon-primary shrink-0"
-                      aria-hidden
-                    />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="right"
-                  align="start"
-                  sideOffset={8}
-                  alignOffset={0}
-                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
-                >
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate('/history?tab=browser&browserAction=launch')
-                    }
-                  >
-                    {t('layout.open-new-browser')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() =>
-                      navigate('/history?tab=browser&browserSection=cdp')
-                    }
-                  >
-                    {t('layout.browser-settings')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            <div className="gap-2 flex flex-col">
-              <button
-                type="button"
-                onClick={() => setActiveWorkspaceTab('workforce')}
-                className={cn(
-                  rowButtonClass,
-                  activeWorkspaceTab === 'workforce' && 'bg-surface-tertiary'
-                )}
-                aria-label={t('triggers.workspace')}
-                aria-current={
-                  activeWorkspaceTab === 'workforce' ? 'page' : undefined
-                }
-              >
-                <LayoutGrid
-                  className="h-4 w-4 text-icon-primary shrink-0"
-                  aria-hidden
-                />
-                <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
-                  {t('triggers.workspace')}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveWorkspaceTab('inbox')}
-                className={cn(
-                  rowButtonClass,
-                  activeWorkspaceTab === 'inbox' && 'bg-surface-tertiary',
-                  'relative'
-                )}
-                aria-label={t('layout.folder')}
-                aria-current={
-                  activeWorkspaceTab === 'inbox' ? 'page' : undefined
-                }
-              >
-                <Inbox
-                  className="h-4 w-4 text-icon-primary shrink-0"
-                  aria-hidden
-                />
-                <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
-                  {t('layout.folder')}
-                </span>
-                {unviewedTabs.has('inbox') && (
-                  <span
-                    className="h-2 w-2 bg-red-500 shrink-0 rounded-full"
+                  <PanelLeft
+                    className="h-4 w-4 text-icon-primary shrink-0"
                     aria-hidden
                   />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveWorkspaceTab('triggers')}
-                className={cn(
-                  rowButtonClass,
-                  activeWorkspaceTab === 'triggers' && 'bg-surface-tertiary',
-                  'relative'
-                )}
-                aria-label={t('layout.triggers')}
-                aria-current={
-                  activeWorkspaceTab === 'triggers' ? 'page' : undefined
-                }
+                </button>
+              </TooltipSimple>
+            )}
+
+            <div className="gap-2 min-w-0 flex w-full flex-col">
+              <TooltipSimple
+                content={t('triggers.workspace')}
+                side="right"
+                align="center"
+                enabled={collapsed}
               >
-                <Zap
-                  className="h-4 w-4 text-icon-primary shrink-0"
-                  aria-hidden
-                />
-                <span className="min-w-0 text-text-label text-body-sm font-medium flex-1 truncate">
-                  {t('layout.triggers')}
-                </span>
-                {unviewedTabs.has('triggers') && (
-                  <span
-                    className="h-2 w-2 bg-text-error shrink-0 rounded-full"
+                <button
+                  type="button"
+                  onClick={() => setActiveWorkspaceTab('workforce')}
+                  className={workspaceTabButtonClass(
+                    activeWorkspaceTab === 'workforce'
+                  )}
+                  aria-label={t('triggers.workspace')}
+                  aria-current={
+                    activeWorkspaceTab === 'workforce' ? 'page' : undefined
+                  }
+                >
+                  <LayoutGrid
+                    className="h-4 w-4 text-icon-primary shrink-0"
                     aria-hidden
                   />
-                )}
-              </button>
+                  <span className={workspaceTabLabelClass}>
+                    {t('triggers.workspace')}
+                  </span>
+                </button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={
+                  collapsed
+                    ? `${t('layout.folder')} · ${folderSettingTagLabel}`
+                    : t('layout.folder')
+                }
+                side="right"
+                align="center"
+                enabled={collapsed}
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveWorkspaceTab('inbox')}
+                  className={cn(
+                    workspaceTabButtonClass(activeWorkspaceTab === 'inbox'),
+                    'relative'
+                  )}
+                  aria-label={`${t('layout.folder')}, ${folderSettingTagLabel}`}
+                  aria-current={
+                    activeWorkspaceTab === 'inbox' ? 'page' : undefined
+                  }
+                >
+                  <Inbox
+                    className="h-4 w-4 text-icon-primary shrink-0"
+                    aria-hidden
+                  />
+                  <span className={workspaceTabLabelClass}>
+                    {t('layout.folder')}
+                  </span>
+                  {!collapsed && (
+                    <span
+                      className="bg-surface-secondary text-text-secondary rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]"
+                      title={
+                        customFolderPath &&
+                        folderSettingTagLabel !== t('layout.default')
+                          ? customFolderPath
+                          : (resolvedDefaultFolderPath ?? undefined)
+                      }
+                    >
+                      {folderSettingTagLabel}
+                    </span>
+                  )}
+                  {unviewedTabs.has('inbox') && (
+                    <span
+                      className={cn(
+                        'bg-red-500 shrink-0 rounded-full transition-all duration-300',
+                        collapsed ? 'top-1 right-1 h-2 w-2 absolute' : 'h-2 w-2'
+                      )}
+                      aria-hidden
+                    />
+                  )}
+                </button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={triggersTabTooltip}
+                side="right"
+                align="center"
+                enabled={collapsed}
+              >
+                <div
+                  className={cn(
+                    workspaceTabButtonClass(activeWorkspaceTab === 'triggers'),
+                    'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible'
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkspaceTab('triggers')}
+                    className={cn(
+                      'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 pl-3 pr-1 relative flex flex-1 items-center text-left outline-none',
+                      'focus-visible:ring-border-secondary hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                    )}
+                    aria-label={triggersTabAriaLabel}
+                    aria-current={
+                      activeWorkspaceTab === 'triggers' ? 'page' : undefined
+                    }
+                  >
+                    {triggersListenerConnected ? (
+                      <Zap
+                        className={cn(
+                          'h-4 w-4 shrink-0',
+                          triggerListenerLeadIconClass(wsConnectionStatus)
+                        )}
+                        aria-hidden
+                      />
+                    ) : (
+                      <ZapOff
+                        className={cn(
+                          'h-4 w-4 shrink-0',
+                          triggerListenerLeadIconClass(wsConnectionStatus)
+                        )}
+                        aria-hidden
+                      />
+                    )}
+                    <span className={workspaceTabLabelClass}>
+                      {t('layout.triggers')}
+                    </span>
+                    {!collapsed && showTriggersDisconnectedTag && (
+                      <span className="bg-surface-secondary text-text-error rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]">
+                        {t('layout.triggers-disconnected')}
+                      </span>
+                    )}
+                    {unviewedTabs.has('triggers') && (
+                      <span
+                        className={cn(
+                          'bg-text-error shrink-0 rounded-full transition-all duration-300',
+                          collapsed
+                            ? 'top-1 right-1 h-2 w-2 absolute'
+                            : 'h-2 w-2'
+                        )}
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                  {wsConnectionStatus !== 'connected' && !collapsed && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            'no-drag text-icon-secondary hover:bg-surface-tertiary h-8 w-8 rounded-xl flex shrink-0 items-center justify-center transition-colors outline-none',
+                            'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          )}
+                          aria-label={t('layout.triggers-reconnect-hint')}
+                        >
+                          <RefreshCw
+                            className={cn(
+                              'h-3.5 w-3.5',
+                              wsConnectionStatus === 'connecting' &&
+                                'animate-spin'
+                            )}
+                            aria-hidden
+                          />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-64 p-4"
+                        side="right"
+                        align="start"
+                      >
+                        <div className="gap-3 flex flex-col">
+                          <p className="text-body-sm text-text-body">
+                            {t('layout.triggers-reconnect-hint')}
+                          </p>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            className="w-full items-center justify-center"
+                            onClick={triggerReconnect}
+                          >
+                            <RefreshCw
+                              className={cn(
+                                'mr-2 h-4 w-4',
+                                wsConnectionStatus === 'connecting' &&
+                                  'animate-spin'
+                              )}
+                              aria-hidden
+                            />
+                            {t('layout.triggers-listener-reconnect')}
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              </TooltipSimple>
             </div>
           </div>
 
-          <div className="bg-surface-tertiary mx-2 my-2 rounded-xl h-[1.5px] flex-col overflow-hidden opacity-80"></div>
+          <motion.div
+            className="bg-surface-tertiary mx-0 rounded-xl shrink-0 overflow-hidden"
+            initial={false}
+            animate={{
+              opacity: collapsed ? 0 : 0.8,
+              height: collapsed ? 0 : 1.5,
+              marginTop: collapsed ? 0 : 8,
+              marginBottom: collapsed ? 0 : 8,
+            }}
+            transition={SIDEBAR_LAYOUT_TWEEN}
+          />
 
-          <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          {/* Task List */}
+          <div
+            className={cn(
+              'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
+              collapsed
+                ? 'max-h-0 pointer-events-none flex-none'
+                : 'min-h-0 flex-1'
+            )}
+            style={{ minHeight: 0 }}
+          >
+            <div
+              className={cn(
+                'gap-2 pl-3 pr-1.5 pb-1.5 pt-0 flex w-full shrink-0 items-center justify-between',
+                collapsed && 'hidden'
+              )}
+            >
+              <span className="text-text-label min-w-0 text-xs font-semibold truncate">
+                {t('layout.task-list-title', { defaultValue: 'Tasks' })}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+                className="text-icon-primary shrink-0"
+                aria-label={t('layout.task-list-add-hint', {
+                  defaultValue: 'Open workspace and focus chat',
+                })}
+                onClick={() => requestWorkspaceChatFocus()}
+              >
+                <Plus className="size-3.5" aria-hidden />
+              </Button>
+            </div>
+            <div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto">
               {allTaskEntries.length === 0 ? (
-                <p className="text-text-label text-xs px-3">
+                <p className="text-text-label px-3 text-xs w-full">
                   {t('layout.no-tasks', { defaultValue: 'No tasks' })}
                 </p>
               ) : (
-                <div className="gap-2 flex flex-col">
+                <div className="gap-2 min-w-0 flex w-full flex-col">
                   {allTaskEntries.map(
                     ({ chatId, taskId, task, firstUserMessageId }) => (
                       <ProjectSidebarTaskListRow
@@ -782,97 +1046,118 @@ export default function ProjectPageSidebar({
             </div>
           </div>
 
-          <div className="border-border-secondary pt-2 mt-auto shrink-0 border-t">
-            <div className="gap-1 grid grid-cols-4">
-              <button
-                type="button"
-                onClick={() => navigate('/history?tab=agents&section=models')}
-                title={`${modelModeLine}\n${modelDetailLine}`}
+          {/* Bottom section - Profile and Help */}
+          <div className="border-border-secondary pt-2 mt-auto w-full shrink-0 border-t">
+            <div
+              className={cn(
+                'min-w-0 gap-1 grid w-full overflow-hidden',
+                collapsed
+                  ? 'grid-cols-1'
+                  : 'grid-cols-[minmax(0,3fr)_minmax(0,1fr)]'
+              )}
+            >
+              <div
                 className={cn(
-                  rowButtonClass,
-                  'h-12 min-h-12 bg-surface-primary col-span-3',
-                  'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
+                  'min-h-0 min-w-0 overflow-hidden',
+                  collapsed &&
+                    'max-h-0 pointer-events-none overflow-hidden opacity-0'
                 )}
-                aria-label={t('setting.models')}
               >
-                <span
-                  className="h-7 w-7 flex shrink-0 items-center justify-center"
-                  aria-hidden
+                <button
+                  type="button"
+                  onClick={() => navigate('/history?tab=agents&section=models')}
+                  title={`${modelModeLine}\n${modelDetailLine}`}
+                  className={cn(
+                    rowButtonClass,
+                    'bg-surface-primary w-full',
+                    'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
+                  )}
+                  aria-label={t('setting.models')}
                 >
-                  <img
-                    src={folderIcon}
-                    alt=""
-                    className="h-7 w-7 mt-1 shrink-0 object-contain"
-                    draggable={false}
-                  />
-                </span>
-                <div className="min-w-0 flex flex-1 flex-col justify-center leading-none">
-                  <div className="bg-surface-information rounded-md px-1 w-fit">
-                    <span className="text-text-information text-label-xs font-semibold leading-tight truncate text-nowrap">
-                      {modelModeLine}
+                  <span
+                    className="h-7 w-7 flex shrink-0 items-center justify-center"
+                    aria-hidden
+                  >
+                    <img
+                      src={folderIcon}
+                      alt=""
+                      className="h-7 w-7 mt-1 shrink-0 object-contain"
+                      draggable={false}
+                    />
+                  </span>
+                  <div className="min-w-0 flex flex-1 flex-col justify-center leading-none">
+                    <div className="bg-surface-information rounded-md px-1 w-fit">
+                      <span className="text-text-information text-label-xs font-semibold leading-tight truncate text-nowrap">
+                        {modelModeLine}
+                      </span>
+                    </div>
+                    <span className="text-text-secondary leading-tight px-1 truncate text-[10px]">
+                      {modelDetailLine}
                     </span>
                   </div>
-                  <span className="text-text-secondary leading-tight px-1 truncate text-[10px]">
-                    {modelDetailLine}
-                  </span>
-                </div>
-              </button>
-              <DropdownMenu open={helpMenuOpen} onOpenChange={setHelpMenuOpen}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      hubIconTabClass(helpMenuOpen),
-                      'h-12 min-h-12'
-                    )}
-                    aria-label={t('layout.help-and-support', {
-                      defaultValue: 'Help and support',
-                    })}
-                    aria-haspopup="menu"
-                  >
-                    <CircleHelp
-                      className="h-4 w-4 text-icon-primary shrink-0"
-                      aria-hidden
-                    />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="right"
-                  align="end"
-                  sideOffset={8}
-                  alignOffset={8}
-                  className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
-                  style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
+                </button>
+              </div>
+              <div className="min-h-0 min-w-0 flex w-full">
+                <DropdownMenu
+                  open={helpMenuOpen}
+                  onOpenChange={setHelpMenuOpen}
                 >
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() => setSupportDialogOpen(true)}
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        hubIconTabClass(helpMenuOpen),
+                        collapsed && 'px-3 justify-start'
+                      )}
+                      aria-label={t('layout.help-and-support', {
+                        defaultValue: 'Help and support',
+                      })}
+                      aria-haspopup="menu"
+                    >
+                      <CircleHelp
+                        className="h-4 w-4 text-icon-primary shrink-0"
+                        aria-hidden
+                      />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="right"
+                    align="end"
+                    sideOffset={8}
+                    alignOffset={8}
+                    className={PROJECT_HUB_DROPDOWN_CONTENT_CLASS}
+                    style={PROJECT_HUB_DROPDOWN_CONTENT_STYLE}
                   >
-                    {t('layout.contact-support')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() => {
-                      void reportBugOpenGithub();
-                    }}
-                  >
-                    {t('layout.report-bug')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
-                    onSelect={() => {
-                      void downloadLogs();
-                    }}
-                  >
-                    {t('layout.download-logs', {
-                      defaultValue: 'Download logs',
-                    })}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem
+                      className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                      onSelect={() => setSupportDialogOpen(true)}
+                    >
+                      {t('layout.contact-support')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                      onSelect={() => {
+                        void reportBugOpenGithub();
+                      }}
+                    >
+                      {t('layout.report-bug')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className={PROJECT_HUB_DROPDOWN_ITEM_CLASS}
+                      onSelect={() => {
+                        void downloadLogs();
+                      }}
+                    >
+                      {t('layout.download-logs', {
+                        defaultValue: 'Download logs',
+                      })}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       </motion.aside>
     </>
   );

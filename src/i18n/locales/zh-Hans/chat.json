@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "使用触发器自动化您的任务",
   "single-agent-working": "{{agent}} 正在努力处理",
   "agent-outcome-expand": "展开",
-  "agent-outcome-collapse": "收起"
+  "agent-outcome-collapse": "收起",
+  "input-attach-add-files-or-photos": "添加文件或照片",
+  "input-attach-skills": "技能",
+  "input-attach-menu-trigger": "添加文件、照片，或打开技能、连接器、浏览器"
 }

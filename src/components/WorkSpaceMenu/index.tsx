@@ -16,27 +16,38 @@ import {
   MenuToggleGroup,
   MenuToggleItem,
 } from '@/components/MenuButton/MenuButton';
+import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useWorkerList } from '@/store/authStore';
+import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bird, Bot, CodeXml, FileText, Globe, Image } from 'lucide-react';
+import {
+  Bird,
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  CodeXml,
+  FileText,
+  Globe,
+  Image,
+} from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface WorkSpaceMenuProps {
-  embedInToolbar?: boolean;
   onToggleChatBox?: () => void;
   isChatBoxVisible?: boolean;
 }
 
 export function WorkSpaceMenu({
-  embedInToolbar,
   onToggleChatBox,
   isChatBoxVisible = true,
 }: WorkSpaceMenuProps) {
   const { t } = useTranslation();
   const { chatStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
+
+  const { moveLeft, moveRight } = useWorkflowViewportStore();
 
   const baseWorker: Agent[] = useMemo(
     () => [
@@ -331,7 +342,7 @@ export function WorkSpaceMenu({
 
   return (
     <div className="w-full">
-      <div className="relative flex h-full w-full flex-row items-center justify-start">
+      <div className="relative flex h-full w-full flex-row items-center justify-center">
         {/* activeAgent */}
         <AnimatePresence>
           {agentList.length > 0 && (
@@ -340,15 +351,15 @@ export function WorkSpaceMenu({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className={`gap-2 flex w-fit flex-row`}
+              className={`gap-2 pl-2 flex w-fit flex-row`}
             >
               <MenuToggleGroup
                 type="single"
-                size="sm"
+                size="md"
                 orientation="horizontal"
                 value={getCurrentTask()?.activeWorkspace as string}
                 onValueChange={onValueChange}
-                className="gap-1.5 flex w-full items-center"
+                className="gap-2 pb-2 flex w-full items-center"
               >
                 <AnimatePresence mode="popLayout">
                   {agentList.map((agent) => (
@@ -379,7 +390,7 @@ export function WorkSpaceMenu({
                           agentIconMap[agent.type as keyof typeof agentIconMap]
                         }
                         showSubIcon={true}
-                        className={`h-8 w-8 rounded-lg [&_svg]:size-4 [&>span:last-of-type]:top-0 [&>span:last-of-type]:right-0 ${agent.tasks.length === 0 ? 'opacity-80' : ''}`}
+                        className={agent.tasks.length === 0 ? 'opacity-30' : ''}
                       />
                     </motion.div>
                   ))}
@@ -388,6 +399,27 @@ export function WorkSpaceMenu({
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Viewport Navigation Buttons */}
+        {(moveLeft || moveRight) && (
+          <div className="right-2 pb-2 absolute flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={moveLeft || undefined}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={moveRight || undefined}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

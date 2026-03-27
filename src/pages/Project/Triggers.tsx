@@ -275,7 +275,7 @@ export default function Overview({
 
   return (
     <div className="min-h-0 min-w-0 flex h-full flex-1 flex-col">
-      <div className="bg-surface-secondary px-2 pt-2 flex h-full flex-row">
+      <div className="bg-surface-secondary pl-2 pt-2 flex h-full flex-row">
         {/* Left Side: Trigger List */}
         <div className="min-w-0 flex flex-1 flex-col">
           {/* List View Section */}

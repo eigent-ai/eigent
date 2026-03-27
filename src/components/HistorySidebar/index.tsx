@@ -20,6 +20,7 @@ import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore } from '@/store/authStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
@@ -50,6 +51,9 @@ import SearchInput from './SearchInput';
 export default function HistorySidebar() {
   const { t } = useTranslation();
   const { isOpen, close } = useSidebarStore();
+  const projectSidebarCollapsed = usePageTabStore(
+    (s) => s.projectSidebarCollapsed
+  );
   const navigate = useNavigate();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -308,9 +312,24 @@ export default function HistorySidebar() {
     const MARGIN = 8;
 
     const updateAnchor = () => {
-      const btn = document.getElementById('active-task-title-btn');
-      if (btn) {
-        const rect = btn.getBoundingClientRect();
+      const sidebarTitleEl = document.getElementById(
+        'sidebar-active-task-title-btn'
+      );
+      const topBarTitleEl = document.getElementById('active-task-title-btn');
+
+      let anchorEl: HTMLElement | null = null;
+      if (!projectSidebarCollapsed && sidebarTitleEl) {
+        const r = sidebarTitleEl.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          anchorEl = sidebarTitleEl;
+        }
+      }
+      if (!anchorEl && topBarTitleEl) {
+        anchorEl = topBarTitleEl;
+      }
+
+      if (anchorEl) {
+        const rect = anchorEl.getBoundingClientRect();
         let left = rect.left;
         if (left + PANEL_WIDTH > window.innerWidth - MARGIN) {
           left = window.innerWidth - MARGIN - PANEL_WIDTH;
@@ -320,6 +339,8 @@ export default function HistorySidebar() {
         }
         const top = rect.bottom + GAP;
         setAnchorStyle({ left, top });
+      } else {
+        setAnchorStyle(null);
       }
     };
 
@@ -331,7 +352,7 @@ export default function HistorySidebar() {
     return () => {
       window.removeEventListener('resize', updateAnchor);
     };
-  }, [isOpen]);
+  }, [isOpen, projectSidebarCollapsed]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -359,7 +380,7 @@ export default function HistorySidebar() {
             className="inset-0 fixed z-40 bg-transparent"
             onClick={close}
           />
-          {/* History panel below the project title control (TopBar) */}
+          {/* History panel below project title (sidebar when expanded, else TopBar) */}
           <motion.div
             initial={false}
             animate={{ y: 0, opacity: 1 }}

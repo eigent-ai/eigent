@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "Automatiza tu tarea con un desencadenador",
   "single-agent-working": "{{agent}} está trabajando a fondo",
   "agent-outcome-expand": "Expandir",
-  "agent-outcome-collapse": "Contraer"
+  "agent-outcome-collapse": "Contraer",
+  "input-attach-add-files-or-photos": "Añadir archivos o fotos",
+  "input-attach-skills": "Habilidades",
+  "input-attach-menu-trigger": "Añadir archivos o fotos o abrir Habilidades, Conectores o Navegador"
 }

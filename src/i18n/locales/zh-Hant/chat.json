@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "使用觸發器自動化您的任務",
   "single-agent-working": "{{agent}} 正在努力處理",
   "agent-outcome-expand": "展開",
-  "agent-outcome-collapse": "收合"
+  "agent-outcome-collapse": "收合",
+  "input-attach-add-files-or-photos": "新增檔案或相片",
+  "input-attach-skills": "技能",
+  "input-attach-menu-trigger": "新增檔案、相片，或開啟技能、連接器、瀏覽器"
 }

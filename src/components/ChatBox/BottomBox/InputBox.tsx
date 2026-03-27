@@ -15,6 +15,13 @@
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -22,26 +29,24 @@ import {
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
-import { AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
+  Compass,
   FileText,
+  Hammer,
   Image,
-  Maximize2,
+  Paperclip,
   Plus,
   UploadCloud,
+  Wand2,
   X,
   Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ExpandedInputBox } from './ExpandedInputBox';
 import { RichChatInput } from './RichChatInput';
-
-// Module-level singleton to track which InputBox instance has the expanded dialog open
-// This prevents multiple dialogs from opening when Cmd+P is pressed
-let activeExpandedDialogId: string | null = null;
 
 /**
  * File attachment object
@@ -85,12 +90,6 @@ export interface InputboxProps {
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
   onTriggerCreated?: (triggerData: TriggerInput) => void;
-  /** Hide the expand button (used when InputBox is already inside ExpandedInputBox) */
-  hideExpandButton?: boolean;
-  /** When true, show collapse control in the expand slot (expanded modal) */
-  isExpandedInput?: boolean;
-  /** Called when user collapses from expanded input (same control as expand) */
-  onCollapseExpanded?: () => void;
 }
 
 /**
@@ -148,11 +147,9 @@ export const Inputbox = ({
   useCloudModelInDev = false,
   onTriggerCreating: _onTriggerCreating,
   onTriggerCreated: _onTriggerCreated,
-  hideExpandButton = false,
-  isExpandedInput = false,
-  onCollapseExpanded,
 }: InputboxProps) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
@@ -162,49 +159,7 @@ export const Inputbox = ({
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const hoverCloseTimerRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
-  const [isExpandedDialogOpen, setIsExpandedDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const reactId = React.useId();
-  const instanceIdRef = useRef<string>(`inputbox-${reactId}`);
-
-  // Handle dialog open/close with singleton tracking
-  const handleExpandedDialogChange = useCallback((open: boolean) => {
-    if (open) {
-      activeExpandedDialogId = instanceIdRef.current;
-      setIsExpandedDialogOpen(true);
-    } else {
-      if (activeExpandedDialogId === instanceIdRef.current) {
-        activeExpandedDialogId = null;
-      }
-      setIsExpandedDialogOpen(false);
-    }
-  }, []);
-
-  // Keyboard shortcut handler for Cmd+P / Ctrl+P
-  // Opens dialog if none is open, or closes if this instance owns the open dialog
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
-        e.preventDefault();
-
-        // If this instance has the dialog open, close it
-        if (
-          isExpandedDialogOpen &&
-          activeExpandedDialogId === instanceIdRef.current
-        ) {
-          handleExpandedDialogChange(false);
-        }
-        // If no dialog is open, open this one
-        else if (activeExpandedDialogId === null) {
-          handleExpandedDialogChange(true);
-        }
-        // Otherwise another instance has it open, do nothing
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isExpandedDialogOpen, handleExpandedDialogChange]);
 
   const openRemainingPopover = () => {
     if (hoverCloseTimerRef.current) {
@@ -362,42 +317,9 @@ export const Inputbox = ({
           </div>
         </div>
       )}
-      {/* Layer 1: Expand input controls */}
-      <div className="gap-2 relative box-border flex w-full items-center justify-end">
-        {isExpandedInput ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            textWeight="bold"
-            buttonRadius="full"
-            className="shrink-0 opacity-40"
-            onClick={() => onCollapseExpanded?.()}
-            disabled={disabled}
-            title={t('chat.collapse-input')}
-          >
-            <X className="text-icon-primary size-3.5" />
-          </Button>
-        ) : !hideExpandButton ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            textWeight="bold"
-            buttonRadius="full"
-            className="shrink-0 opacity-40"
-            onClick={() => handleExpandedDialogChange(true)}
-            disabled={disabled}
-            title={t('chat.expand-input')}
-          >
-            <Maximize2 className="text-icon-primary size-3.5" />
-          </Button>
-        ) : null}
-      </div>
-
-      {/* Layer 2: File attachments (only show if has files) */}
+      {/* Layer 1: File attachments (only show if has files) */}
       {files.length > 0 && (
-        <div className="gap-1 pt-2 relative box-border flex w-full flex-wrap items-start">
+        <div className="gap-1 pb-2 relative box-border flex w-full flex-wrap items-start">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;
             return (
@@ -523,8 +445,8 @@ export const Inputbox = ({
         </div>
       )}
 
-      {/* Layer 3: Text input area */}
-      <div className="gap-2.5 py-3 relative box-border flex w-full flex-1 items-start justify-center">
+      {/* Layer 2: Text input area */}
+      <div className="gap-2.5 pb-3 relative box-border flex w-full flex-1 items-start justify-center">
         <RichChatInput
           ref={textareaRef as React.RefObject<HTMLDivElement>}
           value={value}
@@ -554,21 +476,65 @@ export const Inputbox = ({
         />
       </div>
 
-      {/* Layer 4: Action buttons */}
+      {/* Layer 3: Action buttons */}
       <div className="relative flex w-full items-center justify-between">
         {/* Left: Add File Button and Add Trigger Button */}
         <div className="gap-1 relative flex items-center">
-          <Button
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            textWeight="bold"
-            buttonRadius="lg"
-            onClick={onAddFile}
-            disabled={disabled || !privacy || useCloudModelInDev}
-          >
-            <Plus className="text-icon-primary" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+                textWeight="bold"
+                buttonRadius="lg"
+                disabled={disabled}
+                aria-label={t('chat.input-attach-menu-trigger')}
+                aria-haspopup="menu"
+              >
+                <Plus className="text-icon-primary" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="min-w-[13.5rem]"
+            >
+              <DropdownMenuItem
+                disabled={
+                  !privacy ||
+                  useCloudModelInDev ||
+                  typeof onAddFile !== 'function'
+                }
+                onSelect={() => {
+                  onAddFile?.();
+                }}
+              >
+                <Paperclip className="text-icon-primary" aria-hidden />
+                {t('chat.input-attach-add-files-or-photos')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-border-secondary -mx-1 my-1" />
+              <DropdownMenuItem
+                onSelect={() => navigate('/history?tab=agents&section=skills')}
+              >
+                <Wand2 className="text-icon-primary" aria-hidden />
+                {t('chat.input-attach-skills')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => navigate('/history?tab=connectors')}
+              >
+                <Hammer className="text-icon-primary" aria-hidden />
+                {t('layout.connectors')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => navigate('/history?tab=browser')}
+              >
+                <Compass className="text-icon-primary" aria-hidden />
+                {t('layout.browser')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Add Trigger Button - opens TriggerDialog */}
           <Button
@@ -616,26 +582,6 @@ export const Inputbox = ({
             <div className="inset-0 pointer-events-none absolute shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
           </Button>
         </div>
-
-        {/* Expanded Input Box */}
-        <AnimatePresence>
-          {isExpandedDialogOpen && (
-            <ExpandedInputBox
-              inputProps={{
-                value,
-                onChange,
-                onSend,
-                files,
-                onFilesChange,
-                onAddFile,
-                disabled,
-                privacy,
-                useCloudModelInDev,
-              }}
-              onClose={() => handleExpandedDialogChange(false)}
-            />
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );

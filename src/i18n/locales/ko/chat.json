@@ -73,5 +73,8 @@
   "task-completed-card-subtitle": "트리거로 작업을 자동화하세요",
   "single-agent-working": "{{agent}}가 열심히 작업 중입니다",
   "agent-outcome-expand": "펼치기",
-  "agent-outcome-collapse": "접기"
+  "agent-outcome-collapse": "접기",
+  "input-attach-add-files-or-photos": "파일 또는 사진 추가",
+  "input-attach-skills": "스킬",
+  "input-attach-menu-trigger": "파일·사진 추가 또는 스킬, 커넥터, 브라우저 열기"
 }

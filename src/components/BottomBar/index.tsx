@@ -12,35 +12,50 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
-import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useTranslation } from 'react-i18next';
+import { WorkSpaceMenu } from '../WorkSpaceMenu';
 
-function BottomBar() {
-  const { moveLeft, moveRight } = useWorkflowViewportStore();
+interface BottomBarProps {
+  onToggleChatBox?: () => void;
+  isChatBoxVisible?: boolean;
+}
+
+// Red dot notification indicator
+const RedDotIcon = () => (
+  <div className="h-2 w-2 bg-red-500 shrink-0 rounded-full" />
+);
+
+function BottomBar({ onToggleChatBox, isChatBoxVisible }: BottomBarProps) {
+  const { t } = useTranslation();
+  const { chatStore } = useChatStoreAdapter();
+
+  // Check if there are new files
+  const nuwFileNum = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]?.nuwFileNum || 0
+    : 0;
+  const hasNewFiles = nuwFileNum > 0;
+
+  // Handle inbox click and reset notification
+  const handleInboxClick = () => {
+    if (chatStore?.activeTaskId) {
+      // Reset the new file counter when user views inbox
+      chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
+      // Set active workspace to inbox
+      chatStore.setActiveWorkspace(chatStore.activeTaskId, 'inbox');
+    }
+  };
+
+  const activeWorkspace = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]?.activeWorkspace
+    : null;
 
   return (
     <div className="h-12 pt-2 relative z-50 flex items-center justify-center">
-      {(moveLeft || moveRight) && (
-        <div className="right-2 pb-2 absolute flex items-center">
-          <Button
-            variant="ghost"
-            size="md"
-            className="px-2"
-            onClick={moveLeft || undefined}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            variant="ghost"
-            size="md"
-            className="px-2"
-            onClick={moveRight || undefined}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
-      )}
+      <WorkSpaceMenu
+        onToggleChatBox={onToggleChatBox}
+        isChatBoxVisible={isChatBoxVisible}
+      />
     </div>
   );
 }
