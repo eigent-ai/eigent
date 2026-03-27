@@ -18,7 +18,6 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
-  proxyFetchPut,
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
@@ -66,8 +65,6 @@ export default function ChatBox(): JSX.Element {
   const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
-  /** Assumed true once past login/onboarding; in-chat banner can still opt-in via PUT. */
-  const [privacy, setPrivacy] = useState(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType } = useAuthStore();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
@@ -279,9 +276,8 @@ export default function ChatBox(): JSX.Element {
 
     if (isTaskBusy) return true;
 
-    // Standard checks - check model first, then privacy
+    // Standard checks - model required
     if (!hasModel) return true;
-    if (!privacy) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
 
@@ -289,7 +285,6 @@ export default function ChatBox(): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
-    privacy,
     hasModel,
     useCloudModelInDev,
     isTaskBusy,
@@ -308,10 +303,6 @@ export default function ChatBox(): JSX.Element {
       if (!hasModel) {
         toast.error('Please select a model first.');
         navigate('/history?tab=agents');
-        return;
-      }
-      if (!privacy) {
-        toast.error('Please accept the privacy policy first.');
         return;
       }
 
@@ -343,7 +334,7 @@ export default function ChatBox(): JSX.Element {
         }
       }
     },
-    [chatStore, projectStore.activeProjectId, hasModel, privacy, navigate]
+    [chatStore, projectStore.activeProjectId, hasModel, navigate]
   );
 
   // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
@@ -406,14 +397,9 @@ export default function ChatBox(): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
 
-    // Check model first, then privacy
     if (!hasModel) {
       toast.error('Please select a model first.');
       navigate('/history?tab=agents');
-      return;
-    }
-    if (!privacy) {
-      toast.error('Please accept the privacy policy first.');
       return;
     }
 
@@ -621,23 +607,6 @@ export default function ChatBox(): JSX.Element {
             setMessage('');
           }
         } else {
-          if (!privacy) {
-            const API_FIELDS = [
-              'take_screenshot',
-              'access_local_software',
-              'access_your_address',
-              'password_storage',
-            ];
-            const requestData = {
-              [API_FIELDS[0]]: true,
-              [API_FIELDS[1]]: true,
-              [API_FIELDS[2]]: true,
-              [API_FIELDS[3]]: true,
-            };
-            proxyFetchPut('/api/user/privacy', requestData);
-            setPrivacy(true);
-          }
-
           setTimeout(() => {
             scrollToBottom();
           }, 200);
@@ -1067,7 +1036,6 @@ export default function ChatBox(): JSX.Element {
                       disabled: isInputDisabled,
                       textareaRef: textareaRef,
                       allowDragDrop: true,
-                      privacy: privacy,
                       useCloudModelInDev: useCloudModelInDev,
                     }}
                   />
@@ -1088,61 +1056,6 @@ export default function ChatBox(): JSX.Element {
                         />
                         <span className="text-xs font-medium text-text-warning flex-1 leading-[20px]">
                           {t('layout.please-select-model')}
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
-                  {hasModel && !privacy ? (
-                    <div className="gap-2 flex items-center">
-                      <div
-                        onClick={(e) => {
-                          const target = e.target as HTMLElement;
-                          if (target.tagName === 'A') {
-                            return;
-                          }
-                          const API_FIELDS = [
-                            'take_screenshot',
-                            'access_local_software',
-                            'access_your_address',
-                            'password_storage',
-                          ];
-                          const requestData = {
-                            [API_FIELDS[0]]: true,
-                            [API_FIELDS[1]]: true,
-                            [API_FIELDS[2]]: true,
-                            [API_FIELDS[3]]: true,
-                          };
-                          proxyFetchPut('/api/user/privacy', requestData);
-                          setPrivacy(true);
-                        }}
-                        className="gap-1 rounded-md bg-surface-information px-sm py-xs flex cursor-pointer items-center"
-                      >
-                        <TriangleAlert
-                          size={20}
-                          className="text-icon-information"
-                        />
-                        <span className="text-xs font-medium text-text-information flex-1 leading-[20px]">
-                          {t('layout.by-messaging-eigent')}{' '}
-                          <a
-                            href="https://www.eigent.ai/terms-of-use"
-                            target="_blank"
-                            className="text-text-information underline"
-                            onClick={(e) => e.stopPropagation()}
-                            rel="noreferrer"
-                          >
-                            {t('layout.terms-of-use')}
-                          </a>{' '}
-                          {t('layout.and')}{' '}
-                          <a
-                            href="https://www.eigent.ai/privacy-policy"
-                            target="_blank"
-                            className="text-text-information underline"
-                            onClick={(e) => e.stopPropagation()}
-                            rel="noreferrer"
-                          >
-                            {t('layout.privacy-policy')}
-                          </a>
-                          .
                         </span>
                       </div>
                     </div>
@@ -1236,7 +1149,6 @@ export default function ChatBox(): JSX.Element {
                     disabled: isInputDisabled,
                     textareaRef: textareaRef,
                     allowDragDrop: true,
-                    privacy: privacy,
                     useCloudModelInDev: useCloudModelInDev,
                   }}
                 />
