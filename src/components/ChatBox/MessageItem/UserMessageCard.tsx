@@ -24,12 +24,13 @@ const COPIED_RESET_MS = 2000;
 
 const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
-function parseContentWithSkillTags(
-  content: string
-): Array<{ type: 'text'; value: string } | { type: 'skill'; name: string }> {
-  const nodes: Array<
-    { type: 'text'; value: string } | { type: 'skill'; name: string }
-  > = [];
+type ContentNode =
+  | { type: 'text'; value: string }
+  | { type: 'skill'; name: string }
+  | { type: 'mention'; id: string };
+
+function parseContentWithTags(content: string): ContentNode[] {
+  const nodes: ContentNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
   SKILL_TAG_REGEX.lastIndex = 0;
@@ -37,7 +38,13 @@ function parseContentWithSkillTags(
     if (m.index > lastIndex) {
       nodes.push({ type: 'text', value: content.slice(lastIndex, m.index) });
     }
-    nodes.push({ type: 'skill', name: m[1].trim() });
+    const inner = m[1].trim();
+    if (inner.startsWith('@')) {
+      // {{@browser}} → mention tag
+      nodes.push({ type: 'mention', id: inner.slice(1) });
+    } else {
+      nodes.push({ type: 'skill', name: inner });
+    }
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < content.length) {
@@ -45,6 +52,14 @@ function parseContentWithSkillTags(
   }
   return nodes.length > 0 ? nodes : [{ type: 'text', value: content }];
 }
+
+const MENTION_LABELS: Record<string, string> = {
+  workforce: 'Workforce',
+  browser: 'Browser Agent',
+  dev: 'Developer Agent',
+  doc: 'Document Agent',
+  media: 'Multi Modal Agent',
+};
 
 interface UserMessageCardProps {
   id: string;
@@ -107,8 +122,10 @@ export function UserMessageCard({
     window.electronAPI?.openSkillFolder?.(skillName);
   };
 
-  const contentNodes = parseContentWithSkillTags(content);
-  const hasSkillTags = contentNodes.some((n) => n.type === 'skill');
+  const contentNodes = parseContentWithTags(content);
+  const hasSpecialTags = contentNodes.some(
+    (n) => n.type === 'skill' || n.type === 'mention'
+  );
 
   return (
     <div
@@ -125,11 +142,23 @@ export function UserMessageCard({
         </Button>
       </div>
       <div className="whitespace-pre-wrap break-words text-body-sm text-text-body">
-        {hasSkillTags
-          ? contentNodes.map((node, i) =>
-              node.type === 'text' ? (
-                <span key={i}>{node.value}</span>
-              ) : (
+        {hasSpecialTags
+          ? contentNodes.map((node, i) => {
+              if (node.type === 'text') {
+                return <span key={i}>{node.value}</span>;
+              }
+              if (node.type === 'mention') {
+                return (
+                  <span
+                    key={i}
+                    className="bg-info-primary/15 text-info-primary mr-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 align-middle text-xs font-semibold"
+                  >
+                    @{MENTION_LABELS[node.id] ?? node.id}
+                  </span>
+                );
+              }
+              // skill
+              return (
                 <button
                   key={i}
                   type="button"
@@ -143,8 +172,8 @@ export function UserMessageCard({
                   <Sparkles className="h-3.5 w-3.5 text-icon-primary" />
                   {node.name}
                 </button>
-              )
-            )
+              );
+            })
           : content}
       </div>
       {attaches && attaches.length > 0 && (

@@ -18,6 +18,7 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
+  proxyFetchPut,
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
@@ -44,8 +45,37 @@ const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
   );
 };
 
+const REQUIRED_PRIVACY_FIELDS = [
+  'take_screenshot',
+  'access_local_software',
+  'access_your_address',
+  'password_storage',
+] as const;
+
+const hasAcceptedPrivacyPolicy = (
+  privacySettings: Record<string, unknown> | null | undefined
+): boolean => {
+  if (!privacySettings) {
+    return false;
+  }
+
+  if (typeof privacySettings.accepted === 'boolean') {
+    return privacySettings.accepted;
+  }
+
+  if (typeof privacySettings.privacy === 'boolean') {
+    return privacySettings.privacy;
+  }
+
+  return REQUIRED_PRIVACY_FIELDS.every(
+    (field) => privacySettings[field] === true
+  );
+};
+
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
+  const [mentionTarget, setMentionTarget] = useState<string | null>(null);
+  const [privacy, setPrivacy] = useState(false);
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -105,6 +135,16 @@ export default function ChatBox(): JSX.Element {
     }
   }, [modelType]);
 
+  const checkPrivacyConsent = useCallback(async () => {
+    try {
+      const res = await proxyFetchGet('/api/v1/user/privacy');
+      setPrivacy(hasAcceptedPrivacyPolicy(res));
+    } catch (err) {
+      console.error('Failed to check privacy consent:', err);
+      setPrivacy(false);
+    }
+  }, []);
+
   // Check model config on mount and when modelType changes
   useEffect(() => {
     proxyFetchGet('/api/v1/configs')
@@ -121,27 +161,30 @@ export default function ChatBox(): JSX.Element {
       .catch((err) => console.error('Failed to fetch configs:', err));
 
     checkModelConfig();
-  }, [modelType, checkModelConfig]);
+    checkPrivacyConsent();
+  }, [modelType, checkModelConfig, checkPrivacyConsent]);
 
   // Re-check model config when returning from settings page
   useEffect(() => {
     // Check when location changes (user navigates)
     if (location.pathname === '/') {
       checkModelConfig();
+      checkPrivacyConsent();
     }
-  }, [location.pathname, checkModelConfig]);
+  }, [location.pathname, checkModelConfig, checkPrivacyConsent]);
 
   // Also check when window gains focus (user returns from settings)
   useEffect(() => {
     const handleFocus = () => {
       checkModelConfig();
+      checkPrivacyConsent();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [checkModelConfig]);
+  }, [checkModelConfig, checkPrivacyConsent]);
 
   // Task time tracking
   const [taskTime, setTaskTime] = useState(
@@ -272,10 +315,26 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
+  const isDirectAgentRunning = useMemo(() => {
+    if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
+      return false;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    return (
+      task.status === ChatTaskStatus.RUNNING &&
+      !task.messages.some((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      (task.taskAssigning?.length ?? 0) > 0
+    );
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
     const task = chatStore.tasks[chatStore.activeTaskId];
+
+    // In direct-agent mode (@mention), allow input while RUNNING
+    // so user can dispatch additional @mention agents in parallel.
+    if (isDirectAgentRunning) return false;
+
     return (
       // running or paused
       task.status === ChatTaskStatus.RUNNING ||
@@ -284,13 +343,15 @@ export default function ChatBox(): JSX.Element {
       task.messages.some(
         (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
       ) ||
-      // skeleton/computing phase
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      // skeleton/computing phase (not applicable after task finishes or in direct agent mode)
+      ((task.status as string) !== ChatTaskStatus.FINISHED &&
+        (task.status as string) !== ChatTaskStatus.RUNNING &&
+        !task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
       task.isTakeControl
     );
-  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+  }, [chatStore?.activeTaskId, chatStore?.tasks, isDirectAgentRunning]);
 
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -435,7 +496,35 @@ export default function ChatBox(): JSX.Element {
       navigate('/history?tab=agents');
       return;
     }
-    const tempMessageContent = messageStr || message;
+    if (!privacy) {
+      toast.error('Please accept the privacy policy first.');
+      return;
+    }
+
+    const rawMessageContent = messageStr || message;
+
+    // Use the active mentionTarget state (rendered as a tag in the input).
+    // Fall back to parsing @mention from text for backwards compat.
+    let activeMentionTarget = mentionTarget;
+    let tempMessageContent = rawMessageContent;
+    if (!activeMentionTarget) {
+      const mentionMatch = rawMessageContent.match(/^@(\w+)\s+([\s\S]*)/);
+      if (mentionMatch) {
+        activeMentionTarget = mentionMatch[1];
+        tempMessageContent = mentionMatch[2];
+      }
+    }
+
+    // Build display content: embed mention as {{@agentId}} so it
+    // survives in the message text and gets rendered like skill tags.
+    const displayContent = activeMentionTarget
+      ? `{{@${activeMentionTarget}}} ${tempMessageContent}`
+      : tempMessageContent;
+
+    // Persist the mention target so the tag stays for the next turn
+    if (activeMentionTarget && activeMentionTarget !== mentionTarget) {
+      setMentionTarget(activeMentionTarget);
+    }
 
     if (executionId && projectStore.activeProjectId) {
       const project = projectStore.getProjectById(projectStore.activeProjectId);
@@ -455,7 +544,42 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
+    // In direct-agent mode, allow sending @mention for parallel agents
+    const isDirectMode =
+      task.status === ChatTaskStatus.RUNNING &&
+      !task.messages.some((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      (task.taskAssigning?.length ?? 0) > 0 &&
+      !!activeMentionTarget;
+    const isTaskBusy = isDirectMode
+      ? false
+      : // running or paused counts as busy
+        (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
+        task.status === ChatTaskStatus.PAUSE ||
+        // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+        task.messages.some(
+          (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+        ) ||
+        (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+          !task.hasWaitComfirm &&
+          task.messages.length > 0 &&
+          task.status !== ChatTaskStatus.FINISHED) ||
+        task.isTakeControl ||
+        // explicit confirm wait while task is pending but card not confirmed yet
+        (!!task.messages.find(
+          (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+        ) &&
+          task.status === ChatTaskStatus.PENDING);
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
+    const isReplayChatStore = task?.type === 'replay';
+    if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
+      toast.error(
+        'Current task is in progress. Please wait for it to finish before sending a new request.',
+        {
+          closeButton: true,
+        }
+      );
+      return;
+    }
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
@@ -463,7 +587,7 @@ export default function ChatBox(): JSX.Element {
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
           role: 'user',
-          content: tempMessageContent,
+          content: displayContent,
           attaches:
             JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
             [],
@@ -516,9 +640,11 @@ export default function ChatBox(): JSX.Element {
         // 1. Has wait confirm (simple query response) - but not if task was stopped
         // 2. Task is naturally finished (complex task completed) - but not if task was stopped
         // 3. Has any messages but pending (ongoing conversation)
+        // 4. Direct-agent RUNNING + user is @mentioning (parallel agents)
         const shouldContinueConversation =
           (hasWaitComfirm && !wasTaskStopped) ||
           (isFinished && !wasTaskStopped) ||
+          (isDirectAgentRunning && !!activeMentionTarget) ||
           (hasMessages &&
             chatStore.tasks[_taskId as string].status ===
               ChatTaskStatus.PENDING);
@@ -561,6 +687,8 @@ export default function ChatBox(): JSX.Element {
                 undefined,
                 tempMessageContent,
                 attachesToSend,
+                activeMentionTarget ?? undefined,
+                displayContent,
                 executionId
               );
               chatStore.setAttaches(_taskId, []);
@@ -597,12 +725,13 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              target: activeMentionTarget,
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {
               id: generateUniqueId(),
               role: 'user',
-              content: tempMessageContent,
+              content: displayContent,
               attaches: attachesForThisTurn,
             });
             chatStore.setAttaches(_taskId, []);
@@ -626,6 +755,8 @@ export default function ChatBox(): JSX.Element {
               undefined,
               tempMessageContent,
               attachesToSend,
+              activeMentionTarget ?? undefined,
+              displayContent,
               executionId
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
@@ -947,8 +1078,10 @@ export default function ChatBox(): JSX.Element {
 
     // Determine if we're in the "splitting in progress" phase (skeleton visible)
     // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
+    // Skip splitting phase when task is already RUNNING (e.g. direct @agent mode)
     const isSkeletonPhase =
-      (task.status !== 'finished' &&
+      (task.status !== ChatTaskStatus.FINISHED &&
+        task.status !== ChatTaskStatus.RUNNING &&
         !anyToSubTasksMessage &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
@@ -973,11 +1106,18 @@ export default function ChatBox(): JSX.Element {
     }
 
     // Check task status
-    if (
-      task.status === ChatTaskStatus.RUNNING ||
-      task.status === ChatTaskStatus.PAUSE
-    ) {
+    // In direct-agent mode, show input instead of running bar
+    // so user can dispatch parallel @mention agents.
+    if (task.status === ChatTaskStatus.PAUSE) {
       return 'running';
+    }
+    if (task.status === ChatTaskStatus.RUNNING) {
+      const hasSubTasks = task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      const isDirectMode =
+        !hasSubTasks && (task.taskAssigning?.length ?? 0) > 0;
+      return isDirectMode ? 'input' : 'running';
     }
 
     if (task.status === 'finished' && task.type !== '') {
@@ -1104,6 +1244,8 @@ export default function ChatBox(): JSX.Element {
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
+                  mentionTarget: mentionTarget,
+                  onMentionTargetChange: setMentionTarget,
                 }}
               />
             )}
@@ -1125,7 +1267,63 @@ export default function ChatBox(): JSX.Element {
                   </div>
                 </div>
               ) : null}
-              {hasModel && (
+              {hasModel && !privacy ? (
+                <div className="flex items-center gap-2">
+                  <div
+                    onClick={async (e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.tagName === 'A') {
+                        return;
+                      }
+                      const requestData = {
+                        [REQUIRED_PRIVACY_FIELDS[0]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[1]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[2]]: true,
+                        [REQUIRED_PRIVACY_FIELDS[3]]: true,
+                      };
+                      try {
+                        await proxyFetchPut(
+                          '/api/v1/user/privacy',
+                          requestData
+                        );
+                        setPrivacy(true);
+                      } catch (err) {
+                        console.error('Failed to update privacy consent:', err);
+                        toast.error('Failed to save privacy consent.');
+                      }
+                    }}
+                    className="flex cursor-pointer items-center gap-1 rounded-md bg-surface-information px-sm py-xs"
+                  >
+                    <TriangleAlert
+                      size={20}
+                      className="text-icon-information"
+                    />
+                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-information">
+                      {t('layout.by-messaging-eigent')}{' '}
+                      <a
+                        href="https://www.eigent.ai/terms-of-use"
+                        target="_blank"
+                        className="text-text-information underline"
+                        onClick={(e) => e.stopPropagation()}
+                        rel="noreferrer"
+                      >
+                        {t('layout.terms-of-use')}
+                      </a>{' '}
+                      {t('layout.and')}{' '}
+                      <a
+                        href="https://www.eigent.ai/privacy-policy"
+                        target="_blank"
+                        className="text-text-information underline"
+                        onClick={(e) => e.stopPropagation()}
+                        rel="noreferrer"
+                      >
+                        {t('layout.privacy-policy')}
+                      </a>
+                      .
+                    </span>
+                  </div>
+                </div>
+              ) : (
                 <div className="mr-2 flex flex-col items-center gap-2">
                   {[
                     {
@@ -1206,6 +1404,8 @@ export default function ChatBox(): JSX.Element {
               textareaRef: textareaRef,
               allowDragDrop: hasAnyMessages,
               useCloudModelInDev: useCloudModelInDev,
+              mentionTarget: mentionTarget,
+              onMentionTargetChange: setMentionTarget,
             }}
           />
         )}

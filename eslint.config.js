@@ -70,6 +70,8 @@ export default [
       '**/.venv/**',
       // Prebuilt resources
       'resources/prebuilt/**',
+      // Chrome extension (standalone, uses chrome/browser globals)
+      'extensions/chrome_extension/**',
     ],
   },
 

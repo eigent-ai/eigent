@@ -342,6 +342,7 @@ def improve(id: str, data: SupplementChat):
                 data=ImprovePayload(
                     question=data.question,
                     attaches=data.attaches or [],
+                    target=data.target,
                 ),
                 new_task_id=data.task_id,
             )
@@ -349,7 +350,7 @@ def improve(id: str, data: SupplementChat):
     )
     chat_logger.info(
         "Improvement request queued with preserved context",
-        extra={"project_id": id},
+        extra={"project_id": id, "target": data.target},
     )
     return Response(status_code=201)
 

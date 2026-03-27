@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "CAMEL Browser Agent",
+  "version": "1.0",
+  "description": "AI-powered browser automation using CAMEL framework",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "debugger",
+    "scripting",
+    "sidePanel",
+    "webNavigation",
+    "storage"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open CAMEL Browser Agent"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
