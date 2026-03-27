@@ -358,8 +358,6 @@ export default function ProjectPageSidebar({
     return `${base}, ${t('layout.triggers-disconnected')}`;
   }, [t, triggersListenerConnected, wsConnectionStatus]);
 
-  const activeUpdateCount = chatStore.updateCount;
-
   const allTaskEntries = useMemo(() => {
     const pid = projectStore.activeProjectId;
     if (!pid) return [];
@@ -388,8 +386,9 @@ export default function ProjectPageSidebar({
       });
     }
     return entries;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectStore, activeUpdateCount]);
+    // `chatStore` updates whenever the active chat store changes (adapter subscription).
+    // Do not use `updateCount` alone — it only bumps on task completion, so the list would stay stale while chatting.
+  }, [projectStore, activeProjectId, chatStore]);
 
   const rowButtonBaseClass =
     'no-drag h-8 rounded-xl hover:bg-surface-tertiary min-w-0 flex shrink-0 items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary';

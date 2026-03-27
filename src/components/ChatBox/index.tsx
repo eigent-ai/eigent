@@ -49,8 +49,8 @@ export default function ChatBox(): JSX.Element {
   );
   const [hasModel, setHasModel] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [privacy, setPrivacy] = useState<any>(false);
-  const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
+  /** Assumed true once past login/onboarding; in-chat banner can still opt-in via PUT. */
+  const [privacy, setPrivacy] = useState(true);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const { modelType } = useAuthStore();
@@ -75,31 +75,9 @@ export default function ChatBox(): JSX.Element {
   }, [workspaceChatFocusRequestId]);
 
   useEffect(() => {
-    proxyFetchGet('/api/user/privacy')
-      .then((res) => {
-        let _privacy = 0;
-        Object.keys(res).forEach((key) => {
-          if (!res[key]) {
-            _privacy++;
-            return;
-          }
-        });
-        setPrivacy(_privacy === 0 ? true : false);
-      })
-      .catch((err) => console.error('Failed to fetch settings:', err));
-
-    proxyFetchGet('/api/configs')
-      .then((configsRes) => {
-        const configs = Array.isArray(configsRes) ? configsRes : [];
-        const _hasApiKey = configs.find(
-          (item) => item.config_name === 'GOOGLE_API_KEY'
-        );
-        const _hasApiId = configs.find(
-          (item) => item.config_name === 'SEARCH_ENGINE_ID'
-        );
-        if (_hasApiKey && _hasApiId) setHasSearchKey(true);
-      })
-      .catch((err) => console.error('Failed to fetch configs:', err));
+    proxyFetchGet('/api/configs').catch((err) =>
+      console.error('Failed to fetch configs:', err)
+    );
   }, []);
 
   // Refresh privacy status when dialog closes
@@ -135,13 +113,11 @@ export default function ChatBox(): JSX.Element {
       '00:00'
   );
 
-  const [_hasSubTask, setHasSubTask] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
   const activeTaskId = chatStore?.activeTaskId;
-  const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
   const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
 
   useEffect(() => {
@@ -153,16 +129,6 @@ export default function ChatBox(): JSX.Element {
     }, 500);
     return () => clearInterval(interval);
   }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
 
   useEffect(() => {
     if (!chatStore) return;
@@ -181,7 +147,7 @@ export default function ChatBox(): JSX.Element {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [activeAsk, message, chatStore, activeTaskId]);
+  }, [activeAsk, chatStore, activeTaskId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -325,11 +291,6 @@ export default function ChatBox(): JSX.Element {
       setSearchParams(newSearchParams, { replace: true });
     }
   }, [skill_prompt, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    console.log('ChatStore Data: ', chatStore);
-  }, [chatStore]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -575,7 +536,7 @@ export default function ChatBox(): JSX.Element {
             //Generate nextId in case new chatStore is created to sync with the backend beforehand
             const nextTaskId = generateUniqueId();
             chatStore.setNextTaskId(nextTaskId);
-            chatStore.setNextExecutionId(taskId as string, executionId);
+            chatStore.setNextExecutionId(_taskId as string, executionId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
             fetchPost(`/chat/${projectStore.activeProjectId}`, {
@@ -648,67 +609,7 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, message, chatStore, activeTaskId]);
-
-  const activeAskValue =
-    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (activeAskValue && activeAskValue !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        handleSend('skip', _taskId);
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [
-    activeAskValue,
-    message, // depend on message
-    chatStore,
-    handleSend,
-  ]);
+  handleSendRef.current = handleSend;
 
   // Reactive queuedMessages for the active project
   const queuedMessages = useMemo(() => {
@@ -723,7 +624,6 @@ export default function ChatBox(): JSX.Element {
   }, [projectStore]);
 
   useEffect(() => {
-    // Wait for both config and privacy to be loaded before handling share token
     if (share_token) {
       handleSendShare(share_token);
     }

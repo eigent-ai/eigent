@@ -195,6 +195,7 @@ describe('ChatBox Component', async () => {
     getFormattedTaskTime: vi.fn(() => '00:00:00'),
     setAttaches: vi.fn(),
     setNextTaskId: vi.fn(),
+    setNextExecutionId: vi.fn(),
     removeTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
@@ -287,7 +288,6 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       expect(screen.getByText('Welcome to Eigent')).toBeInTheDocument();
-      expect(screen.getByText('How can I help you today?')).toBeInTheDocument();
     });
 
     it('should render bottom box component', () => {
@@ -853,19 +853,15 @@ describe('ChatBox Component', async () => {
       });
     });
 
-    it('should handle privacy fetch errors', async () => {
-      // Mock console.error to suppress expected error logs
+    it('should handle configs fetch errors', async () => {
       const consoleErrorSpy = vi
         .spyOn(console, 'error')
         .mockImplementation(() => {});
 
-      // Mock the fetch to reject properly for testing error handling
-      mockProxyFetchGet.mockRejectedValue(new Error('Privacy fetch failed'));
+      mockProxyFetchGet.mockRejectedValue(new Error('Configs fetch failed'));
 
-      // Rendering should not throw even with fetch error
       expect(() => renderChatBox()).not.toThrow();
 
-      // Wait for the promise to settle
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalled();
       });

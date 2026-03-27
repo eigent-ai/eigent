@@ -79,7 +79,6 @@ export default function Home() {
     activeWorkspaceTab,
     chatPanelPosition,
     setChatPanelPosition,
-    setHasTriggers,
     setHasAgentFiles,
     markTabAsUnviewed,
   } = usePageTabStore();
@@ -88,7 +87,7 @@ export default function Home() {
   );
 
   const { wsConnectionStatus, triggers } = useTriggerStore();
-  const authStore = useAuthStore.getState();
+  const email = useAuthStore((s) => s.email);
 
   const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
@@ -195,11 +194,11 @@ export default function Home() {
   // Detect files and triggers when project loads
   useEffect(() => {
     const detectAgentFiles = async () => {
-      if (!projectStore.activeProjectId || !authStore.email) return;
+      if (!projectStore.activeProjectId || !email) return;
       try {
         const files = await window.ipcRenderer?.invoke(
           'get-project-file-list',
-          authStore.email,
+          email,
           projectStore.activeProjectId
         );
         setHasAgentFiles(files && files.length > 0);
@@ -208,17 +207,8 @@ export default function Home() {
       }
     };
 
-    // For triggers, since we're using mock data, we set hasTriggers to true
-    // When you have real trigger data, replace this with an API call
-    setHasTriggers(true); // Mock data has triggers
-
     detectAgentFiles();
-  }, [
-    projectStore.activeProjectId,
-    authStore.email,
-    setHasAgentFiles,
-    setHasTriggers,
-  ]);
+  }, [projectStore.activeProjectId, email, setHasAgentFiles]);
 
   // Add webview-show listener in useEffect with cleanup
   useEffect(() => {
