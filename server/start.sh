@@ -1,25 +1,5 @@
 #!/bin/sh
 
-# ── Stale image detection ─────────────────────────────────────────────
-# The Dockerfile bakes a build timestamp into /app/.image_env.
-# On startup we display it so developers can tell at a glance whether
-# their image is fresh or stale after a git pull.
-if [ -f /app/.image_env ]; then
-  . /app/.image_env
-fi
-
-if [ -n "$EIGENT_IMAGE_BUILD_TIME" ]; then
-  echo ""
-  echo "========================================"
-  echo "  Image built at: $EIGENT_IMAGE_BUILD_TIME"
-  echo ""
-  echo "  If you have pulled new server code,"
-  echo "  please rebuild the image:"
-  echo "    docker-compose up --build -d"
-  echo "========================================"
-  echo ""
-fi
-
 # wait for database to be ready
 echo "Waiting for database to be ready..."
 while ! nc -z postgres 5432; do

@@ -59,13 +59,32 @@ except Exception:
 
 # Git hash of the last commit that touched server/ — used for stale-server detection.
 # Captured once at startup; stays constant while the process lives.
-try:
-    SERVER_CODE_HASH = subprocess.check_output(
-        ["git", "log", "-1", "--format=%H", "--", "server/"],
-        cwd=str(_project_root), text=True, stderr=subprocess.DEVNULL,
-    ).strip() or "unknown"
-except Exception:
-    SERVER_CODE_HASH = "unknown"
+# 1) Try git directly (works in local dev)
+# 2) Fall back to .image_env baked by Dockerfile (works in Docker)
+def _read_server_code_hash() -> str:
+    # Try git first (local dev)
+    try:
+        h = subprocess.check_output(
+            ["git", "log", "-1", "--format=%H", "--", "server/"],
+            cwd=str(_project_root), text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        if h:
+            return h
+    except Exception:
+        pass
+    # Fallback: read from Docker-baked .image_env
+    try:
+        env_file = pathlib.Path(__file__).parent / ".image_env"
+        for line in env_file.read_text().splitlines():
+            if line.startswith("EIGENT_SERVER_GIT_COMMIT="):
+                v = line.split("=", 1)[1].strip()
+                if v:
+                    return v
+    except Exception:
+        pass
+    return "unknown"
+
+SERVER_CODE_HASH = _read_server_code_hash()
 
 
 # Health check at root level for Docker healthcheck (GET /health)
