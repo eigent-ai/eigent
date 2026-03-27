@@ -48,6 +48,8 @@
   "settings": "Ajustes",
   "general": "General",
   "aiWorkforce": "Fuerza laboral de IA",
+  "chat-panel-left": "Mostrar chat a la izquierda",
+  "chat-panel-right": "Mostrar chat a la derecha",
   "triggers": "Disparadores",
   "triggers-disconnected": "Desconectado",
   "triggers-connecting": "Conectando…",

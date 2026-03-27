@@ -30,6 +30,8 @@
   "task-running": "Задача выполняется",
   "task-completed": "Задача выполнена",
   "agent-folder": "Папка агента",
+  "choose-agent-work-folder": "Выберите папку агента",
+  "choose-agent-work-folder-placeholder": "Выберите папку на компьютере (скоро)",
   "open": "Открыть",
   "close": "Закрыть",
   "search": "Поиск",

@@ -138,6 +138,8 @@
   "no-activity": "暫無活動",
   "activity-hint": "活動將顯示在這裡",
   "execution-logs": "執行日誌",
+  "fold-execution-logs": "摺疊執行日誌",
+  "open-execution-logs": "展開執行日誌",
   "delete-trigger": "刪除觸發器",
   "cancel": "取消",
   "deleting": "正在刪除...",

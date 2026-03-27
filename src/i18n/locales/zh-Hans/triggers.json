@@ -138,6 +138,8 @@
   "no-activity": "暂无活动",
   "activity-hint": "活动将显示在这里",
   "execution-logs": "执行日志",
+  "fold-execution-logs": "折叠执行日志",
+  "open-execution-logs": "展开执行日志",
   "delete-trigger": "删除触发器",
   "cancel": "取消",
   "deleting": "正在删除...",

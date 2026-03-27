@@ -138,6 +138,8 @@
   "no-activity": "아직 활동이 없습니다",
   "activity-hint": "활동이 여기에 표시됩니다",
   "execution-logs": "실행 로그",
+  "fold-execution-logs": "실행 로그 접기",
+  "open-execution-logs": "실행 로그 펼치기",
   "delete-trigger": "트리거 삭제",
   "cancel": "취소",
   "deleting": "삭제 중...",

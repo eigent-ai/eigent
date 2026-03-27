@@ -30,6 +30,8 @@
   "task-running": "任務運行",
   "task-completed": "任務完成",
   "agent-folder": "智能體文件夹",
+  "choose-agent-work-folder": "選擇智慧體工作資料夾",
+  "choose-agent-work-folder-placeholder": "在電腦上選擇資料夾（即將推出）",
   "open": "打開",
   "close": "關閉",
   "search": "搜索",

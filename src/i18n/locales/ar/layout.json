@@ -48,6 +48,8 @@
   "settings": "الإعدادات",
   "general": "عام",
   "aiWorkforce": "قوة عمل الذكاء الاصطناعي",
+  "chat-panel-left": "إظهار الدردشة على اليسار",
+  "chat-panel-right": "إظهار الدردشة على اليمين",
   "triggers": "المحفزات",
   "triggers-disconnected": "غير متصل",
   "triggers-connecting": "جارٍ الاتصال…",

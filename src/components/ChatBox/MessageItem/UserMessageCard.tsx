@@ -279,7 +279,7 @@ export function UserMessageCard({
               buttonContent="text"
               textWeight="normal"
             >
-              {t('chat:agent-outcome-expand')}
+              {t('chat.agent-outcome-expand')}
             </Button>
           )}
           {canClamp && expanded && (
@@ -294,7 +294,7 @@ export function UserMessageCard({
               buttonContent="text"
               textWeight="normal"
             >
-              {t('chat:agent-outcome-collapse')}
+              {t('chat.agent-outcome-collapse')}
             </Button>
           )}
           <Button

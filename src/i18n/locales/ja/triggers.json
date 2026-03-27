@@ -138,6 +138,8 @@
   "no-activity": "アクティビティはまだありません",
   "activity-hint": "アクティビティがここに表示されます",
   "execution-logs": "実行ログ",
+  "fold-execution-logs": "実行ログを折りたたむ",
+  "open-execution-logs": "実行ログを開く",
   "delete-trigger": "トリガーを削除",
   "cancel": "キャンセル",
   "deleting": "削除中...",

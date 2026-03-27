@@ -30,6 +30,8 @@
   "task-running": "Compito in Esecuzione",
   "task-completed": "Compito Completato",
   "agent-folder": "Cartella Agente",
+  "choose-agent-work-folder": "Scegli la cartella dell'agente",
+  "choose-agent-work-folder-placeholder": "Scegli una cartella sul computer (disponibile a breve)",
   "open": "Apri",
   "close": "Chiudi",
   "search": "Cerca",

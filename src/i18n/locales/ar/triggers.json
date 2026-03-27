@@ -138,6 +138,8 @@
   "no-activity": "No activity yet",
   "activity-hint": "Activity will appear here",
   "execution-logs": "Execution Logs",
+  "fold-execution-logs": "طي سجلات التنفيذ",
+  "open-execution-logs": "فتح سجلات التنفيذ",
   "delete-trigger": "Delete Trigger",
   "cancel": "Cancel",
   "deleting": "Deleting...",

@@ -48,6 +48,8 @@
   "settings": "Настройки",
   "general": "Общие",
   "aiWorkforce": "Рабочая сила ИИ",
+  "chat-panel-left": "Показать чат слева",
+  "chat-panel-right": "Показать чат справа",
   "triggers": "Триггеры",
   "triggers-disconnected": "Отключено",
   "triggers-connecting": "Подключение…",

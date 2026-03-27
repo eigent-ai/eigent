@@ -30,6 +30,8 @@
   "task-running": "Tarea en ejecución",
   "task-completed": "Tarea completada",
   "agent-folder": "Carpeta del agente",
+  "choose-agent-work-folder": "Elegir carpeta del agente",
+  "choose-agent-work-folder-placeholder": "Elija una carpeta en su equipo (próximamente)",
   "open": "Abrir",
   "close": "Cerrar",
   "search": "Buscar",

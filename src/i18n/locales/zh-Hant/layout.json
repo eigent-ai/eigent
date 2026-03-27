@@ -48,6 +48,8 @@
   "settings": "設定",
   "general": "一般",
   "aiWorkforce": "AI 勞動力",
+  "chat-panel-left": "在左側顯示聊天",
+  "chat-panel-right": "在右側顯示聊天",
   "triggers": "觸發器",
   "triggers-disconnected": "已中斷",
   "triggers-connecting": "連線中…",

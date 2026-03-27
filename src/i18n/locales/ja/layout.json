@@ -48,6 +48,8 @@
   "settings": "設定",
   "general": "一般",
   "aiWorkforce": "AIワークフォース",
+  "chat-panel-left": "チャットを左側に表示",
+  "chat-panel-right": "チャットを右側に表示",
   "triggers": "トリガー",
   "triggers-disconnected": "切断",
   "triggers-connecting": "接続中…",

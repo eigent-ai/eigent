@@ -30,6 +30,8 @@
   "task-running": "المهمة تعمل",
   "task-completed": "خلصت المهمة",
   "agent-folder": "مجلد العميل",
+  "choose-agent-work-folder": "اختر مجلد الوكيل",
+  "choose-agent-work-folder-placeholder": "اختر مجلداً على جهازك (قريباً)",
   "open": "افتح",
   "close": "اغلق",
   "search": "بحث",

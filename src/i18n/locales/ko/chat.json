@@ -30,6 +30,8 @@
   "task-running": "작업 실행 중",
   "task-completed": "작업 완료",
   "agent-folder": "에이전트 폴더",
+  "choose-agent-work-folder": "에이전트용 폴더 선택",
+  "choose-agent-work-folder-placeholder": "컴퓨터에서 폴더 선택(곧 제공)",
   "open": "열기",
   "close": "닫기",
   "search": "검색",

@@ -30,6 +30,8 @@
   "task-running": "Task Running",
   "task-completed": "Task Completed",
   "agent-folder": "Agent Folder",
+  "choose-agent-work-folder": "Choose folder for agent",
+  "choose-agent-work-folder-placeholder": "Choose a folder on your computer (coming soon)",
   "open": "Open",
   "close": "Close",
   "search": "Search",

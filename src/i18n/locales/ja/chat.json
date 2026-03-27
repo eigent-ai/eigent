@@ -30,6 +30,8 @@
   "task-running": "タスク実行中",
   "task-completed": "タスク完了",
   "agent-folder": "エージェントフォルダ",
+  "choose-agent-work-folder": "エージェントのフォルダを選ぶ",
+  "choose-agent-work-folder-placeholder": "コンピューター上のフォルダを選ぶ（近日対応）",
   "open": "開く",
   "close": "閉じる",
   "search": "検索",

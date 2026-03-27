@@ -48,6 +48,8 @@
   "settings": "Paramètres",
   "general": "Général",
   "aiWorkforce": "Main-d'œuvre IA",
+  "chat-panel-left": "Afficher le chat à gauche",
+  "chat-panel-right": "Afficher le chat à droite",
   "triggers": "Déclencheurs",
   "triggers-disconnected": "Déconnecté",
   "triggers-connecting": "Connexion…",

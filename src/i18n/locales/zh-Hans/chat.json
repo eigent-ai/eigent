@@ -30,6 +30,8 @@
   "task-running": "任务运行",
   "task-completed": "任务完成",
   "agent-folder": "智能体文件夹",
+  "choose-agent-work-folder": "选择智能体工作文件夹",
+  "choose-agent-work-folder-placeholder": "在电脑上选择文件夹（即将推出）",
   "open": "打开",
   "close": "关闭",
   "search": "搜索",

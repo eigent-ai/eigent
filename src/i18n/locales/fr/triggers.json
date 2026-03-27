@@ -138,6 +138,8 @@
   "no-activity": "No activity yet",
   "activity-hint": "Activity will appear here",
   "execution-logs": "Execution Logs",
+  "fold-execution-logs": "Replier les journaux d'exécution",
+  "open-execution-logs": "Ouvrir les journaux d'exécution",
   "delete-trigger": "Delete Trigger",
   "cancel": "Cancel",
   "deleting": "Deleting...",

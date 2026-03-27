@@ -30,6 +30,8 @@
   "task-running": "Tâche en cours",
   "task-completed": "Tâche terminée",
   "agent-folder": "Dossier de l'agent",
+  "choose-agent-work-folder": "Choisir le dossier de l'agent",
+  "choose-agent-work-folder-placeholder": "Choisir un dossier sur votre ordinateur (bientôt disponible)",
   "open": "Ouvrir",
   "close": "Fermer",
   "search": "Rechercher",
