@@ -431,7 +431,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       } else {
         if (!hasFetchedRemote.current) {
           //TODO(file): rename endpoint to use project_id
-          res = await proxyFetchGet('/api/chat/files', {
+          res = await proxyFetchGet('/api/v1/chat/files', {
             task_id: projectStore.activeProjectId as string,
           });
           hasFetchedRemote.current = true;

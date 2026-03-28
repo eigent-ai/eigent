@@ -89,12 +89,12 @@ export default function Login() {
     [t]
   );
 
-  // Auto login for local mode - calls /api/auto-login
+  // Auto login for local mode - calls /api/v1/user/auto-login
   const handleAutoLogin = async () => {
     setGeneralError('');
     setIsLoading(true);
     try {
-      const data = await proxyFetchPost('/api/auto-login', {});
+      const data = await proxyFetchPost('/api/v1/user/auto-login', {});
 
       const errorMessage = getLoginErrorMessage(data);
       if (errorMessage) {
@@ -121,7 +121,7 @@ export default function Login() {
     async (token: string) => {
       try {
         const data = await proxyFetchPost(
-          '/api/login-by_stack?token=' + token,
+          '/api/v1/login-by_stack?token=' + token,
           {
             token: token,
           }
@@ -165,8 +165,8 @@ export default function Login() {
       formData.append(
         'redirect_uri',
         import.meta.env.PROD
-          ? `${import.meta.env.VITE_BASE_URL}/api/redirect/callback`
-          : `${import.meta.env.VITE_PROXY_URL}/api/redirect/callback`
+          ? `${import.meta.env.VITE_BASE_URL}/api/v1/redirect/callback`
+          : `${import.meta.env.VITE_PROXY_URL}/api/v1/redirect/callback`
       );
       formData.append('code_verifier', code_verifier || '');
       formData.append('code', code);
@@ -222,7 +222,7 @@ export default function Login() {
       setAuth({ email: '', token, username: '', user_id: 0 });
       setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
       try {
-        const userInfo = await proxyFetchGet('/api/user');
+        const userInfo = await proxyFetchGet('/api/v1/user');
         if (userInfo && userInfo.email) {
           setAuth({
             token,
