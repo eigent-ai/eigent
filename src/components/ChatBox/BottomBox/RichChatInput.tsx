@@ -13,7 +13,25 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import React, { useCallback, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+
+/** Default rotating hints when the input is empty (30s per line). */
+export const DEFAULT_CHAT_INPUT_PLACEHOLDERS = [
+  'Automate market research, analysis, and reports',
+  'Create slides, social posts, and brand content',
+  'Organize files, documents, and desktop tasks',
+] as const;
+
+const PLACEHOLDER_ROTATE_MS = 30_000;
+
+const DEFAULT_PLACEHOLDERS_ARR: string[] = [...DEFAULT_CHAT_INPUT_PLACEHOLDERS];
 
 type RichSegment = { type: 'text' | 'url' | 'skill'; text: string };
 
@@ -138,6 +156,17 @@ function segmentsToHtml(segments: RichSegment[]): string {
   return parts.join('');
 }
 
+function brToNewlineInTree(container: HTMLElement): void {
+  container.querySelectorAll('br').forEach((br) => {
+    br.replaceWith(document.createTextNode('\n'));
+  });
+}
+
+function innerPlainFromHtmlTree(container: HTMLElement): string {
+  brToNewlineInTree(container);
+  return container.innerText.replace(/\u00a0/g, ' ');
+}
+
 function getPlainTextFromRoot(root: HTMLElement): string {
   const html = root.innerHTML;
   if (!html || html === '<br>' || html === '<br/>' || html === '<br />') {
@@ -145,21 +174,33 @@ function getPlainTextFromRoot(root: HTMLElement): string {
   }
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
-  tmp.querySelectorAll('br').forEach((br) => {
-    br.replaceWith(document.createTextNode('\n'));
-  });
-  return tmp.innerText.replace(/\u00a0/g, ' ');
+  return innerPlainFromHtmlTree(tmp);
+}
+
+/**
+ * Plain-text length from start of `root` to (container, offset), using the same
+ * rules as getPlainTextFromRoot. Range#toString() is wrong for &lt;br&gt; and
+ * block boundaries (e.g. Shift+Enter), which caused caret restore to jump.
+ */
+function plainTextLengthBefore(
+  root: HTMLElement,
+  endContainer: Node,
+  endOffset: number
+): number {
+  if (!root.contains(endContainer)) return 0;
+  const pre = document.createRange();
+  pre.selectNodeContents(root);
+  pre.setEnd(endContainer, endOffset);
+  const tmp = document.createElement('div');
+  tmp.appendChild(pre.cloneContents());
+  return innerPlainFromHtmlTree(tmp).length;
 }
 
 function getCaretOffset(root: HTMLElement): number {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return 0;
   const range = sel.getRangeAt(0);
-  if (!root.contains(range.startContainer)) return 0;
-  const pre = range.cloneRange();
-  pre.selectNodeContents(root);
-  pre.setEnd(range.startContainer, range.startOffset);
-  return pre.toString().length;
+  return plainTextLengthBefore(root, range.startContainer, range.startOffset);
 }
 
 function setCaretOffset(root: HTMLElement, offset: number): void {
@@ -220,6 +261,33 @@ function setCaretOffset(root: HTMLElement, offset: number): void {
   sel.addRange(range);
 }
 
+/** Keep the caret visible when content is taller than max height (overflow scroll). */
+function scrollCaretIntoView(root: HTMLElement): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) {
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  let rect = range.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    const rects = range.getClientRects();
+    const last = rects[rects.length - 1];
+    if (last) rect = last;
+  }
+  if (rect.width === 0 && rect.height === 0) {
+    root.scrollTop = root.scrollHeight - root.clientHeight;
+    return;
+  }
+
+  const rootRect = root.getBoundingClientRect();
+  const padding = 8;
+  if (rect.bottom > rootRect.bottom - padding) {
+    root.scrollTop += rect.bottom - rootRect.bottom + padding;
+  } else if (rect.top < rootRect.top + padding) {
+    root.scrollTop += rect.top - rootRect.top - padding;
+  }
+}
+
 export interface RichChatInputProps {
   value: string;
   onChange: (value: string, cursorOffset?: number) => void;
@@ -229,7 +297,10 @@ export interface RichChatInputProps {
   onCompositionStart?: () => void;
   onCompositionEnd?: () => void;
   disabled?: boolean;
+  /** @deprecated Use `placeholders` for rotating copy. If set without `placeholders`, shown as a single static line when empty. */
   placeholder?: string;
+  /** When empty, cycles through these every 30s. Defaults to product copy. */
+  placeholders?: readonly string[];
   className?: string;
   textClassName?: string;
   style?: React.CSSProperties;
@@ -250,6 +321,7 @@ export const RichChatInput = React.forwardRef<
     onCompositionEnd,
     disabled,
     placeholder,
+    placeholders: placeholdersProp,
     className,
     textClassName,
     style,
@@ -277,12 +349,16 @@ export const RichChatInput = React.forwardRef<
   const applyHtml = useCallback((plain: string, restoreOffset?: number) => {
     const el = rootRef.current;
     if (!el) return;
+    if (plain.length === 0) {
+      el.scrollTop = 0;
+    }
     const html =
       plain.length === 0 ? '' : segmentsToHtml(tokenizeRichPlainText(plain));
     el.innerHTML = html || '<br />';
     if (restoreOffset !== undefined) {
       requestAnimationFrame(() => {
         setCaretOffset(el, Math.min(restoreOffset, plain.length));
+        scrollCaretIntoView(el);
       });
     }
   }, []);
@@ -351,57 +427,114 @@ export const RichChatInput = React.forwardRef<
     document.execCommand('insertText', false, text);
   };
 
-  const showPlaceholder = value.length === 0;
+  const placeholders = useMemo(() => {
+    if (placeholdersProp && placeholdersProp.length > 0) {
+      return Array.from(placeholdersProp);
+    }
+    if (placeholder && placeholder.length > 0) {
+      return [placeholder];
+    }
+    return DEFAULT_PLACEHOLDERS_ARR;
+  }, [placeholdersProp, placeholder]);
+
+  const showPlaceholder = value.length === 0 && placeholders.length > 0;
+  const [placeholderCycleIndex, setPlaceholderCycleIndex] = useState(0);
+
+  useEffect(() => {
+    setPlaceholderCycleIndex(0);
+  }, [placeholders]);
+
+  useEffect(() => {
+    if (!showPlaceholder || placeholders.length <= 1) return;
+    const id = window.setInterval(() => {
+      setPlaceholderCycleIndex((i) => (i + 1) % placeholders.length);
+    }, PLACEHOLDER_ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [showPlaceholder, placeholders.length]);
+
+  const ariaPlaceholderLine = showPlaceholder
+    ? placeholders[placeholderCycleIndex % placeholders.length]
+    : undefined;
 
   return (
-    <div
-      ref={setRootRef}
-      role="textbox"
-      aria-multiline="true"
-      aria-placeholder={placeholder}
-      contentEditable={!disabled}
-      suppressContentEditableWarning
-      onInput={handleInput}
-      onPaste={handlePaste}
-      onKeyDown={onKeyDown}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      onCompositionStart={() => {
-        composingRef.current = true;
-        onCompositionStart?.();
-      }}
-      onCompositionEnd={() => {
-        composingRef.current = false;
-        onCompositionEnd?.();
-        handleInput();
-      }}
-      className={cn(
-        'w-full flex-1 resize-none overflow-auto outline-none',
-        'pl-1 py-0 scrollbar max-h-[200px] min-h-[40px]',
-        'relative break-words whitespace-pre-wrap',
-        showPlaceholder &&
-          'before:left-1 before:top-0 before:text-text-label before:pointer-events-none before:absolute before:z-0 before:font-[Inter] before:text-[13px] before:leading-[20px] before:content-[attr(data-placeholder)]',
-        disabled && 'cursor-not-allowed opacity-60',
-        textClassName,
-        className
-      )}
-      style={style}
-      data-placeholder={placeholder ?? ''}
-      onMouseDown={(e) => {
-        const t = e.target as HTMLElement | null;
-        const a = t?.closest(
-          'a[data-rich-url="1"]'
-        ) as HTMLAnchorElement | null;
-        if (a) {
-          e.preventDefault();
-          const href = a.getAttribute('href');
-          const safe = href ? httpUrlOrNull(href) : null;
-          if (safe) {
-            window.open(safe, '_blank', 'noopener,noreferrer');
+    <div className="min-w-0 relative isolate w-full flex-1">
+      <div
+        aria-hidden
+        className="left-1 top-0 pointer-events-none absolute z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
+      >
+        <AnimatePresence mode="wait">
+          {showPlaceholder ? (
+            <motion.span
+              key={placeholders[placeholderCycleIndex % placeholders.length]}
+              className="text-text-label block w-full font-[Inter] text-[13px] leading-[20px]"
+              initial={{
+                opacity: 0,
+                filter: 'blur(8px)',
+                y: -18,
+              }}
+              animate={{
+                opacity: 1,
+                filter: 'blur(0px)',
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                filter: 'blur(8px)',
+                y: 18,
+              }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {placeholders[placeholderCycleIndex % placeholders.length]}
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
+      </div>
+      <div
+        ref={setRootRef}
+        role="textbox"
+        aria-multiline="true"
+        aria-placeholder={ariaPlaceholderLine}
+        contentEditable={!disabled}
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onPaste={handlePaste}
+        onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onCompositionStart={() => {
+          composingRef.current = true;
+          onCompositionStart?.();
+        }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+          onCompositionEnd?.();
+          handleInput();
+        }}
+        className={cn(
+          'w-full flex-1 resize-none overflow-auto outline-none',
+          'pl-1 py-0 scrollbar max-h-[200px] min-h-[40px]',
+          'relative break-words whitespace-pre-wrap',
+          disabled && 'cursor-not-allowed opacity-60',
+          textClassName,
+          className
+        )}
+        style={style}
+        onMouseDown={(e) => {
+          const t = e.target as HTMLElement | null;
+          const a = t?.closest(
+            'a[data-rich-url="1"]'
+          ) as HTMLAnchorElement | null;
+          if (a) {
+            e.preventDefault();
+            const href = a.getAttribute('href');
+            const safe = href ? httpUrlOrNull(href) : null;
+            if (safe) {
+              window.open(safe, '_blank', 'noopener,noreferrer');
+            }
           }
-        }
-      }}
-    />
+        }}
+      />
+    </div>
   );
 });
 
@@ -418,13 +551,11 @@ export function getRichInputSelection(el: HTMLElement | null): {
     return { start: 0, end: 0 };
   }
   const range = sel.getRangeAt(0);
-  const preStart = range.cloneRange();
-  preStart.selectNodeContents(el);
-  preStart.setEnd(range.startContainer, range.startOffset);
-  const start = preStart.toString().length;
-  const preEnd = range.cloneRange();
-  preEnd.selectNodeContents(el);
-  preEnd.setEnd(range.endContainer, range.endOffset);
-  const end = preEnd.toString().length;
+  const start = plainTextLengthBefore(
+    el,
+    range.startContainer,
+    range.startOffset
+  );
+  const end = plainTextLengthBefore(el, range.endContainer, range.endOffset);
   return { start, end };
 }

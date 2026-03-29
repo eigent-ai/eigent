@@ -15,18 +15,23 @@
 import { Button } from '@/components/ui/button';
 import {
   getTaskListShelfTone,
-  type TaskListShelfTone,
+  isTaskListRowFailureState,
 } from '@/lib/taskLifecycleUi';
 import { cn } from '@/lib/utils';
 import type { ChatStore } from '@/store/chatStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { SquarePen } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-const SHELF_TONE_ROW_CLASS: Record<TaskListShelfTone, string> = {
-  splitting: 'bg-input-bg-spliting hover:brightness-[0.98]',
-  running: 'bg-input-bg-confirm hover:brightness-[0.98]',
-  default: 'bg-transparent hover:bg-surface-tertiary',
-};
+const TASK_LIST_ROW_BG = {
+  information: 'bg-surface-information hover:brightness-[0.98]',
+  success: 'bg-surface-success hover:brightness-[0.98]',
+  caution: 'bg-surface-caution hover:brightness-[0.98]',
+  idle: 'bg-transparent hover:bg-surface-tertiary',
+} as const;
+
+/** Brief success highlight after a run completes; then idle (transparent). */
+const TASK_LIST_SUCCESS_HIGHLIGHT_MS = 1800;
 
 /** Horizontal drift speed for task query hover (~6px/s, capped) — readable marquee, not a snap. */
 const TASK_QUERY_SCROLL_PX_PER_SEC = 16;
@@ -113,8 +118,47 @@ function TaskListRow({
   setScrollToQueryId: (id: string) => void;
 }) {
   const [rowHovered, setRowHovered] = useState(false);
+  const [successHighlight, setSuccessHighlight] = useState(false);
+  const mountedRef = useRef(false);
+  const prevStatusRef = useRef(task.status);
+
   const queryLabel = taskUserQueryLabel(task);
   const shelfTone = getTaskListShelfTone(task);
+  const failed = isTaskListRowFailureState(task);
+  const activeWork = shelfTone === 'splitting' || shelfTone === 'running';
+  const finishedSuccess =
+    !failed && task.status === ChatTaskStatus.FINISHED && task.type !== '';
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      prevStatusRef.current = task.status;
+      return;
+    }
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = task.status;
+
+    if (
+      finishedSuccess &&
+      prev !== ChatTaskStatus.FINISHED &&
+      task.status === ChatTaskStatus.FINISHED
+    ) {
+      setSuccessHighlight(true);
+      const id = window.setTimeout(
+        () => setSuccessHighlight(false),
+        TASK_LIST_SUCCESS_HIGHLIGHT_MS
+      );
+      return () => clearTimeout(id);
+    }
+  }, [task.status, finishedSuccess]);
+
+  const rowBg = failed
+    ? TASK_LIST_ROW_BG.caution
+    : successHighlight && finishedSuccess
+      ? TASK_LIST_ROW_BG.success
+      : activeWork
+        ? TASK_LIST_ROW_BG.information
+        : TASK_LIST_ROW_BG.idle;
 
   return (
     <button
@@ -128,7 +172,7 @@ function TaskListRow({
       onMouseLeave={() => setRowHovered(false)}
       className={cn(
         'no-drag h-8 rounded-xl min-w-0 gap-3 px-3 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
-        SHELF_TONE_ROW_CLASS[shelfTone]
+        rowBg
       )}
       aria-current={active ? 'true' : undefined}
     >

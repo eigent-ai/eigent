@@ -2,6 +2,7 @@
   "welcome-to-eigent": "欢迎使用 Eigent",
   "how-can-i-help-you": "今天有什么可以帮你的吗？",
   "ask-placeholder": "今天你需要完成什么任务？",
+  "follow-up-placeholder": "继续提问",
   "select-agent": "选择智能体",
   "clear-agent": "清除智能体",
   "select-file": "选择文件",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "收起",
   "input-attach-add-files-or-photos": "添加文件或照片",
   "input-attach-skills": "技能",
-  "input-attach-menu-trigger": "添加文件、照片，或打开技能、连接器、浏览器"
+  "input-attach-upload-new-skill": "上传新技能",
+  "input-attach-manage-skills": "管理技能",
+  "input-attach-add-mcp": "添加 MCP",
+  "input-attach-manage-connectors": "管理连接器",
+  "input-attach-open-browser": "打开浏览器",
+  "input-attach-manage-browsers": "管理浏览器",
+  "input-attach-menu-trigger": "添加文件、照片，或通过菜单打开技能、连接器、浏览器"
 }

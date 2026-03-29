@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Eigent أهلاً بك في",
   "how-can-i-help-you": "كيف يمكنني مساعدتك اليوم؟",
   "ask-placeholder": "ما الذي تحتاج إلى تحقيقه اليوم؟",
+  "follow-up-placeholder": "اطرح متابعة",
   "select-agent": "اختر وكيلاً",
   "clear-agent": "إزالة الوكيل",
   "select-file": "اختر ملف",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "طي",
   "input-attach-add-files-or-photos": "إضافة ملفات أو صور",
   "input-attach-skills": "المهارات",
-  "input-attach-menu-trigger": "إضافة ملفات أو صور أو فتح المهارات أو الموصلات أو المتصفح"
+  "input-attach-upload-new-skill": "رفع مهارة جديدة",
+  "input-attach-manage-skills": "إدارة المهارات",
+  "input-attach-add-mcp": "إضافة MCP",
+  "input-attach-manage-connectors": "إدارة الموصلات",
+  "input-attach-open-browser": "فتح متصفح",
+  "input-attach-manage-browsers": "إدارة المتصفحات",
+  "input-attach-menu-trigger": "إضافة ملفات أو صور، أو فتح المهارات أو الموصلات أو المتصفح من القائمة"
 }

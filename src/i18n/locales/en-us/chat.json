@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Welcome to Eigent",
   "how-can-i-help-you": "How can I help you today?",
   "ask-placeholder": "Ask Eigent to automate your tasks",
+  "follow-up-placeholder": "Ask a follow-up",
   "select-agent": "Select an agent",
   "clear-agent": "Clear agent",
   "select-file": "Select File",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "Collapse",
   "input-attach-add-files-or-photos": "Add files or photos",
   "input-attach-skills": "Skills",
-  "input-attach-menu-trigger": "Add files, photos, or open Skills, Connectors, or Browser"
+  "input-attach-upload-new-skill": "Upload a new skill",
+  "input-attach-manage-skills": "Manage skills",
+  "input-attach-add-mcp": "Add an MCP",
+  "input-attach-manage-connectors": "Manage connectors",
+  "input-attach-open-browser": "Open a browser",
+  "input-attach-manage-browsers": "Manage browsers",
+  "input-attach-menu-trigger": "Add files or photos, or open Skills, Connectors, or Browser from the menu"
 }

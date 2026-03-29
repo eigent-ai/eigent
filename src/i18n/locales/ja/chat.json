@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Eigentへようこそ",
   "how-can-i-help-you": "本日はどのようなご用件でしょうか？",
   "ask-placeholder": "本日は何を達成したいですか？",
+  "follow-up-placeholder": "追加で質問する",
   "select-agent": "エージェントを選択",
   "clear-agent": "エージェントを解除",
   "select-file": "ファイルを選択",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "折りたたむ",
   "input-attach-add-files-or-photos": "ファイルまたは写真を追加",
   "input-attach-skills": "スキル",
-  "input-attach-menu-trigger": "ファイル・写真の追加、またはスキル・コネクタ・ブラウザを開く"
+  "input-attach-upload-new-skill": "新しいスキルをアップロード",
+  "input-attach-manage-skills": "スキルを管理",
+  "input-attach-add-mcp": "MCP を追加",
+  "input-attach-manage-connectors": "コネクタを管理",
+  "input-attach-open-browser": "ブラウザを開く",
+  "input-attach-manage-browsers": "ブラウザを管理",
+  "input-attach-menu-trigger": "ファイル・写真の追加、またはメニューからスキル・コネクタ・ブラウザを開く"
 }

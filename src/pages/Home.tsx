@@ -180,7 +180,7 @@ export default function Home() {
             // Mark the inbox tab as having new content
             setHasAgentFiles(true);
             if (activeWorkspaceTab !== 'inbox') {
-              markTabAsUnviewed('inbox');
+              markTabAsUnviewed('inbox', activeProjectId);
             }
           }
         };

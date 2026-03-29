@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Willkommen bei Eigent",
   "how-can-i-help-you": "Wie kann ich Ihnen heute helfen?",
   "ask-placeholder": "Was möchten Sie heute erreichen?",
+  "follow-up-placeholder": "Nachfragen",
   "select-agent": "Agent auswählen",
   "clear-agent": "Agent entfernen",
   "select-file": "Datei auswählen",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "Einklappen",
   "input-attach-add-files-or-photos": "Dateien oder Fotos hinzufügen",
   "input-attach-skills": "Skills",
-  "input-attach-menu-trigger": "Dateien oder Fotos hinzufügen oder Skills, Connectors oder Browser öffnen"
+  "input-attach-upload-new-skill": "Neuen Skill hochladen",
+  "input-attach-manage-skills": "Skills verwalten",
+  "input-attach-add-mcp": "MCP hinzufügen",
+  "input-attach-manage-connectors": "Connectors verwalten",
+  "input-attach-open-browser": "Browser öffnen",
+  "input-attach-manage-browsers": "Browser verwalten",
+  "input-attach-menu-trigger": "Dateien oder Fotos hinzufügen oder Skills, Connectors oder Browser über das Menü öffnen"
 }

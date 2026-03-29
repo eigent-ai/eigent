@@ -110,6 +110,9 @@ export default function ProjectPageSidebar({
     (s) => s.requestWorkspaceChatFocus
   );
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
+  const inboxUnviewedForProjects = usePageTabStore(
+    (s) => s.inboxUnviewedForProjects
+  );
   const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
   const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
   const triggersListenerConnected = wsConnectionStatus === 'connected';
@@ -117,6 +120,8 @@ export default function ProjectPageSidebar({
     wsConnectionStatus === 'disconnected' || wsConnectionStatus === 'unhealthy';
   const projectStore = useProjectStore();
   const activeProjectId = projectStore.activeProjectId;
+  const folderTabHasUnviewedFiles =
+    !!activeProjectId && inboxUnviewedForProjects.has(activeProjectId);
   const customFolderPath = usePageTabStore((s) =>
     activeProjectId
       ? s.customAgentFolderPathByProjectId[activeProjectId]
@@ -503,12 +508,24 @@ export default function ProjectPageSidebar({
               />
               <NavTab
                 active={activeWorkspaceTab === 'inbox'}
-                onClick={() => setActiveWorkspaceTab('inbox')}
+                onClick={() => {
+                  if (chatStore.activeTaskId) {
+                    chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
+                  }
+                  setActiveWorkspaceTab('inbox', {
+                    clearInboxForProjectId: activeProjectId,
+                  });
+                }}
                 leading={
-                  <Inbox
-                    className="h-4 w-4 text-icon-primary shrink-0"
-                    aria-hidden
-                  />
+                  <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <Inbox className="h-4 w-4 text-icon-primary" aria-hidden />
+                    {folderTabHasUnviewedFiles ? (
+                      <span
+                        className="-right-1 -top-1 h-2 w-2 bg-red-500 absolute shrink-0 rounded-full"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
                 }
                 label={t('layout.folder')}
                 trailing={
@@ -526,10 +543,6 @@ export default function ProjectPageSidebar({
                     </span>
                   ) : undefined
                 }
-                showNotificationDot={unviewedTabs.has('inbox')}
-                notificationDotClassName={
-                  collapsed ? 'top-1 right-1 h-2 w-2 absolute' : 'h-2 w-2'
-                }
                 collapsed={collapsed}
                 tooltip={
                   collapsed
@@ -539,7 +552,6 @@ export default function ProjectPageSidebar({
                 tooltipEnabledWhenCollapsed
                 ariaLabel={`${t('layout.folder')}, ${folderSettingTagLabel}`}
                 ariaCurrentPage={activeWorkspaceTab === 'inbox'}
-                className="relative"
               />
               <NavTab
                 layout="split"

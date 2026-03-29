@@ -389,40 +389,43 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   content={message.content}
                   onTyping={() => {}}
                   onMarkdownRenderComplete={onTaskCompletionMarkdownReady}
+                  deferredFooter={
+                    message.fileList?.length ? (
+                      <div className="gap-2 flex flex-wrap">
+                        {message.fileList.map(
+                          (file: any, fileIndex: number) => (
+                            <motion.div
+                              key={`file-${message.id}-${file.name}-${fileIndex}`}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: 0.05 }}
+                              onClick={() => {
+                                chatState.setSelectedFile(
+                                  activeTaskId as string,
+                                  file
+                                );
+                                chatState.setActiveWorkspace(
+                                  activeTaskId as string,
+                                  'documentWorkSpace'
+                                );
+                              }}
+                              className="gap-2 rounded-sm bg-message-fill-default px-2 py-1 hover:bg-message-fill-hover flex w-[140px] cursor-pointer items-center transition-colors"
+                            >
+                              <div className="flex flex-col">
+                                <div className="text-body text-sm font-bold text-text-body max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap">
+                                  {file.name.split('.')[0]}
+                                </div>
+                                <div className="text-xs font-medium leading-29 text-text-body">
+                                  {file.type}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )
+                        )}
+                      </div>
+                    ) : undefined
+                  }
                 />
-                {/* File List */}
-                {message.fileList && (
-                  <div className="gap-2 flex flex-wrap">
-                    {message.fileList.map((file: any, fileIndex: number) => (
-                      <motion.div
-                        key={`file-${message.id}-${file.name}-${fileIndex}`}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3 }}
-                        onClick={() => {
-                          chatState.setSelectedFile(
-                            activeTaskId as string,
-                            file
-                          );
-                          chatState.setActiveWorkspace(
-                            activeTaskId as string,
-                            'documentWorkSpace'
-                          );
-                        }}
-                        className="gap-2 rounded-sm bg-message-fill-default px-2 py-1 hover:bg-message-fill-hover flex w-[140px] cursor-pointer items-center transition-colors"
-                      >
-                        <div className="flex flex-col">
-                          <div className="text-body text-sm font-bold text-text-body max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap">
-                            {file.name.split('.')[0]}
-                          </div>
-                          <div className="text-xs font-medium leading-29 text-text-body">
-                            {file.type}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
               </motion.div>
             );
           } else if (message.content === 'skip') {
@@ -550,7 +553,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="gap-4 px-sm flex flex-col"
+            className="gap-4 px-sm mb-md flex flex-col"
           >
             <TaskCompletionCard
               taskPrompt={queryGroup.userMessage?.content}

@@ -1979,8 +1979,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.WRITE_FILE) {
             console.log('write_to_file', agentMessages.data);
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
-            // Mark inbox tab as having unviewed content
-            usePageTabStore.getState().markTabAsUnviewed('inbox');
+            const { activeWorkspaceTab, markTabAsUnviewed } =
+              usePageTabStore.getState();
+            if (activeWorkspaceTab !== 'inbox' && project_id) {
+              markTabAsUnviewed('inbox', project_id);
+            }
             const { file_path } = agentMessages.data;
             const fileName =
               file_path?.replace(/\\/g, '/').split('/').pop() || '';

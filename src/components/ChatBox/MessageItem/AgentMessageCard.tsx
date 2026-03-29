@@ -13,7 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Check, Copy, FileText } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
@@ -27,6 +33,8 @@ interface AgentMessageCardProps {
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
+  /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
+  deferredFooter?: ReactNode;
   onTyping?: () => void;
   onMarkdownRenderComplete?: () => void;
 }
@@ -42,11 +50,19 @@ export function AgentMessageCard({
   onMarkdownRenderComplete,
   className,
   attaches,
+  deferredFooter,
 }: AgentMessageCardProps) {
   // use content hash to track if typewriter effect is completed
   const contentHash = useMemo(() => {
     return `${id}-${content}`;
   }, [id, content]);
+
+  const [markdownAndTypingComplete, setMarkdownAndTypingComplete] =
+    useState(false);
+
+  useEffect(() => {
+    setMarkdownAndTypingComplete(false);
+  }, [contentHash]);
 
   // check if typewriter effect is completed
   const isCompleted = completedTypewriterHashes.has(contentHash);
@@ -78,6 +94,15 @@ export function AgentMessageCard({
     }
   }, [content, t]);
 
+  const handleMarkdownRenderComplete = useCallback(() => {
+    setMarkdownAndTypingComplete(true);
+    onMarkdownRenderComplete?.();
+  }, [onMarkdownRenderComplete]);
+
+  const showDeferredFileUi =
+    markdownAndTypingComplete &&
+    ((attaches && attaches.length > 0) || deferredFooter != null);
+
   return (
     <div
       key={id}
@@ -86,10 +111,10 @@ export function AgentMessageCard({
       <MarkDown
         content={content}
         onTyping={handleTypingComplete}
-        onMarkdownRenderComplete={onMarkdownRenderComplete}
+        onMarkdownRenderComplete={handleMarkdownRenderComplete}
         enableTypewriter={enableTypewriter && typewriter}
       />
-      {attaches && attaches.length > 0 && (
+      {showDeferredFileUi && attaches && attaches.length > 0 && (
         <div className="gap-2 mt-[10px] flex flex-wrap">
           {attaches?.map((file) => {
             return (
@@ -114,6 +139,9 @@ export function AgentMessageCard({
             );
           })}
         </div>
+      )}
+      {showDeferredFileUi && deferredFooter != null && (
+        <div className="mt-[10px] w-full">{deferredFooter}</div>
       )}
       <div className="mt-1 flex shrink-0 justify-end">
         <div className="pointer-events-none opacity-0 transition-opacity duration-300 group-hover:pointer-events-auto group-hover:opacity-100">

@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Eigent에 오신 것을 환영합니다",
   "how-can-i-help-you": "무엇을 도와드릴까요?",
   "ask-placeholder": "오늘 무엇을 달성하고 싶으신가요?",
+  "follow-up-placeholder": "추가 질문하기",
   "select-agent": "에이전트 선택",
   "clear-agent": "에이전트 해제",
   "select-file": "파일 선택",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "접기",
   "input-attach-add-files-or-photos": "파일 또는 사진 추가",
   "input-attach-skills": "스킬",
-  "input-attach-menu-trigger": "파일·사진 추가 또는 스킬, 커넥터, 브라우저 열기"
+  "input-attach-upload-new-skill": "새 스킬 업로드",
+  "input-attach-manage-skills": "스킬 관리",
+  "input-attach-add-mcp": "MCP 추가",
+  "input-attach-manage-connectors": "커넥터 관리",
+  "input-attach-open-browser": "브라우저 열기",
+  "input-attach-manage-browsers": "브라우저 관리",
+  "input-attach-menu-trigger": "파일·사진 추가 또는 메뉴에서 스킬, 커넥터, 브라우저 열기"
 }

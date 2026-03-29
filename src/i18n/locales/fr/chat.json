@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Bienvenue chez Eigent",
   "how-can-i-help-you": "Comment puis-je vous aider aujourd'hui ?",
   "ask-placeholder": "Que devez-vous accomplir aujourd'hui ?",
+  "follow-up-placeholder": "poser une question de suivi",
   "select-agent": "Sélectionner un agent",
   "clear-agent": "Retirer l’agent",
   "select-file": "Sélectionner un fichier",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "Réduire",
   "input-attach-add-files-or-photos": "Ajouter des fichiers ou des photos",
   "input-attach-skills": "Compétences",
-  "input-attach-menu-trigger": "Ajouter fichiers ou photos ou ouvrir Compétences, Connecteurs ou Navigateur"
+  "input-attach-upload-new-skill": "Téléverser une nouvelle compétence",
+  "input-attach-manage-skills": "Gérer les compétences",
+  "input-attach-add-mcp": "Ajouter un MCP",
+  "input-attach-manage-connectors": "Gérer les connecteurs",
+  "input-attach-open-browser": "Ouvrir un navigateur",
+  "input-attach-manage-browsers": "Gérer les navigateurs",
+  "input-attach-menu-trigger": "Ajouter fichiers ou photos ou ouvrir Compétences, Connecteurs ou Navigateur depuis le menu"
 }

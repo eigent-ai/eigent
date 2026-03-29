@@ -19,6 +19,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -72,8 +75,10 @@ export interface InputboxProps {
   onFilesChange?: (files: FileAttachment[]) => void;
   /** Callback when add file button is clicked */
   onAddFile?: () => void;
-  /** Placeholder text for empty state */
+  /** Static placeholder when empty (no rotation). RichChatInput defaults to rotating product hints when omitted. */
   placeholder?: string;
+  /** Rotating placeholders when empty; takes precedence over `placeholder` when non-empty. */
+  placeholders?: readonly string[];
   /** Disable all interactions */
   disabled?: boolean;
   /** Additional CSS classes */
@@ -125,7 +130,7 @@ export interface InputboxProps {
  *   onAddFile={() => {
  *     // Open file picker
  *   }}
- *   placeholder="What do you need to achieve today?"
+ *   placeholder="Ask a follow-up"
  *   allowDragDrop={true}
  * />
  * ```
@@ -138,7 +143,8 @@ export const Inputbox = ({
   files = [],
   onFilesChange,
   onAddFile,
-  placeholder: _placeholder = 'Ask Eigent to automate your tasks',
+  placeholder,
+  placeholders,
   disabled = false,
   className,
   textareaRef: externalTextareaRef,
@@ -459,7 +465,8 @@ export const Inputbox = ({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           disabled={disabled}
-          placeholder={t('chat.ask-placeholder')}
+          placeholder={placeholder}
+          placeholders={placeholders}
           className={cn(
             'border-none shadow-none focus-visible:ring-0',
             'max-h-[200px] min-h-[40px]'
@@ -515,24 +522,83 @@ export const Inputbox = ({
                 {t('chat.input-attach-add-files-or-photos')}
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-border-secondary -mx-1 my-1" />
-              <DropdownMenuItem
-                onSelect={() => navigate('/history?tab=agents&section=skills')}
-              >
-                <Wand2 className="text-icon-primary" aria-hidden />
-                {t('chat.input-attach-skills')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => navigate('/history?tab=connectors')}
-              >
-                <Hammer className="text-icon-primary" aria-hidden />
-                {t('layout.connectors')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => navigate('/history?tab=browser')}
-              >
-                <Compass className="text-icon-primary" aria-hidden />
-                {t('layout.browser')}
-              </DropdownMenuItem>
+              {/* Submenus use alignOffset: Radix SubContent is fixed top-aligned; negative offset bottom-aligns panel to trigger row */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Wand2 className="text-icon-primary" aria-hidden />
+                  {t('chat.input-attach-skills')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  sideOffset={6}
+                  alignOffset={-40}
+                  className="min-w-[13.5rem]"
+                >
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate(
+                        '/history?tab=agents&section=skills&skillAction=upload'
+                      )
+                    }
+                  >
+                    {t('chat.input-attach-upload-new-skill')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate('/history?tab=agents&section=skills')
+                    }
+                  >
+                    {t('chat.input-attach-manage-skills')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Hammer className="text-icon-primary" aria-hidden />
+                  {t('layout.connectors')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  sideOffset={6}
+                  alignOffset={-40}
+                  className="min-w-[13.5rem]"
+                >
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate('/history?tab=connectors&connectorAction=add')
+                    }
+                  >
+                    {t('chat.input-attach-add-mcp')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => navigate('/history?tab=connectors')}
+                  >
+                    {t('chat.input-attach-manage-connectors')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Compass className="text-icon-primary" aria-hidden />
+                  {t('layout.browser')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  sideOffset={6}
+                  alignOffset={-40}
+                  className="min-w-[13.5rem]"
+                >
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate('/history?tab=browser&browserAction=launch')
+                    }
+                  >
+                    {t('chat.input-attach-open-browser')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => navigate('/history?tab=browser')}
+                  >
+                    {t('chat.input-attach-manage-browsers')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
 

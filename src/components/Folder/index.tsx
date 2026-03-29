@@ -677,7 +677,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       <div className="min-h-0 flex flex-1 overflow-hidden">
         {/* sidebar */}
         <div className="border-border-tertiary w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
             <div className="h-10 text-text-primary px-3 py-2 font-bold text-body-sm">
               {t('chat.files')}
             </div>
@@ -737,7 +737,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
           {/* content */}
           <div
-            className={`min-h-0 flex flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar'}`}
+            className={`min-h-0 flex flex-1 flex-col ${
+              selectedFile?.type === 'html' && !isShowSourceCode
+                ? 'overflow-hidden'
+                : 'scrollbar-always-visible overflow-y-auto'
+            }`}
           >
             <div
               className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'pl-4 py-2'} file-viewer-content`}

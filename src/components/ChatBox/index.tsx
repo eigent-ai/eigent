@@ -1032,7 +1032,6 @@ export default function ChatBox(): JSX.Element {
                           files as any
                         ),
                       onAddFile: handleFileSelect,
-                      placeholder: t('chat.ask-placeholder'),
                       disabled: isInputDisabled,
                       textareaRef: textareaRef,
                       allowDragDrop: true,
@@ -1145,7 +1144,7 @@ export default function ChatBox(): JSX.Element {
                         files as any
                       ),
                     onAddFile: handleFileSelect,
-                    placeholder: t('chat.ask-placeholder'),
+                    placeholder: t('chat.follow-up-placeholder'),
                     disabled: isInputDisabled,
                     textareaRef: textareaRef,
                     allowDragDrop: true,

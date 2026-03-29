@@ -2,6 +2,7 @@
   "welcome-to-eigent": "Добро пожаловать в Eigent",
   "how-can-i-help-you": "Чем я могу вам помочь сегодня?",
   "ask-placeholder": "Чего вы хотите достичь сегодня?",
+  "follow-up-placeholder": "уточняющий вопрос",
   "select-agent": "Выбрать агента",
   "clear-agent": "Сбросить агента",
   "select-file": "Выбрать файл",
@@ -78,5 +79,11 @@
   "agent-outcome-collapse": "Свернуть",
   "input-attach-add-files-or-photos": "Добавить файлы или фото",
   "input-attach-skills": "Навыки",
-  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер"
+  "input-attach-upload-new-skill": "Загрузить новый навык",
+  "input-attach-manage-skills": "Управлять навыками",
+  "input-attach-add-mcp": "Добавить MCP",
+  "input-attach-manage-connectors": "Управлять коннекторами",
+  "input-attach-open-browser": "Открыть браузер",
+  "input-attach-manage-browsers": "Управлять браузерами",
+  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер из меню"
 }

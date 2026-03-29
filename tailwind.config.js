@@ -511,6 +511,7 @@ module.exports = {
         'surface-information': 'var(--surface-information)',
         'surface-warning': 'var(--surface-warning)',
         'surface-cuation': 'var(--surface-cuation)',
+        'surface-caution': 'var(--surface-cuation)',
         'surface-action': 'var(--surface-action)',
         'surface-action-hover': 'var(--surface-action-hover)',
         'surface-disabled': 'var(--surface-disabled)',

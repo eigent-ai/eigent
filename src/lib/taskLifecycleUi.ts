@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { BottomBoxState } from '@/components/ChatBox/BottomBox';
-import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  type ChatTaskStatusType,
+} from '@/types/constants';
 
 /** Minimal task shape for bottom-box / sidebar lifecycle (matches chatStore Task fields used). */
 export interface TaskLifecycleFields {
@@ -23,6 +27,7 @@ export interface TaskLifecycleFields {
   hasWaitComfirm: boolean;
   isTakeControl: boolean;
   taskInfo: { id: string; content: string }[];
+  isContextExceeded?: boolean;
 }
 
 export function getBottomBoxStateForTask(
@@ -81,6 +86,18 @@ export function getTaskListShelfTone(
   if (s === 'running') return 'running';
   if (s === 'splitting' || s === 'confirm') return 'splitting';
   return 'default';
+}
+
+/** Sidebar row: failures (model error, subtask failed, context limit, etc.). */
+export function isTaskListRowFailureState(task: TaskLifecycleFields): boolean {
+  if (task.isContextExceeded) return true;
+  return task.messages.some((m) => {
+    if (m.role !== 'agent') return false;
+    if (m.step === AgentStep.FAILED) return true;
+    const c = m.content?.trim() ?? '';
+    if (c.startsWith('❌ **Error**')) return true;
+    return false;
+  });
 }
 
 export function isWorkforceTask(task: TaskLifecycleFields): boolean {

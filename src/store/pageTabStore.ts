@@ -20,7 +20,11 @@ interface PageTabState {
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
   // Workspace tabs within the Tasks page
   activeWorkspaceTab: 'triggers' | 'workforce' | 'inbox';
-  setActiveWorkspaceTab: (tab: 'triggers' | 'workforce' | 'inbox') => void;
+  setActiveWorkspaceTab: (
+    tab: 'triggers' | 'workforce' | 'inbox',
+    /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
+    options?: { clearInboxForProjectId?: string | null }
+  ) => void;
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
@@ -35,8 +39,18 @@ interface PageTabState {
   setHasAgentFiles: (value: boolean) => void;
   // Track unviewed tabs with new content (for red dot indicator)
   unviewedTabs: Set<'triggers' | 'inbox'>;
-  markTabAsViewed: (tab: 'triggers' | 'inbox') => void;
-  markTabAsUnviewed: (tab: 'triggers' | 'inbox') => void;
+  /** Projects with new agent-folder files not yet “seen” on the folder tab (dot on Folder nav). */
+  inboxUnviewedForProjects: Set<string>;
+  markTabAsViewed: (
+    tab: 'triggers' | 'inbox',
+    /** For inbox: project to clear from the folder dot (optional). */
+    inboxProjectId?: string | null
+  ) => void;
+  markTabAsUnviewed: (
+    tab: 'triggers' | 'inbox',
+    /** For inbox: required — project that received the new file(s). */
+    inboxProjectId?: string
+  ) => void;
   /** Set by the sidebar to tell the chat container to scroll to a specific query group */
   scrollToQueryId: string | null;
   setScrollToQueryId: (queryId: string | null) => void;
@@ -63,13 +77,33 @@ export const usePageTabStore = create<PageTabState>()(
       activeTab: 'tasks',
       setActiveTab: (tab) => set({ activeTab: tab }),
       activeWorkspaceTab: 'workforce',
-      setActiveWorkspaceTab: (tab) =>
+      setActiveWorkspaceTab: (tab, options) =>
         set((state) => {
           const newUnviewedTabs = new Set(state.unviewedTabs);
-          if (tab === 'triggers' || tab === 'inbox') {
-            newUnviewedTabs.delete(tab);
+          let nextInboxProjects = state.inboxUnviewedForProjects;
+
+          if (tab === 'triggers') {
+            newUnviewedTabs.delete('triggers');
           }
-          return { activeWorkspaceTab: tab, unviewedTabs: newUnviewedTabs };
+
+          if (tab === 'inbox') {
+            const pid = options?.clearInboxForProjectId ?? undefined;
+            if (pid) {
+              nextInboxProjects = new Set(state.inboxUnviewedForProjects);
+              nextInboxProjects.delete(pid);
+            }
+            if (nextInboxProjects.size === 0) {
+              newUnviewedTabs.delete('inbox');
+            } else {
+              newUnviewedTabs.add('inbox');
+            }
+          }
+
+          return {
+            activeWorkspaceTab: tab,
+            unviewedTabs: newUnviewedTabs,
+            inboxUnviewedForProjects: nextInboxProjects,
+          };
         }),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
@@ -83,14 +117,36 @@ export const usePageTabStore = create<PageTabState>()(
       hasAgentFiles: false,
       setHasAgentFiles: (value) => set({ hasAgentFiles: value }),
       unviewedTabs: new Set<'triggers' | 'inbox'>(),
-      markTabAsViewed: (tab) =>
+      inboxUnviewedForProjects: new Set<string>(),
+      markTabAsViewed: (tab, inboxProjectId) =>
         set((state) => {
           const newUnviewedTabs = new Set(state.unviewedTabs);
           newUnviewedTabs.delete(tab);
+          if (tab === 'inbox' && inboxProjectId) {
+            const nextInbox = new Set(state.inboxUnviewedForProjects);
+            nextInbox.delete(inboxProjectId);
+            if (nextInbox.size === 0) newUnviewedTabs.delete('inbox');
+            else newUnviewedTabs.add('inbox');
+            return {
+              unviewedTabs: newUnviewedTabs,
+              inboxUnviewedForProjects: nextInbox,
+            };
+          }
           return { unviewedTabs: newUnviewedTabs };
         }),
-      markTabAsUnviewed: (tab) =>
+      markTabAsUnviewed: (tab, inboxProjectId) =>
         set((state) => {
+          if (tab === 'inbox') {
+            if (!inboxProjectId) return state;
+            const newUnviewedTabs = new Set(state.unviewedTabs);
+            newUnviewedTabs.add('inbox');
+            const nextInbox = new Set(state.inboxUnviewedForProjects);
+            nextInbox.add(inboxProjectId);
+            return {
+              unviewedTabs: newUnviewedTabs,
+              inboxUnviewedForProjects: nextInbox,
+            };
+          }
           const newUnviewedTabs = new Set(state.unviewedTabs);
           newUnviewedTabs.add(tab);
           return { unviewedTabs: newUnviewedTabs };
