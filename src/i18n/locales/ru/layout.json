@@ -60,6 +60,8 @@
   "folder": "Папка",
   "sidebar-model-manage-hint": "Управление в разделе Агенты → Модели",
   "sidebar-custom-platform-unknown": "—",
+  "expand-sidebar": "Развернуть боковую панель",
+  "collapse-sidebar": "Свернуть боковую панель",
   "help-and-support": "Помощь и поддержка",
   "contact-support": "Связаться с поддержкой",
   "contact-support-description": "Свяжитесь с нашей командой",

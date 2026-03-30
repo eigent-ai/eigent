@@ -60,6 +60,8 @@
   "folder": "Dossier",
   "sidebar-model-manage-hint": "Gérer dans Agents → Modèles",
   "sidebar-custom-platform-unknown": "—",
+  "expand-sidebar": "Développer la barre latérale",
+  "collapse-sidebar": "Réduire la barre latérale",
   "help-and-support": "Aide et assistance",
   "contact-support": "Contacter le support",
   "contact-support-description": "Contactez notre équipe",

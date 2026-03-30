@@ -60,6 +60,8 @@
   "folder": "폴더",
   "sidebar-model-manage-hint": "에이전트 → 모델에서 관리",
   "sidebar-custom-platform-unknown": "—",
+  "expand-sidebar": "사이드바 펼치기",
+  "collapse-sidebar": "사이드바 접기",
   "help-and-support": "도움말 및 지원",
   "contact-support": "고객 지원 문의",
   "contact-support-description": "팀에 문의하세요",

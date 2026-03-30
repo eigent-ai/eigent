@@ -60,6 +60,8 @@
   "folder": "Folder",
   "sidebar-model-manage-hint": "Manage in Agents → Models",
   "sidebar-custom-platform-unknown": "—",
+  "expand-sidebar": "Expand sidebar",
+  "collapse-sidebar": "Collapse sidebar",
   "help-and-support": "Help and support",
   "contact-support": "Contact support",
   "contact-support-description": "Get in touch with our team",

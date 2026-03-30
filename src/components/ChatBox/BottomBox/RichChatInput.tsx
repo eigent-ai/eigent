@@ -21,17 +21,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
-
-/** Default rotating hints when the input is empty (30s per line). */
-export const DEFAULT_CHAT_INPUT_PLACEHOLDERS = [
-  'Automate market research, analysis, and reports',
-  'Create slides, social posts, and brand content',
-  'Organize files, documents, and desktop tasks',
-] as const;
+import { useTranslation } from 'react-i18next';
 
 const PLACEHOLDER_ROTATE_MS = 30_000;
-
-const DEFAULT_PLACEHOLDERS_ARR: string[] = [...DEFAULT_CHAT_INPUT_PLACEHOLDERS];
 
 type RichSegment = { type: 'text' | 'url' | 'skill'; text: string };
 
@@ -329,6 +321,7 @@ export const RichChatInput = React.forwardRef<
   },
   ref
 ) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const internalUpdate = useRef(false);
   const composingRef = useRef(false);
@@ -434,8 +427,12 @@ export const RichChatInput = React.forwardRef<
     if (placeholder && placeholder.length > 0) {
       return [placeholder];
     }
-    return DEFAULT_PLACEHOLDERS_ARR;
-  }, [placeholdersProp, placeholder]);
+    return [
+      t('chat.rich-input-rotate-1'),
+      t('chat.rich-input-rotate-2'),
+      t('chat.rich-input-rotate-3'),
+    ];
+  }, [placeholdersProp, placeholder, t]);
 
   const showPlaceholder = value.length === 0 && placeholders.length > 0;
   const [placeholderCycleIndex, setPlaceholderCycleIndex] = useState(0);

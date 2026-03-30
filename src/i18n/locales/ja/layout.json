@@ -60,6 +60,8 @@
   "folder": "フォルダ",
   "sidebar-model-manage-hint": "エージェント → モデルで管理",
   "sidebar-custom-platform-unknown": "—",
+  "expand-sidebar": "サイドバーを展開",
+  "collapse-sidebar": "サイドバーを折りたたむ",
   "help-and-support": "ヘルプとサポート",
   "contact-support": "サポートに連絡",
   "contact-support-description": "チームにお問い合わせください",

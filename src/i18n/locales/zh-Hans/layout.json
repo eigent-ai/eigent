@@ -60,6 +60,8 @@
   "folder": "文件夹",
   "sidebar-model-manage-hint": "在智能体 → 模型中管理",
   "sidebar-custom-platform-unknown": "—",
+  "expand-sidebar": "展开侧边栏",
+  "collapse-sidebar": "收起侧边栏",
   "help-and-support": "帮助与支持",
   "contact-support": "联系客服",
   "contact-support-description": "与我们的团队取得联系",
