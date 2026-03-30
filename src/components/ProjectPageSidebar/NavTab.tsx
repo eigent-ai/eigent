@@ -47,11 +47,11 @@ export function triggerListenerLeadIconClass(
 ): string {
   switch (status) {
     case 'connected':
-      return 'text-green-500';
+      return 'text-icon-primary';
     case 'connecting':
-      return 'text-yellow-500 animate-pulse';
+      return 'text-icon-warning animate-pulse';
     case 'unhealthy':
-      return 'text-orange-500';
+      return 'text-icon-caution';
     case 'disconnected':
     default:
       return 'text-icon-secondary';

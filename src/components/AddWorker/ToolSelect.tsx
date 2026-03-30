@@ -757,12 +757,12 @@ const ToolSelect = forwardRef<
       {(initialSelectedTools || []).map((item: any) => (
         <Badge
           key={item.id + item.key + (item.isLocal + '')}
-          className="flex h-5 w-auto flex-shrink-0 items-center gap-1 bg-button-tertiery-fill-default px-xs"
+          className="h-5 gap-1 bg-button-tertiery-fill-default px-xs flex w-auto flex-shrink-0 items-center"
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
-          <div className="flex items-center justify-center rounded-sm bg-button-secondary-fill-disabled">
+          <div className="rounded-sm bg-button-secondary-fill-disabled flex items-center justify-center">
             <X
-              className="h-4 w-4 cursor-pointer text-button-secondary-icon-disabled"
+              className="h-4 w-4 text-button-secondary-icon-disabled cursor-pointer"
               onClick={() => removeOption(item)}
             />
           </div>
@@ -788,21 +788,21 @@ const ToolSelect = forwardRef<
           checkEnv(item.id);
         }
       }}
-      className="flex cursor-pointer justify-between px-3 py-2 hover:bg-surface-hover-subtle"
+      className="px-3 py-2 hover:bg-surface-hover-subtle flex cursor-pointer justify-between"
     >
-      <div className="flex items-center gap-1">
+      <div className="gap-1 flex items-center">
         {getCategoryIcon(item.category?.name)}
-        <div className="line-clamp-1 overflow-hidden text-ellipsis break-words text-sm font-bold leading-17 text-text-action">
+        <div className="text-sm font-bold leading-17 text-text-action line-clamp-1 overflow-hidden break-words text-ellipsis">
           {item.name}
         </div>
         <TooltipSimple content={item.description}>
           <CircleAlert
-            className="h-4 w-4 cursor-pointer text-icon-primary"
+            className="h-4 w-4 text-icon-primary cursor-pointer"
             onClick={(e) => e.stopPropagation()}
           />
         </TooltipSimple>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="gap-1 flex items-center">
         {getGithubRepoName(item.home_page) && (
           <div className="flex items-center">
             <img
@@ -816,7 +816,7 @@ const ToolSelect = forwardRef<
                 verticalAlign: 'middle',
               }}
             />
-            <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-3">
+            <span className="text-xs font-medium leading-3 line-clamp-1 items-center justify-center self-stretch overflow-hidden break-words text-ellipsis">
               {getGithubRepoName(item.home_page)}
             </span>
           </div>
@@ -847,21 +847,21 @@ const ToolSelect = forwardRef<
         addOption(item);
         setKeyword('');
       }}
-      className="flex cursor-pointer justify-between px-3 py-2 hover:bg-surface-hover-subtle"
+      className="px-3 py-2 hover:bg-surface-hover-subtle flex cursor-pointer justify-between"
     >
-      <div className="flex items-center gap-1">
+      <div className="gap-1 flex items-center">
         {/* {getCategoryIcon(item.category?.name)} */}
-        <div className="line-clamp-1 overflow-hidden text-ellipsis break-words text-sm font-bold leading-17 text-text-action">
+        <div className="text-sm font-bold leading-17 text-text-action line-clamp-1 overflow-hidden break-words text-ellipsis">
           {item.mcp_name}
         </div>
         <TooltipSimple content={item.mcp_desc}>
           <CircleAlert
-            className="h-4 w-4 cursor-pointer text-icon-primary"
+            className="h-4 w-4 text-icon-primary cursor-pointer"
             onClick={(e) => e.stopPropagation()}
           />
         </TooltipSimple>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="gap-1 flex items-center">
         <Button
           className="h-6 rounded-md bg-button-secondary-fill-default px-sm py-xs text-xs font-bold leading-17 text-button-secondary-text-default shadow-sm hover:bg-button-tertiery-text-default"
           disabled={true}
@@ -873,8 +873,8 @@ const ToolSelect = forwardRef<
   );
   return (
     <div className="relative w-full" ref={containerRef}>
-      <div className="bg-white flex min-h-[40px] flex-wrap gap-1.5 rounded-lg border">
-        <div className="flex items-center gap-1 text-sm font-bold leading-normal text-text-body">
+      <div className="bg-white gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
+        <div className="gap-1 text-sm font-bold leading-normal text-text-body flex items-center">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
             <CircleAlert size={16} className="text-icon-primary" />
@@ -885,7 +885,7 @@ const ToolSelect = forwardRef<
             inputRef.current?.focus();
             setIsOpen(true);
           }}
-          className="flex max-h-[120px] min-h-[60px] w-full flex-wrap justify-start gap-1 overflow-y-auto rounded-lg border border-solid border-input-border-default bg-input-bg-default px-[6px] py-1"
+          className="gap-1 rounded-lg border-input-border-default bg-input-bg-default py-1 flex max-h-[120px] min-h-[60px] w-full flex-wrap justify-start overflow-y-auto border border-solid px-[6px]"
         >
           {renderSelectedItems()}
           <Textarea
@@ -894,14 +894,14 @@ const ToolSelect = forwardRef<
             onChange={(e) => setKeyword(e.target.value)}
             onFocus={() => setIsOpen(true)}
             ref={inputRef}
-            className="!h-[20px] w-auto resize-none border-none bg-transparent p-0 text-sm leading-normal !shadow-none !ring-0 !ring-offset-0"
+            className="p-0 text-sm leading-normal !h-[20px] w-auto resize-none border-none bg-transparent !shadow-none !ring-0 !ring-offset-0"
           />
         </div>
       </div>
 
       {/* floating dropdown */}
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-y-auto rounded-lg border border-solid border-input-border-default bg-dropdown-bg">
+        <div className="left-0 right-0 mt-1 rounded-lg border-input-border-default bg-dropdown-bg absolute top-full z-50 overflow-y-auto border border-solid">
           <div className="max-h-[192px] overflow-y-auto">
             <IntegrationList
               variant="select"
