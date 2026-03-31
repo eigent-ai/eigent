@@ -417,6 +417,7 @@ export default function ProjectPageSidebar({
 
   const createNewProject = () => {
     projectStore.createProject('new project');
+    setActiveWorkspaceTab('workforce');
     navigate('/');
   };
 
