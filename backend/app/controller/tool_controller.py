@@ -15,6 +15,7 @@
 import logging
 import os
 import shutil
+import threading
 import time
 
 from fastapi import APIRouter, HTTPException
@@ -779,15 +780,13 @@ async def open_browser_login():
             bufsize=1,  # Line buffered
         )
 
-        # Create async task to log Electron output
-        async def log_electron_output():
+        def log_electron_output():
             for line in iter(process.stdout.readline, ""):
                 if line:
                     logger.info(f"[ELECTRON OUTPUT] {line.strip()}")
 
-        import asyncio
-
-        asyncio.create_task(log_electron_output())
+        log_thread = threading.Thread(target=log_electron_output, daemon=True)
+        log_thread.start()
 
         # Wait a bit for Electron to start
         import asyncio
