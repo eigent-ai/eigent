@@ -1,0 +1,90 @@
+{
+    "request_timestamp": "2026-03-30T19:49:25.861840",
+    "model": "claude-sonnet-4-6",
+    "agent_id": "17afdc62-1f02-4817-b14d-d1163fff96fd",
+    "request": {
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that must use the tool get_website_content to get the content of a website."
+            },
+            {
+                "role": "user",
+                "content": "\n            Get the content of https://www.camel-ai.org,\n            you must use the get_website_content tool to get the content ,\n            i just want to verify the get_website_content tool is working,\n            you must call the get_website_content tool only once.\n            "
+            }
+        ],
+        "model_config_dict": {
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_website_content",
+                        "description": "Gets the content of a website.",
+                        "strict": true,
+                        "parameters": {
+                            "properties": {
+                                "url": {
+                                    "type": "string",
+                                    "description": "The URL of the website."
+                                }
+                            },
+                            "required": [
+                                "url"
+                            ],
+                            "type": "object",
+                            "additionalProperties": false
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "response_timestamp": "2026-03-30T19:49:29.500994",
+    "response": {
+        "id": "chatcmpl-msg_01RuzLXGR5FWK65wm1ndhTsF",
+        "choices": [
+            {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "content": "Sure! Let me fetch the content of that website right away.",
+                    "refusal": null,
+                    "role": "assistant",
+                    "annotations": null,
+                    "audio": null,
+                    "function_call": null,
+                    "tool_calls": [
+                        {
+                            "id": "toolu_01DreV46fKKRBbnkA2nnBz7i",
+                            "function": {
+                                "arguments": "{\"url\":\"https://www.camel-ai.org\"}",
+                                "name": "get_website_content"
+                            },
+                            "type": "function",
+                            "custom": {}
+                        }
+                    ]
+                }
+            }
+        ],
+        "created": 1774871369,
+        "model": "claude-sonnet-4-6",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+            "completion_tokens": 78,
+            "prompt_tokens": 663,
+            "total_tokens": 741,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null,
+            "claude_cache_tokens_details": {
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_write_5_minutes_input_tokens": 0,
+                "cache_write_1_hour_input_tokens": 0
+            }
+        }
+    }
+}

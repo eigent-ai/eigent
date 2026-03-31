@@ -1,0 +1,1 @@
+{"disable-features":"VizDisplayCompositor","enable-features":"CDPScreenshotNewSurface,UkmSamplingRate\u003CUkmSamplingRate","force-fieldtrial-params":"UkmSamplingRate.Sampled_NoSeed_Other:_default_sampling/1","force-fieldtrials":"UkmSamplingRate/Sampled_NoSeed_Other"}

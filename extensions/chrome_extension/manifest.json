@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "CAMEL Browser Agent",
+  "name": "ADGM Co-work Agent",
   "version": "1.0",
-  "description": "AI-powered browser automation using CAMEL framework",
+  "description": "AI-powered browser co-work agent for page automation",
   "permissions": [
     "activeTab",
     "tabs",
@@ -17,14 +17,14 @@
     "default_path": "sidepanel.html"
   },
   "action": {
-    "default_title": "Open CAMEL Browser Agent"
+    "default_title": "Open ADGM Co-work Agent"
   },
   "background": {
     "service_worker": "background.js"
   },
   "icons": {
-    "16": "icon.png",
-    "48": "icon.png",
+    "16": "adgm-logo.png",
+    "48": "icon-48.png",
     "128": "icon.png"
   }
 }

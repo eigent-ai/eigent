@@ -13,16 +13,24 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import platform
 import threading
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
+from camel.toolkits import (
+    FunctionTool,
+    RegisteredAgentToolkit,
+    ToolkitMessageIntegration,
+)
 
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.prompt import build_browser_system_prompt
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 
@@ -37,6 +45,23 @@ from app.component.environment import env
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
+
+
+@dataclass
+class BrowserAgentTooling:
+    tools: list[FunctionTool | Callable[..., Any]]
+    tool_names: list[str]
+    toolkits_to_register_agent: list[RegisteredAgentToolkit]
+
+
+def _build_browser_system_prompt_compat(**kwargs: Any) -> str:
+    """Call the shared prompt builder with only supported keyword args."""
+    supported_kwargs = {
+        key: value
+        for key, value in kwargs.items()
+        if key in inspect.signature(build_browser_system_prompt).parameters
+    }
+    return build_browser_system_prompt(**supported_kwargs)
 
 
 def _get_browser_port(browser: dict) -> int:
@@ -257,17 +282,126 @@ def _find_extension_proxy_browser(
     return None
 
 
+def build_browser_agent_tooling(
+    *,
+    api_task_id: str,
+    working_directory: str,
+    user_id: str | None,
+    web_toolkit_custom: HybridBrowserToolkit,
+    agent_name: str = Agents.browser_agent,
+    include_human_toolkit: bool = True,
+    include_note_toolkit: bool = True,
+    include_search_toolkit: bool = True,
+    include_terminal_toolkit: bool = True,
+    message_handler: Callable | None = None,
+) -> BrowserAgentTooling:
+    """Build the shared browser-agent toolkit stack."""
+    message_integration = ToolkitMessageIntegration(
+        message_handler=message_handler
+    )
+
+    # Save references before toolkit methods are wrapped.
+    web_toolkit_for_agent_registration = web_toolkit_custom
+    web_toolkit_custom = message_integration.register_toolkits(
+        web_toolkit_custom
+    )
+
+    terminal_toolkit = None
+    if include_terminal_toolkit:
+        _terminal_tk = TerminalToolkit(
+            api_task_id,
+            agent_name,
+            working_directory=working_directory,
+            safe_mode=True,
+            clone_current_env=True,
+        )
+        terminal_toolkit = message_integration.register_functions(
+            [_terminal_tk.shell_exec]
+        )
+
+    note_toolkit = None
+    if include_note_toolkit:
+        note_toolkit = NoteTakingToolkit(
+            api_task_id,
+            agent_name,
+            working_directory=working_directory,
+        )
+        note_toolkit = message_integration.register_toolkits(note_toolkit)
+
+    screenshot_toolkit = ScreenshotToolkit(
+        api_task_id,
+        working_directory=working_directory,
+        agent_name=agent_name,
+    )
+    screenshot_toolkit_for_agent_registration = screenshot_toolkit
+    screenshot_toolkit = message_integration.register_toolkits(
+        screenshot_toolkit
+    )
+
+    skill_toolkit = SkillToolkit(
+        api_task_id,
+        agent_name,
+        working_directory=working_directory,
+        user_id=user_id,
+    )
+    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
+
+    search_tools = []
+    if include_search_toolkit:
+        search_tools = SearchToolkit.get_can_use_tools(
+            api_task_id, agent_name=agent_name
+        )
+        if search_tools:
+            search_tools = message_integration.register_functions(
+                search_tools
+            )
+        else:
+            search_tools = []
+
+    tools: list[FunctionTool | Callable[..., Any]] = []
+    if include_human_toolkit:
+        tools.extend(HumanToolkit.get_can_use_tools(api_task_id, agent_name))
+    tools.extend(web_toolkit_custom.get_tools())
+    if terminal_toolkit is not None:
+        tools.extend(terminal_toolkit)
+    if note_toolkit is not None:
+        tools.extend(note_toolkit.get_tools())
+    tools.extend(screenshot_toolkit.get_tools())
+    tools.extend(search_tools)
+    tools.extend(skill_toolkit.get_tools())
+
+    tool_names = [
+        SearchToolkit.toolkit_name(),
+        HybridBrowserToolkit.toolkit_name(),
+        TerminalToolkit.toolkit_name(),
+        ScreenshotToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+    ]
+    if include_human_toolkit:
+        tool_names.insert(2, HumanToolkit.toolkit_name())
+    if include_note_toolkit:
+        insert_at = 3 if include_human_toolkit else 2
+        tool_names.insert(insert_at, NoteTakingToolkit.toolkit_name())
+
+    return BrowserAgentTooling(
+        tools=tools,
+        tool_names=tool_names,
+        toolkits_to_register_agent=[
+            web_toolkit_for_agent_registration,
+            screenshot_toolkit_for_agent_registration,
+        ],
+    )
+
+
 def browser_agent(options: Chat):
     working_directory = get_working_directory(options)
     logger.info(
         f"Creating browser agent for project: {options.project_id} "
         f"in directory: {working_directory}"
     )
-    message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(
-            options.project_id, Agents.browser_agent
-        ).send_message_to_user
-    )
+    human_message_handler = HumanToolkit(
+        options.project_id, Agents.browser_agent
+    ).send_message_to_user
 
     # Acquire CDP browser from pool or use default port
     toolkit_session_id = str(uuid.uuid4())[:8]
@@ -382,67 +516,15 @@ def browser_agent(options: Chat):
             enabled_tools=enabled_tools,
         )
 
-    # Save reference before registering for toolkits_to_register_agent
-    web_toolkit_for_agent_registration = web_toolkit_custom
-    web_toolkit_custom = message_integration.register_toolkits(
-        web_toolkit_custom
-    )
-
-    terminal_toolkit = TerminalToolkit(
-        options.project_id,
-        Agents.browser_agent,
-        working_directory=working_directory,
-        safe_mode=True,
-        clone_current_env=True,
-    )
-    terminal_toolkit = message_integration.register_functions(
-        [terminal_toolkit.shell_exec]
-    )
-
-    note_toolkit = NoteTakingToolkit(
-        options.project_id,
-        Agents.browser_agent,
-        working_directory=working_directory,
-    )
-    note_toolkit = message_integration.register_toolkits(note_toolkit)
-    screenshot_toolkit = ScreenshotToolkit(
-        options.project_id,
-        working_directory=working_directory,
-        agent_name=Agents.browser_agent,
-    )
-    # Save reference before registering for toolkits_to_register_agent
-    screenshot_toolkit_for_agent_registration = screenshot_toolkit
-    screenshot_toolkit = message_integration.register_toolkits(
-        screenshot_toolkit
-    )
-
-    skill_toolkit = SkillToolkit(
-        options.project_id,
-        Agents.browser_agent,
+    tooling = build_browser_agent_tooling(
+        api_task_id=options.project_id,
         working_directory=working_directory,
         user_id=options.skill_config_user_id(),
+        web_toolkit_custom=web_toolkit_custom,
+        agent_name=Agents.browser_agent,
+        include_human_toolkit=True,
+        message_handler=human_message_handler,
     )
-    skill_toolkit = message_integration.register_toolkits(skill_toolkit)
-
-    search_tools = SearchToolkit.get_can_use_tools(
-        options.project_id, agent_name=Agents.browser_agent
-    )
-    if search_tools:
-        search_tools = message_integration.register_functions(search_tools)
-    else:
-        search_tools = []
-
-    tools = [
-        *HumanToolkit.get_can_use_tools(
-            options.project_id, Agents.browser_agent
-        ),
-        *web_toolkit_custom.get_tools(),
-        *terminal_toolkit,
-        *note_toolkit.get_tools(),
-        *screenshot_toolkit.get_tools(),
-        *search_tools,
-        *skill_toolkit.get_tools(),
-    ]
 
     # Build external browser notice
     external_browser_notice = ""
@@ -457,12 +539,13 @@ def browser_agent(options: Chat):
             "</external_browser_connection>\n"
         )
 
-    system_message = BROWSER_SYS_PROMPT.format(
+    system_message = _build_browser_system_prompt_compat(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
         now_str=NOW_STR,
         external_browser_notice=external_browser_notice,
+        include_human_toolkit=True,
     )
 
     agent = agent_model(
@@ -472,21 +555,10 @@ def browser_agent(options: Chat):
             content=system_message,
         ),
         options,
-        tools,
+        tooling.tools,
         prune_tool_calls_from_memory=True,
-        tool_names=[
-            SearchToolkit.toolkit_name(),
-            HybridBrowserToolkit.toolkit_name(),
-            HumanToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
-            TerminalToolkit.toolkit_name(),
-            ScreenshotToolkit.toolkit_name(),
-            SkillToolkit.toolkit_name(),
-        ],
-        toolkits_to_register_agent=[
-            web_toolkit_for_agent_registration,
-            screenshot_toolkit_for_agent_registration,
-        ],
+        tool_names=tooling.tool_names,
+        toolkits_to_register_agent=tooling.toolkits_to_register_agent,
         enable_snapshot_clean=True,
     )
 

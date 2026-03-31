@@ -2,9 +2,11 @@
 let isConnected = false;
 let currentTabId = null;
 let currentTabUrl = '';
+let currentWindowId = null;
 let isDebugMode = false;
 let fullVisionMode = false;
 let isTaskRunning = false;
+let actionJustCompleted = false;
 
 // Message queue - queue messages while task is running
 let messageQueue = [];
@@ -15,6 +17,210 @@ function truncateOutput(text, maxLen = MAX_OUTPUT_LENGTH) {
   if (typeof text !== 'string') return text;
   if (text.length <= maxLen) return text;
   return text.substring(0, maxLen) + '...[truncated]';
+}
+
+function normalizeStreamText(text) {
+  if (text == null) return '';
+  if (typeof text !== 'string') text = String(text);
+  const normalized = text.trim();
+  if (!normalized) return '';
+  if (normalized.toLowerCase() === 'null') return '';
+  return text;
+}
+
+// Check if a character is CJK (Chinese/Japanese/Korean)
+function isCJK(ch) {
+  if (!ch) return false;
+  const code = ch.codePointAt(0);
+  return (
+    (code >= 0x4e00 && code <= 0x9fff) ||   // CJK Unified Ideographs
+    (code >= 0x3400 && code <= 0x4dbf) ||   // CJK Extension A
+    (code >= 0x3000 && code <= 0x303f) ||   // CJK Punctuation
+    (code >= 0xff00 && code <= 0xffef) ||   // Fullwidth Forms
+    (code >= 0x3040 && code <= 0x309f) ||   // Hiragana
+    (code >= 0x30a0 && code <= 0x30ff) ||   // Katakana
+    (code >= 0xac00 && code <= 0xd7af)      // Hangul
+  );
+}
+
+// Check if text ends with a natural break point
+function endsWithBreak(text) {
+  if (!text) return false;
+  const trimmed = text.trimEnd();
+  if (!trimmed) return false;
+  const last = trimmed.slice(-1);
+  return /[.!?。！？\n:：;；)\]}>）】」』]/.test(last);
+}
+
+function shouldInsertChunkSpacer(_existingText, _nextText) {
+  // Streaming chunks already contain correct spacing;
+  // inserting extra spaces breaks words mid-stream (e.g. "wea" + "ther").
+  return false;
+}
+
+function appendChunkText(target, text) {
+  if (!target || !text) return;
+  const currentText = target.dataset.rawText || '';
+  let nextText = text;
+  if (currentText && actionJustCompleted && !text.startsWith('\n') && endsWithBreak(currentText)) {
+    nextText = `\n\n${text}`;
+  } else if (currentText && shouldInsertChunkSpacer(currentText, text)) {
+    nextText = ` ${text}`;
+  }
+  const combinedText = currentText + nextText;
+  target.dataset.rawText = combinedText;
+  target.innerHTML = renderMarkdown(combinedText);
+  actionJustCompleted = false;
+}
+
+function sanitizeMarkdownUrl(url) {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (/^(https?:\/\/|mailto:)/i.test(trimmed)) {
+    return trimmed;
+  }
+  return '';
+}
+
+function renderInlineMarkdown(text) {
+  if (!text) return '';
+
+  const codeSpans = [];
+  let html = escapeHtml(text);
+
+  html = html.replace(/`([^`]+)`/g, (_match, code) => {
+    const placeholder = `__CODE_SPAN_${codeSpans.length}__`;
+    codeSpans.push(`<code>${code}</code>`);
+    return placeholder;
+  });
+
+  html = html.replace(
+    /\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (_match, label, url) => {
+      const safeUrl = sanitizeMarkdownUrl(url);
+      if (!safeUrl) return escapeHtml(label);
+      return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer noopener">${label}</a>`;
+    }
+  );
+
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  codeSpans.forEach((codeHtml, index) => {
+    html = html.replace(`__CODE_SPAN_${index}__`, codeHtml);
+  });
+
+  return html;
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const htmlParts = [];
+  let paragraphLines = [];
+  let listItems = [];
+  let listType = null;
+  let inCodeBlock = false;
+  let codeLines = [];
+
+  function flushParagraph() {
+    if (!paragraphLines.length) return;
+    const paragraphText = paragraphLines.join(' ').trim();
+    if (paragraphText) {
+      htmlParts.push(`<p>${renderInlineMarkdown(paragraphText)}</p>`);
+    }
+    paragraphLines = [];
+  }
+
+  function flushList() {
+    if (!listItems.length || !listType) return;
+    const itemsHtml = listItems
+      .map((item) => `<li>${renderInlineMarkdown(item)}</li>`)
+      .join('');
+    htmlParts.push(`<${listType}>${itemsHtml}</${listType}>`);
+    listItems = [];
+    listType = null;
+  }
+
+  function flushCodeBlock() {
+    if (!codeLines.length) return;
+    htmlParts.push(
+      `<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`
+    );
+    codeLines = [];
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+
+    if (/^\s*```/.test(line)) {
+      flushParagraph();
+      flushList();
+      if (inCodeBlock) {
+        flushCodeBlock();
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(rawLine);
+      continue;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = headingMatch[1].length;
+      htmlParts.push(
+        `<h${level}>${renderInlineMarkdown(headingMatch[2].trim())}</h${level}>`
+      );
+      continue;
+    }
+
+    const unorderedMatch = line.match(/^[-*+]\s+(.*)$/);
+    if (unorderedMatch) {
+      flushParagraph();
+      if (listType && listType !== 'ul') {
+        flushList();
+      }
+      listType = 'ul';
+      listItems.push(unorderedMatch[1].trim());
+      continue;
+    }
+
+    const orderedMatch = line.match(/^\d+\.\s+(.*)$/);
+    if (orderedMatch) {
+      flushParagraph();
+      if (listType && listType !== 'ol') {
+        flushList();
+      }
+      listType = 'ol';
+      listItems.push(orderedMatch[1].trim());
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line.trim());
+  }
+
+  if (inCodeBlock) {
+    flushCodeBlock();
+  }
+  flushParagraph();
+  flushList();
+
+  return htmlParts.join('');
 }
 
 // DOM Elements
@@ -87,6 +293,7 @@ async function updateCurrentTab() {
   if (tab) {
     currentTabId = tab.id;
     currentTabUrl = tab.url;
+    currentWindowId = tab.windowId;
     currentPageUrl.textContent = tab.url;
     currentPageUrl.title = tab.url;
   }
@@ -186,6 +393,7 @@ async function handleConnect() {
       {
         type: 'CONNECT',
         serverUrl: urlToConnect,
+        windowId: currentWindowId,
       },
       (response) => {
         connectBtn.disabled = false;
@@ -347,6 +555,7 @@ async function executeMessage(text) {
     task: text,
     tabId: currentTabId,
     url: currentTabUrl,
+    windowId: currentWindowId,
     fullVisionMode: fullVisionMode,
   });
 }
@@ -407,7 +616,10 @@ function addAgentMessage() {
           <div class="actions-list"></div>
         </div>
       </div>
-      <div class="streaming-text"></div>
+      <div class="response-shell">
+        <div class="response-label">Agent Response</div>
+        <div class="streaming-text"></div>
+      </div>
     </div>
   `;
   messagesContainer.appendChild(msgDiv);
@@ -444,9 +656,15 @@ function addActionStep(action, status = 'running') {
   }
 
   const stepId = 'step-' + Date.now();
-  const actionName = escapeHtml(
-    typeof action === 'string' ? action : action.name
-  );
+  const actionData =
+    typeof action === 'string'
+      ? { name: action, detail: '' }
+      : {
+          name: action?.name || action?.action || 'Tool Action',
+          detail: action?.detail || '',
+        };
+  const actionName = escapeHtml(actionData.name);
+  const actionDetail = escapeHtml(actionData.detail);
   const actionTime = new Date().toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -462,7 +680,11 @@ function addActionStep(action, status = 'running') {
       ${getStatusIcon(status)}
     </div>
     <div class="action-info">
-      <div class="action-name">${actionName}<span class="action-time">${actionTime}</span></div>
+      <div class="action-name-row">
+        <div class="action-name">${actionName}</div>
+        <span class="action-time">${actionTime}</span>
+      </div>
+      ${actionDetail ? `<div class="action-detail">${actionDetail}</div>` : ''}
     </div>
   `;
   actionsList.appendChild(stepDiv);
@@ -495,7 +717,10 @@ function addActionStep(action, status = 'running') {
       <div class="current-action-icon ${status}">
         ${getStatusIcon(status)}
       </div>
-      <span class="current-action-text">${actionName}</span>
+      <div class="current-action-copy">
+        <span class="current-action-text">${actionName}</span>
+        ${actionDetail ? `<span class="current-action-subtext">${actionDetail}</span>` : ''}
+      </div>
     `;
     newAction.dataset.stepId = stepId;
     currentActionDisplay.appendChild(newAction);
@@ -586,25 +811,36 @@ function getHeaderStatusIcon(status) {
 
 // Append streaming text to the current agent message
 function appendStreamingText(text) {
+  text = normalizeStreamText(text);
+  if (!text) return;
+
   const msgDiv = document.querySelector('.message-agent:last-child');
   if (!msgDiv) return;
 
   const typingIndicator = msgDiv.querySelector('.typing-indicator');
   if (typingIndicator) typingIndicator.style.display = 'none';
 
+  const responseShell = msgDiv.querySelector('.response-shell');
   let streamingDiv = msgDiv.querySelector('.streaming-text');
   if (!streamingDiv) {
     const content = msgDiv.querySelector('.message-content');
+    const shell = responseShell || document.createElement('div');
+    if (!responseShell) {
+      shell.className = 'response-shell';
+      shell.innerHTML =
+        '<div class="response-label">Agent Response</div><div class="streaming-text"></div>';
+      content.appendChild(shell);
+    }
     streamingDiv = document.createElement('div');
     streamingDiv.className = 'streaming-text';
-    content.appendChild(streamingDiv);
+    shell.appendChild(streamingDiv);
   }
 
-  // Show the streaming div
-  streamingDiv.style.display = 'block';
+  if (responseShell) {
+    responseShell.classList.add('visible');
+  }
 
-  // Append text with typing effect
-  streamingDiv.textContent += text;
+  appendChunkText(streamingDiv, text);
   scrollToBottom();
 }
 
@@ -638,31 +874,18 @@ function completeAgentMessage(text) {
     updateActionsHeaderStatus(msgDiv, 'success');
   }
 
-  // Check if we have streaming text that should become the final text
+  const responseShell = msgDiv.querySelector('.response-shell');
   const streamingDiv = msgDiv.querySelector('.streaming-text');
-  if (streamingDiv && streamingDiv.textContent) {
-    // Streaming text already contains the content, just style it
-    streamingDiv.className = 'message-text';
-    if (actionsContainer && actionsContainer.style.display !== 'none') {
-      streamingDiv.style.marginTop = '8px';
-      streamingDiv.style.paddingTop = '8px';
-      streamingDiv.style.borderTop = '1px solid var(--border-color)';
+  const finalText = streamingDiv?.dataset.rawText || normalizeStreamText(text);
+  if (streamingDiv && finalText) {
+    if (!streamingDiv.dataset.rawText) {
+      streamingDiv.dataset.rawText = finalText;
+      streamingDiv.innerHTML = renderMarkdown(finalText);
     }
-  } else if (text) {
-    const content = msgDiv.querySelector('.message-content');
-
-    // Remove empty streaming div if exists
-    if (streamingDiv) streamingDiv.remove();
-
-    const textDiv = document.createElement('div');
-    textDiv.className = 'message-text';
-    if (actionsContainer && actionsContainer.style.display !== 'none') {
-      textDiv.style.marginTop = '8px';
-      textDiv.style.paddingTop = '8px';
-      textDiv.style.borderTop = '1px solid var(--border-color)';
+    streamingDiv.classList.add('finalized');
+    if (responseShell) {
+      responseShell.classList.add('visible');
     }
-    textDiv.textContent = text;
-    content.appendChild(textDiv);
   }
 
   scrollToBottom();
@@ -741,19 +964,25 @@ function handleBackgroundMessage(message) {
           message.success ? 'success' : 'error'
         );
       }
+      actionJustCompleted = true;
       break;
 
     case 'STREAM_TEXT':
       // Handle streaming text from agent (with truncation)
-      appendStreamingText(truncateOutput(message.text));
+      appendStreamingText(truncateOutput(normalizeStreamText(message.text)));
       break;
 
     case 'STREAM_START':
       // Clear any existing streaming text for new stream
+      actionJustCompleted = false;
       const msgDiv = document.querySelector('.message-agent:last-child');
       if (msgDiv) {
         const streamingDiv = msgDiv.querySelector('.streaming-text');
-        if (streamingDiv) streamingDiv.textContent = '';
+        if (streamingDiv) {
+          streamingDiv.dataset.rawText = '';
+          streamingDiv.innerHTML = '';
+          streamingDiv.classList.remove('finalized');
+        }
       }
       break;
 
@@ -822,14 +1051,9 @@ function clearChat() {
   messagesContainer.innerHTML = `
     <div class="welcome-message">
       <div class="welcome-icon">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-          <line x1="9" y1="9" x2="9.01" y2="9"/>
-          <line x1="15" y1="9" x2="15.01" y2="9"/>
-        </svg>
+        <img src="adgm-logo.png" alt="ADGM Co-work Agent logo">
       </div>
-      <h3>Welcome to CAMEL Browser Agent</h3>
+      <h3>Welcome to ADGM Co-work Agent</h3>
       <p>Describe what you want to do on this page.</p>
       <div class="suggestions">
         <button class="suggestion-chip" data-text="Click the first link on this page">Click first link</button>

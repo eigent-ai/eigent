@@ -9,9 +9,57 @@ let intentionalDisconnect = false;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let reconnectTimer = null;
+let preferredWindowId = null;
+
+function normalizeStreamText(text) {
+  if (text == null) return '';
+  if (typeof text !== 'string') text = String(text);
+  const normalized = text.trim();
+  if (!normalized) return '';
+  if (normalized.toLowerCase() === 'null') return '';
+  return text;
+}
 
 function getReconnectDelay() {
   return Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+}
+
+function isControllableUrl(url) {
+  if (!url) return false;
+  return !(
+    url.startsWith('chrome://') ||
+    url.startsWith('chrome-extension://') ||
+    url.startsWith('edge://') ||
+    url.startsWith('devtools://')
+  );
+}
+
+async function getSyncableTabs(windowId = null) {
+  let tabs;
+  if (windowId != null) {
+    tabs = await chrome.tabs.query({ windowId });
+  } else {
+    tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+  }
+
+  return tabs
+    .filter((tab) => tab.id != null && isControllableUrl(tab.url || ''))
+    .map((tab) => ({
+      tabId: tab.id,
+      url: tab.url || '',
+      title: tab.title || '',
+      active: Boolean(tab.active),
+    }));
+}
+
+async function syncWindowTabs(windowId = null) {
+  const tabs = await getSyncableTabs(windowId);
+  sendToServer({
+    type: 'WINDOW_TABS_SYNC',
+    tabs: tabs,
+    windowId: windowId,
+  });
+  return tabs;
 }
 
 // Tab operation locks - prevent concurrent attach/detach races
@@ -63,8 +111,9 @@ chrome.sidePanel
   .catch((error) => console.error('Error setting panel behavior:', error));
 
 // Connect to Python backend
-function connect(url) {
+function connect(url, windowId = null) {
   if (url) serverUrl = url;
+  if (windowId != null) preferredWindowId = windowId;
 
   return new Promise((resolve, reject) => {
     try {
@@ -80,6 +129,9 @@ function connect(url) {
           reconnectTimer = null;
         }
         broadcastToPopup({ type: 'CONNECTION_STATUS', connected: true });
+        syncWindowTabs(preferredWindowId).catch((error) => {
+          console.error('Failed to sync tabs on connect:', error);
+        });
         resolve({ success: true });
       };
 
@@ -321,11 +373,17 @@ async function handleServerMessage(message) {
       break;
 
     case 'STREAM_TEXT':
-      // Forward streaming text to popup
-      broadcastToPopup({
-        type: 'STREAM_TEXT',
-        text: message.text,
-      });
+      {
+        const normalizedText = normalizeStreamText(message.text);
+        if (!normalizedText) {
+          break;
+        }
+        // Forward streaming text to popup
+        broadcastToPopup({
+          type: 'STREAM_TEXT',
+          text: normalizedText,
+        });
+      }
       break;
 
     case 'STREAM_START':
@@ -616,10 +674,14 @@ async function highlightElement(selector, duration = 600, tabId = null) {
 async function handleAttachRequest() {
   try {
     // Get current active tab
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
+    let query = { active: true, currentWindow: true };
+    if (preferredWindowId != null) {
+      query = { active: true, windowId: preferredWindowId };
+    }
+    let [tab] = await chrome.tabs.query(query);
+    if (!tab && preferredWindowId != null) {
+      [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    }
     if (!tab) {
       sendToServer({
         type: 'ATTACH_RESULT',

@@ -2,6 +2,7 @@
 let isConnected = false;
 let currentTabId = null;
 let currentTabUrl = '';
+let currentWindowId = null;
 let _conversationHistory = [];
 
 // DOM Elements
@@ -26,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (tab) {
     currentTabId = tab.id;
     currentTabUrl = tab.url;
+    currentWindowId = tab.windowId;
     currentPageUrl.textContent = truncateUrl(tab.url, 50);
     currentPageUrl.title = tab.url;
   }
@@ -101,6 +103,7 @@ async function handleConnect() {
       {
         type: 'CONNECT',
         serverUrl: serverUrlInput.value,
+        windowId: currentWindowId,
       },
       (response) => {
         btnLoader.classList.add('hidden');
@@ -166,6 +169,7 @@ async function sendMessage() {
     task: text,
     tabId: currentTabId,
     url: currentTabUrl,
+    windowId: currentWindowId,
   });
 }
 

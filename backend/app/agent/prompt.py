@@ -13,6 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 # flake8: noqa
 
+import re
+
 SOCIAL_MEDIA_SYS_PROMPT = """\
 You are a Social Media Management Assistant with comprehensive capabilities
 across multiple platforms. You MUST use the `send_message_to_user` tool to
@@ -603,6 +605,13 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
     Fabricating or guessing URLs is considered a critical error and must
     never be done under any circumstances.
 
+- If the user gives an explicit quantity, list size, or stop condition
+    (for example, "find 3 examples" or "give me 5 links"), you MUST stop
+    searching as soon as you have enough high-confidence results to satisfy
+    that request. Do NOT continue gathering extra results unless the user
+    explicitly asks for more or additional searching is necessary to verify
+    an uncertain result.
+
 - You SHOULD keep the user informed by providing message_title and
     message_description
     parameters when calling tools. These optional parameters are available on
@@ -678,6 +687,255 @@ Your capabilities include:
 - When encountering verification challenges (like login, CAPTCHAs or
     robot checks), you MUST request help using the human toolkit.
 </web_search_workflow>"""
+
+EXTENSION_BROWSER_SYS_PROMPT = """\
+<role>
+You are a browser assistant for the Chrome extension. Help the user with the
+tools available in this chat session.
+</role>
+
+<environment>
+- **System**: {platform_system} ({platform_machine})
+- **Working Directory**: `{working_directory}`
+- The current date is {now_str}(Accurate to the hour). For date-related tasks,
+  use this as the current date.
+</environment>
+
+{external_browser_notice}<instructions>
+- Base your work on information gathered with the available tools. If
+  something remains uncertain, say so instead of guessing.
+- If the user gives an explicit quantity, list size, or stop condition, stop
+  searching as soon as you have enough strong results to satisfy that request.
+- Use the browser and search tools to find information and interact with pages.
+- Use screenshot tools when you need to inspect an image or a saved screenshot.
+- Use terminal tools only for simple local inspection or file operations that
+  are directly relevant to the task.
+- Use skill tools when a relevant skill is available for the task.
+- Only use URLs from the user, search results, or pages you have already
+  opened. Do not make up URLs.
+- If a site requires login, permission, or another verification step, explain
+  the blocker clearly and tell the user what action is needed.
+- If no dedicated search tool is available, use the browser to search from a
+  reputable site and only follow links that actually appear on the page.
+- When helpful, provide concise progress updates through tool call metadata.
+</instructions>
+
+<response_style>
+- Give clear, direct answers based on what you found.
+- Mention the key URLs you used when relevant.
+- Avoid markdown tables unless the user explicitly asks for one.
+</response_style>"""
+
+
+def _strip_browser_team_collaboration_sections(prompt: str) -> str:
+    """Adapt the main browser-agent prompt for single-agent extension chat."""
+    prompt = prompt.replace(
+        "You are a Senior Research Analyst, a key member of a multi-agent team. ",
+        "You are a Senior Research Analyst. ",
+    )
+    prompt = re.sub(
+        r"\n<team_structure>.*?</team_structure>\n",
+        "\n",
+        prompt,
+        flags=re.S,
+    )
+    prompt = re.sub(
+        r"- Before starting research, you MUST use `list_note\(\)`.*?(?=- \*\*CRITICAL URL POLICY\*\*:)",
+        (
+            "- Use the note-taking tools to preserve important findings across "
+            "turns. Include relevant source URLs and enough detail to recover "
+            "your reasoning later.\n\n"
+        ),
+        prompt,
+        flags=re.S,
+    )
+    return prompt
+
+
+def _strip_browser_human_toolkit_sections(prompt: str) -> str:
+    """Adapt the browser-agent prompt when human interaction tools are absent."""
+    prompt = re.sub(
+        r"- Use the human toolkit to ask for help when you are stuck\.\n",
+        "",
+        prompt,
+    )
+    prompt = re.sub(
+        (
+            r"- When encountering verification challenges "
+            r"\(like login, CAPTCHAs or\n"
+            r"\s+robot checks\), you MUST request help using the human "
+            r"toolkit\.\n"
+        ),
+        (
+            "- When encountering verification challenges (like login, "
+            "CAPTCHAs or\n"
+            "    robot checks), clearly explain the blocker and what user "
+            "action is required.\n"
+        ),
+        prompt,
+    )
+    return prompt
+
+
+def _soften_browser_prompt_for_content_filters(prompt: str) -> str:
+    """Reduce phrasing that is more likely to trigger provider filters."""
+    prompt = re.sub(
+        (
+            r"- \*\*Working Directory\*\*: `([^`]+)`\. All local file "
+            r"operations must\n"
+            r"occur here, but you can access files from any place in the file "
+            r"system\. For all file system operations, you MUST use absolute "
+            r"paths to ensure precision and avoid ambiguity\.\n"
+        ),
+        (
+            r"- **Working Directory**: `\1`. Prefer to keep local file "
+            r"operations in this directory. If other local files are directly "
+            r"relevant to the task, use absolute paths when accessing them.\n"
+        ),
+        prompt,
+    )
+    prompt = prompt.replace(
+        (
+            "- **CRITICAL URL POLICY**: You are STRICTLY FORBIDDEN from "
+            "inventing,\n    guessing, or constructing URLs yourself. You MUST "
+            "only use URLs from\n    trusted sources:\n    1. URLs returned by "
+            "search tools (`search_google`)\n    2. URLs found on webpages you "
+            "have visited through browser tools\n    3. URLs provided by the "
+            "user in their request\n    Fabricating or guessing URLs is "
+            "considered a critical error and must\n    never be done under any "
+            "circumstances.\n"
+        ),
+        (
+            "- **URL Policy**: Only use URLs from trusted sources:\n"
+            "    1. URLs returned by search tools (`search_google`)\n"
+            "    2. URLs found on webpages you have visited through browser "
+            "tools\n"
+            "    3. URLs provided by the user in their request\n"
+            "    Do not invent, guess, or construct URLs yourself.\n"
+        ),
+    )
+    prompt = prompt.replace(
+        (
+            "- You MUST NOT answer from your own knowledge. All information\n"
+            "    MUST be sourced from the web using the available tools. If "
+            "you don't know\n    something, find it out using your tools.\n"
+        ),
+        (
+            "- Base your answer on information gathered with the available "
+            "tools.\n"
+            "    If something is still unknown, say so and continue "
+            "researching instead of guessing.\n"
+        ),
+    )
+    prompt = re.sub(
+        (
+            r"- Use the terminal tools to perform local operations\. "
+            r"\*\*IMPORTANT:\*\* Before the\n"
+            r"\s+task gets started, you can use `shell_exec` to run `ls "
+            r"[^`]+`\n"
+            r"\s+to check for important files in the working directory, and "
+            r"then use terminal\n"
+            r"\s+commands like `cat`, `grep`, or `head` to read and examine "
+            r"these files\. You can leverage powerful CLI tools like\n"
+            r"\s+`grep` for searching within files, `curl` and `wget` for "
+            r"downloading content,\n"
+            r"\s+and `jq` for parsing JSON data from APIs\.\n"
+        ),
+        (
+            "- Use the terminal tools for local inspection and lightweight "
+            "commands when relevant to the task.\n"
+            "    Prefer simple, task-focused commands and use absolute paths "
+            "for local file operations.\n"
+        ),
+        prompt,
+    )
+    prompt = prompt.replace(
+        (
+            "- **MUST start with direct website search**: Use "
+            "`browser_visit_page` to go\n"
+            "  directly to popular search engines and informational websites "
+            "such as:\n"
+            "  * General search: google.com, bing.com, duckduckgo.com\n"
+            "  * Academic: scholar.google.com, pubmed.ncbi.nlm.nih.gov\n"
+            "  * News: news.google.com, bbc.com/news, reuters.com\n"
+            "  * Technical: stackoverflow.com, github.com\n"
+            "  * Reference: wikipedia.org, britannica.com\n"
+            "- **Manual search process**: Type your query into the search "
+            "boxes on these\n"
+            "  sites using `browser_type` and submit with `browser_enter`\n"
+            "- **Extract URLs from results**: Only use URLs that appear in the "
+            "search\n"
+            "  results on these websites\n"
+        ),
+        (
+            "- If no dedicated search tool is available, use "
+            "`browser_visit_page` to open a reputable search engine or a "
+            "known site relevant to the task.\n"
+            "- Type the query into the page with `browser_type`, submit it "
+            "with `browser_enter`, and only use URLs that actually appear in "
+            "the results.\n"
+        ),
+    )
+    prompt = prompt.replace(
+        (
+            "- When encountering verification challenges (like login, "
+            "CAPTCHAs or\n"
+            "    robot checks), clearly explain the blocker and what user "
+            "action is required.\n"
+        ),
+        (
+            "- When you encounter a login or verification blocker, explain "
+            "the blocker clearly and state what user action is required.\n"
+        ),
+    )
+    return prompt
+
+
+def build_browser_system_prompt(
+    *,
+    platform_system: str,
+    platform_machine: str,
+    working_directory: str,
+    now_str: str,
+    external_browser_notice: str = "",
+    strip_team_collaboration: bool = False,
+    include_human_toolkit: bool = True,
+    soften_for_content_filters: bool = False,
+) -> str:
+    """Build the browser-agent prompt from the shared base template."""
+    prompt = BROWSER_SYS_PROMPT.format(
+        platform_system=platform_system,
+        platform_machine=platform_machine,
+        working_directory=working_directory,
+        now_str=now_str,
+        external_browser_notice=external_browser_notice,
+    )
+    if strip_team_collaboration:
+        prompt = _strip_browser_team_collaboration_sections(prompt)
+    if not include_human_toolkit:
+        prompt = _strip_browser_human_toolkit_sections(prompt)
+    if soften_for_content_filters:
+        prompt = _soften_browser_prompt_for_content_filters(prompt)
+    return prompt
+
+
+def build_extension_browser_system_prompt(
+    *,
+    platform_system: str,
+    platform_machine: str,
+    working_directory: str,
+    now_str: str,
+    external_browser_notice: str = "",
+) -> str:
+    """Build the lightweight prompt used by extension chat."""
+    return EXTENSION_BROWSER_SYS_PROMPT.format(
+        platform_system=platform_system,
+        platform_machine=platform_machine,
+        working_directory=working_directory,
+        now_str=now_str,
+        external_browser_notice=external_browser_notice,
+    )
+
 
 DEFAULT_SUMMARY_PROMPT = (
     "After completing the task, please generate"

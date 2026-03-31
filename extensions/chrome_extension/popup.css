@@ -54,12 +54,20 @@ body {
 }
 
 .logo {
-  color: var(--accent);
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }
 
 .title {
   font-weight: 600;
   font-size: 15px;
+}
+
+.logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .icon-btn {
@@ -247,8 +255,17 @@ body {
 }
 
 .welcome-icon {
-  color: var(--accent);
+  width: 48px;
+  height: 48px;
   margin-bottom: 16px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.welcome-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .welcome-message h3 {

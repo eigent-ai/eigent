@@ -16,32 +16,120 @@
 
 Runs a persistent browser agent that processes chat messages
 received via the ExtensionProxyWrapper WebSocket.
-Uses ChatAgent directly — no TaskLock, no SSE, no project infrastructure.
+Uses ChatAgent directly with an extension-specific lightweight TaskLock
+context so wrapped toolkits can be reused without the normal SSE workflow.
 """
 
 import asyncio
 import logging
 import os
-from pathlib import Path
 import platform
 import uuid
+from pathlib import Path
+from typing import Any
 
 from camel.agents import ChatAgent
 from camel.messages import BaseMessage
 from camel.models import ModelFactory
-from camel.toolkits.hybrid_browser_toolkit.hybrid_browser_toolkit_ts import (
-    HybridBrowserToolkit,
-)
 
-from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.factory.browser import build_browser_agent_tooling
+from app.agent.prompt import build_extension_browser_system_prompt
+from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.agent.utils import NOW_STR
+from app.service.task import (
+    delete_task_lock,
+    get_or_create_task_lock,
+    get_task_lock_if_exists,
+)
 
 logger = logging.getLogger("extension_chat_service")
 
 _chat_agent: ChatAgent | None = None
 _chat_loop_task: asyncio.Task | None = None
+_current_step_task: asyncio.Task | None = None
 _model_config: dict | None = None
 _current_vision_mode: bool = False
+_queue_drain_task: asyncio.Task | None = None
+
+_EXTENSION_TASK_ID = "extension_chat"
+_EXTENSION_ROOT = Path.home() / ".eigent" / "extension_chat"
+_EXTENSION_WORKSPACE = _EXTENSION_ROOT / "workspace"
+_EXTENSION_LOG_DIR = _EXTENSION_ROOT / "camel_logs"
+
+
+def _normalize_stream_delta(content: object) -> str:
+    """Normalize streamed model text for the extension UI."""
+    if content is None:
+        return ""
+    if not isinstance(content, str):
+        content = str(content)
+
+    stripped = content.strip()
+    if not stripped:
+        return ""
+    if stripped.lower() == "null":
+        return ""
+    return content
+
+
+def _humanize_tool_name(name: str) -> str:
+    name = name.strip().replace("_", " ")
+    if name.startswith("browser "):
+        name = name[len("browser ") :]
+    if not name:
+        return "Tool Action"
+    return name.title()
+
+
+def _tool_args_to_dict(args: object) -> dict[str, Any]:
+    if isinstance(args, dict):
+        return args
+    if hasattr(args, "model_dump"):
+        dumped = args.model_dump()
+        if isinstance(dumped, dict):
+            return dumped
+    if hasattr(args, "dict"):
+        dumped = args.dict()
+        if isinstance(dumped, dict):
+            return dumped
+    return {}
+
+
+def _build_action_payload(tool_call: object) -> dict[str, str]:
+    tool_name = getattr(tool_call, "func_name", str(tool_call))
+    args = _tool_args_to_dict(getattr(tool_call, "args", {}))
+
+    title = (
+        args.get("message_title")
+        or args.get("title")
+        or _humanize_tool_name(tool_name)
+    )
+    detail = (
+        args.get("message_description")
+        or args.get("description")
+        or args.get("detail")
+        or ""
+    )
+
+    if not detail:
+        fallback_parts: list[str] = []
+        for key in ("url", "ref", "query", "command", "code", "text"):
+            value = args.get(key)
+            if value:
+                fallback_parts.append(str(value).strip())
+            if len(" | ".join(fallback_parts)) >= 140:
+                break
+        detail = " | ".join(fallback_parts)
+
+    detail = detail.strip()
+    if len(detail) > 180:
+        detail = detail[:177].rstrip() + "..."
+
+    return {
+        "action": str(title).strip() or _humanize_tool_name(tool_name),
+        "detail": detail,
+        "toolName": tool_name,
+    }
 
 
 def configure_model(config: dict):
@@ -58,6 +146,29 @@ def configure_model(config: dict):
     )
 
 
+async def _drain_extension_task_queue():
+    """Discard TaskLock queue events emitted by auto_listen toolkits."""
+    task_lock = get_or_create_task_lock(_EXTENSION_TASK_ID)
+    while True:
+        try:
+            await task_lock.get_queue()
+        except asyncio.CancelledError:
+            logger.info("Extension task queue drain cancelled")
+            break
+        except Exception as e:
+            logger.warning(f"Extension task queue drain stopped: {e}")
+            break
+
+
+def _ensure_extension_task_context() -> None:
+    """Ensure extension chat has a lightweight TaskLock for wrapped toolkits."""
+    get_or_create_task_lock(_EXTENSION_TASK_ID)
+
+    global _queue_drain_task
+    if _queue_drain_task is None or _queue_drain_task.done():
+        _queue_drain_task = asyncio.create_task(_drain_extension_task_queue())
+
+
 def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
     """Create a browser ChatAgent using the shared wrapper."""
     if not _model_config:
@@ -66,14 +177,15 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
             "Pass model_config when starting extension proxy."
         )
 
-    # Setup camel LLM logging (same pattern as chat_controller)
-    log_dir = (
-        Path.home() / ".eigent" / "qwe" / "extension_chat" / "camel_logs"
-    )
-    log_dir.mkdir(parents=True, exist_ok=True)
-    os.environ["CAMEL_LOG_DIR"] = str(log_dir)
+    # Setup extension workspace and CAMEL logging.
+    _EXTENSION_WORKSPACE.mkdir(parents=True, exist_ok=True)
+    _EXTENSION_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    os.environ["CAMEL_LOG_DIR"] = str(_EXTENSION_LOG_DIR)
     os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
-    logger.info(f"CAMEL_LOG_DIR set to {log_dir}")
+    os.environ["file_save_path"] = str(_EXTENSION_WORKSPACE)
+    logger.info(f"CAMEL_LOG_DIR set to {_EXTENSION_LOG_DIR}")
+
+    _ensure_extension_task_context()
 
     extra_params = _model_config.get("extra_params", {})
     model_config_dict = {}
@@ -93,8 +205,6 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
         timeout=600,
     )
 
-    # Use camel's HybridBrowserToolkit directly (not eigent's)
-    # to avoid @listen_toolkit / TaskLock dependency
     session_id = str(uuid.uuid4())[:8]
 
     enabled_tools = [
@@ -121,6 +231,7 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
         )
 
     browser_toolkit = HybridBrowserToolkit(
+        _EXTENSION_TASK_ID,
         headless=False,
         stealth=True,
         session_id=session_id,
@@ -133,26 +244,34 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
     # Inject the shared wrapper
     browser_toolkit._extension_proxy_wrapper = wrapper
 
-    tools = browser_toolkit.get_tools()
+    tooling = build_browser_agent_tooling(
+        api_task_id=_EXTENSION_TASK_ID,
+        working_directory=str(_EXTENSION_WORKSPACE),
+        user_id=None,
+        web_toolkit_custom=browser_toolkit,
+        include_human_toolkit=False,
+        include_note_toolkit=False,
+        include_search_toolkit=False,
+        include_terminal_toolkit=False,
+    )
 
-    system_message = BROWSER_SYS_PROMPT.format(
+    system_message = build_extension_browser_system_prompt(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
-        working_directory="~",
+        working_directory=str(_EXTENSION_WORKSPACE),
         now_str=NOW_STR,
         external_browser_notice=(
             "\n<external_browser_connection>\n"
-            "You are connected to the user's Chrome browser via extension. "
-            "The browser is already open with active sessions and logged-in "
-            "websites.\n"
+            "You are connected to the user's current Chrome browser via the "
+            "extension. Work with the current browser state and open pages when "
+            "relevant.\n"
             "</external_browser_connection>\n"
             "\n<trigger_capability>\n"
             "You have a browser_set_trigger tool. When the user asks you to "
             "wait for a condition (e.g., 'click the buy button when it becomes "
-            "available', 'do something at 12:00'), write a JavaScript arrow "
-            "function that returns true when the condition is met, and call "
-            "browser_set_trigger. You will be automatically notified when the "
-            "condition is met, then proceed with the requested action.\n"
+            "available', 'do something at 12:00'), call browser_set_trigger "
+            "with a JavaScript function that returns true when the condition "
+            "is met. You will be notified when it is time to continue.\n"
             "</trigger_capability>\n"
         ),
     )
@@ -163,9 +282,14 @@ def _create_chat_agent(wrapper, full_visual_mode: bool = False) -> ChatAgent:
             content=system_message,
         ),
         model=model,
-        tools=tools,
-        message_window_size=20,
+        tools=tooling.tools,
+        toolkits_to_register_agent=tooling.toolkits_to_register_agent,
+        message_window_size=None,
         step_timeout=None,
+        # Clean up tool call messages (assistant tool_calls + tool responses)
+        # after each step to prevent context bloat from accumulated page
+        # snapshots. Keeps user messages and agent text replies intact.
+        prune_tool_calls_from_memory=True,
     )
     logger.info(
         f"Extension chat agent created (full_visual_mode={full_visual_mode})"
@@ -208,11 +332,22 @@ async def _process_chat_message(
         # Stream mode: async iterate over partial responses
         full_text = ""
         seen_tool_calls = set()
+        had_tool_calls = False
 
         async for chunk in response:
             # Send text delta
-            delta = chunk.msg.content if chunk.msg else ""
+            delta = _normalize_stream_delta(
+                chunk.msg.content if chunk.msg else ""
+            )
             if delta:
+                # Insert paragraph break between text from different
+                # tool-call rounds so the UI renders them separately.
+                if had_tool_calls and full_text:
+                    await wrapper.send_chat_response(
+                        "STREAM_TEXT", {"text": "\n\n"}
+                    )
+                    full_text += "\n\n"
+                    had_tool_calls = False
                 full_text += delta
                 await wrapper.send_chat_response(
                     "STREAM_TEXT", {"text": delta}
@@ -225,13 +360,10 @@ async def _process_chat_message(
                 if tc_id in seen_tool_calls:
                     continue
                 seen_tool_calls.add(tc_id)
-                func_name = getattr(tc, "func_name", str(tc))
+                had_tool_calls = True
                 await wrapper.send_chat_response(
                     "ACTION",
-                    {
-                        "action": func_name,
-                        "detail": str(getattr(tc, "args", {}))[:200],
-                    },
+                    _build_action_payload(tc),
                 )
                 result = getattr(tc, "result", "")
                 success = not str(result).startswith("Error")
@@ -252,6 +384,55 @@ async def _process_chat_message(
     except Exception as e:
         logger.error(f"Chat agent error: {e}", exc_info=True)
         await wrapper.send_chat_response("TASK_ERROR", {"error": str(e)})
+
+
+async def _run_step_as_task(wrapper, message, full_vision_mode):
+    """Run _process_chat_message as a cancellable asyncio.Task."""
+    global _current_step_task
+    task = asyncio.create_task(
+        _process_chat_message(
+            wrapper, message, full_vision_mode=full_vision_mode
+        )
+    )
+    _current_step_task = task
+    try:
+        await task
+    except asyncio.CancelledError:
+        logger.info("Current agent step cancelled by STOP_TASK")
+        await wrapper.send_chat_response("STREAM_END", {})
+        await wrapper.send_chat_response(
+            "TASK_COMPLETE", {"result": "Task stopped by user."}
+        )
+    finally:
+        _current_step_task = None
+
+
+async def stop_current_task(wrapper):
+    """Cancel the currently running agent step."""
+    global _current_step_task
+    if _current_step_task is not None and not _current_step_task.done():
+        logger.info("Stopping current agent task")
+        _current_step_task.cancel()
+    else:
+        # No task running, still notify frontend
+        await wrapper.send_chat_response(
+            "TASK_COMPLETE", {"result": "No task running."}
+        )
+
+
+async def _stop_listener(wrapper):
+    """Listen for STOP_TASK messages while agent is running."""
+    while True:
+        try:
+            msg_data = await wrapper.wait_for_stop_signal()
+            if msg_data is None:
+                continue
+            await stop_current_task(wrapper)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Stop listener error: {e}")
+            break
 
 
 async def _chat_loop(wrapper):
@@ -276,7 +457,7 @@ async def _chat_loop(wrapper):
                     f"{description}. Please proceed with the next action."
                 )
                 logger.info(f"Trigger fired: {description}")
-                await _process_chat_message(
+                await _run_step_as_task(
                     wrapper,
                     trigger_msg,
                     full_vision_mode=_current_vision_mode,
@@ -301,7 +482,7 @@ async def _chat_loop(wrapper):
                     f"Processing chat message "
                     f"(vision={full_vision}): {message[:100]}"
                 )
-                await _process_chat_message(
+                await _run_step_as_task(
                     wrapper, message, full_vision_mode=full_vision
                 )
 
@@ -313,18 +494,31 @@ async def _chat_loop(wrapper):
             await asyncio.sleep(1)
 
 
+_stop_listener_task: asyncio.Task | None = None
+
+
 async def start_chat_loop(wrapper):
     """Start the chat processing loop."""
-    global _chat_loop_task
+    global _chat_loop_task, _stop_listener_task
     if _chat_loop_task is not None and not _chat_loop_task.done():
         logger.info("Chat loop already running")
         return
     _chat_loop_task = asyncio.create_task(_chat_loop(wrapper))
+    _stop_listener_task = asyncio.create_task(_stop_listener(wrapper))
 
 
 async def stop_chat_loop():
     """Stop the chat loop and clear the agent."""
-    global _chat_loop_task, _chat_agent
+    global _chat_loop_task, _chat_agent, _queue_drain_task
+    global _stop_listener_task, _current_step_task
+    if _current_step_task is not None and not _current_step_task.done():
+        _current_step_task.cancel()
+        try:
+            await _current_step_task
+        except asyncio.CancelledError:
+            pass
+        _current_step_task = None
+
     if _chat_loop_task is not None:
         _chat_loop_task.cancel()
         try:
@@ -332,13 +526,33 @@ async def stop_chat_loop():
         except asyncio.CancelledError:
             pass
         _chat_loop_task = None
+
+    if _stop_listener_task is not None:
+        _stop_listener_task.cancel()
+        try:
+            await _stop_listener_task
+        except asyncio.CancelledError:
+            pass
+        _stop_listener_task = None
+
+    if _queue_drain_task is not None:
+        _queue_drain_task.cancel()
+        try:
+            await _queue_drain_task
+        except asyncio.CancelledError:
+            pass
+        _queue_drain_task = None
+
     _chat_agent = None
+    task_lock = get_task_lock_if_exists(_EXTENSION_TASK_ID)
+    if task_lock is not None:
+        await delete_task_lock(_EXTENSION_TASK_ID)
     logger.info("Extension chat loop stopped")
 
 
 async def clear_chat_context():
-    """Reset the agent (clear conversation history)."""
+    """Reset the agent (destroy and recreate on next message)."""
     global _chat_agent
     if _chat_agent is not None:
-        _chat_agent.reset()
-        logger.info("Extension chat agent context cleared")
+        _chat_agent = None
+        logger.info("Extension chat agent destroyed, will recreate on next message")

@@ -1,0 +1,240 @@
+# ========= Copyright 2023-2026 @ CAMEL-AI.org. All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2023-2026 @ CAMEL-AI.org. All Rights Reserved. =========
+import os
+from typing import Any, ClassVar, Dict, List, Optional
+
+from camel.interpreters.base import BaseInterpreter
+from camel.interpreters.interpreter_error import InterpreterError
+from camel.logger import get_logger
+from camel.utils import api_keys_required
+
+logger = get_logger(__name__)
+
+
+class E2BInterpreter(BaseInterpreter):
+    r"""E2B Code Interpreter implementation.
+
+    Args:
+        require_confirm (bool, optional): If True, prompt user before running
+            code strings for security. (default: :obj:`True`)
+
+    Environment Variables:
+        E2B_API_KEY: The API key for authenticating with the E2B service.
+        E2B_DOMAIN: The base URL for the E2B API. If not provided,
+            will use the default E2B endpoint.
+    """
+
+    _CODE_TYPE_MAPPING: ClassVar[Dict[str, Optional[str]]] = {
+        "python": None,
+        "py3": None,
+        "python3": None,
+        "py": None,
+        "shell": "bash",
+        "bash": "bash",
+        "sh": "bash",
+        "java": "java",
+        "javascript": "js",
+        "r": "r",
+    }
+
+    @api_keys_required(
+        [
+            (None, "E2B_API_KEY"),
+        ]
+    )
+    def __init__(
+        self,
+        require_confirm: bool = True,
+    ) -> None:
+        from e2b_code_interpreter import Sandbox
+
+        self.require_confirm = require_confirm
+
+        # Get API key from environment variable
+        api_key = os.environ.get("E2B_API_KEY")
+
+        # Get domain from environment variable
+        domain = os.environ.get("E2B_DOMAIN")
+
+        # Create sandbox with appropriate parameters
+        sandbox_kwargs = {"api_key": api_key}
+
+        # Only add domain if it's provided
+        # (to maintain compatibility with standard E2B)
+        if domain:
+            sandbox_kwargs["domain"] = domain
+            logger.info(f"Using custom E2B endpoint: {domain}")
+
+        try:
+            self._sandbox = Sandbox(**sandbox_kwargs)
+        except TypeError as e:
+            if domain and "domain" in str(e):
+                logger.warning(
+                    f"The e2b_code_interpreter library doesn't support "
+                    f"custom domain. "
+                    f"Using default E2B endpoint. Error: {e}"
+                )
+                # Fallback to default configuration without domain
+                self._sandbox = Sandbox(api_key=api_key)
+            else:
+                raise e
+
+    def __del__(self) -> None:
+        r"""Destructor for the E2BInterpreter class.
+
+        This method ensures that the e2b sandbox is killed when the
+        interpreter is deleted.
+        """
+        try:
+            if (
+                hasattr(self, '_sandbox')
+                and self._sandbox is not None
+                and self._sandbox.is_running()
+            ):
+                self._sandbox.kill()
+        except ImportError as e:
+            logger.warning(f"Error during sandbox cleanup: {e}")
+
+    def run(
+        self,
+        code: str,
+        code_type: str = "python",
+    ) -> str:
+        r"""Executes the given code in the e2b sandbox.
+
+        Args:
+            code (str): The code string to execute.
+            code_type (str): The type of code to execute (e.g., 'python',
+                'bash'). (default: obj:`python`)
+
+        Returns:
+            str: The string representation of the output of the executed code.
+
+        Raises:
+            InterpreterError: If the `code_type` is not supported or if any
+                runtime error occurs during the execution of the code.
+        """
+        if code_type not in self._CODE_TYPE_MAPPING:
+            raise InterpreterError(
+                f"Unsupported code type {code_type}. "
+                f"`{self.__class__.__name__}` only supports "
+                f"{', '.join(list(self._CODE_TYPE_MAPPING.keys()))}."
+            )
+        # Print code for security checking
+        if self.require_confirm:
+            logger.info(
+                f"The following {code_type} code will run on your "
+                f"e2b sandbox: {code}"
+            )
+            while True:
+                choice = input("Running code? [Y/n]:").lower()
+                if choice in ["y", "yes", "ye"]:
+                    break
+                elif choice not in ["no", "n"]:
+                    continue
+                raise InterpreterError(
+                    "Execution halted: User opted not to run the code. "
+                    "This choice stops the current operation and any "
+                    "further code execution."
+                )
+
+        if self._CODE_TYPE_MAPPING[code_type] is None:
+            execution = self._sandbox.run_code(code)
+        else:
+            execution = self._sandbox.run_code(
+                code=code, language=self._CODE_TYPE_MAPPING[code_type]
+            )
+
+        output_parts = []
+        has_text_output = bool(
+            execution.text and execution.text.lower() != "none"
+        )
+
+        if has_text_output:
+            output_parts.append(execution.text)
+
+        if execution.results:
+            for result in execution.results:
+                png_data = result._repr_png_()
+                if png_data:
+                    output_parts.append(
+                        f"\n![image](data:image/png;base64,{png_data})\n"
+                    )
+                    continue
+
+                jpeg_data = result._repr_jpeg_()
+                if jpeg_data:
+                    output_parts.append(
+                        f"\n![image](data:image/jpeg;base64," f"{jpeg_data})\n"
+                    )
+                    continue
+
+                svg_data = result._repr_svg_()
+                if svg_data:
+                    output_parts.append(f"\n{svg_data}\n")
+                    continue
+
+                html_data = result._repr_html_()
+                if html_data:
+                    output_parts.append(html_data)
+                    continue
+
+                is_main_result = getattr(result, "is_main_result", False)
+                text = str(result)
+                if text and text.lower() != "none":
+                    if not (
+                        is_main_result
+                        and has_text_output
+                        and text == execution.text
+                    ):
+                        output_parts.append(text)
+
+        if execution.logs:
+            if execution.logs.stdout:
+                output_parts.append(",".join(execution.logs.stdout))
+            if execution.logs.stderr:
+                stderr_output = ",".join(execution.logs.stderr)
+                if stderr_output:
+                    output_parts.append(f"[stderr] {stderr_output}")
+
+        if output_parts:
+            return "\n".join(output_parts)
+
+        if execution.error:
+            return (
+                f"{execution.error.name}: {execution.error.value}\n"
+                f"{execution.error.traceback}"
+            )
+
+        return "Code executed successfully (no output)."
+
+    def supported_code_types(self) -> List[str]:
+        r"""Provides supported code types by the interpreter."""
+        return list(self._CODE_TYPE_MAPPING.keys())
+
+    def update_action_space(self, action_space: Dict[str, Any]) -> None:
+        r"""Updates action space for *python* interpreter"""
+        raise RuntimeError("E2B doesn't support " "`action_space`.")
+
+    def execute_command(self, command: str) -> str:
+        r"""Execute a command can be used to resolve the dependency of the
+        code.
+
+        Args:
+            command (str): The command to execute.
+
+        Returns:
+            str: The output of the command.
+        """
+        return self._sandbox.commands.run(command)
