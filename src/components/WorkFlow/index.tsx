@@ -21,6 +21,7 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BASE_WORKFLOW_AGENTS } from './baseWorkers';
 import { Node as CustomNodeComponent } from './node';
 import { createWorkflowWheelHandler } from './workflowWheelHandler';
 
@@ -84,85 +85,6 @@ export default function Workflow({
   const clampViewportX = useCallback(
     (x: number) => Math.min(0, Math.max(minViewportX, x)),
     [minViewportX]
-  );
-
-  const baseWorker: Agent[] = useMemo(
-    () => [
-      {
-        tasks: [],
-        agent_id: 'developer_agent',
-        tools: [
-          'Human Toolkit',
-          'Terminal Toolkit',
-          'Note Taking Toolkit',
-          'Web Deploy Toolkit',
-        ],
-        name: 'Developer Agent',
-        type: 'developer_agent',
-        log: [],
-        activeWebviewIds: [],
-      },
-      {
-        tasks: [],
-        agent_id: 'browser_agent',
-        name: 'Browser Agent',
-        type: 'browser_agent',
-        tools: [
-          'Search Toolkit',
-          'Browser Toolkit',
-          'Human Toolkit',
-          'Note Taking Toolkit',
-          'Terminal Toolkit',
-        ],
-        log: [],
-        activeWebviewIds: [],
-      },
-      {
-        tasks: [],
-        tools: [
-          'Video Downloader Toolkit',
-          'Audio Analysis Toolkit',
-          'Screenshot Toolkit',
-          'Open AI Image Toolkit',
-          'Human Toolkit',
-          'Terminal Toolkit',
-          'Note Taking Toolkit',
-          'Search Toolkit',
-        ],
-        agent_id: 'multi_modal_agent',
-        name: 'Multi Modal Agent',
-        type: 'multi_modal_agent',
-        log: [],
-        activeWebviewIds: [],
-      },
-      // {
-      // 	tasks: [],
-      // 	agent_id: "social_media_agent",
-      // 	name: "Social Media Agent",
-      // 	type: "social_media_agent",
-      // 	log: [],
-      // 	activeWebviewIds: [],
-      // },
-      {
-        tasks: [],
-        agent_id: 'document_agent',
-        name: 'Document Agent',
-        tools: [
-          'File Write Toolkit',
-          'Pptx Toolkit',
-          'Human Toolkit',
-          'Mark It Down Toolkit',
-          'Excel Toolkit',
-          'Note Taking Toolkit',
-          'Terminal Toolkit',
-          'Google Drive Mcp Toolkit',
-        ],
-        type: 'document_agent',
-        log: [],
-        activeWebviewIds: [],
-      },
-    ],
-    []
   );
 
   // update ref value
@@ -269,8 +191,8 @@ export default function Workflow({
     // console.log("workerList	", workerList);
     setNodes((prev: CustomNode[]) => {
       if (!taskAssigning) return prev;
-      // Agents not yet in taskAssigning (from baseWorker or workerList)
-      const base = [...baseWorker, ...workerList].filter(
+      // Agents not yet in taskAssigning (from defaults or workerList)
+      const base = [...BASE_WORKFLOW_AGENTS, ...workerList].filter(
         (worker) => !taskAssigning.find((agent) => agent.type === worker.type)
       );
       let targetData = [...prev];
@@ -327,7 +249,6 @@ export default function Workflow({
     taskAssigning,
     isEditMode,
     workerList,
-    baseWorker,
     handleExpandChange,
     reSetNodePosition,
     setNodes,

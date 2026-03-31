@@ -29,7 +29,6 @@ import {
   CircleCheckBig,
   CircleSlash,
   CircleSlash2,
-  Copy,
   Ellipsis,
   LoaderCircle,
   SquareChevronLeft,
@@ -48,9 +47,9 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { agentMap } from './agents';
-import { MarkDown } from './MarkDown';
+import { getAgentToolkitLabels } from './agentToolkitLabels';
+import { TaskLogPanelContent } from './TaskLogPanelContent';
 
 interface NodeProps {
   id: string;
@@ -286,26 +285,6 @@ export function Node({ id, data }: NodeProps) {
     };
   }, [wheelHandler, isExpanded, selectedTask, selectedTask?.report]);
 
-  const agentToolkits = {
-    developer_agent: [
-      '# Terminal & Shell ',
-      '# Web Deployment ',
-      '# Screen Capture ',
-    ],
-    browser_agent: ['# Web Browser ', '# Search Engines '],
-    multi_modal_agent: [
-      '# Image Analysis ',
-      '# Video Processing ',
-      '# Audio Processing ',
-      '# Image Generation ',
-    ],
-    document_agent: [
-      '# File Management ',
-      '# Data Processing ',
-      '# Document Creation ',
-    ],
-  };
-
   const getTaskId = (taskId: string) => {
     const list = taskId.split('.');
     let idStr = '';
@@ -316,13 +295,7 @@ export function Node({ id, data }: NodeProps) {
     return idStr;
   };
 
-  const customToolkits =
-    data.agent?.tools
-      ?.map((tool) => (tool ? '# ' + tool.replace(/_/g, ' ') : ''))
-      .filter(Boolean) || [];
-  const toolkitLabels =
-    agentToolkits[data.agent?.type as keyof typeof agentToolkits] ||
-    (customToolkits.length > 0 ? customToolkits : ['No Toolkits']);
+  const toolkitLabels = getAgentToolkitLabels(data.agent);
   const browserImages = (data.img || []).filter((img) => img?.img).slice(0, 4);
   const browserImageGridClass =
     browserImages.length === 1
@@ -796,164 +769,12 @@ export function Node({ id, data }: NodeProps) {
                       transition={{ duration: 0.25, ease: 'easeIn' }}
                       className="gap-sm flex w-full flex-col"
                     >
-                      {selectedTask.toolkits &&
-                        selectedTask.toolkits.length > 0 &&
-                        selectedTask.toolkits.map(
-                          (toolkit: any, index: number) => (
-                            <div key={`toolkit-${toolkit.toolkitId}`}>
-                              {toolkit.toolkitName === 'notice' ? (
-                                <div
-                                  key={`notice-${index}`}
-                                  className="gap-sm px-2 py-1 flex w-full flex-col"
-                                >
-                                  <MarkDown
-                                    content={toolkit?.message}
-                                    enableTypewriter={false}
-                                    pTextSize="text-label-xs"
-                                  />
-                                </div>
-                              ) : (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      key={`toolkit-${index}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (
-                                          toolkit.toolkitMethods ===
-                                          'write to file'
-                                        ) {
-                                          chatStore.tasks[
-                                            chatStore.activeTaskId as string
-                                          ].activeWorkspace =
-                                            'documentWorkSpace';
-                                        } else if (
-                                          toolkit.toolkitMethods ===
-                                          'visit page'
-                                        ) {
-                                          const parts =
-                                            toolkit.message.split('\n');
-                                          const url = parts[0]; // the first line is the URL
-                                          window.location.href = url;
-                                        } else if (
-                                          toolkit.toolkitMethods === 'scrape'
-                                        ) {
-                                          window.location.href =
-                                            toolkit.message;
-                                        }
-                                      }}
-                                      className="gap-1 rounded-lg bg-log-default p-1 px-2 flex flex-col items-start justify-center transition-all duration-300 hover:opacity-50"
-                                    >
-                                      {/* first row: icon + toolkit name */}
-                                      <div className="gap-sm flex w-full items-center justify-start">
-                                        {toolkit.toolkitStatus ===
-                                        AgentStatusValue.RUNNING ? (
-                                          <LoaderCircle
-                                            size={16}
-                                            className={`${
-                                              chatStore.tasks[
-                                                chatStore.activeTaskId as string
-                                              ].status ===
-                                                ChatTaskStatus.RUNNING &&
-                                              'animate-spin'
-                                            }`}
-                                          />
-                                        ) : (
-                                          getToolkitIcon(toolkit.toolkitName)
-                                        )}
-                                        <span className="gap-sm text-label-xs font-bold text-text-primary flex items-center text-nowrap">
-                                          {toolkit.toolkitName}
-                                        </span>
-                                      </div>
-                                      {/* second row: method + message */}
-                                      <div className="gap-sm pl-6 pointer-events-auto flex w-full items-start justify-center overflow-hidden select-text">
-                                        <div className="text-label-xs font-bold text-text-primary text-nowrap">
-                                          {toolkit.toolkitMethods
-                                            ? toolkit.toolkitMethods
-                                                .charAt(0)
-                                                .toUpperCase() +
-                                              toolkit.toolkitMethods.slice(1)
-                                            : ''}
-                                        </div>
-                                        <div
-                                          className={`text-label-xs font-normal text-text-primary max-w-full flex-1 truncate ${
-                                            data.isEditMode
-                                              ? 'overflow-hidden'
-                                              : 'truncate overflow-hidden'
-                                          }`}
-                                        >
-                                          {toolkit.message}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </TooltipTrigger>
-                                  {toolkit.message && (
-                                    <TooltipContent
-                                      align="start"
-                                      className="scrollbar left-6 rounded-lg border-task-border-default bg-surface-tertiary p-2 text-label-xs pointer-events-auto !fixed z-[9999] max-h-[200px] w-max max-w-[296px] overflow-y-auto border border-solid text-wrap break-words select-text"
-                                      side="bottom"
-                                      sideOffset={4}
-                                    >
-                                      <MarkDown
-                                        content={toolkit.message}
-                                        enableTypewriter={false}
-                                        pTextSize="text-label-xs"
-                                        olPadding="pl-4"
-                                      />
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              )}
-                            </div>
-                          )
-                        )}
-                      {selectedTask.report && (
-                        <div
-                          ref={rePortRef}
-                          onWheel={(e) => {
-                            e.stopPropagation();
-                          }}
-                          className="group my-2 rounded-lg bg-surface-primary relative flex w-full flex-col"
-                        >
-                          <div className="top-0 rounded-lg bg-surface-primary py-2 pl-2 pr-2 sticky z-10 flex items-center justify-between">
-                            <div className="text-label-sm font-bold text-text-primary">
-                              Completion Report
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const reportText =
-                                  typeof selectedTask?.report === 'string'
-                                    ? selectedTask.report
-                                    : '';
-                                if (
-                                  reportText &&
-                                  navigator.clipboard?.writeText
-                                ) {
-                                  navigator.clipboard
-                                    .writeText(reportText)
-                                    .catch(() => {
-                                      // silently fail if clipboard is unavailable
-                                    });
-                                }
-                              }}
-                              className="text-label-xs"
-                            >
-                              <Copy className="text-icon-secondary" />
-                              <span className="text-icon-secondary">Copy</span>
-                            </Button>
-                          </div>
-                          <div className="px-2 py-2">
-                            <MarkDown
-                              content={selectedTask?.report}
-                              enableTypewriter={false}
-                              pTextSize="text-label-xs"
-                            />
-                          </div>
-                        </div>
-                      )}
+                      <TaskLogPanelContent
+                        selectedTask={selectedTask}
+                        chatStore={chatStore}
+                        isEditMode={data.isEditMode}
+                        reportRef={rePortRef}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>

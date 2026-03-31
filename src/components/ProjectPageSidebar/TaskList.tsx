@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { HoverScrollText } from '@/components/ui/HoverScrollText';
 import {
   getTaskListShelfTone,
   isTaskListRowFailureState,
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils';
 import type { ChatStore } from '@/store/chatStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { SquarePen } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const TASK_LIST_ROW_BG = {
   information: 'bg-surface-information hover:brightness-[0.98]',
@@ -33,77 +34,10 @@ const TASK_LIST_ROW_BG = {
 /** Brief success highlight after a run completes; then idle (transparent). */
 const TASK_LIST_SUCCESS_HIGHLIGHT_MS = 1800;
 
-/** Horizontal drift speed for task query hover (~6px/s, capped) — readable marquee, not a snap. */
-const TASK_QUERY_SCROLL_PX_PER_SEC = 16;
-const TASK_QUERY_SCROLL_MIN_MS = 10_000;
-const TASK_QUERY_SCROLL_MAX_MS = 90_000;
-
-function taskQueryScrollDurationMs(scrollPx: number): number {
-  if (scrollPx <= 0) return 300;
-  const proportional = (scrollPx / TASK_QUERY_SCROLL_PX_PER_SEC) * 1000;
-  return Math.min(
-    TASK_QUERY_SCROLL_MAX_MS,
-    Math.max(TASK_QUERY_SCROLL_MIN_MS, Math.round(proportional))
-  );
-}
-
 function taskUserQueryLabel(task: ChatStore['tasks'][string]): string {
   const firstUser = task.messages.find((m) => m.role === 'user');
   const text = firstUser?.content?.trim() ?? '';
   return text || '…';
-}
-
-function TaskQueryScrollLabel({
-  queryLabel,
-  rowHovered,
-}: {
-  queryLabel: string;
-  rowHovered: boolean;
-}) {
-  const outerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLSpanElement>(null);
-  const [scrollPx, setScrollPx] = useState(0);
-
-  useLayoutEffect(() => {
-    const outer = outerRef.current;
-    const inner = innerRef.current;
-    if (!outer || !inner) return;
-
-    const measure = () => {
-      setScrollPx(Math.max(0, inner.scrollWidth - outer.clientWidth));
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(outer);
-    return () => ro.disconnect();
-  }, [queryLabel]);
-
-  const slide = rowHovered && scrollPx > 0;
-  const slideMs = taskQueryScrollDurationMs(scrollPx);
-
-  return (
-    <div
-      ref={outerRef}
-      className={cn('text-text-label min-w-0 w-full overflow-hidden')}
-    >
-      <span
-        ref={innerRef}
-        title={queryLabel}
-        className={cn(
-          'text-body-sm font-normal inline-block whitespace-nowrap first-letter:uppercase',
-          'transition-[transform]',
-          slide ? 'ease-linear' : 'ease-out duration-300'
-        )}
-        style={{
-          transform: slide ? `translateX(-${scrollPx}px)` : 'translateX(0)',
-          transitionDuration: slide ? `${slideMs}ms` : undefined,
-        }}
-      >
-        {queryLabel}
-      </span>
-    </div>
-  );
 }
 
 function TaskListRow({
@@ -176,7 +110,12 @@ function TaskListRow({
       )}
       aria-current={active ? 'true' : undefined}
     >
-      <TaskQueryScrollLabel queryLabel={queryLabel} rowHovered={rowHovered} />
+      <HoverScrollText
+        text={queryLabel}
+        active={rowHovered}
+        className="text-text-label"
+        innerClassName="text-body-sm font-normal first-letter:uppercase"
+      />
     </button>
   );
 }

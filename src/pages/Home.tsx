@@ -19,13 +19,27 @@ import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import UpdateElectron from '@/components/update';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { useInitialChatPanelLayout } from '@/hooks/useInitialChatPanelLayout';
+import {
+  useInitialWorkforceFoldedLayout,
+  WORKFORCE_FOLDED_MAX_PX,
+  WORKFORCE_FOLDED_MIN_PX,
+} from '@/hooks/useInitialWorkforceFoldedLayout';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import { AnimatePresence, motion, type Transition } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ImperativePanelHandle } from 'react-resizable-panels';
+import {
+  getPanelGroupElement,
+  type ImperativePanelHandle,
+} from 'react-resizable-panels';
 
 import { AddWorker } from '@/components/AddWorker';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
@@ -37,6 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import WorkforceFoldedPanel from '@/components/WorkforceFoldedPanel';
 
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -53,7 +68,7 @@ import Overview, {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
   sortTriggersList,
   type TriggerSortKey,
-} from './Project/Triggers';
+} from '../components/Trigger/Triggers';
 
 import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
@@ -144,13 +159,76 @@ export default function Home() {
     setIsChatBoxVisible(true);
   }, [workspaceChatFocusRequestId]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const chatPanelRef = useRef<ImperativePanelHandle>(null);
+  const workforcePanelRef = useRef<ImperativePanelHandle>(null);
+  const foldedWorkforceAutoExpandGateRef = useRef(false);
 
-  useInitialChatPanelLayout(
+  const isWorkforceFolded =
+    activeWorkspaceTab === 'workforce' && isChatBoxVisible;
+
+  const [panelGroupWidth, setPanelGroupWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = getPanelGroupElement('home-main-panel-group');
+    if (!el) return;
+    const update = () => {
+      setPanelGroupWidth(el.getBoundingClientRect().width);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isChatBoxVisible, chatPanelPosition, activeWorkspaceTab]);
+
+  const foldedWorkforceMinPct = useMemo(() => {
+    if (!isWorkforceFolded || panelGroupWidth <= 0) return undefined;
+    const minPct = (WORKFORCE_FOLDED_MIN_PX / panelGroupWidth) * 100;
+    return Math.max(5, Math.min(92, minPct));
+  }, [isWorkforceFolded, panelGroupWidth]);
+
+  /** Default % for first paint before ResizeObserver + imperative resize (target ~360px). */
+  const foldedDefaultWorkforcePct = useMemo(() => {
+    if (!isWorkforceFolded) return undefined;
+    const w =
+      panelGroupWidth > 0
+        ? panelGroupWidth
+        : typeof window !== 'undefined'
+          ? Math.max(480, window.innerWidth - 160)
+          : 1200;
+    const minPct = (WORKFORCE_FOLDED_MIN_PX / w) * 100;
+    const maxPct = (WORKFORCE_FOLDED_MAX_PX / w) * 100;
+    const targetPct = (360 / w) * 100;
+    return Math.max(
+      5,
+      Math.min(92, Math.min(maxPct, Math.max(minPct, targetPct)))
+    );
+  }, [isWorkforceFolded, panelGroupWidth]);
+
+  useInitialWorkforceFoldedLayout(
     'home-main-panel-group',
-    chatPanelRef,
-    isChatBoxVisible && activeWorkspaceTab === 'workforce',
+    workforcePanelRef,
+    isWorkforceFolded,
+    foldedWorkforceAutoExpandGateRef,
     `${isChatBoxVisible}-${chatPanelPosition}-${activeWorkspaceTab}`
+  );
+
+  const handleWorkforcePanelGroupLayout = useCallback(
+    (sizes: number[]) => {
+      if (!isWorkforceFolded || !foldedWorkforceAutoExpandGateRef.current) {
+        return;
+      }
+      const groupEl = getPanelGroupElement('home-main-panel-group');
+      if (!groupEl) return;
+      const w = groupEl.getBoundingClientRect().width;
+      if (w <= 0) return;
+      const workforceIdx = chatPanelPosition === 'left' ? 1 : 0;
+      const pct = sizes[workforceIdx];
+      if (pct === undefined) return;
+      const workforcePx = (pct / 100) * w;
+      if (workforcePx > WORKFORCE_FOLDED_MAX_PX + 0.5) {
+        setIsChatBoxVisible(false);
+      }
+    },
+    [isWorkforceFolded, chatPanelPosition]
   );
 
   const toggleChatBox = () => {
@@ -456,7 +534,9 @@ export default function Home() {
     );
   };
 
-  const workforcePanelKey = `${chatStore.activeTaskId ?? ''}-${chatStore.tasks[chatStore.activeTaskId ?? '']?.activeWorkspace ?? ''}`;
+  // Task id only — including `activeWorkspace` remounted the motion wrapper on every
+  // agent tab switch and replayed the blur/fade on the folded agent list.
+  const workforcePanelKey = chatStore.activeTaskId ?? '';
 
   return (
     <ReactFlowProvider>
@@ -472,14 +552,18 @@ export default function Home() {
             direction="horizontal"
             key={`${isChatBoxVisible}-${chatPanelPosition}-${activeWorkspaceTab}`}
             className="gap-0.5 w-full items-center justify-center"
+            onLayout={handleWorkforcePanelGroupLayout}
           >
             {activeWorkspaceTab === 'workforce' &&
               isChatBoxVisible &&
               chatPanelPosition === 'left' && (
                 <>
                   <ResizablePanel
-                    ref={chatPanelRef}
-                    defaultSize={30}
+                    defaultSize={
+                      foldedDefaultWorkforcePct !== undefined
+                        ? Math.max(8, 100 - foldedDefaultWorkforcePct)
+                        : 30
+                    }
                     minSize={10}
                     className="min-h-0 h-full min-w-[360px]"
                   >
@@ -491,9 +575,18 @@ export default function Home() {
                   />
                 </>
               )}
-            <ResizablePanel className="h-full w-full min-w-[300px]">
+            <ResizablePanel
+              ref={workforcePanelRef}
+              {...(isWorkforceFolded && foldedDefaultWorkforcePct !== undefined
+                ? { defaultSize: foldedDefaultWorkforcePct }
+                : {})}
+              {...(foldedWorkforceMinPct !== undefined
+                ? { minSize: foldedWorkforceMinPct }
+                : {})}
+              className="min-h-0 h-full w-full min-w-[300px]"
+            >
               {activeWorkspaceTab === 'workforce' && (
-                <div className="rounded-2xl border-border-tertiary bg-surface-secondary relative flex h-full w-full flex-col border-solid">
+                <div className="rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 relative flex h-full w-full flex-col border-solid">
                   <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
                     <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
                       <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
@@ -504,7 +597,7 @@ export default function Home() {
                       <Button
                         variant="primary"
                         size="sm"
-                        className="w-24 rounded-lg items-center justify-center"
+                        className="rounded-lg items-center justify-center"
                         onClick={() => setAddWorkerDialogOpen(true)}
                       >
                         <Plus />
@@ -561,25 +654,31 @@ export default function Home() {
                       </TooltipSimple>
                     </div>
                   </div>
-                  <div className="min-h-0 w-full flex-1">
+                  <div className="min-h-0 min-w-0 w-full flex-1">
                     <AnimatePresence mode="wait">
                       <motion.div
-                        key={workforcePanelKey}
+                        key={`${workforcePanelKey}-${isWorkforceFolded ? 'folded' : 'expanded'}`}
                         initial={{ opacity: 0, filter: 'blur(4px)' }}
                         animate={{ opacity: 1, filter: 'blur(0px)' }}
                         exit={{ opacity: 0, filter: 'blur(4px)' }}
                         transition={{ duration: 0.2 }}
-                        className="h-full w-full"
+                        className="min-w-0 h-full w-full"
                       >
-                        {renderWorkforceWorkspaceContent()}
+                        {isWorkforceFolded ? (
+                          <WorkforceFoldedPanel />
+                        ) : (
+                          renderWorkforceWorkspaceContent()
+                        )}
                       </motion.div>
                     </AnimatePresence>
                   </div>
-                  <div className="inset-x-0 bottom-0 pointer-events-none absolute z-50">
-                    <div className="pointer-events-auto">
-                      <BottomBar />
+                  {!isWorkforceFolded && (
+                    <div className="inset-x-0 bottom-0 pointer-events-none absolute z-50">
+                      <div className="pointer-events-auto">
+                        <BottomBar />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
               {activeWorkspaceTab === 'inbox' && (
@@ -703,8 +802,11 @@ export default function Home() {
                     className="custom-resizable-handle"
                   />
                   <ResizablePanel
-                    ref={chatPanelRef}
-                    defaultSize={30}
+                    defaultSize={
+                      foldedDefaultWorkforcePct !== undefined
+                        ? Math.max(8, 100 - foldedDefaultWorkforcePct)
+                        : 30
+                    }
                     minSize={10}
                     className="min-h-0 h-full min-w-[360px]"
                   >
