@@ -28,10 +28,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from camel.agents import ChatAgent
-from camel.messages import BaseMessage
-from camel.models import ModelFactory
-
 from app.agent.factory.browser import build_browser_agent_tooling
 from app.agent.prompt import build_extension_browser_system_prompt
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
@@ -41,6 +37,9 @@ from app.service.task import (
     get_or_create_task_lock,
     get_task_lock_if_exists,
 )
+from camel.agents import ChatAgent
+from camel.messages import BaseMessage
+from camel.models import ModelFactory
 
 logger = logging.getLogger("extension_chat_service")
 
@@ -466,6 +465,20 @@ async def _chat_loop(wrapper):
 
             message = msg_data.get("message", "")
             full_vision = msg_data.get("fullVisionMode", False)
+
+            # Update wrapper's default tab to match the tab the
+            # extension attached the debugger to, so CDP commands
+            # target the correct tab.
+            msg_tab_id = msg_data.get("tabId")
+            if msg_tab_id:
+                wrapper._default_tab_id = msg_tab_id
+                if msg_tab_id not in wrapper._tabs:
+                    wrapper._tabs[msg_tab_id] = {
+                        "url": msg_data.get("url", ""),
+                        "title": msg_data.get("pageTitle", ""),
+                        "aria_initialized": False,
+                    }
+
             if message.strip():
                 # Prepend current page context
                 page_url = msg_data.get("url", "")
@@ -555,4 +568,6 @@ async def clear_chat_context():
     global _chat_agent
     if _chat_agent is not None:
         _chat_agent = None
-        logger.info("Extension chat agent destroyed, will recreate on next message")
+        logger.info(
+            "Extension chat agent destroyed, will recreate on next message"
+        )
