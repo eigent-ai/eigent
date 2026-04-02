@@ -14,6 +14,7 @@
 
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { useHost } from '@/host';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +29,8 @@ interface CdpBrowser {
 }
 
 export default function CDP() {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const [cdpBrowsers, setCdpBrowsers] = useState<CdpBrowser[]>([]);
   const [deletingBrowser, setDeletingBrowser] = useState<string | null>(null);
@@ -40,9 +43,9 @@ export default function CDP() {
   const [connectError, setConnectError] = useState('');
 
   const loadCdpBrowsers = async () => {
-    if (window.electronAPI?.getCdpBrowsers) {
+    if (electronAPI?.getCdpBrowsers) {
       try {
-        const browsers = await window.electronAPI.getCdpBrowsers();
+        const browsers = await electronAPI.getCdpBrowsers();
         setCdpBrowsers(browsers);
       } catch (error) {
         console.error('Failed to load CDP browsers:', error);
@@ -52,23 +55,21 @@ export default function CDP() {
 
   useEffect(() => {
     loadCdpBrowsers();
-  }, []);
+  }, [electronAPI]);
 
   useEffect(() => {
-    if (!window.electronAPI?.onCdpPoolChanged) return;
-    const cleanup = window.electronAPI.onCdpPoolChanged(
-      (browsers: CdpBrowser[]) => {
-        setCdpBrowsers(browsers);
-      }
-    );
+    if (!electronAPI?.onCdpPoolChanged) return;
+    const cleanup = electronAPI.onCdpPoolChanged((browsers: CdpBrowser[]) => {
+      setCdpBrowsers(browsers);
+    });
     return cleanup;
-  }, []);
+  }, [electronAPI]);
 
   const handleRemoveBrowser = async (browserId: string) => {
     setDeletingBrowser(browserId);
     try {
-      if (window.electronAPI?.removeCdpBrowser) {
-        const result = await window.electronAPI.removeCdpBrowser(browserId);
+      if (electronAPI?.removeCdpBrowser) {
+        const result = await electronAPI.removeCdpBrowser(browserId);
         if (result.success) {
           toast.success(t('layout.browser-removed'));
         } else {
@@ -88,7 +89,7 @@ export default function CDP() {
       toast.loading(t('layout.launching-browser', { port: '...' }), {
         id: 'launch-browser',
       });
-      const result = await window.electronAPI?.launchCdpBrowser();
+      const result = await electronAPI?.launchCdpBrowser();
       if (result?.success) {
         toast.success(t('layout.browser-launched', { port: result.port }), {
           id: 'launch-browser',
@@ -141,8 +142,8 @@ export default function CDP() {
         return;
       }
 
-      if (window.electronAPI?.addCdpBrowser) {
-        const addResult = await window.electronAPI.addCdpBrowser(
+      if (electronAPI?.addCdpBrowser) {
+        const addResult = await electronAPI.addCdpBrowser(
           portNum,
           true,
           `External Browser (${portNum})`

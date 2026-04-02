@@ -52,6 +52,7 @@ from app.service.task import (
     get_camel_task,
     get_task_lock,
 )
+from app.utils.event_loop_utils import _schedule_async_task
 from app.utils.single_agent_worker import SingleAgentWorker
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 
@@ -790,6 +791,10 @@ class Workforce(BaseWorkforce):
         if task.failure_count < max_retries:
             return result
 
+        # Keep parent.subtasks in sync for terminal failures as well so
+        # downstream result summarization can see that a subtask failed.
+        self._sync_subtask_to_parent(task)
+
         error_message = ""
         # Use proper CAMEL pattern for metrics logging
         metrics_callbacks = [
@@ -907,8 +912,9 @@ class Workforce(BaseWorkforce):
             f"new state: {self._state.name}"
         )
         task_lock = get_task_lock(self.api_task_id)
-        task = asyncio.create_task(task_lock.put_queue(ActionEndData()))
-        task_lock.add_background_task(task)
+        # Use thread-safe scheduling: stop() may be called from worker thread
+        # when task fails (e.g. max retries exceeded)
+        _schedule_async_task(task_lock.put_queue(ActionEndData()))
         logger.info("[WF-LIFECYCLE] ✅ ActionEndData queued")
 
     def stop_gracefully(self) -> None:

@@ -63,6 +63,9 @@ def _schedule_async_task(coro):
             asyncio.run_coroutine_threadsafe(coro, main_loop)
         else:
             # This should not happen in normal operation - log error and skip
+            close = getattr(coro, "close", None)
+            if callable(close):
+                close()
             logging.error(
                 "No event loop available for async task scheduling, task skipped. "
                 "Ensure set_main_event_loop() is called before parallel agent creation."

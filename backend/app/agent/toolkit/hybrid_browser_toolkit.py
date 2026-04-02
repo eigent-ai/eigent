@@ -568,6 +568,12 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
 
         # Use the same session_id to share the same browser instance
         # This ensures all clones use the same WebSocket connection and browser
+        # When cdp_keep_current_page=True, default_start_url must be None (CAMEL constraint)
+        cdp_keep = (
+            self.config_loader.get_browser_config().cdp_keep_current_page
+        )
+        clone_start_url = None if cdp_keep else self._default_start_url
+
         return HybridBrowserToolkit(
             self.api_task_id,
             headless=self._headless,
@@ -578,9 +584,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             browser_log_to_file=self._browser_log_to_file,
             log_dir=self.config_loader.get_toolkit_config().log_dir,
             session_id=new_session_id,
-            default_start_url=None
-            if self.config_loader.get_browser_config().cdp_keep_current_page
-            else self._default_start_url,
+            default_start_url=clone_start_url,
             default_timeout=self._default_timeout,
             short_timeout=self._short_timeout,
             navigation_timeout=self._navigation_timeout,

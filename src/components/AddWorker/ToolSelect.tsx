@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpInstall } from '@/api/brain';
 import {
   fetchGet,
   fetchPost,
@@ -22,6 +23,7 @@ import {
 import githubIcon from '@/assets/github.svg';
 import IntegrationList from '@/components/IntegrationList';
 import { Badge } from '@/components/ui/badge';
+import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { CircleAlert, Store, X } from 'lucide-react';
@@ -66,6 +68,8 @@ const ToolSelect = forwardRef<
   { installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void> },
   ToolSelectProps
 >(({ onShowEnvConfig, onSelectedToolsChange, initialSelectedTools }, ref) => {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   // state management - remove internal selected state, use parent passed initialSelectedTools
   const [keyword, setKeyword] = useState<string>('');
@@ -408,8 +412,8 @@ const ToolSelect = forwardRef<
       await proxyFetchPost('/api/v1/configs', configPayload);
     }
 
-    if (window.electronAPI?.envWrite) {
-      await window.electronAPI.envWrite(email, { key: envVarKey, value });
+    if (electronAPI?.envWrite) {
+      await electronAPI.envWrite(email, { key: envVarKey, value });
     }
   };
   // MCP install related
@@ -635,20 +639,16 @@ const ToolSelect = forwardRef<
       await proxyFetchPost('/api/v1/mcp/install?mcp_id=' + id);
       setInstalled((prev) => ({ ...prev, [id]: true }));
       const installedMcp = mcpList.find((mcp) => mcp.id === id);
-      if (window.ipcRenderer && installedMcp) {
-        const env: { [key: string]: string } = {};
+      if (installedMcp?.install_command) {
+        const installCmd = { ...installedMcp.install_command };
         if (envValue) {
+          const env: { [key: string]: string } = {};
           Object.keys(envValue).map((key) => {
             env[key] = envValue[key]?.value;
           });
-          installedMcp.install_command!.env = env;
+          installCmd.env = env;
         }
-
-        await window.ipcRenderer.invoke(
-          'mcp-install',
-          installedMcp.key,
-          installedMcp.install_command
-        );
+        await mcpInstall(installedMcp.key, installCmd);
       }
       // after install successfully, automatically add to selected list
       if (installedMcp) {

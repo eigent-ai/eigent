@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isWeb } from '@/client/platform';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
@@ -19,27 +20,37 @@ import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
 import App from './App';
 import { ThemeProvider } from './components/ThemeProvider';
 import { TooltipProvider } from './components/ui/tooltip';
+import { ConnectionProvider } from './context/ConnectionContext';
+import { createHost, HostProvider } from './host';
 import './i18n';
+import { injectHost } from './store/chatStore';
 import './style/index.css';
 
 // If you want use Node.js, the`nodeIntegration` needs to be enabled in the Main process.
 // import './demos/node'
+const host = createHost();
+injectHost(host);
+const Router = isWeb() ? BrowserRouter : HashRouter;
+const initialChannel = isWeb() ? 'web' : 'desktop';
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  // <React.StrictMode>
   <Suspense fallback={<div></div>}>
-    <HashRouter>
-      <ThemeProvider>
-        <TooltipProvider>
-          <App />
-        </TooltipProvider>
-      </ThemeProvider>
-    </HashRouter>
+    <Router>
+      <HostProvider host={host}>
+        <ConnectionProvider channel={initialChannel}>
+          <ThemeProvider>
+            <TooltipProvider>
+              <App />
+            </TooltipProvider>
+          </ThemeProvider>
+        </ConnectionProvider>
+      </HostProvider>
+    </Router>
   </Suspense>
-  // </React.StrictMode>
 );
 
 postMessage({ payload: 'removeLoading' }, '*');

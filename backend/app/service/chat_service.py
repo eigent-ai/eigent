@@ -16,6 +16,7 @@ import asyncio
 import datetime
 import logging
 import platform
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,7 @@ from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
+from app.hands.interface import IHands
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
     Action,
@@ -335,6 +337,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     event_loop = asyncio.get_running_loop()
     sub_tasks: list[Task] = []
 
+    # Phase 4: hands from ChannelSessionMiddleware (desktop=full, web=sandbox, etc.)
+    hands = getattr(request.state, "hands", None)
+
     logger.info("=" * 80)
     logger.info(
         "🚀 [LIFECYCLE] step_solve STARTED",
@@ -533,10 +538,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
 
                     try:
-                        simple_resp = question_agent.step(simple_answer_prompt)
-                        if simple_resp and simple_resp.msgs:
-                            answer_content = simple_resp.msgs[0].content
-                        else:
+                        simple_resp = await question_agent.astep(
+                            simple_answer_prompt
+                        )
+                        answer_content = _extract_agent_response_content(
+                            simple_resp
+                        )
+                        if not answer_content:
                             answer_content = (
                                 "I understand your "
                                 "question, but I'm "
@@ -633,11 +641,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         logger.info(
                             "[NEW-QUESTION] Creating NEW workforce instance"
                         )
-                        (workforce, mcp) = await construct_workforce(options)
+                        (workforce, mcp) = await construct_workforce(
+                            options, hands=hands
+                        )
                         for new_agent in options.new_agents:
                             workforce.add_single_agent_worker(
                                 format_agent_description(new_agent),
-                                await new_agent_model(new_agent, options),
+                                await new_agent_model(
+                                    new_agent, options, hands=hands
+                                ),
                             )
                     task_lock.status = Status.confirmed
 
@@ -1224,14 +1236,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             )
 
                             try:
-                                simple_resp = question_agent.step(
+                                simple_resp = await question_agent.astep(
                                     simple_answer_prompt
                                 )
-                                if simple_resp and simple_resp.msgs:
-                                    answer_content = simple_resp.msgs[
-                                        0
-                                    ].content
-                                else:
+                                answer_content = (
+                                    _extract_agent_response_content(
+                                        simple_resp
+                                    )
+                                )
+                                if not answer_content:
                                     answer_content = (
                                         "I understand your "
                                         "question, but I'm "
@@ -1563,7 +1576,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     workforce.pause()
                     workforce.add_single_agent_worker(
                         format_agent_description(item),
-                        await new_agent_model(item, options),
+                        await new_agent_model(item, options, hands=hands),
                     )
                     workforce.resume()
             elif item.action == Action.timeout:
@@ -1958,18 +1971,12 @@ Answer only "yes" or "no". Do not provide any explanation.
 Is this a complex task? (yes/no):"""
 
     try:
-        resp = agent.step(full_prompt)
+        resp = await agent.astep(full_prompt)
 
-        if not resp or not resp.msgs or len(resp.msgs) == 0:
-            logger.warning(
-                "No response from agent, defaulting to complex task"
-            )
-            return True
-
-        content = resp.msgs[0].content
+        content = _extract_agent_response_content(resp)
         if not content:
             logger.warning(
-                "Empty content from agent, defaulting to complex task"
+                "No response from agent, defaulting to complex task"
             )
             return True
 
@@ -2004,8 +2011,8 @@ Do not include any other text or formatting.
 """
     logger.debug("Generating task summary", extra={"task_id": task.id})
     try:
-        res = agent.step(prompt)
-        summary = res.msgs[0].content
+        res = await agent.astep(prompt)
+        summary = _extract_agent_response_content(res) or ""
         logger.info("Task summary generated", extra={"summary": summary})
         return summary
     except Exception as e:
@@ -2056,8 +2063,8 @@ Instructions:
 Summary:
 """
 
-    res = agent.step(prompt)
-    summary = res.msgs[0].content
+    res = await agent.astep(prompt)
+    summary = _extract_agent_response_content(res) or ""
 
     logger.info(
         "Generated subtasks summary for "
@@ -2066,6 +2073,26 @@ Summary:
     )
 
     return summary
+
+
+def _extract_agent_response_content(resp) -> str | None:
+    if resp is None:
+        return None
+
+    msg = getattr(resp, "msg", None)
+    if msg is not None:
+        content = getattr(msg, "content", None)
+        if content:
+            return content
+
+    msgs = getattr(resp, "msgs", None)
+    if msgs:
+        first = msgs[0]
+        content = getattr(first, "content", None)
+        if content:
+            return content
+
+    return None
 
 
 async def get_task_result_with_optional_summary(
@@ -2082,6 +2109,24 @@ async def get_task_result_with_optional_summary(
         The task result (summarized if multiple subtasks, raw otherwise)
     """
     result = str(task.result or "")
+
+    def _is_failed_state(state) -> bool:
+        if state is None:
+            return False
+        state_name = getattr(state, "name", str(state))
+        return "fail" in str(state_name).lower()
+
+    has_failed_subtask = any(
+        _is_failed_state(getattr(subtask, "state", None))
+        for subtask in (task.subtasks or [])
+    )
+
+    if has_failed_subtask:
+        logger.info(
+            "Task %s has failed subtasks, skipping LLM summary to finish quickly",
+            task.id,
+        )
+        return result
 
     if task.subtasks and len(task.subtasks) > 1:
         logger.info(
@@ -2110,12 +2155,16 @@ async def get_task_result_with_optional_summary(
 
 async def construct_workforce(
     options: Chat,
+    hands: IHands | None = None,
 ) -> tuple[Workforce, ListenChatAgent]:
     """Construct a workforce with all required agents.
 
     This function creates all agents in PARALLEL to minimize startup time.
     Sync functions are run in thread pool, async functions
     are awaited concurrently.
+
+    When hands is passed, base agents add tools based on Brain capabilities:
+    hands.can_execute_terminal(), hands.can_use_browser(), etc. determine whether terminal/browser hands are enabled.
     """
     logger.debug(
         "construct_workforce started",
@@ -2226,10 +2275,12 @@ the current date.
         results = await asyncio.gather(
             asyncio.to_thread(_create_coordinator_and_task_agents),
             asyncio.to_thread(_create_new_worker_agent),
-            asyncio.to_thread(browser_agent, options),
-            developer_agent(options),
-            document_agent(options),
-            asyncio.to_thread(multi_modal_agent, options),
+            asyncio.to_thread(partial(browser_agent, options, hands=hands)),
+            developer_agent(options, hands=hands),
+            document_agent(options, hands=hands),
+            asyncio.to_thread(
+                partial(multi_modal_agent, options, hands=hands)
+            ),
             mcp_agent(options),
         )
     except Exception as e:
@@ -2237,13 +2288,6 @@ the current date.
             f"Failed to create agents in parallel: {e}", exc_info=True
         )
         raise
-    finally:
-        # Always clear event loop reference after
-        # parallel agent creation completes.
-        # This prevents stale references and
-        # potential cross-request interference
-        set_main_event_loop(None)
-
     # Unpack results
     (
         coord_task_agents,
@@ -2347,7 +2391,11 @@ def format_agent_description(agent_data: NewAgent | ActionNewAgent) -> str:
     return " ".join(description_parts)
 
 
-async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
+async def new_agent_model(
+    data: NewAgent | ActionNewAgent,
+    options: Chat,
+    hands: IHands | None = None,
+):
     logger.info(
         "Creating new agent",
         extra={
@@ -2361,21 +2409,26 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     )
     working_directory = get_working_directory(options)
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
+    tools = [
+        *await get_toolkits(
+            data.tools, data.name, options.project_id, hands=hands
+        )
+    ]
     for item in data.tools:
         tool_names.append(titleize(item))
-    # Always include terminal_toolkit with proper working directory
-    terminal_toolkit = TerminalToolkit(
-        options.project_id,
-        agent_name=data.name,
-        working_directory=working_directory,
-        safe_mode=True,
-        clone_current_env=True,
-    )
-    tools.extend(terminal_toolkit.get_tools())
-    tool_names.append(titleize("terminal_toolkit"))
+    # Add terminal_toolkit when terminal hand is available
+    if hands is None or hands.can_execute_terminal():
+        terminal_toolkit = TerminalToolkit(
+            options.project_id,
+            agent_name=data.name,
+            working_directory=working_directory,
+            safe_mode=True,
+            clone_current_env=True,
+        )
+        tools.extend(terminal_toolkit.get_tools())
+        tool_names.append(titleize("terminal_toolkit"))
     if data.mcp_tools is not None:
-        tools = [*tools, *await get_mcp_tools(data.mcp_tools)]
+        tools = [*tools, *await get_mcp_tools(data.mcp_tools, hands=hands)]
         for item in data.mcp_tools["mcpServers"].keys():
             tool_names.append(titleize(item))
     for item in tools:

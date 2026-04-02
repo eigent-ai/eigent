@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -110,6 +111,84 @@ class TestChatController:
             )
             assert os.environ.get("CAMEL_MODEL_LOG_ENABLED") == "true"
             assert os.environ.get("browser_port") == "8080"
+
+    @pytest.mark.asyncio
+    async def test_post_chat_sets_cdp_url_when_browser_ready(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        """Web mode should set EIGENT_CDP_URL after successful browser ensure."""
+        chat_data = Chat(**sample_chat_data)
+        mock_request.state = SimpleNamespace()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_or_create_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve"
+            ) as mock_step_solve,
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_available",
+                return_value=True,
+            ),
+            patch("app.controller.chat_controller.load_dotenv"),
+            patch("app.controller.chat_controller.set_current_task_id"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.home", return_value=MagicMock()),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+
+            async def mock_generator():
+                yield "data: test_response\n\n"
+
+            mock_step_solve.return_value = mock_generator()
+
+            await post(chat_data, mock_request)
+
+            assert os.environ.get("EIGENT_CDP_URL") == "http://127.0.0.1:8080"
+            assert mock_request.state.browser_available is True
+
+    @pytest.mark.asyncio
+    async def test_post_chat_clears_cdp_url_when_browser_unavailable(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        """Web mode should mark browser unavailable and clear EIGENT_CDP_URL."""
+        chat_data = Chat(**sample_chat_data)
+        mock_request.state = SimpleNamespace()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_or_create_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve"
+            ) as mock_step_solve,
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_available",
+                return_value=False,
+            ),
+            patch("app.controller.chat_controller.load_dotenv"),
+            patch("app.controller.chat_controller.set_current_task_id"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.home", return_value=MagicMock()),
+            patch.dict(
+                os.environ,
+                {"EIGENT_CDP_URL": "http://127.0.0.1:9222"},
+                clear=True,
+            ),
+        ):
+
+            async def mock_generator():
+                yield "data: test_response\n\n"
+
+            mock_step_solve.return_value = mock_generator()
+
+            await post(chat_data, mock_request)
+
+            assert "EIGENT_CDP_URL" not in os.environ
+            assert mock_request.state.browser_available is False
 
     def test_improve_chat_success(self, mock_task_lock):
         """Test successful chat improvement."""

@@ -65,6 +65,8 @@ declare global {
   interface File {
     fileName: string;
     filePath: string;
+    fileId?: string;
+    source?: 'local' | 'upload';
   }
 
   type AgentStatus = AgentStatusType;

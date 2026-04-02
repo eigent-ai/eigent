@@ -18,8 +18,11 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
+  uploadFileToBrain,
 } from '@/api/http';
+import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -45,6 +48,7 @@ const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
 };
 
 export default function ChatBox(): JSX.Element {
+  const host = useHost();
   const [message, setMessage] = useState<string>('');
 
   //Get Chatstore for the active project's task
@@ -375,11 +379,6 @@ export default function ChatBox(): JSX.Element {
     }
   }, [skill_prompt, searchParams, setSearchParams]);
 
-  useEffect(() => {
-    if (!chatStore) return;
-    console.log('ChatStore Data: ', chatStore);
-  }, [chatStore]);
-
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
       setTimeout(() => {
@@ -482,6 +481,7 @@ export default function ChatBox(): JSX.Element {
           reply: tempMessageContent,
         });
         chatStore.setAttaches(_taskId, []);
+        chatStore.setIsPending(_taskId, false);
         if (chatStore.tasks[_taskId].askList.length === 0) {
           chatStore.setActiveAsk(_taskId, '');
         } else {
@@ -493,7 +493,6 @@ export default function ChatBox(): JSX.Element {
           let message = activeAskList.shift();
           chatStore.setActiveAskList(_taskId, [...activeAskList]);
           chatStore.setActiveAsk(_taskId, message?.agent_name || '');
-          chatStore.setIsPending(_taskId, false);
           chatStore.addMessages(_taskId, message!);
         }
       } else {
@@ -743,20 +742,64 @@ export default function ChatBox(): JSX.Element {
   // File selection handler
   const handleFileSelect = async () => {
     try {
-      const result = await window.electronAPI.selectFile({
+      const taskId = chatStore.activeTaskId as string;
+      const existingFiles = chatStore.tasks[taskId].attaches || [];
+
+      if (isWeb()) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = async () => {
+          if (!input.files?.length) {
+            return;
+          }
+
+          const uploadedFiles: File[] = [];
+          for (const selectedFile of Array.from(input.files)) {
+            try {
+              const result = await uploadFileToBrain(selectedFile);
+              uploadedFiles.push({
+                fileName: result.filename,
+                filePath: result.file_id,
+                fileId: result.file_id,
+                source: 'upload',
+              } as File);
+            } catch (error) {
+              console.error('Select File Upload Error:', error);
+              toast.error(`Failed to upload ${selectedFile.name}`);
+            }
+          }
+
+          if (uploadedFiles.length === 0) {
+            return;
+          }
+
+          const files = [
+            ...existingFiles,
+            ...uploadedFiles.filter(
+              (uploaded) =>
+                !existingFiles.some(
+                  (existing) => existing.filePath === uploaded.filePath
+                )
+            ),
+          ];
+          chatStore.setAttaches(taskId, files);
+        };
+        input.click();
+        return;
+      }
+
+      const result = await host?.electronAPI?.selectFile({
         title: t('chat.select-file'),
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
 
-      if (result.success && result.files && result.files.length > 0) {
-        const taskId = chatStore.activeTaskId as string;
+      if (result?.success && result.files && result.files.length > 0) {
         const files = [
-          ...(chatStore.tasks[taskId].attaches || []),
+          ...existingFiles,
           ...result.files.filter(
             (r: File) =>
-              !chatStore.tasks[taskId].attaches?.some(
-                (f: File) => f.filePath === r.filePath
-              )
+              !existingFiles.some((f: File) => f.filePath === r.filePath)
           ),
         ];
         chatStore.setAttaches(taskId, files);

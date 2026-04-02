@@ -12,12 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { checkLocalServerStale } from '@/api/http';
+import { checkLocalServerStale, uploadFileToBrain } from '@/api/http';
 import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
 import UpdateElectron from '@/components/update';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -114,18 +115,15 @@ function ConnectionStatusIcon({
 }
 
 export default function Home() {
+  const host = useHost();
   const { t } = useTranslation();
-  //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   const {
-    activeTab,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
     chatPanelPosition,
-    hasTriggers,
     setHasTriggers,
-    hasAgentFiles,
     setHasAgentFiles,
     unviewedTabs,
     markTabAsUnviewed,
@@ -134,7 +132,7 @@ export default function Home() {
   const { wsConnectionStatus, triggerReconnect } = useTriggerStore();
   const authStore = useAuthStore.getState();
 
-  const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
+  const [_activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
@@ -151,27 +149,28 @@ export default function Home() {
 
     // Get the active project's folder path
     const activeProjectId = projectStore.activeProjectId;
-    if (!activeProjectId) return;
+    if (host?.ipcRenderer && !activeProjectId) return;
 
-    // Upload files using electron API
+    // Upload files using Electron API or Brain upload endpoint in pure Web mode.
     for (const file of Array.from(files)) {
       try {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          if (reader.result && window.ipcRenderer) {
-            await window.ipcRenderer.invoke('save-file-to-agent-folder', {
+        if (host?.ipcRenderer) {
+          const content = await file.arrayBuffer();
+          if (activeProjectId) {
+            await host.ipcRenderer.invoke('save-file-to-agent-folder', {
               projectId: activeProjectId,
               fileName: file.name,
-              content: reader.result,
+              content,
             });
-            // Mark the inbox tab as having new content
-            setHasAgentFiles(true);
-            if (activeWorkspaceTab !== 'inbox') {
-              markTabAsUnviewed('inbox');
-            }
           }
-        };
-        reader.readAsArrayBuffer(file);
+        } else {
+          await uploadFileToBrain(file);
+        }
+        // Mark the inbox tab as having new content
+        setHasAgentFiles(true);
+        if (activeWorkspaceTab !== 'inbox') {
+          markTabAsUnviewed('inbox');
+        }
       } catch (error) {
         console.error('Error uploading file:', error);
       }
@@ -181,17 +180,18 @@ export default function Home() {
     e.target.value = '';
   };
 
-  // One-time check: warn if local server is outdated after a git pull
-  useEffect(() => {
-    checkLocalServerStale();
-  }, []);
-
   // Detect files and triggers when project loads
   useEffect(() => {
     const detectAgentFiles = async () => {
-      if (!projectStore.activeProjectId || !authStore.email) return;
+      if (
+        !projectStore.activeProjectId ||
+        !authStore.email ||
+        !host?.ipcRenderer
+      ) {
+        return;
+      }
       try {
-        const files = await window.ipcRenderer?.invoke(
+        const files = await host.ipcRenderer.invoke(
           'get-project-file-list',
           authStore.email,
           projectStore.activeProjectId
@@ -212,21 +212,24 @@ export default function Home() {
     authStore.email,
     setHasAgentFiles,
     setHasTriggers,
+    host,
   ]);
 
-  // Add webview-show listener in useEffect with cleanup
+  // One-time check: warn if local server is outdated after a git pull
   useEffect(() => {
+    checkLocalServerStale();
+  }, []);
+
+  useEffect(() => {
+    if (!host?.ipcRenderer) return;
     const handleWebviewShow = (_event: any, id: string) => {
       setActiveWebviewId(id);
     };
-
-    window.ipcRenderer?.on('webview-show', handleWebviewShow);
-
-    // Cleanup: remove listener on unmount
+    host.ipcRenderer.on('webview-show', handleWebviewShow);
     return () => {
-      window.ipcRenderer?.off('webview-show', handleWebviewShow);
+      host.ipcRenderer?.off('webview-show', handleWebviewShow);
     };
-  }, []); // Empty dependency array means this only runs once
+  }, [host]);
 
   // Extract complex dependency to a variable
   const taskAssigning =
@@ -270,12 +273,15 @@ export default function Home() {
 
     // capture webview
     const captureWebview = async () => {
+      if (!host?.ipcRenderer) {
+        return;
+      }
       const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
       if (!activeTask || activeTask.status === ChatTaskStatus.FINISHED) {
         return;
       }
       webviews.map((webview) => {
-        window.ipcRenderer
+        host.ipcRenderer
           .invoke('capture-webview', webview.id)
           .then((base64: string) => {
             const currentTask =
@@ -329,20 +335,21 @@ export default function Home() {
         clearInterval(intervalTimer);
       }
     };
-  }, [chatStore, taskAssigning]);
+  }, [chatStore, taskAssigning, host]);
 
   const getSize = useCallback(() => {
+    if (!host?.electronAPI?.setSize) return;
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      window.electronAPI.setSize({
+      host.electronAPI.setSize({
         x: rect.left,
         y: rect.top,
         width: rect.width,
         height: rect.height,
       });
     }
-  }, []);
+  }, [host]);
 
   useEffect(() => {
     if (!chatStore) return;

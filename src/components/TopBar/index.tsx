@@ -25,6 +25,7 @@ import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -50,6 +51,7 @@ import { toast } from 'sonner';
 
 function HeaderWin() {
   const { t } = useTranslation();
+  const host = useHost();
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
@@ -67,12 +69,12 @@ function HeaderWin() {
     isInstalling || installationState === 'waiting-backend';
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
-    setPlatform(p);
-  }, []);
+    setPlatform(host?.electronAPI?.getPlatform?.() ?? 'web');
+  }, [host]);
   const exportLog = async () => {
+    if (!host?.electronAPI?.exportLog) return;
     try {
-      const response = await window.electronAPI.exportLog();
+      const response = await host.electronAPI.exportLog();
 
       if (!response.success) {
         alert(t('layout.export-cancelled') + response.error);
@@ -84,7 +86,7 @@ function HeaderWin() {
         alert(t('layout.log-saved') + response.savedPath);
       }
     } catch (e: any) {
-      alert(t('layout.export-error') + e.message);
+      alert(t('layout.export-error') + (e as Error).message);
     }
   };
 
@@ -141,9 +143,9 @@ function HeaderWin() {
     try {
       const task = chatStore.tasks[taskId];
 
-      // Stop the task if it's running
+      // Stop the task if it's running (use projectId - task_lock is keyed by project)
       if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
+        await fetchPut(`/task/${projectId}/take-control`, {
           action: 'stop',
         });
       }
@@ -362,7 +364,8 @@ function HeaderWin() {
                   </Button>
                 </TooltipSimple>
               )}
-            {chatStore.activeTaskId &&
+            {host?.electronAPI &&
+              chatStore.activeTaskId &&
               chatStore.tasks[chatStore.activeTaskId as string] && (
                 <TooltipSimple
                   content={t('layout.report-bug')}
@@ -421,8 +424,8 @@ function HeaderWin() {
           ></div>
         )}
       </div>
-      {/* Custom window controls only for Linux (Windows and macOS use native controls) */}
-      {platform !== 'darwin' && platform !== 'win32' && (
+      {/* Custom window controls only for Linux. Web: hidden. */}
+      {host?.electronAPI && platform !== 'darwin' && platform !== 'win32' && (
         <div
           className="no-drag flex h-full items-center"
           id="window-controls"
@@ -430,19 +433,19 @@ function HeaderWin() {
         >
           <div
             className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.minimizeWindow()}
+            onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
             className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.toggleMaximizeWindow()}
+            onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
             className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.closeWindow()}
+            onClick={() => host?.electronAPI?.closeWindow()}
           >
             <X className="h-4 w-4" />
           </div>

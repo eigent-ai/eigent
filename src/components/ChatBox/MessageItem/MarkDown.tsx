@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useHost } from '@/host';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
@@ -70,6 +71,8 @@ export const MarkDown = memo(
     /** Base directory for resolving relative image paths (e.g. markdown file's directory). */
     contentBasePath?: string | null;
   }) => {
+    const host = useHost();
+    const electronAPI = host?.electronAPI;
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -160,12 +163,9 @@ export const MarkDown = memo(
               try {
                 const resolvedPath = resolveRelativePath(contentBasePath, src);
 
-                if (
-                  typeof window !== 'undefined' &&
-                  window.electronAPI?.readFileAsDataUrl
-                ) {
+                if (electronAPI?.readFileAsDataUrl) {
                   const dataUrl =
-                    await window.electronAPI.readFileAsDataUrl(resolvedPath);
+                    await electronAPI.readFileAsDataUrl(resolvedPath);
 
                   // Add cursor-pointer class and data attributes for click handling
                   const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;">`;
@@ -198,7 +198,7 @@ export const MarkDown = memo(
       };
 
       processMarkdown();
-    }, [displayedContent, contentBasePath]);
+    }, [displayedContent, contentBasePath, electronAPI]);
 
     // Add click handlers for images
     useEffect(() => {

@@ -12,15 +12,19 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { checkBackendHealth, resetBaseURL } from '@/api/http';
+import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
+import { resetConnectionConfig } from '@/store/connectionStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { useCallback, useEffect, useRef } from 'react';
 
 /**
- * Hook that sets up Electron IPC listeners and handles installation state synchronization
- * This should be called once in your App component or Layout component
+ * Hook that sets up Electron IPC listeners and handles installation state synchronization.
+ * In Web mode (no Electron): polls Brain health via VITE_BRAIN_ENDPOINT, skips local install.
  */
 export const useInstallationSetup = () => {
+  const host = useHost();
   const { initState, setInitState, email } = useAuthStore();
 
   const hasCheckedOnMount = useRef(false);
@@ -48,97 +52,66 @@ export const useInstallationSetup = () => {
     (state) => state.setNeedsBackendRestart
   );
 
-  // Shared function to poll backend status
+  // Shared function to poll backend/Brain status
   const startBackendPolling = useCallback(() => {
     console.log('[useInstallationSetup] Starting backend polling');
 
-    // Immediately check backend status once
-    const checkBackendStatus = async () => {
+    const checkViaHealth = async (): Promise<boolean> => {
       try {
-        const backendPort = await window.electronAPI.getBackendPort();
-        if (backendPort && backendPort > 0) {
-          console.log(
-            '[useInstallationSetup] Backend immediately detected on port:',
-            backendPort
-          );
+        const ok = await checkBackendHealth();
+        if (ok) {
+          backendReady.current = true;
+          setSuccess();
+          setInitState('done');
+          setNeedsBackendRestart(false);
+          return true;
+        }
+      } catch (e) {
+        console.log('[useInstallationSetup] Health check failed:', e);
+      }
+      return false;
+    };
 
-          // Verify backend is actually responding
+    // Electron: use getBackendPort + localhost health
+    const checkElectronBackend = async (): Promise<boolean> => {
+      if (!host?.electronAPI?.getBackendPort) return false;
+      try {
+        const backendPort = await host.electronAPI.getBackendPort();
+        if (backendPort && backendPort > 0) {
           const response = await fetch(
             `http://localhost:${backendPort}/health`
           ).catch(() => null);
-          if (response && response.ok) {
-            console.log(
-              '[useInstallationSetup] Backend health check passed immediately'
-            );
+          if (response?.ok) {
             backendReady.current = true;
             setSuccess();
             setInitState('done');
             setNeedsBackendRestart(false);
-            return true; // Backend is ready, no need to poll
+            return true;
           }
         }
-      } catch (error) {
-        console.log(
-          '[useInstallationSetup] Initial backend check failed:',
-          error
-        );
+      } catch (e) {
+        console.log('[useInstallationSetup] Electron backend check failed:', e);
       }
-      return false; // Backend not ready, need to poll
+      return false;
     };
 
-    // Check immediately, then start polling if needed
-    checkBackendStatus().then((isReady) => {
+    const hasDesktop = !!(host?.electronAPI && host?.ipcRenderer);
+    const doCheck = hasDesktop ? checkElectronBackend : checkViaHealth;
+
+    doCheck().then((isReady) => {
       if (isReady) {
-        console.log(
-          '[useInstallationSetup] Backend already ready, skipping polling'
-        );
+        console.log('[useInstallationSetup] Backend ready, skipping polling');
         return;
       }
-
       console.log('[useInstallationSetup] Backend not ready, starting polling');
-
-      // Poll backend status every 2 seconds to ensure we catch when it's ready
-      // This is a fallback in case the backend-ready event is missed
-      const pollInterval = setInterval(async () => {
-        try {
-          const backendPort = await window.electronAPI.getBackendPort();
-          if (backendPort && backendPort > 0) {
-            console.log(
-              '[useInstallationSetup] Backend poll detected ready on port:',
-              backendPort
-            );
-
-            // Verify backend is actually responding
-            const response = await fetch(
-              `http://localhost:${backendPort}/health`
-            ).catch(() => null);
-            if (response && response.ok) {
-              console.log('[useInstallationSetup] Backend health check passed');
-              clearInterval(pollInterval);
-
-              if (!backendReady.current) {
-                backendReady.current = true;
-                setSuccess();
-                setInitState('done');
-                // Clear the flag after backend is ready
-                setNeedsBackendRestart(false);
-              }
-            }
-          }
-        } catch (error) {
-          console.log(
-            '[useInstallationSetup] Backend poll check failed:',
-            error
-          );
-        }
+      const pollInterval = setInterval(() => {
+        doCheck().then((ready) => {
+          if (ready) clearInterval(pollInterval);
+        });
       }, 2000);
-
-      // Clear polling after 30 seconds to prevent infinite polling
-      setTimeout(() => {
-        clearInterval(pollInterval);
-      }, 30000);
+      setTimeout(() => clearInterval(pollInterval), 30000);
     });
-  }, [setSuccess, setInitState, setNeedsBackendRestart]);
+  }, [setSuccess, setInitState, setNeedsBackendRestart, host]);
 
   // Monitor for backend restart after logout
   useEffect(() => {
@@ -168,9 +141,19 @@ export const useInstallationSetup = () => {
 
     hasCheckedOnMount.current = true;
 
+    // Web mode: skip Electron install, poll Brain health directly
+    if (!host?.electronAPI || !host?.ipcRenderer) {
+      console.log('[useInstallationSetup] Web mode: polling Brain health');
+      installationCompleted.current = true;
+      setWaitingBackend();
+      startBackendPolling();
+      return;
+    }
+
     const checkToolInstalled = async () => {
+      if (!host?.ipcRenderer) return { success: false };
       try {
-        const result = await window.ipcRenderer.invoke('check-tool-installed');
+        const result = await host.ipcRenderer.invoke('check-tool-installed');
 
         if (result.success) {
           if (result.isInstalled) {
@@ -179,8 +162,6 @@ export const useInstallationSetup = () => {
             );
             installationCompleted.current = true;
             setWaitingBackend();
-
-            // Start polling for backend when tools are already installed
             startBackendPolling();
           }
 
@@ -202,9 +183,10 @@ export const useInstallationSetup = () => {
     };
 
     const checkBackendStatus = async (_toolResult?: any) => {
+      if (!host?.electronAPI?.getInstallationStatus) return;
       try {
         const installationStatus =
-          await window.electronAPI.getInstallationStatus();
+          await host.electronAPI.getInstallationStatus();
 
         if (installationStatus.success && installationStatus.isInstalling) {
           startInstallation();
@@ -286,6 +268,9 @@ export const useInstallationSetup = () => {
       console.log('[useInstallationSetup] Backend ready event received:', data);
 
       if (data.success && data.port) {
+        // Reset cached baseURL so next getBaseURL fetches fresh port (handles restart)
+        resetBaseURL();
+        resetConnectionConfig();
         console.log(
           `[useInstallationSetup] Backend is ready on port ${data.port}`
         );
@@ -312,18 +297,21 @@ export const useInstallationSetup = () => {
       }
     };
 
-    window.electronAPI.onInstallDependenciesStart(handleInstallStart);
-    window.electronAPI.onInstallDependenciesLog(handleInstallLog);
-    window.electronAPI.onInstallDependenciesComplete(handleInstallComplete);
-    window.electronAPI.onBackendReady(handleBackendReady);
+    if (!host?.electronAPI) return;
+
+    host.electronAPI.onInstallDependenciesStart(handleInstallStart);
+    host.electronAPI.onInstallDependenciesLog(handleInstallLog);
+    host.electronAPI.onInstallDependenciesComplete(handleInstallComplete);
+    host.electronAPI.onBackendReady(handleBackendReady);
 
     return () => {
-      window.electronAPI.removeAllListeners('install-dependencies-start');
-      window.electronAPI.removeAllListeners('install-dependencies-log');
-      window.electronAPI.removeAllListeners('install-dependencies-complete');
-      window.electronAPI.removeAllListeners('backend-ready');
+      host.electronAPI.removeAllListeners('install-dependencies-start');
+      host.electronAPI.removeAllListeners('install-dependencies-log');
+      host.electronAPI.removeAllListeners('install-dependencies-complete');
+      host.electronAPI.removeAllListeners('backend-ready');
     };
   }, [
+    host,
     startInstallation,
     addLog,
     setSuccess,

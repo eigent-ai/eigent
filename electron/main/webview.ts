@@ -45,11 +45,52 @@ export class WebViewManager {
   // IPC handlers should be registered once in the main process
 
   public async captureWebview(webviewId: string) {
-    const webContents = this.webViews.get(webviewId);
-    if (!webContents) return null;
+    const webViewInfo = this.webViews.get(webviewId);
+    if (!webViewInfo) return null;
 
-    const image = await webContents.view.webContents.capturePage();
-    const jpegBuffer = image.toJPEG(10);
+    const targetContents = webViewInfo.view.webContents;
+    if (!targetContents || targetContents.isDestroyed()) {
+      return null;
+    }
+
+    const debuggerApi = targetContents.debugger;
+    let attachedHere = false;
+
+    try {
+      if (!debuggerApi.isAttached()) {
+        debuggerApi.attach('1.3');
+        attachedHere = true;
+      }
+
+      const result = (await debuggerApi.sendCommand('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 60,
+        fromSurface: true,
+      })) as { data?: string };
+
+      if (result?.data) {
+        return 'data:image/jpeg;base64,' + result.data;
+      }
+    } catch (error) {
+      console.warn(
+        `CDP screenshot failed for webview ${webviewId}, falling back to capturePage:`,
+        error
+      );
+    } finally {
+      if (attachedHere && debuggerApi.isAttached()) {
+        try {
+          debuggerApi.detach();
+        } catch (detachError) {
+          console.warn(
+            `Failed to detach debugger for webview ${webviewId}:`,
+            detachError
+          );
+        }
+      }
+    }
+
+    const image = await targetContents.capturePage();
+    const jpegBuffer = image.toJPEG(60);
     return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
   }
 

@@ -17,6 +17,7 @@ import light from '@/assets/light.png';
 import transparent from '@/assets/transparent.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useHost } from '@/host';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
@@ -37,6 +38,8 @@ import {
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 
 export default function SettingGeneral() {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const authStore = useAuthStore();
 
@@ -81,7 +84,7 @@ export default function SettingGeneral() {
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
 
   useEffect(() => {
-    const platform = window.electronAPI.getPlatform();
+    const platform = electronAPI?.getPlatform?.() ?? 'web';
     console.log(platform);
     const baseThemes = [
       {
@@ -108,7 +111,7 @@ export default function SettingGeneral() {
     } else {
       setThemeList(baseThemes);
     }
-  }, []);
+  }, [electronAPI]);
 
   const languageList = [
     {
@@ -160,9 +163,9 @@ export default function SettingGeneral() {
   useEffect(() => {
     // Load proxy configuration from global env
     const loadProxyConfig = async () => {
-      if (window.electronAPI?.readGlobalEnv) {
+      if (electronAPI?.readGlobalEnv) {
         try {
-          const result = await window.electronAPI.readGlobalEnv('HTTP_PROXY');
+          const result = await electronAPI.readGlobalEnv('HTTP_PROXY');
           if (result?.value) {
             setProxyUrl(result.value);
           }
@@ -172,7 +175,7 @@ export default function SettingGeneral() {
       }
     };
     loadProxyConfig();
-  }, []);
+  }, [electronAPI]);
 
   // Save proxy configuration
   const handleSaveProxy = async () => {
@@ -199,7 +202,7 @@ export default function SettingGeneral() {
       }
     }
 
-    if (!window.electronAPI?.envWrite || !window.electronAPI?.envRemove) {
+    if (!electronAPI?.envWrite || !electronAPI?.envRemove) {
       toast.error(t('setting.proxy-save-failed'));
       return;
     }
@@ -207,13 +210,13 @@ export default function SettingGeneral() {
     setIsProxySaving(true);
     try {
       if (trimmed) {
-        const result = await window.electronAPI.envWrite(authStore.email, {
+        const result = await electronAPI.envWrite(authStore.email, {
           key: 'HTTP_PROXY',
           value: trimmed,
         });
         if (!result?.success) throw new Error('envWrite returned no success');
       } else {
-        const result = await window.electronAPI.envRemove(
+        const result = await electronAPI.envRemove(
           authStore.email,
           'HTTP_PROXY'
         );
@@ -380,7 +383,7 @@ export default function SettingGeneral() {
                 size="sm"
                 onClick={
                   proxyNeedsRestart
-                    ? () => window.electronAPI?.restartApp()
+                    ? () => electronAPI?.restartApp()
                     : handleSaveProxy
                 }
                 disabled={!proxyNeedsRestart && isProxySaving}

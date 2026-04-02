@@ -15,6 +15,7 @@
 import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
@@ -72,6 +73,8 @@ interface NodeProps {
 }
 
 export function Node({ id, data }: NodeProps) {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const [isExpanded, setIsExpanded] = useState(data.isExpanded);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
@@ -501,7 +504,7 @@ export function Node({ id, data }: NodeProps) {
                 data.agent?.agent_id as string
               );
 
-              window.electronAPI.hideAllWebview();
+              electronAPI?.hideAllWebview();
             }}
           >
             {browserImages.length > 0 && (
@@ -646,7 +649,7 @@ export function Node({ id, data }: NodeProps) {
                           chatStore.activeTaskId as string,
                           task.agent?.agent_id
                         );
-                        window.electronAPI.hideAllWebview();
+                        electronAPI?.hideAllWebview();
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}

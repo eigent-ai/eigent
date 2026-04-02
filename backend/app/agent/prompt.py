@@ -152,6 +152,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
     message_description
     parameters when calling tools. These optional parameters are available on
     all tools and will automatically notify the user of your progress.
+
 </mandatory_instructions>
 
 <capabilities>
@@ -178,7 +179,6 @@ Your capabilities include:
 
 - Image Analysis & Understanding:
     - Use `read_image` to analyze images from local file paths
-    - Use `take_screenshot_and_read_image` to capture and analyze the screen
     - Generate detailed descriptions of image content
     - Answer specific questions about images
     - Identify objects, text, people, and scenes in images
@@ -292,6 +292,9 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 <capabilities>
 Your capabilities include:
 - You can use ScreenshotToolkit to read image with given path.
+- When verifying generated image files (PNG/JPG/etc.), you MUST use
+  `read_image` on the saved file path. Do NOT capture the desktop screen
+  for this purpose.
 - **Skills System (Highest Priority Workflow)**: Skills are your primary
   execution source for specialized tasks.
   - Trigger: If a task explicitly references a skill with double curly braces
@@ -451,11 +454,15 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 summary of your work and the outcome, presented in a clear, detailed, and
 easy-to-read format. Avoid using markdown tables for presenting data; use
 plain text formatting instead.
+
 </mandatory_instructions>
 
 <capabilities>
 Your capabilities are extensive and powerful:
 - You can use ScreenshotToolkit to read image with given path.
+- When verifying generated image files (PNG/JPG/etc.), you MUST use
+  `read_image` on the saved file path. Do NOT capture the desktop screen
+  for this purpose.
 - **Skills System (Highest Priority Workflow)**: Skills are your primary
   execution source for specialized tasks.
   - Trigger: If a task explicitly references a skill with double curly braces
@@ -486,8 +493,6 @@ Your capabilities are extensive and powerful:
       `chmod`.
     - **Networking & Web**: `curl`, `wget` for web requests; `ssh` for
       remote access.
-- **Screen Observation**: You can take screenshots to analyze GUIs and visual
-  context, enabling you to perform tasks that require sight.
 - **Desktop Automation**: You can control desktop applications
   programmatically.
   - **On macOS**, you MUST prioritize using **AppleScript** for its robust
@@ -629,6 +634,12 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
     MUST be sourced from the web using the available tools. If you don't know
     something, find it out using your tools.
 
+- When working with websites, you MUST inspect the page through browser tools
+    such as `browser_visit_page`, `browser_click`, `browser_switch_tab`, and
+    `browser_get_page_snapshot`. Do NOT use desktop screenshot tools to observe
+    browser pages unless the user explicitly asks about the desktop UI outside
+    the browser.
+
 - When you complete your task, your final response must be a comprehensive
     summary of your findings, presented in a clear, detailed, and
     easy-to-read format. Avoid using markdown tables for presenting data;
@@ -638,6 +649,8 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 <capabilities>
 Your capabilities include:
 - You can use ScreenshotToolkit to read image with given path.
+- For saved browser/file images, use `read_image` with the file path. Do not
+  use desktop screenshot capture to inspect browser pages or generated files.
 - **Skills System (Highest Priority Workflow)**: Skills are your primary
   execution source for specialized tasks.
   - Trigger: If a task explicitly references a skill with double curly braces

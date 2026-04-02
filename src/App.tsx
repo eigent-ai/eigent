@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { queryClient } from '@/lib/queryClient';
 import AppRoutes from '@/routers/index';
 import { stackClientApp } from '@/stack/client';
@@ -29,6 +30,7 @@ import { useAuthStore } from './store/authStore';
 const HAS_STACK_KEYS = hasStackKeys();
 
 function App() {
+  const host = useHost();
   const navigate = useNavigate();
   const { setInitState } = useAuthStore();
   const { token } = useAuthStore();
@@ -69,14 +71,14 @@ function App() {
       }
     };
 
-    window.ipcRenderer?.on('auth-share-token-received', handleShareCode);
-    window.electronAPI?.onUpdateNotification(handleUpdateNotification);
+    host?.ipcRenderer?.on('auth-share-token-received', handleShareCode);
+    host?.electronAPI?.onUpdateNotification(handleUpdateNotification);
 
     return () => {
-      window.ipcRenderer?.off('auth-share-token-received', handleShareCode);
-      window.electronAPI?.removeAllListeners('update-notification');
+      host?.ipcRenderer?.off('auth-share-token-received', handleShareCode);
+      host?.electronAPI?.removeAllListeners('update-notification');
     };
-  }, [navigate, setInitState]);
+  }, [host, navigate, setInitState]);
 
   // render wrapper
   const renderWrapper = (children: React.ReactNode) => {

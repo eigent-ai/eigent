@@ -109,15 +109,16 @@ export default defineConfig(({ command, mode }) => {
           return {
             host: url.hostname,
             port: +url.port,
-            proxy: {
-              '/api': {
-                target: env.VITE_PROXY_URL,
-                changeOrigin: true,
-                // rewrite: path => path.replace(/^\/api/, ''),
-              },
-            },
           };
         })()),
+      proxy: env.VITE_PROXY_URL
+        ? {
+            '/api': {
+              target: env.VITE_PROXY_URL,
+              changeOrigin: true,
+            },
+          }
+        : undefined,
       clearScreen: false,
     },
   };

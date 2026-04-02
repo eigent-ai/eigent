@@ -13,19 +13,22 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Progress } from '@/components/ui/progress';
+import { useHost } from '@/host';
 import type { ProgressInfo } from 'electron-updater';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 const Update = () => {
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const { t } = useTranslation();
 
-  const checkUpdate = () => {
-    window.ipcRenderer.invoke('check-update');
-  };
+  const checkUpdate = useCallback(() => {
+    ipcRenderer?.invoke('check-update');
+  }, [ipcRenderer]);
 
   const onUpdateCanAvailable = useCallback(
     (_event: Electron.IpcRendererEvent, info: VersionInfo) => {
@@ -37,14 +40,14 @@ const Update = () => {
             onClick: () => {
               setIsDownloading(true);
               setDownloadProgress(0);
-              window.ipcRenderer.invoke('start-download');
+              host?.ipcRenderer?.invoke('start-download');
             },
           },
           duration: Infinity,
         });
       }
     },
-    [t]
+    [host?.ipcRenderer, t]
   );
 
   const onUpdateError = useCallback(
@@ -95,33 +98,35 @@ const Update = () => {
         description: t('update.click-to-install-update'),
         action: {
           label: t('update.install'),
-          onClick: () => window.ipcRenderer.invoke('quit-and-install'),
+          onClick: () => ipcRenderer?.invoke('quit-and-install'),
         },
         duration: Infinity,
       });
     },
-    [t]
+    [ipcRenderer, t]
   );
 
   useEffect(() => {
-    if (sessionStorage.getItem('updateElectronShown')) {
+    if (!ipcRenderer || sessionStorage.getItem('updateElectronShown')) {
       return;
     }
     sessionStorage.setItem('updateElectronShown', '1');
 
-    window.ipcRenderer?.on('update-can-available', onUpdateCanAvailable);
-    window.ipcRenderer?.on('update-error', onUpdateError);
-    window.ipcRenderer?.on('download-progress', onDownloadProgress);
-    window.ipcRenderer?.on('update-downloaded', onUpdateDownloaded);
+    ipcRenderer.on('update-can-available', onUpdateCanAvailable);
+    ipcRenderer.on('update-error', onUpdateError);
+    ipcRenderer.on('download-progress', onDownloadProgress);
+    ipcRenderer.on('update-downloaded', onUpdateDownloaded);
     checkUpdate();
 
     return () => {
-      window.ipcRenderer?.off('update-can-available', onUpdateCanAvailable);
-      window.ipcRenderer?.off('update-error', onUpdateError);
-      window.ipcRenderer?.off('download-progress', onDownloadProgress);
-      window.ipcRenderer?.off('update-downloaded', onUpdateDownloaded);
+      ipcRenderer.off('update-can-available', onUpdateCanAvailable);
+      ipcRenderer.off('update-error', onUpdateError);
+      ipcRenderer.off('download-progress', onDownloadProgress);
+      ipcRenderer.off('update-downloaded', onUpdateDownloaded);
     };
   }, [
+    checkUpdate,
+    ipcRenderer,
     onUpdateCanAvailable,
     onUpdateError,
     onDownloadProgress,

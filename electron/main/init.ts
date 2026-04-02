@@ -40,7 +40,7 @@ import {
 
 const execAsync = promisify(exec);
 
-const DEFAULT_SERVER_URL = 'https://dev.eigent.ai/api';
+const DEFAULT_SERVER_URL = 'https://dev.eigent.ai';
 
 function readEnvValue(filePath: string, key: string): string | undefined {
   try {
@@ -81,9 +81,8 @@ function buildLocalServerUrl(proxyUrl: string | undefined): string | undefined {
   if (!proxyUrl) return undefined;
   const trimmed = proxyUrl.trim().replace(/\/+$/, '');
   if (!trimmed) return undefined;
-  // Avoid double /api suffix
-  if (trimmed.endsWith('/api')) return trimmed;
-  return `${trimmed}/api`;
+  // Keep SERVER_URL as host/base only; API version belongs to concrete endpoints.
+  return trimmed.replace(/\/api\/v[12]$/i, '');
 }
 
 // helper function to get main window
@@ -271,9 +270,8 @@ export async function startBackend(
     }
   }
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
-  if (!resolvedServerUrl && devServerUrl) {
-    const devEnvPath = path.join(app.getAppPath(), '.env.development');
+  const devEnvPath = path.join(app.getAppPath(), '.env.development');
+  if (!resolvedServerUrl && fs.existsSync(devEnvPath)) {
     const devProxyEnabled =
       readEnvValue(devEnvPath, 'VITE_USE_LOCAL_PROXY') === 'true';
     const devProxyUrl = readEnvValue(devEnvPath, 'VITE_PROXY_URL');
@@ -329,6 +327,7 @@ export async function startBackend(
     ...uvEnv,
     ...proxyEnv,
     SERVER_URL: serverUrl,
+    EIGENT_RUNTIME: 'electron',
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
@@ -354,8 +353,10 @@ export async function startBackend(
   };
 
   const pythonPath = getVenvPythonPath(venvPath);
-  // Dev mode: use uv run (ensures sync); Packaged: use venv's python directly (prebuilt has deps)
-  const useDirectPython = app.isPackaged;
+  // Use venv's python directly when venv exists (avoids uv run hang in some terminals/Electron spawn).
+  // Packaged: always direct. Dev: use direct when venv exists, else uv run for first-time sync.
+  const venvExists = fs.existsSync(path.join(venvPath, 'pyvenv.cfg'));
+  const useDirectPython = app.isPackaged || venvExists;
 
   return new Promise(async (resolve, reject) => {
     const spawnCmd = useDirectPython

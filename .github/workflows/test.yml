@@ -12,6 +12,63 @@ permissions:
   contents: read
 
 jobs:
+  web-local-smoke:
+    name: Run Web + Local Brain Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          uv sync
+
+      - name: Run web + local brain smoke
+        run: bash scripts/smoke-web-local-brain.sh
+
+  frontend-quality:
+    name: Run Frontend Guardrails
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run type check
+        run: npm run type-check
+
+      - name: Check Electron Access Guard
+        run: bash scripts/check-electron-access.sh
+
   pytest:
     name: Run Python Tests
     runs-on: ubuntu-latest
