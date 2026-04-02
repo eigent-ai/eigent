@@ -357,8 +357,11 @@ body {
   padding: 12px 13px;
   border-radius: 12px;
   border: 1px solid rgba(34, 139, 230, 0.12);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(231, 245, 255, 0.55));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(231, 245, 255, 0.55)
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
@@ -496,16 +499,22 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(241, 243, 245, 0.95));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.95),
+    rgba(241, 243, 245, 0.95)
+  );
   cursor: pointer;
   user-select: none;
   transition: background 0.2s;
 }
 
 .actions-header:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(233, 236, 239, 0.95));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 1),
+    rgba(233, 236, 239, 0.95)
+  );
 }
 
 .actions-header-left {
@@ -950,22 +959,21 @@ body {
   background: #e03131;
 }
 
-.input-hint {
-  margin-top: 6px;
-  text-align: center;
-}
-
 .status-hint {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 11px;
   color: var(--text-tertiary);
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  margin-right: 4px;
 }
 
 .hint-dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--error);
 }
@@ -976,6 +984,7 @@ body {
 
 .status-hint.connected {
   color: var(--success);
+  border-color: var(--success);
 }
 
 /* Scrollbar */
