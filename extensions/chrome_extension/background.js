@@ -265,13 +265,18 @@ async function handleServerMessage(message) {
       const actionTabId = message.tabId || getDefaultTabId();
       const actionDetail = message.detail || '';
       const actionName = message.action || '';
+      // Strip internal ref IDs (e.g. "ref=e171") from display text
+      const cleanDetail = actionDetail
+        .replace(/\bref=e\d+[,\s]*/gi, '')
+        .replace(/^[,|\s]+|[,|\s]+$/g, '')
+        .trim();
       // Forward human-readable summary to overlay: prefer action name,
       // append short detail if available
       let summaryText = actionName;
-      if (actionDetail && actionDetail.length <= 40) {
+      if (cleanDetail && cleanDetail.length <= 40) {
         summaryText = summaryText
-          ? `${summaryText}: ${actionDetail}`
-          : actionDetail;
+          ? `${summaryText}: ${cleanDetail}`
+          : cleanDetail;
       }
       if (summaryText.length > 70) {
         summaryText = summaryText.slice(0, 67) + '...';
