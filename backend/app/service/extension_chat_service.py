@@ -112,7 +112,10 @@ def _build_action_payload(tool_call: object) -> dict[str, str]:
 
     if not detail:
         fallback_parts: list[str] = []
-        for key in ("url", "ref", "query", "command", "code", "text"):
+        # Prefer human-readable fields; skip internal ref IDs
+        for key in (
+            "url", "text", "value", "query", "command", "code",
+        ):
             value = args.get(key)
             if value:
                 fallback_parts.append(str(value).strip())
