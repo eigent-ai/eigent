@@ -366,6 +366,31 @@ async def _process_chat_message(
         had_tool_calls = False
 
         async for chunk in response:
+            # Notify frontend immediately when a tool starts executing
+            tool_start = chunk.info.get("tool_call_start")
+            if tool_start:
+                start_name = tool_start.get("name", "")
+                start_args = tool_start.get("args", {})
+                if isinstance(start_args, dict):
+                    start_title = (
+                        start_args.get("message_title")
+                        or _humanize_tool_name(start_name)
+                    )
+                    start_detail = (
+                        start_args.get("message_description") or ""
+                    )
+                else:
+                    start_title = _humanize_tool_name(start_name)
+                    start_detail = ""
+                await wrapper.send_chat_response(
+                    "ACTION",
+                    {
+                        "action": start_title,
+                        "detail": start_detail,
+                        "toolName": start_name,
+                    },
+                )
+
             # Send text delta
             delta = _normalize_stream_delta(
                 chunk.msg.content if chunk.msg else ""

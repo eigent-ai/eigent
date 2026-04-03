@@ -5940,6 +5940,19 @@ class ChatAgent(BaseAgent):
                     f"Calling function: {function_name} with arguments: {args}"
                 )
 
+                # Yield a notification so callers can show
+                # "tool starting" status immediately
+                yield ChatAgentResponse(
+                    msgs=[],
+                    terminated=False,
+                    info={
+                        "tool_call_start": {
+                            "name": function_name,
+                            "args": args,
+                        },
+                    },
+                )
+
                 # Start tool execution asynchronously (non-blocking)
                 if self.tool_execution_timeout is not None:
                     task = asyncio.create_task(
