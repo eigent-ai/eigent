@@ -33,12 +33,6 @@
         "content.js"
       ],
       "run_at": "document_idle"
-    },
-    {
-      "matches": ["<all_urls>"],
-      "js": ["overlay/bridge.js"],
-      "run_at": "document_idle",
-      "world": "MAIN"
     }
   ],
   "background": {

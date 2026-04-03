@@ -12,8 +12,6 @@ if (document.getElementById('eigent-agent-overlay')) {
 ) {
   // skip restricted pages
 } else {
-  console.log('[Eigent Cursor] Initializing content script...');
-
   // Verify all modules loaded
   const modules = {
     OverlayStore,
@@ -27,8 +25,6 @@ if (document.getElementById('eigent-agent-overlay')) {
   for (const [name, mod] of Object.entries(modules)) {
     if (!mod) {
       console.error(`[Eigent Cursor] Module ${name} not loaded!`);
-    } else {
-      console.log(`[Eigent Cursor] Module ${name} OK`);
     }
   }
 
@@ -52,11 +48,6 @@ if (document.getElementById('eigent-agent-overlay')) {
   ].join('\n');
   shadow.appendChild(styleEl);
 
-  console.log(
-    '[Eigent Cursor] Styles injected, length:',
-    styleEl.textContent.length
-  );
-
   // Detect reduced motion preference
   const reducedMotion = window.matchMedia(
     '(prefers-reduced-motion: reduce)'
@@ -73,16 +64,6 @@ if (document.getElementById('eigent-agent-overlay')) {
   OverlayHighlight.init(shadow);
   OverlayCursor.init(shadow);
   OverlaySummary.init(shadow);
-
-  console.log('[Eigent Cursor] All layers initialized');
-  console.log(
-    '[Eigent Cursor] Shadow root children:',
-    shadow.childNodes.length
-  );
-  console.log(
-    '[Eigent Cursor] Host element in DOM:',
-    !!document.getElementById('eigent-agent-overlay')
-  );
 
   // Start listening for messages from background
   OverlayEvents.listen();
@@ -158,8 +139,6 @@ if (document.getElementById('eigent-agent-overlay')) {
     const motion = OverlayMotion;
     const cursor = OverlayCursor;
     const highlight = OverlayHighlight;
-
-    console.log('[Eigent Demo] Starting overlay demo...');
 
     // Step 1: Show aurora (simulates agent session start)
     store.update({ aurora: { visible: true }, enabled: true });
@@ -251,45 +230,10 @@ if (document.getElementById('eigent-agent-overlay')) {
       aurora: { visible: false },
     });
 
-    console.log('[Eigent Demo] Demo complete.');
   };
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  // Listen for custom events from the MAIN world bridge (overlay/bridge.js)
-  document.addEventListener('eigent-cursor-demo', () => {
-    console.log('[Eigent Cursor] Demo event received from bridge');
-    if (typeof window.__eigentOverlayDemo === 'function') {
-      window.__eigentOverlayDemo();
-    }
-  });
-
-  document.addEventListener('eigent-cursor-cmd', (e) => {
-    const detail = e.detail || {};
-    switch (detail.cmd) {
-      case 'showCursor':
-        OverlayStore.update({
-          cursor: {
-            x: detail.x || 200,
-            y: detail.y || 200,
-            visible: true,
-            state: 'idle',
-          },
-        });
-        OverlayMotion.setPosition(detail.x || 200, detail.y || 200);
-        break;
-      case 'hideCursor':
-        OverlayStore.update({ cursor: { visible: false } });
-        break;
-      case 'summary':
-        OverlayStore.update({
-          summary: { text: detail.text || '', visible: !!detail.text },
-        });
-        break;
-    }
-  });
-
-  console.log('[Eigent Cursor] Content script loaded, overlay mounted.');
 } // end else block

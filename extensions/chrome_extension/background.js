@@ -640,95 +640,18 @@ async function resolveElementRect(selector, tabId) {
 }
 
 // Highlight element on page with animation
+// Uses resolveElementRect to find the element, then injects highlight visuals.
 async function highlightElement(selector, duration = 600, tabId = null) {
   const targetTabId = tabId || getDefaultTabId();
   if (!targetTabId) return null;
 
-  console.log(
-    'highlightElement called with selector:',
-    selector,
-    'tab:',
-    targetTabId
-  );
+  // Reuse shared element resolver
+  const rect = await resolveElementRect(selector, targetTabId);
+  if (!rect) return { found: false, selector, message: 'Element not found' };
 
   const highlightScript = `
     (function() {
-      const sel = ${JSON.stringify(selector)};
-      console.log('[Agent Highlight] Looking for element:', sel);
-      let element = null;
-      let foundBy = '';
-
-      // Method 1: Use ARIA snapshot's getElementByRef if available
-      if (typeof __ariaSnapshot !== 'undefined' && __ariaSnapshot.getElementByRef) {
-        console.log('[Agent Highlight] Trying __ariaSnapshot.getElementByRef');
-        try {
-          element = __ariaSnapshot.getElementByRef(sel, document.body);
-          if (element) foundBy = 'ariaSnapshot.getElementByRef';
-        } catch (e) {
-          console.log('[Agent Highlight] ariaSnapshot error:', e);
-        }
-      }
-
-      // Method 2: Walk DOM looking for _ariaRef property
-      if (!element) {
-        console.log('[Agent Highlight] Walking DOM for _ariaRef');
-        const walker = document.createTreeWalker(
-          document.body,
-          NodeFilter.SHOW_ELEMENT,
-          null,
-          false
-        );
-        let node;
-        let count = 0;
-        while (node = walker.nextNode()) {
-          count++;
-          if (node._ariaRef && node._ariaRef.ref === sel) {
-            element = node;
-            foundBy = '_ariaRef property';
-            break;
-          }
-        }
-        console.log('[Agent Highlight] Walked', count, 'nodes');
-      }
-
-      // Method 3: Try data attributes
-      if (!element) {
-        const refNum = sel.replace(/^e/, '');
-        const selectors = [
-          '[data-ref="' + sel + '"]',
-          '[data-ref="' + refNum + '"]',
-          '[ref="' + sel + '"]',
-          '[aria-ref="' + sel + '"]'
-        ];
-        for (const s of selectors) {
-          try {
-            element = document.querySelector(s);
-            if (element) {
-              foundBy = 'data attribute: ' + s;
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-
-      // Method 4: Try CSS selector directly
-      if (!element && (sel.includes('[') || sel.includes('.') || sel.includes('#') || sel.includes(' '))) {
-        try {
-          element = document.querySelector(sel);
-          if (element) foundBy = 'CSS selector';
-        } catch (e) {}
-      }
-
-      if (!element) {
-        console.log('[Agent Highlight] Element NOT found for:', sel);
-        return { found: false, selector: sel, message: 'Element not found' };
-      }
-
-      console.log('[Agent Highlight] Element FOUND via:', foundBy, element);
-
-      // Get element position
-      const rect = element.getBoundingClientRect();
-      console.log('[Agent Highlight] Element rect:', rect);
+      const rect = ${JSON.stringify(rect)};
 
       // Add animation keyframes if not exists
       if (!document.getElementById('__agent_highlight_styles__')) {
@@ -746,7 +669,6 @@ async function highlightElement(selector, duration = 600, tabId = null) {
           }
         \`;
         document.head.appendChild(style);
-        console.log('[Agent Highlight] Added styles');
       }
 
       // Remove any existing overlays
@@ -760,8 +682,8 @@ async function highlightElement(selector, duration = 600, tabId = null) {
       overlay.id = '__agent_highlight_overlay__';
       overlay.style.cssText = \`
         position: fixed;
-        top: \${rect.top - 8}px;
-        left: \${rect.left - 8}px;
+        top: \${rect.y - 8}px;
+        left: \${rect.x - 8}px;
         width: \${rect.width + 16}px;
         height: \${rect.height + 16}px;
         border: 4px solid #155DFC;
@@ -772,15 +694,14 @@ async function highlightElement(selector, duration = 600, tabId = null) {
         animation: __agent_pulse__ 0.2s ease-in-out infinite;
       \`;
       document.body.appendChild(overlay);
-      console.log('[Agent Highlight] Added overlay');
 
       // Add ripple effect
       const ripple = document.createElement('div');
       ripple.id = '__agent_ripple__';
       ripple.style.cssText = \`
         position: fixed;
-        top: \${rect.top + rect.height/2 - 25}px;
-        left: \${rect.left + rect.width/2 - 25}px;
+        top: \${rect.cy - 25}px;
+        left: \${rect.cx - 25}px;
         width: 50px;
         height: 50px;
         border: 3px solid #155DFC;
@@ -807,12 +728,7 @@ async function highlightElement(selector, duration = 600, tabId = null) {
         if (rp) rp.remove();
       }, 300);
 
-      return {
-        found: true,
-        selector: sel,
-        foundBy: foundBy,
-        rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-      };
+      return { found: true, rect: rect };
     })();
   `;
 
@@ -825,7 +741,6 @@ async function highlightElement(selector, duration = 600, tabId = null) {
       },
       targetTabId
     );
-    console.log('Highlight CDP result:', result);
     return result;
   } catch (error) {
     console.error('Highlight CDP error:', error);
