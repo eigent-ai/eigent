@@ -4,11 +4,15 @@ let isConnected = false;
 let serverUrl = 'ws://localhost:8765';
 let fullVisionMode = false;
 
+// Track whether an agent task is currently running (for overlay state recovery)
+let isAgentTaskRunning = false;
+
 // Auto-reconnect state
 let intentionalDisconnect = false;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let reconnectTimer = null;
+let keepAliveTimer = null;
 let preferredWindowId = null;
 
 function normalizeStreamText(text) {
@@ -128,6 +132,13 @@ function connect(url, windowId = null) {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
+        // Keep service worker alive with periodic pings
+        if (keepAliveTimer) clearInterval(keepAliveTimer);
+        keepAliveTimer = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'PING' }));
+          }
+        }, 20000);
         broadcastToPopup({ type: 'CONNECTION_STATUS', connected: true });
         syncWindowTabs(preferredWindowId).catch((error) => {
           console.error('Failed to sync tabs on connect:', error);
@@ -140,6 +151,10 @@ function connect(url, windowId = null) {
         const wasConnected = isConnected;
         isConnected = false;
         ws = null;
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
         broadcastToPopup({ type: 'CONNECTION_STATUS', connected: false });
 
         // Auto-reconnect if not intentional
@@ -215,6 +230,10 @@ function disconnect() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
   reconnectAttempts = 0;
   if (ws) {
     ws.close();
@@ -237,13 +256,37 @@ async function handleServerMessage(message) {
       });
       break;
 
-    case 'ACTION':
+    case 'ACTION': {
       broadcastToPopup({
         type: 'ACTION',
         action: message.action,
         detail: message.detail,
       });
+      const actionTabId = message.tabId || getDefaultTabId();
+      const actionDetail = message.detail || message.action || '';
+      // Forward summary text to overlay
+      sendOverlayEvent(actionTabId, {
+        type: 'OVERLAY_SUMMARY',
+        text:
+          actionDetail.length > 60
+            ? message.action || actionDetail.slice(0, 60)
+            : actionDetail,
+      });
+      // Extract element ref from detail (e.g. "ref=e46, text=...") and resolve via CDP
+      const refMatch = actionDetail.match(/ref=(e\d+)/);
+      if (refMatch && actionTabId) {
+        resolveElementRect(refMatch[1], actionTabId).then((rect) => {
+          if (rect) {
+            sendOverlayEvent(actionTabId, {
+              type: 'OVERLAY_CURSOR_MOVE',
+              x: rect.cx,
+              y: rect.cy,
+            });
+          }
+        });
+      }
       break;
+    }
 
     case 'ACTION_COMPLETE':
       broadcastToPopup({
@@ -251,28 +294,63 @@ async function handleServerMessage(message) {
         success: message.success,
         result: message.result,
       });
+      // Notify overlay that action is done
+      sendOverlayEvent(message.tabId || getDefaultTabId(), {
+        type: 'OVERLAY_AGENT_STEP',
+        stepId: message.id || '',
+        state: message.success ? 'done' : 'error',
+        summary: message.success ? 'Done' : 'Action failed',
+      });
       break;
 
     case 'CDP_COMMAND': {
       // Execute CDP command via chrome.debugger, routed by tabId
       const targetTabId = message.tabId || getDefaultTabId();
       try {
-        // Check if we should highlight before this action
+        // Highlight before this action — prefer overlay content script, fallback to CDP
         if (message.highlight && message.highlight.selector) {
-          await highlightElement(
-            message.highlight.selector,
-            message.highlight.duration || 1500,
-            targetTabId
-          );
+          const overlayHighlighted = await sendOverlayEvent(targetTabId, {
+            type: 'OVERLAY_HIGHLIGHT',
+            selector: message.highlight.selector,
+            duration: message.highlight.duration || 1500,
+          });
+          if (!overlayHighlighted) {
+            // Fallback to CDP-injected highlight
+            await highlightElement(
+              message.highlight.selector,
+              message.highlight.duration || 1500,
+              targetTabId
+            );
+          }
+          if (message.highlight.summary) {
+            sendOverlayEvent(targetTabId, {
+              type: 'OVERLAY_SUMMARY',
+              text: message.highlight.summary,
+            });
+          }
           // Small delay to let user see the highlight
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
-        const result = await executeCdpCommand(
-          message.method,
-          message.params || {},
-          targetTabId
-        );
+        // Extract cursor position from CDP commands that have coordinates
+        const params = message.params || {};
+        const method = message.method || '';
+        if (
+          method === 'Input.dispatchMouseEvent' &&
+          params.x != null &&
+          params.y != null
+        ) {
+          if (params.type === 'mousePressed') {
+            sendOverlayEvent(targetTabId, {
+              type: 'OVERLAY_CURSOR_MOVE',
+              x: params.x,
+              y: params.y,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 80));
+          }
+        }
+
+        const result = await executeCdpCommand(method, params, targetTabId);
 
         // Send result back to server with tabId
         sendToServer({
@@ -357,20 +435,40 @@ async function handleServerMessage(message) {
       break;
     }
 
-    case 'TASK_COMPLETE':
+    case 'TASK_COMPLETE': {
       broadcastToPopup({
         type: 'TASK_COMPLETE',
         result: message.result,
       });
+      // Hide all overlay — agent session ended
+      isAgentTaskRunning = false;
+      const completeTabId = message.tabId || getDefaultTabId();
+      sendOverlayEvent(completeTabId, {
+        type: 'OVERLAY_STATE',
+        auroraVisible: false,
+        cursorVisible: false,
+        summaryText: '',
+      });
       // Don't detach all tabs on task complete - let server manage tab lifecycle
       break;
+    }
 
-    case 'TASK_ERROR':
+    case 'TASK_ERROR': {
       broadcastToPopup({
         type: 'TASK_ERROR',
         error: message.error,
       });
+      // Hide all overlay — agent session ended with error
+      isAgentTaskRunning = false;
+      const errorTabId = message.tabId || getDefaultTabId();
+      sendOverlayEvent(errorTabId, {
+        type: 'OVERLAY_STATE',
+        auroraVisible: false,
+        cursorVisible: false,
+        summaryText: '',
+      });
       break;
+    }
 
     case 'STREAM_TEXT':
       {
@@ -422,21 +520,35 @@ async function handleServerMessage(message) {
       break;
 
     case 'HIGHLIGHT': {
-      // Highlight an element on the page
-      console.log('Received HIGHLIGHT message:', message);
+      // Resolve element position via CDP, move cursor there, then highlight
       const hlTabId = message.tabId || getDefaultTabId();
       try {
-        const highlightResult = await highlightElement(
+        // Resolve element rect in page main world
+        const rect = await resolveElementRect(message.selector, hlTabId);
+        if (rect) {
+          // Move overlay cursor to element center
+          sendOverlayEvent(hlTabId, {
+            type: 'OVERLAY_CURSOR_MOVE',
+            x: rect.cx,
+            y: rect.cy,
+          });
+          // Show highlight rect via overlay
+          sendOverlayEvent(hlTabId, {
+            type: 'OVERLAY_HIGHLIGHT_RECT',
+            rect: rect,
+            duration: message.duration || 2000,
+          });
+        }
+        // Also run the existing CDP highlight (red ring)
+        await highlightElement(
           message.selector,
           message.duration || 2000,
           hlTabId
         );
-        console.log('Highlight completed:', highlightResult);
         sendToServer({
           type: 'HIGHLIGHT_RESULT',
           id: message.id,
           success: true,
-          result: highlightResult,
           tabId: hlTabId,
         });
       } catch (error) {
@@ -476,96 +588,91 @@ async function enableCdpDomains(tabId) {
   }
 }
 
+// Resolve element ref to bounding rect via CDP (runs in page main world)
+// Returns { x, y, width, height, cx, cy } or null
+async function resolveElementRect(selector, tabId) {
+  const targetTabId = tabId || getDefaultTabId();
+  if (!targetTabId) return null;
+
+  const script = `
+    (function() {
+      const sel = ${JSON.stringify(selector)};
+      let element = null;
+
+      // Method 1: ariaSnapshot
+      if (typeof __ariaSnapshot !== 'undefined' && __ariaSnapshot.getElementByRef) {
+        try { element = __ariaSnapshot.getElementByRef(sel, document.body); } catch(e) {}
+      }
+
+      // Method 2: _ariaRef DOM walk
+      if (!element) {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, null, false);
+        let node;
+        while (node = walker.nextNode()) {
+          if (node._ariaRef && node._ariaRef.ref === sel) { element = node; break; }
+        }
+      }
+
+      // Method 3: data attributes
+      if (!element) {
+        const refNum = sel.replace(/^e/, '');
+        const selectors = [
+          '[data-ref="' + sel + '"]', '[data-ref="' + refNum + '"]',
+          '[ref="' + sel + '"]', '[aria-ref="' + sel + '"]',
+          '[data-camel-ref="' + sel + '"]', '[data-camel-ref="' + refNum + '"]'
+        ];
+        for (const s of selectors) {
+          try { element = document.querySelector(s); if (element) break; } catch(e) {}
+        }
+      }
+
+      // Method 4: CSS selector
+      if (!element && (sel.includes('[') || sel.includes('.') || sel.includes('#'))) {
+        try { element = document.querySelector(sel); } catch(e) {}
+      }
+
+      if (!element) return null;
+
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left, y: rect.top, width: rect.width, height: rect.height,
+        cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2
+      };
+    })();
+  `;
+
+  try {
+    const result = await executeCdpCommand(
+      'Runtime.evaluate',
+      {
+        expression: script,
+        returnByValue: true,
+      },
+      targetTabId
+    );
+
+    if (result && result.result && result.result.value) {
+      return result.result.value;
+    }
+  } catch (e) {
+    console.log('resolveElementRect failed:', e.message);
+  }
+  return null;
+}
+
 // Highlight element on page with animation
+// Uses resolveElementRect to find the element, then injects highlight visuals.
 async function highlightElement(selector, duration = 600, tabId = null) {
   const targetTabId = tabId || getDefaultTabId();
   if (!targetTabId) return null;
 
-  console.log(
-    'highlightElement called with selector:',
-    selector,
-    'tab:',
-    targetTabId
-  );
+  // Reuse shared element resolver
+  const rect = await resolveElementRect(selector, targetTabId);
+  if (!rect) return { found: false, selector, message: 'Element not found' };
 
   const highlightScript = `
     (function() {
-      const sel = ${JSON.stringify(selector)};
-      console.log('[Agent Highlight] Looking for element:', sel);
-      let element = null;
-      let foundBy = '';
-
-      // Method 1: Use ARIA snapshot's getElementByRef if available
-      if (typeof __ariaSnapshot !== 'undefined' && __ariaSnapshot.getElementByRef) {
-        console.log('[Agent Highlight] Trying __ariaSnapshot.getElementByRef');
-        try {
-          element = __ariaSnapshot.getElementByRef(sel, document.body);
-          if (element) foundBy = 'ariaSnapshot.getElementByRef';
-        } catch (e) {
-          console.log('[Agent Highlight] ariaSnapshot error:', e);
-        }
-      }
-
-      // Method 2: Walk DOM looking for _ariaRef property
-      if (!element) {
-        console.log('[Agent Highlight] Walking DOM for _ariaRef');
-        const walker = document.createTreeWalker(
-          document.body,
-          NodeFilter.SHOW_ELEMENT,
-          null,
-          false
-        );
-        let node;
-        let count = 0;
-        while (node = walker.nextNode()) {
-          count++;
-          if (node._ariaRef && node._ariaRef.ref === sel) {
-            element = node;
-            foundBy = '_ariaRef property';
-            break;
-          }
-        }
-        console.log('[Agent Highlight] Walked', count, 'nodes');
-      }
-
-      // Method 3: Try data attributes
-      if (!element) {
-        const refNum = sel.replace(/^e/, '');
-        const selectors = [
-          '[data-ref="' + sel + '"]',
-          '[data-ref="' + refNum + '"]',
-          '[ref="' + sel + '"]',
-          '[aria-ref="' + sel + '"]'
-        ];
-        for (const s of selectors) {
-          try {
-            element = document.querySelector(s);
-            if (element) {
-              foundBy = 'data attribute: ' + s;
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-
-      // Method 4: Try CSS selector directly
-      if (!element && (sel.includes('[') || sel.includes('.') || sel.includes('#') || sel.includes(' '))) {
-        try {
-          element = document.querySelector(sel);
-          if (element) foundBy = 'CSS selector';
-        } catch (e) {}
-      }
-
-      if (!element) {
-        console.log('[Agent Highlight] Element NOT found for:', sel);
-        return { found: false, selector: sel, message: 'Element not found' };
-      }
-
-      console.log('[Agent Highlight] Element FOUND via:', foundBy, element);
-
-      // Get element position
-      const rect = element.getBoundingClientRect();
-      console.log('[Agent Highlight] Element rect:', rect);
+      const rect = ${JSON.stringify(rect)};
 
       // Add animation keyframes if not exists
       if (!document.getElementById('__agent_highlight_styles__')) {
@@ -573,9 +680,9 @@ async function highlightElement(selector, duration = 600, tabId = null) {
         style.id = '__agent_highlight_styles__';
         style.textContent = \`
           @keyframes __agent_pulse__ {
-            0% { box-shadow: 0 0 0 4px rgba(255, 68, 68, 1), 0 0 15px rgba(255, 68, 68, 0.7); }
-            50% { box-shadow: 0 0 0 6px rgba(255, 68, 68, 0.7), 0 0 25px rgba(255, 68, 68, 0.5); }
-            100% { box-shadow: 0 0 0 4px rgba(255, 68, 68, 1), 0 0 15px rgba(255, 68, 68, 0.7); }
+            0% { box-shadow: 0 0 0 4px rgba(21, 93, 252, 1), 0 0 15px rgba(21, 93, 252, 0.7); }
+            50% { box-shadow: 0 0 0 6px rgba(21, 93, 252, 0.7), 0 0 25px rgba(21, 93, 252, 0.5); }
+            100% { box-shadow: 0 0 0 4px rgba(21, 93, 252, 1), 0 0 15px rgba(21, 93, 252, 0.7); }
           }
           @keyframes __agent_ripple__ {
             0% { transform: scale(0.8); opacity: 1; }
@@ -583,7 +690,6 @@ async function highlightElement(selector, duration = 600, tabId = null) {
           }
         \`;
         document.head.appendChild(style);
-        console.log('[Agent Highlight] Added styles');
       }
 
       // Remove any existing overlays
@@ -597,30 +703,29 @@ async function highlightElement(selector, duration = 600, tabId = null) {
       overlay.id = '__agent_highlight_overlay__';
       overlay.style.cssText = \`
         position: fixed;
-        top: \${rect.top - 8}px;
-        left: \${rect.left - 8}px;
+        top: \${rect.y - 8}px;
+        left: \${rect.x - 8}px;
         width: \${rect.width + 16}px;
         height: \${rect.height + 16}px;
-        border: 4px solid #ff4444;
+        border: 4px solid #155DFC;
         border-radius: 8px;
-        background: rgba(255, 68, 68, 0.15);
+        background: rgba(21, 93, 252, 0.15);
         pointer-events: none;
         z-index: 2147483647;
         animation: __agent_pulse__ 0.2s ease-in-out infinite;
       \`;
       document.body.appendChild(overlay);
-      console.log('[Agent Highlight] Added overlay');
 
       // Add ripple effect
       const ripple = document.createElement('div');
       ripple.id = '__agent_ripple__';
       ripple.style.cssText = \`
         position: fixed;
-        top: \${rect.top + rect.height/2 - 25}px;
-        left: \${rect.left + rect.width/2 - 25}px;
+        top: \${rect.cy - 25}px;
+        left: \${rect.cx - 25}px;
         width: 50px;
         height: 50px;
-        border: 3px solid #ff4444;
+        border: 3px solid #155DFC;
         border-radius: 50%;
         pointer-events: none;
         z-index: 2147483646;
@@ -644,12 +749,7 @@ async function highlightElement(selector, duration = 600, tabId = null) {
         if (rp) rp.remove();
       }, 300);
 
-      return {
-        found: true,
-        selector: sel,
-        foundBy: foundBy,
-        rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-      };
+      return { found: true, rect: rect };
     })();
   `;
 
@@ -662,7 +762,6 @@ async function highlightElement(selector, duration = 600, tabId = null) {
       },
       targetTabId
     );
-    console.log('Highlight CDP result:', result);
     return result;
   } catch (error) {
     console.error('Highlight CDP error:', error);
@@ -841,6 +940,19 @@ function broadcastToPopup(message) {
   });
 }
 
+// Send overlay event to content script on a specific tab
+// Returns true if message was delivered, false if no content script listening
+async function sendOverlayEvent(tabId, event) {
+  if (!tabId) return false;
+  try {
+    await chrome.tabs.sendMessage(tabId, event);
+    return true;
+  } catch (e) {
+    // Content script not injected on this tab (restricted page, etc.)
+    return false;
+  }
+}
+
 // Listen for debugger events - forward from ALL attached tabs
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (attachedTabs.has(source.tabId)) {
@@ -871,11 +983,22 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   }
 });
 
-// Message handler from popup
+// Message handler from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Message from popup:', message);
 
   switch (message.type) {
+    case 'OVERLAY_READY':
+      // Content script reloaded (page navigation) — restore overlay state
+      if (isAgentTaskRunning && sender.tab) {
+        sendOverlayEvent(sender.tab.id, {
+          type: 'OVERLAY_STATE',
+          enabled: true,
+          auroraVisible: true,
+        });
+      }
+      break;
+
     case 'GET_STATUS':
       sendResponse({
         connected: isConnected,
@@ -907,6 +1030,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'STOP_TASK':
       sendToServer({ type: 'STOP_TASK' });
+      isAgentTaskRunning = false;
       // Only detach the specific tab if provided, otherwise detach all
       if (message.tabId && attachedTabs.has(message.tabId)) {
         detachDebuggerFromTab(message.tabId);
@@ -1042,6 +1166,14 @@ async function executeTask(task, tabId, url) {
       type: 'LOG',
       level: 'info',
       message: 'Sending task to AI...',
+    });
+
+    // Show aurora overlay — agent session started
+    isAgentTaskRunning = true;
+    sendOverlayEvent(tabId, {
+      type: 'OVERLAY_STATE',
+      enabled: true,
+      auroraVisible: true,
     });
 
     sendToServer({

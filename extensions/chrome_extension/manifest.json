@@ -19,6 +19,22 @@
   "action": {
     "default_title": "Open ADGM Co-work Agent"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "overlay/store.js",
+        "overlay/events.js",
+        "overlay/motion.js",
+        "overlay/aurora.js",
+        "overlay/cursor.js",
+        "overlay/summary.js",
+        "overlay/highlight.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   },
