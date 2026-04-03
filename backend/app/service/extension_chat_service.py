@@ -94,6 +94,27 @@ def _tool_args_to_dict(args: object) -> dict[str, Any]:
     return {}
 
 
+import re
+
+# Cache latest ARIA snapshot text for ref → element name lookup
+_last_snapshot_text: str = ""
+
+
+def _resolve_ref_label(ref: str) -> str:
+    """Look up a ref like 'e621' in the last ARIA snapshot and return
+    a human-readable element description, e.g. 'button "Submit"'."""
+    if not _last_snapshot_text or not ref:
+        return ""
+    pattern = rf'-\s+(.+?)\s+\[ref={re.escape(ref)}\]'
+    m = re.search(pattern, _last_snapshot_text)
+    if m:
+        label = m.group(1).strip()
+        if len(label) > 50:
+            label = label[:47] + "..."
+        return label
+    return ""
+
+
 def _build_action_payload(tool_call: object) -> dict[str, str]:
     tool_name = getattr(tool_call, "func_name", str(tool_call))
     args = _tool_args_to_dict(getattr(tool_call, "args", {}))
@@ -111,14 +132,25 @@ def _build_action_payload(tool_call: object) -> dict[str, str]:
     )
 
     if not detail:
-        fallback_parts: list[str] = []
-        for key in ("url", "ref", "query", "command", "code", "text"):
-            value = args.get(key)
-            if value:
-                fallback_parts.append(str(value).strip())
-            if len(" | ".join(fallback_parts)) >= 140:
-                break
-        detail = " | ".join(fallback_parts)
+        # If args has a ref, resolve it to element name from snapshot
+        ref = args.get("ref", "")
+        if ref:
+            ref_label = _resolve_ref_label(ref)
+            if ref_label:
+                detail = ref_label
+
+        if not detail:
+            fallback_parts: list[str] = []
+            # Prefer human-readable fields; skip internal ref IDs
+            for key in (
+                "url", "text", "value", "query", "command", "code",
+            ):
+                value = args.get(key)
+                if value:
+                    fallback_parts.append(str(value).strip())
+                if len(" | ".join(fallback_parts)) >= 140:
+                    break
+            detail = " | ".join(fallback_parts)
 
     detail = detail.strip()
     if len(detail) > 180:
@@ -334,6 +366,31 @@ async def _process_chat_message(
         had_tool_calls = False
 
         async for chunk in response:
+            # Notify frontend immediately when a tool starts executing
+            tool_start = chunk.info.get("tool_call_start")
+            if tool_start:
+                start_name = tool_start.get("name", "")
+                start_args = tool_start.get("args", {})
+                if isinstance(start_args, dict):
+                    start_title = (
+                        start_args.get("message_title")
+                        or _humanize_tool_name(start_name)
+                    )
+                    start_detail = (
+                        start_args.get("message_description") or ""
+                    )
+                else:
+                    start_title = _humanize_tool_name(start_name)
+                    start_detail = ""
+                await wrapper.send_chat_response(
+                    "ACTION",
+                    {
+                        "action": start_title,
+                        "detail": start_detail,
+                        "toolName": start_name,
+                    },
+                )
+
             # Send text delta
             delta = _normalize_stream_delta(
                 chunk.msg.content if chunk.msg else ""
@@ -353,6 +410,7 @@ async def _process_chat_message(
                 )
 
             # Send tool call info as actions (deduplicate)
+            global _last_snapshot_text
             tool_calls = chunk.info.get("tool_calls", [])
             for tc in tool_calls:
                 tc_id = id(tc)
@@ -360,6 +418,12 @@ async def _process_chat_message(
                     continue
                 seen_tool_calls.add(tc_id)
                 had_tool_calls = True
+
+                # Cache snapshot text for ref label resolution
+                tc_result = str(getattr(tc, "result", ""))
+                if "[ref=" in tc_result:
+                    _last_snapshot_text = tc_result
+
                 await wrapper.send_chat_response(
                     "ACTION",
                     _build_action_payload(tc),
