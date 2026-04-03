@@ -482,7 +482,7 @@ function processProtocolUrl(url: string) {
       log.info('oauth');
       const provider = urlObj.searchParams.get('provider');
       const code = urlObj.searchParams.get('code');
-      log.info('protocol oauth', provider, code);
+      log.info('protocol oauth', provider, '[REDACTED]');
       win.webContents.send('oauth-authorized', { provider, code });
       return;
     }
@@ -494,7 +494,7 @@ function processProtocolUrl(url: string) {
     }
 
     if (code) {
-      log.error('protocol code:', code);
+      log.info('protocol code received, length:', code?.length);
       win.webContents.send('auth-code-received', code);
     }
 
@@ -1381,7 +1381,7 @@ function registerIpcHandlers() {
         .stat(filePath.replace(/\/$/, ''))
         .catch(() => null);
       if (stats && stats.isDirectory()) {
-        shell.openPath(filePath);
+        shell.showItemInFolder(filePath + path.sep);
       } else {
         shell.showItemInFolder(filePath);
       }

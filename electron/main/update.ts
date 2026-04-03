@@ -24,7 +24,7 @@ const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 
 export function update(win: Electron.BrowserWindow) {
   // When set to false, the update download will be triggered through the API
-  autoUpdater.verifyUpdateCodeSignature = false;
+  autoUpdater.verifyUpdateCodeSignature = true;
   autoUpdater.autoDownload = false;
   autoUpdater.disableWebInstaller = false;
   autoUpdater.allowDowngrade = false;
@@ -147,10 +147,12 @@ function startDownload(
   callback: (error: Error | null, info: ProgressInfo | null) => void,
   complete: (event: UpdateDownloadedEvent) => void
 ) {
+  autoUpdater.removeAllListeners('download-progress');
+  autoUpdater.removeAllListeners('update-downloaded');
   autoUpdater.on('download-progress', (info: ProgressInfo) =>
     callback(null, info)
   );
-  autoUpdater.on('error', (error: Error) => callback(error, null));
-  autoUpdater.on('update-downloaded', complete);
+  autoUpdater.once('error', (error: Error) => callback(error, null));
+  autoUpdater.once('update-downloaded', complete);
   autoUpdater.downloadUpdate();
 }
