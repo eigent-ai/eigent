@@ -348,6 +348,8 @@ class ExtensionProxyWrapper:
     async def _handle_message(self, data: Dict[str, Any]):
         """Handle message from Chrome extension."""
         msg_type = data.get("type")
+        if msg_type == "PING":
+            return  # Keep-alive heartbeat, ignore
         if msg_type not in ("CDP_RESULT", "CDP_ERROR", "CDP_EVENT"):
             self._log("info", f"[EXT MSG] type={msg_type} data_keys={list(data.keys())}")
 

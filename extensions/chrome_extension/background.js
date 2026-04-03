@@ -12,6 +12,7 @@ let intentionalDisconnect = false;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let reconnectTimer = null;
+let keepAliveTimer = null;
 let preferredWindowId = null;
 
 function normalizeStreamText(text) {
@@ -131,6 +132,13 @@ function connect(url, windowId = null) {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
+        // Keep service worker alive with periodic pings
+        if (keepAliveTimer) clearInterval(keepAliveTimer);
+        keepAliveTimer = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'PING' }));
+          }
+        }, 20000);
         broadcastToPopup({ type: 'CONNECTION_STATUS', connected: true });
         syncWindowTabs(preferredWindowId).catch((error) => {
           console.error('Failed to sync tabs on connect:', error);
@@ -143,6 +151,10 @@ function connect(url, windowId = null) {
         const wasConnected = isConnected;
         isConnected = false;
         ws = null;
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
         broadcastToPopup({ type: 'CONNECTION_STATUS', connected: false });
 
         // Auto-reconnect if not intentional
@@ -217,6 +229,10 @@ function disconnect() {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
   }
   reconnectAttempts = 0;
   if (ws) {
