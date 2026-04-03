@@ -263,14 +263,27 @@ async function handleServerMessage(message) {
         detail: message.detail,
       });
       const actionTabId = message.tabId || getDefaultTabId();
-      const actionDetail = message.detail || message.action || '';
-      // Forward summary text to overlay
+      const actionDetail = message.detail || '';
+      const actionName = message.action || '';
+      // Strip internal ref IDs (e.g. "ref=e171") from display text
+      const cleanDetail = actionDetail
+        .replace(/\bref=e\d+[,\s]*/gi, '')
+        .replace(/^[,|\s]+|[,|\s]+$/g, '')
+        .trim();
+      // Forward human-readable summary to overlay: prefer action name,
+      // append short detail if available
+      let summaryText = actionName;
+      if (cleanDetail && cleanDetail.length <= 40) {
+        summaryText = summaryText
+          ? `${summaryText}: ${cleanDetail}`
+          : cleanDetail;
+      }
+      if (summaryText.length > 70) {
+        summaryText = summaryText.slice(0, 67) + '...';
+      }
       sendOverlayEvent(actionTabId, {
         type: 'OVERLAY_SUMMARY',
-        text:
-          actionDetail.length > 60
-            ? message.action || actionDetail.slice(0, 60)
-            : actionDetail,
+        text: summaryText || 'Working...',
       });
       // Extract element ref from detail (e.g. "ref=e46, text=...") and resolve via CDP
       const refMatch = actionDetail.match(/ref=(e\d+)/);
