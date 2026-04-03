@@ -61,5 +61,11 @@
   "global-agent-import-file": "Import from file",
   "global-agent-export-file": "Export to file",
   "global-agent-tools-count": "{{count}} tool(s)",
-  "no-templates": "No templates"
+  "no-templates": "No templates",
+  "global-agents-import-hint": "Import JSON and manage reusable templates under Agents → Global Agents. In Workforce, use the ▼ next to Add to start from a saved template.",
+  "global-agent-template-saved": "Saved as global agent template.",
+  "global-agent-import-success": "Agent template imported successfully.",
+  "global-agent-import-invalid": "This file is not a valid agent template. Use JSON exported from Global Agents or from “Export agent config” when editing a worker.",
+  "global-agent-duplicate-success": "Template duplicated.",
+  "global-agent-delete-success": "Template removed."
 }

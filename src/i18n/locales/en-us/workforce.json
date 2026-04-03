@@ -19,5 +19,7 @@
   "worker-name-already-exists": "Worker name already exists",
   "duplicate-agent": "Duplicate agent",
   "export-agent": "Export agent config",
-  "import-agent": "Import agent config"
+  "export-agent-success": "Agent configuration exported",
+  "import-agent": "Import agent config",
+  "advanced-model-config-hint": "Only needed if this worker should use a different model than your workspace default (e.g. local or BYOK). Hidden while using Eigent cloud models."
 }

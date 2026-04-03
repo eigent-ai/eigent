@@ -36,6 +36,8 @@ export interface GlobalAgentTemplate {
     api_url?: string;
     extra_params?: Record<string, unknown>;
   };
+  /** Serialized ToolSelect rows so “Create from template” restores MCP/local tool picks */
+  selected_tools_snapshot?: unknown[];
   updatedAt: number;
 }
 
@@ -60,6 +62,126 @@ function generateId(): string {
   return `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function normalizeMcpTools(mcp: unknown): GlobalAgentTemplate['mcp_tools'] {
+  if (mcp === undefined || mcp === null) return { mcpServers: {} };
+  if (typeof mcp !== 'object' || Array.isArray(mcp)) return { mcpServers: {} };
+  const obj = mcp as Record<string, unknown>;
+  const servers = obj.mcpServers;
+  if (
+    servers !== undefined &&
+    servers !== null &&
+    typeof servers === 'object' &&
+    !Array.isArray(servers)
+  ) {
+    return { mcpServers: servers as Record<string, unknown> };
+  }
+  return { mcpServers: {} };
+}
+
+/** Validate JSON file content for “Import agent template” (export shape or backend-style). */
+export function parseImportedAgentTemplateJson(
+  data: unknown
+): GlobalAgentTemplate | null {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    return null;
+  }
+  const o = data as Record<string, unknown>;
+  const nameRaw = o.name;
+  if (typeof nameRaw !== 'string' || nameRaw.trim().length === 0) {
+    return null;
+  }
+  if (o.description !== undefined && typeof o.description !== 'string') {
+    return null;
+  }
+  const tools = o.tools;
+  if (tools !== undefined) {
+    if (!Array.isArray(tools) || !tools.every((x) => typeof x === 'string')) {
+      return null;
+    }
+  }
+  const mcp = o.mcp_tools;
+  if (
+    mcp !== undefined &&
+    (mcp === null || typeof mcp !== 'object' || Array.isArray(mcp))
+  ) {
+    return null;
+  }
+  const cmc = o.custom_model_config;
+  if (
+    cmc !== undefined &&
+    (cmc === null || typeof cmc !== 'object' || Array.isArray(cmc))
+  ) {
+    return null;
+  }
+  const snap =
+    o.selected_tools_snapshot !== undefined
+      ? o.selected_tools_snapshot
+      : o.selectedTools;
+  if (snap !== undefined && (snap === null || !Array.isArray(snap))) {
+    return null;
+  }
+  return {
+    id: generateId(),
+    name: nameRaw.trim(),
+    description: typeof o.description === 'string' ? o.description : '',
+    tools: Array.isArray(tools) ? [...tools] : [],
+    mcp_tools: normalizeMcpTools(mcp),
+    custom_model_config:
+      cmc && typeof cmc === 'object' && !Array.isArray(cmc)
+        ? (cmc as GlobalAgentTemplate['custom_model_config'])
+        : undefined,
+    selected_tools_snapshot: Array.isArray(snap)
+      ? JSON.parse(JSON.stringify(snap))
+      : undefined,
+    updatedAt: Date.now(),
+  };
+}
+
+function isPersistedTemplateRow(t: unknown): t is GlobalAgentTemplate {
+  if (t === null || typeof t !== 'object' || Array.isArray(t)) return false;
+  const o = t as Record<string, unknown>;
+  if (typeof o.id !== 'string' || !o.id.trim()) return false;
+  if (typeof o.name !== 'string' || !o.name.trim()) return false;
+  if (o.description !== undefined && typeof o.description !== 'string') {
+    return false;
+  }
+  if (!Array.isArray(o.tools) || !o.tools.every((x) => typeof x === 'string')) {
+    return false;
+  }
+  if (
+    o.mcp_tools === null ||
+    typeof o.mcp_tools !== 'object' ||
+    Array.isArray(o.mcp_tools)
+  ) {
+    return false;
+  }
+  if (typeof o.updatedAt !== 'number' || Number.isNaN(o.updatedAt))
+    return false;
+  if (
+    o.selected_tools_snapshot !== undefined &&
+    !Array.isArray(o.selected_tools_snapshot)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function sanitizePersistedTemplates(rows: unknown[]): GlobalAgentTemplate[] {
+  return rows.filter(isPersistedTemplateRow).map((r) => ({
+    ...r,
+    name: r.name.trim(),
+    description: typeof r.description === 'string' ? r.description : '',
+    tools: [...r.tools],
+    mcp_tools:
+      typeof r.mcp_tools === 'object' && r.mcp_tools !== null
+        ? JSON.parse(JSON.stringify(r.mcp_tools))
+        : { mcpServers: {} },
+    selected_tools_snapshot: Array.isArray(r.selected_tools_snapshot)
+      ? JSON.parse(JSON.stringify(r.selected_tools_snapshot))
+      : undefined,
+  }));
+}
+
 function hasAgentTemplatesApi(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -81,7 +203,12 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
       try {
         const result = await window.electronAPI.agentTemplatesLoad(userId);
         if (result.success && result.templates) {
-          set({ templates: result.templates });
+          const raw = result.templates as unknown[];
+          const cleaned = sanitizePersistedTemplates(raw);
+          set({ templates: cleaned });
+          if (cleaned.length !== raw.length) {
+            await window.electronAPI.agentTemplatesSave(userId, cleaned);
+          }
         }
       } catch (error) {
         console.error('[GlobalAgentTemplates] Load failed:', error);

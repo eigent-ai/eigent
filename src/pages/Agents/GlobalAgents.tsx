@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/store/authStore';
 import {
+  getGlobalAgentTemplatesStore,
   hasGlobalAgentTemplatesApi,
+  parseImportedAgentTemplateJson,
   useGlobalAgentTemplatesStore,
   type GlobalAgentTemplate,
 } from '@/store/globalAgentTemplatesStore';
@@ -99,26 +101,22 @@ export default function GlobalAgents() {
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text);
-        const name = data.name ?? 'Imported';
-        const template: GlobalAgentTemplate = {
-          id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          name: data.name ?? 'Imported',
-          description: data.description ?? '',
-          tools: Array.isArray(data.tools) ? data.tools : [],
-          mcp_tools: data.mcp_tools ?? { mcpServers: {} },
-          custom_model_config: data.custom_model_config,
-          updatedAt: Date.now(),
-        };
-        const list = [...templates, template];
+        const data = JSON.parse(text) as unknown;
+        const template = parseImportedAgentTemplateJson(data);
+        if (!template) {
+          toast.error(t('agents.global-agent-import-invalid'));
+          return;
+        }
+        const current = getGlobalAgentTemplatesStore().templates;
+        const list = [...current, template];
         const ok = await saveTemplates(list);
-        if (ok) toast.success(t('agents.skill-added-success'));
-        else toast.error(t('agents.skill-add-error'));
-      } catch (err) {
-        toast.error(t('agents.skill-add-error'));
+        if (ok) toast.success(t('agents.global-agent-import-success'));
+        else toast.error(t('agents.global-agent-import-invalid'));
+      } catch {
+        toast.error(t('agents.global-agent-import-invalid'));
       }
     },
-    [templates, saveTemplates, t]
+    [saveTemplates, t]
   );
 
   if (!hasApi) {
@@ -147,12 +145,7 @@ export default function GlobalAgents() {
       </div>
 
       <div className="flex flex-row items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleImport}
-          disabled={isLoading}
-        >
+        <Button variant="outline" size="sm" onClick={handleImport}>
           <FileUp className="mr-1 h-4 w-4" />
           {t('agents.global-agent-import-file')}
         </Button>
@@ -210,9 +203,13 @@ export default function GlobalAgents() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
-                    onClick={() => {
-                      duplicateTemplate(template.id);
-                      toast.success(t('agents.skill-added-success'));
+                    onClick={async () => {
+                      const copy = await duplicateTemplate(template.id);
+                      if (copy) {
+                        toast.success(
+                          t('agents.global-agent-duplicate-success')
+                        );
+                      }
                     }}
                   >
                     <Copy className="mr-2 h-4 w-4" />
@@ -243,7 +240,7 @@ export default function GlobalAgents() {
           if (deleteId) {
             await removeTemplate(deleteId);
             setDeleteId(null);
-            toast.success(t('agents.skill-deleted-success'));
+            toast.success(t('agents.global-agent-delete-success'));
           }
         }}
         title={t('agents.delete-skill')}

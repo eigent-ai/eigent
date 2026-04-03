@@ -52,6 +52,23 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { agentMap } from './agents';
 import { MarkDown } from './MarkDown';
 
+/** Custom workers use `type === name`; names must be unique for edit/delete routing. */
+function nextUniqueCustomWorkerName(
+  baseName: string,
+  workers: Agent[]
+): string {
+  const used = new Set(
+    workers.flatMap((w) => [w.type, w.name].filter(Boolean) as string[])
+  );
+  let candidate = `${baseName} (copy)`;
+  let i = 2;
+  while (used.has(candidate)) {
+    candidate = `${baseName} (copy ${i})`;
+    i += 1;
+  }
+  return candidate;
+}
+
 interface NodeProps {
   id: string;
   data: {
@@ -476,7 +493,12 @@ export function Node({ id, data }: NodeProps) {
                             onClick={(e) => {
                               e.stopPropagation();
                               const base = data.agent as Agent;
-                              const copyName = `${base.workerInfo?.name ?? base.name} (copy)`;
+                              const baseName =
+                                base.workerInfo?.name ?? base.name ?? 'Worker';
+                              const copyName = nextUniqueCustomWorkerName(
+                                baseName,
+                                workerList
+                              );
                               const newWorker: Agent = {
                                 tasks: [],
                                 agent_id: copyName,
