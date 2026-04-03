@@ -4,6 +4,9 @@ let isConnected = false;
 let serverUrl = 'ws://localhost:8765';
 let fullVisionMode = false;
 
+// Track whether an agent task is currently running (for overlay state recovery)
+let isAgentTaskRunning = false;
+
 // Auto-reconnect state
 let intentionalDisconnect = false;
 let reconnectAttempts = 0;
@@ -422,6 +425,7 @@ async function handleServerMessage(message) {
         result: message.result,
       });
       // Hide all overlay — agent session ended
+      isAgentTaskRunning = false;
       const completeTabId = message.tabId || getDefaultTabId();
       sendOverlayEvent(completeTabId, {
         type: 'OVERLAY_STATE',
@@ -439,6 +443,7 @@ async function handleServerMessage(message) {
         error: message.error,
       });
       // Hide all overlay — agent session ended with error
+      isAgentTaskRunning = false;
       const errorTabId = message.tabId || getDefaultTabId();
       sendOverlayEvent(errorTabId, {
         type: 'OVERLAY_STATE',
@@ -962,11 +967,22 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   }
 });
 
-// Message handler from popup
+// Message handler from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Message from popup:', message);
 
   switch (message.type) {
+    case 'OVERLAY_READY':
+      // Content script reloaded (page navigation) — restore overlay state
+      if (isAgentTaskRunning && sender.tab) {
+        sendOverlayEvent(sender.tab.id, {
+          type: 'OVERLAY_STATE',
+          enabled: true,
+          auroraVisible: true,
+        });
+      }
+      break;
+
     case 'GET_STATUS':
       sendResponse({
         connected: isConnected,
@@ -998,6 +1014,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'STOP_TASK':
       sendToServer({ type: 'STOP_TASK' });
+      isAgentTaskRunning = false;
       // Only detach the specific tab if provided, otherwise detach all
       if (message.tabId && attachedTabs.has(message.tabId)) {
         detachDebuggerFromTab(message.tabId);
@@ -1136,6 +1153,7 @@ async function executeTask(task, tabId, url) {
     });
 
     // Show aurora overlay — agent session started
+    isAgentTaskRunning = true;
     sendOverlayEvent(tabId, {
       type: 'OVERLAY_STATE',
       enabled: true,
