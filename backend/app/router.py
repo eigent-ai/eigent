@@ -23,6 +23,7 @@ from fastapi import FastAPI
 
 from app.controller import (
     chat_controller,
+    event_controller,
     health_controller,
     model_controller,
     task_controller,
@@ -70,6 +71,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": tool_controller.router,
             "tags": ["tool"],
             "description": "Tool installation and management",
+        },
+        {
+            "router": event_controller.router,
+            "tags": ["Events"],
+            "description": "Local event log queries (local-first history)",
         },
     ]
 

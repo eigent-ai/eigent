@@ -1708,6 +1708,13 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 camel_task = None
                 logger.info("[LIFECYCLE] camel_task set to None")
 
+                # Sync local events to cloud (fire-and-forget)
+                from app.utils.server.event_sync import (
+                    sync_pending_events,
+                )
+
+                asyncio.create_task(sync_pending_events())
+
                 if question_agent is not None:
                     question_agent.reset()
                     logger.info(
@@ -2282,6 +2289,7 @@ the current date.
         use_structured_output_handler=False
         if model_platform_enum == ModelPlatformType.OPENAI
         else True,
+        project_id=options.project_id,
     )
 
     # Register workforce metrics callback

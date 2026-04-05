@@ -42,6 +42,7 @@ from camel.tasks.task import Task, TaskState, validate_task_content
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.component import code
+from app.event_store import SQLiteTranscriptStore, get_event_db_path
 from app.exception.exception import UserException
 from app.service.task import (
     Action,
@@ -72,6 +73,7 @@ class Workforce(BaseWorkforce):
         graceful_shutdown_timeout: float = 3,
         share_memory: bool = False,
         use_structured_output_handler: bool = True,
+        project_id: str | None = None,
     ) -> None:
         self.api_task_id = api_task_id
         logger.info("=" * 80)
@@ -85,6 +87,33 @@ class Workforce(BaseWorkforce):
             f"{graceful_shutdown_timeout}, share_memory={share_memory}"
         )
         logger.info("=" * 80)
+
+        # Set up local SQLite event log if project_id is provided
+        transcript_store = None
+        transcript_enabled = False
+        if project_id:
+            try:
+                transcript_store = SQLiteTranscriptStore(
+                    path=get_event_db_path(),
+                    run_id=api_task_id,
+                    project_id=project_id,
+                )
+                transcript_enabled = True
+                logger.info(
+                    "[WF-LIFECYCLE] SQLite event log enabled",
+                    extra={
+                        "api_task_id": api_task_id,
+                        "project_id": project_id,
+                        "db_path": str(transcript_store.path),
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[WF-LIFECYCLE] Failed to initialize SQLite event log, "
+                    f"continuing without transcript: {e}",
+                    extra={"api_task_id": api_task_id},
+                )
+
         super().__init__(
             description=description,
             children=children,
@@ -98,6 +127,8 @@ class Workforce(BaseWorkforce):
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"],
             ),
+            transcript_store=transcript_store,
+            transcript_enabled=transcript_enabled,
         )
         self.task_agent.stream_accumulate = True
         self.task_agent._stream_accumulate_explicit = True
