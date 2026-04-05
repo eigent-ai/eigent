@@ -22,6 +22,11 @@ import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import WindowControls from '@/components/WindowControls';
 import { useHost } from '@/host';
 import { hasStackKeys } from '@/lib';
+import {
+  DESKTOP_LOGIN_CALLBACK_URL,
+  getExternalLoginUrl,
+  getWebLoginCallbackUrl,
+} from '@/pages/loginUtils';
 import { useTranslation } from 'react-i18next';
 
 import background from '@/assets/background.png';
@@ -50,7 +55,9 @@ export default function Login() {
   const [generalError, setGeneralError] = useState('');
   const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
+  const handledWebTokenRef = useRef<string | null>(null);
   const [platform, setPlatform] = useState<string>('');
+  const isDesktopHost = !!host?.ipcRenderer && !!host?.electronAPI;
 
   const getLoginErrorMessage = useCallback(
     (data: any) => {
@@ -215,14 +222,13 @@ export default function Login() {
     [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
   );
 
-  // Listen for direct token callback from Electron (eigent.ai login redirect)
-  useEffect(() => {
-    if (!host?.ipcRenderer) return;
-
-    const handleTokenReceived = async (_event: any, token: string) => {
+  const handleTokenLogin = useCallback(
+    async (token: string) => {
       if (!token) return;
+
+      setGeneralError('');
       setIsLoading(true);
-      // Temporarily set token so proxyFetchGet can use it for auth
+      setModelType('cloud');
       setAuth({ email: '', token, username: '', user_id: 0 });
       setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
       try {
@@ -241,10 +247,31 @@ export default function Login() {
               userInfo.id || JSON.parse(atob(token.split('.')[1])).id || 0,
           });
         }
+        navigate('/', { replace: true });
       } catch (e) {
         console.error('Failed to fetch user info:', e);
+        setGeneralError(t('layout.login-failed-please-try-again'));
+      } finally {
+        setIsLoading(false);
       }
-      navigate('/');
+    },
+    [
+      navigate,
+      setAuth,
+      setGeneralError,
+      setIsLoading,
+      setLocalProxyValue,
+      setModelType,
+      t,
+    ]
+  );
+
+  // Listen for direct token callback from Electron (eigent.ai login redirect)
+  useEffect(() => {
+    if (!host?.ipcRenderer) return;
+
+    const handleTokenReceived = async (_event: any, token: string) => {
+      await handleTokenLogin(token);
     };
 
     host.ipcRenderer.on('auth-token-received', handleTokenReceived);
@@ -252,7 +279,7 @@ export default function Login() {
     return () => {
       host.ipcRenderer?.off('auth-token-received', handleTokenReceived);
     };
-  }, [setAuth, setLocalProxyValue, navigate, host]);
+  }, [handleTokenLogin, host]);
 
   // Listen for auth code callback from Electron (Stack Auth OAuth flow)
   useEffect(() => {
@@ -262,6 +289,16 @@ export default function Login() {
       host.ipcRenderer?.off('auth-code-received', handleAuthCode);
     };
   }, [handleAuthCode, host]);
+
+  useEffect(() => {
+    if (IS_LOCAL_MODE || isDesktopHost) return;
+
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token || handledWebTokenRef.current === token) return;
+
+    handledWebTokenRef.current = token;
+    handleTokenLogin(token);
+  }, [handleTokenLogin, isDesktopHost, location.search]);
 
   useEffect(() => {
     if (!host?.electronAPI?.getPlatform) {
@@ -296,10 +333,12 @@ export default function Login() {
 
     const prepareCallbackUrl = async () => {
       let cbUrl: string;
-      if (import.meta.env.PROD) {
-        cbUrl = 'eigent://auth/callback';
+      if (!isDesktopHost) {
+        cbUrl = getWebLoginCallbackUrl(window.location.origin);
+      } else if (import.meta.env.PROD) {
+        cbUrl = DESKTOP_LOGIN_CALLBACK_URL;
       } else {
-        cbUrl = 'eigent://auth/callback';
+        cbUrl = DESKTOP_LOGIN_CALLBACK_URL;
         try {
           const url = await host?.ipcRenderer?.invoke('get-auth-callback-url');
           if (url) cbUrl = url;
@@ -311,7 +350,7 @@ export default function Login() {
     };
 
     prepareCallbackUrl();
-  }, [host]);
+  }, [host, isDesktopHost]);
 
   // Render local mode: "Start Eigent" button only
   const renderLocalMode = () => (
@@ -360,11 +399,19 @@ export default function Login() {
       <Button
         onClick={() => {
           setIsLoading(true);
-          window.open(
-            `https://www.eigent.ai/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
-            '_blank',
-            'noopener,noreferrer'
-          );
+          const resolvedCallbackUrl =
+            callbackUrl ||
+            (isDesktopHost
+              ? DESKTOP_LOGIN_CALLBACK_URL
+              : getWebLoginCallbackUrl(window.location.origin));
+          const loginUrl = getExternalLoginUrl(resolvedCallbackUrl);
+
+          if (isDesktopHost) {
+            window.open(loginUrl, '_blank', 'noopener,noreferrer');
+            return;
+          }
+
+          window.location.assign(loginUrl);
         }}
         size="lg"
         variant="primary"

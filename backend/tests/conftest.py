@@ -17,6 +17,7 @@ import os
 import tempfile
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -193,6 +194,7 @@ def mock_request():
     """Mock FastAPI Request object."""
     request = AsyncMock()
     request.is_disconnected = AsyncMock(return_value=False)
+    request.state = SimpleNamespace()
     return request
 
 

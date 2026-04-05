@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import os
 import re
@@ -53,7 +54,10 @@ from app.service.task import (
     set_current_task_id,
     task_locks,
 )
-from app.utils.browser_launcher import ensure_cdp_browser_available
+from app.utils.browser_launcher import (
+    ensure_cdp_browser_available,
+    is_cdp_url_available,
+)
 
 router = APIRouter()
 
@@ -62,6 +66,74 @@ chat_logger = logging.getLogger("chat_controller")
 
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
+
+
+def _is_remote_browser_hands(request: Request | None) -> bool:
+    hands = getattr(getattr(request, "state", None), "hands", None)
+    if hands is None:
+        return False
+    get_manifest = getattr(hands, "get_capability_manifest", None)
+    if get_manifest is None or inspect.iscoroutinefunction(get_manifest):
+        return False
+    try:
+        manifest = get_manifest()
+    except Exception:
+        return False
+    if inspect.isawaitable(manifest):
+        if hasattr(manifest, "close"):
+            manifest.close()
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    return manifest.get("deployment") == "remote_cluster"
+
+
+async def _prepare_browser_for_request(
+    request: Request | None,
+    port: int,
+) -> bool:
+    existing_cdp_url = os.environ.get("EIGENT_CDP_URL", "").strip()
+    if existing_cdp_url:
+        is_available = await asyncio.to_thread(
+            is_cdp_url_available, existing_cdp_url
+        )
+        if is_available:
+            if request is not None:
+                request.state.browser_available = True
+            return True
+        os.environ.pop("EIGENT_CDP_URL", None)
+
+    if _is_remote_browser_hands(request):
+        if request is not None:
+            request.state.browser_available = True
+        return True
+
+    try:
+        launched = await asyncio.to_thread(ensure_cdp_browser_available, port)
+    except Exception as e:
+        os.environ.pop("EIGENT_CDP_URL", None)
+        chat_logger.warning(
+            "Could not ensure CDP browser for web mode",
+            extra={"error": str(e), "port": port},
+        )
+        if request is not None:
+            request.state.browser_available = False
+        return False
+
+    if launched:
+        os.environ["EIGENT_CDP_URL"] = f"http://127.0.0.1:{port}"
+        if request is not None:
+            request.state.browser_available = True
+        return True
+
+    os.environ.pop("EIGENT_CDP_URL", None)
+    chat_logger.warning(
+        "CDP browser not available after ensure attempt",
+        extra={"port": port},
+    )
+    if request is not None:
+        request.state.browser_available = False
+    return False
 
 
 async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
@@ -194,31 +266,10 @@ async def start_chat_stream(data: Chat, request: Request):
     # through Chat / request context instead of mutating the process environment.
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
-    # Web mode: when no CDP browsers from Electron, Brain launches Chrome directly
+    # Web mode: reuse an existing CDP endpoint first, otherwise acquire browser
+    # through RemoteHands or launch a local browser when available.
     if not data.cdp_browsers:
-        try:
-            launched = await asyncio.to_thread(
-                ensure_cdp_browser_available, data.browser_port
-            )
-            if launched:
-                os.environ["EIGENT_CDP_URL"] = (
-                    f"http://127.0.0.1:{data.browser_port}"
-                )
-                request.state.browser_available = True
-            else:
-                request.state.browser_available = False
-                os.environ.pop("EIGENT_CDP_URL", None)
-                chat_logger.warning(
-                    "CDP browser not available after ensure attempt",
-                    extra={"port": data.browser_port},
-                )
-        except Exception as e:
-            request.state.browser_available = False
-            os.environ.pop("EIGENT_CDP_URL", None)
-            chat_logger.warning(
-                "Could not ensure CDP browser for web mode",
-                extra={"error": str(e), "port": data.browser_port},
-            )
+        await _prepare_browser_for_request(request, data.browser_port)
     os.environ["OPENAI_API_KEY"] = data.api_key
     os.environ["OPENAI_API_BASE_URL"] = (
         data.api_url or "https://api.openai.com/v1"
@@ -290,28 +341,17 @@ async def post(data: Chat, request: Request):
 
 
 @router.post("/chat/{id}", name="improve chat")
-def improve(id: str, data: SupplementChat):
+def improve(id: str, data: SupplementChat, request: Request):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
     )
     task_lock = get_task_lock(id)
 
-    # Web mode: ensure CDP browser is available for follow-up tasks
-    # (browser may have been closed/crashed since last session)
-    try:
-        port = int(os.environ.get("browser_port", "9222"))
-        launched = ensure_cdp_browser_available(port)
-        if launched:
-            os.environ["EIGENT_CDP_URL"] = f"http://127.0.0.1:{port}"
-        else:
-            os.environ.pop("EIGENT_CDP_URL", None)
-    except Exception as e:
-        os.environ.pop("EIGENT_CDP_URL", None)
-        chat_logger.warning(
-            "Could not ensure CDP browser for supplement",
-            extra={"error": str(e)},
-        )
+    # Reuse an existing endpoint when possible to avoid tearing down
+    # a browser that was manually connected through the Browser page.
+    port = int(os.environ.get("browser_port", "9222"))
+    asyncio.run(_prepare_browser_for_request(request, port))
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion

@@ -26,11 +26,49 @@ import platform
 import socket
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger("browser_launcher")
 
 # Default CDP port (must match browser_port in Chat model)
 DEFAULT_CDP_PORT = 9222
+LOCAL_CDP_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def is_local_cdp_host(host: str | None) -> bool:
+    """Return whether the CDP endpoint host points at the local machine."""
+    if not host:
+        return True
+    return host.lower() in LOCAL_CDP_HOSTS
+
+
+def normalize_cdp_url(
+    cdp_url: str,
+    *,
+    default_host: str = "127.0.0.1",
+    default_port: int = DEFAULT_CDP_PORT,
+) -> tuple[str, str, int]:
+    """Normalize a CDP endpoint into ``scheme://host:port`` form."""
+    parsed = urlparse(cdp_url)
+    scheme = parsed.scheme or "http"
+    host = parsed.hostname or default_host
+    port = parsed.port or default_port
+    return f"{scheme}://{host}:{port}", host, port
+
+
+def is_cdp_url_available(cdp_url: str) -> bool:
+    """Check whether a CDP endpoint is reachable."""
+    normalized, host, port = normalize_cdp_url(cdp_url)
+    if is_local_cdp_host(host):
+        return _is_cdp_available(port)
+
+    try:
+        import httpx
+
+        r = httpx.get(f"{normalized}/json/version", timeout=2.0)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 def _is_port_in_use(port: int) -> bool:

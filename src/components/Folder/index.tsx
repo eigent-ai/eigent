@@ -130,6 +130,7 @@ function isVideoFile(file: FileTypeTarget) {
 
 // Type definitions
 interface FileTreeNode {
+  id: string;
   name: string;
   path: string;
   type?: string;
@@ -149,6 +150,198 @@ interface FileInfo {
   content?: string;
   relativePath?: string;
   isRemote?: boolean;
+}
+
+type FileIdentity = Pick<FileInfo, 'name' | 'path' | 'relativePath'>;
+
+function normalizeTreePath(path: string): string {
+  return path
+    .replace(/\\/g, '/')
+    .replace(/^\.?\//, '')
+    .replace(/\/+/g, '/')
+    .replace(/^\/+/, '');
+}
+
+function getNormalizedTreeRelativePath(file: FileInfo): string {
+  const normalizedRelativePath = normalizeTreePath(file.relativePath || '');
+  if (normalizedRelativePath) {
+    return normalizedRelativePath;
+  }
+
+  const normalizedName = normalizeTreePath(file.name || '');
+  if (normalizedName) {
+    return normalizedName;
+  }
+
+  return '';
+}
+
+function getComparableRelativePath(file?: FileIdentity | null): string | null {
+  if (!file) return null;
+
+  const normalizedRelativePath = normalizeLookupPath(file.relativePath || '');
+  if (normalizedRelativePath) {
+    return normalizedRelativePath;
+  }
+
+  if (!file.path) return null;
+
+  try {
+    const url = new URL(file.path, window.location.origin);
+    const pathParam = url.searchParams.get('path');
+    return pathParam
+      ? normalizeLookupPath(decodeURIComponent(pathParam))
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isSameFileIdentity(
+  left?: FileIdentity | null,
+  right?: FileIdentity | null
+): boolean {
+  if (!left || !right) return false;
+
+  if (left.path && right.path && left.path === right.path) {
+    return true;
+  }
+
+  const leftRelativePath = getComparableRelativePath(left);
+  const rightRelativePath = getComparableRelativePath(right);
+
+  if (leftRelativePath && rightRelativePath) {
+    return leftRelativePath === rightRelativePath;
+  }
+
+  return (
+    !!left.name &&
+    !!right.name &&
+    left.name === right.name &&
+    !leftRelativePath &&
+    !rightRelativePath &&
+    !left.path &&
+    !right.path
+  );
+}
+
+export function findMatchingFile(
+  files: FileInfo[],
+  target?: FileInfo | null
+): FileInfo | undefined {
+  if (!target) return undefined;
+
+  if (target.path) {
+    const exactPathMatch = files.find((file) => file.path === target.path);
+    if (exactPathMatch) {
+      return exactPathMatch;
+    }
+  }
+
+  const targetRelativePath = getComparableRelativePath(target);
+  if (targetRelativePath) {
+    const relativePathMatch = files.find(
+      (file) => getComparableRelativePath(file) === targetRelativePath
+    );
+    if (relativePathMatch) {
+      return relativePathMatch;
+    }
+  }
+
+  if (target.name) {
+    const sameNameMatches = files.filter((file) => file.name === target.name);
+    if (sameNameMatches.length === 1) {
+      return sameNameMatches[0];
+    }
+  }
+
+  return undefined;
+}
+
+export function buildFileTree(files: FileInfo[]): FileTreeNode {
+  const root: FileTreeNode = {
+    id: 'root',
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  };
+
+  const folderMap = new Map<string, FileTreeNode>();
+  folderMap.set('', root);
+
+  const sortedFiles = [...files].sort((left, right) => {
+    const leftRelativePath = getNormalizedTreeRelativePath(left);
+    const rightRelativePath = getNormalizedTreeRelativePath(right);
+    const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
+    const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
+
+    if (leftDepth !== rightDepth) {
+      return leftDepth - rightDepth;
+    }
+
+    return leftRelativePath.localeCompare(rightRelativePath);
+  });
+
+  for (const file of sortedFiles) {
+    const normalizedRelativePath = getNormalizedTreeRelativePath(file);
+    const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
+    const folderSegments = pathSegments.slice(0, -1);
+    const fileName = pathSegments[pathSegments.length - 1] || file.name;
+
+    let parentNode = root;
+    let currentFolderPath = '';
+
+    for (const segment of folderSegments) {
+      currentFolderPath = currentFolderPath
+        ? `${currentFolderPath}/${segment}`
+        : segment;
+
+      let folderNode = folderMap.get(currentFolderPath);
+      if (!folderNode) {
+        folderNode = {
+          id: `folder:${currentFolderPath}`,
+          name: segment,
+          path: currentFolderPath,
+          isFolder: true,
+          children: [],
+          relativePath: currentFolderPath,
+        };
+        parentNode.children!.push(folderNode);
+        folderMap.set(currentFolderPath, folderNode);
+      }
+
+      parentNode = folderNode;
+    }
+
+    parentNode.children!.push({
+      id: `file:${normalizedRelativePath || file.path || file.name}`,
+      name: fileName || file.name,
+      path: file.path,
+      type: file.type,
+      isFolder: file.isFolder,
+      icon: file.icon,
+      children: file.isFolder ? [] : undefined,
+      isRemote: file.isRemote,
+      relativePath: file.relativePath,
+    });
+  }
+
+  const sortTree = (node: FileTreeNode) => {
+    if (!node.children?.length) return;
+
+    node.children.sort((left, right) => {
+      if (!!left.isFolder !== !!right.isFolder) {
+        return left.isFolder ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+
+    node.children.forEach(sortTree);
+  };
+
+  sortTree(root);
+  return root;
 }
 
 // FileTree component to render nested file structure
@@ -176,7 +369,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   return (
     <div className={level > 0 ? 'ml-4' : ''}>
       {node.children.map((child) => {
-        const isExpanded = expandedFolders.has(child.path);
+        const isExpanded = expandedFolders.has(child.id);
         const fileInfo: FileInfo = {
           name: child.name,
           path: child.path,
@@ -188,17 +381,17 @@ export const FileTree: React.FC<FileTreeProps> = ({
         };
 
         return (
-          <div key={child.path}>
+          <div key={child.id}>
             <button
               onClick={() => {
                 if (child.isFolder) {
-                  onToggleFolder(child.path);
+                  onToggleFolder(child.id);
                 } else {
                   onSelectFile(fileInfo);
                 }
               }}
               className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
-                selectedFile?.path === child.path
+                isSameFileIdentity(selectedFile, fileInfo)
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
@@ -285,6 +478,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [fileTree, setFileTree] = useState<FileTreeNode>({
+    id: 'root',
     name: 'root',
     path: '',
     children: [],
@@ -423,60 +617,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     setIsShowSourceCode(!isShowSourceCode);
   };
 
-  const buildFileTree = (files: FileInfo[]): FileTreeNode => {
-    const root: FileTreeNode = {
-      name: 'root',
-      path: '',
-      children: [],
-      isFolder: true,
-    };
-
-    const nodeMap = new Map<string, FileTreeNode>();
-    nodeMap.set('', root);
-
-    const sortedFiles = [...files].sort((a, b) => {
-      // Normalize paths to use forward slashes for cross-platform compatibility
-      const normalizedPathA = (a.relativePath || '').replace(/\\/g, '/');
-      const normalizedPathB = (b.relativePath || '').replace(/\\/g, '/');
-      const depthA = normalizedPathA.split('/').filter(Boolean).length;
-      const depthB = normalizedPathB.split('/').filter(Boolean).length;
-      return depthA - depthB;
-    });
-
-    for (const file of sortedFiles) {
-      // Normalize paths to use forward slashes for cross-platform compatibility
-      const normalizedRelativePath = (file.relativePath || '').replace(
-        /\\/g,
-        '/'
-      );
-      const fullRelativePath = normalizedRelativePath
-        ? `${normalizedRelativePath}/${file.name}`
-        : file.name;
-
-      const parentPath = normalizedRelativePath;
-      const parentNode = nodeMap.get(parentPath) || root;
-
-      const node: FileTreeNode = {
-        name: file.name,
-        path: file.path,
-        type: file.type,
-        isFolder: file.isFolder,
-        icon: file.icon,
-        children: file.isFolder ? [] : undefined,
-        isRemote: file.isRemote,
-        relativePath: file.relativePath,
-      };
-
-      parentNode.children!.push(node);
-
-      if (file.isFolder) {
-        nodeMap.set(fullRelativePath, node);
-      }
-    }
-
-    return root;
-  };
-
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev);
@@ -496,7 +636,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   useEffect(() => {
     hasFetchedRemote.current = false;
     setSelectedFile(null);
-    setFileTree({ name: 'root', path: '', children: [], isFolder: true });
+    setFileTree({
+      id: 'root',
+      name: 'root',
+      path: '',
+      children: [],
+      isFolder: true,
+    });
     setFileGroups([{ folder: 'Reports', files: [] }]);
     setExpandedFolders(new Set());
   }, [activeTaskId]);
@@ -555,11 +701,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         const chatStoreSelectedFile =
           chatStore.tasks[activeTaskId]?.selectedFile;
         if (chatStoreSelectedFile) {
-          const file = res.find(
-            (item: any) => item.name === chatStoreSelectedFile.name
+          const file = findMatchingFile(
+            res as FileInfo[],
+            chatStoreSelectedFile
           );
-          if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-            selectedFileChange(file as FileInfo, isShowSourceCode);
+          if (file && !isSameFileIdentity(selectedFile, file)) {
+            selectedFileChange(file, isShowSourceCode);
           }
         }
         return [{ ...prev[0], files: res }];
@@ -608,17 +755,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     const chatStoreSelectedFile =
       chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
-      // Match: path (exact) > relativePath (chat path has task_xxx/filename) > name
-      const chatPath = (chatStoreSelectedFile.path || '').replace(/\\/g, '/');
-      const chatRel = chatPath.match(/(task_[^/]+\/.+)$/)?.[1] ?? null;
-      const file = fileGroups[0].files.find(
-        (item: any) =>
-          item.path === chatStoreSelectedFile.path ||
-          (chatRel !== null && item.relativePath === chatRel) ||
-          item.name === chatStoreSelectedFile.name
-      );
-      if (file && selectedFile?.path !== file.path) {
-        selectedFileChange(file as FileInfo, isShowSourceCode);
+      const file = findMatchingFile(fileGroups[0].files, chatStoreSelectedFile);
+      if (file && !isSameFileIdentity(selectedFile, file)) {
+        selectedFileChange(file, isShowSourceCode);
       }
     } else if (!chatStoreSelectedFile && selectedFile) {
       setSelectedFile(null);
@@ -784,7 +923,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
                     className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
-                      selectedFile?.name === file.name
+                      isSameFileIdentity(selectedFile, file)
                         ? 'bg-surface-information text-text-information'
                         : 'text-text-secondary'
                     }`}

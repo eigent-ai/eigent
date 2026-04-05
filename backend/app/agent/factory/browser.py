@@ -15,6 +15,7 @@
 import platform
 import threading
 import uuid
+from urllib.parse import urlparse
 
 from camel.messages import BaseMessage
 from camel.toolkits import ToolkitMessageIntegration
@@ -172,6 +173,7 @@ def browser_agent(
     selected_port = None
     selected_is_external = False
     cdp_url = None
+    cdp_owned_by_hands = False
 
     if use_browser and options.cdp_browsers:
         selected_browser = _cdp_pool_manager.acquire_browser(
@@ -196,13 +198,24 @@ def browser_agent(
             )
         cdp_url = f"http://localhost:{selected_port}"
     elif use_browser:
+        existing_cdp_url = env("EIGENT_CDP_URL", "").strip()
         selected_port = env("browser_port", "9222")
         cdp_url = f"http://localhost:{selected_port}"
-        if hands is not None:
+
+        if existing_cdp_url:
+            cdp_url = existing_cdp_url
+            try:
+                parsed = urlparse(existing_cdp_url)
+                if parsed.port is not None:
+                    selected_port = parsed.port
+            except Exception:
+                selected_port = env("browser_port", "9222")
+        elif hands is not None:
             try:
                 cdp_url = hands.acquire_resource(
                     "browser", toolkit_session_id, port=selected_port
                 )
+                cdp_owned_by_hands = True
             except (NotImplementedError, ValueError):
                 cdp_url = f"http://localhost:{selected_port}"
 
@@ -401,7 +414,11 @@ def browser_agent(
                 f"Released CDP for agent {agent_instance.agent_id}: "
                 f"port={port}, session={session_id}"
             )
-        elif session_id is not None and hands is not None:
+        elif (
+            session_id is not None
+            and hands is not None
+            and getattr(agent_instance, "_cdp_owned_by_hands", False)
+        ):
             try:
                 hands.release_resource("browser", session_id)
             except Exception as exc:
@@ -423,5 +440,6 @@ def browser_agent(
     agent._cdp_task_id = options.task_id
     agent._cdp_options = options
     agent._browser_toolkit = web_toolkit_for_agent_registration
+    agent._cdp_owned_by_hands = cdp_owned_by_hands
 
     return agent
