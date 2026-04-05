@@ -22,7 +22,8 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 import logging
-import sys
+import subprocess
+from importlib.metadata import version as pkg_version
 
 from fastapi.staticfiles import StaticFiles
 from fastapi_pagination import add_pagination
@@ -50,10 +51,51 @@ auto_include_routers(router, "", "app/domains")
 auto_include_routers(router, "", "app/api")
 api.include_router(router, prefix=f"{prefix}/v1")
 
+# Server version — read once at import time so it reflects the running code
+try:
+    SERVER_VERSION = pkg_version("Eigent")
+except Exception:
+    SERVER_VERSION = "unknown"
+
+# Git hash of the last commit that touched server/ — used for stale-server detection.
+# Captured once at startup; stays constant while the process lives.
+# 1) Try git directly (works in local dev)
+# 2) Fall back to .image_env baked by Dockerfile (works in Docker)
+def _read_server_code_hash() -> str:
+    # Try git first (local dev)
+    try:
+        h = subprocess.check_output(
+            ["git", "log", "-1", "--format=%H", "--", "server/"],
+            cwd=str(_project_root), text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        if h:
+            return h
+    except Exception:
+        pass
+    # Fallback: read from Docker-baked .image_env
+    try:
+        env_file = pathlib.Path(__file__).parent / ".image_env"
+        for line in env_file.read_text().splitlines():
+            if line.startswith("EIGENT_SERVER_GIT_COMMIT="):
+                v = line.split("=", 1)[1].strip()
+                if v:
+                    return v
+    except Exception:
+        pass
+    return "unknown"
+
+SERVER_CODE_HASH = _read_server_code_hash()
+
+
 # Health check at root level for Docker healthcheck (GET /health)
 @api.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "ok", "service": "eigent-server"}
+    return {
+        "status": "ok",
+        "service": "eigent-server",
+        "version": SERVER_VERSION,
+        "server_hash": SERVER_CODE_HASH,
+    }
 
 # Backward-compatible webhook route (/api/webhook/...)
 from app.domains.trigger.api.webhook_controller import router as webhook_router
@@ -99,12 +141,12 @@ public_dir = os.environ.get("PUBLIC_DIR") or os.path.join(os.path.dirname(__file
 if not os.path.isdir(public_dir):
     try:
         os.makedirs(public_dir, exist_ok=True)
-        logger.warning(f"Public directory did not exist. Created: {public_dir}")
+        loguru_logger.warning(f"Public directory did not exist. Created: {public_dir}")
     except Exception as e:
-        logger.error(f"Public directory missing and could not be created: {public_dir}. Error: {e}")
+        loguru_logger.error(f"Public directory missing and could not be created: {public_dir}. Error: {e}")
         public_dir = None
 
 if public_dir and os.path.isdir(public_dir):
     api.mount("/public", StaticFiles(directory=public_dir), name="public")
 else:
-    logger.warning("Skipping /public mount because public directory is unavailable")
+    loguru_logger.warning("Skipping /public mount because public directory is unavailable")
