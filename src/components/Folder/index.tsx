@@ -1290,6 +1290,7 @@ function isSpecialBrowserUrl(url: string): boolean {
     normalizedUrl.startsWith('mailto:') ||
     normalizedUrl.startsWith('tel:') ||
     normalizedUrl.startsWith('javascript:') ||
+    normalizedUrl.startsWith('vbscript:') ||
     normalizedUrl.startsWith('#')
   );
 }

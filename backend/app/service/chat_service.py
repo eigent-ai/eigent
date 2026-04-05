@@ -1971,7 +1971,7 @@ Answer only "yes" or "no". Do not provide any explanation.
 Is this a complex task? (yes/no):"""
 
     try:
-        resp = await agent.astep(full_prompt)
+        resp = await _run_agent_step(agent, full_prompt)
 
         content = _extract_agent_response_content(resp)
         if not content:
@@ -2011,7 +2011,7 @@ Do not include any other text or formatting.
 """
     logger.debug("Generating task summary", extra={"task_id": task.id})
     try:
-        res = await agent.astep(prompt)
+        res = await _run_agent_step(agent, prompt)
         summary = _extract_agent_response_content(res) or ""
         logger.info("Task summary generated", extra={"summary": summary})
         return summary
@@ -2063,7 +2063,7 @@ Instructions:
 Summary:
 """
 
-    res = await agent.astep(prompt)
+    res = await _run_agent_step(agent, prompt)
     summary = _extract_agent_response_content(res) or ""
 
     logger.info(
@@ -2093,6 +2093,27 @@ def _extract_agent_response_content(resp) -> str | None:
             return content
 
     return None
+
+
+async def _run_agent_step(agent: ListenChatAgent, prompt: str):
+    """Run one model step with backward-compatible priority.
+
+    Some call sites and tests still stub synchronous ``step`` while newer paths
+    provide ``astep``. Prefer ``step`` when available to preserve existing
+    behavior, and fall back to ``astep``.
+    """
+    step_fn = getattr(agent, "step", None)
+    if callable(step_fn):
+        result = step_fn(prompt)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+
+    astep_fn = getattr(agent, "astep", None)
+    if callable(astep_fn):
+        return await astep_fn(prompt)
+
+    raise AttributeError("Agent has neither step nor astep")
 
 
 async def get_task_result_with_optional_summary(

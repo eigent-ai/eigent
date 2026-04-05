@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
 import re
 import shutil
 import tempfile
@@ -20,6 +21,7 @@ from pathlib import Path
 
 SKILLS_ROOT = Path.home() / ".eigent" / "skills"
 SKILL_FILE = "SKILL.md"
+logger = logging.getLogger("skill_service")
 
 
 def _parse_skill_frontmatter(content: str) -> dict | None:
@@ -289,9 +291,10 @@ def skill_import_zip(
             return {"success": False, "conflicts": conflicts}
 
         return {"success": True}
-    except zipfile.BadZipFile as e:
-        return {"success": False, "error": f"Invalid zip file: {e}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except zipfile.BadZipFile:
+        return {"success": False, "error": "Invalid zip file"}
+    except Exception:
+        logger.exception("Failed to import skills from zip archive")
+        return {"success": False, "error": "Failed to import skills"}
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

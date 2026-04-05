@@ -51,7 +51,7 @@ def _schedule_async_task(coro):
     try:
         # Try to get the running loop (works in main event loop thread)
         loop = asyncio.get_running_loop()
-        loop.create_task(coro)
+        return loop.create_task(coro)
     except RuntimeError:
         # No running loop in this thread (we're in a worker thread)
         # First try contextvars, then fallback to global reference
@@ -60,7 +60,7 @@ def _schedule_async_task(coro):
             with _GLOBAL_MAIN_LOOP_LOCK:
                 main_loop = _GLOBAL_MAIN_LOOP
         if main_loop is not None and main_loop.is_running():
-            asyncio.run_coroutine_threadsafe(coro, main_loop)
+            return asyncio.run_coroutine_threadsafe(coro, main_loop)
         else:
             # This should not happen in normal operation - log error and skip
             close = getattr(coro, "close", None)
@@ -70,3 +70,4 @@ def _schedule_async_task(coro):
                 "No event loop available for async task scheduling, task skipped. "
                 "Ensure set_main_event_loop() is called before parallel agent creation."
             )
+            return None

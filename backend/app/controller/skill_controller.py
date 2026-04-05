@@ -110,9 +110,9 @@ async def skill_import_endpoint(
         )
     try:
         zip_bytes = await file.read()
-    except Exception as e:
+    except Exception:
         raise HTTPException(
-            status_code=400, detail=f"Failed to read file: {e}"
+            status_code=400, detail="Failed to read uploaded file"
         )
     repl_list = (
         [s for s in (s.strip() for s in replacements.split(",")) if s]

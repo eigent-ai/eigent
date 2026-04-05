@@ -15,19 +15,19 @@ uv run python main.py
 
 ### Environment Variables (Standalone)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `EIGENT_BRAIN_PORT` | 5001 | Listening port |
-| `EIGENT_BRAIN_HOST` | 0.0.0.0 | Listening address |
-| `EIGENT_DEBUG` | - | Set to 1/true to enable reload |
-| `EIGENT_WORKSPACE` | ~/.eigent/workspace | Working directory |
-| `EIGENT_DEPLOYMENT_TYPE` | (auto) | `local` / `cloud_vm` / `sandbox` / `docker`; determines Hands capabilities (see ADR-0006) |
-| `EIGENT_HANDS_MODE` | - | Set to `remote` to enable `RemoteHands` (remote cluster resource mode) |
-| `EIGENT_HANDS_CLUSTER_CONFIG_FILE` | - | Path to `RemoteHands` config file (TOML); **recommended** |
-| `EIGENT_HANDS_TERMINAL` | - | Override terminal hand: `1`/`true`/`yes` or `0`/`false`/`no` |
-| `EIGENT_HANDS_BROWSER` | - | Override browser hand |
-| `EIGENT_HANDS_FILESYSTEM` | - | Override filesystem scope: `full` / `workspace_only` |
-| `EIGENT_HANDS_MCP` | - | Override MCP mode: `all` / `allowlist` |
+| Variable                           | Default             | Description                                                                               |
+| ---------------------------------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| `EIGENT_BRAIN_PORT`                | 5001                | Listening port                                                                            |
+| `EIGENT_BRAIN_HOST`                | 0.0.0.0             | Listening address                                                                         |
+| `EIGENT_DEBUG`                     | -                   | Set to 1/true to enable reload                                                            |
+| `EIGENT_WORKSPACE`                 | ~/.eigent/workspace | Working directory                                                                         |
+| `EIGENT_DEPLOYMENT_TYPE`           | (auto)              | `local` / `cloud_vm` / `sandbox` / `docker`; determines Hands capabilities (see ADR-0006) |
+| `EIGENT_HANDS_MODE`                | -                   | Set to `remote` to enable `RemoteHands` (remote cluster resource mode)                    |
+| `EIGENT_HANDS_CLUSTER_CONFIG_FILE` | -                   | Path to `RemoteHands` config file (TOML); **recommended**                                 |
+| `EIGENT_HANDS_TERMINAL`            | -                   | Override terminal hand: `1`/`true`/`yes` or `0`/`false`/`no`                              |
+| `EIGENT_HANDS_BROWSER`             | -                   | Override browser hand                                                                     |
+| `EIGENT_HANDS_FILESYSTEM`          | -                   | Override filesystem scope: `full` / `workspace_only`                                      |
+| `EIGENT_HANDS_MCP`                 | -                   | Override MCP mode: `all` / `allowlist`                                                    |
 
 RemoteHands config file example:
 

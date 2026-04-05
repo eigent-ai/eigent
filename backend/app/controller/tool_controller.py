@@ -248,10 +248,14 @@ async def launch_cdp_browser(request: Request):
                 session_id,
                 port=DEFAULT_CDP_PORT,
             )
-        except Exception as exc:
+        except Exception:
+            logger.exception(
+                "Failed to acquire remote browser resource for session %s",
+                session_id,
+            )
             return {
                 "success": False,
-                "error": f"Failed to acquire remote browser: {exc}",
+                "error": "Failed to acquire remote browser",
             }
 
         browser = _set_connected_cdp_browser(

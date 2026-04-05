@@ -914,7 +914,9 @@ class Workforce(BaseWorkforce):
         task_lock = get_task_lock(self.api_task_id)
         # Use thread-safe scheduling: stop() may be called from worker thread
         # when task fails (e.g. max retries exceeded)
-        _schedule_async_task(task_lock.put_queue(ActionEndData()))
+        task = _schedule_async_task(task_lock.put_queue(ActionEndData()))
+        if task is not None:
+            task_lock.add_background_task(task)
         logger.info("[WF-LIFECYCLE] ✅ ActionEndData queued")
 
     def stop_gracefully(self) -> None:
