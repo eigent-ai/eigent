@@ -252,6 +252,8 @@ def browser_agent(
                 "browser_sheet_input",
                 "browser_get_page_snapshot",
                 "browser_open",
+                "browser_upload_file",
+                "browser_download_file",
             ],
         )
         web_toolkit_for_agent_registration = web_toolkit_custom
