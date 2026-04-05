@@ -59,6 +59,7 @@
             "icon": "key",
             "pages": [
               "/core/concepts",
+              "/core/brain-architecture",
               "/core/workforce",
               {
                 "group": "Models",
