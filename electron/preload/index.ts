@@ -201,6 +201,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('skill-config-update', userId, skillName, skillConfig),
   skillConfigDelete: (userId: string, skillName: string) =>
     ipcRenderer.invoke('skill-config-delete', userId, skillName),
+  // Cloud sync toggle
+  getCloudSync: () => ipcRenderer.invoke('get-cloud-sync'),
+  setCloudSync: (enabled: boolean) =>
+    ipcRenderer.invoke('set-cloud-sync', enabled),
 });
 
 // --------- Preload scripts loading ---------
