@@ -38,7 +38,13 @@ import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
 import { cn } from '@/lib/utils';
 import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 type IntegrationListVariant = 'select' | 'manage';
@@ -100,7 +106,17 @@ export default function IntegrationList({
     if (errorTimers.current[key]) clearTimeout(errorTimers.current[key]);
     errorTimers.current[key] = setTimeout(() => {
       setErrorKeys((prev) => ({ ...prev, [key]: false }));
+      delete errorTimers.current[key];
     }, 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const id of Object.values(errorTimers.current)) {
+        clearTimeout(id);
+      }
+      errorTimers.current = {};
+    };
   }, []);
 
   // Use shared hook for integration management
