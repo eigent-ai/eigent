@@ -133,7 +133,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     const isCommittingRef = React.useRef(false);
     const optionSelectedRef = React.useRef(false);
     const inputValueRef = React.useRef(inputValue);
-    const blurTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const blurTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+      null
+    );
+    const isMountedRef = React.useRef(true);
 
     // Merge refs
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
@@ -143,11 +146,14 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       inputValueRef.current = inputValue;
     }, [inputValue]);
 
-    // Cleanup blur timer on unmount
+    // Clear blur deferral timer on unmount; avoid setState after unmount if a tick slips through
     React.useEffect(() => {
+      isMountedRef.current = true;
       return () => {
+        isMountedRef.current = false;
         if (blurTimerRef.current !== null) {
           clearTimeout(blurTimerRef.current);
+          blurTimerRef.current = null;
         }
       };
     }, []);
@@ -292,6 +298,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       }
       blurTimerRef.current = setTimeout(() => {
         blurTimerRef.current = null;
+        if (!isMountedRef.current) return;
         commitValue();
         setIsOpen(false);
       }, 150);
