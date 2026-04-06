@@ -112,8 +112,8 @@ export default function IntegrationList({
 
   useEffect(() => {
     return () => {
-      for (const id of Object.values(errorTimers.current)) {
-        clearTimeout(id);
+      for (const timer of Object.values(errorTimers.current)) {
+        clearTimeout(timer);
       }
       errorTimers.current = {};
     };
@@ -516,6 +516,15 @@ function InstallButton({
 }) {
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
+
+  // Reset hover when install state changes to avoid flicker
+  const prevInstalled = useRef(isInstalled);
+  useEffect(() => {
+    if (prevInstalled.current !== isInstalled) {
+      setHovered(false);
+      prevInstalled.current = isInstalled;
+    }
+  }, [isInstalled]);
 
   // Coming soon
   if (isComingSoon) {
