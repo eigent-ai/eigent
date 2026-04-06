@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import * as React from 'react';
 import { useTheme } from 'next-themes';
 import { createPortal } from 'react-dom';
 import { Toaster as Sonner } from 'sonner';

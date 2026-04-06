@@ -133,6 +133,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     const isCommittingRef = React.useRef(false);
     const optionSelectedRef = React.useRef(false);
     const inputValueRef = React.useRef(inputValue);
+    const blurTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Merge refs
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
@@ -141,6 +142,15 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
     React.useEffect(() => {
       inputValueRef.current = inputValue;
     }, [inputValue]);
+
+    // Cleanup blur timer on unmount
+    React.useEffect(() => {
+      return () => {
+        if (blurTimerRef.current !== null) {
+          clearTimeout(blurTimerRef.current);
+        }
+      };
+    }, []);
 
     // Sync input value with external value
     React.useEffect(() => {
@@ -277,7 +287,11 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
       // Use setTimeout to allow option clicks to process first
       // If user clicks an option, the option handler will update the value
       // If user clicks outside, we commit the current input value
-      setTimeout(() => {
+      if (blurTimerRef.current !== null) {
+        clearTimeout(blurTimerRef.current);
+      }
+      blurTimerRef.current = setTimeout(() => {
+        blurTimerRef.current = null;
         commitValue();
         setIsOpen(false);
       }, 150);
