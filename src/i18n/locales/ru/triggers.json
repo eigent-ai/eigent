@@ -190,6 +190,7 @@
   "got-it": "Got it",
   "add-trigger": "Add Trigger",
   "trigger-limit-reached": "Достигнут лимит триггеров: 5 на проект, 25 на пользователя",
+  "activation-limit-reached": "Activation limit reached: Maximum 5 active triggers per project, 25 per user",
   "never": "Never",
   "duplicate": "Duplicate",
   "no-task-prompt": "No task prompt",

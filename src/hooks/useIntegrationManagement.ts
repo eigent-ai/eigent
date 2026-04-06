@@ -53,28 +53,29 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   } | null>(null);
   const [callBackUrl, setCallBackUrl] = useState<string | null>(null);
 
+  /** Bumped on unmount and at the start of each configs fetch — stale responses must not call setState. */
+  const configsFetchSeqRef = useRef(0);
+
   // Fetch installed configs
-  const fetchInstalled = useCallback(async (ignore: boolean = false) => {
+  const fetchInstalled = useCallback(async () => {
+    const seq = ++configsFetchSeqRef.current;
     try {
       const configsRes = await proxyFetchGet('/api/v1/configs');
-      if (!ignore) {
-        setConfigs(Array.isArray(configsRes) ? configsRes : []);
-        setConfigsHydrated(true);
-      }
+      if (seq !== configsFetchSeqRef.current) return;
+      setConfigs(Array.isArray(configsRes) ? configsRes : []);
+      setConfigsHydrated(true);
     } catch (_e) {
-      if (!ignore) {
-        setConfigs([]);
-        setConfigsHydrated(true);
-      }
+      if (seq !== configsFetchSeqRef.current) return;
+      setConfigs([]);
+      setConfigsHydrated(true);
     }
   }, []);
 
-  // Fetch configs when mounted
+  // Fetch configs when mounted; invalidate in-flight fetches on unmount
   useEffect(() => {
-    let ignore = false;
-    fetchInstalled(ignore);
+    fetchInstalled();
     return () => {
-      ignore = true;
+      configsFetchSeqRef.current += 1;
     };
   }, [fetchInstalled]);
 
