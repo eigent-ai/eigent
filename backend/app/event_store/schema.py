@@ -51,12 +51,21 @@ class EventEnvelope:
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         if isinstance(data["payload"], str):
-            data["payload"] = json.loads(data["payload"])
+            try:
+                data["payload"] = json.loads(data["payload"])
+            except json.JSONDecodeError:
+                data["payload"] = data["payload"]
         return data
 
     def to_compat_dict(self) -> dict[str, Any]:
         """Return a dict compatible with CAMEL's TranscriptStore.read_all()
         format (workforce_id, timestamp keys)."""
+        payload = self.payload
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                pass
         return {
             "event_type": self.event_type,
             "workforce_id": self.run_id,
@@ -65,9 +74,7 @@ class EventEnvelope:
             "agent_id": self.agent_id,
             "agent_name": self.agent_name,
             "source": self.source,
-            "payload": self.payload
-            if isinstance(self.payload, dict)
-            else json.loads(self.payload),
+            "payload": payload,
         }
 
 

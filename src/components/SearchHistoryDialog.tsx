@@ -14,7 +14,7 @@
 
 'use client';
 
-import { ScanFace, Search } from 'lucide-react';
+import { Cloud, CloudOff, ScanFace, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import GroupedHistoryView from '@/components/GroupedHistoryView';
@@ -31,6 +31,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { useGlobalStore } from '@/store/globalStore';
+import { HistoryTask } from '@/types/history';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -40,7 +41,7 @@ import { DialogTitle } from './ui/dialog';
 export function SearchHistoryDialog() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [historyTasks, setHistoryTasks] = useState<any[]>([]);
+  const [historyTasks, setHistoryTasks] = useState<HistoryTask[]>([]);
   const { history_type } = useGlobalStore();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -139,8 +140,17 @@ export function SearchHistoryDialog() {
                   }
                 >
                   <ScanFace />
-                  <div className="overflow-hidden text-ellipsis whitespace-nowrap">
-                    {task.question}
+                  <div className="flex min-w-0 items-center gap-2">
+                    {task.sync_status === 'synced' && (
+                      <Cloud className="h-3.5 w-3.5 text-text-information" />
+                    )}
+                    {(task.sync_status === 'local' ||
+                      task.sync_status === 'pending') && (
+                      <CloudOff className="h-3.5 w-3.5 text-text-label" />
+                    )}
+                    <div className="overflow-hidden text-ellipsis whitespace-nowrap">
+                      {task.question}
+                    </div>
                   </div>
                 </CommandItem>
               ))}

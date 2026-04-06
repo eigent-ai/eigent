@@ -26,6 +26,7 @@ import {
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { fetchLocalPlaybackSteps } from '@/service/localEventApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -94,6 +95,7 @@ export interface ChatStore {
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   setActiveTaskId: (taskId: string) => void;
   replay: (taskId: string, question: string, time: number) => Promise<void>;
+  loadHistoryTask: (taskId: string, question: string) => Promise<void>;
   startTask: (
     taskId: string,
     type?: string,
@@ -204,6 +206,9 @@ const normalizeToolkitMessage = (value: unknown) => {
     return String(value);
   }
 };
+
+const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Persist subtask edits to backend via PUT /task/{project_id}. */
 const persistSubtaskEdits = (taskInfo: TaskInfo[]) => {
@@ -585,20 +590,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const base_Url = import.meta.env.DEV
         ? import.meta.env.VITE_PROXY_URL
         : import.meta.env.VITE_BASE_URL;
+      const localPlaybackSteps =
+        type === 'replay' ? await fetchLocalPlaybackSteps(newTaskId) : [];
+      const hasLocalPlayback =
+        type === 'replay' && localPlaybackSteps.length > 0;
       const api =
         type == 'share'
           ? `${base_Url}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
-            ? `${base_Url}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+            ? hasLocalPlayback
+              ? ''
+              : `${base_Url}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
             : `${baseURL}/chat`;
 
-      const { tasks: _tasks } = get();
       let historyId: string | null = projectStore.getHistoryId(project_id);
-      let snapshots: any = [];
+      let snapshots: any[] = [];
       let skipFirstConfirm = true;
 
-      // replay or share request
-      if (type) {
+      // Cloud replay/share can reuse previously uploaded snapshots.
+      if (type && !hasLocalPlayback) {
         const res = await proxyFetchGet(`/api/v1/chat/snapshots`, {
           api_task_id: taskId,
         });
@@ -619,99 +629,101 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         api_url: '',
         extra_params: {},
       };
-      if (modelType === 'custom' || modelType === 'local') {
-        const res = await proxyFetchGet('/api/v1/providers', {
-          prefer: true,
-        });
-        const providerList = res.items || [];
-        console.log('providerList', providerList);
-        const provider = providerList[0];
-
-        if (!provider) {
-          throw new Error(
-            'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
-          );
-        }
-
-        apiModel = {
-          api_key: provider.api_key,
-          model_type: provider.model_type,
-          model_platform: provider.provider_name,
-          api_url: provider.endpoint_url || provider.api_url,
-          extra_params: provider.encrypted_config,
-        };
-      } else if (modelType === 'cloud') {
-        // get current model
-        const res = await proxyFetchGet('/api/v1/user/key');
-        if (res.warning_code && res.warning_code === '21') {
-          showStorageToast();
-        }
-        apiModel = {
-          api_key: res.value,
-          model_type: cloud_model_type,
-          model_platform: cloud_model_type.includes('gpt')
-            ? 'openai'
-            : cloud_model_type.includes('claude')
-              ? 'aws-bedrock'
-              : cloud_model_type.includes('gemini')
-                ? 'gemini'
-                : 'openai-compatible-model',
-          api_url: res.api_url,
-          extra_params: {},
-        };
-      }
-
-      // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
-      if (modelType === 'custom') {
-        try {
-          const configsRes = await proxyFetchGet('/api/v1/configs');
-          const configs = Array.isArray(configsRes) ? configsRes : [];
-
-          // Extract Google Search API keys
-          const googleApiKey = configs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'search' &&
-              c.config_name === 'GOOGLE_API_KEY'
-          )?.config_value;
-
-          const searchEngineId = configs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'search' &&
-              c.config_name === 'SEARCH_ENGINE_ID'
-          )?.config_value;
-
-          if (googleApiKey && searchEngineId) {
-            searchConfig = {
-              GOOGLE_API_KEY: googleApiKey,
-              SEARCH_ENGINE_ID: searchEngineId,
-            };
-            console.log('Loaded custom search configuration');
-          }
-        } catch (error) {
-          console.error('Failed to load search configuration:', error);
-        }
-      }
-
-      const addWorkers = workerList.map((worker) => {
-        return {
-          name: worker.workerInfo?.name,
-          description: worker.workerInfo?.description,
-          tools: worker.workerInfo?.tools,
-          mcp_tools: worker.workerInfo?.mcp_tools,
-        };
-      });
-
-      // get env path
+      let addWorkers: Array<{
+        name: string;
+        description: string;
+        tools: any;
+        mcp_tools: any;
+      }> = [];
       let envPath = '';
-      try {
-        envPath = await window.ipcRenderer.invoke('get-env-path', email);
-      } catch (error) {
-        console.log('get-env-path error', error);
-      }
+      let browser_port = 0;
+      let cdp_browsers: any[] = [];
 
-      // create history
       if (!type) {
+        if (modelType === 'custom' || modelType === 'local') {
+          const res = await proxyFetchGet('/api/v1/providers', {
+            prefer: true,
+          });
+          const providerList = res.items || [];
+          console.log('providerList', providerList);
+          const provider = providerList[0];
+
+          if (!provider) {
+            throw new Error(
+              'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
+            );
+          }
+
+          apiModel = {
+            api_key: provider.api_key,
+            model_type: provider.model_type,
+            model_platform: provider.provider_name,
+            api_url: provider.endpoint_url || provider.api_url,
+            extra_params: provider.encrypted_config,
+          };
+        } else if (modelType === 'cloud') {
+          const res = await proxyFetchGet('/api/v1/user/key');
+          if (res.warning_code && res.warning_code === '21') {
+            showStorageToast();
+          }
+          apiModel = {
+            api_key: res.value,
+            model_type: cloud_model_type,
+            model_platform: cloud_model_type.includes('gpt')
+              ? 'openai'
+              : cloud_model_type.includes('claude')
+                ? 'aws-bedrock'
+                : cloud_model_type.includes('gemini')
+                  ? 'gemini'
+                  : 'openai-compatible-model',
+            api_url: res.api_url,
+            extra_params: {},
+          };
+        }
+
+        if (modelType === 'custom') {
+          try {
+            const configsRes = await proxyFetchGet('/api/v1/configs');
+            const configs = Array.isArray(configsRes) ? configsRes : [];
+            const googleApiKey = configs.find(
+              (c: any) =>
+                c.config_group?.toLowerCase() === 'search' &&
+                c.config_name === 'GOOGLE_API_KEY'
+            )?.config_value;
+            const searchEngineId = configs.find(
+              (c: any) =>
+                c.config_group?.toLowerCase() === 'search' &&
+                c.config_name === 'SEARCH_ENGINE_ID'
+            )?.config_value;
+
+            if (googleApiKey && searchEngineId) {
+              searchConfig = {
+                GOOGLE_API_KEY: googleApiKey,
+                SEARCH_ENGINE_ID: searchEngineId,
+              };
+              console.log('Loaded custom search configuration');
+            }
+          } catch (error) {
+            console.error('Failed to load search configuration:', error);
+          }
+        }
+
+        addWorkers = workerList.map((worker) => {
+          return {
+            name: worker.workerInfo?.name ?? '',
+            description: worker.workerInfo?.description ?? '',
+            tools: worker.workerInfo?.tools,
+            mcp_tools: worker.workerInfo?.mcp_tools,
+          };
+        });
+
+        try {
+          envPath = await window.ipcRenderer.invoke('get-env-path', email);
+        } catch (error) {
+          console.log('get-env-path error', error);
+        }
+
         const authStore = getAuthStore();
 
         const obj = {
@@ -743,9 +755,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (project_id && historyId)
             projectStore.setHistoryId(project_id, historyId);
         });
+        browser_port = await window.ipcRenderer.invoke('get-browser-port');
+        cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
       }
-      const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
@@ -788,48 +800,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      const ssePromise = fetchEventSource(api, {
-        method: !type ? 'POST' : 'GET',
-        openWhenHidden: true,
-        signal: abortController.signal, // Add abort signal for proper cleanup
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:
-            type == 'replay'
-              ? `Bearer ${token}`
-              : (undefined as unknown as string),
-        },
-        body: !type
-          ? JSON.stringify({
-              project_id: project_id,
-              task_id: newTaskId,
-              question:
-                messageContent ||
-                targetChatStore.getState().getLastUserMessage()?.content,
-              model_platform: apiModel.model_platform,
-              email,
-              model_type: apiModel.model_type,
-              api_key: apiModel.api_key,
-              api_url: apiModel.api_url,
-              extra_params: apiModel.extra_params,
-              installed_mcp: { mcpServers: {} },
-              language: systemLanguage,
-              allow_local_system: true,
-              attaches: (
-                messageAttaches ||
-                targetChatStore.getState().tasks[newTaskId]?.attaches ||
-                []
-              ).map((f) => f.filePath),
-              summary_prompt: ``,
-              new_agents: [...addWorkers],
-              browser_port: browser_port,
-              cdp_browsers: cdp_browsers,
-              env_path: envPath,
-              search_config: searchConfig,
-            })
-          : undefined,
-
-        async onmessage(event: any) {
+      const handleIncomingMessage = async (event: any) => {
           let agentMessages: AgentMessage;
 
           try {
@@ -2502,7 +2473,73 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             isConfirm: false,
           };
           addMessages(currentTaskId, newMessage);
+      };
+
+      if (hasLocalPlayback) {
+        try {
+          get().setAttaches(newTaskId, []);
+          for (let index = 0; index < localPlaybackSteps.length; index++) {
+            if (abortController.signal.aborted) {
+              break;
+            }
+            await handleIncomingMessage({
+              data: JSON.stringify(localPlaybackSteps[index]),
+            });
+            if (
+              (delayTime || 0) > 0 &&
+              index < localPlaybackSteps.length - 1
+            ) {
+              await sleep((delayTime || 0) * 1000);
+            }
+          }
+        } finally {
+          delete activeSSEControllers[newTaskId];
+        }
+        return;
+      }
+
+      const ssePromise = fetchEventSource(api, {
+        method: !type ? 'POST' : 'GET',
+        openWhenHidden: true,
+        signal: abortController.signal, // Add abort signal for proper cleanup
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization:
+            type == 'replay'
+              ? `Bearer ${token}`
+              : (undefined as unknown as string),
         },
+        body: !type
+          ? JSON.stringify({
+              project_id: project_id,
+              task_id: newTaskId,
+              question:
+                messageContent ||
+                targetChatStore.getState().getLastUserMessage()?.content,
+              model_platform: apiModel.model_platform,
+              email,
+              model_type: apiModel.model_type,
+              api_key: apiModel.api_key,
+              api_url: apiModel.api_url,
+              extra_params: apiModel.extra_params,
+              installed_mcp: { mcpServers: {} },
+              language: systemLanguage,
+              allow_local_system: true,
+              attaches: (
+                messageAttaches ||
+                targetChatStore.getState().tasks[newTaskId]?.attaches ||
+                []
+              ).map((f) => f.filePath),
+              summary_prompt: ``,
+              new_agents: [...addWorkers],
+              browser_port: browser_port,
+              cdp_browsers: cdp_browsers,
+              env_path: envPath,
+              search_config: searchConfig,
+            })
+          : undefined,
+
+        onmessage: handleIncomingMessage,
         async onopen(respond) {
           console.log('open', respond);
           const { setAttaches, activeTaskId } = get();
@@ -2630,14 +2667,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         addMessages,
         startTask,
         setActiveTaskId,
-        handleConfirmTask,
       } = get();
-      //get project id
-      const project_id = useProjectStore.getState().activeProjectId;
-      if (!project_id) {
-        console.error("Can't replay task because no project id provided");
-        return;
-      }
 
       create(taskId, 'replay');
       setHasMessages(taskId, true);
@@ -2649,7 +2679,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       await startTask(taskId, 'replay', undefined, time);
       setActiveTaskId(taskId);
-      handleConfirmTask(project_id, taskId, 'replay');
+    },
+    loadHistoryTask: async (taskId: string, question: string) => {
+      const { create, setHasMessages, addMessages, startTask, setActiveTaskId } =
+        get();
+
+      create(taskId, 'replay');
+      setHasMessages(taskId, true);
+      addMessages(taskId, {
+        id: generateUniqueId(),
+        role: 'user',
+        content: question.split('|')[0],
+      });
+
+      await startTask(taskId, 'replay', undefined, 0);
+      setActiveTaskId(taskId);
     },
     setUpdateCount() {
       set((state) => ({

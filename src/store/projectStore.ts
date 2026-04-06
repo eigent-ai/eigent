@@ -679,7 +679,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const chatStore = project.chatStores[chatId];
         if (chatStore) {
           try {
-            await chatStore.getState().replay(taskId, question, 0);
+            await chatStore.getState().loadHistoryTask(taskId, question);
             console.log(`[ProjectStore] Loaded task ${taskId}`);
           } catch (error) {
             console.error(

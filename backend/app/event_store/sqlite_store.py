@@ -44,6 +44,8 @@ class SQLiteTranscriptStore:
     via the ``transcript_store`` parameter on ``Workforce.__init__``.
     """
 
+    _write_lock = threading.Lock()
+
     def __init__(
         self,
         path: str | Path,
@@ -53,7 +55,6 @@ class SQLiteTranscriptStore:
         self.path = Path(path)
         self.run_id = run_id
         self.project_id = project_id
-        self._lock = threading.Lock()
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
@@ -70,10 +71,14 @@ class SQLiteTranscriptStore:
     # ------------------------------------------------------------------
 
     def _ensure_schema(self) -> None:
-        with self._conn:
-            self._conn.execute(CREATE_EVENT_LOG_TABLE)
+        self._ensure_schema_on_conn(self._conn)
+
+    @staticmethod
+    def _ensure_schema_on_conn(conn: sqlite3.Connection) -> None:
+        with conn:
+            conn.execute(CREATE_EVENT_LOG_TABLE)
             for idx_ddl in CREATE_INDEXES:
-                self._conn.execute(idx_ddl)
+                conn.execute(idx_ddl)
 
     # ------------------------------------------------------------------
     # TranscriptStore-compatible interface
@@ -87,38 +92,59 @@ class SQLiteTranscriptStore:
         """
         envelope = self._to_envelope(event)
 
-        with self._lock:
+        with self._write_lock:
             with self._conn:
                 seq = self._next_seq(self._conn)
                 envelope.seq = seq
-                self._conn.execute(
-                    """\
-                    INSERT INTO event_log (
-                        event_id, run_id, project_id, task_id, seq,
-                        event_type, occurred_at, source,
-                        agent_id, agent_name, schema_version,
-                        payload, synced_at, sync_attempts
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        envelope.event_id,
-                        envelope.run_id,
-                        envelope.project_id,
-                        envelope.task_id,
-                        envelope.seq,
-                        envelope.event_type,
-                        envelope.occurred_at,
-                        envelope.source,
-                        envelope.agent_id,
-                        envelope.agent_name,
-                        envelope.schema_version,
-                        json.dumps(envelope.payload, ensure_ascii=False),
-                        envelope.synced_at,
-                        envelope.sync_attempts,
-                    ),
-                )
+                self._insert_envelope(self._conn, envelope)
 
         return event.to_dict()
+
+    @classmethod
+    def append_event(
+        cls,
+        db_path: str | Path,
+        *,
+        run_id: str,
+        project_id: str,
+        event_type: str,
+        payload: Any,
+        source: str,
+        task_id: str | None = None,
+        agent_id: str | None = None,
+        agent_name: str | None = None,
+        occurred_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Append a non-CAMEL event into the canonical local event log."""
+        path = Path(db_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=5000;")
+
+        try:
+            cls._ensure_schema_on_conn(conn)
+            envelope = EventEnvelope(
+                run_id=run_id,
+                project_id=project_id,
+                task_id=task_id,
+                event_type=event_type,
+                occurred_at=occurred_at or datetime.now(UTC).isoformat(),
+                source=source,
+                agent_id=agent_id,
+                agent_name=agent_name,
+                schema_version=SCHEMA_VERSION,
+                payload=payload,
+            )
+            with cls._write_lock:
+                with conn:
+                    envelope.seq = cls._next_seq_for_run(conn, run_id)
+                    cls._insert_envelope(conn, envelope)
+            return envelope.to_dict()
+        finally:
+            conn.close()
 
     def read_all(self) -> list[dict[str, Any]]:
         """Read all events for this run, returning dicts in the same
@@ -160,7 +186,7 @@ class SQLiteTranscriptStore:
             return
         now = datetime.now(UTC).isoformat()
         placeholders = ",".join("?" for _ in event_ids)
-        with self._lock:
+        with self._write_lock:
             with self._conn:
                 self._conn.execute(
                     f"UPDATE event_log SET synced_at = ? "  # nosec B608
@@ -173,7 +199,7 @@ class SQLiteTranscriptStore:
         if not event_ids:
             return
         placeholders = ",".join("?" for _ in event_ids)
-        with self._lock:
+        with self._write_lock:
             with self._conn:
                 self._conn.execute(
                     f"UPDATE event_log SET sync_attempts = sync_attempts + 1 "  # nosec B608
@@ -257,41 +283,87 @@ class SQLiteTranscriptStore:
             if not table_check:
                 return []
 
+            params: list[Any] = []
+            where_clause = ""
             if project_id:
-                rows = conn.execute(
-                    """\
-                    SELECT run_id, project_id,
-                           MIN(task_id) AS task_id,
-                           COUNT(*) AS event_count,
-                           MIN(occurred_at) AS first_event,
-                           MAX(occurred_at) AS last_event
-                    FROM event_log
-                    WHERE project_id = ?
-                    GROUP BY run_id
-                    ORDER BY MAX(occurred_at) DESC
-                    """,
-                    (project_id,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """\
-                    SELECT run_id, project_id,
-                           MIN(task_id) AS task_id,
-                           COUNT(*) AS event_count,
-                           MIN(occurred_at) AS first_event,
-                           MAX(occurred_at) AS last_event
-                    FROM event_log
-                    GROUP BY run_id
-                    ORDER BY MAX(occurred_at) DESC
-                    """,
-                ).fetchall()
-            return [dict(r) for r in rows]
+                where_clause = "WHERE project_id = ?"
+                params.append(project_id)
+
+            rows = conn.execute(
+                f"""\
+                SELECT *
+                FROM event_log
+                {where_clause}
+                ORDER BY run_id, seq
+                """,
+                params,
+            ).fetchall()
+            events = [SQLiteTranscriptStore._row_to_canonical_dict(r) for r in rows]
+            return SQLiteTranscriptStore._summarize_runs(events)
         finally:
             conn.close()
 
     @staticmethod
     def query_projects(db_path: str | Path) -> list[dict[str, Any]]:
         """List projects with aggregated stats. Used by the local API."""
+        runs = SQLiteTranscriptStore.query_runs(db_path)
+        project_map: dict[str, dict[str, Any]] = {}
+
+        for run in runs:
+            project_id = run["project_id"]
+            project = project_map.setdefault(
+                project_id,
+                {
+                    "project_id": project_id,
+                    "run_count": 0,
+                    "task_count": 0,
+                    "event_count": 0,
+                    "first_event": run["first_event"],
+                    "last_event": run["last_event"],
+                    "last_prompt": run["question"],
+                    "total_completed_tasks": 0,
+                    "total_ongoing_tasks": 0,
+                    "sync_status": "local",
+                },
+            )
+            project["run_count"] += 1
+            project["task_count"] += 1
+            project["event_count"] += run["event_count"]
+            project["first_event"] = min(
+                project["first_event"], run["first_event"]
+            )
+            if run["last_event"] >= project["last_event"]:
+                project["last_event"] = run["last_event"]
+                project["last_prompt"] = run["question"]
+            if run["status"] == 2:
+                project["total_completed_tasks"] += 1
+            else:
+                project["total_ongoing_tasks"] += 1
+
+            project.setdefault("_sync_states", []).append(run["sync_status"])
+
+        for project in project_map.values():
+            sync_states = set(project.pop("_sync_states", []))
+            if sync_states == {"synced"}:
+                project["sync_status"] = "synced"
+            elif sync_states == {"local"}:
+                project["sync_status"] = "local"
+            else:
+                project["sync_status"] = "partial"
+
+        return sorted(
+            project_map.values(),
+            key=lambda item: item["last_event"],
+            reverse=True,
+        )
+
+    @staticmethod
+    def query_playback_steps(
+        db_path: str | Path,
+        *,
+        run_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return saved Eigent SSE steps for a run in playback order."""
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         try:
@@ -303,13 +375,56 @@ class SQLiteTranscriptStore:
 
             rows = conn.execute(
                 """\
-                SELECT project_id,
-                       COUNT(DISTINCT run_id) AS run_count,
-                       COUNT(*) AS event_count,
-                       MIN(occurred_at) AS first_event,
+                SELECT event_type, payload, task_id, occurred_at
+                FROM event_log
+                WHERE run_id = ? AND source = 'eigent_sse'
+                ORDER BY seq
+                """,
+                (run_id,),
+            ).fetchall()
+
+            steps: list[dict[str, Any]] = []
+            for row in rows:
+                payload = row["payload"]
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                steps.append(
+                    {
+                        "step": row["event_type"],
+                        "data": payload,
+                        "task_id": row["task_id"],
+                        "created_at": row["occurred_at"],
+                    }
+                )
+            return steps
+        finally:
+            conn.close()
+
+    @staticmethod
+    def query_sync_status(
+        db_path: str | Path,
+    ) -> list[dict[str, Any]]:
+        """Return sync status per run. Used by the local API."""
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            table_check = conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name='event_log'"
+            ).fetchone()
+            if not table_check:
+                return []
+
+            rows = conn.execute(
+                """\
+                SELECT run_id,
+                       project_id,
+                       COUNT(*) AS total_events,
+                       SUM(CASE WHEN synced_at IS NOT NULL
+                           THEN 1 ELSE 0 END) AS synced_events,
                        MAX(occurred_at) AS last_event
                 FROM event_log
-                GROUP BY project_id
+                GROUP BY run_id
                 ORDER BY MAX(occurred_at) DESC
                 """,
             ).fetchall()
@@ -322,12 +437,47 @@ class SQLiteTranscriptStore:
     # ------------------------------------------------------------------
 
     def _next_seq(self, conn: sqlite3.Connection) -> int:
+        return self._next_seq_for_run(conn, self.run_id)
+
+    @staticmethod
+    def _next_seq_for_run(conn: sqlite3.Connection, run_id: str) -> int:
         row = conn.execute(
             "SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq "
             "FROM event_log WHERE run_id = ?",
-            (self.run_id,),
+            (run_id,),
         ).fetchone()
         return row["next_seq"]
+
+    @staticmethod
+    def _insert_envelope(
+        conn: sqlite3.Connection, envelope: EventEnvelope
+    ) -> None:
+        conn.execute(
+            """\
+            INSERT INTO event_log (
+                event_id, run_id, project_id, task_id, seq,
+                event_type, occurred_at, source,
+                agent_id, agent_name, schema_version,
+                payload, synced_at, sync_attempts
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                envelope.event_id,
+                envelope.run_id,
+                envelope.project_id,
+                envelope.task_id,
+                envelope.seq,
+                envelope.event_type,
+                envelope.occurred_at,
+                envelope.source,
+                envelope.agent_id,
+                envelope.agent_name,
+                envelope.schema_version,
+                json.dumps(envelope.payload, ensure_ascii=False),
+                envelope.synced_at,
+                envelope.sync_attempts,
+            ),
+        )
 
     def _to_envelope(self, event: TranscriptEvent) -> EventEnvelope:
         return EventEnvelope(
@@ -370,3 +520,109 @@ class SQLiteTranscriptStore:
         if isinstance(data.get("payload"), str):
             data["payload"] = json.loads(data["payload"])
         return data
+
+    @staticmethod
+    def _summarize_runs(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        run_map: dict[str, list[dict[str, Any]]] = {}
+        for event in events:
+            run_map.setdefault(event["run_id"], []).append(event)
+
+        summaries = [
+            SQLiteTranscriptStore._summarize_run(run_events)
+            for run_events in run_map.values()
+            if run_events
+        ]
+        return sorted(
+            summaries,
+            key=lambda item: item["last_event"],
+            reverse=True,
+        )
+
+    @staticmethod
+    def _summarize_run(events: list[dict[str, Any]]) -> dict[str, Any]:
+        first_event = events[0]
+        last_event = events[-1]
+        synced_events = sum(1 for event in events if event["synced_at"])
+        total_events = len(events)
+
+        if synced_events == total_events and total_events > 0:
+            sync_status = "synced"
+        elif synced_events == 0:
+            sync_status = "local"
+        else:
+            sync_status = "pending"
+
+        return {
+            "id": f"local:{first_event['run_id']}",
+            "run_id": first_event["run_id"],
+            "project_id": first_event["project_id"],
+            "task_id": first_event["run_id"],
+            "event_count": total_events,
+            "first_event": first_event["occurred_at"],
+            "last_event": last_event["occurred_at"],
+            "question": SQLiteTranscriptStore._extract_question(events),
+            "summary": SQLiteTranscriptStore._extract_summary(events),
+            "status": 2
+            if SQLiteTranscriptStore._is_run_complete(events)
+            else 1,
+            "synced_events": synced_events,
+            "sync_status": sync_status,
+        }
+
+    @staticmethod
+    def _extract_question(events: list[dict[str, Any]]) -> str:
+        for event in events:
+            payload = event.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            if event["event_type"] == "confirmed":
+                question = payload.get("question")
+                if question:
+                    return question
+            if event["event_type"] in {"user_message", "task_created"}:
+                question = payload.get("message") or payload.get(
+                    "description"
+                )
+                if question:
+                    return question
+        return ""
+
+    @staticmethod
+    def _extract_summary(events: list[dict[str, Any]]) -> str:
+        for event in reversed(events):
+            payload = event.get("payload")
+            if event["event_type"] == "end":
+                if isinstance(payload, str):
+                    return SQLiteTranscriptStore._strip_summary_tags(payload)
+                if isinstance(payload, dict):
+                    summary = (
+                        payload.get("summary")
+                        or payload.get("task_result")
+                        or payload.get("result")
+                    )
+                    if summary:
+                        return SQLiteTranscriptStore._strip_summary_tags(
+                            str(summary)
+                        )
+            if event["event_type"] == "task_completed" and isinstance(
+                payload, dict
+            ):
+                summary = payload.get("result_summary")
+                if summary:
+                    return str(summary)
+            if event["event_type"] == "error" and isinstance(payload, dict):
+                message = payload.get("message")
+                if message:
+                    return str(message)
+        return ""
+
+    @staticmethod
+    def _is_run_complete(events: list[dict[str, Any]]) -> bool:
+        terminal_events = {"end", "error", "all_tasks_completed"}
+        return any(event["event_type"] in terminal_events for event in events)
+
+    @staticmethod
+    def _strip_summary_tags(value: str) -> str:
+        if "<summary>" in value and "</summary>" in value:
+            return value.split("<summary>", 1)[1].split("</summary>", 1)[0]
+        return value

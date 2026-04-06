@@ -89,3 +89,13 @@ def list_projects() -> list[dict[str, Any]]:
         return []
 
     return SQLiteTranscriptStore.query_projects(db_path)
+
+
+@router.get("/events/steps/{run_id}", name="list local playback steps")
+def list_playback_steps(run_id: str) -> list[dict[str, Any]]:
+    """Return saved Eigent SSE steps for a run in playback order."""
+    db_path = get_event_db_path()
+    if not db_path.exists():
+        return []
+
+    return SQLiteTranscriptStore.query_playback_steps(db_path, run_id=run_id)

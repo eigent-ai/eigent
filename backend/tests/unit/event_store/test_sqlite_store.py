@@ -137,6 +137,21 @@ class TestAppendAndRead:
         assert ev["run_id"] == "run-001"
         assert ev["project_id"] == "proj-001"
 
+    def test_append_event_for_sse_payload(self, db_path: Path):
+        event = SQLiteTranscriptStore.append_event(
+            db_path,
+            run_id="run-sse",
+            project_id="proj-001",
+            task_id="task-001",
+            event_type="confirmed",
+            payload={"question": "Summarize the local task"},
+            source="eigent_sse",
+        )
+
+        assert event["run_id"] == "run-sse"
+        assert event["event_type"] == "confirmed"
+        assert event["payload"]["question"] == "Summarize the local task"
+
 
 class TestSequencing:
     def test_seq_starts_at_zero(self, store: SQLiteTranscriptStore):
@@ -310,6 +325,35 @@ class TestStaticQueries:
         s1.close()
         s2.close()
 
+    def test_query_runs_extracts_question_summary_and_sync_status(
+        self, db_path: Path
+    ):
+        SQLiteTranscriptStore.append_event(
+            db_path,
+            run_id="run-1",
+            project_id="proj-1",
+            task_id="run-1",
+            event_type="confirmed",
+            payload={"question": "Write a changelog"},
+            source="eigent_sse",
+        )
+        SQLiteTranscriptStore.append_event(
+            db_path,
+            run_id="run-1",
+            project_id="proj-1",
+            task_id="run-1",
+            event_type="end",
+            payload="<summary>Done</summary>",
+            source="eigent_sse",
+        )
+
+        runs = SQLiteTranscriptStore.query_runs(db_path)
+        assert len(runs) == 1
+        assert runs[0]["question"] == "Write a changelog"
+        assert runs[0]["summary"] == "Done"
+        assert runs[0]["status"] == 2
+        assert runs[0]["sync_status"] == "local"
+
     def test_query_projects(self, db_path: Path):
         s1 = SQLiteTranscriptStore(
             path=db_path, run_id="r1", project_id="proj-A"
@@ -330,6 +374,44 @@ class TestStaticQueries:
 
         s1.close()
         s2.close()
+
+    def test_query_playback_steps_filters_to_eigent_sse(
+        self, db_path: Path
+    ):
+        SQLiteTranscriptStore.append_event(
+            db_path,
+            run_id="run-1",
+            project_id="proj-1",
+            task_id="task-1",
+            event_type="confirmed",
+            payload={"question": "Use local replay"},
+            source="eigent_sse",
+        )
+        SQLiteTranscriptStore.append_event(
+            db_path,
+            run_id="run-1",
+            project_id="proj-1",
+            task_id="task-1",
+            event_type="task_created",
+            payload={"description": "raw camel event"},
+            source="camel",
+        )
+        SQLiteTranscriptStore.append_event(
+            db_path,
+            run_id="run-1",
+            project_id="proj-1",
+            task_id="task-1",
+            event_type="end",
+            payload="<summary>Done</summary>",
+            source="eigent_sse",
+        )
+
+        steps = SQLiteTranscriptStore.query_playback_steps(
+            db_path, run_id="run-1"
+        )
+        assert [step["step"] for step in steps] == ["confirmed", "end"]
+        assert steps[0]["data"]["question"] == "Use local replay"
+        assert steps[1]["data"] == "<summary>Done</summary>"
 
     def test_query_events_empty_db(self, tmp_path: Path):
         """Query on a non-existent DB path should handle gracefully."""

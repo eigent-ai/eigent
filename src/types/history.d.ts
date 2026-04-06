@@ -15,7 +15,7 @@
 // History API types for project-grouped structure
 
 export interface HistoryTask {
-  id: number;
+  id: number | string;
   task_id: string;
   project_id: string;
   question: string;
@@ -33,6 +33,8 @@ export interface HistoryTask {
   status: number;
   created_at?: string;
   updated_at?: string;
+  /** Event sync status: local-only, synced to cloud, or pending sync */
+  sync_status?: 'local' | 'synced' | 'pending';
 }
 
 export interface ProjectGroup {
@@ -48,6 +50,8 @@ export interface ProjectGroup {
   total_completed_tasks: number;
   total_ongoing_tasks: number;
   average_tokens_per_task: number;
+  /** Aggregate sync status: local-only, fully synced, or partial */
+  sync_status?: 'local' | 'synced' | 'partial';
 }
 
 export interface GroupedHistoryResponse {

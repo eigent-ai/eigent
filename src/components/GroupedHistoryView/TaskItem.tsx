@@ -29,6 +29,8 @@ import {
   CirclePause,
   CirclePlay,
   Clock,
+  Cloud,
+  CloudOff,
   Ellipsis,
   Hash,
   Pin,
@@ -137,6 +139,17 @@ export default function TaskItem({
 
       <div className="flex flex-shrink-0 items-center gap-2">
         {!isOngoing && getStatusTag(task.status)}
+
+        {task.sync_status === 'synced' && (
+          <Tag variant="success" size="sm">
+            <Cloud />
+          </Tag>
+        )}
+        {(task.sync_status === 'local' || task.sync_status === 'pending') && (
+          <Tag variant="default" size="sm">
+            <CloudOff />
+          </Tag>
+        )}
 
         <Tag variant="info" size="sm">
           <Hash />

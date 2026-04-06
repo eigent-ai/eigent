@@ -2132,47 +2132,13 @@ function registerIpcHandlers() {
   });
 
   // ==================== read global env handler ====================
-  const ALLOWED_GLOBAL_ENV_KEYS = new Set([
-    'HTTP_PROXY',
-    'HTTPS_PROXY',
-    'CLOUD_SYNC_ENABLED',
-  ]);
+  const ALLOWED_GLOBAL_ENV_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY']);
   ipcMain.handle('read-global-env', async (_event, key: string) => {
     if (!ALLOWED_GLOBAL_ENV_KEYS.has(key)) {
       log.warn(`[ENV] Blocked read of disallowed global env key: ${key}`);
       return { value: null };
     }
     return { value: readGlobalEnvKey(key) };
-  });
-
-  // ==================== cloud sync toggle ====================
-  ipcMain.handle('get-cloud-sync', async () => {
-    const value = readGlobalEnvKey('CLOUD_SYNC_ENABLED');
-    return { enabled: value?.toLowerCase() === 'true' };
-  });
-
-  ipcMain.handle('set-cloud-sync', async (_event, enabled: boolean) => {
-    const GLOBAL_ENV_PATH = path.join(os.homedir(), '.eigent', '.env');
-    let content = '';
-    try {
-      content = fs.existsSync(GLOBAL_ENV_PATH)
-        ? fs.readFileSync(GLOBAL_ENV_PATH, 'utf-8')
-        : '';
-    } catch (error) {
-      log.error('set-cloud-sync read error:', error);
-    }
-    let lines = content.split(/\r?\n/);
-    lines = updateEnvBlock(lines, {
-      CLOUD_SYNC_ENABLED: enabled ? 'true' : 'false',
-    });
-    try {
-      fs.writeFileSync(GLOBAL_ENV_PATH, lines.join('\n'), 'utf-8');
-      log.info(`[SYNC] Cloud sync ${enabled ? 'enabled' : 'disabled'}`);
-    } catch (error) {
-      log.error('set-cloud-sync write error:', error);
-      return { success: false };
-    }
-    return { success: true };
   });
 
   // ==================== new window handler ====================

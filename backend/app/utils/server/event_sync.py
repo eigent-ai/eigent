@@ -23,7 +23,7 @@ Environment variables (passed by Electron via process env):
     SERVER_TOKEN -- JWT auth token for cloud API
 
     CLOUD_SYNC_ENABLED -- set to "true" to enable sync
-    (toggle via Electron IPC / ~/.eigent/.env)
+    (typically configured in ~/.eigent/.env)
 """
 
 from __future__ import annotations

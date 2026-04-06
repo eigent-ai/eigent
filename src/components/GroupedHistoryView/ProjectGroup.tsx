@@ -28,6 +28,9 @@ import { ChatTaskStatus } from '@/types/constants';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { motion } from 'framer-motion';
 import {
+  Cloud,
+  CloudAlertIcon,
+  CloudOff,
   Edit,
   Hash,
   Loader2,
@@ -438,6 +441,28 @@ export default function ProjectGroup({
               <span>{project.total_triggers || 0}</span>
             </Tag>
           </TooltipSimple>
+
+          {project.sync_status === 'synced' && (
+            <TooltipSimple content="Synced to cloud">
+              <Tag variant="success" size="sm">
+                <Cloud />
+              </Tag>
+            </TooltipSimple>
+          )}
+          {project.sync_status === 'local' && (
+            <TooltipSimple content="Local only">
+              <Tag variant="default" size="sm">
+                <CloudOff />
+              </Tag>
+            </TooltipSimple>
+          )}
+          {project.sync_status === 'partial' && (
+            <TooltipSimple content="Partially synced">
+              <Tag variant="info" size="sm">
+                <CloudAlertIcon />
+              </Tag>
+            </TooltipSimple>
+          )}
         </div>
 
         {/* End: Status and menu */}
