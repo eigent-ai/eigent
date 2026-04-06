@@ -510,8 +510,8 @@ function InstallButton({
   isComingSoon: boolean;
   installStateReady: boolean;
   isInstalled: boolean;
-  onInstall: (item: IntegrationItem) => void;
-  onUninstall: (item: IntegrationItem) => void;
+  onInstall: (item: IntegrationItem) => void | Promise<void>;
+  onUninstall: (item: IntegrationItem) => void | Promise<void>;
   translationNamespace: string;
 }) {
   const { t } = useTranslation();
