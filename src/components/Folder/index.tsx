@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import cursorIcon from '@/assets/icon/cursor.svg';
+import vsCodeIcon from '@/assets/icon/vs-code.svg';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -651,22 +653,35 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 className="border-dropdown-border bg-dropdown-bg z-50"
               >
                 <DropdownMenuItem
-                  onClick={() => handleOpenInIDE('vscode')}
+                  onClick={() => handleOpenInIDE('system')}
                   className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
-                  {t('chat.open-in-vscode')}
+                  <FolderIcon className="size-4 shrink-0" aria-hidden />
+                  {t('chat.open-in-file-manager')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('cursor')}
                   className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
+                  <img
+                    src={cursorIcon}
+                    alt=""
+                    className="size-4 shrink-0"
+                    aria-hidden
+                  />
                   {t('chat.open-in-cursor')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => handleOpenInIDE('system')}
+                  onClick={() => handleOpenInIDE('vscode')}
                   className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
-                  {t('chat.open-in-file-manager')}
+                  <img
+                    src={vsCodeIcon}
+                    alt=""
+                    className="size-4 shrink-0"
+                    aria-hidden
+                  />
+                  {t('chat.open-in-vscode')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
