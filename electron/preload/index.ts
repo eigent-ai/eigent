@@ -201,25 +201,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('skill-config-update', userId, skillName, skillConfig),
   skillConfigDelete: (userId: string, skillName: string) =>
     ipcRenderer.invoke('skill-config-delete', userId, skillName),
-  // Saved accounts
-  credentialsSave: (
-    email: string,
-    token: string,
-    username: string,
-    userId: number,
-    password: string
-  ) =>
-    ipcRenderer.invoke(
-      'credentials-save',
-      email,
-      token,
-      username,
-      userId,
-      password
-    ),
-  credentialsLoad: () => ipcRenderer.invoke('credentials-load'),
-  credentialsRemove: (email: string) =>
-    ipcRenderer.invoke('credentials-remove', email),
 });
 
 // --------- Preload scripts loading ---------

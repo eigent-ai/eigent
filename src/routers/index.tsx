@@ -91,7 +91,7 @@ const ProtectedRoute = () => {
 
     // Local mode: auto-login when no token
     if (IS_LOCAL_MODE && !token) {
-      proxyFetchPost('/api/auto-login', {})
+      proxyFetchPost('/api/v1/user/auto-login', {})
         .then((data) => {
           if (data && data.token) {
             setAuth({ email: data.email, ...data });
@@ -120,16 +120,7 @@ const ProtectedRoute = () => {
     }
 
     dispatch({ type: 'INITIALIZE', payload: { isAuthenticated: !!token } });
-  }, [
-    token,
-    localProxyValue,
-    logout,
-    setAuth,
-    setLocalProxyValue,
-    setModelType,
-    setInitState,
-    setIsFirstLaunch,
-  ]);
+  }, [token, localProxyValue, logout, setAuth, setLocalProxyValue, setModelType, setInitState, setIsFirstLaunch]);
 
   if (state.loading || !state.initialized) {
     return (

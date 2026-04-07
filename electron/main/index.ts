@@ -21,7 +21,6 @@ import {
   Menu,
   nativeTheme,
   protocol,
-  safeStorage,
   session,
   shell,
 } from 'electron';
@@ -51,11 +50,7 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
-import {
-  setRoundedCorners,
-  setTransparentTitlebar,
-  setVibrancy,
-} from './native/macos-window';
+import { setRoundedCorners } from './native/macos-window';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -2380,200 +2375,6 @@ function registerIpcHandlers() {
     }
   });
 
-  // ==================== saved accounts handler ====================
-  // Security: use OS-backed encryption (safeStorage), strict validation, size limits,
-  // and generic error messages to avoid leaking paths or internal details.
-  type SavedAccount = {
-    email: string;
-    token: string;
-    username: string;
-    user_id: number;
-    password: string;
-  };
-
-  const ACCOUNTS_FILE = path.join(
-    os.homedir(),
-    '.eigent',
-    'saved_accounts.enc'
-  );
-
-  const SAVED_ACCOUNTS_MAX = 20;
-  const SAVED_ACCOUNTS_MAX_FILE_BYTES = 1024 * 1024; // 1 MB max encrypted file
-  const SAVED_ACCOUNTS_MAX_DECRYPTED_BYTES = 512 * 1024; // 512 KB max decrypted JSON
-  const EMAIL_MAX_LENGTH = 320;
-  const PASSWORD_MAX_LENGTH = 2048;
-  const TOKEN_MAX_LENGTH = 4096;
-  const USERNAME_MAX_LENGTH = 256;
-  const CREDENTIALS_GENERIC_ERROR = 'Operation failed';
-
-  const trimEmail = (value: unknown): string => {
-    if (typeof value !== 'string') return '';
-    return value.trim().slice(0, EMAIL_MAX_LENGTH);
-  };
-
-  /** Normalize email for storage and comparison (lowercase, trimmed). */
-  const normalizeEmail = (value: unknown): string =>
-    trimEmail(value).toLowerCase();
-
-  const isValidEmailFormat = (email: string): boolean =>
-    email.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const sanitizeString = (value: unknown, maxLen: number): string =>
-    typeof value === 'string' ? value.slice(0, maxLen) : '';
-
-  const readSavedAccounts = async (): Promise<SavedAccount[]> => {
-    try {
-      if (!safeStorage.isEncryptionAvailable()) {
-        return [];
-      }
-      const encrypted = await fsp.readFile(ACCOUNTS_FILE).catch(() => null);
-      if (!encrypted || encrypted.length === 0) return [];
-      if (encrypted.length > SAVED_ACCOUNTS_MAX_FILE_BYTES) {
-        return [];
-      }
-      const decrypted = safeStorage.decryptString(encrypted);
-      if (
-        typeof decrypted !== 'string' ||
-        decrypted.length > SAVED_ACCOUNTS_MAX_DECRYPTED_BYTES
-      ) {
-        return [];
-      }
-      const parsed: unknown = JSON.parse(decrypted);
-      if (!Array.isArray(parsed)) return [];
-      const result: SavedAccount[] = [];
-      const seenEmails = new Set<string>();
-      for (const a of parsed) {
-        if (!a || typeof a !== 'object') continue;
-        const rawEmail = trimEmail((a as Record<string, unknown>).email);
-        if (!rawEmail || !isValidEmailFormat(rawEmail)) continue;
-        const email = rawEmail.toLowerCase();
-        if (seenEmails.has(email)) continue;
-        seenEmails.add(email);
-        const token = sanitizeString(
-          (a as Record<string, unknown>).token,
-          TOKEN_MAX_LENGTH
-        );
-        const password = sanitizeString(
-          (a as Record<string, unknown>).password,
-          PASSWORD_MAX_LENGTH
-        );
-        if (token.length === 0 && password.length === 0) continue;
-        const username = sanitizeString(
-          (a as Record<string, unknown>).username,
-          USERNAME_MAX_LENGTH
-        );
-        const rawId = (a as Record<string, unknown>).user_id;
-        const user_id =
-          typeof rawId === 'number' && Number.isFinite(rawId)
-            ? rawId
-            : typeof rawId === 'string'
-              ? parseInt(rawId, 10)
-              : 0;
-        if (!Number.isFinite(user_id) || user_id < 0) continue;
-        result.push({
-          email,
-          token,
-          username,
-          user_id: user_id as number,
-          password,
-        });
-        if (result.length >= SAVED_ACCOUNTS_MAX) break;
-      }
-      return result;
-    } catch {
-      return [];
-    }
-  };
-
-  const writeSavedAccounts = async (accounts: SavedAccount[]) => {
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('Encryption not available');
-    }
-    const toWrite = accounts.slice(0, SAVED_ACCOUNTS_MAX);
-    const dir = path.dirname(ACCOUNTS_FILE);
-    await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
-    const encrypted = safeStorage.encryptString(JSON.stringify(toWrite));
-    await fsp.writeFile(ACCOUNTS_FILE, encrypted);
-    await fsp.chmod(ACCOUNTS_FILE, 0o600);
-  };
-
-  ipcMain.handle(
-    'credentials-save',
-    async (
-      _event,
-      email: unknown,
-      token: unknown,
-      username: unknown,
-      user_id: unknown,
-      password: unknown
-    ) => {
-      try {
-        const emailStr = normalizeEmail(email);
-        if (!emailStr || !isValidEmailFormat(emailStr)) {
-          return { success: false, error: CREDENTIALS_GENERIC_ERROR };
-        }
-        const tokenStr = sanitizeString(token, TOKEN_MAX_LENGTH);
-        const passwordStr = sanitizeString(password, PASSWORD_MAX_LENGTH);
-        if (passwordStr.length === 0) {
-          return { success: false, error: CREDENTIALS_GENERIC_ERROR };
-        }
-        const usernameStr = sanitizeString(username, USERNAME_MAX_LENGTH);
-        const id =
-          typeof user_id === 'number' && Number.isFinite(user_id)
-            ? user_id
-            : typeof user_id === 'string'
-              ? parseInt(user_id, 10)
-              : 0;
-        if (!Number.isFinite(id) || id < 0) {
-          return { success: false, error: CREDENTIALS_GENERIC_ERROR };
-        }
-        const accounts = await readSavedAccounts();
-        const index = accounts.findIndex((a) => a.email === emailStr);
-        const entry: SavedAccount = {
-          email: emailStr,
-          token: tokenStr,
-          username: usernameStr,
-          user_id: id as number,
-          password: passwordStr,
-        };
-        if (index >= 0) {
-          accounts[index] = entry;
-        } else {
-          accounts.push(entry);
-        }
-        await writeSavedAccounts(accounts);
-        return { success: true };
-      } catch {
-        return { success: false, error: CREDENTIALS_GENERIC_ERROR };
-      }
-    }
-  );
-
-  ipcMain.handle('credentials-load', async () => {
-    try {
-      const accounts = await readSavedAccounts();
-      return { success: true, accounts };
-    } catch {
-      return { success: false, accounts: [] };
-    }
-  });
-
-  ipcMain.handle('credentials-remove', async (_event, email: unknown) => {
-    try {
-      const emailStr = normalizeEmail(email);
-      if (!emailStr) {
-        return { success: true };
-      }
-      const accounts = (await readSavedAccounts()).filter(
-        (a) => a.email !== emailStr
-      );
-      await writeSavedAccounts(accounts);
-      return { success: true };
-    } catch {
-      return { success: false, error: CREDENTIALS_GENERIC_ERROR };
-    }
-  });
-
   // ==================== register update related handler ====================
   registerUpdateIpcHandlers();
 }
@@ -2936,8 +2737,7 @@ async function createWindow() {
   );
 
   // Platform-specific window configuration
-  // Windows: Use native frame for better native feel, solid background
-  // macOS: Use frameless with transparency and vibrancy effects
+  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -2949,12 +2749,16 @@ async function createWindow() {
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,
-    // Solid background on Windows (respect dark/light mode), fully transparent on macOS for native vibrancy
+    // Solid on Windows; macOS solid without vibrancy; Linux unchanged semi-transparent tint
     backgroundColor: isWindows
       ? nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
         : '#ffffff'
-      : '#00000000',
+      : isMac
+        ? nativeTheme.shouldUseDarkColors
+          ? '#1e1e1e'
+          : '#f5f5f5'
+        : '#f5f5f580',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
@@ -2978,23 +2782,13 @@ async function createWindow() {
     },
   });
 
-  // Apply native macOS effects
   if (process.platform === 'darwin') {
     win.once('ready-to-show', () => {
       if (win && !win.isDestroyed()) {
         try {
-          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
-          setVibrancy(win, 'HUDWindow');
-
-          // Apply rounded corners
           setRoundedCorners(win, 20);
-
-          // Make titlebar transparent
-          setTransparentTitlebar(win);
-
-          log.info('[MacOS] Applied native visual effects');
         } catch (error) {
-          log.error('[MacOS] Failed to apply native visual effects:', error);
+          log.error('[MacOS] Failed to apply rounded corners:', error);
         }
       }
     });
