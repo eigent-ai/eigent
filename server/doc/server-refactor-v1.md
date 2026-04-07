@@ -1,6 +1,6 @@
 # Server Refactor v1 - Upgrade Guide
 
-> Applies to: v0.0.89+
+> Applies to: v0.0.88+
 > PR: #1509
 
 ## What Changed

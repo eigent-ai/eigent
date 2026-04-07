@@ -351,14 +351,14 @@ export async function checkLocalServerStale(): Promise<void> {
     let staleReason = '';
 
     if (res.status === 404) {
-      // /health endpoint doesn't exist — server predates v0.0.89
-      staleReason = 'Server does not have /health endpoint (pre-v0.0.89)';
+      // /health endpoint doesn't exist — server predates v0.0.88
+      staleReason = 'Server does not have /health endpoint (pre-v0.0.88)';
     } else if (res.ok) {
       const data = await res.json();
       const serverHash: string | undefined = data?.server_hash;
 
       if (!serverHash) {
-        staleReason = 'Server does not report version info (pre-v0.0.89)';
+        staleReason = 'Server does not report version info (pre-v0.0.88)';
       } else if (
         serverHash !== 'unknown' &&
         serverHash !== EXPECTED_SERVER_HASH

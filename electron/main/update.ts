@@ -19,6 +19,12 @@ import type {
   UpdateInfo,
 } from 'electron-updater';
 import { createRequire } from 'node:module';
+import {
+  DEFAULT_CDN_RELEASE_BASE_URL,
+  getGitHubReleaseChannel,
+  getUpdatePlatformDirectory,
+  GitHubReleaseCdnProvider,
+} from './githubReleaseCdnProvider';
 
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
 
@@ -56,25 +62,42 @@ export function update(win: Electron.BrowserWindow) {
   console.log('Current version:', autoUpdater.currentVersion.version);
   console.log('Update config path:', autoUpdater.getUpdateConfigPath?.());
   console.log('User data path (where config lives):', app.getPath('userData'));
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify();
+  const platformDir = getUpdatePlatformDirectory(
+    process.platform,
+    process.arch
+  );
+
+  if (!platformDir) {
+    console.warn(
+      `[AutoUpdater] Updates are not configured for ${process.platform}/${process.arch}`
+    );
+    return;
   }
+
+  const cdnBaseUrl =
+    process.env.EIGENT_UPDATER_CDN_BASE_URL || DEFAULT_CDN_RELEASE_BASE_URL;
+  const channel = getGitHubReleaseChannel(process.platform, process.arch);
   const feed = {
-    provider: 'github',
+    provider: 'custom' as const,
+    updateProvider: GitHubReleaseCdnProvider,
     owner: 'eigent-ai',
     repo: 'eigent',
-    releaseType: 'release',
-    channel:
-      process.platform === 'darwin'
-        ? process.arch === 'arm64'
-          ? 'latest-arm64'
-          : 'latest-x64'
-        : 'latest',
+    releaseType: 'release' as const,
+    channel,
+    cdnBaseUrl,
+    platformDir,
   };
 
   autoUpdater.setFeedURL(feed);
+  console.log('[AutoUpdater] setFeedURL:', feed);
+
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch((err: Error) => {
+      console.log('[AutoUpdater] Initial update check failed:', err.message);
+    });
+  }
+
   if (!app.isPackaged) {
-    console.log('[DEV] setFeedURL:', feed);
     // In development, check for updates but don't fail if it errors
     autoUpdater.checkForUpdates().catch((err: Error) => {
       console.log(
@@ -147,10 +170,24 @@ function startDownload(
   callback: (error: Error | null, info: ProgressInfo | null) => void,
   complete: (event: UpdateDownloadedEvent) => void
 ) {
+  const nativeMacUpdater =
+    process.platform === 'darwin'
+      ? ((autoUpdater as { nativeUpdater?: NodeJS.EventEmitter })
+          .nativeUpdater ?? null)
+      : null;
+
   autoUpdater.on('download-progress', (info: ProgressInfo) =>
     callback(null, info)
   );
   autoUpdater.on('error', (error: Error) => callback(error, null));
-  autoUpdater.on('update-downloaded', complete);
+
+  if (nativeMacUpdater) {
+    nativeMacUpdater.once('update-downloaded', () =>
+      complete({} as UpdateDownloadedEvent)
+    );
+  } else {
+    autoUpdater.on('update-downloaded', complete);
+  }
+
   autoUpdater.downloadUpdate();
 }
