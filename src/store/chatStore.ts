@@ -611,87 +611,97 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
-      // get current model
-      let apiModel = {
-        api_key: '',
-        model_type: '',
-        model_platform: '',
-        api_url: '',
-        extra_params: {},
-      };
-      if (modelType === 'custom' || modelType === 'local') {
-        const res = await proxyFetchGet('/api/v1/providers', {
-          prefer: true,
-        });
-        const providerList = res.items || [];
-        console.log('providerList', providerList);
-        const provider = providerList[0];
+      // Fire all independent fetches in parallel
+      const apiModelPromise = (async () => {
+        if (modelType === 'custom' || modelType === 'local') {
+          const res = await proxyFetchGet('/api/v1/providers', {
+            prefer: true,
+          });
+          const providerList = res.items || [];
+          console.log('providerList', providerList);
+          const provider = providerList[0];
 
-        if (!provider) {
-          throw new Error(
-            'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
-          );
-        }
+          if (!provider) {
+            throw new Error(
+              'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
+            );
+          }
 
-        apiModel = {
-          api_key: provider.api_key,
-          model_type: provider.model_type,
-          model_platform: provider.provider_name,
-          api_url: provider.endpoint_url || provider.api_url,
-          extra_params: provider.encrypted_config,
-        };
-      } else if (modelType === 'cloud') {
-        // get current model
-        const res = await proxyFetchGet('/api/v1/user/key');
-        if (res.warning_code && res.warning_code === '21') {
-          showStorageToast();
+          return {
+            api_key: provider.api_key,
+            model_type: provider.model_type,
+            model_platform: provider.provider_name,
+            api_url: provider.endpoint_url || provider.api_url,
+            extra_params: provider.encrypted_config,
+          };
+        } else if (modelType === 'cloud') {
+          const res = await proxyFetchGet('/api/v1/user/key');
+          if (res.warning_code && res.warning_code === '21') {
+            showStorageToast();
+          }
+          return {
+            api_key: res.value,
+            model_type: cloud_model_type,
+            model_platform: cloud_model_type.includes('gpt')
+              ? 'openai'
+              : cloud_model_type.includes('claude')
+                ? 'aws-bedrock'
+                : cloud_model_type.includes('gemini')
+                  ? 'gemini'
+                  : 'openai-compatible-model',
+            api_url: res.api_url,
+            extra_params: {},
+          };
         }
-        apiModel = {
-          api_key: res.value,
-          model_type: cloud_model_type,
-          model_platform: cloud_model_type.includes('gpt')
-            ? 'openai'
-            : cloud_model_type.includes('claude')
-              ? 'aws-bedrock'
-              : cloud_model_type.includes('gemini')
-                ? 'gemini'
-                : 'openai-compatible-model',
-          api_url: res.api_url,
+        return {
+          api_key: '',
+          model_type: '',
+          model_platform: '',
+          api_url: '',
           extra_params: {},
         };
-      }
+      })();
 
-      // Get search engine configuration for custom mode
-      let searchConfig: Record<string, string> = {};
-      if (modelType === 'custom') {
-        try {
-          const configsRes = await proxyFetchGet('/api/v1/configs');
-          const configs = Array.isArray(configsRes) ? configsRes : [];
+      const searchConfigPromise = (async () => {
+        if (modelType === 'custom') {
+          try {
+            const configsRes = await proxyFetchGet('/api/v1/configs');
+            const configs = Array.isArray(configsRes) ? configsRes : [];
 
-          // Extract Google Search API keys
-          const googleApiKey = configs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'search' &&
-              c.config_name === 'GOOGLE_API_KEY'
-          )?.config_value;
+            const googleApiKey = configs.find(
+              (c: any) =>
+                c.config_group?.toLowerCase() === 'search' &&
+                c.config_name === 'GOOGLE_API_KEY'
+            )?.config_value;
 
-          const searchEngineId = configs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'search' &&
-              c.config_name === 'SEARCH_ENGINE_ID'
-          )?.config_value;
+            const searchEngineId = configs.find(
+              (c: any) =>
+                c.config_group?.toLowerCase() === 'search' &&
+                c.config_name === 'SEARCH_ENGINE_ID'
+            )?.config_value;
 
-          if (googleApiKey && searchEngineId) {
-            searchConfig = {
-              GOOGLE_API_KEY: googleApiKey,
-              SEARCH_ENGINE_ID: searchEngineId,
-            };
-            console.log('Loaded custom search configuration');
+            if (googleApiKey && searchEngineId) {
+              console.log('Loaded custom search configuration');
+              return {
+                GOOGLE_API_KEY: googleApiKey,
+                SEARCH_ENGINE_ID: searchEngineId,
+              };
+            }
+          } catch (error) {
+            console.error('Failed to load search configuration:', error);
           }
-        } catch (error) {
-          console.error('Failed to load search configuration:', error);
         }
-      }
+        return {} as Record<string, string>;
+      })();
+
+      const [apiModel, searchConfig, envPath, browser_port, cdp_browsers] =
+        await Promise.all([
+          apiModelPromise,
+          searchConfigPromise,
+          window.ipcRenderer.invoke('get-env-path', email).catch(() => ''),
+          window.ipcRenderer.invoke('get-browser-port'),
+          window.ipcRenderer.invoke('get-cdp-browsers'),
+        ]);
 
       const addWorkers = workerList.map((worker) => {
         return {
@@ -701,14 +711,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           mcp_tools: worker.workerInfo?.mcp_tools,
         };
       });
-
-      // get env path
-      let envPath = '';
-      try {
-        envPath = await window.ipcRenderer.invoke('get-env-path', email);
-      } catch (error) {
-        console.log('get-env-path error', error);
-      }
 
       // create history
       if (!type) {
@@ -733,19 +735,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           status: 1,
           tokens: 0,
         };
-        await proxyFetchPost(`/api/v1/chat/history`, obj).then((res) => {
-          historyId = res.id;
 
-          /**Save history id for replay reuse purposes.
-           * TODO(history): Remove historyId handling to support per projectId
-           * instead in history api
-           */
-          if (project_id && historyId)
-            projectStore.setHistoryId(project_id, historyId);
-        });
+        // create history in parallel with SSE (historyId is only needed later in onmessage)
+        proxyFetchPost(`/api/v1/chat/history`, obj)
+          .then((res) => {
+            historyId = res.id;
+
+            /**Save history id for replay reuse purposes.
+             * TODO(history): Remove historyId handling to support per projectId
+             * instead in history api
+             */
+            if (project_id && historyId)
+              projectStore.setHistoryId(project_id, historyId);
+          })
+          .catch((err) => {
+            console.error('Failed to create chat history record:', err);
+          });
       }
-      const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
