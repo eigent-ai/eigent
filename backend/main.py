@@ -136,6 +136,11 @@ async def cleanup_resources():
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
 
+    # Clear model registry cache
+    from app.service.model_registry import clear_registry
+
+    clear_registry()
+
     # Remove PID file
     pid_file = dir / "run.pid"
     if pid_file.exists():
