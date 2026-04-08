@@ -26,6 +26,7 @@ import {
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { fetchUserKey, invalidateUserKey } from '@/lib/queryClient';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -635,7 +636,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             extra_params: provider.encrypted_config,
           };
         } else if (modelType === 'cloud') {
-          const res = await proxyFetchGet('/api/v1/user/key');
+          const res = await fetchUserKey();
           if (res.warning_code && res.warning_code === '21') {
             showStorageToast();
           }
@@ -2408,6 +2409,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             // completed tasks move to history
             setUpdateCount();
+            invalidateUserKey();
 
             console.log(tasks[currentTaskId], 'end');
 
@@ -2518,6 +2520,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         onerror(err) {
           console.error('[fetchEventSource] Error:', err);
+          invalidateUserKey();
 
           // Do not retry if the task has already finished (avoids duplicate execution
           // after ERR_NETWORK_CHANGED, ERR_INTERNET_DISCONNECTED, sleep/wake - see issue #1212)
@@ -2591,6 +2594,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         // Server closes connection
         onclose() {
+          invalidateUserKey();
           console.log('SSE connection closed');
           // Abort to resolve fetchEventSource promise (for replay/load - allows awaiting completion)
           try {

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { proxyFetchGet } from '@/api/http';
 import { QueryClient } from '@tanstack/react-query';
 
 export const queryClient = new QueryClient({
@@ -38,4 +39,20 @@ export const queryKeys = {
       [...queryKeys.triggers.all, 'configs', triggerType] as const,
     allConfigs: () => [...queryKeys.triggers.all, 'configs'] as const,
   },
+  userKey: ['userKey'] as const,
+};
+
+/** Cached fetch for /api/v1/user/key. Returns cached data if fresh, otherwise fetches. */
+export const fetchUserKey = () =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.userKey,
+    queryFn: () => proxyFetchGet('/api/v1/user/key'),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+/** Invalidate user key cache (call after task end or settings change). */
+//TODO: When adding any related queries, also invalidate them here to ensure consistency.
+//Tobe renamed to "invalidateModelCache" when more related queries are added.
+export const invalidateUserKey = () => {
+  queryClient.invalidateQueries({ queryKey: queryKeys.userKey });
 };

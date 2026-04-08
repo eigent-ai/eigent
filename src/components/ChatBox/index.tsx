@@ -21,7 +21,7 @@ import {
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
-import { fetchProviders, fetchUserKey } from '@/lib/queryClient';
+import { fetchUserKey, invalidateUserKey } from '@/lib/queryClient';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import type { VanillaChatStore } from '@/store/chatStore';
@@ -87,12 +87,15 @@ export default function ChatBox(): JSX.Element {
   const checkModelConfig = useCallback(async () => {
     try {
       if (modelType === 'cloud') {
+        //Invalidate for fetch fetch
+        invalidateUserKey();
+
         // For cloud model, check if API key exists
         const res = await fetchUserKey();
         setHasModel(!!res.value);
       } else if (modelType === 'local' || modelType === 'custom') {
         // For local/custom model, check if provider exists
-        const res = await fetchProviders();
+        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
         const providerList = res.items || [];
         setHasModel(providerList.length > 0);
       } else {
