@@ -21,7 +21,7 @@ keyed on their configuration fingerprint (platform + type + url + key hash
 + model_config). Agents with identical configs share the same backend.
 """
 
-import hashlib
+import hmac
 import logging
 import threading
 from typing import Any
@@ -41,7 +41,10 @@ def _compute_fingerprint(
     api_url: str | None = None,
     model_config_dict: dict | None = None,
 ) -> str:
-    key_hash = hashlib.sha256((api_key or "").encode()).hexdigest()[:16]
+    # HMAC for cache-key derivation (not password storage — safe to use here)
+    key_hash = hmac.new(
+        b"model-registry", (api_key or "").encode(), "sha256"
+    ).hexdigest()[:16]
     config_str = ""
     if model_config_dict:
         # Exclude "user" (project_id for API tracking) from fingerprint
@@ -50,7 +53,7 @@ def _compute_fingerprint(
         if filtered:
             config_str = str(sorted(filtered.items()))
     raw = f"{model_platform}|{model_type}|{api_url or ''}|{key_hash}|{config_str}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+    return hmac.new(b"model-registry", raw.encode(), "sha256").hexdigest()[:32]
 
 
 def get_or_create_model(
