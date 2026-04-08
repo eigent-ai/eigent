@@ -16,9 +16,6 @@ import platform
 import threading
 import uuid
 
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
-
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import BROWSER_SYS_PROMPT
@@ -36,6 +33,8 @@ from app.component.environment import env
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
 
 
 def _get_browser_port(browser: dict) -> int:
@@ -213,6 +212,8 @@ def browser_agent(options: Chat):
             "browser_sheet_input",
             "browser_get_page_snapshot",
             "browser_open",
+            "browser_upload_file",
+            "browser_download_file",
         ],
     )
 
