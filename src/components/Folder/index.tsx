@@ -711,12 +711,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           className={`flex min-h-0 flex-1 flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'overflow-hidden' : 'scrollbar overflow-y-auto'}`}
         >
           <div
-            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? 'h-full' : ''} ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
+            className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'p-6'} file-viewer-content`}
           >
             {selectedFile ? (
               !loading ? (
                 selectedFile.type === 'md' && !isShowSourceCode ? (
-                  <div className="prose prose-sm max-w-none overflow-hidden">
+                  <div className="prose prose-sm max-w-none">
                     <MarkDown
                       content={selectedFile.content || ''}
                       enableTypewriter={false}
