@@ -85,7 +85,7 @@ export const fetchHistoryTasks = async (
   setTasks: React.Dispatch<React.SetStateAction<any[]>>
 ) => {
   try {
-    const res = await proxyFetchGet(`/api/chat/histories`);
+    const res = await proxyFetchGet(`/api/v1/chat/histories`);
     setTasks(res.items);
   } catch (error) {
     console.error('Failed to fetch history tasks:', error);
@@ -99,7 +99,7 @@ export const fetchGroupedHistoryTasks = async (
 ) => {
   try {
     const res = await proxyFetchGet(
-      `/api/chat/histories/grouped?include_tasks=true`
+      `/api/v1/chat/histories/grouped?include_tasks=true`
     );
     // If the response doesn't have projects field, fall back to legacy grouping
     if (!res || !res.projects) {
@@ -123,7 +123,7 @@ export const fetchGroupedHistorySummaries = async (
 ) => {
   try {
     const res = await proxyFetchGet(
-      `/api/chat/histories/grouped?include_tasks=false`
+      `/api/v1/chat/histories/grouped?include_tasks=false`
     );
     // If the response doesn't have projects field, fall back to legacy grouping
     if (!res || !res.projects) {
@@ -146,7 +146,7 @@ export const fetchGroupedHistoryTasksLegacy = async (
   setProjects: React.Dispatch<React.SetStateAction<ProjectGroup[]>>
 ) => {
   try {
-    const res = await proxyFetchGet(`/api/chat/histories`);
+    const res = await proxyFetchGet(`/api/v1/chat/histories`);
     const groupedProjects = groupTasksByProject(res.items);
     setProjects(groupedProjects);
   } catch (error) {
