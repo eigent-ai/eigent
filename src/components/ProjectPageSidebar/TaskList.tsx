@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
 import {
   getTaskListShelfTone,
   isTaskListRowFailureState,
@@ -20,7 +19,6 @@ import {
 import { cn } from '@/lib/utils';
 import type { ChatStore } from '@/store/chatStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { SquarePen } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const TASK_LIST_ROW_BG = {
@@ -195,8 +193,6 @@ export interface TaskListProps {
   setScrollToQueryId: (id: string) => void;
   title: string;
   emptyLabel: string;
-  addButtonAriaLabel: string;
-  onAddClick: () => void;
 }
 
 export function TaskList({
@@ -206,8 +202,6 @@ export function TaskList({
   setScrollToQueryId,
   title,
   emptyLabel,
-  addButtonAriaLabel,
-  onAddClick,
 }: TaskListProps) {
   return (
     <div
@@ -219,24 +213,13 @@ export function TaskList({
     >
       <div
         className={cn(
-          'gap-2 pl-3 pr-1.5 pb-1.5 pt-0 flex w-full shrink-0 items-center justify-between',
+          'gap-2 pl-3 pr-3 pb-1.5 pt-0 flex w-full shrink-0 items-center',
           collapsed && 'hidden'
         )}
       >
         <span className="text-text-label min-w-0 text-xs font-semibold truncate">
           {title}
         </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          buttonContent="icon-only"
-          className="text-icon-primary shrink-0"
-          aria-label={addButtonAriaLabel}
-          onClick={onAddClick}
-        >
-          <SquarePen className="size-3.5" aria-hidden />
-        </Button>
       </div>
       <div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto">
         {entries.length === 0 ? (

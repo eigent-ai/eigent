@@ -106,9 +106,6 @@ export default function ProjectPageSidebar({
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (s) => s.requestWorkspaceChatFocus
-  );
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
   const inboxUnviewedForProjects = usePageTabStore(
     (s) => s.inboxUnviewedForProjects
@@ -630,10 +627,6 @@ export default function ProjectPageSidebar({
             setScrollToQueryId={setScrollToQueryId}
             title={t('layout.task-list-title', { defaultValue: 'Tasks' })}
             emptyLabel={t('layout.no-tasks', { defaultValue: 'No tasks' })}
-            addButtonAriaLabel={t('layout.task-list-add-hint', {
-              defaultValue: 'Open workspace and focus chat',
-            })}
-            onAddClick={() => requestWorkspaceChatFocus()}
           />
 
           <BottomAction
