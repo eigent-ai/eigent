@@ -99,6 +99,7 @@ interface CdpBrowser {
   addedAt: number;
 }
 let cdp_browser_pool: CdpBrowser[] = [];
+let cdpLastAssignedPort = 9223; // tracks the highest port ever assigned, never decreases
 let cdpHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const CDP_POOL_FILE = path.join(os.homedir(), '.eigent', 'cdp-browsers.json');
@@ -121,8 +122,12 @@ function loadCdpPool(): void {
         ...b,
         isExternal: true,
       }));
+      cdpLastAssignedPort = cdp_browser_pool.reduce(
+        (max, b) => Math.max(max, b.port),
+        cdpLastAssignedPort
+      );
       log.info(
-        `[CDP POOL] Loaded ${cdp_browser_pool.length} browser(s) from disk`
+        `[CDP POOL] Loaded ${cdp_browser_pool.length} browser(s) from disk, lastAssignedPort=${cdpLastAssignedPort}`
       );
     }
   } catch (e) {
@@ -759,16 +764,25 @@ function registerIpcHandlers() {
   // Launch CDP browser with automatic port assignment
   ipcMain.handle('launch-cdp-browser', async () => {
     try {
-      // 1. Find available port (9224–9300) by checking no CDP browser is listening
+      // 1. Always increment port from the last assigned port
       // Port 9223 is reserved for the login browser
       let port: number | null = null;
-      for (let p = 9224; p < 9300; p++) {
-        if (
-          !cdp_browser_pool.some((b) => b.port === p) &&
-          !(await isCdpPortAlive(p))
-        ) {
+      for (let p = cdpLastAssignedPort + 1; p < 9300; p++) {
+        if (!(await isCdpPortAlive(p))) {
           port = p;
           break;
+        }
+      }
+      // Wrap around if we hit the ceiling
+      if (port === null) {
+        for (let p = 9224; p <= cdpLastAssignedPort && p < 9300; p++) {
+          if (
+            !cdp_browser_pool.some((b) => b.port === p) &&
+            !(await isCdpPortAlive(p))
+          ) {
+            port = p;
+            break;
+          }
         }
       }
       if (port === null) {
@@ -905,6 +919,7 @@ function registerIpcHandlers() {
         addedAt: Date.now(),
       };
       cdp_browser_pool.push(newBrowser);
+      cdpLastAssignedPort = port;
       saveCdpPool();
       notifyCdpPoolChanged();
 

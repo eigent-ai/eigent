@@ -258,10 +258,63 @@ export function Node({ id, data }: NodeProps) {
 
   const logRef = useRef<HTMLDivElement>(null);
   const rePortRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef(true);
+  const scrollThresholdPx = 60;
 
   const wheelHandler = useCallback((e: WheelEvent) => {
     e.stopPropagation();
   }, []);
+
+  // Auto-scroll log panel to latest when toolkits update (only if user was already at bottom)
+  const scrollLogToBottom = useCallback(() => {
+    const el = logRef.current;
+    if (!el || !wasAtBottomRef.current) return;
+    setTimeout(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 50);
+  }, []);
+
+  const toolkits = selectedTask?.toolkits;
+  const lastToolkit = toolkits?.[toolkits.length - 1];
+  const toolkitChangeKey = `${selectedTask?.id ?? ''}:${toolkits?.length ?? 0}:${lastToolkit?.toolkitId ?? ''}:${lastToolkit?.toolkitStatus ?? ''}:${lastToolkit?.message?.slice(-30) ?? ''}`;
+
+  useEffect(() => {
+    if (!isExpanded || !toolkits?.length) return;
+    scrollLogToBottom();
+  }, [isExpanded, toolkits?.length, toolkitChangeKey, scrollLogToBottom]);
+
+  // Scroll to bottom when a report appears
+  useEffect(() => {
+    if (!isExpanded || !selectedTask?.report) return;
+    scrollLogToBottom();
+  }, [isExpanded, selectedTask?.report, scrollLogToBottom]);
+
+  // Reset scroll-to-bottom flag when switching tasks or when panel opens
+  useEffect(() => {
+    wasAtBottomRef.current = true;
+  }, [selectedTask?.id]);
+
+  useEffect(() => {
+    if (isExpanded) {
+      wasAtBottomRef.current = true;
+    }
+  }, [isExpanded]);
+
+  // Track whether user has scrolled up so we don't override manual reading
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el || !isExpanded) return;
+    const onScroll = () => {
+      const { scrollTop, clientHeight, scrollHeight } = el;
+      wasAtBottomRef.current =
+        scrollTop + clientHeight >= scrollHeight - scrollThresholdPx;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [isExpanded, selectedTask?.id]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -432,7 +485,7 @@ export function Node({ id, data }: NodeProps) {
             ))}
           </div>
           <div
-            className="px-3 mb-2 max-h-[180px]"
+            className="mb-2 px-3 max-h-[180px]"
             onClick={() => {
               chatStore.setActiveWorkspace(
                 chatStore.activeTaskId as string,
