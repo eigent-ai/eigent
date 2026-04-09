@@ -82,7 +82,7 @@ const foldedTaskLogContentVariants = {
   },
 };
 
-export function WorkforceFoldedAgentDetailPane({
+export function AgentDetailPane({
   agent,
   onTakeManualFollowControl,
 }: {
@@ -188,7 +188,7 @@ export function WorkforceFoldedAgentDetailPane({
   }
 
   return (
-    <div className="min-h-0 min-w-0 bg-surface-tertiary rounded-tl-xl rounded-br-xl flex h-full w-full flex-col overflow-hidden">
+    <div className="min-h-0 min-w-0 bg-surface-tertiary rounded-xl flex h-full w-full flex-col overflow-hidden">
       <div
         className={cn(
           'bg-surface-tertiary top-0 min-h-0 min-w-0 pb-2 pt-2 w-full max-w-full shrink-0'

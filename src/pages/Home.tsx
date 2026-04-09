@@ -17,29 +17,12 @@ import ChatBox from '@/components/ChatBox';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import UpdateElectron from '@/components/update';
-import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import {
-  useInitialWorkforceFoldedLayout,
-  WORKFORCE_FOLDED_MAX_PX,
-  WORKFORCE_FOLDED_MIN_PX,
-} from '@/hooks/useInitialWorkforceFoldedLayout';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import { AnimatePresence, motion, type Transition } from 'framer-motion';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  getPanelGroupElement,
-  type ImperativePanelHandle,
-} from 'react-resizable-panels';
 
 import { AddWorker } from '@/components/AddWorker';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
@@ -51,7 +34,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import WorkforceFoldedPanel from '@/components/WorkforceFoldedPanel';
+import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
+import { WorkspaceContent } from '@/components/Workforce/WorkspaceContent';
 
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -59,10 +43,10 @@ import { useTriggerStore } from '@/store/triggerStore';
 import {
   ArrowUpDown,
   Maximize2,
-  Minimize2,
   Plus,
   SquareChevronRight,
   SquareCode,
+  X,
 } from 'lucide-react';
 import Overview, {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
@@ -70,13 +54,7 @@ import Overview, {
   type TriggerSortKey,
 } from '../components/Trigger/Triggers';
 
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
-import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable';
+import { ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 
 import BottomBar from '@/components/BottomBar';
 
@@ -93,13 +71,7 @@ export default function Home() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
-  const {
-    activeWorkspaceTab,
-    chatPanelPosition,
-    setChatPanelPosition,
-    setHasAgentFiles,
-    markTabAsUnviewed,
-  } = usePageTabStore();
+  const { activeWorkspaceTab, setHasAgentFiles } = usePageTabStore();
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
@@ -110,6 +82,8 @@ export default function Home() {
   const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
+  const [isWorkforceExpandedOverlayOpen, setIsWorkforceExpandedOverlayOpen] =
+    useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const [triggerSortBy, setTriggerSortBy] =
     useState<TriggerSortKey>('createdAt');
@@ -152,125 +126,27 @@ export default function Home() {
 
   useEffect(() => {
     setTriggerSelectedId(null);
+    setIsWorkforceExpandedOverlayOpen(false);
   }, [projectStore.activeProjectId]);
+
+  useEffect(() => {
+    if (activeWorkspaceTab !== 'workforce') {
+      setIsWorkforceExpandedOverlayOpen(false);
+    }
+  }, [activeWorkspaceTab]);
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
     setIsChatBoxVisible(true);
   }, [workspaceChatFocusRequestId]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const workforcePanelRef = useRef<ImperativePanelHandle>(null);
-  const foldedWorkforceAutoExpandGateRef = useRef(false);
 
-  const isWorkforceFolded =
-    activeWorkspaceTab === 'workforce' && isChatBoxVisible;
+  const toggleWorkforceExpandedOverlay = useCallback(() => {
+    setIsWorkforceExpandedOverlayOpen((prev) => !prev);
+  }, []);
 
-  const [panelGroupWidth, setPanelGroupWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    const el = getPanelGroupElement('home-main-panel-group');
-    if (!el) return;
-    const update = () => {
-      setPanelGroupWidth(el.getBoundingClientRect().width);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [isChatBoxVisible, chatPanelPosition, activeWorkspaceTab]);
-
-  const foldedWorkforceMinPct = useMemo(() => {
-    if (!isWorkforceFolded || panelGroupWidth <= 0) return undefined;
-    const minPct = (WORKFORCE_FOLDED_MIN_PX / panelGroupWidth) * 100;
-    return Math.max(5, Math.min(92, minPct));
-  }, [isWorkforceFolded, panelGroupWidth]);
-
-  /** Default % for first paint before ResizeObserver + imperative resize (target ~360px). */
-  const foldedDefaultWorkforcePct = useMemo(() => {
-    if (!isWorkforceFolded) return undefined;
-    const w =
-      panelGroupWidth > 0
-        ? panelGroupWidth
-        : typeof window !== 'undefined'
-          ? Math.max(480, window.innerWidth - 160)
-          : 1200;
-    const minPct = (WORKFORCE_FOLDED_MIN_PX / w) * 100;
-    const maxPct = (WORKFORCE_FOLDED_MAX_PX / w) * 100;
-    const targetPct = (360 / w) * 100;
-    return Math.max(
-      5,
-      Math.min(92, Math.min(maxPct, Math.max(minPct, targetPct)))
-    );
-  }, [isWorkforceFolded, panelGroupWidth]);
-
-  useInitialWorkforceFoldedLayout(
-    'home-main-panel-group',
-    workforcePanelRef,
-    isWorkforceFolded,
-    foldedWorkforceAutoExpandGateRef,
-    `${isChatBoxVisible}-${chatPanelPosition}-${activeWorkspaceTab}`
-  );
-
-  const handleWorkforcePanelGroupLayout = useCallback(
-    (sizes: number[]) => {
-      if (!isWorkforceFolded || !foldedWorkforceAutoExpandGateRef.current) {
-        return;
-      }
-      const groupEl = getPanelGroupElement('home-main-panel-group');
-      if (!groupEl) return;
-      const w = groupEl.getBoundingClientRect().width;
-      if (w <= 0) return;
-      const workforceIdx = chatPanelPosition === 'left' ? 1 : 0;
-      const pct = sizes[workforceIdx];
-      if (pct === undefined) return;
-      const workforcePx = (pct / 100) * w;
-      if (workforcePx > WORKFORCE_FOLDED_MAX_PX + 0.5) {
-        setIsChatBoxVisible(false);
-      }
-    },
-    [isWorkforceFolded, chatPanelPosition]
-  );
-
-  const toggleChatBox = () => {
-    setIsChatBoxVisible((prev) => !prev);
-  };
-
-  // Handle file upload
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Get the active project's folder path
-    const activeProjectId = projectStore.activeProjectId;
-    if (!activeProjectId) return;
-
-    // Upload files using electron API
-    for (const file of Array.from(files)) {
-      try {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          if (reader.result && window.ipcRenderer) {
-            await window.ipcRenderer.invoke('save-file-to-agent-folder', {
-              projectId: activeProjectId,
-              fileName: file.name,
-              content: reader.result,
-            });
-            // Mark the inbox tab as having new content
-            setHasAgentFiles(true);
-            if (activeWorkspaceTab !== 'inbox') {
-              markTabAsUnviewed('inbox', activeProjectId);
-            }
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      } catch (error) {
-        console.error('Error uploading file:', error);
-      }
-    }
-
-    // Reset input
-    e.target.value = '';
-  };
+  const closeWorkforceExpandedOverlay = useCallback(() => {
+    setIsWorkforceExpandedOverlayOpen(false);
+  }, []);
 
   useEffect(() => {
     checkLocalServerStale();
@@ -445,94 +321,37 @@ export default function Home() {
     }
   }, [chatStore, projectStore, getSize]);
 
+  const getAllChatStoresMemoized = useMemo(() => {
+    if (!projectStore.activeProjectId) return [];
+    return projectStore.getAllChatStores(projectStore.activeProjectId);
+  }, [projectStore]);
+
+  /** Matches ChatBox: any task in the project has chat content (not welcome-only). */
+  const hasAnyMessages = useMemo(() => {
+    if (!chatStore) return false;
+    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
+      const activeTask = chatStore.tasks[chatStore.activeTaskId];
+      if (
+        (activeTask.messages && activeTask.messages.length > 0) ||
+        activeTask.hasMessages
+      ) {
+        return true;
+      }
+    }
+    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
+      const state = store.getState();
+      return (
+        state.activeTaskId &&
+        state.tasks[state.activeTaskId] &&
+        (state.tasks[state.activeTaskId].messages.length > 0 ||
+          state.tasks[state.activeTaskId].hasMessages)
+      );
+    });
+  }, [chatStore, getAllChatStoresMemoized]);
+
   if (!chatStore) {
     return <div>{t('triggers.loading')}</div>;
   }
-
-  const renderWorkforceWorkspaceContent = () => {
-    const activeTask = chatStore.activeTaskId
-      ? chatStore.tasks[chatStore.activeTaskId]
-      : null;
-    const activeWorkSpace = activeTask?.activeWorkspace;
-
-    if (!activeTask || !activeWorkSpace) {
-      return (
-        <div className="flex h-full w-full flex-1 items-center justify-center">
-          <div className="relative flex h-full w-full flex-col">
-            <div className="inset-0 rounded-xl pointer-events-none absolute bg-transparent"></div>
-            <div className="relative z-10 h-full w-full">
-              <Workflow taskAssigning={[]} />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        {activeTask.taskAssigning?.find(
-          (agent) => agent.agent_id === activeWorkSpace
-        )?.type === 'browser_agent' && (
-          <div className="animate-in fade-in-0 slide-in-from-right-2 flex h-full w-full flex-1 duration-300">
-            <BrowserAgentWorkspace />
-          </div>
-        )}
-        {activeWorkSpace === 'workflow' && (
-          <div className="flex h-full w-full flex-1 items-center justify-center">
-            <div className="relative flex h-full w-full flex-col">
-              <div className="inset-0 rounded-xl pointer-events-none absolute bg-transparent"></div>
-              <div className="relative z-10 h-full w-full">
-                <Workflow taskAssigning={activeTask.taskAssigning || []} />
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTask.taskAssigning?.find(
-          (agent) => agent.agent_id === activeWorkSpace
-        )?.type === 'developer_agent' && (
-          <div className="flex h-full w-full flex-1">
-            <TerminalAgentWorkspace />
-          </div>
-        )}
-        {activeWorkSpace === 'documentWorkSpace' && (
-          <div className="flex h-full w-full flex-1 items-center justify-center">
-            <div className="relative flex h-full w-full flex-col">
-              <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
-              <div className="relative z-10 h-full w-full">
-                <Folder />
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTask.taskAssigning?.find(
-          (agent) => agent.agent_id === activeWorkSpace
-        )?.type === 'document_agent' && (
-          <div className="flex h-full w-full flex-1 items-center justify-center">
-            <div className="relative flex h-full w-full flex-col">
-              <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
-              <div className="relative z-10 h-full w-full">
-                <Folder
-                  data={activeTask.taskAssigning?.find(
-                    (agent) => agent.agent_id === activeWorkSpace
-                  )}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-        {activeWorkSpace === 'inbox' && (
-          <div className="flex h-full w-full flex-1 items-center justify-center">
-            <div className="relative flex h-full w-full flex-col">
-              <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
-              <div className="relative z-10 h-full w-full">
-                <Folder />
-              </div>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  };
 
   // Task id only — including `activeWorkspace` remounted the motion wrapper on every
   // agent tab switch and replayed the blur/fade on the folded agent list.
@@ -550,42 +369,19 @@ export default function Home() {
           <ResizablePanelGroup
             id="home-main-panel-group"
             direction="horizontal"
-            key={`${isChatBoxVisible}-${chatPanelPosition}-${activeWorkspaceTab}`}
+            key={`${isChatBoxVisible}-${activeWorkspaceTab}`}
             className="gap-0.5 w-full items-center justify-center"
-            onLayout={handleWorkforcePanelGroupLayout}
           >
-            {activeWorkspaceTab === 'workforce' &&
-              isChatBoxVisible &&
-              chatPanelPosition === 'left' && (
-                <>
-                  <ResizablePanel
-                    defaultSize={
-                      foldedDefaultWorkforcePct !== undefined
-                        ? Math.max(8, 100 - foldedDefaultWorkforcePct)
-                        : 30
-                    }
-                    minSize={10}
-                    className="min-h-0 h-full min-w-[360px]"
-                  >
-                    <ChatBox />
-                  </ResizablePanel>
-                  <ResizableHandle
-                    withHandle={true}
-                    className="custom-resizable-handle"
-                  />
-                </>
+            <ResizablePanel className="min-h-0 h-full w-full min-w-[300px]">
+              {activeWorkspaceTab === 'workforce' && isChatBoxVisible && (
+                <ChatBox
+                  workforceExpandedOverlayOpen={isWorkforceExpandedOverlayOpen}
+                  onToggleWorkforceExpandedOverlay={
+                    toggleWorkforceExpandedOverlay
+                  }
+                />
               )}
-            <ResizablePanel
-              ref={workforcePanelRef}
-              {...(isWorkforceFolded && foldedDefaultWorkforcePct !== undefined
-                ? { defaultSize: foldedDefaultWorkforcePct }
-                : {})}
-              {...(foldedWorkforceMinPct !== undefined
-                ? { minSize: foldedWorkforceMinPct }
-                : {})}
-              className="min-h-0 h-full w-full min-w-[300px]"
-            >
-              {activeWorkspaceTab === 'workforce' && (
+              {activeWorkspaceTab === 'workforce' && !isChatBoxVisible && (
                 <div className="rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 relative flex h-full w-full flex-col border-solid">
                   <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
                     <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
@@ -603,82 +399,67 @@ export default function Home() {
                         <Plus />
                         {t('triggers.add')}
                       </Button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileUpload}
-                        multiple
-                        className="hidden"
-                      />
                       <AddWorker
                         isOpen={addWorkerDialogOpen}
                         onOpenChange={setAddWorkerDialogOpen}
                       />
-                      <TooltipSimple
-                        content={
-                          isChatBoxVisible
-                            ? t('layout.expand-workforce', {
-                                defaultValue: 'Expand workforce',
-                              })
-                            : t('layout.minimize-workforce', {
-                                defaultValue: 'Minimize workforce',
-                              })
-                        }
-                        delayDuration={300}
-                        side="bottom"
-                      >
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          buttonContent="icon-only"
-                          buttonRadius="lg"
-                          className="shrink-0"
-                          onClick={toggleChatBox}
-                          aria-pressed={isChatBoxVisible}
-                          aria-label={
-                            isChatBoxVisible
-                              ? t('layout.expand-workforce', {
+                      {hasAnyMessages && (
+                        <TooltipSimple
+                          content={
+                            isWorkforceExpandedOverlayOpen
+                              ? t('layout.close')
+                              : t('layout.expand-workforce', {
                                   defaultValue: 'Expand workforce',
                                 })
-                              : t('layout.minimize-workforce', {
-                                  defaultValue: 'Minimize workforce',
-                                })
                           }
+                          delayDuration={300}
+                          side="bottom"
                         >
-                          {isChatBoxVisible ? (
-                            <Maximize2 className="h-4 w-4" />
-                          ) : (
-                            <Minimize2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TooltipSimple>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            buttonContent="icon-only"
+                            buttonRadius="lg"
+                            className="shrink-0"
+                            onClick={toggleWorkforceExpandedOverlay}
+                            aria-pressed={isWorkforceExpandedOverlayOpen}
+                            aria-label={
+                              isWorkforceExpandedOverlayOpen
+                                ? t('layout.close')
+                                : t('layout.expand-workforce', {
+                                    defaultValue: 'Expand workforce',
+                                  })
+                            }
+                          >
+                            {isWorkforceExpandedOverlayOpen ? (
+                              <X className="h-4 w-4" />
+                            ) : (
+                              <Maximize2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipSimple>
+                      )}
                     </div>
                   </div>
                   <div className="min-h-0 min-w-0 w-full flex-1">
                     <AnimatePresence mode="wait">
                       <motion.div
-                        key={`${workforcePanelKey}-${isWorkforceFolded ? 'folded' : 'expanded'}`}
+                        key={`${workforcePanelKey}-expanded`}
                         initial={{ opacity: 0, filter: 'blur(4px)' }}
                         animate={{ opacity: 1, filter: 'blur(0px)' }}
                         exit={{ opacity: 0, filter: 'blur(4px)' }}
                         transition={{ duration: 0.2 }}
                         className="min-w-0 h-full w-full"
                       >
-                        {isWorkforceFolded ? (
-                          <WorkforceFoldedPanel />
-                        ) : (
-                          renderWorkforceWorkspaceContent()
-                        )}
+                        <WorkspaceContent />
                       </motion.div>
                     </AnimatePresence>
                   </div>
-                  {!isWorkforceFolded && (
-                    <div className="inset-x-0 bottom-0 pointer-events-none absolute z-50">
-                      <div className="pointer-events-auto">
-                        <BottomBar />
-                      </div>
+                  <div className="inset-x-0 bottom-0 pointer-events-none absolute z-50">
+                    <div className="pointer-events-auto">
+                      <BottomBar />
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
               {activeWorkspaceTab === 'inbox' && (
@@ -793,29 +574,70 @@ export default function Home() {
                 </div>
               )}
             </ResizablePanel>
-            {activeWorkspaceTab === 'workforce' &&
-              isChatBoxVisible &&
-              chatPanelPosition === 'right' && (
-                <>
-                  <ResizableHandle
-                    withHandle={true}
-                    className="custom-resizable-handle"
-                  />
-                  <ResizablePanel
-                    defaultSize={
-                      foldedDefaultWorkforcePct !== undefined
-                        ? Math.max(8, 100 - foldedDefaultWorkforcePct)
-                        : 30
-                    }
-                    minSize={10}
-                    className="min-h-0 h-full min-w-[360px]"
-                  >
-                    <ChatBox />
-                  </ResizablePanel>
-                </>
-              )}
           </ResizablePanelGroup>
         </motion.div>
+        <ExpandedOverlay
+          open={isWorkforceExpandedOverlayOpen}
+          onClose={closeWorkforceExpandedOverlay}
+          titleLabel={t('layout.aiWorkforce')}
+          backdropDismissLabel={t('layout.close')}
+          header={
+            <>
+              <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
+                <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
+                  {t('layout.aiWorkforce')}
+                </span>
+              </div>
+              <div className="gap-1 flex shrink-0 items-center">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="rounded-lg items-center justify-center"
+                  onClick={() => setAddWorkerDialogOpen(true)}
+                >
+                  <Plus />
+                  {t('triggers.add')}
+                </Button>
+                <TooltipSimple
+                  content={t('layout.close')}
+                  delayDuration={300}
+                  side="bottom"
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="icon-only"
+                    buttonRadius="lg"
+                    className="shrink-0"
+                    onClick={closeWorkforceExpandedOverlay}
+                    aria-pressed={true}
+                    aria-label={t('layout.close')}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipSimple>
+              </div>
+            </>
+          }
+          bottomBar={
+            <div className="pointer-events-auto">
+              <BottomBar />
+            </div>
+          }
+        >
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`overlay-${workforcePanelKey}`}
+              initial={{ opacity: 0, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, filter: 'blur(4px)' }}
+              transition={{ duration: 0.2 }}
+              className="min-w-0 h-full w-full"
+            >
+              <WorkspaceContent />
+            </motion.div>
+          </AnimatePresence>
+        </ExpandedOverlay>
         <UpdateElectron />
       </div>
     </ReactFlowProvider>

@@ -104,7 +104,7 @@ function TaskQueryScrollLabel({
   );
 }
 
-function TaskListRow({
+function ChatTimelineRow({
   task,
   firstUserMessageId,
   active,
@@ -169,7 +169,7 @@ function TaskListRow({
       onMouseEnter={() => setRowHovered(true)}
       onMouseLeave={() => setRowHovered(false)}
       className={cn(
-        'no-drag h-8 rounded-xl min-w-0 gap-3 px-3 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
+        'no-drag h-8 rounded-lg min-w-0 gap-3 px-3 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
         rowBg
       )}
       aria-current={active ? 'true' : undefined}
@@ -179,41 +179,44 @@ function TaskListRow({
   );
 }
 
-export type TaskListEntry = {
+/** Initial fold state for the task timeline rail (ChatBox `useState` should match). */
+export const CHAT_TIMELINE_DEFAULT_COLLAPSED = true;
+
+export type ChatTimelineEntry = {
   chatId: string;
   taskId: string;
   task: ChatStore['tasks'][string];
   firstUserMessageId: string | null;
 };
 
-export interface TaskListProps {
+export interface ChatTimelineProps {
   collapsed: boolean;
-  entries: TaskListEntry[];
+  entries: ChatTimelineEntry[];
   activeTaskId: string | null | undefined;
   setScrollToQueryId: (id: string) => void;
   title: string;
   emptyLabel: string;
 }
 
-export function TaskList({
+export function ChatTimeline({
   collapsed,
   entries,
   activeTaskId,
   setScrollToQueryId,
   title,
   emptyLabel,
-}: TaskListProps) {
+}: ChatTimelineProps) {
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
+        'min-h-0 min-w-0 p-1 flex w-full max-w-[200px] flex-col overflow-hidden',
         collapsed ? 'max-h-0 pointer-events-none flex-none' : 'min-h-0 flex-1'
       )}
       style={{ minHeight: 0 }}
     >
       <div
         className={cn(
-          'gap-2 pl-3 pr-3 pb-1.5 pt-0 flex w-full shrink-0 items-center',
+          'gap-2 pl-3 pr-3 py-2 flex w-full shrink-0 items-center',
           collapsed && 'hidden'
         )}
       >
@@ -227,7 +230,7 @@ export function TaskList({
         ) : (
           <div className="gap-2 min-w-0 flex w-full flex-col">
             {entries.map(({ chatId, taskId, task, firstUserMessageId }) => (
-              <TaskListRow
+              <ChatTimelineRow
                 key={`${chatId}-${taskId}`}
                 task={task}
                 firstUserMessageId={firstUserMessageId}

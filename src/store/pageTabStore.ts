@@ -31,6 +31,9 @@ interface PageTabState {
   /** Project (Home) page left sidebar rail */
   projectSidebarCollapsed: boolean;
   toggleProjectSidebarCollapsed: () => void;
+  /** Workforce tab: right rail folded to give chat more width (persisted) */
+  workforceRailCollapsed: boolean;
+  toggleWorkforceRailCollapsed: () => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -112,6 +115,11 @@ export const usePageTabStore = create<PageTabState>()(
         set((state) => ({
           projectSidebarCollapsed: !state.projectSidebarCollapsed,
         })),
+      workforceRailCollapsed: false,
+      toggleWorkforceRailCollapsed: () =>
+        set((state) => ({
+          workforceRailCollapsed: !state.workforceRailCollapsed,
+        })),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -175,6 +183,7 @@ export const usePageTabStore = create<PageTabState>()(
       name: 'eigent-page-tab',
       partialize: (state) => ({
         projectSidebarCollapsed: state.projectSidebarCollapsed,
+        workforceRailCollapsed: state.workforceRailCollapsed,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
       }),

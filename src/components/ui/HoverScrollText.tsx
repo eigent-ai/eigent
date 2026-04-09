@@ -39,7 +39,7 @@ export interface HoverScrollTextProps {
 
 /**
  * Single-line text that overflows hidden; on `active`, translates to reveal the rest
- * (same behavior as task query labels in ProjectPageSidebar TaskList).
+ * (same behavior as task query labels in ChatBox ChatTimeline).
  */
 export function HoverScrollText({
   text,

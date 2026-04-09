@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AddWorker } from '@/components/AddWorker';
+import { StreamingTaskList } from '@/components/ChatBox/TaskBox/StreamingTaskList';
+import { TaskCard } from '@/components/ChatBox/TaskBox/TaskCard';
+import { TypeCardSkeleton } from '@/components/ChatBox/TaskBox/TypeCardSkeleton';
 import { Button } from '@/components/ui/button';
 import { HoverScrollText } from '@/components/ui/HoverScrollText';
 import {
@@ -28,7 +31,7 @@ import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
-import { TaskStatus } from '@/types/constants';
+import { AgentStep, ChatTaskStatus, TaskStatus } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bird,
@@ -47,9 +50,10 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 
-import { WorkforceFoldedAgentDetailPane } from './AgentDetailPane';
+import { AgentDetailPane } from './AgentDetailPane';
 
 const FOLDED_LAYOUT_TRANSITION = {
   duration: 0.28,
@@ -316,13 +320,20 @@ function FoldedAgentCard({
   return button;
 }
 
+export interface FoldedPanelProps {
+  /** When true, do not push global activeWorkspace/activeAgent from the folded rail (expanded overlay shows workflow-only). */
+  pauseAgentWorkspaceSync?: boolean;
+}
+
 /**
  * Narrow-column workforce layout when the workspace chat panel is visible.
  * - `initial`: workforce list before any sub-task has started executing (agents may already exist on the task).
  * - `task-live`: icon rail + detail pane once at least one assigned sub-task is past waiting.
  */
-export default function WorkforceFoldedPanel() {
-  const { chatStore } = useChatStoreAdapter();
+export default function FoldedPanel({
+  pauseAgentWorkspaceSync = false,
+}: FoldedPanelProps) {
+  const { chatStore, projectStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
   const { setWorkerList } = useAuthStore();
   const [detailAgentId, setDetailAgentId] = useState<string | null>(null);
@@ -358,6 +369,114 @@ export default function WorkforceFoldedPanel() {
   const activeTaskId = chatStore?.activeTaskId as string | undefined;
   const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
   const taskAssigning = activeTask?.taskAssigning ?? EMPTY_TASK_ASSIGNING;
+
+  const activeChatStore = projectStore.getActiveChatStore();
+  const streamingDecomposeText = useSyncExternalStore(
+    (callback) => {
+      if (!activeChatStore) return () => {};
+      return activeChatStore.subscribe(callback);
+    },
+    () => {
+      if (!activeChatStore) return '';
+      const state = activeChatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId || !state.tasks[taskId]) return '';
+      return state.tasks[taskId].streamingDecomposeText || '';
+    },
+    () => ''
+  );
+
+  const activeProjectId = projectStore.activeProjectId;
+  const taskPanelChatId =
+    activeProjectId && projectStore.projects[activeProjectId]
+      ? (projectStore.projects[activeProjectId].activeChatId ?? undefined)
+      : undefined;
+
+  const { taskCardVisible, isSkeletonPhase, showStreamingDecompose, taskType } =
+    useMemo(() => {
+      const fallback = {
+        taskCardVisible: false,
+        isSkeletonPhase: false,
+        showStreamingDecompose: false,
+        taskType: 1 as 1 | 2 | 3,
+      };
+      if (!activeTask || !activeTaskId) return fallback;
+
+      const messages = activeTask.messages;
+      const isHumanReply =
+        !!activeTask.activeAsk ||
+        (() => {
+          const userMessages = messages.filter((m: any) => m.role === 'user');
+          const lastUser = userMessages[userMessages.length - 1];
+          if (!lastUser) return false;
+          const userMessageIndex = messages.findIndex(
+            (m: any) => m.id === lastUser.id
+          );
+          if (userMessageIndex > 0) {
+            const prevMessage = messages[userMessageIndex - 1];
+            return (
+              prevMessage?.role === 'agent' &&
+              prevMessage?.step === AgentStep.ASK
+            );
+          }
+          return false;
+        })();
+
+      const anyToSubTasksMessage = messages.find(
+        (m: any) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      const isSkeletonPhaseLocal =
+        (activeTask.status !== ChatTaskStatus.FINISHED &&
+          activeTask.status !== ChatTaskStatus.RUNNING &&
+          !anyToSubTasksMessage &&
+          !activeTask.hasWaitComfirm &&
+          messages.length > 0) ||
+        (!!activeTask.isTakeControl && !anyToSubTasksMessage);
+
+      let lastUserIndex = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          lastUserIndex = i;
+          break;
+        }
+      }
+      const afterLastUser =
+        lastUserIndex >= 0 ? messages.slice(lastUserIndex + 1) : [];
+      const hasTaskPlanForCurrentTurn = afterLastUser.some(
+        (m: any) => m.step === AgentStep.TO_SUB_TASKS
+      );
+
+      const isDecomposing = streamingDecomposeText.length > 0;
+      const shouldShowFallbackTask =
+        lastUserIndex >= 0 &&
+        !hasTaskPlanForCurrentTurn &&
+        !activeTask.hasWaitComfirm &&
+        !isDecomposing &&
+        activeTask.status !== ChatTaskStatus.FINISHED;
+
+      const taskLike = hasTaskPlanForCurrentTurn || shouldShowFallbackTask;
+
+      const taskCardVisibleLocal =
+        taskLike && !isSkeletonPhaseLocal && !isHumanReply;
+
+      const showStreamingDecomposeLocal =
+        streamingDecomposeText.length > 0 &&
+        activeTask.status !== ChatTaskStatus.FINISHED &&
+        !isHumanReply &&
+        !hasTaskPlanForCurrentTurn;
+
+      const toSub = [...messages]
+        .reverse()
+        .find((m: any) => m.step === AgentStep.TO_SUB_TASKS);
+      const taskTypeLocal = (toSub?.taskType as 1 | 2 | 3) || 1;
+
+      return {
+        taskCardVisible: taskCardVisibleLocal,
+        isSkeletonPhase: isSkeletonPhaseLocal,
+        showStreamingDecompose: showStreamingDecomposeLocal,
+        taskType: taskTypeLocal,
+      };
+    }, [activeTask, activeTaskId, streamingDecomposeText]);
 
   const sortedAgents = useMemo(() => {
     const base = [...BASE_WORKFLOW_AGENTS, ...workerList].filter(
@@ -402,7 +521,21 @@ export default function WorkforceFoldedPanel() {
     [detailAgentId, sortedAgents]
   );
 
+  /** Match main chat: task execution has started (not PENDING planning). */
+  const isMainTaskStarted =
+    !!activeTask &&
+    (activeTask.status === ChatTaskStatus.RUNNING ||
+      activeTask.status === ChatTaskStatus.FINISHED ||
+      activeTask.status === ChatTaskStatus.PAUSE);
+
+  /** TaskCard only after the main task has started and an agent is selected (not detail-pane "Select an agent"). */
+  const showFoldedTaskCard =
+    taskCardVisible && isMainTaskStarted && detailAgent != null;
+
   useEffect(() => {
+    if (pauseAgentWorkspaceSync) {
+      return;
+    }
     if (!isTaskLiveLayout) {
       setDetailAgentId(null);
       setManualFollowPaused(false);
@@ -462,6 +595,7 @@ export default function WorkforceFoldedPanel() {
     activeTask?.activeWorkspace,
     chatStore,
     activeTaskId,
+    pauseAgentWorkspaceSync,
   ]);
 
   const onSelectAgent = useCallback(
@@ -490,7 +624,7 @@ export default function WorkforceFoldedPanel() {
           {isTaskLiveLayout ? (
             <motion.div
               key="task-live"
-              className="min-h-0 min-w-0 flex flex-1 flex-row overflow-hidden"
+              className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
@@ -498,30 +632,78 @@ export default function WorkforceFoldedPanel() {
               onPointerDownCapture={onFoldedPanelEngagement}
               onWheelCapture={onFoldedPanelEngagement}
             >
-              <div className="scrollbar scrollbar-always-visible py-2 pl-2 max-h-full shrink-0 overflow-y-auto">
-                <div className="gap-2 flex flex-col items-start">
+              <div className="scrollbar scrollbar-always-visible py-2 pl-2 pr-2 shrink-0 overflow-x-auto overflow-y-hidden">
+                <div className="gap-2 flex w-max min-w-full flex-row flex-nowrap items-center">
                   {sortedAgents.map((agent) => (
-                    <FoldedAgentCard
-                      key={agent.agent_id}
-                      agent={agent}
-                      isActive={detailAgentId === agent.agent_id}
-                      dimmed={
-                        isTaskLiveLayout && (agent.tasks?.length ?? 0) === 0
-                      }
-                      compactMode
-                      onSelect={() => {
-                        setManualFollowPaused(true);
-                        setDetailAgentId(agent.agent_id);
-                        onSelectAgent(agent.agent_id);
-                      }}
-                      showUserAgentOverflow={false}
-                    />
+                    <div key={agent.agent_id} className="shrink-0">
+                      <FoldedAgentCard
+                        agent={agent}
+                        isActive={detailAgentId === agent.agent_id}
+                        dimmed={
+                          isTaskLiveLayout && (agent.tasks?.length ?? 0) === 0
+                        }
+                        compactMode
+                        onSelect={() => {
+                          setManualFollowPaused(true);
+                          setDetailAgentId(agent.agent_id);
+                          onSelectAgent(agent.agent_id);
+                        }}
+                        showUserAgentOverflow={false}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
-              <div className="bg-surface-secondary min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+              {(showFoldedTaskCard ||
+                isSkeletonPhase ||
+                showStreamingDecompose) &&
+                activeTaskId &&
+                activeTask &&
+                chatStore && (
+                  <div className="scrollbar scrollbar-always-visible min-h-0 min-w-0 pb-2 flex h-full shrink-0 flex-col overflow-x-hidden overflow-y-auto">
+                    {showStreamingDecompose && (
+                      <StreamingTaskList
+                        streamingText={streamingDecomposeText}
+                      />
+                    )}
+                    {isSkeletonPhase && (
+                      <TypeCardSkeleton
+                        isTakeControl={activeTask.isTakeControl || false}
+                      />
+                    )}
+                    {showFoldedTaskCard && (
+                      <TaskCard
+                        key={`task-folded-${activeTaskId}`}
+                        chatId={taskPanelChatId}
+                        taskInfo={activeTask.taskInfo || []}
+                        taskType={taskType}
+                        taskAssigning={activeTask.taskAssigning || []}
+                        taskRunning={activeTask.taskRunning || []}
+                        progressValue={activeTask.progressValue || 0}
+                        summaryTask={activeTask.summaryTask || ''}
+                        onAddTask={() => {
+                          chatStore.setIsTaskEdit(activeTaskId, true);
+                          chatStore.addTaskInfo();
+                        }}
+                        onUpdateTask={(taskIndex, content) => {
+                          chatStore.setIsTaskEdit(activeTaskId, true);
+                          chatStore.updateTaskInfo(taskIndex, content);
+                        }}
+                        onSaveTask={() => {
+                          chatStore.saveTaskInfo();
+                        }}
+                        onDeleteTask={(taskIndex) => {
+                          chatStore.setIsTaskEdit(activeTaskId, true);
+                          chatStore.deleteTaskInfo(taskIndex);
+                        }}
+                        clickable
+                      />
+                    )}
+                  </div>
+                )}
+              <div className="min-h-0 min-w-0 px-2 pb-2 hidden flex-1 flex-col overflow-hidden">
                 {detailAgent ? (
-                  <WorkforceFoldedAgentDetailPane
+                  <AgentDetailPane
                     agent={detailAgent}
                     onTakeManualFollowControl={() =>
                       setManualFollowPaused(true)

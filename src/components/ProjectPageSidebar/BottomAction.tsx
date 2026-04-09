@@ -19,23 +19,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { CircleHelp } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
-function hubIconTabClass(active: boolean): string {
-  return cn(
-    'no-drag h-8 w-full min-w-0 rounded-xl bg-surface-primary',
-    'hover:bg-surface-tertiary flex cursor-pointer items-center justify-center transition-colors',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary',
-    active && 'bg-surface-tertiary'
-  );
-}
-
-const rowButtonBaseClass =
-  'no-drag h-8 rounded-xl hover:bg-surface-tertiary min-w-0 flex shrink-0 items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-secondary';
-
-const rowButtonClass = cn(rowButtonBaseClass, 'gap-3 px-3 w-full');
+import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
 
 const PROJECT_HUB_DROPDOWN_CONTENT_CLASS = cn(
   'min-w-[11rem] -mb-2 flex flex-col gap-1 rounded-xl border-0 bg-fill-default p-1 shadow-md'
@@ -63,6 +52,10 @@ export interface BottomActionProps {
   helpMenuOpen: boolean;
   onHelpMenuOpenChange: (open: boolean) => void;
   helpAriaLabel: string;
+  /** Visible row label (matches workspace `NavTab` label typography). */
+  helpLabel: string;
+  /** Tooltip on hover; defaults to {@link helpAriaLabel}. */
+  helpTooltip?: string;
   onContactSupport: () => void;
   onReportBug: () => void;
   onDownloadLogs: () => void;
@@ -71,7 +64,7 @@ export interface BottomActionProps {
   downloadLogsLabel: string;
 }
 
-/** Bottom rail: primary model summary cell + help menu, responsive grid. */
+/** Bottom rail: help menu, then model summary — stacked vertically; folded rail shows icon-only rows. */
 export function BottomAction({
   collapsed,
   onOpenModels,
@@ -81,6 +74,8 @@ export function BottomAction({
   helpMenuOpen,
   onHelpMenuOpenChange,
   helpAriaLabel,
+  helpLabel,
+  helpTooltip,
   onContactSupport,
   onReportBug,
   onDownloadLogs,
@@ -88,72 +83,35 @@ export function BottomAction({
   reportBugLabel,
   downloadLogsLabel,
 }: BottomActionProps) {
+  const modelTitle = `${modelModeLine}\n${modelDetailLine}`;
+  const helpTooltipText = helpTooltip ?? helpAriaLabel;
+
   return (
     <div className="border-border-secondary pt-2 mt-auto w-full shrink-0 border-t">
-      <div
-        className={cn(
-          'min-w-0 gap-1 grid w-full overflow-hidden',
-          collapsed ? 'grid-cols-1' : 'grid-cols-[minmax(0,3fr)_minmax(0,1fr)]'
-        )}
-      >
-        <div
-          className={cn(
-            'min-h-0 min-w-0 overflow-hidden',
-            collapsed && 'max-h-0 pointer-events-none overflow-hidden opacity-0'
-          )}
-        >
-          <button
-            type="button"
-            onClick={onOpenModels}
-            title={`${modelModeLine}\n${modelDetailLine}`}
-            className={cn(
-              rowButtonClass,
-              'bg-surface-primary w-full',
-              'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
-            )}
-            aria-label={modelsAriaLabel}
-          >
-            <span
-              className="h-7 w-7 flex shrink-0 items-center justify-center"
-              aria-hidden
-            >
-              <img
-                src={folderIcon}
-                alt=""
-                className="h-7 w-7 mt-1 shrink-0 object-contain"
-                draggable={false}
-              />
-            </span>
-            <div className="min-w-0 flex flex-1 flex-col justify-center leading-none">
-              <div className="bg-surface-information rounded-md px-1 w-fit">
-                <span className="text-text-information text-label-xs font-semibold leading-tight truncate text-nowrap">
-                  {modelModeLine}
-                </span>
-              </div>
-              <span className="text-text-secondary leading-tight px-1 truncate text-[10px]">
-                {modelDetailLine}
-              </span>
-            </div>
-          </button>
-        </div>
+      <div className="min-w-0 gap-1 flex w-full flex-col overflow-hidden">
         <div className="min-h-0 min-w-0 flex w-full">
           <DropdownMenu open={helpMenuOpen} onOpenChange={onHelpMenuOpenChange}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  hubIconTabClass(helpMenuOpen),
-                  collapsed && 'px-3 justify-start'
-                )}
-                aria-label={helpAriaLabel}
-                aria-haspopup="menu"
-              >
-                <CircleHelp
-                  className="h-4 w-4 text-icon-primary shrink-0"
-                  aria-hidden
-                />
-              </button>
-            </DropdownMenuTrigger>
+            <TooltipSimple
+              content={helpTooltipText}
+              side="right"
+              align="center"
+              enabled={!helpMenuOpen}
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={workspaceTabButtonClass(helpMenuOpen)}
+                  aria-label={helpAriaLabel}
+                  aria-haspopup="menu"
+                >
+                  <CircleHelp
+                    className="h-4 w-4 text-icon-primary shrink-0"
+                    aria-hidden
+                  />
+                  <span className={WORKSPACE_TAB_LABEL_CLASS}>{helpLabel}</span>
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipSimple>
             <DropdownMenuContent
               side="right"
               align="end"
@@ -182,6 +140,48 @@ export function BottomAction({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+
+        <div className="min-h-0 min-w-0 flex w-full">
+          <TooltipSimple
+            content={modelTitle}
+            side="right"
+            align="center"
+            enabled={collapsed}
+          >
+            <button
+              type="button"
+              onClick={onOpenModels}
+              title={collapsed ? modelTitle : undefined}
+              className={cn(
+                workspaceTabButtonClass(false),
+                'min-h-8 py-1.5 bg-surface-primary h-auto w-full items-center'
+              )}
+              aria-label={modelsAriaLabel}
+            >
+              <span
+                className="h-4 w-4 flex shrink-0 items-center justify-center"
+                aria-hidden
+              >
+                <img
+                  src={folderIcon}
+                  alt=""
+                  className="h-4 w-4 shrink-0 object-contain"
+                  draggable={false}
+                />
+              </span>
+              <div className="min-w-0 gap-0.5 flex flex-1 flex-col justify-center text-left leading-none">
+                <div className="bg-surface-information min-w-0 rounded-md px-1 w-fit max-w-full">
+                  <span className="text-text-information text-label-xs font-semibold leading-tight block truncate">
+                    {modelModeLine}
+                  </span>
+                </div>
+                <span className="text-text-secondary leading-tight truncate text-left text-[10px]">
+                  {modelDetailLine}
+                </span>
+              </div>
+            </button>
+          </TooltipSimple>
         </div>
       </div>
     </div>

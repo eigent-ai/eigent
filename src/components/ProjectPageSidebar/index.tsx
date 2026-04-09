@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -28,7 +29,13 @@ import { useProjectStore } from '@/store/projectStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { motion } from 'framer-motion';
-import { Inbox, LayoutGrid, Zap, ZapOff } from 'lucide-react';
+import {
+  Inbox,
+  LayoutGrid,
+  MonitorSmartphone,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -40,7 +47,6 @@ import {
   NavTabReconnectSuffix,
   triggerListenerLeadIconClass,
 } from './NavTab';
-import { TaskList } from './TaskList';
 
 /** Match History.tsx tab normalization for sidebar “active hub” styling */
 const HISTORY_TAB_ALIASES: Record<string, string> = {
@@ -71,7 +77,7 @@ function folderPathBasename(path: string): string {
   return parts[parts.length - 1] || normalized;
 }
 
-const PROJECT_SIDEBAR_WIDTH_PX = 240;
+const PROJECT_SIDEBAR_WIDTH_PX = 200;
 /** Folded rail: tab row needs pl-3 + icon + pr-3 (no outer sidebar horizontal padding). */
 const PROJECT_SIDEBAR_FOLDED_WIDTH_PX = 40;
 /** Matches Home main panel layout animation */
@@ -103,7 +109,6 @@ export default function ProjectPageSidebar({
   const toggleProjectSidebarCollapsed = usePageTabStore(
     (s) => s.toggleProjectSidebarCollapsed
   );
-  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
@@ -171,38 +176,6 @@ export default function ProjectPageSidebar({
     }
     return `${base}, ${t('layout.triggers-disconnected')}`;
   }, [t, triggersListenerConnected, wsConnectionStatus]);
-
-  const allTaskEntries = useMemo(() => {
-    const pid = projectStore.activeProjectId;
-    if (!pid) return [];
-    const stores = projectStore.getAllChatStores(pid);
-    const entries: Array<{
-      chatId: string;
-      taskId: string;
-      task: ChatStore['tasks'][string];
-      firstUserMessageId: string | null;
-    }> = [];
-    for (const { chatId, chatStore: cs } of stores) {
-      const state = cs.getState();
-      const tid = state.activeTaskId;
-      if (!tid || !state.tasks[tid]) continue;
-      const task = state.tasks[tid];
-      const hasUserMessages = task.messages.some(
-        (m) => m.role === 'user' && m.content
-      );
-      if (!hasUserMessages) continue;
-      const firstUser = task.messages.find((m) => m.role === 'user');
-      entries.push({
-        chatId,
-        taskId: tid,
-        task,
-        firstUserMessageId: firstUser?.id ?? null,
-      });
-    }
-    return entries;
-    // `chatStore` updates whenever the active chat store changes (adapter subscription).
-    // Do not use `updateCount` alone — it only bumps on task completion, so the list would stay stale while chatting.
-  }, [projectStore, activeProjectId, chatStore]);
 
   const authToken = useAuthStore((s) => s.token);
   const email = useAuthStore((s) => s.email);
@@ -448,6 +421,11 @@ export default function ProjectPageSidebar({
         </DialogContent>
       </Dialog>
 
+      <GlobalSearchDialog
+        open={globalSearchOpen}
+        onOpenChange={setGlobalSearchOpen}
+      />
+
       <motion.aside
         initial={false}
         animate={{
@@ -455,6 +433,8 @@ export default function ProjectPageSidebar({
             ? PROJECT_SIDEBAR_FOLDED_WIDTH_PX
             : PROJECT_SIDEBAR_WIDTH_PX,
           marginRight: SIDEBAR_EDGE_MARGIN_PX,
+          paddingTop: 8,
+          paddingBottom: 4,
         }}
         transition={PROJECT_SIDEBAR_SPRING}
         className={cn(
@@ -605,29 +585,29 @@ export default function ProjectPageSidebar({
                 ariaLabel={triggersTabAriaLabel}
                 ariaCurrentPage={activeWorkspaceTab === 'triggers'}
               />
+              <NavTab
+                active={false}
+                onClick={() => void 0}
+                leading={
+                  <MonitorSmartphone
+                    className="h-4 w-4 text-icon-primary shrink-0"
+                    aria-hidden
+                  />
+                }
+                label={t('layout.sidebar-dispatch', {
+                  defaultValue: 'Dispatch',
+                })}
+                collapsed={collapsed}
+                tooltip={t('layout.sidebar-dispatch', {
+                  defaultValue: 'Dispatch',
+                })}
+                tooltipEnabledWhenCollapsed
+                ariaLabel={t('layout.sidebar-dispatch', {
+                  defaultValue: 'Dispatch',
+                })}
+              />
             </div>
           </div>
-
-          <motion.div
-            className="bg-surface-tertiary mx-0 rounded-xl shrink-0 overflow-hidden"
-            initial={false}
-            animate={{
-              opacity: collapsed ? 0 : 0.8,
-              height: collapsed ? 0 : 1.5,
-              marginTop: collapsed ? 0 : 8,
-              marginBottom: collapsed ? 0 : 8,
-            }}
-            transition={SIDEBAR_LAYOUT_TWEEN}
-          />
-
-          <TaskList
-            collapsed={collapsed}
-            entries={allTaskEntries}
-            activeTaskId={chatStore.activeTaskId}
-            setScrollToQueryId={setScrollToQueryId}
-            title={t('layout.task-list-title', { defaultValue: 'Tasks' })}
-            emptyLabel={t('layout.no-tasks', { defaultValue: 'No tasks' })}
-          />
 
           <BottomAction
             collapsed={collapsed}
@@ -639,6 +619,9 @@ export default function ProjectPageSidebar({
             onHelpMenuOpenChange={setHelpMenuOpen}
             helpAriaLabel={t('layout.help-and-support', {
               defaultValue: 'Help and support',
+            })}
+            helpLabel={t('layout.sidebar-help-label', {
+              defaultValue: 'Support',
             })}
             onContactSupport={() => setSupportDialogOpen(true)}
             onReportBug={() => {

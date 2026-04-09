@@ -87,6 +87,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('../../../src/components/AddWorker', () => ({
+  AddWorker: () => null,
+}));
+
 // Mock BottomBox component
 vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
   default: vi.fn(({ inputProps }: any) => {
@@ -131,6 +135,10 @@ vi.mock('../../../src/components/ChatBox/NoticeCard', () => ({
 
 vi.mock('../../../src/components/ChatBox/TypeCardSkeleton', () => ({
   TypeCardSkeleton: vi.fn(() => <div data-testid="skeleton">Loading...</div>),
+}));
+
+vi.mock('../../../src/components/Workforce/FoldedPanel', () => ({
+  default: () => <div data-testid="workforce-folded-panel" />,
 }));
 
 describe('ChatBox Component', async () => {
@@ -250,7 +258,7 @@ describe('ChatBox Component', async () => {
 
     // Setup default API responses
     mockProxyFetchGet.mockImplementation((url: string) => {
-      if (url === '/api/user/key') {
+      if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
       }
       if (url === '/api/configs') {
@@ -702,7 +710,7 @@ describe('ChatBox Component', async () => {
 
     it('should show search key warning when missing API keys', async () => {
       mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/providers') {
+        if (url === '/api/providers' || url === '/api/v1/providers') {
           return Promise.resolve({
             items: [{ id: 'test-provider', name: 'Test' }],
           });
@@ -733,7 +741,7 @@ describe('ChatBox Component', async () => {
   describe('Example Prompts', () => {
     beforeEach(() => {
       mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/providers') {
+        if (url === '/api/providers' || url === '/api/v1/providers') {
           return Promise.resolve({
             items: [{ id: 'test-provider', name: 'Test' }],
           });
