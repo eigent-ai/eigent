@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 
 export const share = async (taskId: string) => {
   try {
-    const res = await proxyFetchPost(`/api/chat/share`, {
+    const res = await proxyFetchPost(`/api/v1/chat/share`, {
       task_id: taskId,
     });
     const shareLink = `${import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ? 'eigent://callback' : 'https://www.eigent.ai/download'}?share_token=${res.share_token}__${taskId}`;

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 import { app } from 'electron';
 import log from 'electron-log';
 import fs from 'fs';
@@ -108,6 +108,24 @@ export async function getBinaryPath(name?: string): Promise<string> {
     if (prebuiltPath) {
       log.info(`Using prebuilt binary: ${prebuiltPath}`);
       return prebuiltPath;
+    }
+  }
+
+  // In dev: prefer system PATH uv (e.g. Homebrew) for speed - reuses existing cache
+  if (!app.isPackaged && name === 'uv') {
+    try {
+      const whichCmd = process.platform === 'win32' ? 'where.exe' : 'which';
+      const found = execFileSync(whichCmd, [name], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+      const systemPath = found.split(/\r?\n/)[0]?.trim();
+      if (systemPath && fs.existsSync(systemPath)) {
+        log.info(`[DEV] Using system uv from PATH: ${systemPath}`);
+        return systemPath;
+      }
+    } catch {
+      // Not found on PATH, fall through to .eigent/bin
     }
   }
 
@@ -506,6 +524,69 @@ function findPythonForTerminalVenv(): string | null {
 const TERMINAL_VENV_VERSION_FILE = '.terminal_venv_version';
 const BACKEND_VENV_VERSION_FILE = '.backend_venv_version';
 
+let _optionalDepsSyncStarted = false;
+
+/** Background uv sync to install deps excluded from bundle (yt_dlp, etc). Does not block startup. */
+function runBackgroundUvSyncForOptionalDeps(userBackendVenv: string): void {
+  if (!app.isPackaged) return;
+  if (_optionalDepsSyncStarted) return;
+  _optionalDepsSyncStarted = true;
+
+  const uvPath = getPrebuiltBinaryPath('uv');
+  const backendPath = getBackendPath();
+  const uvLockPath = path.join(backendPath, 'uv.lock');
+  if (
+    !uvPath ||
+    !fs.existsSync(uvLockPath) ||
+    !fs.existsSync(path.join(backendPath, 'pyproject.toml'))
+  ) {
+    return;
+  }
+
+  const prebuiltPython = getPrebuiltPythonDir();
+  const uvEnv = {
+    ...process.env,
+    UV_PROJECT_ENVIRONMENT: userBackendVenv,
+    UV_PYTHON_INSTALL_DIR: prebuiltPython || getCachePath('uv_python'),
+    UV_TOOL_DIR: getCachePath('uv_tool'),
+    UV_HTTP_TIMEOUT: '300',
+  } as NodeJS.ProcessEnv;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const syncArgs =
+    timezone === 'Asia/Shanghai'
+      ? [
+          'sync',
+          '--no-dev',
+          '--default-index',
+          'https://mirrors.aliyun.com/pypi/simple/',
+          '--index',
+          'https://pypi.org/simple/',
+        ]
+      : ['sync', '--no-dev'];
+  log.info(
+    '[VENV] Starting background uv sync to install optional deps (e.g. yt_dlp); app will not wait.'
+  );
+  const child = spawn(uvPath, syncArgs, {
+    cwd: backendPath,
+    env: uvEnv,
+    stdio: 'ignore',
+    detached: true,
+  });
+  child.unref();
+  child.on('error', (err) => {
+    log.warn(`[VENV] Background uv sync error: ${err.message}`);
+  });
+  child.on('exit', (code) => {
+    if (code === 0) {
+      log.info('[VENV] Background uv sync completed');
+    } else {
+      log.warn(
+        `[VENV] Background uv sync exited with code ${code} (optional deps may be missing)`
+      );
+    }
+  });
+}
+
 /**
  * Copy prebuilt backend venv to ~/.eigent/venvs/backend-{version} for unified management.
  * The copied venv is the one actually used by the backend (via getVenvPath()).
@@ -554,6 +635,8 @@ export function ensureBackendVenvAtUserPath(version: string): void {
       log.info(
         `[VENV] Backend venv already at ${userBackendVenv} (v${version})`
       );
+      // Ensure optional deps get installed even if last sync failed or was interrupted.
+      runBackgroundUvSyncForOptionalDeps(userBackendVenv);
       return;
     }
   }
@@ -591,59 +674,7 @@ export function ensureBackendVenvAtUserPath(version: string): void {
     fs.writeFileSync(versionFile, version, 'utf-8');
     log.info(`[VENV] Backend venv copied successfully`);
 
-    // Sync optional deps from backend/uv.lock into user venv (e.g. yt_dlp if excluded from app bundle).
-    // Runs in background so app startup is not blocked; uses China mirror when timezone is Asia/Shanghai.
-    const uvPath = getPrebuiltBinaryPath('uv');
-    const backendPath = getBackendPath();
-    const uvLockPath = path.join(backendPath, 'uv.lock');
-    if (
-      uvPath &&
-      fs.existsSync(uvLockPath) &&
-      fs.existsSync(path.join(backendPath, 'pyproject.toml'))
-    ) {
-      const prebuiltPython = getPrebuiltPythonDir();
-      const uvEnv = {
-        ...process.env,
-        UV_PROJECT_ENVIRONMENT: userBackendVenv,
-        UV_PYTHON_INSTALL_DIR: prebuiltPython || getCachePath('uv_python'),
-        UV_TOOL_DIR: getCachePath('uv_tool'),
-        UV_HTTP_TIMEOUT: '300',
-      } as NodeJS.ProcessEnv;
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const syncArgs =
-        timezone === 'Asia/Shanghai'
-          ? [
-              'sync',
-              '--no-dev',
-              '--default-index',
-              'https://mirrors.aliyun.com/pypi/simple/',
-              '--index',
-              'https://pypi.org/simple/',
-            ]
-          : ['sync', '--no-dev'];
-      log.info(
-        '[VENV] Starting background uv sync to install optional deps (e.g. yt_dlp); app will not wait.'
-      );
-      const child = spawn(uvPath, syncArgs, {
-        cwd: backendPath,
-        env: uvEnv,
-        stdio: 'ignore',
-        detached: true,
-      });
-      child.unref();
-      child.on('error', (err) => {
-        log.warn(`[VENV] Background uv sync error: ${err.message}`);
-      });
-      child.on('exit', (code) => {
-        if (code === 0) {
-          log.info('[VENV] Background uv sync completed');
-        } else {
-          log.warn(
-            `[VENV] Background uv sync exited with code ${code} (optional deps may be missing)`
-          );
-        }
-      });
-    }
+    runBackgroundUvSyncForOptionalDeps(userBackendVenv);
   } catch (error) {
     log.error(`[VENV] Failed to copy backend venv: ${error}`);
   }
@@ -930,7 +961,8 @@ export function ensureNpmWrappersForBrowserToolkit(
   const eigentBinDir = path.join(os.homedir(), '.eigent', 'bin');
   fs.mkdirSync(eigentBinDir, { recursive: true });
 
-  const wrapperVersion = '1';
+  // Store wrapper target so wrappers are recreated when venv path changes (e.g. app upgrade)
+  const wrapperVersion = `wrapper:${pythonPath}`;
   const versionFile = path.join(eigentBinDir, '.npm_wrapper_version');
   const storedVersion = fs.existsSync(versionFile)
     ? fs.readFileSync(versionFile, 'utf-8').trim()
@@ -945,10 +977,14 @@ export function ensureNpmWrappersForBrowserToolkit(
     process.platform === 'win32' ? 'npx.cmd' : 'npx'
   );
 
+  // Recreate wrappers when: version changed, wrappers missing, or existing shebang points to wrong Python
   const needsUpdate =
     storedVersion !== wrapperVersion ||
     !fs.existsSync(npmWrapper) ||
-    !fs.existsSync(npxWrapper);
+    !fs.existsSync(npxWrapper) ||
+    (process.platform !== 'win32' &&
+      fs.existsSync(npmWrapper) &&
+      !fs.readFileSync(npmWrapper, 'utf-8').startsWith(`#!${pythonPath}`));
 
   if (needsUpdate) {
     try {

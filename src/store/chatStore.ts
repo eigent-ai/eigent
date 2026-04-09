@@ -41,6 +41,7 @@ import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
+import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 
 interface Task {
@@ -586,9 +587,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         : import.meta.env.VITE_BASE_URL;
       const api =
         type == 'share'
-          ? `${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}`
+          ? `${base_Url}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
-            ? `${base_Url}/api/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+            ? `${base_Url}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
             : `${baseURL}/chat`;
 
       const { tasks: _tasks } = get();
@@ -598,7 +599,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // replay or share request
       if (type) {
-        const res = await proxyFetchGet(`/api/chat/snapshots`, {
+        const res = await proxyFetchGet(`/api/v1/chat/snapshots`, {
           api_task_id: taskId,
         });
         if (res) {
@@ -619,7 +620,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         extra_params: {},
       };
       if (modelType === 'custom' || modelType === 'local') {
-        const res = await proxyFetchGet('/api/providers', {
+        const res = await proxyFetchGet('/api/v1/providers', {
           prefer: true,
         });
         const providerList = res.items || [];
@@ -641,7 +642,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       } else if (modelType === 'cloud') {
         // get current model
-        const res = await proxyFetchGet('/api/user/key');
+        const res = await proxyFetchGet('/api/v1/user/key');
         if (res.warning_code && res.warning_code === '21') {
           showStorageToast();
         }
@@ -664,7 +665,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let searchConfig: Record<string, string> = {};
       if (modelType === 'custom') {
         try {
-          const configsRes = await proxyFetchGet('/api/configs');
+          const configsRes = await proxyFetchGet('/api/v1/configs');
           const configs = Array.isArray(configsRes) ? configsRes : [];
 
           // Extract Google Search API keys
@@ -732,7 +733,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           status: 1,
           tokens: 0,
         };
-        await proxyFetchPost(`/api/chat/history`, obj).then((res) => {
+        await proxyFetchPost(`/api/v1/chat/history`, obj).then((res) => {
           historyId = res.id;
 
           /**Save history id for replay reuse purposes.
@@ -999,16 +1000,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     status: 1,
                     tokens: 0,
                   };
-                  await proxyFetchPost(`/api/chat/history`, obj).then((res) => {
-                    historyId = res.id;
+                  await proxyFetchPost(`/api/v1/chat/history`, obj).then(
+                    (res) => {
+                      historyId = res.id;
 
-                    /**Save history id for replay reuse purposes.
-                     * TODO(history): Remove historyId handling to support per projectId
-                     * instead in history api
-                     */
-                    if (project_id && historyId)
-                      projectStore.setHistoryId(project_id, historyId);
-                  });
+                      /**Save history id for replay reuse purposes.
+                       * TODO(history): Remove historyId handling to support per projectId
+                       * instead in history api
+                       */
+                      if (project_id && historyId)
+                        projectStore.setHistoryId(project_id, historyId);
+                    }
+                  );
 
                   const currentTaskId = getCurrentTaskId();
                   // Update trigger execution status to Completed for connection closed by server
@@ -1254,7 +1257,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 status: 1,
                 tokens: getTokens(currentTaskId),
               };
-              proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+              proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
             }
             setSummaryTask(
               currentTaskId,
@@ -1549,7 +1552,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   status: 1,
                   tokens: getTokens(currentTaskId),
                 };
-                proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+                proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               }
 
               // Check if this is a quick reply completion (simple question answered directly)
@@ -1976,6 +1979,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.WRITE_FILE) {
             console.log('write_to_file', agentMessages.data);
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
+            // Mark inbox tab as having unviewed content
+            usePageTabStore.getState().markTabAsUnviewed('inbox');
             const { file_path } = agentMessages.data;
             const fileName =
               file_path?.replace(/\\/g, '/').split('/').pop() || '';
@@ -2220,7 +2225,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             Promise.all(
               tasks[currentTaskId].snapshotsTemp.map((snapshot) =>
-                proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
+                proxyFetchPost(`/api/v1/chat/snapshots`, { ...snapshot })
               )
             );
 
@@ -2261,7 +2266,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         );
 
                         // Upload file
-                        await uploadFile('/api/chat/files/upload', formData);
+                        await uploadFile('/api/v1/chat/files/upload', formData);
                         console.log('File uploaded successfully:', file.name);
                         return { success: true, fileName: file.name };
                       } else {
@@ -2297,7 +2302,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
               // add remote file count for successful uploads only
               if (successCount > 0) {
-                proxyFetchPost(`/api/user/stat`, {
+                proxyFetchPost(`/api/v1/user/stat`, {
                   action: 'file_generate_count',
                   value: successCount,
                 });
@@ -2311,7 +2316,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 status: 2,
                 tokens: getTokens(currentTaskId),
               };
-              proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+              proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
             }
             uploadLog(currentTaskId, type);
 

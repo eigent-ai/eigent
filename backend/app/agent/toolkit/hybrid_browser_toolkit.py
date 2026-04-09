@@ -578,7 +578,9 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             browser_log_to_file=self._browser_log_to_file,
             log_dir=self.config_loader.get_toolkit_config().log_dir,
             session_id=new_session_id,
-            default_start_url=None if self.config_loader.get_browser_config().cdp_keep_current_page else self._default_start_url,
+            default_start_url=None
+            if self.config_loader.get_browser_config().cdp_keep_current_page
+            else self._default_start_url,
             default_timeout=self._default_timeout,
             short_timeout=self._short_timeout,
             navigation_timeout=self._navigation_timeout,

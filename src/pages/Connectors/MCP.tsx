@@ -114,7 +114,7 @@ export default function SettingMCP() {
   const fetchList = useCallback(() => {
     setIsLoading(true);
     setError('');
-    proxyFetchGet('/api/mcp/users')
+    proxyFetchGet('/api/v1/mcp/users')
       .then((res) => {
         if (Array.isArray(res)) {
           setItems(res);
@@ -135,7 +135,7 @@ export default function SettingMCP() {
   // get integrations
   useEffect(() => {
     setIsLoadingIntegrations(true);
-    proxyFetchGet('/api/config/info')
+    proxyFetchGet('/api/v1/config/info')
       .then((res) => {
         if (res && typeof res === 'object') {
           const baseURL = getProxyBaseURL();
@@ -158,7 +158,7 @@ export default function SettingMCP() {
                         );
                       }
                       // Save to config to mark as installed
-                      await proxyFetchPost('/api/configs', {
+                      await proxyFetchPost('/api/v1/configs', {
                         config_group: 'Notion',
                         config_name: 'MCP_REMOTE_CONFIG_DIR',
                         config_value:
@@ -198,7 +198,7 @@ export default function SettingMCP() {
                       try {
                         // Ensure we persist a marker config to indicate installation
                         const existingConfigs =
-                          await proxyFetchGet('/api/configs');
+                          await proxyFetchGet('/api/v1/configs');
                         const existing = Array.isArray(existingConfigs)
                           ? existingConfigs.find(
                               (c: any) =>
@@ -216,11 +216,14 @@ export default function SettingMCP() {
 
                         if (existing) {
                           await proxyFetchPut(
-                            `/api/configs/${existing.id}`,
+                            `/api/v1/configs/${existing.id}`,
                             configPayload
                           );
                         } else {
-                          await proxyFetchPost('/api/configs', configPayload);
+                          await proxyFetchPost(
+                            '/api/v1/configs',
+                            configPayload
+                          );
                         }
                       } catch (configError) {
                         console.warn(
@@ -252,7 +255,7 @@ export default function SettingMCP() {
                             );
                             if (finalize?.success) {
                               const configs =
-                                await proxyFetchGet('/api/configs');
+                                await proxyFetchGet('/api/v1/configs');
                               const existing = Array.isArray(configs)
                                 ? configs.find(
                                     (c: any) =>
@@ -270,11 +273,14 @@ export default function SettingMCP() {
 
                               if (existing) {
                                 await proxyFetchPut(
-                                  `/api/configs/${existing.id}`,
+                                  `/api/v1/configs/${existing.id}`,
                                   payload
                                 );
                               } else {
-                                await proxyFetchPost('/api/configs', payload);
+                                await proxyFetchPost(
+                                  '/api/v1/configs',
+                                  payload
+                                );
                               }
 
                               toast.success(
@@ -324,7 +330,7 @@ export default function SettingMCP() {
                 };
               } else {
                 onInstall = () => {
-                  const url = `${baseURL}/api/oauth/${key.toLowerCase()}/login`;
+                  const url = `${baseURL}/api/v1/oauth/${key.toLowerCase()}/login`;
                   // Open in a new window to avoid navigating the app/webview
                   window.open(url, '_blank');
                 };
@@ -366,7 +372,9 @@ export default function SettingMCP() {
   const handleSwitch = async (id: number, checked: boolean) => {
     setSwitchLoading((l) => ({ ...l, [id]: true }));
     try {
-      await proxyFetchPut(`/api/mcp/users/${id}`, { status: checked ? 1 : 2 });
+      await proxyFetchPut(`/api/v1/mcp/users/${id}`, {
+        status: checked ? 1 : 2,
+      });
       fetchList();
     } finally {
       setSwitchLoading((l) => ({ ...l, [id]: false }));
@@ -403,7 +411,7 @@ export default function SettingMCP() {
         args: arrayToArgsJson(configForm.argsArr),
         env: configForm.env,
       };
-      await proxyFetchPut(`/api/mcp/users/${showConfig.id}`, mcpData);
+      await proxyFetchPut(`/api/v1/mcp/users/${showConfig.id}`, mcpData);
 
       if (window.ipcRenderer) {
         //Partial payload to empty env {}
@@ -435,7 +443,7 @@ export default function SettingMCP() {
     if (!showConfig) return;
     setSaving(true);
     try {
-      await proxyFetchPut(`/api/mcp/users/${showConfig.id}`, {
+      await proxyFetchPut(`/api/v1/mcp/users/${showConfig.id}`, {
         status: checked ? 1 : 0,
       });
       setShowConfig((prev) =>
@@ -482,7 +490,7 @@ export default function SettingMCP() {
           setInstalling(false);
           return;
         }
-        let res = await proxyFetchPost('/api/mcp/import/local', data);
+        let res = await proxyFetchPost('/api/v1/mcp/import/local', data);
         if (res.detail) {
           toast.error(t('setting.invalid-json'), { closeButton: true });
           setInstalling(false);
@@ -513,7 +521,7 @@ export default function SettingMCP() {
     setDeleting(true);
     try {
       checkAgentTool(deleteTarget.mcp_name);
-      await proxyFetchDelete(`/api/mcp/users/${deleteTarget.id}`);
+      await proxyFetchDelete(`/api/v1/mcp/users/${deleteTarget.id}`);
       // notify main process
       if (window.ipcRenderer) {
         console.log('deleteTarget', deleteTarget.mcp_key);
@@ -529,21 +537,21 @@ export default function SettingMCP() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('setting.mcp-and-tools')}
         </div>
       </div>
 
       {/* Content Section */}
-      <div className="mb-12 gap-6 flex flex-col">
-        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
+      <div className="mb-12 flex flex-col gap-6">
+        <div className="flex w-full flex-col items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
           <Tabs
             value={activeTab}
             onValueChange={(v) => setActiveTab(v as 'mcp-tools' | 'your-mcp')}
             className="w-full"
           >
-            <div className="gap-4 border-border-secondary bg-surface-secondary sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="sticky top-[84px] z-10 flex w-full items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary">
               <TabsList
                 variant="outline"
                 className="h-auto flex-1 justify-start border-0 bg-transparent"
@@ -561,7 +569,7 @@ export default function SettingMCP() {
                   {t('setting.your-own-mcps')}
                 </TabsTrigger>
               </TabsList>
-              <div className="gap-2 flex items-center">
+              <div className="flex items-center gap-2">
                 <SearchInput
                   variant="icon"
                   value={searchQuery}
@@ -580,22 +588,22 @@ export default function SettingMCP() {
             </div>
             <TabsContent value="mcp-tools" className="mt-4">
               {isLoadingIntegrations ? (
-                <div className="gap-4 flex w-full flex-col items-start justify-start">
+                <div className="flex w-full flex-col items-start justify-start gap-4">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="rounded-2xl bg-surface-tertiary px-6 py-4 relative w-full overflow-hidden"
+                      className="relative w-full overflow-hidden rounded-2xl bg-surface-tertiary px-6 py-4"
                     >
-                      <div className="gap-xs flex w-full flex-row items-center justify-between">
-                        <div className="gap-xs flex flex-row items-center">
-                          <div className="mr-2 h-3 w-3 bg-surface-hover-subtle rounded-full" />
+                      <div className="flex w-full flex-row items-center justify-between gap-xs">
+                        <div className="flex flex-row items-center gap-xs">
+                          <div className="mr-2 h-3 w-3 rounded-full bg-surface-hover-subtle" />
                           <div className="h-5 w-32 rounded-md bg-surface-hover-subtle" />
                           <div className="h-4 w-4 rounded bg-surface-hover-subtle" />
                         </div>
                         <div className="h-9 w-20 rounded-lg bg-surface-hover-subtle" />
                       </div>
                       <motion.div
-                        className="inset-0 via-white/20 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
+                        className="via-white/20 absolute inset-0 w-1/2 bg-gradient-to-r from-transparent to-transparent"
                         initial={{ x: '-100%' }}
                         animate={{ x: '200%' }}
                         transition={{
@@ -608,7 +616,7 @@ export default function SettingMCP() {
                   ))}
                 </div>
               ) : filteredIntegrations.length === 0 ? (
-                <div className="py-8 text-text-label text-center">
+                <div className="py-8 text-center text-text-label">
                   {searchQuery.trim()
                     ? t('dashboard.no-results')
                     : t('setting.no-mcp-servers')}
@@ -625,15 +633,15 @@ export default function SettingMCP() {
             </TabsContent>
             <TabsContent value="your-mcp" className="mt-4">
               {isLoading && (
-                <div className="py-8 text-text-label text-center">
+                <div className="py-8 text-center text-text-label">
                   {t('setting.loading')}
                 </div>
               )}
               {error && (
-                <div className="py-8 text-text-error text-center">{error}</div>
+                <div className="py-8 text-center text-text-error">{error}</div>
               )}
               {!isLoading && !error && items.length === 0 && (
-                <div className="gap-4 py-12 flex flex-col items-center justify-center">
+                <div className="flex flex-col items-center justify-center gap-4 py-12">
                   <p className="text-body-md text-text-label">
                     {t('setting.no-mcp-servers')}
                   </p>
@@ -651,7 +659,7 @@ export default function SettingMCP() {
                 !error &&
                 items.length > 0 &&
                 filteredItems.length === 0 && (
-                  <div className="py-8 text-text-label text-center">
+                  <div className="py-8 text-center text-text-label">
                     {t('dashboard.no-results')}
                   </div>
                 )}

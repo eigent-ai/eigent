@@ -122,7 +122,7 @@ export default function Workflow({
         tools: [
           'Video Downloader Toolkit',
           'Audio Analysis Toolkit',
-          'Image Analysis Toolkit',
+          'Screenshot Toolkit',
           'Open AI Image Toolkit',
           'Human Toolkit',
           'Terminal Toolkit',

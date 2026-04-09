@@ -15,7 +15,7 @@
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from app.type.config_group import ConfigGroup
+from app.shared.types.config_group import ConfigGroup
 
 
 class Config(AbstractModel, DefaultTimes, table=True):
@@ -151,10 +151,6 @@ class ConfigInfo:
         ConfigGroup.GOOGLE_GMAIL_MCP.value: {
             "env_vars": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
             "toolkit": "google_gmail_native_toolkit",
-        },
-        ConfigGroup.IMAGE_ANALYSIS.value: {
-            "env_vars": [],
-            "toolkit": "image_analysis_toolkit",
         },
         ConfigGroup.MCP_SEARCH.value: {
             "env_vars": [],
