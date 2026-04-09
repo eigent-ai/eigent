@@ -83,6 +83,155 @@ interface Task {
   nextExecutionId?: string;
 }
 
+type UploadFileSource = 'project_output' | 'camel_log' | 'user_attachment';
+
+interface UploadCandidate {
+  path: string;
+  name: string;
+  uploadName: string;
+  source: UploadFileSource;
+}
+
+interface GeneratedUploadFile {
+  path?: string;
+  name?: string;
+  isFolder?: boolean;
+  source?: Exclude<UploadFileSource, 'user_attachment'>;
+}
+
+interface UploadOutcome {
+  success: boolean;
+  fileName: string;
+  source: UploadFileSource;
+  error?: unknown;
+}
+
+function getFileNameFromPath(filePath: string): string {
+  const segments = filePath.split(/[\\/]/).filter(Boolean);
+  return segments.at(-1) || 'file';
+}
+
+function isReadableLocalPath(filePath?: string): filePath is string {
+  if (!filePath) return false;
+  return !/^(https?:|file:|blob:|data:)/i.test(filePath);
+}
+
+function buildUploadName(
+  fileName: string,
+  source: UploadFileSource,
+  taskId: string,
+  attachmentIndex: number
+): string {
+  if (source === 'camel_log') {
+    return `camel_log_${taskId}__${fileName}`;
+  }
+
+  if (source === 'user_attachment') {
+    return `user_attachment_${attachmentIndex}__${fileName}`;
+  }
+
+  return fileName;
+}
+
+export function collectTaskUploadFiles(
+  generatedFiles: GeneratedUploadFile[],
+  messages: Message[],
+  pendingAttaches: File[] = [],
+  taskId = 'unknown_task'
+): UploadCandidate[] {
+  const uploadCandidates: Array<Omit<UploadCandidate, 'uploadName'>> = [];
+
+  for (const file of generatedFiles) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
+    });
+  }
+
+  const attachmentFiles = [
+    ...messages.flatMap((message) => message.attaches || []),
+    ...pendingAttaches,
+  ];
+
+  for (const attachment of attachmentFiles) {
+    if (!isReadableLocalPath(attachment?.filePath)) continue;
+    uploadCandidates.push({
+      path: attachment.filePath,
+      name:
+        attachment.fileName?.trim() || getFileNameFromPath(attachment.filePath),
+      source: 'user_attachment',
+    });
+  }
+
+  const uniqueCandidates = new Map<string, UploadCandidate>();
+  let attachmentIndex = 1;
+  for (const file of uploadCandidates) {
+    if (!uniqueCandidates.has(file.path)) {
+      uniqueCandidates.set(file.path, {
+        ...file,
+        uploadName: buildUploadName(
+          file.name,
+          file.source,
+          taskId,
+          file.source === 'user_attachment' ? attachmentIndex++ : 0
+        ),
+      });
+    }
+  }
+
+  return Array.from(uniqueCandidates.values());
+}
+
+async function uploadTaskFiles(
+  files: UploadCandidate[],
+  uploadTargetId: string
+): Promise<UploadOutcome[]> {
+  const results: UploadOutcome[] = [];
+
+  for (const file of files) {
+    try {
+      const result = await window.ipcRenderer.invoke('read-file', file.path);
+      if (!result.success || !result.data) {
+        results.push({
+          success: false,
+          fileName: file.name,
+          source: file.source,
+          error: result.error || 'Failed to read file',
+        });
+        continue;
+      }
+
+      const formData = new FormData();
+      const blob = new Blob([result.data], {
+        type: 'application/octet-stream',
+      });
+      formData.append('file', blob, file.uploadName);
+      // TODO(file): rename endpoint to use project_id
+      formData.append('task_id', uploadTargetId);
+
+      await uploadFile('/api/v1/chat/files/upload', formData);
+      console.log('File uploaded successfully:', file.uploadName, file.source);
+      results.push({
+        success: true,
+        fileName: file.uploadName,
+        source: file.source,
+      });
+    } catch (error) {
+      console.error('File upload failed:', file.uploadName, file.source, error);
+      results.push({
+        success: false,
+        fileName: file.uploadName,
+        source: file.source,
+        error,
+      });
+    }
+  }
+
+  return results;
+}
+
 export interface ChatStore {
   updateCount: number;
   activeTaskId: string | null;
@@ -2229,83 +2378,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               )
             );
 
-            // Async file upload
-            let res = await window.ipcRenderer.invoke(
-              'get-file-list',
-              email,
-              currentTaskId,
-              (project_id || projectStore.activeProjectId) as string
-            );
-            if (
-              !type &&
-              import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
-              res.length > 0
-            ) {
-              // Upload files sequentially to avoid overwhelming the server
-              const uploadResults = await Promise.allSettled(
-                res
-                  .filter((file: any) => !file.isFolder)
-                  .map(async (file: any) => {
-                    try {
-                      // Read file content using Electron API
-                      const result = await window.ipcRenderer.invoke(
-                        'read-file',
-                        file.path
-                      );
-                      if (result.success && result.data) {
-                        // Create FormData for file upload
-                        const formData = new FormData();
-                        const blob = new Blob([result.data], {
-                          type: 'application/octet-stream',
-                        });
-                        formData.append('file', blob, file.name);
-                        //TODO(file): rename endpoint to use project_id
-                        formData.append(
-                          'task_id',
-                          (project_id || projectStore.activeProjectId) as string
-                        );
+            const uploadTargetId = (project_id ||
+              projectStore.activeProjectId) as string | undefined;
+            if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
+              if (!uploadTargetId) {
+                console.warn(
+                  'Skip file upload because no active project ID was found'
+                );
+              } else {
+                try {
+                  const generatedFiles =
+                    ((await window.ipcRenderer.invoke(
+                      'get-file-list',
+                      email,
+                      currentTaskId,
+                      uploadTargetId
+                    )) as GeneratedUploadFile[]) || [];
+                  const filesToUpload = collectTaskUploadFiles(
+                    generatedFiles,
+                    tasks[currentTaskId].messages,
+                    tasks[currentTaskId].attaches,
+                    currentTaskId
+                  );
 
-                        // Upload file
-                        await uploadFile('/api/v1/chat/files/upload', formData);
-                        console.log('File uploaded successfully:', file.name);
-                        return { success: true, fileName: file.name };
-                      } else {
-                        console.error('Failed to read file:', result.error);
-                        return {
-                          success: false,
-                          fileName: file.name,
-                          error: result.error,
-                        };
-                      }
-                    } catch (error) {
-                      console.error('File upload failed:', error);
-                      return { success: false, fileName: file.name, error };
+                  if (filesToUpload.length > 0) {
+                    const uploadResults = await uploadTaskFiles(
+                      filesToUpload,
+                      uploadTargetId
+                    );
+                    const failedUploads = uploadResults.filter(
+                      (result) => !result.success
+                    );
+                    if (failedUploads.length > 0) {
+                      console.error('Failed to upload files:', failedUploads);
                     }
-                  })
-              );
 
-              // Count successful uploads
-              const successCount = uploadResults.filter(
-                (result) =>
-                  result.status === 'fulfilled' && result.value.success
-              ).length;
+                    const generatedSuccessCount = uploadResults.filter(
+                      (result) =>
+                        result.success && result.source === 'project_output'
+                    ).length;
 
-              // Log failures
-              const failures = uploadResults.filter(
-                (result) =>
-                  result.status === 'rejected' ||
-                  (result.status === 'fulfilled' && !result.value.success)
-              );
-              if (failures.length > 0) {
-                console.error('Failed to upload files:', failures);
-              }
-
-              // add remote file count for successful uploads only
-              if (successCount > 0) {
-                proxyFetchPost(`/api/v1/user/stat`, {
-                  action: 'file_generate_count',
-                  value: successCount,
-                });
+                    if (generatedSuccessCount > 0) {
+                      proxyFetchPost(`/api/v1/user/stat`, {
+                        action: 'file_generate_count',
+                        value: generatedSuccessCount,
+                      });
+                    }
+                  }
+                } catch (error) {
+                  console.error(
+                    'Failed to prepare task files for upload:',
+                    error
+                  );
+                }
               }
             }
 

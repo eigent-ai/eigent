@@ -31,6 +31,7 @@ interface FileInfo {
   relativePath: string;
   task_id?: string;
   project_id?: string;
+  source?: 'project_output' | 'camel_log';
 }
 
 export class FileReader {
@@ -658,60 +659,13 @@ export class FileReader {
     }
   }
 
-  public getFileList(
-    email: string,
-    taskId: string,
-    projectId?: string
-  ): FileInfo[] {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
-    const userHome = app.getPath('home');
-
-    let dirPath: string;
-
-    // Check if projectId is provided for new project-based structure
-    if (projectId) {
-      dirPath = path.join(
-        userHome,
-        'eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
-    } else {
-      // First try project-based structure (scan for existing projects)
-      const userDir = path.join(userHome, 'eigent', safeEmail);
-      const projectBasedPath = this.findTaskInProjects(userDir, taskId);
-
-      if (projectBasedPath) {
-        dirPath = projectBasedPath;
-      } else {
-        // Fallback to legacy direct task structure
-        dirPath = path.join(userHome, 'eigent', safeEmail, `task_${taskId}`);
-      }
-    }
-
-    try {
-      if (!fs.existsSync(dirPath)) {
-        return [];
-      }
-
-      return this.getFilesRecursive(dirPath, dirPath);
-    } catch (err) {
-      console.error('Load file failed:', err);
-      return [];
-    }
-  }
-
-  public deleteTaskFiles(
+  private resolveTaskPaths(
     email: string,
     taskId: string,
     projectId?: string
   ): {
-    success: boolean;
-    path: { dirPath: string; logPath: string };
+    dirPath: string;
+    logPath: string;
   } {
     const safeEmail = email
       .split('@')[0]
@@ -722,7 +676,6 @@ export class FileReader {
     let dirPath: string;
     let logPath: string;
 
-    // Check if projectId is provided for new project-based structure
     if (projectId) {
       dirPath = path.join(
         userHome,
@@ -738,32 +691,84 @@ export class FileReader {
         `project_${projectId}`,
         `task_${taskId}`
       );
-    } else {
-      // First try project-based structure
-      const userDir = path.join(userHome, 'eigent', safeEmail);
-      const projectBasedPath = this.findTaskInProjects(userDir, taskId);
+      return { dirPath, logPath };
+    }
 
-      if (projectBasedPath) {
-        dirPath = projectBasedPath;
-        // Extract project from path to construct log path
-        const projectMatch = projectBasedPath.match(/project_([^\\\/]+)/);
-        if (projectMatch) {
-          logPath = path.join(
-            userHome,
-            '.eigent',
-            safeEmail,
-            projectMatch[0],
-            `task_${taskId}`
-          );
-        } else {
-          logPath = path.join(userHome, '.eigent', safeEmail, `task_${taskId}`);
-        }
+    const userDir = path.join(userHome, 'eigent', safeEmail);
+    const projectBasedPath = this.findTaskInProjects(userDir, taskId);
+
+    if (projectBasedPath) {
+      dirPath = projectBasedPath;
+      const projectMatch = projectBasedPath.match(/project_([^\\\/]+)/);
+      if (projectMatch) {
+        logPath = path.join(
+          userHome,
+          '.eigent',
+          safeEmail,
+          projectMatch[0],
+          `task_${taskId}`
+        );
       } else {
-        // Fallback to legacy direct task structure
-        dirPath = path.join(userHome, 'eigent', safeEmail, `task_${taskId}`);
         logPath = path.join(userHome, '.eigent', safeEmail, `task_${taskId}`);
       }
+      return { dirPath, logPath };
     }
+
+    dirPath = path.join(userHome, 'eigent', safeEmail, `task_${taskId}`);
+    logPath = path.join(userHome, '.eigent', safeEmail, `task_${taskId}`);
+    return { dirPath, logPath };
+  }
+
+  public getFileList(
+    email: string,
+    taskId: string,
+    projectId?: string
+  ): FileInfo[] {
+    const { dirPath, logPath } = this.resolveTaskPaths(
+      email,
+      taskId,
+      projectId
+    );
+    const camelLogPath = path.join(logPath, 'camel_logs');
+
+    try {
+      const projectFiles = fs.existsSync(dirPath)
+        ? this.getFilesRecursive(dirPath, dirPath).map((file) => ({
+            ...file,
+            source: 'project_output' as const,
+          }))
+        : [];
+      const camelLogFiles = fs.existsSync(camelLogPath)
+        ? this.getFilesRecursive(camelLogPath, camelLogPath).map((file) => ({
+            ...file,
+            source: 'camel_log' as const,
+          }))
+        : [];
+
+      if (projectFiles.length === 0 && camelLogFiles.length === 0) {
+        return [];
+      }
+
+      return [...projectFiles, ...camelLogFiles];
+    } catch (err) {
+      console.error('Load file failed:', err);
+      return [];
+    }
+  }
+
+  public deleteTaskFiles(
+    email: string,
+    taskId: string,
+    projectId?: string
+  ): {
+    success: boolean;
+    path: { dirPath: string; logPath: string };
+  } {
+    const { dirPath, logPath } = this.resolveTaskPaths(
+      email,
+      taskId,
+      projectId
+    );
 
     try {
       let success = false;
