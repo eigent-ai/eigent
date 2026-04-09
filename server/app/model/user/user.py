@@ -20,7 +20,7 @@ from sqlalchemy import Integer, SmallInteger, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import Column, Field
 
-from app.component.encrypt import password_hash
+from app.core.encrypt import password_hash
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 

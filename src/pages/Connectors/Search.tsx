@@ -88,7 +88,7 @@ export default function Search() {
   const engines = useMemo(() => buildSearchEngines(modelType), [modelType]);
 
   useEffect(() => {
-    proxyFetchGet('/api/configs').then((configsRes) => {
+    proxyFetchGet('/api/v1/configs').then((configsRes) => {
       const configsList = Array.isArray(configsRes) ? configsRes : [];
       const existingData: Record<string, string> = {};
       engines.forEach((engine) => {
@@ -122,7 +122,7 @@ export default function Search() {
         for (const field of selectedProvider.fields) {
           const value = formData[field.key];
           if (value && value.trim() !== '') {
-            await proxyFetchPost('/api/configs', {
+            await proxyFetchPost('/api/v1/configs', {
               config_group: 'Search',
               config_name: field.key,
               config_value: value.trim(),
@@ -130,14 +130,14 @@ export default function Search() {
           }
         }
       } else {
-        await proxyFetchPost('/api/configs', {
+        await proxyFetchPost('/api/v1/configs', {
           config_group: 'Search',
           config_name: `ENABLE_${selectedProvider.id.toUpperCase()}_SEARCH`,
           config_value: 'true',
         });
       }
       toast.success(t('setting.configuration-saved-successfully'));
-      const res = await proxyFetchGet('/api/configs');
+      const res = await proxyFetchGet('/api/v1/configs');
       const configsList = Array.isArray(res) ? res : [];
       const existingData: Record<string, string> = {};
       engines.forEach((engine) => {
@@ -162,7 +162,7 @@ export default function Search() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-text-heading">
           {t('setting.search-engine')}
         </div>
@@ -172,7 +172,7 @@ export default function Search() {
       <div className="mb-12">
         <div className="rounded-2xl bg-surface-secondary px-6 py-4">
           <div className="flex flex-col">
-            <div className="gap-2 pb-2 flex flex-col">
+            <div className="flex flex-col gap-2 pb-2">
               <div className="text-label-lg font-bold">
                 {selectedProvider.name}
               </div>
@@ -181,7 +181,7 @@ export default function Search() {
               </div>
             </div>
 
-            <div className="pt-4 flex-1">
+            <div className="flex-1 pt-4">
               {selectedProvider.requiresApiKey ? (
                 <div className="space-y-4">
                   {selectedProvider.fields.map((field) => (
@@ -223,7 +223,7 @@ export default function Search() {
             </div>
 
             {!selectedProvider.enabledByDefault && (
-              <div className="gap-3 pt-4 flex items-center justify-end">
+              <div className="flex items-center justify-end gap-3 pt-4">
                 <Button size="sm" onClick={saveConfiguration} disabled={saving}>
                   {saving
                     ? t('setting.saving')

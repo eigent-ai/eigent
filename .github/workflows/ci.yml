@@ -16,7 +16,7 @@ jobs:
     steps:
       # Note: dorny/paths-filter fetches file info via GitHub API, no checkout needed
       - name: Check Not Allowed File Changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: filter_not_allowed
         with:
           list-files: json

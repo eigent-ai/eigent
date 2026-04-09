@@ -50,11 +50,7 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
-import {
-  setRoundedCorners,
-  setTransparentTitlebar,
-  setVibrancy,
-} from './native/macos-window';
+import { setRoundedCorners } from './native/macos-window';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -2741,8 +2737,7 @@ async function createWindow() {
   );
 
   // Platform-specific window configuration
-  // Windows: Use native frame for better native feel, solid background
-  // macOS: Use frameless with transparency and vibrancy effects
+  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1200,
@@ -2754,12 +2749,16 @@ async function createWindow() {
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,
-    // Solid background on Windows (respect dark/light mode), fully transparent on macOS for native vibrancy
+    // Solid on Windows; macOS solid without vibrancy; Linux unchanged semi-transparent tint
     backgroundColor: isWindows
       ? nativeTheme.shouldUseDarkColors
         ? '#1e1e1e'
         : '#ffffff'
-      : '#00000000',
+      : isMac
+        ? nativeTheme.shouldUseDarkColors
+          ? '#1e1e1e'
+          : '#f5f5f5'
+        : '#f5f5f580',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
     trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
@@ -2783,23 +2782,13 @@ async function createWindow() {
     },
   });
 
-  // Apply native macOS effects
   if (process.platform === 'darwin') {
     win.once('ready-to-show', () => {
       if (win && !win.isDestroyed()) {
         try {
-          // Apply vibrancy with HUDWindow material (or others like 'Sidebar', 'UnderWindowBackground')
-          setVibrancy(win, 'HUDWindow');
-
-          // Apply rounded corners
           setRoundedCorners(win, 20);
-
-          // Make titlebar transparent
-          setTransparentTitlebar(win);
-
-          log.info('[MacOS] Applied native visual effects');
         } catch (error) {
-          log.error('[MacOS] Failed to apply native visual effects:', error);
+          log.error('[MacOS] Failed to apply rounded corners:', error);
         }
       }
     });
