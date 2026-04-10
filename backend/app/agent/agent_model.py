@@ -18,12 +18,12 @@ from collections.abc import Callable
 from typing import Any
 
 from camel.messages import BaseMessage
-from camel.models import ModelFactory
 from camel.toolkits import FunctionTool, RegisteredAgentToolkit
 from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
+from app.service.model_registry import get_or_create_model
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -135,11 +135,11 @@ def agent_model(
             )
             model_platform_enum = None
 
-    model = ModelFactory.create(
+    model = get_or_create_model(
         model_platform=effective_config["model_platform"],
         model_type=effective_config["model_type"],
         api_key=effective_config["api_key"],
-        url=effective_config["api_url"],
+        api_url=effective_config["api_url"],
         model_config_dict=model_config or None,
         timeout=600,  # 10 minutes
         **init_params,

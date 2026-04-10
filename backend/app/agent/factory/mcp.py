@@ -14,13 +14,12 @@
 import asyncio
 import uuid
 
-from camel.models import ModelFactory
-
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
+from app.service.model_registry import get_or_create_model
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
@@ -77,11 +76,11 @@ async def mcp_agent(options: Chat):
         options.project_id,
         Agents.mcp_agent,
         system_message=MCP_SYS_PROMPT,
-        model=ModelFactory.create(
+        model=get_or_create_model(
             model_platform=options.model_platform,
             model_type=options.model_type,
             api_key=options.api_key,
-            url=options.api_url,
+            api_url=options.api_url,
             model_config_dict=(
                 {
                     "user": str(options.project_id),

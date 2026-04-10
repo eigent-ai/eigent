@@ -16,6 +16,7 @@ import asyncio
 import datetime
 import logging
 import platform
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,11 +39,15 @@ from app.agent.factory import (
     task_summary_agent,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.prompt import (
+    QUICK_REPLY_ASSESSMENT_PROMPT,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
+from app.agent.utils import NOW_STR
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.task import (
     Action,
@@ -63,6 +68,14 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
+
+
+@dataclass
+class QuestionAssessment:
+    """Classify a question and optionally carry a precomputed simple answer."""
+
+    is_complex: bool
+    direct_answer: str | None = None
 
 
 def format_task_context(
@@ -499,6 +512,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 # Determine task complexity: attachments
                 # mean workforce, otherwise let agent decide
                 is_complex_task: bool
+                question_assessment = QuestionAssessment(is_complex=True)
                 if len(attaches_to_use) > 0:
                     is_complex_task = True
                     logger.info(
@@ -506,13 +520,20 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ", treating as complex task"
                     )
                 else:
-                    is_complex_task = await question_confirm(
-                        question_agent, question, task_lock
+                    question_assessment = await assess_question(
+                        question_agent,
+                        question,
+                        options,
+                        attaches_to_use,
+                        task_lock,
                     )
+                    is_complex_task = question_assessment.is_complex
                     logger.info(
                         "[NEW-QUESTION] question_confirm"
                         " result: is_complex="
-                        f"{is_complex_task}"
+                        f"{is_complex_task}, "
+                        "has_direct_answer="
+                        f"{bool(question_assessment.direct_answer)}"
                     )
 
                 if not is_complex_task:
@@ -521,28 +542,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ", providing direct answer "
                         "without workforce"
                     )
-                    conv_ctx = build_conversation_context(
-                        task_lock, header="=== Previous Conversation ==="
-                    )
-                    simple_answer_prompt = (
-                        f"{conv_ctx}"
-                        f"User Query: {question}\n\n"
-                        "Provide a direct, helpful "
-                        "answer to this simple "
-                        "question."
-                    )
-
                     try:
-                        simple_resp = question_agent.step(simple_answer_prompt)
-                        if simple_resp and simple_resp.msgs:
-                            answer_content = simple_resp.msgs[0].content
-                        else:
-                            answer_content = (
-                                "I understand your "
-                                "question, but I'm "
-                                "having trouble "
-                                "generating a response "
-                                "right now."
+                        answer_content = question_assessment.direct_answer
+                        if not answer_content:
+                            raise ValueError(
+                                "Simple question assessment returned no answer"
                             )
 
                         task_lock.add_conversation("assistant", answer_content)
@@ -1086,6 +1090,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 yield sse_json("task_state", item.data)
             elif item.action == Action.new_task_state:
+                # TODO: New question agent refactor is not added here
+                # this code wil be deprecated soon.
                 logger.info("=" * 80)
                 logger.info(
                     "[LIFECYCLE] NEW_TASK_STATE action received (Multi-turn)",
@@ -1193,9 +1199,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "calling question_confirm "
                             "for new task"
                         )
-                        is_multi_turn_complex = await question_confirm(
-                            question_agent, new_task_content, task_lock
-                        )
+                        is_multi_turn_complex = True
                         logger.info(
                             "[LIFECYCLE] Multi-turn: "
                             "question_confirm result:"
@@ -1927,65 +1931,119 @@ def add_sub_tasks(
     return added_tasks
 
 
-async def question_confirm(
-    agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None
-) -> bool:
-    """Simple question confirmation - returns True
-    for complex tasks, False for simple questions."""
+async def assess_question(
+    agent: ListenChatAgent,
+    prompt: str,
+    options: Chat,
+    attachments: list[str] | None = None,
+    task_lock: TaskLock | None = None,
+) -> QuestionAssessment:
+    """Classify a question and precompute a direct answer for simple queries."""
 
-    context_prompt = ""
+    conversation_context = "No previous conversation."
     if task_lock:
-        context_prompt = build_conversation_context(
-            task_lock, header="=== Previous Conversation ==="
+        conversation_context = (
+            build_conversation_context(
+                task_lock, header="=== Previous Conversation ==="
+            ).strip()
+            or "No previous conversation."
         )
 
-    full_prompt = f"""{context_prompt}User Query: {prompt}
+    # TODO: current mcp servers are configured in mcp.json file.
+    # So this might not reflect properly
+    working_directory = get_working_directory(options, task_lock)
+    mcp_servers = options.installed_mcp.get("mcpServers", {})
+    mcp_servers_info = ", ".join(mcp_servers.keys()) if mcp_servers else "None"
 
-Determine if this user query is a complex task or a simple question.
+    # TODO: this is attached to the live tasklock instance (i.e. first turn)
+    attachments_info = (
+        "\n".join(f"- {path}" for path in attachments)
+        if attachments
+        else "None"
+    )
 
-**Complex task** (answer "yes"): Requires tools, code execution, \
-file operations, multi-step planning, or creating/modifying content
-- Examples: "create a file", "search for X", \
-"implement feature Y", "write code", "analyze data"
-
-**Simple question** (answer "no"): Can be answered directly \
-with knowledge or conversation history, no action needed
-- Examples: greetings ("hello", "hi"), \
-fact queries ("what is X?"), clarifications, status checks
-
-Answer only "yes" or "no". Do not provide any explanation.
-
-Is this a complex task? (yes/no):"""
+    full_prompt = QUICK_REPLY_ASSESSMENT_PROMPT.format(
+        working_directory=working_directory,
+        now_str=NOW_STR,
+        conversation_context=conversation_context,
+        question=prompt,
+        attachments=attachments_info,
+        mcp_servers=mcp_servers_info,
+    )
 
     try:
         resp = agent.step(full_prompt)
 
-        if not resp or not resp.msgs or len(resp.msgs) == 0:
+        if not resp or not resp.msgs:
             logger.warning(
                 "No response from agent, defaulting to complex task"
             )
-            return True
+            return QuestionAssessment(is_complex=True)
 
         content = resp.msgs[0].content
         if not content:
             logger.warning(
                 "Empty content from agent, defaulting to complex task"
             )
-            return True
+            return QuestionAssessment(is_complex=True)
+
+        complexity: str | None = None
+        answer_lines: list[str] = []
+        in_answer_section = False
+
+        for line in content.splitlines():
+            stripped = line.strip()
+            upper = stripped.upper()
+
+            if upper.startswith("COMPLEXITY:"):
+                complexity = stripped.split(":", 1)[1].strip().upper()
+                in_answer_section = False
+                continue
+
+            if upper.startswith("ANSWER:"):
+                answer_text = stripped.split(":", 1)[1].strip()
+                if answer_text:
+                    answer_lines.append(answer_text)
+                in_answer_section = True
+                continue
+
+            if in_answer_section and stripped:
+                answer_lines.append(stripped)
+
+        if complexity in {"SIMPLE", "COMPLEX"}:
+            is_complex = complexity == "COMPLEX"
+            direct_answer = "\n".join(answer_lines).strip() or None
+            if not is_complex and not direct_answer:
+                logger.warning(
+                    "Simple question assessment returned no answer, "
+                    "defaulting to complex task"
+                )
+                return QuestionAssessment(is_complex=True)
+            result_str = "complex task" if is_complex else "simple question"
+            logger.info(
+                f"Question assessment result: {result_str}",
+                extra={
+                    "response": content,
+                    "is_complex": is_complex,
+                    "has_direct_answer": bool(direct_answer),
+                },
+            )
+            return QuestionAssessment(
+                is_complex=is_complex,
+                direct_answer=direct_answer,
+            )
 
         normalized = content.strip().lower()
         is_complex = "yes" in normalized
-
         result_str = "complex task" if is_complex else "simple question"
         logger.info(
-            f"Question confirm result: {result_str}",
+            f"Question assessment fallback result: {result_str}",
             extra={"response": content, "is_complex": is_complex},
         )
-
-        return is_complex
+        return QuestionAssessment(is_complex=is_complex)
 
     except Exception as e:
-        logger.error(f"Error in question_confirm: {e}")
+        logger.error(f"Error in assess_question: {e}")
         raise
 
 
