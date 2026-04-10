@@ -37,6 +37,8 @@ logging.getLogger("camel").setLevel(logging.WARNING)
 logging.getLogger("camel.base_model").setLevel(logging.WARNING)
 logging.getLogger("camel.agents").setLevel(logging.WARNING)
 logging.getLogger("camel.societies").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 from app import api
 from app.component.environment import env
