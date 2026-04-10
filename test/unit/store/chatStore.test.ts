@@ -127,8 +127,9 @@ describe('ChatStore - Core Functionality', () => {
             source: 'project_output',
           },
           {
-            path: '/tmp/logs/agent.log',
+            path: '/tmp/logs/ba4462e1/agent.log',
             name: 'agent.log',
+            relativePath: 'ba4462e1',
             source: 'camel_log',
           },
           {
@@ -172,9 +173,9 @@ describe('ChatStore - Core Functionality', () => {
           source: 'project_output',
         },
         {
-          path: '/tmp/logs/agent.log',
+          path: '/tmp/logs/ba4462e1/agent.log',
           name: 'agent.log',
-          uploadName: 'camel_log_task-123__agent.log',
+          uploadName: 'camel_log_task-123/ba4462e1/agent.log',
           source: 'camel_log',
         },
         {
