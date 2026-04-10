@@ -18,6 +18,8 @@ import pytest
 from camel.models import ModelProcessingError
 
 from app.component.model_validation import (
+    _DEFAULT_ANTHROPIC_VALIDATION_MAX_TOKENS,
+    _ensure_model_config_for_platform,
     EXPECTED_TOOL_RESULT,
     ValidationErrorType,
     ValidationResult,
@@ -27,6 +29,42 @@ from app.component.model_validation import (
     format_raw_error,
     validate_model_with_details,
 )
+
+
+@pytest.mark.unit
+def test_ensure_model_config_for_platform_non_anthropic_passthrough():
+    cfg, kw = _ensure_model_config_for_platform(
+        "openai",
+        {"temperature": 0.2},
+        {"max_tokens": "333"},
+    )
+    assert cfg == {"temperature": 0.2}
+    assert kw == {"max_tokens": "333"}
+
+
+@pytest.mark.unit
+def test_ensure_model_config_for_platform_anthropic_default_max_tokens():
+    cfg, kw = _ensure_model_config_for_platform("anthropic", None, {})
+    assert cfg == {"max_tokens": _DEFAULT_ANTHROPIC_VALIDATION_MAX_TOKENS}
+    assert kw == {}
+
+
+@pytest.mark.unit
+def test_ensure_model_config_for_platform_anthropic_uses_valid_value():
+    cfg, kw = _ensure_model_config_for_platform(
+        "anthropic", {"max_tokens": "8192"}, {}
+    )
+    assert cfg == {"max_tokens": 8192}
+    assert kw == {}
+
+
+@pytest.mark.unit
+def test_ensure_model_config_for_platform_anthropic_pulls_kwargs_value():
+    cfg, kw = _ensure_model_config_for_platform(
+        "anthropic", {}, {"max_tokens": "1024", "temperature": 0.1}
+    )
+    assert cfg == {"max_tokens": 1024}
+    assert kw == {"temperature": 0.1}
 
 
 @pytest.mark.unit
