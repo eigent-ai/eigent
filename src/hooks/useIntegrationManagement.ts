@@ -54,7 +54,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   // Fetch installed configs
   const fetchInstalled = useCallback(async (ignore: boolean = false) => {
     try {
-      const configsRes = await proxyFetchGet('/api/configs');
+      const configsRes = await proxyFetchGet('/api/v1/configs');
       if (!ignore) {
         setConfigs(Array.isArray(configsRes) ? configsRes : []);
       }
@@ -122,7 +122,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       // Fetch latest configs to avoid stale state when deciding POST/PUT
       let latestConfigs: any[] = Array.isArray(configs) ? configs : [];
       try {
-        const fresh = await proxyFetchGet('/api/configs');
+        const fresh = await proxyFetchGet('/api/v1/configs');
         if (Array.isArray(fresh)) latestConfigs = fresh;
       } catch {}
 
@@ -132,21 +132,24 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       );
 
       if (existingConfig) {
-        await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+        await proxyFetchPut(
+          `/api/v1/configs/${existingConfig.id}`,
+          configPayload
+        );
       } else {
-        const res = await proxyFetchPost('/api/configs', configPayload);
+        const res = await proxyFetchPost('/api/v1/configs', configPayload);
         if (
           res &&
           res.detail &&
           (res.detail as string).toLowerCase().includes('already exists')
         ) {
           try {
-            const again = await proxyFetchGet('/api/configs');
+            const again = await proxyFetchGet('/api/v1/configs');
             const found = Array.isArray(again)
               ? again.find((c: any) => c.config_name === envVarKey)
               : null;
             if (found) {
-              await proxyFetchPut(`/api/configs/${found.id}`, configPayload);
+              await proxyFetchPut(`/api/v1/configs/${found.id}`, configPayload);
             }
           } catch {}
         }
@@ -178,7 +181,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       isLockedRef.current = true;
       try {
         const tokenResult = await proxyFetchPost(
-          `/api/oauth/${provider}/token`,
+          `/api/v1/oauth/${provider}/token`,
           { code: data.code }
         );
         const currentItem = items.find(
@@ -303,7 +306,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       );
       for (const config of toDelete) {
         try {
-          await proxyFetchDelete(`/api/configs/${config.id}`);
+          await proxyFetchDelete(`/api/v1/configs/${config.id}`);
           // Delete env
           if (
             item.env_vars &&

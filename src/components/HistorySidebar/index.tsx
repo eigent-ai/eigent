@@ -67,7 +67,7 @@ export default function HistorySidebar() {
   useEffect(() => {
     if (!chatStore) return;
     fetchGroupedHistoryTasks(setHistoryTasks);
-  }, [chatStore?.updateCount, chatStore]);
+  }, [chatStore?.updateCount]);
 
   // Group ongoing tasks by project
   const ongoingProjects = useMemo(() => {
@@ -190,7 +190,7 @@ export default function HistorySidebar() {
     historyId: string
   ) => {
     try {
-      const res = await proxyFetchDelete(`/api/chat/history/${historyId}`);
+      const res = await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
       console.log(res);
       // also delete local files for this task if available (via Electron IPC)
       const { email } = getAuthStore();
@@ -236,7 +236,7 @@ export default function HistorySidebar() {
           );
           try {
             const deleteRes = await proxyFetchDelete(
-              `/api/chat/history/${history.id}`
+              `/api/v1/chat/history/${history.id}`
             );
             console.log(
               `Successfully deleted task ${history.task_id}:`,
