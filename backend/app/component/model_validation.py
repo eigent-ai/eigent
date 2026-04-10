@@ -21,6 +21,10 @@ from camel.models import ModelFactory, ModelProcessingError
 
 logger = logging.getLogger("model_validation")
 
+# Anthropic's API requires a positive integer max_tokens; CAMEL may omit or pass
+# invalid values when the desktop app sends no model_config_dict.
+DEFAULT_ANTHROPIC_MAX_TOKENS = 4096
+
 # Expected result from tool execution for validation
 EXPECTED_TOOL_RESULT = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
 
@@ -107,6 +111,52 @@ def get_website_content(url: str) -> str:
         str: The content of the website.
     """
     return EXPECTED_TOOL_RESULT
+
+
+def _coerce_positive_int_max_tokens(value: Any) -> int | None:
+    """Return a positive int for max_tokens, or None if value is missing/invalid."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float):
+        if value <= 0 or value != int(value):
+            return None
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            n = int(stripped)
+            return n if n > 0 else None
+        except ValueError:
+            return None
+    return None
+
+
+def merge_model_config_for_platform(
+    model_platform: str,
+    model_config_dict: dict | None,
+) -> dict | None:
+    """Ensure Anthropic requests include a valid positive max_tokens.
+
+    Other platforms are passed through unchanged (including None).
+    """
+    if model_platform is None or str(model_platform).strip() == "":
+        return model_config_dict
+    if str(model_platform).lower() != "anthropic":
+        return model_config_dict
+    merged: dict[str, Any] = (
+        dict(model_config_dict) if model_config_dict else {}
+    )
+    coerced = _coerce_positive_int_max_tokens(merged.get("max_tokens"))
+    merged["max_tokens"] = (
+        coerced if coerced is not None else DEFAULT_ANTHROPIC_MAX_TOKENS
+    )
+    return merged
 
 
 def format_raw_error(exception: Exception, max_length: int = 300) -> str:
@@ -227,13 +277,16 @@ def create_agent(
         raise ValueError(f"Invalid model_type: {model_type}")
     if platform is None:
         raise ValueError(f"Invalid model_platform: {model_platform}")
+    resolved_config = merge_model_config_for_platform(
+        platform, model_config_dict
+    )
     model = ModelFactory.create(
         model_platform=platform,
         model_type=mtype,
         api_key=api_key,
         url=url,
         timeout=60,  # 1 minute for validation
-        model_config_dict=model_config_dict,
+        model_config_dict=resolved_config,
         **kwargs,
     )
     agent = ChatAgent(
@@ -326,13 +379,16 @@ def validate_model_with_details(
             "Creating model",
             extra={"platform": model_platform, "model_type": model_type},
         )
+        resolved_config = merge_model_config_for_platform(
+            model_platform, model_config_dict
+        )
         model = ModelFactory.create(
             model_platform=model_platform,
             model_type=model_type,
             api_key=api_key,
             url=url,
             timeout=60,  # 1 minute for validation
-            model_config_dict=model_config_dict,
+            model_config_dict=resolved_config,
             **kwargs,
         )
         result.validation_stages[ValidationStage.MODEL_CREATION] = True

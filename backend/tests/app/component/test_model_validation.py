@@ -18,6 +18,7 @@ import pytest
 from camel.models import ModelProcessingError
 
 from app.component.model_validation import (
+    DEFAULT_ANTHROPIC_MAX_TOKENS,
     EXPECTED_TOOL_RESULT,
     ValidationErrorType,
     ValidationResult,
@@ -25,6 +26,7 @@ from app.component.model_validation import (
     categorize_error,
     create_agent,
     format_raw_error,
+    merge_model_config_for_platform,
     validate_model_with_details,
 )
 
@@ -70,6 +72,42 @@ def test_validation_result_to_dict():
     assert result_dict["validation_stages"]["initialization"] is True
     assert "initialization" in result_dict["successful_stages"]
     assert result_dict["failed_stage"] == "model_creation"
+
+
+@pytest.mark.unit
+def test_merge_model_config_anthropic_defaults_max_tokens():
+    assert merge_model_config_for_platform("anthropic", None) == {
+        "max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS
+    }
+
+
+@pytest.mark.unit
+def test_merge_model_config_anthropic_preserves_valid_user_max_tokens():
+    cfg = {"max_tokens": 8192}
+    assert merge_model_config_for_platform("anthropic", cfg) == {
+        "max_tokens": 8192
+    }
+
+
+@pytest.mark.unit
+def test_merge_model_config_anthropic_replaces_invalid_max_tokens():
+    assert merge_model_config_for_platform(
+        "anthropic", {"max_tokens": "not-a-number"}
+    ) == {"max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS}
+    assert merge_model_config_for_platform("anthropic", {"max_tokens": 0}) == {
+        "max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS
+    }
+    assert merge_model_config_for_platform("anthropic", {"max_tokens": -1}) == {
+        "max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS
+    }
+
+
+@pytest.mark.unit
+def test_merge_model_config_non_anthropic_unchanged():
+    assert merge_model_config_for_platform("OPENAI", None) is None
+    assert merge_model_config_for_platform("OPENAI", {"temperature": 0.7}) == {
+        "temperature": 0.7
+    }
 
 
 @pytest.mark.unit
@@ -199,6 +237,27 @@ def test_create_agent_success(mock_chat_agent, mock_model_factory):
     mock_model_factory.assert_called_once()
     mock_chat_agent.assert_called_once()
     assert agent == mock_agent_instance
+
+
+@pytest.mark.unit
+@patch("app.component.model_validation.ModelFactory.create")
+@patch("app.component.model_validation.ChatAgent")
+def test_create_agent_merges_anthropic_max_tokens(
+    mock_chat_agent, mock_model_factory
+):
+    """Anthropic validation must send a positive integer max_tokens to the API."""
+    mock_model_factory.return_value = MagicMock()
+    mock_chat_agent.return_value = MagicMock()
+
+    create_agent(
+        model_platform="anthropic",
+        model_type="claude-3-opus",
+        api_key="test_key",
+        model_config_dict=None,
+    )
+
+    kwargs = mock_model_factory.call_args.kwargs
+    assert kwargs["model_config_dict"]["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS
 
 
 @pytest.mark.unit
