@@ -94,7 +94,10 @@ vi.mock('../../../src/store/projectStore', () => ({
 import { proxyFetchGet } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
-import { useChatStore } from '../../../src/store/chatStore';
+import {
+  collectTaskUploadFiles,
+  useChatStore,
+} from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
 import { ChatTaskStatus } from '../../../src/types/constants';
 
@@ -112,6 +115,116 @@ import { ChatTaskStatus } from '../../../src/types/constants';
 describe('ChatStore - Core Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('Task Upload Files', () => {
+    it('collects project outputs, camel logs, and unique user attachments', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [
+          {
+            path: '/tmp/project/report.md',
+            name: 'report.md',
+            source: 'project_output',
+          },
+          {
+            path: '/tmp/logs/agent.log',
+            name: 'agent.log',
+            source: 'camel_log',
+          },
+          {
+            path: '/tmp/project',
+            name: 'project',
+            isFolder: true,
+            source: 'project_output',
+          },
+        ],
+        [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'question',
+            attaches: [
+              {
+                fileName: 'brief.pdf',
+                filePath: '/Users/test/Documents/brief.pdf',
+              },
+              {
+                fileName: 'report.md',
+                filePath: '/tmp/project/report.md',
+              },
+            ],
+          },
+        ] as any,
+        [
+          {
+            fileName: 'followup.csv',
+            filePath: '/Users/test/Documents/followup.csv',
+          },
+        ],
+        'task-123'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/tmp/project/report.md',
+          name: 'report.md',
+          uploadName: 'report.md',
+          source: 'project_output',
+        },
+        {
+          path: '/tmp/logs/agent.log',
+          name: 'agent.log',
+          uploadName: 'camel_log_task-123__agent.log',
+          source: 'camel_log',
+        },
+        {
+          path: '/Users/test/Documents/brief.pdf',
+          name: 'brief.pdf',
+          uploadName: 'user_attachment_1__brief.pdf',
+          source: 'user_attachment',
+        },
+        {
+          path: '/Users/test/Documents/followup.csv',
+          name: 'followup.csv',
+          uploadName: 'user_attachment_2__followup.csv',
+          source: 'user_attachment',
+        },
+      ]);
+    });
+
+    it('skips remote attachment URLs and falls back to filename from path', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [],
+        [
+          {
+            id: 'msg-2',
+            role: 'user',
+            content: 'question',
+            attaches: [
+              {
+                fileName: '',
+                filePath: 'C:\\Users\\test\\Desktop\\notes.txt',
+              },
+              {
+                fileName: 'remote.pdf',
+                filePath: 'https://example.com/remote.pdf',
+              },
+            ],
+          },
+        ] as any,
+        [],
+        'task-456'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: 'C:\\Users\\test\\Desktop\\notes.txt',
+          name: 'notes.txt',
+          uploadName: 'user_attachment_1__notes.txt',
+          source: 'user_attachment',
+        },
+      ]);
+    });
   });
 
   describe('Task Creation', () => {
