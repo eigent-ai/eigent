@@ -169,25 +169,25 @@ describe('ChatStore - Core Functionality', () => {
         {
           path: '/tmp/project/report.md',
           name: 'report.md',
-          uploadName: 'report.md',
+          uploadName: 'project_output/report.md',
           source: 'project_output',
         },
         {
           path: '/tmp/logs/ba4462e1/agent.log',
           name: 'agent.log',
-          uploadName: 'camel_log_task-123/ba4462e1/agent.log',
+          uploadName: 'camel_log/ba4462e1/agent.log',
           source: 'camel_log',
         },
         {
           path: '/Users/test/Documents/brief.pdf',
           name: 'brief.pdf',
-          uploadName: 'user_attachment_1__brief.pdf',
+          uploadName: 'user_attachment/brief.pdf',
           source: 'user_attachment',
         },
         {
           path: '/Users/test/Documents/followup.csv',
           name: 'followup.csv',
-          uploadName: 'user_attachment_2__followup.csv',
+          uploadName: 'user_attachment/followup.csv',
           source: 'user_attachment',
         },
       ]);
@@ -221,7 +221,7 @@ describe('ChatStore - Core Functionality', () => {
         {
           path: 'C:\\Users\\test\\Desktop\\notes.txt',
           name: 'notes.txt',
-          uploadName: 'user_attachment_1__notes.txt',
+          uploadName: 'user_attachment/notes.txt',
           source: 'user_attachment',
         },
       ]);

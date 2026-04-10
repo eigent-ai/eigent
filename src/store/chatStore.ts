@@ -125,18 +125,17 @@ function buildUploadName(
   relativePath?: string
 ): string {
   if (source === 'camel_log') {
-    const prefix = `camel_log_${taskId}`;
     if (relativePath) {
-      return `${prefix}/${relativePath}/${fileName}`;
+      return `camel_log/${relativePath}/${fileName}`;
     }
-    return `${prefix}/${fileName}`;
+    return `camel_log/${fileName}`;
   }
 
   if (source === 'user_attachment') {
-    return `user_attachment_${attachmentIndex}__${fileName}`;
+    return `user_attachment/${fileName}`;
   }
 
-  return fileName;
+  return `project_output/${fileName}`;
 }
 
 export function collectTaskUploadFiles(
