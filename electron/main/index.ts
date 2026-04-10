@@ -1830,7 +1830,7 @@ function registerIpcHandlers() {
 
       // Read file content
       const fileContent = await fsp.readFile(filePath);
-      log.info('File read successfully:', filePath);
+      // log.info('File read successfully:', filePath);
 
       return {
         success: true,
