@@ -97,9 +97,9 @@ def test_merge_model_config_anthropic_replaces_invalid_max_tokens():
     assert merge_model_config_for_platform("anthropic", {"max_tokens": 0}) == {
         "max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS
     }
-    assert merge_model_config_for_platform("anthropic", {"max_tokens": -1}) == {
-        "max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS
-    }
+    assert merge_model_config_for_platform(
+        "anthropic", {"max_tokens": -1}
+    ) == {"max_tokens": DEFAULT_ANTHROPIC_MAX_TOKENS}
 
 
 @pytest.mark.unit
@@ -257,7 +257,10 @@ def test_create_agent_merges_anthropic_max_tokens(
     )
 
     kwargs = mock_model_factory.call_args.kwargs
-    assert kwargs["model_config_dict"]["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS
+    assert (
+        kwargs["model_config_dict"]["max_tokens"]
+        == DEFAULT_ANTHROPIC_MAX_TOKENS
+    )
 
 
 @pytest.mark.unit
