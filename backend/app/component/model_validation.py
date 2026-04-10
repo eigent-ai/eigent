@@ -21,12 +21,63 @@ from camel.models import ModelFactory, ModelProcessingError
 
 logger = logging.getLogger("model_validation")
 
-# Anthropic's API requires a positive integer max_tokens; CAMEL may omit or pass
-# invalid values when the desktop app sends no model_config_dict.
-DEFAULT_ANTHROPIC_MAX_TOKENS = 4096
+# Anthropic Messages API requires a positive integer max_tokens on every request.
+# BYOK UI does not expose this field, so validation must supply a default.
+_DEFAULT_ANTHROPIC_VALIDATION_MAX_TOKENS = 4096
+# Backward-compatible alias for existing tests/helpers.
+DEFAULT_ANTHROPIC_MAX_TOKENS = _DEFAULT_ANTHROPIC_VALIDATION_MAX_TOKENS
 
 # Expected result from tool execution for validation
 EXPECTED_TOOL_RESULT = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
+
+
+def _to_positive_int_max_tokens(value: object) -> int | None:
+    """Parse max_tokens from config/kwargs; return None if unusable."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float):
+        iv = int(value)
+        return iv if iv > 0 else None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            iv = int(s)
+            return iv if iv > 0 else None
+        except ValueError:
+            return None
+    return None
+
+
+def _ensure_model_config_for_platform(
+    model_platform: str,
+    model_config_dict: dict | None,
+    kwargs: dict[str, object],
+) -> tuple[dict | None, dict[str, object]]:
+    """Merge config for ModelFactory.create; Anthropic always gets valid max_tokens."""
+    cfg = dict(model_config_dict) if model_config_dict else {}
+    kw = dict(kwargs)
+
+    if str(model_platform).lower() != "anthropic":
+        return (cfg or None), kw
+
+    raw = cfg.get("max_tokens", kw.get("max_tokens"))
+    resolved = _to_positive_int_max_tokens(raw)
+    if resolved is None:
+        resolved = _DEFAULT_ANTHROPIC_VALIDATION_MAX_TOKENS
+        logger.debug(
+            "Anthropic model validation: using default max_tokens=%s",
+            resolved,
+            extra={"model_platform": model_platform},
+        )
+    cfg["max_tokens"] = resolved
+    kw.pop("max_tokens", None)
+    return cfg, kw
 
 
 class ValidationStage(str, Enum):
@@ -277,8 +328,8 @@ def create_agent(
         raise ValueError(f"Invalid model_type: {model_type}")
     if platform is None:
         raise ValueError(f"Invalid model_platform: {model_platform}")
-    resolved_config = merge_model_config_for_platform(
-        platform, model_config_dict
+    cfg, kw = _ensure_model_config_for_platform(
+        platform, model_config_dict, kwargs
     )
     model = ModelFactory.create(
         model_platform=platform,
@@ -286,8 +337,8 @@ def create_agent(
         api_key=api_key,
         url=url,
         timeout=60,  # 1 minute for validation
-        model_config_dict=resolved_config,
-        **kwargs,
+        model_config_dict=cfg,
+        **kw,
     )
     agent = ChatAgent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
@@ -379,8 +430,8 @@ def validate_model_with_details(
             "Creating model",
             extra={"platform": model_platform, "model_type": model_type},
         )
-        resolved_config = merge_model_config_for_platform(
-            model_platform, model_config_dict
+        cfg, kw = _ensure_model_config_for_platform(
+            model_platform, model_config_dict, kwargs
         )
         model = ModelFactory.create(
             model_platform=model_platform,
@@ -388,8 +439,8 @@ def validate_model_with_details(
             api_key=api_key,
             url=url,
             timeout=60,  # 1 minute for validation
-            model_config_dict=resolved_config,
-            **kwargs,
+            model_config_dict=cfg,
+            **kw,
         )
         result.validation_stages[ValidationStage.MODEL_CREATION] = True
         result.successful_stages.append(ValidationStage.MODEL_CREATION)
