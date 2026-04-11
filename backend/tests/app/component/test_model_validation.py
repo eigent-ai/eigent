@@ -22,7 +22,6 @@ from app.component.model_validation import (
     ValidationErrorType,
     ValidationResult,
     ValidationStage,
-    _ensure_model_config_for_platform,
     categorize_error,
     create_agent,
     format_raw_error,
@@ -389,31 +388,6 @@ def test_validation_success_with_tool_calls(
         result.validation_stages[ValidationStage.TOOL_CALL_EXECUTION] is True
     )
     assert ValidationStage.TOOL_CALL_EXECUTION in result.successful_stages
-
-
-@pytest.mark.unit
-def test_ensure_anthropic_injects_default_max_tokens():
-    cfg, kw = _ensure_model_config_for_platform("anthropic", None, {})
-    assert cfg is not None
-    assert cfg["max_tokens"] == 4096
-    assert "max_tokens" not in kw
-
-
-@pytest.mark.unit
-def test_ensure_anthropic_keeps_valid_user_max_tokens():
-    cfg, kw = _ensure_model_config_for_platform(
-        "anthropic",
-        {"max_tokens": 8192},
-        {},
-    )
-    assert cfg["max_tokens"] == 8192
-
-
-@pytest.mark.unit
-def test_ensure_non_anthropic_unchanged():
-    cfg, kw = _ensure_model_config_for_platform("openai", None, {})
-    assert cfg is None
-    assert kw == {}
 
 
 @pytest.mark.unit
