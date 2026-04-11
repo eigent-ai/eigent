@@ -21,7 +21,6 @@ from camel.models import ModelFactory, ModelProcessingError
 
 logger = logging.getLogger("model_validation")
 
-
 # Expected result from tool execution for validation
 EXPECTED_TOOL_RESULT = "Tool execution completed successfully for https://www.camel-ai.org, Website Content: Welcome to CAMEL AI!"
 
