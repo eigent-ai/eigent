@@ -80,6 +80,7 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
+
     init_param_keys = {
         "api_version",
         "azure_ad_token",
@@ -134,6 +135,12 @@ def agent_model(
                 exc_info=True,
             )
             model_platform_enum = None
+
+    if (
+        effective_config["model_platform"].lower() == "anthropic"
+        and model_config.get("cache_control") is None
+    ):
+        model_config["cache_control"] = "5m"
 
     model = ModelFactory.create(
         model_platform=effective_config["model_platform"],
