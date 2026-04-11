@@ -228,10 +228,9 @@ def create_agent(
     if platform is None:
         raise ValueError(f"Invalid model_platform: {model_platform}")
     if str(platform).lower() == "anthropic":
-        model_config_dict = {
-            **(model_config_dict or {}),
-            "max_tokens": 4096,  # 4096 is enough for validation
-        }
+        model_config_dict = dict(model_config_dict or {})
+        if model_config_dict.get("max_tokens") is None:
+            model_config_dict["max_tokens"] = 4096
     model = ModelFactory.create(
         model_platform=platform,
         model_type=mtype,
@@ -332,10 +331,9 @@ def validate_model_with_details(
             extra={"platform": model_platform, "model_type": model_type},
         )
         if str(model_platform).lower() == "anthropic":
-            model_config_dict = {
-                **(model_config_dict or {}),
-                "max_tokens": 4096,
-            }
+            model_config_dict = dict(model_config_dict or {})
+            if model_config_dict.get("max_tokens") is None:
+                model_config_dict["max_tokens"] = 4096
         model = ModelFactory.create(
             model_platform=model_platform,
             model_type=model_type,
