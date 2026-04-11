@@ -17,15 +17,14 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from camel.messages import BaseMessage
-from camel.models import ModelFactory
-from camel.toolkits import FunctionTool, RegisteredAgentToolkit
-from camel.types import ModelPlatformType
-
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
+from camel.messages import BaseMessage
+from camel.models import ModelFactory
+from camel.toolkits import FunctionTool, RegisteredAgentToolkit
+from camel.types import ModelPlatformType
 
 
 def agent_model(
@@ -80,6 +79,7 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
+
     init_param_keys = {
         "api_version",
         "azure_ad_token",
@@ -134,6 +134,12 @@ def agent_model(
                 exc_info=True,
             )
             model_platform_enum = None
+
+    if (
+        effective_config["model_platform"].lower() == "anthropic"
+        and model_config.get("cache_control") is None
+    ):
+        model_config["cache_control"] = "5m"
 
     model = ModelFactory.create(
         model_platform=effective_config["model_platform"],
