@@ -24,18 +24,18 @@ import { promisify } from 'util';
 import { PromiseReturnType } from './install-deps';
 import { maskProxyUrl, readGlobalEnvKey } from './utils/envUtil';
 import {
-  ensureTerminalVenvAtUserPath,
-  findNodejsWheelBinPath,
-  findNodejsWheelNpmPath,
-  getBackendPath,
-  getBinaryPath,
-  getCachePath,
-  getPrebuiltPythonDir,
-  getUvEnv,
-  getVenvPath,
-  getVenvPythonPath,
-  isBinaryExists,
-  killProcessByName,
+    ensureTerminalVenvAtUserPath,
+    findNodejsWheelBinPath,
+    findNodejsWheelNpmPath,
+    getBackendPath,
+    getBinaryPath,
+    getCachePath,
+    getPrebuiltPythonDir,
+    getUvEnv,
+    getVenvPath,
+    getVenvPythonPath,
+    isBinaryExists,
+    killProcessByName,
 } from './utils/process';
 
 const execAsync = promisify(exec);
@@ -193,6 +193,7 @@ export async function startBackend(
   setPort?: (port: number) => void
 ): Promise<any> {
   console.log('start fastapi');
+  const startupStartTime = Date.now();
   const uv_path = await getBinaryPath('uv');
   const backendPath = getBackendPath();
   const userData = app.getPath('userData');
@@ -513,6 +514,7 @@ export async function startBackend(
             stdio: ['ignore', 'ignore', 'pipe'],
           }
         );
+    const spawnTime = Date.now();
 
     // NOTE: Do NOT use unref() - we need to maintain the process reference
     // to properly capture stdout/stderr and manage the process lifecycle
@@ -588,7 +590,11 @@ export async function startBackend(
 
         const req = http.get(healthUrl, { timeout: 1000 }, (res) => {
           if (res.statusCode === 200) {
-            log.info(`Backend health check passed after ${attempts} attempts`);
+            const healthCheckMs = Date.now() - spawnTime;
+            const totalStartupMs = Date.now() - startupStartTime;
+            log.info(
+              `[PERF] Backend health check passed after ${attempts} attempts. Health check duration: ${healthCheckMs}ms. Total startup: ${totalStartupMs}ms`
+            );
             started = true;
             clearTimeout(startTimeout);
             if (healthCheckInterval) clearInterval(healthCheckInterval);
