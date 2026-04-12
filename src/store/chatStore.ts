@@ -96,6 +96,7 @@ interface GeneratedUploadFile {
   path?: string;
   name?: string;
   isFolder?: boolean;
+  relativePath?: string;
   source?: Exclude<UploadFileSource, 'user_attachment'>;
 }
 
@@ -120,17 +121,21 @@ function buildUploadName(
   fileName: string,
   source: UploadFileSource,
   taskId: string,
-  attachmentIndex: number
+  attachmentIndex: number,
+  relativePath?: string
 ): string {
   if (source === 'camel_log') {
-    return `camel_log_${taskId}__${fileName}`;
+    if (relativePath) {
+      return `camel_log/${relativePath}/${fileName}`;
+    }
+    return `camel_log/${fileName}`;
   }
 
   if (source === 'user_attachment') {
-    return `user_attachment_${attachmentIndex}__${fileName}`;
+    return `user_attachment/${fileName}`;
   }
 
-  return fileName;
+  return `project_output/${fileName}`;
 }
 
 export function collectTaskUploadFiles(
@@ -139,13 +144,16 @@ export function collectTaskUploadFiles(
   pendingAttaches: File[] = [],
   taskId = 'unknown_task'
 ): UploadCandidate[] {
-  const uploadCandidates: Array<Omit<UploadCandidate, 'uploadName'>> = [];
+  const uploadCandidates: Array<
+    Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
+  > = [];
 
   for (const file of generatedFiles) {
     if (!file?.path || !file?.name || file.isFolder) continue;
     uploadCandidates.push({
       path: file.path,
       name: file.name,
+      relativePath: file.relativePath,
       source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
     });
   }
@@ -169,13 +177,15 @@ export function collectTaskUploadFiles(
   let attachmentIndex = 1;
   for (const file of uploadCandidates) {
     if (!uniqueCandidates.has(file.path)) {
+      const { relativePath, ...rest } = file;
       uniqueCandidates.set(file.path, {
-        ...file,
+        ...rest,
         uploadName: buildUploadName(
           file.name,
           file.source,
           taskId,
-          file.source === 'user_attachment' ? attachmentIndex++ : 0
+          file.source === 'user_attachment' ? attachmentIndex++ : 0,
+          relativePath
         ),
       });
     }
