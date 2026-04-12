@@ -13,7 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Check, Copy, FileText } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
@@ -27,7 +33,10 @@ interface AgentMessageCardProps {
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
+  /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
+  deferredFooter?: ReactNode;
   onTyping?: () => void;
+  onMarkdownRenderComplete?: () => void;
 }
 
 // global Map to track completed typewriter effect content hash
@@ -38,13 +47,22 @@ export function AgentMessageCard({
   content,
   typewriter = true,
   onTyping,
+  onMarkdownRenderComplete,
   className,
   attaches,
+  deferredFooter,
 }: AgentMessageCardProps) {
   // use content hash to track if typewriter effect is completed
   const contentHash = useMemo(() => {
     return `${id}-${content}`;
   }, [id, content]);
+
+  const [markdownAndTypingComplete, setMarkdownAndTypingComplete] =
+    useState(false);
+
+  useEffect(() => {
+    setMarkdownAndTypingComplete(false);
+  }, [contentHash]);
 
   // check if typewriter effect is completed
   const isCompleted = completedTypewriterHashes.has(contentHash);
@@ -76,27 +94,28 @@ export function AgentMessageCard({
     }
   }, [content, t]);
 
+  const handleMarkdownRenderComplete = useCallback(() => {
+    setMarkdownAndTypingComplete(true);
+    onMarkdownRenderComplete?.();
+  }, [onMarkdownRenderComplete]);
+
+  const showDeferredFileUi =
+    markdownAndTypingComplete &&
+    ((attaches && attaches.length > 0) || deferredFooter != null);
+
   return (
     <div
       key={id}
-      className={`relative w-full rounded-xl bg-transparent px-sm py-3 ${className || ''} group overflow-hidden`}
+      className={`rounded-xl px-sm py-3 flex w-full flex-col bg-transparent ${className || ''} group overflow-hidden`}
     >
-      <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <Button onClick={handleCopy} variant="ghost" size="icon">
-          {copied ? (
-            <Check className="h-4 w-4 text-text-success" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
       <MarkDown
         content={content}
         onTyping={handleTypingComplete}
+        onMarkdownRenderComplete={handleMarkdownRenderComplete}
         enableTypewriter={enableTypewriter && typewriter}
       />
-      {attaches && attaches.length > 0 && (
-        <div className="mt-[10px] flex flex-wrap gap-2">
+      {showDeferredFileUi && attaches && attaches.length > 0 && (
+        <div className="gap-2 mt-[10px] flex flex-wrap">
           {attaches?.map((file) => {
             return (
               <div
@@ -105,11 +124,11 @@ export function AgentMessageCard({
                   window.ipcRenderer.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-task-border-default bg-message-fill-default py-1 pl-2"
+                className="gap-2 rounded-2xl border-task-border-default bg-message-fill-default py-1 pl-2 flex w-full cursor-pointer items-center border border-solid"
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-text-body">
+                  <div className="text-body max-w-48 text-sm font-bold text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
                     {file?.fileName?.split('.')[0]}
                   </div>
                   <div className="text-xs font-medium leading-29 text-text-body">
@@ -121,6 +140,25 @@ export function AgentMessageCard({
           })}
         </div>
       )}
+      {showDeferredFileUi && deferredFooter != null && (
+        <div className="mt-[10px] w-full">{deferredFooter}</div>
+      )}
+      <div className="mt-1 flex shrink-0 justify-end">
+        <div className="pointer-events-none opacity-0 transition-opacity duration-300 group-hover:pointer-events-auto group-hover:opacity-100">
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-text-success" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

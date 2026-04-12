@@ -50,21 +50,17 @@ export function HeaderBox({
 
   return (
     <div
-      className={`flex h-[44px] w-full flex-row items-center justify-between px-3 ${className || ''}`}
+      className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
     >
       {/* Left: title + replay button */}
-      <div className="flex items-center gap-2">
-        <span className="text-body-base font-bold leading-relaxed text-text-body">
-          {t('chat.chat-title')}
-        </span>
-
+      <div className="gap-2 flex items-center">
         {showReplayButton && (
           <Button
             onClick={onReplay}
             disabled={isReplayDisabled || replayLoading}
             variant="ghost"
             size="sm"
-            className="no-drag rounded-full bg-surface-information font-semibold !text-text-information"
+            className="no-drag bg-surface-information font-semibold !text-text-information rounded-full"
           >
             <PlayCircle className="mr-1 h-3.5 w-3.5" />
             {replayLoading ? t('common.loading') : t('chat.replay')}
@@ -73,7 +69,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count */}
-      <div className="flex items-center gap-1 text-text-label">
+      <div className="gap-1 text-text-label flex items-center">
         <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
         <span className="text-xs font-medium">
           {t('chat.token-total-label')}{' '}

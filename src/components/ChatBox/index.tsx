@@ -23,11 +23,18 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId, replayActiveTask } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
-import type { VanillaChatStore } from '@/store/chatStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -35,14 +42,10 @@ import BottomBox from './BottomBox';
 import { HeaderBox } from './HeaderBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
 
-const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
-  const chatState = chatStore.getState();
-  return Object.values(chatState.tasks).reduce(
-    (total, task) =>
-      total + (typeof task.tokens === 'number' ? task.tokens : 0),
-    0
-  );
-};
+/** Minimum scroll padding under messages (matches previous ~8rem floor). */
+const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
+/** Small gap between last message and BottomBox top. */
+const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
@@ -51,14 +54,22 @@ export default function ChatBox(): JSX.Element {
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   const { t } = useTranslation();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLDivElement>(null);
+  const workspaceChatFocusRequestId = usePageTabStore(
+    (s) => s.workspaceChatFocusRequestId
+  );
   const [hasModel, setHasModel] = useState(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
+  const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
+  const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
+    CHAT_SCROLL_BOTTOM_MIN_PX
+  );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType } = useAuthStore();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
+  const location = useLocation();
+
   useEffect(() => {
     // Only show warning message, don't block functionality
     if (
@@ -70,27 +81,21 @@ export default function ChatBox(): JSX.Element {
       setUseCloudModelInDev(false);
     }
   }, [modelType]);
-
-  const [searchParams, setSearchParams] = useSearchParams();
-  const share_token = searchParams.get('share_token');
-  const skill_prompt = searchParams.get('skill_prompt');
-
-  const handleSendRef = useRef<
-    ((messageStr?: string, taskId?: string) => Promise<void>) | null
-  >(null);
-
-  const navigate = useNavigate();
-  const location = useLocation();
+  useEffect(() => {
+    if (workspaceChatFocusRequestId === 0) return;
+    const focusTimer = window.setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 180);
+    return () => clearTimeout(focusTimer);
+  }, [workspaceChatFocusRequestId]);
 
   // Shared function to check model configuration
   const checkModelConfig = useCallback(async () => {
     try {
       if (modelType === 'cloud') {
-        // For cloud model, check if API key exists
         const res = await proxyFetchGet('/api/v1/user/key');
         setHasModel(!!res.value);
       } else if (modelType === 'local' || modelType === 'custom') {
-        // For local/custom model, check if provider exists
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
         const providerList = res.items || [];
         setHasModel(providerList.length > 0);
@@ -107,25 +112,15 @@ export default function ChatBox(): JSX.Element {
 
   // Check model config on mount and when modelType changes
   useEffect(() => {
-    proxyFetchGet('/api/v1/configs')
-      .then((configsRes) => {
-        const configs = Array.isArray(configsRes) ? configsRes : [];
-        const _hasApiKey = configs.find(
-          (item) => item.config_name === 'GOOGLE_API_KEY'
-        );
-        const _hasApiId = configs.find(
-          (item) => item.config_name === 'SEARCH_ENGINE_ID'
-        );
-        if (_hasApiKey && _hasApiId) setHasSearchKey(true);
-      })
-      .catch((err) => console.error('Failed to fetch configs:', err));
+    proxyFetchGet('/api/configs').catch((err) =>
+      console.error('Failed to fetch configs:', err)
+    );
 
     checkModelConfig();
   }, [modelType, checkModelConfig]);
 
   // Re-check model config when returning from settings page
   useEffect(() => {
-    // Check when location changes (user navigates)
     if (location.pathname === '/') {
       checkModelConfig();
     }
@@ -142,6 +137,15 @@ export default function ChatBox(): JSX.Element {
       window.removeEventListener('focus', handleFocus);
     };
   }, [checkModelConfig]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const share_token = searchParams.get('share_token');
+  const skill_prompt = searchParams.get('skill_prompt');
+
+  const handleSendRef = useRef<
+    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+  >(null);
+
+  const navigate = useNavigate();
 
   // Task time tracking
   const [taskTime, setTaskTime] = useState(
@@ -149,14 +153,11 @@ export default function ChatBox(): JSX.Element {
       '00:00'
   );
 
-  const [_hasSubTask, setHasSubTask] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isReplayLoading, setIsReplayLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-  const [projectTotalTokens, setProjectTotalTokens] = useState(0);
 
   const activeTaskId = chatStore?.activeTaskId;
-  const activeTaskMessages = chatStore?.tasks[activeTaskId as string]?.messages;
   const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
 
   useEffect(() => {
@@ -168,16 +169,6 @@ export default function ChatBox(): JSX.Element {
     }, 500);
     return () => clearInterval(interval);
   }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
 
   useEffect(() => {
     if (!chatStore) return;
@@ -196,55 +187,12 @@ export default function ChatBox(): JSX.Element {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [activeAsk, message, chatStore, activeTaskId]);
+  }, [activeAsk, chatStore, activeTaskId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
     return projectStore.getAllChatStores(projectStore.activeProjectId);
   }, [projectStore]);
-
-  useEffect(() => {
-    if (!projectStore.activeProjectId) {
-      setProjectTotalTokens(0);
-      return;
-    }
-
-    const chatTotals = new Map<string, number>();
-    let nextProjectTotalTokens = 0;
-
-    getAllChatStoresMemoized.forEach(({ chatId, chatStore }) => {
-      const chatTotalTokens = getChatStoreTotalTokens(chatStore);
-      chatTotals.set(chatId, chatTotalTokens);
-      nextProjectTotalTokens += chatTotalTokens;
-    });
-
-    setProjectTotalTokens(nextProjectTotalTokens);
-
-    const unsubscribers = getAllChatStoresMemoized.map(
-      ({ chatId, chatStore }) =>
-        chatStore.subscribe((state) => {
-          const nextChatTotalTokens = Object.values(state.tasks).reduce(
-            (total, task) =>
-              total + (typeof task.tokens === 'number' ? task.tokens : 0),
-            0
-          );
-          const previousChatTotalTokens = chatTotals.get(chatId) ?? 0;
-
-          if (nextChatTotalTokens === previousChatTotalTokens) {
-            return;
-          }
-
-          chatTotals.set(chatId, nextChatTotalTokens);
-          nextProjectTotalTokens +=
-            nextChatTotalTokens - previousChatTotalTokens;
-          setProjectTotalTokens(nextProjectTotalTokens);
-        })
-    );
-
-    return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
-    };
-  }, [projectStore.activeProjectId, getAllChatStoresMemoized]);
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
@@ -272,10 +220,33 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
+  useLayoutEffect(() => {
+    if (!chatStore?.activeTaskId || !hasAnyMessages) return;
+
+    const el = bottomBoxOverlayRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const raw = el.getBoundingClientRect().height;
+      setScrollBottomInsetPx(
+        Math.max(
+          CHAT_SCROLL_BOTTOM_MIN_PX,
+          Math.round(raw) + CHAT_SCROLL_BOTTOM_GAP_PX
+        )
+      );
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [chatStore?.activeTaskId, hasAnyMessages]);
+
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
     const task = chatStore.tasks[chatStore.activeTaskId];
+
     return (
       // running or paused
       task.status === ChatTaskStatus.RUNNING ||
@@ -285,7 +256,9 @@ export default function ChatBox(): JSX.Element {
         (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
       ) ||
       // skeleton/computing phase
-      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+      ((task.status as string) !== ChatTaskStatus.FINISHED &&
+        (task.status as string) !== ChatTaskStatus.RUNNING &&
+        !task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
       task.isTakeControl
@@ -303,7 +276,7 @@ export default function ChatBox(): JSX.Element {
 
     if (isTaskBusy) return true;
 
-    // Standard checks - check model
+    // Standard checks - model required
     if (!hasModel) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
@@ -337,7 +310,7 @@ export default function ChatBox(): JSX.Element {
       let taskId: string = token.split('__')[1];
       chatStore.create(taskId, 'share');
       chatStore.setHasMessages(taskId, true);
-      const res = await proxyFetchGet(`/api/v1/chat/share/info/${_token}`);
+      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
       if (res?.question) {
         chatStore.addMessages(taskId, {
           id: generateUniqueId(),
@@ -374,11 +347,6 @@ export default function ChatBox(): JSX.Element {
       setSearchParams(newSearchParams, { replace: true });
     }
   }, [skill_prompt, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    console.log('ChatStore Data: ', chatStore);
-  }, [chatStore]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -429,13 +397,15 @@ export default function ChatBox(): JSX.Element {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
 
-    // Check model configuration
     if (!hasModel) {
       toast.error('Please select a model first.');
       navigate('/history?tab=agents');
       return;
     }
-    const tempMessageContent = messageStr || message;
+
+    const rawMessageContent = messageStr || message;
+    let tempMessageContent = rawMessageContent;
+    const displayContent = tempMessageContent;
 
     if (executionId && projectStore.activeProjectId) {
       const project = projectStore.getProjectById(projectStore.activeProjectId);
@@ -455,7 +425,34 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
+    const isTaskBusy =
+      (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
+      task.status === ChatTaskStatus.PAUSE ||
+      // splitting phase: has to_sub_tasks not confirmed OR skeleton computing
+      task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+      ) ||
+      (!task.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
+        !task.hasWaitComfirm &&
+        task.messages.length > 0 &&
+        task.status !== ChatTaskStatus.FINISHED) ||
+      task.isTakeControl ||
+      // explicit confirm wait while task is pending but card not confirmed yet
+      (!!task.messages.find(
+        (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+      ) &&
+        task.status === ChatTaskStatus.PENDING);
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
+    const isReplayChatStore = task?.type === 'replay';
+    if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
+      toast.error(
+        'Current task is in progress. Please wait for it to finish before sending a new request.',
+        {
+          closeButton: true,
+        }
+      );
+      return;
+    }
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
@@ -463,7 +460,7 @@ export default function ChatBox(): JSX.Element {
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
           role: 'user',
-          content: tempMessageContent,
+          content: displayContent,
           attaches:
             JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
             [],
@@ -590,19 +587,20 @@ export default function ChatBox(): JSX.Element {
             //Generate nextId in case new chatStore is created to sync with the backend beforehand
             const nextTaskId = generateUniqueId();
             chatStore.setNextTaskId(nextTaskId);
-            chatStore.setNextExecutionId(taskId as string, executionId);
+            chatStore.setNextExecutionId(_taskId as string, executionId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
             fetchPost(`/chat/${projectStore.activeProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              target: undefined,
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {
               id: generateUniqueId(),
               role: 'user',
-              content: tempMessageContent,
+              content: displayContent,
               attaches: attachesForThisTurn,
             });
             chatStore.setAttaches(_taskId, []);
@@ -645,67 +643,7 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _hasSubTask = chatStore.tasks[
-      chatStore.activeTaskId as string
-    ]?.messages?.find((message) => message.step === AgentStep.TO_SUB_TASKS)
-      ? true
-      : false;
-    setHasSubTask(_hasSubTask);
-  }, [chatStore, activeTaskId, activeTaskMessages]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, message, chatStore, activeTaskId]);
-
-  const activeAskValue =
-    chatStore?.tasks[chatStore.activeTaskId as string]?.activeAsk;
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (activeAskValue && activeAskValue !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        handleSend('skip', _taskId);
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [
-    activeAskValue,
-    message, // depend on message
-    chatStore,
-    handleSend,
-  ]);
+  handleSendRef.current = handleSend;
 
   // Reactive queuedMessages for the active project
   const queuedMessages = useMemo(() => {
@@ -720,11 +658,10 @@ export default function ChatBox(): JSX.Element {
   }, [projectStore]);
 
   useEffect(() => {
-    // Wait for config to be loaded before handling share token
-    if (share_token && isConfigLoaded) {
+    if (share_token) {
       handleSendShare(share_token);
     }
-  }, [share_token, isConfigLoaded, handleSendShare]);
+  }, [share_token, handleSendShare]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -906,7 +843,7 @@ export default function ChatBox(): JSX.Element {
     const history_id = projectStore.getHistoryId(projectId);
     if (history_id) {
       try {
-        await proxyFetchDelete(`/api/v1/chat/history/${history_id}`);
+        await proxyFetchDelete(`/api/chat/history/${history_id}`);
       } catch (error) {
         console.error(
           `Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`,
@@ -947,8 +884,10 @@ export default function ChatBox(): JSX.Element {
 
     // Determine if we're in the "splitting in progress" phase (skeleton visible)
     // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
+    // Skip splitting phase when task is already RUNNING (e.g. direct @agent mode)
     const isSkeletonPhase =
-      (task.status !== 'finished' &&
+      (task.status !== ChatTaskStatus.FINISHED &&
+        task.status !== ChatTaskStatus.RUNNING &&
         !anyToSubTasksMessage &&
         !task.hasWaitComfirm &&
         task.messages.length > 0) ||
@@ -973,11 +912,16 @@ export default function ChatBox(): JSX.Element {
     }
 
     // Check task status
-    if (
-      task.status === ChatTaskStatus.RUNNING ||
-      task.status === ChatTaskStatus.PAUSE
-    ) {
+    if (task.status === ChatTaskStatus.PAUSE) {
       return 'running';
+    }
+    if (task.status === ChatTaskStatus.RUNNING) {
+      const hasSubTasks = task.messages.some(
+        (m) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      const isDirectMode =
+        !hasSubTasks && (task.taskAssigning?.length ?? 0) > 0;
+      return isDirectMode ? 'input' : 'running';
     }
 
     if (task.status === 'finished' && task.type !== '') {
@@ -1032,183 +976,185 @@ export default function ChatBox(): JSX.Element {
   }
 
   return (
-    <div className="h-full w-full flex-none items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
+    <div className="rounded-2xl border-border-tertiary bg-surface-secondary h-full w-full flex-none items-center justify-center overflow-hidden border-solid">
       {/* Unified ChatBox Structure */}
       <div className="relative flex h-full w-full flex-col overflow-hidden">
-        {/* Header Box - Always visible */}
-        {chatStore.activeTaskId && (
+        {/* Header: hidden on new-project welcome state; shown once there is chat content */}
+        {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
-            totalTokens={projectTotalTokens}
+            totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
             status={chatStore.tasks[chatStore.activeTaskId]?.status}
             replayLoading={isReplayLoading}
             onReplay={handleReplay}
           />
         )}
 
-        {/* Main Content Area - Flex 1 to take remaining space */}
-        <div className="relative flex flex-1 flex-col overflow-hidden">
-          {/* Project Chat Container - Show when has messages (absolute, full height) */}
+        {/* Main: full-width scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
+        <div className="min-h-0 relative flex flex-1 flex-col overflow-hidden">
           <div
-            className={`absolute inset-0 flex h-full flex-col transition-all duration-300 ease-in-out ${
-              hasAnyMessages
-                ? 'pointer-events-auto translate-y-0 opacity-100'
-                : 'pointer-events-none -translate-y-4 opacity-0'
-            }`}
+            ref={scrollContainerRef}
+            className="scrollbar-always-visible min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
           >
-            <ProjectChatContainer
-              onSkip={handleSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
-            />
-          </div>
-
-          {/* Init State Container - Welcome + BottomBox + Suggestions (vertically centered) */}
-          <div
-            className={`flex flex-1 flex-col transition-all duration-300 ease-in-out ${
-              hasAnyMessages
-                ? 'pointer-events-none absolute inset-0 opacity-0'
-                : 'pointer-events-auto opacity-100'
-            }`}
-          >
-            {/* Welcome Message - Top area, flex-1 to push content down */}
-            <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4">
-              <div className="text-center text-body-lg font-bold text-text-heading">
-                {t('layout.welcome-to-eigent')}
-              </div>
-            </div>
-
-            {/* Bottom Box - Center (init state only) */}
-            {chatStore.activeTaskId && (
-              <BottomBox
-                state="input"
-                queuedMessages={queuedMessages}
-                onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                inputProps={{
-                  value: message,
-                  onChange: setMessage,
-                  onSend: handleSend,
-                  files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
-                  onAddFile: handleFileSelect,
-                  placeholder: t('chat.ask-placeholder'),
-                  disabled: isInputDisabled,
-                  textareaRef: textareaRef,
-                  allowDragDrop: true,
-                  useCloudModelInDev: useCloudModelInDev,
-                }}
+            {hasAnyMessages ? (
+              <ProjectChatContainer
+                scrollContainerRef={scrollContainerRef}
+                scrollBottomInsetPx={scrollBottomInsetPx}
+                onSkip={handleSkip}
+                isPauseResumeLoading={isPauseResumeLoading}
               />
-            )}
-
-            {/* Suggestion Area - Bottom area, flex-1 to push content up */}
-            <div className="mt-3 flex h-[210px] flex-1 items-start justify-center gap-2">
-              {!hasModel ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={() => {
-                      navigate('/history?tab=agents');
-                    }}
-                    className="flex cursor-pointer items-center gap-2 rounded-md bg-surface-warning px-sm py-xs"
-                  >
-                    <TriangleAlert size={20} className="text-icon-warning" />
-                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-warning">
-                      {t('layout.please-select-model')}
-                    </span>
+            ) : (
+              <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+                <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end">
+                  <div className="text-heading-base font-bold text-text-heading text-center">
+                    {t('layout.welcome-to-eigent')}
                   </div>
                 </div>
-              ) : null}
-              {hasModel && (
-                <div className="mr-2 flex flex-col items-center gap-2">
-                  {[
-                    {
-                      label: t('layout.it-ticket-creation'),
-                      message: t('layout.it-ticket-creation-message'),
-                    },
-                    {
-                      label: t('layout.bank-transfer-csv-analysis'),
-                      message: t('layout.bank-transfer-csv-analysis-message'),
-                    },
-                    {
-                      label: t('layout.find-duplicate-files'),
-                      message: t('layout.find-duplicate-files-message'),
-                    },
-                  ].map(({ label, message }) => (
-                    <div
-                      key={label}
-                      className="cursor-pointer rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium leading-none text-button-tertiery-text-default opacity-70 transition-all duration-300 hover:opacity-100"
-                      onClick={() => {
-                        setMessage(message);
-                      }}
-                    >
-                      <span>{label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* Bottom Box - Show when has messages */}
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <BottomBox
-            state={hasAnyMessages ? getBottomBoxState() : 'input'}
-            queuedMessages={queuedMessages}
-            onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-            subtitle={
-              hasAnyMessages && getBottomBoxState() === 'confirm'
-                ? (() => {
-                    const messages =
-                      chatStore.tasks[chatStore.activeTaskId]?.messages || [];
-                    const lastUserMessage = messages
-                      .slice()
-                      .reverse()
-                      .find((msg) => msg.role === 'user');
-                    return (
-                      lastUserMessage?.content ||
-                      chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-                    );
-                  })()
-                : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-            }
-            onStartTask={() => handleConfirmTask()}
-            onEdit={handleEditQuery}
-            taskTime={taskTime}
-            taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-            onPauseResume={handlePauseResume}
-            pauseResumeLoading={isPauseResumeLoading}
-            loading={loading}
-            inputProps={{
-              value: message,
-              onChange: setMessage,
-              onSend: handleSend,
-              files:
-                chatStore.tasks[chatStore.activeTaskId]?.attaches?.map((f) => ({
-                  fileName: f.fileName,
-                  filePath: f.filePath,
-                })) || [],
-              onFilesChange: (files) =>
-                chatStore.setAttaches(
-                  chatStore.activeTaskId as string,
-                  files as any
-                ),
-              onAddFile: handleFileSelect,
-              placeholder: t('chat.ask-placeholder'),
-              disabled: isInputDisabled,
-              textareaRef: textareaRef,
-              allowDragDrop: hasAnyMessages,
-              useCloudModelInDev: useCloudModelInDev,
-            }}
-          />
-        )}
+                {chatStore.activeTaskId && (
+                  <BottomBox
+                    state="input"
+                    queuedMessages={queuedMessages}
+                    onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                    inputProps={{
+                      value: message,
+                      onChange: setMessage,
+                      onSend: handleSend,
+                      files:
+                        chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                          (f) => ({
+                            fileName: f.fileName,
+                            filePath: f.filePath,
+                          })
+                        ) || [],
+                      onFilesChange: (files) =>
+                        chatStore.setAttaches(
+                          chatStore.activeTaskId as string,
+                          files as any
+                        ),
+                      onAddFile: handleFileSelect,
+                      disabled: isInputDisabled,
+                      textareaRef: textareaRef,
+                      allowDragDrop: true,
+                      useCloudModelInDev: useCloudModelInDev,
+                    }}
+                  />
+                )}
+
+                <div className="mt-3 gap-2 flex h-[210px] flex-1 items-start justify-center">
+                  {!hasModel ? (
+                    <div className="gap-2 flex items-center">
+                      <div
+                        onClick={() => {
+                          navigate('/history?tab=agents');
+                        }}
+                        className="gap-2 rounded-md bg-surface-warning px-sm py-xs flex cursor-pointer items-center"
+                      >
+                        <TriangleAlert
+                          size={20}
+                          className="text-icon-warning"
+                        />
+                        <span className="text-xs font-medium text-text-warning flex-1 leading-[20px]">
+                          {t('layout.please-select-model')}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mr-2 gap-2 flex flex-col items-center">
+                      {[
+                        {
+                          label: t('layout.it-ticket-creation'),
+                          message: t('layout.it-ticket-creation-message'),
+                        },
+                        {
+                          label: t('layout.bank-transfer-csv-analysis'),
+                          message: t(
+                            'layout.bank-transfer-csv-analysis-message'
+                          ),
+                        },
+                        {
+                          label: t('layout.find-duplicate-files'),
+                          message: t('layout.find-duplicate-files-message'),
+                        },
+                      ].map(({ label, message }) => (
+                        <div
+                          key={label}
+                          className="rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium text-button-tertiery-text-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
+                          onClick={() => {
+                            setMessage(message);
+                          }}
+                        >
+                          <span>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {chatStore.activeTaskId && hasAnyMessages && (
+            <div
+              ref={bottomBoxOverlayRef}
+              className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            >
+              <div className="px-sm pointer-events-auto w-full max-w-[600px]">
+                <BottomBox
+                  state={getBottomBoxState()}
+                  queuedMessages={queuedMessages}
+                  onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  subtitle={
+                    getBottomBoxState() === 'confirm'
+                      ? (() => {
+                          const messages =
+                            chatStore.tasks[chatStore.activeTaskId]?.messages ||
+                            [];
+                          const lastUserMessage = messages
+                            .slice()
+                            .reverse()
+                            .find((msg) => msg.role === 'user');
+                          return (
+                            lastUserMessage?.content ||
+                            chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                          );
+                        })()
+                      : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                  }
+                  onStartTask={() => handleConfirmTask()}
+                  onEdit={handleEditQuery}
+                  taskTime={taskTime}
+                  taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+                  onPauseResume={handlePauseResume}
+                  pauseResumeLoading={isPauseResumeLoading}
+                  loading={loading}
+                  inputProps={{
+                    value: message,
+                    onChange: setMessage,
+                    onSend: handleSend,
+                    files:
+                      chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                        (f) => ({
+                          fileName: f.fileName,
+                          filePath: f.filePath,
+                        })
+                      ) || [],
+                    onFilesChange: (files) =>
+                      chatStore.setAttaches(
+                        chatStore.activeTaskId as string,
+                        files as any
+                      ),
+                    onAddFile: handleFileSelect,
+                    placeholder: t('chat.follow-up-placeholder'),
+                    disabled: isInputDisabled,
+                    textareaRef: textareaRef,
+                    allowDragDrop: true,
+                    useCloudModelInDev: useCloudModelInDev,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

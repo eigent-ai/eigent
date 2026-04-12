@@ -316,7 +316,6 @@ export function Node({ id, data }: NodeProps) {
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, [isExpanded, selectedTask?.id]);
-
   useEffect(() => {
     const wrapper = wrapperRef.current;
     const log = logRef.current;
@@ -445,7 +444,12 @@ export function Node({ id, data }: NodeProps) {
               </div>
             </div>
             <div className="gap-xs flex items-center">
-              <Button onClick={handleShowLog} variant="ghost" size="icon">
+              <Button
+                onClick={handleShowLog}
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+              >
                 {isExpanded ? <SquareChevronLeft /> : <SquareCode />}
               </Button>
               {!Object.keys(agentMap).find((key) => key === data.type) &&
@@ -455,7 +459,8 @@ export function Node({ id, data }: NodeProps) {
                       <Button
                         onClick={(e) => e.stopPropagation()}
                         variant="ghost"
-                        size="icon"
+                        size="xs"
+                        buttonContent="icon-only"
                       >
                         <Ellipsis />
                       </Button>

@@ -26,40 +26,40 @@ export const TypeCardSkeleton = ({
   const { t } = useTranslation();
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 py-sm pl-2 transition-all duration-300">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm backdrop-blur-[5px]">
-          <div className="absolute left-0 top-0 w-full bg-transparent">
+      <div className="gap-2 py-sm px-2 flex h-auto w-full flex-col transition-all duration-300">
+        <div className="rounded-xl bg-task-surface py-sm relative h-auto w-full overflow-hidden backdrop-blur-[5px]">
+          <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={100} className="h-[2px] w-full" />
           </div>
-          <div className="mb-2.5 flex flex-col gap-sm px-sm text-sm font-bold leading-13">
+          <div className="mb-2.5 gap-sm px-sm text-sm font-bold leading-13 flex flex-col">
             <div
-              className={`h-5 w-full rounded-full bg-fill-skeloten-default ${
+              className={`h-5 bg-fill-skeloten-default w-full rounded-full ${
                 !isTakeControl ? 'animate-pulse' : ''
               }`}
             ></div>
             <div
-              className={`h-5 w-1/2 rounded-full bg-fill-skeloten-default ${
+              className={`h-5 bg-fill-skeloten-default w-1/2 rounded-full ${
                 !isTakeControl ? 'animate-pulse' : ''
               }`}
             ></div>
             <div
-              className={`h-5 w-1/2 rounded-full bg-fill-skeloten-default ${
+              className={`h-5 bg-fill-skeloten-default w-1/2 rounded-full ${
                 !isTakeControl ? 'animate-pulse' : ''
               }`}
             ></div>
           </div>
 
-          <div className={`flex items-center justify-between gap-2 px-sm`}>
-            <div className="flex items-center gap-2">
+          <div className={`gap-2 px-sm flex items-center justify-between`}>
+            <div className="gap-2 flex items-center">
               <TaskType type={1} />
             </div>
 
-            <div className="transition-all duration-300 ease-in-out">
-              <div className="flex items-center gap-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
+            <div className="ease-in-out transition-all duration-300">
+              <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
                 <div className="text-xs font-medium leading-17 text-text-tertiary">
                   {t('layout.tasks')}
                 </div>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="xs" buttonContent="icon-only">
                   <ChevronDown
                     size={16}
                     className={`rotate-180 transition-transform duration-300`}
@@ -69,13 +69,13 @@ export const TypeCardSkeleton = ({
             </div>
           </div>
           <div className="relative">
-            <div className="overflow-hidden transition-all duration-300 ease-in-out">
-              <div className="mt-sm flex flex-col gap-2 px-2">
+            <div className="ease-in-out overflow-hidden transition-all duration-300">
+              <div className="mt-sm gap-2 px-2 flex flex-col">
                 {[1, 2, 3, 4].map((task: number) => {
                   return (
                     <div
                       key={`taskList-${task}`}
-                      className={`flex cursor-pointer gap-2 rounded-lg border border-solid border-transparent bg-task-fill-default px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2`}
+                      className={`gap-2 rounded-lg bg-task-fill-default px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex cursor-pointer border border-solid border-transparent transition-all duration-300`}
                     >
                       <div className="pt-0.5">
                         <LoaderCircle
@@ -85,14 +85,14 @@ export const TypeCardSkeleton = ({
                           }`}
                         />
                       </div>
-                      <div className="flex flex-1 flex-col items-start justify-center gap-sm">
+                      <div className="gap-sm flex flex-1 flex-col items-start justify-center">
                         <div
-                          className={`h-5 w-full rounded-full bg-fill-skeloten-default text-sm font-medium leading-13 ${
+                          className={`h-5 bg-fill-skeloten-default text-sm font-medium leading-13 w-full rounded-full ${
                             !isTakeControl ? 'animate-pulse' : ''
                           }`}
                         ></div>
                         <div
-                          className={`h-5 w-1/3 rounded-full bg-fill-skeloten-default text-sm font-medium leading-13 ${
+                          className={`h-5 bg-fill-skeloten-default text-sm font-medium leading-13 w-1/3 rounded-full ${
                             !isTakeControl ? 'animate-pulse' : ''
                           }`}
                         ></div>

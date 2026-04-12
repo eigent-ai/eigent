@@ -38,6 +38,18 @@ const meta: Meta<typeof Button> = {
       control: 'select',
       options: ['xxs', 'xs', 'sm', 'md', 'lg', 'icon'],
     },
+    buttonContent: {
+      control: 'select',
+      options: ['text', 'icon-only'],
+    },
+    textWeight: {
+      control: 'select',
+      options: ['normal', 'medium', 'semibold', 'bold'],
+    },
+    buttonRadius: {
+      control: 'select',
+      options: ['lg', 'full'],
+    },
     disabled: {
       control: 'boolean',
     },
@@ -134,7 +146,7 @@ export const IconOnly: Story = {
 
 export const AllVariants: Story = {
   render: () => (
-    <div className="flex flex-wrap gap-4">
+    <div className="gap-4 flex flex-wrap">
       <Button variant="primary">Primary</Button>
       <Button variant="secondary">Secondary</Button>
       <Button variant="outline">Outline</Button>
@@ -147,7 +159,7 @@ export const AllVariants: Story = {
 
 export const AllSizes: Story = {
   render: () => (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="gap-4 flex flex-wrap items-center">
       <Button variant="primary" size="xxs">
         XXS
       </Button>
@@ -163,7 +175,7 @@ export const AllSizes: Story = {
       <Button variant="primary" size="lg">
         LG
       </Button>
-      <Button variant="primary" size="icon">
+      <Button variant="primary" size="xs" buttonContent="icon-only">
         <Trash2 />
       </Button>
     </div>

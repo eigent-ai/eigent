@@ -46,5 +46,12 @@
   "custom-skill": "Compétence personnalisée",
   "delete-skill": "Supprimer la compétence",
   "delete-skill-confirmation": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
-  "skill-deleted-success": "Compétence supprimée avec succès !"
+  "skill-deleted-success": "Compétence supprimée avec succès !",
+  "create-skill": "Créer une compétence",
+  "upload-skill": "Téléverser une compétence",
+  "browse-skills": "Parcourir les compétences",
+  "create-skill-default-name": "Nouvelle compétence",
+  "create-skill-default-description": "Décrivez ce que fait cette compétence.",
+  "save-skill": "Enregistrer la compétence",
+  "compose-skill-hint": "Modifiez SKILL.md (un en-tête YAML avec nom et description est requis), puis enregistrez."
 }

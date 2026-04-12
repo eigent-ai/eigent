@@ -15,15 +15,41 @@
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import CDP from './CDP';
 import Cookies from './Cookies';
 import Extension from './Extension';
 
+const BROWSER_SECTIONS = ['cdp', 'extension', 'cookies'] as const;
+type BrowserSection = (typeof BROWSER_SECTIONS)[number];
+
+function isBrowserSection(value: string | null): value is BrowserSection {
+  return value !== null && BROWSER_SECTIONS.includes(value as BrowserSection);
+}
+
 export default function Browser() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('cdp');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionFromUrl = searchParams.get('browserSection');
+  const [activeTab, setActiveTab] = useState<BrowserSection>(() =>
+    isBrowserSection(sectionFromUrl) ? sectionFromUrl : 'cdp'
+  );
+
+  useEffect(() => {
+    if (searchParams.get('browserAction') === 'launch') {
+      setActiveTab('cdp');
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!isBrowserSection(sectionFromUrl)) return;
+    setActiveTab(sectionFromUrl);
+    const next = new URLSearchParams(searchParams);
+    next.delete('browserSection');
+    setSearchParams(next, { replace: true });
+  }, [sectionFromUrl, searchParams, setSearchParams]);
 
   const menuItems = [
     {
@@ -41,7 +67,7 @@ export default function Browser() {
   ];
 
   const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
+    if (isBrowserSection(tabId)) setActiveTab(tabId);
   };
 
   return (

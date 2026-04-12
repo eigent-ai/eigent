@@ -20,21 +20,25 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
-import { parseSkillMd } from '@/lib/skillToolkit';
+import { Textarea } from '@/components/ui/textarea';
+import { buildSkillMd, parseSkillMd } from '@/lib/skillToolkit';
 import { useSkillsStore } from '@/store/skillsStore';
 import { AlertCircle, File, Upload, X } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 interface SkillUploadDialogProps {
   open: boolean;
   onClose: () => void;
+  /** File upload vs compose SKILL.md in the editor */
+  mode?: 'upload' | 'create';
 }
 
 export default function SkillUploadDialog({
   open,
   onClose,
+  mode = 'upload',
 }: SkillUploadDialogProps) {
   const { t } = useTranslation();
   const { addSkill, syncFromDisk } = useSkillsStore();
@@ -58,6 +62,19 @@ export default function SkillUploadDialog({
   >(new Set());
   const [pendingFileBuffer, setPendingFileBuffer] =
     useState<ArrayBuffer | null>(null);
+  const [composeContent, setComposeContent] = useState('');
+  const [savingCompose, setSavingCompose] = useState(false);
+
+  useEffect(() => {
+    if (!open || mode !== 'create') return;
+    setComposeContent(
+      buildSkillMd(
+        t('agents.create-skill-default-name'),
+        t('agents.create-skill-default-description'),
+        '## Instructions\n\n'
+      )
+    );
+  }, [open, mode, t]);
 
   const handleClose = useCallback(() => {
     setSelectedFile(null);
@@ -69,8 +86,35 @@ export default function SkillUploadDialog({
     setPendingConflicts([]);
     setConfirmedReplacements(new Set());
     setPendingFileBuffer(null);
+    setComposeContent('');
+    setSavingCompose(false);
     onClose();
   }, [onClose]);
+
+  const handleSaveCompose = useCallback(async () => {
+    const meta = parseSkillMd(composeContent);
+    if (!meta) {
+      toast.error(t('agents.upload-error-invalid-yaml'));
+      return;
+    }
+    setSavingCompose(true);
+    try {
+      await addSkill({
+        name: meta.name,
+        description: meta.description,
+        filePath: 'SKILL.md',
+        fileContent: composeContent,
+        scope: { isGlobal: true, selectedAgents: [] },
+        enabled: true,
+      });
+      toast.success(t('agents.skill-added-success'));
+      handleClose();
+    } catch {
+      toast.error(t('agents.skill-add-error'));
+    } finally {
+      setSavingCompose(false);
+    }
+  }, [addSkill, composeContent, handleClose, t]);
 
   const resetConflictState = useCallback(() => {
     setConflictDialog(null);
@@ -413,111 +457,151 @@ export default function SkillUploadDialog({
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
         <DialogContent
-          size="sm"
+          size={mode === 'create' ? 'md' : 'sm'}
           showCloseButton
           onClose={handleClose}
           overlayVariant="dark"
         >
-          <DialogHeader title={t('agents.add-skill')} />
+          <DialogHeader
+            title={
+              mode === 'create'
+                ? t('agents.create-skill')
+                : t('agents.add-skill')
+            }
+          />
           <DialogContentSection>
-            <div className="flex flex-col gap-4">
-              {/* Drop Zone */}
-              <div
-                className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-colors duration-300 ease-in ${
-                  uploadError
-                    ? 'border-border-cuation bg-surface-cuation'
-                    : isDragging
-                      ? 'border-border-focus bg-surface-tertiary'
-                      : 'border-border-secondary hover:border-border-primary hover:bg-surface-secondary'
-                }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".skill,.md,.zip"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
+            <div className="gap-4 flex flex-col">
+              {mode === 'create' ? (
+                <>
+                  <p className="text-label-sm text-text-label">
+                    {t('agents.compose-skill-hint')}
+                  </p>
+                  <Textarea
+                    variant="none"
+                    value={composeContent}
+                    onChange={(e) => setComposeContent(e.target.value)}
+                    className="font-mono text-body-sm min-h-[220px] resize-y"
+                    spellCheck={false}
+                  />
+                  <div className="gap-2 flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      onClick={handleClose}
+                    >
+                      {t('layout.cancel')}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      type="button"
+                      disabled={savingCompose || !composeContent.trim()}
+                      onClick={() => void handleSaveCompose()}
+                    >
+                      {t('agents.save-skill')}
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+              {mode === 'upload' ? (
+                <div
+                  className={`rounded-xl p-8 ease-in relative cursor-pointer border-2 border-dashed transition-colors duration-300 ${
+                    uploadError
+                      ? 'border-border-cuation bg-surface-cuation'
+                      : isDragging
+                        ? 'border-border-focus bg-surface-tertiary'
+                        : 'border-border-secondary hover:border-border-primary hover:bg-surface-secondary'
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".skill,.md,.zip"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
 
-                {selectedFile ? (
-                  <div className="flex flex-col items-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`flex flex-shrink-0 items-center justify-center rounded-lg p-1 ${
-                          uploadError
-                            ? 'bg-surface-cuation'
-                            : 'bg-surface-tertiary'
-                        }`}
-                      >
-                        <File
-                          className={`h-4 w-4 ${
+                  {selectedFile ? (
+                    <div className="gap-6 flex flex-col items-center">
+                      <div className="gap-2 flex items-center">
+                        <div
+                          className={`rounded-lg p-1 flex flex-shrink-0 items-center justify-center ${
                             uploadError
-                              ? 'text-icon-cuation'
-                              : 'text-icon-primary'
-                          }`}
-                        />
-                      </div>
-                      <div className="flex w-full min-w-0 flex-col">
-                        <span
-                          className={`truncate text-body-sm font-medium ${
-                            uploadError
-                              ? 'text-text-cuation'
-                              : 'text-text-heading'
+                              ? 'bg-surface-cuation'
+                              : 'bg-surface-tertiary'
                           }`}
                         >
-                          {selectedFile.name}
+                          <File
+                            className={`h-4 w-4 ${
+                              uploadError
+                                ? 'text-icon-cuation'
+                                : 'text-icon-primary'
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0 flex w-full flex-col">
+                          <span
+                            className={`text-body-sm font-medium truncate ${
+                              uploadError
+                                ? 'text-text-cuation'
+                                : 'text-text-heading'
+                            }`}
+                          >
+                            {selectedFile.name}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveFile();
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <span
+                        className={`text-label-sm ${
+                          uploadError ? 'text-text-cuation' : 'text-text-label'
+                        }`}
+                      >
+                        {uploadError
+                          ? t('agents.reupload-file')
+                          : `${(selectedFile.size / 1024).toFixed(1)} KB`}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="gap-2 flex flex-col items-center">
+                      <div className="h-12 w-12 flex items-center justify-center">
+                        <Upload className="h-6 w-6 text-icon-secondary" />
+                      </div>
+                      <div className="gap-1 flex flex-col items-center text-center">
+                        <span className="text-body-sm font-medium text-text-heading">
+                          {t('agents.drag-and-drop')}
+                        </span>
+                        <span className="mt-1 text-label-sm text-text-label">
+                          {t('agents.or-click-to-browse')}
                         </span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveFile();
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
                     </div>
-
-                    <span
-                      className={`text-label-sm ${
-                        uploadError ? 'text-text-cuation' : 'text-text-label'
-                      }`}
-                    >
-                      {uploadError
-                        ? t('agents.reupload-file')
-                        : `${(selectedFile.size / 1024).toFixed(1)} KB`}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex h-12 w-12 items-center justify-center">
-                      <Upload className="h-6 w-6 text-icon-secondary" />
-                    </div>
-                    <div className="flex flex-col items-center gap-1 text-center">
-                      <span className="text-body-sm font-medium text-text-heading">
-                        {t('agents.drag-and-drop')}
-                      </span>
-                      <span className="mt-1 text-label-sm text-text-label">
-                        {t('agents.or-click-to-browse')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : null}
 
               {/* Error notice */}
-              {uploadError && errorMessage && (
+              {mode === 'upload' && uploadError && errorMessage && (
                 <div
-                  className="flex items-center gap-4 rounded-xl border border-border-cuation bg-surface-cuation px-4 py-3"
+                  className="gap-4 rounded-xl border-border-cuation bg-surface-cuation px-4 py-3 flex items-center border"
                   role="alert"
                 >
-                  <AlertCircle className="h-4 w-4 shrink-0 text-icon-cuation" />
+                  <AlertCircle className="h-4 w-4 text-icon-cuation shrink-0" />
                   <span className="text-label-sm text-text-cuation">
                     {errorMessage}
                   </span>
@@ -525,19 +609,21 @@ export default function SkillUploadDialog({
               )}
 
               {/* File Requirements */}
-              <div className="rounded-xl bg-surface-secondary p-4">
-                <span className="text-label-sm font-bold text-text-body">
-                  {t('agents.file-requirements')}
-                </span>
-                <span className="mt-2 flex items-start gap-2 text-label-sm text-text-label">
-                  <span className="text-text-label">•</span>
-                  <span>{t('agents.file-requirements-detail-1')}</span>
-                </span>
-                <span className="mt-1 flex items-start gap-2 text-label-sm text-text-label">
-                  <span className="text-text-label">•</span>
-                  <span>{t('agents.file-requirements-detail-2')}</span>
-                </span>
-              </div>
+              {mode === 'upload' ? (
+                <div className="rounded-xl bg-surface-secondary p-4">
+                  <span className="text-label-sm font-bold text-text-body">
+                    {t('agents.file-requirements')}
+                  </span>
+                  <span className="mt-2 gap-2 text-label-sm text-text-label flex items-start">
+                    <span className="text-text-label">•</span>
+                    <span>{t('agents.file-requirements-detail-1')}</span>
+                  </span>
+                  <span className="mt-1 gap-2 text-label-sm text-text-label flex items-start">
+                    <span className="text-text-label">•</span>
+                    <span>{t('agents.file-requirements-detail-2')}</span>
+                  </span>
+                </div>
+              ) : null}
             </div>
           </DialogContentSection>
         </DialogContent>

@@ -55,13 +55,14 @@ export function NoticeCard() {
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 py-sm transition-all duration-300">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl py-3 pr-5 backdrop-blur-[5px]">
+      <div className="gap-2 py-sm flex h-auto w-full flex-col transition-all duration-300">
+        <div className="rounded-xl py-3 pr-5 relative h-auto w-full overflow-hidden backdrop-blur-[5px]">
           <div className="relative">
             <Button
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               variant="ghost"
-              className="absolute right-[-15px] top-0"
+              className="top-0 absolute right-[-15px]"
               onClick={() => setIsExpanded(!isExpanded)}
             >
               <ChevronDown
@@ -75,7 +76,7 @@ export function NoticeCard() {
               ref={contentRef}
               className={`${
                 isExpanded ? 'overflow-y-auto' : 'max-h-[200px] overflow-y-auto'
-              } scrollbar-hide relative transition-all duration-300 ease-in-out`}
+              } scrollbar-hide ease-in-out relative transition-all duration-300`}
               style={{
                 maskImage: isExpanded
                   ? 'none'
@@ -85,15 +86,15 @@ export function NoticeCard() {
                   : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
               }}
             >
-              <div className="mt-sm flex flex-col gap-2 px-2">
+              <div className="mt-sm gap-2 px-2 flex flex-col">
                 {cotList.map((cot: string, index: number) => {
                   return (
                     <div
                       key={`taskList-${index}`}
-                      className={`flex cursor-pointer gap-2 rounded-lg border border-solid border-transparent transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2`}
+                      className={`gap-2 rounded-lg ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex cursor-pointer border border-solid border-transparent transition-all duration-300`}
                     >
-                      <div className="m-1.5 mt-2 h-1 w-1 rounded-full bg-icon-primary"></div>
-                      <div className="flex flex-1 flex-col items-start justify-center text-sm font-normal leading-normal">
+                      <div className="m-1.5 mt-2 h-1 w-1 bg-icon-primary rounded-full"></div>
+                      <div className="text-sm font-normal leading-normal flex flex-1 flex-col items-start justify-center">
                         {cot}
                       </div>
                     </div>

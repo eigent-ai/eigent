@@ -671,10 +671,10 @@ describe('Electron Main Index Functions', () => {
 
       const mockConfig = {
         title: 'Eigent',
-        width: 1200,
-        height: 800,
-        minWidth: 1200,
-        minHeight: 800,
+        width: 1366,
+        height: 860,
+        minWidth: 1100,
+        minHeight: 700,
         frame: false,
         transparent: true,
         backgroundColor: '#f5f5f5',
@@ -696,10 +696,10 @@ describe('Electron Main Index Functions', () => {
 
       const mockConfig = {
         title: 'Eigent',
-        width: 1200,
-        height: 800,
-        minWidth: 1200,
-        minHeight: 800,
+        width: 1366,
+        height: 860,
+        minWidth: 1100,
+        minHeight: 700,
         frame: true,
         transparent: false,
         backgroundColor: '#ffffff',
