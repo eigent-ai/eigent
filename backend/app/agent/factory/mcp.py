@@ -12,9 +12,11 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import asyncio
+import logging
 import uuid
 
 from camel.models import ModelFactory
+from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
@@ -85,6 +87,27 @@ async def mcp_agent(options: Chat):
             api_url, extra_params
         )
 
+    # Build model_config_dict with prompt caching
+    model_config_dict = {}
+    if options.is_cloud():
+        model_config_dict["user"] = str(options.project_id)
+    try:
+        platform_enum = ModelPlatformType(options.model_platform.lower())
+        if platform_enum in {
+            ModelPlatformType.ANTHROPIC,
+            ModelPlatformType.AWS_BEDROCK_CONVERSE,
+        }:
+            model_config_dict.setdefault("cache_control", "5m")
+        elif platform_enum == ModelPlatformType.OPENAI:
+            model_config_dict.setdefault(
+                "prompt_cache_key", str(options.project_id)
+            )
+    except (ValueError, AttributeError):
+        logging.error(
+            f"Invalid model platform: {options.model_platform}",
+            exc_info=True,
+        )
+
     return ListenChatAgent(
         options.project_id,
         Agents.mcp_agent,
@@ -94,13 +117,7 @@ async def mcp_agent(options: Chat):
             model_type=options.model_type,
             api_key=options.api_key,
             url=api_url,
-            model_config_dict=(
-                {
-                    "user": str(options.project_id),
-                }
-                if options.is_cloud()
-                else None
-            ),
+            model_config_dict=model_config_dict or None,
             timeout=600,  # 10 minutes
             **extra_params,
         ),

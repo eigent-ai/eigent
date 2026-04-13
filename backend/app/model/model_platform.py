@@ -38,7 +38,9 @@ def patch_bedrock_cloud_config(
     """
     extra_params = dict(extra_params)
     extra_params.setdefault("region_name", BEDROCK_CONVERSE_REGION)
-    return api_url + "/bedrock", extra_params
+    if not api_url.rstrip("/").endswith("/bedrock"):
+        api_url = api_url + "/bedrock"
+    return api_url, extra_params
 
 
 def normalize_model_platform(platform: str) -> str:
