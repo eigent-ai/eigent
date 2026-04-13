@@ -146,6 +146,7 @@
   "duplicated-successfully": "트리거가 \"{{name}}\"(으)로 복제되었습니다",
   "confirm-delete-message": "\"{{name}}\" 트리거를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
   "workspace": "워크스페이스",
+  "session": "세션",
   "agent-folder": "에이전트 폴더",
   "add": "추가",
   "upload": "업로드",

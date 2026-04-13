@@ -14,7 +14,7 @@
 
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { PanelLeft, PanelLeftClose, Plus } from 'lucide-react';
+import { PanelLeft, PanelLeftClose } from 'lucide-react';
 
 /** Hub tile shell without whole-area hover (split controls handle their own hover). */
 function hubIconTabShellClass(active: boolean): string {
@@ -34,12 +34,9 @@ export interface HeaderActionProps {
   historySidebarOpen: boolean;
   activeTaskTitle: string;
   onCenterClick: () => void;
-  newProjectAriaLabel: string;
-  newProjectTooltip: string;
-  onNewProject: () => void;
 }
 
-/** Project sidebar top bar: collapse | active title | new project (or expand when collapsed). */
+/** Project sidebar top bar: collapse | active title (opens history), or expand when collapsed. */
 export function HeaderAction({
   collapsed,
   onToggleCollapsed,
@@ -50,9 +47,6 @@ export function HeaderAction({
   historySidebarOpen,
   activeTaskTitle,
   onCenterClick,
-  newProjectAriaLabel,
-  newProjectTooltip,
-  onNewProject,
 }: HeaderActionProps) {
   if (collapsed) {
     return (
@@ -109,7 +103,7 @@ export function HeaderAction({
             id="sidebar-active-task-title-btn"
             type="button"
             className={cn(
-              'no-drag min-h-0 min-w-0 border-border-tertiary flex h-full flex-1 cursor-pointer items-center border-x border-t border-b-0 border-solid bg-transparent text-left transition-colors',
+              'no-drag min-h-0 min-w-0 border-border-tertiary flex h-full flex-1 cursor-pointer items-center border-t border-r-0 border-b-0 border-l border-solid bg-transparent text-left transition-colors',
               historySidebarOpen
                 ? 'hover:brightness-[0.98]'
                 : 'hover:bg-surface-tertiary',
@@ -122,22 +116,6 @@ export function HeaderAction({
             <span className="min-w-0 text-text-body text-body-sm font-bold flex-1 truncate">
               {activeTaskTitle}
             </span>
-          </button>
-        </TooltipSimple>
-        <TooltipSimple content={newProjectTooltip} side="bottom" align="end">
-          <button
-            type="button"
-            className={cn(
-              'no-drag w-10 flex h-full shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent transition-colors',
-              historySidebarOpen
-                ? 'hover:brightness-[0.98]'
-                : 'hover:bg-surface-tertiary',
-              'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-            )}
-            onClick={onNewProject}
-            aria-label={newProjectAriaLabel}
-          >
-            <Plus className="h-4 w-4 text-icon-primary shrink-0" aria-hidden />
           </button>
         </TooltipSimple>
       </div>

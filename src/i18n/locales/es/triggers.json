@@ -146,6 +146,7 @@
   "duplicated-successfully": "Trigger duplicated as \"{{name}}\"",
   "confirm-delete-message": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
   "workspace": "Workspace",
+  "session": "Sesión",
   "agent-folder": "Agent Folder",
   "add": "Add",
   "upload": "Upload",

@@ -15,12 +15,10 @@
 import tokenDarkIcon from '@/assets/token-dark.svg';
 import tokenLightIcon from '@/assets/token-light.svg';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import * as PopoverPrimitive from '@radix-ui/react-popover';
-import { Menu, PanelRight, PanelRightClose, PlayCircle } from 'lucide-react';
+import { useProjectStore } from '@/store/projectStore';
+import { PanelRight, PanelRightClose, PlayCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatedTokenNumber } from '../TokenUtils';
@@ -49,6 +47,8 @@ interface HeaderBoxProps {
   workforceRailCollapsed?: boolean;
   /** Toggles the workforce rail open / folded (workforce tab only) */
   onToggleWorkforceRail?: () => void;
+  /** Session shell: navigate back to project view (shown left of the chat history menu) */
+  onBackToProject?: () => void;
   /** Optional extra class names for the outer container */
   className?: string;
 }
@@ -66,10 +66,17 @@ export function HeaderBox({
   timelineDropdownContent,
   workforceRailCollapsed = false,
   onToggleWorkforceRail,
+  onBackToProject,
   className,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
+  const activeProjectDisplayName = useProjectStore((s) => {
+    const id = s.activeProjectId;
+    if (!id) return '';
+    const name = s.projects[id]?.name?.trim();
+    return name || '';
+  });
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const chatHistoryTooltip = t('layout.chat-history-tooltip', {
     defaultValue: 'Chat history',
@@ -78,6 +85,10 @@ export function HeaderBox({
     defaultValue: 'Show workforce panel',
   });
   const workforceRailCollapseTooltip = t('layout.minimize-workforce');
+  const backToProjectLabel = t('layout.back-to-project');
+  const projectTitleForBack =
+    activeProjectDisplayName || t('layout.new-project');
+  const sessionPlaceholderLabel = 'Session 1';
 
   const showReplayButton = status === 'finished';
   const isReplayDisabled =
@@ -87,60 +98,38 @@ export function HeaderBox({
     <div
       className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
     >
-      {/* Left: timeline menu + replay */}
+      {/* Left: back (session) + timeline menu + replay */}
       <div className="gap-2 flex items-center">
-        {narrowTimelineLayout && timelineDropdownContent ? (
-          <Popover
-            open={timelineDropdownOpen}
-            onOpenChange={onTimelineDropdownOpenChange}
+        {onBackToProject && (
+          <TooltipSimple
+            content={backToProjectLabel}
+            delayDuration={300}
+            side="bottom"
           >
-            <TooltipSimple content={chatHistoryTooltip}>
-              <PopoverPrimitive.Trigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  aria-expanded={Boolean(timelineDropdownOpen)}
-                  aria-haspopup="dialog"
-                  aria-controls="chat-timeline-popover-panel"
-                  className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
-                  aria-label={chatHistoryTooltip}
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
-              </PopoverPrimitive.Trigger>
-            </TooltipSimple>
-            <PopoverContent
-              id="chat-timeline-popover-panel"
-              align="start"
-              sideOffset={4}
-              className={cn(
-                'min-w-0 p-0 max-h-[min(320px,50vh)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto',
-                'w-max'
-              )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="text"
+              buttonRadius="lg"
+              className="no-drag text-text-label hover:bg-surface-tertiary text-label-sm font-semibold min-w-0 max-w-full shrink"
+              onClick={onBackToProject}
+              aria-label={`${backToProjectLabel}: ${projectTitleForBack} / ${sessionPlaceholderLabel}`}
             >
-              {timelineDropdownContent}
-            </PopoverContent>
-          </Popover>
-        ) : (
-          onToggleChatTimeline && (
-            <TooltipSimple content={chatHistoryTooltip}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                onClick={onToggleChatTimeline}
-                aria-expanded={!chatTimelineCollapsed}
-                aria-controls="chat-timeline-panel"
-                className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
-                aria-label={chatHistoryTooltip}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          )
+              <span className="min-w-0 gap-1 inline-flex max-w-full items-center">
+                <span
+                  className="max-w-[100px] truncate"
+                  title={projectTitleForBack}
+                >
+                  {projectTitleForBack}
+                </span>
+                <span className="text-text-secondary shrink-0" aria-hidden>
+                  /
+                </span>
+                <span className="shrink-0">{sessionPlaceholderLabel}</span>
+              </span>
+            </Button>
+          </TooltipSimple>
         )}
         {showReplayButton && (
           <Button

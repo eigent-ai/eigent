@@ -72,6 +72,9 @@ interface PageTabState {
    */
   workspaceChatFocusRequestId: number;
   requestWorkspaceChatFocus: () => void;
+  /** Workforce tab: project shell vs drilled-in session (ChatBox). Not persisted — defaults to project. */
+  workforceShellView: 'project' | 'session';
+  setWorkforceShellView: (view: 'project' | 'session') => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -178,6 +181,8 @@ export const usePageTabStore = create<PageTabState>()(
           activeWorkspaceTab: 'workforce',
           workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
         })),
+      workforceShellView: 'project',
+      setWorkforceShellView: (view) => set({ workforceShellView: view }),
     }),
     {
       name: 'eigent-page-tab',

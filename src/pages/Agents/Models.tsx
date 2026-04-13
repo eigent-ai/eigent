@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { EIGENT_CLOUD_MODEL_OPTIONS } from '@/lib/eigentCloudModels';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
@@ -483,24 +484,7 @@ export default function SettingModels() {
     setPendingDefaultModel(null);
   };
 
-  // Cloud model options
-  const cloudModelOptions = [
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-    { id: 'gpt-4.1', name: 'GPT-4.1' },
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'gpt-5.1', name: 'GPT-5.1' },
-    { id: 'gpt-5.2', name: 'GPT-5.2' },
-    { id: 'gpt-5.4', name: 'GPT-5.4' },
-    { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-    { id: 'minimax_m2_5', name: 'Minimax M2.5' },
-  ];
+  const cloudModelOptions = EIGENT_CLOUD_MODEL_OPTIONS;
 
   const handleVerify = async (idx: number) => {
     const { apiKey, apiHost, externalConfig, model_type, provider_id } =

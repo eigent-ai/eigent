@@ -36,6 +36,7 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
 import { WorkspaceContent } from '@/components/Workforce/WorkspaceContent';
+import WorkspaceProjectPage from '@/components/Workforce/WorkspaceProjectPage';
 
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -72,6 +73,8 @@ export default function Home() {
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   const { activeWorkspaceTab, setHasAgentFiles } = usePageTabStore();
+  const workforceShellView = usePageTabStore((s) => s.workforceShellView);
+  const setWorkforceShellView = usePageTabStore((s) => s.setWorkforceShellView);
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
@@ -127,7 +130,8 @@ export default function Home() {
   useEffect(() => {
     setTriggerSelectedId(null);
     setIsWorkforceExpandedOverlayOpen(false);
-  }, [projectStore.activeProjectId]);
+    setWorkforceShellView('project');
+  }, [projectStore.activeProjectId, setWorkforceShellView]);
 
   useEffect(() => {
     if (activeWorkspaceTab !== 'workforce') {
@@ -369,18 +373,27 @@ export default function Home() {
           <ResizablePanelGroup
             id="home-main-panel-group"
             direction="horizontal"
-            key={`${isChatBoxVisible}-${activeWorkspaceTab}`}
+            key={`${isChatBoxVisible}-${activeWorkspaceTab}-${workforceShellView}`}
             className="gap-0.5 w-full items-center justify-center"
           >
             <ResizablePanel className="min-h-0 h-full w-full min-w-[300px]">
-              {activeWorkspaceTab === 'workforce' && isChatBoxVisible && (
-                <ChatBox
-                  workforceExpandedOverlayOpen={isWorkforceExpandedOverlayOpen}
-                  onToggleWorkforceExpandedOverlay={
-                    toggleWorkforceExpandedOverlay
-                  }
-                />
-              )}
+              {activeWorkspaceTab === 'workforce' &&
+                isChatBoxVisible &&
+                workforceShellView === 'project' && <WorkspaceProjectPage />}
+              {activeWorkspaceTab === 'workforce' &&
+                isChatBoxVisible &&
+                workforceShellView === 'session' && (
+                  <ChatBox
+                    workforceExpandedOverlayOpen={
+                      isWorkforceExpandedOverlayOpen
+                    }
+                    onToggleWorkforceExpandedOverlay={
+                      toggleWorkforceExpandedOverlay
+                    }
+                    workforceSessionMode
+                    onBackToProject={() => setWorkforceShellView('project')}
+                  />
+                )}
               {activeWorkspaceTab === 'workforce' && !isChatBoxVisible && (
                 <div className="rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 relative flex h-full w-full flex-col border-solid">
                   <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">

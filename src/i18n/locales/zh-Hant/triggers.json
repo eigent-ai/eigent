@@ -146,6 +146,7 @@
   "duplicated-successfully": "觸發器已複製為 \"{{name}}\"",
   "confirm-delete-message": "確定要刪除 \"{{name}}\" 嗎？此操作無法撤回。",
   "workspace": "工作區",
+  "session": "工作階段",
   "agent-folder": "智能體文件夾",
   "add": "添加",
   "upload": "上傳",

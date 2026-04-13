@@ -316,6 +316,9 @@ export default function HistorySidebar() {
         'sidebar-active-task-title-btn'
       );
       const topBarTitleEl = document.getElementById('active-task-title-btn');
+      const workspaceTitleEl = document.getElementById(
+        'workspace-project-title-btn'
+      );
 
       let anchorEl: HTMLElement | null = null;
       if (!projectSidebarCollapsed && sidebarTitleEl) {
@@ -326,6 +329,12 @@ export default function HistorySidebar() {
       }
       if (!anchorEl && topBarTitleEl) {
         anchorEl = topBarTitleEl;
+      }
+      if (!anchorEl && workspaceTitleEl) {
+        const r = workspaceTitleEl.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          anchorEl = workspaceTitleEl;
+        }
       }
 
       if (anchorEl) {

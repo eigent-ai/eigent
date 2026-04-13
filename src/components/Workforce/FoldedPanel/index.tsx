@@ -148,7 +148,7 @@ function isBaseWorkflowAgent(agent: Agent): boolean {
   return BASE_WORKFLOW_AGENTS.some((b) => b.agent_id === agent.agent_id);
 }
 
-function FoldedAgentCard({
+export function FoldedAgentCard({
   agent,
   isActive,
   dimmed,
@@ -616,7 +616,7 @@ export default function FoldedPanel({
 
   return (
     <div
-      className="bg-surface-secondary min-h-0 min-w-0 flex h-full w-full flex-col"
+      className="min-h-0 min-w-0 flex h-full w-full flex-col"
       data-workforce-folded={isTaskLiveLayout ? 'task-live' : 'initial'}
     >
       <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
@@ -632,28 +632,6 @@ export default function FoldedPanel({
               onPointerDownCapture={onFoldedPanelEngagement}
               onWheelCapture={onFoldedPanelEngagement}
             >
-              <div className="scrollbar scrollbar-always-visible py-2 pl-2 pr-2 shrink-0 overflow-x-auto overflow-y-hidden">
-                <div className="gap-2 flex w-max min-w-full flex-row flex-nowrap items-center">
-                  {sortedAgents.map((agent) => (
-                    <div key={agent.agent_id} className="shrink-0">
-                      <FoldedAgentCard
-                        agent={agent}
-                        isActive={detailAgentId === agent.agent_id}
-                        dimmed={
-                          isTaskLiveLayout && (agent.tasks?.length ?? 0) === 0
-                        }
-                        compactMode
-                        onSelect={() => {
-                          setManualFollowPaused(true);
-                          setDetailAgentId(agent.agent_id);
-                          onSelectAgent(agent.agent_id);
-                        }}
-                        showUserAgentOverflow={false}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
               {(showFoldedTaskCard ||
                 isSkeletonPhase ||
                 showStreamingDecompose) &&

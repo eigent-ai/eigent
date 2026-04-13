@@ -12,7 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
+import { fetchDelete, fetchPut, proxyFetchDelete } from '@/api/http';
+import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,51 +22,43 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
-import { useSidebarStore } from '@/store/sidebarStore';
 import { useTriggerStore } from '@/store/triggerStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { motion } from 'framer-motion';
 import {
+  ChevronDown,
   Inbox,
   LayoutGrid,
   MonitorSmartphone,
+  Power,
+  ScrollText,
   Zap,
   ZapOff,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BottomAction } from './BottomAction';
-import { HeaderAction } from './HeaderAction';
 import {
   NavTab,
   NavTabReconnectSuffix,
+  WORKSPACE_TAB_LABEL_CLASS,
   triggerListenerLeadIconClass,
+  workspaceTabButtonClass,
 } from './NavTab';
 
-/** Match History.tsx tab normalization for sidebar “active hub” styling */
-const HISTORY_TAB_ALIASES: Record<string, string> = {
-  mcp_tools: 'connectors',
-};
-
 const SUPPORT_EMAIL = 'info@eigent.ai';
-const GITHUB_NEW_ISSUE_URL =
-  'https://github.com/eigent-ai/eigent/issues/new/choose';
-
-function humanizeCloudModelId(id: string): string {
-  return id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function capitalizeFirstLetter(text: string): string {
-  const s = text.trim();
-  if (!s) return text;
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 function normalizeFolderPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -77,7 +70,7 @@ function folderPathBasename(path: string): string {
   return parts[parts.length - 1] || normalized;
 }
 
-const PROJECT_SIDEBAR_WIDTH_PX = 200;
+const PROJECT_SIDEBAR_WIDTH_PX = 280;
 /** Folded rail: tab row needs pl-3 + icon + pr-3 (no outer sidebar horizontal padding). */
 const PROJECT_SIDEBAR_FOLDED_WIDTH_PX = 40;
 /** Matches Home main panel layout animation */
@@ -90,12 +83,6 @@ const PROJECT_SIDEBAR_SPRING = {
 
 const SIDEBAR_EDGE_MARGIN_PX = 8;
 
-/** Tween for properties that don’t interpolate well with springs (grid template, height auto). */
-const SIDEBAR_LAYOUT_TWEEN = {
-  duration: 0.34,
-  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
-};
-
 export interface ProjectPageSidebarProps {
   chatStore: ChatStore;
   className?: string;
@@ -106,9 +93,6 @@ export default function ProjectPageSidebar({
   className,
 }: ProjectPageSidebarProps) {
   const collapsed = usePageTabStore((s) => s.projectSidebarCollapsed);
-  const toggleProjectSidebarCollapsed = usePageTabStore(
-    (s) => s.toggleProjectSidebarCollapsed
-  );
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
@@ -129,31 +113,12 @@ export default function ProjectPageSidebar({
       ? s.customAgentFolderPathByProjectId[activeProjectId]
       : undefined
   );
-  const historySidebarOpen = useSidebarStore((s) => s.isOpen);
-  const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const location = useLocation();
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [skillsMenuOpen, setSkillsMenuOpen] = useState(false);
-  const [connectorsMenuOpen, setConnectorsMenuOpen] = useState(false);
-  const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
-  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
-
-  const { skillsHubActive, connectorsHubActive, browserHubActive } =
-    useMemo(() => {
-      const path = location.pathname.replace(/\/$/, '');
-      const onHistory = path === '/history' || path.endsWith('/history');
-      const params = new URLSearchParams(location.search);
-      const rawTab = params.get('tab');
-      const tab = rawTab ? (HISTORY_TAB_ALIASES[rawTab] ?? rawTab) : null;
-      const section = params.get('section');
-      return {
-        skillsHubActive: onHistory && tab === 'agents' && section === 'skills',
-        connectorsHubActive: onHistory && tab === 'connectors',
-        browserHubActive: onHistory && tab === 'browser',
-      };
-    }, [location.pathname, location.search]);
+  const [instructionsExpanded, setInstructionsExpanded] = useState(true);
+  const [endDialogOpen, setEndDialogOpen] = useState(false);
+  const [endProjectLoading, setEndProjectLoading] = useState(false);
 
   const triggersTabTooltip = useMemo(() => {
     const base = t('layout.triggers');
@@ -177,19 +142,12 @@ export default function ProjectPageSidebar({
     return `${base}, ${t('layout.triggers-disconnected')}`;
   }, [t, triggersListenerConnected, wsConnectionStatus]);
 
-  const authToken = useAuthStore((s) => s.token);
   const email = useAuthStore((s) => s.email);
-  const modelType = useAuthStore((s) => s.modelType);
-  const cloud_model_type = useAuthStore((s) => s.cloud_model_type);
 
   const [resolvedDefaultFolderPath, setResolvedDefaultFolderPath] = useState<
     string | null
   >(null);
 
-  const [credits, setCredits] = useState<number | null>(null);
-  const [customPlatformName, setCustomPlatformName] = useState<string | null>(
-    null
-  );
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -202,60 +160,6 @@ export default function ProjectPageSidebar({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
-      setCredits(null);
-      return;
-    }
-    if (modelType !== 'cloud' || !authToken) {
-      setCredits(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await proxyFetchGet('/api/v1/user/current_credits');
-        if (!cancelled) {
-          const c = res?.credits;
-          setCredits(typeof c === 'number' ? c : null);
-        }
-      } catch {
-        if (!cancelled) setCredits(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [authToken, modelType]);
-
-  useEffect(() => {
-    if (modelType !== 'custom') {
-      setCustomPlatformName(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await proxyFetchGet('/api/v1/providers', {
-          prefer: true,
-        });
-        const provider = res?.items?.[0];
-        const raw =
-          typeof provider?.provider_name === 'string'
-            ? provider.provider_name.trim()
-            : '';
-        if (!cancelled) {
-          setCustomPlatformName(raw || null);
-        }
-      } catch {
-        if (!cancelled) setCustomPlatformName(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [modelType, authToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -290,39 +194,6 @@ export default function ProjectPageSidebar({
     return folderPathBasename(custom);
   }, [customFolderPath, resolvedDefaultFolderPath, t]);
 
-  const downloadLogs = async () => {
-    try {
-      const response = await window.electronAPI.exportLog();
-      if (!response.success) {
-        alert(t('layout.export-cancelled') + response.error);
-        return;
-      }
-      if (response.savedPath) {
-        toast.success(t('layout.log-saved') + response.savedPath);
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      alert(t('layout.export-error') + msg);
-    }
-  };
-
-  const reportBugOpenGithub = async () => {
-    try {
-      const response = await window.electronAPI.exportLog();
-      if (!response.success) {
-        alert(t('layout.export-cancelled') + response.error);
-        return;
-      }
-      if (response.savedPath) {
-        window.location.href = GITHUB_NEW_ISSUE_URL;
-        alert(t('layout.log-saved') + response.savedPath);
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      alert(t('layout.export-error') + msg);
-    }
-  };
-
   const copySupportEmail = async () => {
     try {
       await navigator.clipboard.writeText(SUPPORT_EMAIL);
@@ -340,55 +211,78 @@ export default function ProjectPageSidebar({
     }
   };
 
-  const modelModeLine = useMemo(() => {
-    if (modelType === 'cloud') {
-      return t('setting.eigent-cloud');
-    }
-    if (modelType === 'custom') {
-      return t('setting.custom-model');
-    }
-    return t('setting.local-model');
-  }, [modelType, t]);
+  const showEndProject = useMemo(() => {
+    const taskId = chatStore.activeTaskId;
+    if (!taskId) return false;
+    const task = chatStore.tasks[taskId as string];
+    if (!task) return false;
+    return (
+      (task.messages?.length || 0) > 0 ||
+      !!task.hasMessages ||
+      task.status !== ChatTaskStatus.PENDING
+    );
+  }, [chatStore.activeTaskId, chatStore.tasks]);
 
-  const modelDetailLine = useMemo(() => {
-    if (modelType === 'cloud') {
-      const modelLabel = humanizeCloudModelId(cloud_model_type);
-      if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
-        return t('layout.sidebar-model-manage-hint', {
-          defaultValue: 'Manage in Agents → Models',
+  const handleEndProject = async () => {
+    const taskId = chatStore.activeTaskId;
+    const projectId = projectStore.activeProjectId;
+
+    if (!taskId) {
+      toast.error(t('layout.no-active-project-to-end'));
+      return;
+    }
+
+    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
+
+    setEndProjectLoading(true);
+    try {
+      const task = chatStore.tasks[taskId];
+      if (!task) {
+        toast.error(t('layout.no-active-project-to-end'));
+        return;
+      }
+
+      if (task.status === ChatTaskStatus.RUNNING) {
+        await fetchPut(`/task/${taskId}/take-control`, {
+          action: 'stop',
         });
       }
-      if (credits != null) {
-        return `${modelLabel} · ${t('setting.credits')}: ${credits.toLocaleString()}`;
+
+      try {
+        await fetchDelete(`/chat/${projectId}`);
+      } catch (error) {
+        console.log('Task may not exist on backend:', error);
       }
-      return `${modelLabel} · ${t('setting.credits')}: …`;
-    }
-    if (modelType === 'custom') {
-      if (customPlatformName) {
-        return capitalizeFirstLetter(customPlatformName);
+
+      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
+        try {
+          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
+          chatStore.removeTask(taskId);
+        } catch (error) {
+          console.log('History may not exist:', error);
+        }
+      } else {
+        console.warn(
+          'No historyId found for project or task finished, skipping history deletion'
+        );
       }
-      return t('layout.sidebar-custom-platform-unknown', {
-        defaultValue: '—',
+
+      projectStore.createProject('new project');
+
+      navigate('/', { replace: true });
+
+      toast.success(t('layout.project-ended-successfully'), {
+        closeButton: true,
       });
+    } catch (error) {
+      console.error('Failed to end project:', error);
+      toast.error(t('layout.failed-to-end-project'), {
+        closeButton: true,
+      });
+    } finally {
+      setEndProjectLoading(false);
+      setEndDialogOpen(false);
     }
-    return t('layout.sidebar-model-manage-hint', {
-      defaultValue: 'Manage in Agents → Models',
-    });
-  }, [modelType, credits, customPlatformName, cloud_model_type, t]);
-
-  const summaryTask =
-    chatStore.tasks[chatStore.activeTaskId as string]?.summaryTask;
-  const activeTaskTitle = useMemo(() => {
-    if (chatStore.activeTaskId && summaryTask) {
-      return summaryTask.split('|')[0];
-    }
-    return t('layout.new-project');
-  }, [chatStore.activeTaskId, summaryTask, t]);
-
-  const createNewProject = () => {
-    projectStore.createProject('new project');
-    setActiveWorkspaceTab('workforce');
-    navigate('/');
   };
 
   return (
@@ -443,31 +337,95 @@ export default function ProjectPageSidebar({
         )}
       >
         <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-x-hidden">
-          <div className="gap-2 flex w-full shrink-0 flex-col">
-            <HeaderAction
-              collapsed={collapsed}
-              onToggleCollapsed={toggleProjectSidebarCollapsed}
-              expandAriaLabel={t('layout.expand-sidebar', {
-                defaultValue: 'Expand sidebar',
-              })}
-              expandTooltip={t('layout.expand-sidebar', {
-                defaultValue: 'Expand sidebar',
-              })}
-              collapseAriaLabel={t('layout.collapse-sidebar', {
-                defaultValue: 'Collapse sidebar',
-              })}
-              collapseTooltip={t('layout.collapse-sidebar', {
-                defaultValue: 'Collapse sidebar',
-              })}
-              historySidebarOpen={historySidebarOpen}
-              activeTaskTitle={activeTaskTitle}
-              onCenterClick={toggleHistorySidebar}
-              newProjectAriaLabel={t('layout.new-project')}
-              newProjectTooltip={t('layout.new-project')}
-              onNewProject={createNewProject}
-            />
-
+          <div className="gap-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
             <div className="gap-2 min-w-0 flex w-full flex-col">
+              <TooltipSimple
+                content={t('layout.sidebar-instructions')}
+                side="right"
+                align="center"
+                enabled={collapsed}
+              >
+                <div
+                  className={cn(
+                    'min-w-0 rounded-xl w-full overflow-hidden transition-colors',
+                    instructionsExpanded && !collapsed && 'bg-surface-tertiary'
+                  )}
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      workspaceTabButtonClass(
+                        instructionsExpanded && !collapsed
+                      ),
+                      'w-full',
+                      instructionsExpanded && !collapsed && 'rounded-b-none'
+                    )}
+                    aria-expanded={instructionsExpanded && !collapsed}
+                    aria-label={t('layout.sidebar-instructions')}
+                    onClick={() => {
+                      if (!collapsed) {
+                        setInstructionsExpanded((open) => !open);
+                      }
+                    }}
+                  >
+                    <ScrollText
+                      className="h-4 w-4 text-icon-primary shrink-0"
+                      aria-hidden
+                    />
+                    <span className={WORKSPACE_TAB_LABEL_CLASS}>
+                      {t('layout.sidebar-instructions')}
+                    </span>
+                    {!collapsed ? (
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 text-icon-secondary shrink-0 transition-transform',
+                          instructionsExpanded && 'rotate-180'
+                        )}
+                        aria-hidden
+                      />
+                    ) : null}
+                  </button>
+                  {instructionsExpanded && !collapsed ? (
+                    <div className="flex flex-col">
+                      <p className="text-text-secondary pl-8 pr-1 pb-2 text-body-sm leading-snug">
+                        {t('layout.sidebar-instructions-description')}
+                      </p>
+                      <div className="pr-1 pl-8">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className={cn(
+                                'hover:bg-surface-secondary/80 gap-2 min-w-0 rounded-lg px-2 py-2 flex w-full cursor-pointer items-center text-left transition-colors',
+                                'text-text-heading text-body-sm font-medium'
+                              )}
+                              aria-label={t('layout.sidebar-memory')}
+                            >
+                              <span className="min-w-0 flex-1 truncate">
+                                {t('layout.sidebar-memory')}
+                              </span>
+                              <ChevronDown
+                                className="h-4 w-4 text-icon-secondary shrink-0 opacity-70"
+                                aria-hidden
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="start"
+                            side="right"
+                            sideOffset={8}
+                            className="border-dropdown-border bg-dropdown-bg p-0 max-w-[min(260px,calc(100vw-2rem))]"
+                          >
+                            <div className="text-text-secondary px-3 py-2.5 text-body-sm leading-snug">
+                              {t('layout.sidebar-memory-description')}
+                            </div>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </TooltipSimple>
               <NavTab
                 active={activeWorkspaceTab === 'workforce'}
                 onClick={() => setActiveWorkspaceTab('workforce')}
@@ -608,36 +566,33 @@ export default function ProjectPageSidebar({
               />
             </div>
           </div>
-
-          <BottomAction
-            collapsed={collapsed}
-            onOpenModels={() => navigate('/history?tab=agents&section=models')}
-            modelsAriaLabel={t('setting.models')}
-            modelModeLine={modelModeLine}
-            modelDetailLine={modelDetailLine}
-            helpMenuOpen={helpMenuOpen}
-            onHelpMenuOpenChange={setHelpMenuOpen}
-            helpAriaLabel={t('layout.help-and-support', {
-              defaultValue: 'Help and support',
-            })}
-            helpLabel={t('layout.sidebar-help-label', {
-              defaultValue: 'Support',
-            })}
-            onContactSupport={() => setSupportDialogOpen(true)}
-            onReportBug={() => {
-              void reportBugOpenGithub();
-            }}
-            onDownloadLogs={() => {
-              void downloadLogs();
-            }}
-            contactSupportLabel={t('layout.contact-support')}
-            reportBugLabel={t('layout.report-bug')}
-            downloadLogsLabel={t('layout.download-logs', {
-              defaultValue: 'Download logs',
-            })}
-          />
+          {showEndProject ? (
+            <div className="border-border-secondary pt-2 shrink-0 border-t">
+              <NavTab
+                active={false}
+                onClick={() => setEndDialogOpen(true)}
+                leading={
+                  <Power
+                    className="h-4 w-4 text-icon-primary shrink-0"
+                    aria-hidden
+                  />
+                }
+                label={t('layout.end-project')}
+                collapsed={collapsed}
+                tooltip={t('layout.end-project')}
+                tooltipEnabledWhenCollapsed
+                ariaLabel={t('layout.end-project')}
+              />
+            </div>
+          ) : null}
         </div>
       </motion.aside>
+      <EndNoticeDialog
+        open={endDialogOpen}
+        onOpenChange={setEndDialogOpen}
+        onConfirm={handleEndProject}
+        loading={endProjectLoading}
+      />
     </>
   );
 }

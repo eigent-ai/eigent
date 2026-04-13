@@ -29,11 +29,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { EIGENT_CLOUD_MODEL_OPTIONS } from '@/lib/eigentCloudModels';
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import type { TriggerInput } from '@/types';
 import {
   ArrowRight,
+  Check,
+  ChevronDown,
   Compass,
   FileText,
   Hammer,
@@ -45,7 +49,13 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -95,6 +105,11 @@ export interface InputboxProps {
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
   onTriggerCreated?: (triggerData: TriggerInput) => void;
+  /**
+   * Project workspace page: replace trigger with Single-Agent / Workforce toggle and show model dropdown by send.
+   * Does not change chat behavior by itself — UI only.
+   */
+  projectPageInputLayout?: boolean;
 }
 
 /**
@@ -153,9 +168,21 @@ export const Inputbox = ({
   useCloudModelInDev = false,
   onTriggerCreating: _onTriggerCreating,
   onTriggerCreated: _onTriggerCreated,
+  projectPageInputLayout = false,
 }: InputboxProps) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const modelType = useAuthStore((s) => s.modelType);
+  const cloudModelType = useAuthStore((s) => s.cloud_model_type);
+  const projectPageModelTriggerLabel = useMemo(() => {
+    if (modelType !== 'cloud') {
+      return t('layout.workspace-model-picker', { defaultValue: 'Model' });
+    }
+    const match = EIGENT_CLOUD_MODEL_OPTIONS.find(
+      (m) => m.id === cloudModelType
+    );
+    return match?.name ?? cloudModelType;
+  }, [modelType, cloudModelType, t]);
   const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
@@ -166,6 +193,9 @@ export const Inputbox = ({
   const hoverCloseTimerRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
+  const [projectPageMode, setProjectPageMode] = useState<
+    'single-agent' | 'workforce'
+  >('workforce');
 
   const openRemainingPopover = () => {
     if (hoverCloseTimerRef.current) {
@@ -602,32 +632,119 @@ export const Inputbox = ({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Add Trigger Button - opens TriggerDialog */}
-          <Button
-            variant="ghost"
-            size="xs"
-            buttonContent="text"
-            textWeight="bold"
-            buttonRadius="full"
-            className="rounded-lg"
-            disabled={disabled}
-            onClick={() => setTriggerDialogOpen(true)}
-          >
-            <Zap className="text-icon-primary" />
-            {t('triggers.trigger-label')}
-          </Button>
+          {projectPageInputLayout ? (
+            <div
+              className="bg-surface-tertiary rounded-lg p-0.5 inline-flex shrink-0 items-center"
+              role="group"
+              aria-label={t('layout.workspace-input-mode', {
+                defaultValue: 'Chat mode',
+              })}
+            >
+              <button
+                type="button"
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                  projectPageMode === 'single-agent'
+                    ? 'bg-surface-secondary text-text-body shadow-sm'
+                    : 'text-text-secondary hover:text-text-body'
+                )}
+                onClick={() => setProjectPageMode('single-agent')}
+              >
+                {t('layout.workspace-mode-single-agent', {
+                  defaultValue: 'Single-Agent',
+                })}
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                  projectPageMode === 'workforce'
+                    ? 'bg-surface-secondary text-text-body shadow-sm'
+                    : 'text-text-secondary hover:text-text-body'
+                )}
+                onClick={() => setProjectPageMode('workforce')}
+              >
+                {t('layout.workspace-mode-workforce', {
+                  defaultValue: 'Workforce',
+                })}
+              </button>
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="xs"
+                buttonContent="text"
+                textWeight="bold"
+                buttonRadius="full"
+                className="rounded-lg"
+                disabled={disabled}
+                onClick={() => setTriggerDialogOpen(true)}
+              >
+                <Zap className="text-icon-primary" />
+                {t('triggers.trigger-label')}
+              </Button>
 
-          {/* TriggerDialog for adding trigger and task */}
-          <TriggerDialog
-            selectedTrigger={null}
-            isOpen={triggerDialogOpen}
-            onOpenChange={setTriggerDialogOpen}
-            initialTaskPrompt={value}
-          />
+              <TriggerDialog
+                selectedTrigger={null}
+                isOpen={triggerDialogOpen}
+                onOpenChange={setTriggerDialogOpen}
+                initialTaskPrompt={value}
+              />
+            </>
+          )}
         </div>
 
         {/* Right: Send Button */}
         <div className="gap-1 flex items-center">
+          {projectPageInputLayout && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  buttonContent="text"
+                  textWeight="bold"
+                  buttonRadius="lg"
+                  disabled={disabled}
+                  className="h-8 gap-1 rounded-lg px-2"
+                  aria-label={projectPageModelTriggerLabel}
+                  aria-haspopup="menu"
+                >
+                  <span className="text-text-secondary text-xs max-w-[9rem] truncate">
+                    {projectPageModelTriggerLabel}
+                  </span>
+                  <ChevronDown className="text-icon-primary h-3.5 w-3.5 shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                align="end"
+                className="max-h-[min(22rem,calc(100vh-8rem))] min-w-[12rem] overflow-y-auto"
+              >
+                {EIGENT_CLOUD_MODEL_OPTIONS.map((model) => (
+                  <DropdownMenuItem
+                    key={model.id}
+                    className="text-xs gap-2 w-full justify-between"
+                    onSelect={(e) => {
+                      e.preventDefault();
+                    }}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {model.name}
+                    </span>
+                    {modelType === 'cloud' && cloudModelType === model.id ? (
+                      <Check
+                        className="text-icon-primary h-3.5 w-3.5 shrink-0"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button
             size="xs"
             buttonContent="icon-only"
