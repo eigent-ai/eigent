@@ -311,6 +311,80 @@ export async function checkBackendHealth(): Promise<boolean> {
   }
 }
 
+// =============== Local Server Stale Detection ===============
+
+/**
+ * Git hash of the last commit that touched server/, injected by Vite at build
+ * time. When the running server reports a different hash it means the server
+ * process is stale and needs to be restarted / rebuilt.
+ */
+const EXPECTED_SERVER_HASH: string =
+  import.meta.env.VITE_SERVER_CODE_HASH || '';
+
+let serverStaleChecked = false;
+
+/**
+ * One-time check: when VITE_USE_LOCAL_PROXY is enabled, fetch the local
+ * server's /health and compare its server_hash against the expected hash
+ * baked into this build. Shows a persistent toast if they differ.
+ */
+export async function checkLocalServerStale(): Promise<void> {
+  if (serverStaleChecked || !EXPECTED_SERVER_HASH) return;
+  serverStaleChecked = true;
+
+  const useLocalProxy = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+  if (!useLocalProxy) return;
+
+  const serverUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const res = await fetch(`${serverUrl}/health`, {
+      signal: controller.signal,
+      method: 'GET',
+    });
+
+    clearTimeout(timeoutId);
+
+    let staleReason = '';
+
+    if (res.status === 404) {
+      // /health endpoint doesn't exist — server predates v0.0.89
+      staleReason = 'Server does not have /health endpoint (pre-v0.0.89)';
+    } else if (res.ok) {
+      const data = await res.json();
+      const serverHash: string | undefined = data?.server_hash;
+
+      if (!serverHash) {
+        staleReason = 'Server does not report version info (pre-v0.0.89)';
+      } else if (
+        serverHash !== 'unknown' &&
+        serverHash !== EXPECTED_SERVER_HASH
+      ) {
+        staleReason = `Server hash ${serverHash} != expected ${EXPECTED_SERVER_HASH}`;
+      }
+    } else {
+      // Other HTTP errors — skip
+      return;
+    }
+
+    if (staleReason) {
+      const { toast } = await import('sonner');
+      toast.warning('Server code has been updated', {
+        description:
+          'Server is outdated. Please restart it or rebuild: docker-compose up --build -d',
+        duration: Infinity,
+        closeButton: true,
+      });
+      console.warn(`[Server Check] ${staleReason}. Please restart the server.`);
+    }
+  } catch {
+    // server not reachable — skip silently
+  }
+}
+
 /**
  * Simple backend health check with retries
  * @param maxWaitMs - Maximum time to wait in milliseconds (default: 10000ms)
@@ -331,6 +405,10 @@ export async function waitForBackendReady(
       console.log(
         `[Backend Health Check] Backend is ready after ${Date.now() - startTime}ms`
       );
+
+      // Fire-and-forget: check local server version when using local proxy
+      checkLocalServerStale();
+
       return true;
     }
 

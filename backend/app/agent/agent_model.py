@@ -168,6 +168,12 @@ def agent_model(
             )
             model_platform_enum = None
 
+    if effective_config["model_platform"].lower() == "anthropic":
+        if model_config.get("cache_control") is None:
+            model_config["cache_control"] = "5m"
+        if model_config.get("max_tokens") is None:
+            model_config["max_tokens"] = 64000
+
     model = ModelFactory.create(
         model_platform=effective_config["model_platform"],
         model_type=effective_config["model_type"],
