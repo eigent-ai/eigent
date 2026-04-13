@@ -100,7 +100,7 @@ export default function SkillListItem(props: SkillListItemProps) {
       <div
         role={isClickable ? 'button' : undefined}
         tabIndex={isClickable ? 0 : undefined}
-        className={`focus-visible:ring-ring flex w-full flex-col flex-wrap items-center justify-center gap-3 rounded-2xl bg-surface-primary px-6 py-8 transition-colors focus:outline-none focus-visible:ring-2 ${isClickable ? 'cursor-pointer hover:bg-surface-tertiary' : ''}`}
+        className={`focus-visible:ring-ring gap-3 rounded-2xl bg-surface-primary px-6 py-8 flex w-full flex-col flex-wrap items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 ${isClickable ? 'hover:bg-surface-tertiary cursor-pointer' : ''}`}
         onClick={isClickable ? props.onAddClick : undefined}
         onKeyDown={
           isClickable
@@ -177,17 +177,17 @@ export default function SkillListItem(props: SkillListItemProps) {
 
   return (
     <div
-      className={`w-full flex-1 flex-col justify-between rounded-2xl bg-surface-tertiary p-4 transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
+      className={`rounded-2xl bg-surface-tertiary p-4 w-full flex-1 flex-col justify-between transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
     >
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-body-base truncate font-bold text-text-heading">
+        <div className="min-w-0 gap-2 flex items-center">
+          <span className="text-body-base font-bold text-text-heading truncate">
             {skill.name}
           </span>
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-md">
+        <div className="gap-md flex flex-shrink-0 items-center">
           <Switch
             checked={skill.enabled}
             onCheckedChange={() => toggleSkill(skill.id)}
@@ -195,7 +195,8 @@ export default function SkillListItem(props: SkillListItemProps) {
           <TooltipSimple content={t('agents.try-in-chat')}>
             <Button
               variant="ghost"
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
               disabled={!skill.enabled}
               onClick={skill.enabled ? handleTryInChat : undefined}
             >
@@ -205,7 +206,7 @@ export default function SkillListItem(props: SkillListItemProps) {
           {!skill.isExample && onDelete && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="xs" buttonContent="icon-only">
                   <Ellipsis className="h-4 w-4 text-icon-primary" />
                 </Button>
               </DropdownMenuTrigger>
@@ -226,17 +227,17 @@ export default function SkillListItem(props: SkillListItemProps) {
       {/* Row 2: Description - 5 lines max, hover shows full */}
       <TooltipSimple
         content={skill.description}
-        className="max-w-sm whitespace-pre-wrap break-words"
+        className="max-w-sm break-words whitespace-pre-wrap"
       >
         <div className="w-full cursor-default">
-          <p className="line-clamp-5 overflow-hidden break-words text-body-sm text-text-label">
+          <p className="text-body-sm text-text-label line-clamp-5 overflow-hidden break-words">
             {skill.description}
           </p>
         </div>
       </TooltipSimple>
 
       {/* Row 3: Added time / Skill scope */}
-      <div className="flex flex-col items-start gap-2">
+      <div className="gap-2 flex flex-col items-start">
         <Button
           variant="ghost"
           size="sm"
@@ -250,14 +251,14 @@ export default function SkillListItem(props: SkillListItemProps) {
         </Button>
 
         {scopeOpen && (
-          <div className="flex w-full flex-wrap items-center gap-2 border-x-0 border-b-0 border-t-[0.5px] border-solid border-border-secondary pt-4">
+          <div className="gap-2 border-border-secondary pt-4 flex w-full flex-wrap items-center border-x-0 border-t-[0.5px] border-b-0 border-solid">
             {/* All agents as first tab; then each agent toggle */}
             <button
               type="button"
               onClick={handleToggleAllAgents}
-              className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
+              className={`gap-2 bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary inline-flex items-center rounded-full transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                 isAllAgentsSelected
-                  ? 'opacity-100 [&>svg]:text-icon-success'
+                  ? '[&>svg]:text-icon-success opacity-100'
                   : 'opacity-60 [&>svg]:text-inherit'
               }`}
             >
@@ -282,9 +283,9 @@ export default function SkillListItem(props: SkillListItemProps) {
                   key={agent.value}
                   type="button"
                   onClick={() => handleToggleAgent(agent.value)}
-                  className={`inline-flex items-center gap-2 rounded-full bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
+                  className={`gap-2 bg-surface-primary px-2 py-1 text-label-xs font-medium text-text-primary inline-flex items-center rounded-full transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                     isSelected
-                      ? 'opacity-100 [&>svg]:text-icon-success'
+                      ? '[&>svg]:text-icon-success opacity-100'
                       : 'opacity-50 [&>svg]:text-inherit'
                   }`}
                 >

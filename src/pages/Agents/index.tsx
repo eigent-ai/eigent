@@ -15,15 +15,35 @@
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Memory from './Memory';
 import Models from './Models';
 import Skills from './Skills';
 
+const AGENT_SECTIONS = ['models', 'skills', 'memory'] as const;
+type AgentSection = (typeof AGENT_SECTIONS)[number];
+
+function isAgentSection(value: string | null): value is AgentSection {
+  return value !== null && AGENT_SECTIONS.includes(value as AgentSection);
+}
+
 export default function Capabilities() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('models');
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const sectionFromUrl = searchParams.get('section');
+
+  const [activeTab, setActiveTab] = useState<AgentSection>(() =>
+    isAgentSection(sectionFromUrl) ? sectionFromUrl : 'models'
+  );
+
+  useEffect(() => {
+    if (isAgentSection(sectionFromUrl)) {
+      setActiveTab(sectionFromUrl);
+    }
+  }, [sectionFromUrl]);
 
   const menuItems = [
     {
@@ -41,7 +61,9 @@ export default function Capabilities() {
   ];
 
   const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
+    if (!AGENT_SECTIONS.includes(tabId as AgentSection)) return;
+    setActiveTab(tabId as AgentSection);
+    navigate(`?tab=agents&section=${tabId}`, { replace: true });
   };
 
   return (

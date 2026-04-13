@@ -106,7 +106,8 @@ export default function SearchInput({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="xs"
+                  buttonContent="icon-only"
                   onClick={expand}
                   aria-label={searchLabel}
                 >
@@ -146,7 +147,8 @@ export default function SearchInput({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="xs"
+                  buttonContent="icon-only"
                   className="text-icon-secondary shrink-0 rounded-full"
                   onClick={collapse}
                   aria-label={clearLabel}

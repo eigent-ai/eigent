@@ -217,27 +217,27 @@ export default function ProjectGroup({
       <motion.div
         transition={{ duration: 0.2, ease: 'easeOut' }}
         onClick={handleProjectClick}
-        className={`relative h-full overflow-hidden rounded-xl border border-solid border-border-disabled bg-project-surface-default backdrop-blur-sm transition-colors hover:bg-project-surface-hover ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer hover:bg-project-surface-hover'}`}
+        className={`rounded-xl border-border-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover relative h-full overflow-hidden border border-solid transition-colors ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'hover:bg-project-surface-hover cursor-pointer'}`}
       >
         {isLoadingProject && (
-          <div className="bg-white/50 absolute inset-0 z-10 flex items-center justify-center">
+          <div className="bg-white/50 inset-0 absolute z-10 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-icon-primary" />
           </div>
         )}
         {/* Project Card */}
         <div className="flex h-full flex-col">
           {/* Header with menu */}
-          <div className="flex min-h-32 items-start justify-between px-6 py-4">
-            <div className="flex w-full flex-col gap-2 pr-4">
-              <div className="flex w-full flex-row items-center justify-start gap-2">
+          <div className="min-h-32 px-6 py-4 flex items-start justify-between">
+            <div className="gap-2 pr-4 flex w-full flex-col">
+              <div className="gap-2 flex w-full flex-row items-center justify-start">
                 {isOngoing ? (
-                  <Sparkles className="h-6 w-6 flex-shrink-0 text-icon-information" />
+                  <Sparkles className="h-6 w-6 text-icon-information flex-shrink-0" />
                 ) : (
-                  <Sparkle className="h-6 w-6 flex-shrink-0 text-icon-secondary" />
+                  <Sparkle className="h-6 w-6 text-icon-secondary flex-shrink-0" />
                 )}
 
                 {/* Status badges */}
-                <div className="flex items-center gap-2">
+                <div className="gap-2 flex items-center">
                   {/* TODO: Add ongoing badge after finish state management is implemented */}
                   {/* {isOngoing && (
                     <motion.div
@@ -269,9 +269,9 @@ export default function ProjectGroup({
                 content={
                   <p className="max-w-xs break-words">{project.project_name}</p>
                 }
-                className="pointer-events-auto select-text text-wrap break-words bg-surface-tertiary px-2 text-label-xs shadow-perfect"
+                className="bg-surface-tertiary px-2 text-label-xs shadow-perfect pointer-events-auto text-wrap break-words select-text"
               >
-                <span className="line-clamp-2 text-body-md font-semibold leading-relaxed text-text-heading">
+                <span className="text-body-md font-semibold leading-relaxed text-text-heading line-clamp-2">
                   {project.project_name}
                 </span>
               </TooltipSimple>
@@ -282,8 +282,9 @@ export default function ProjectGroup({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="relative z-10 flex-shrink-0 rounded-md"
+                  size="xs"
+                  buttonContent="icon-only"
+                  className="rounded-md relative z-10 flex-shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreHorizontal className="h-4 w-4 text-icon-primary" />
@@ -291,12 +292,12 @@ export default function ProjectGroup({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="z-50 border-dropdown-border bg-dropdown-bg"
+                className="border-dropdown-border bg-dropdown-bg z-50"
               >
                 {onProjectEdit && (
                   <DropdownMenuItem
                     onClick={handleProjectEdit}
-                    className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                    className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                   >
                     <Edit className="mr-2 h-4 w-4" />
                     {t('layout.edit') || 'Edit'}
@@ -308,7 +309,7 @@ export default function ProjectGroup({
                       e.stopPropagation();
                       onProjectDelete(project.project_id);
                     }}
-                    className="cursor-pointer bg-dropdown-item-bg-default text-text-cuation hover:bg-dropdown-item-bg-hover"
+                    className="bg-dropdown-item-bg-default text-text-cuation hover:bg-dropdown-item-bg-hover cursor-pointer"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     {t('layout.delete')}
@@ -335,12 +336,12 @@ export default function ProjectGroup({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1, duration: 0.3 }}
-            className="flex items-center justify-between border-x-0 border-b-0 border-solid border-border-disabled px-6 py-4"
+            className="border-border-disabled px-6 py-4 flex items-center justify-between border-x-0 border-b-0 border-solid"
           >
-            <div className="flex w-full flex-row items-center justify-between gap-4">
+            <div className="gap-4 flex w-full flex-row items-center justify-between">
               {/* Token count */}
               <TooltipSimple content={t('chat.token')}>
-                <div className="flex items-center gap-1">
+                <div className="gap-1 flex items-center">
                   <Hash className="h-4 w-4 text-icon-information" />
                   <span className="text-body-sm font-semibold text-text-information">
                     {' '}
@@ -354,10 +355,10 @@ export default function ProjectGroup({
                 </div>
               </TooltipSimple>
 
-              <div className="flex flex-row items-center justify-end gap-4">
+              <div className="gap-4 flex flex-row items-center justify-end">
                 {/* Task count */}
                 <TooltipSimple content="Tasks">
-                  <div className="flex items-center gap-1">
+                  <div className="gap-1 flex items-center">
                     <Pin className="h-4 w-4 text-icon-primary" />
                     <span className="text-body-sm font-semibold text-text-body">
                       {project.task_count}
@@ -367,7 +368,7 @@ export default function ProjectGroup({
 
                 {/* Trigger count */}
                 <TooltipSimple content="Triggers">
-                  <div className="flex items-center gap-1">
+                  <div className="gap-1 flex items-center">
                     <Zap className="h-4 w-4 text-icon-warning" />
                     <span className="text-body-sm font-semibold text-text-warning">
                       {project.total_triggers || 0}
@@ -386,36 +387,36 @@ export default function ProjectGroup({
   return (
     <div
       onClick={handleProjectClick}
-      className={`hover:perfect-shadow relative overflow-hidden rounded-xl border border-solid border-border-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer'}`}
+      className={`hover:perfect-shadow rounded-xl border-border-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover relative overflow-hidden border border-solid ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer'}`}
     >
       {isLoadingProject && (
-        <div className="bg-white/50 absolute inset-0 z-10 flex items-center justify-center">
+        <div className="bg-white/50 inset-0 absolute z-10 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-icon-primary" />
         </div>
       )}
       {/* Project */}
-      <div className="flex w-full items-center justify-between px-6 py-4">
+      <div className="px-6 py-4 flex w-full items-center justify-between">
         {/* Start: Folder icon and project name - Fixed width */}
-        <div className="flex w-48 flex-shrink-0 items-center gap-3">
+        <div className="w-48 gap-3 flex flex-shrink-0 items-center">
           {isOngoing ? (
-            <Sparkles className="h-5 w-5 flex-shrink-0 text-icon-information" />
+            <Sparkles className="h-5 w-5 text-icon-information flex-shrink-0" />
           ) : (
-            <Sparkle className="h-5 w-5 flex-shrink-0 text-icon-secondary" />
+            <Sparkle className="h-5 w-5 text-icon-secondary flex-shrink-0" />
           )}
           <TooltipSimple
             content={
               <p className="max-w-xs break-words">{project.project_name}</p>
             }
-            className="pointer-events-auto select-text text-wrap break-words bg-surface-tertiary px-2 text-label-xs shadow-perfect"
+            className="bg-surface-tertiary px-2 text-label-xs shadow-perfect pointer-events-auto text-wrap break-words select-text"
           >
-            <span className="block truncate text-left text-body-md font-semibold text-text-heading">
+            <span className="text-body-md font-semibold text-text-heading block truncate text-left">
               {project.project_name}
             </span>
           </TooltipSimple>
         </div>
 
         {/* Middle: Project, Trigger, Agent tags - Aligned to right */}
-        <div className="flex w-fit flex-1 items-center justify-end gap-4">
+        <div className="gap-4 flex w-fit flex-1 items-center justify-end">
           <Tag variant="info" size="sm">
             <Hash />
             <span>
@@ -441,7 +442,7 @@ export default function ProjectGroup({
         </div>
 
         {/* End: Status and menu */}
-        <div className="ml-4 flex w-fit min-w-32 items-center justify-end gap-2 border border-y-0 border-r-0 border-solid border-border-disabled pl-4">
+        <div className="ml-4 min-w-32 gap-2 border-border-disabled pl-4 flex w-fit items-center justify-end border border-y-0 border-r-0 border-solid">
           {/* Status tag */}
           {/* {isOngoing && (
             <Tag variant="info" size="sm">
@@ -461,20 +462,21 @@ export default function ProjectGroup({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="relative z-10 rounded-md"
+                size="xs"
+                buttonContent="icon-only"
+                className="rounded-md relative z-10"
               >
                 <MoreHorizontal className="h-4 w-4 text-icon-primary" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="z-50 border-dropdown-border bg-dropdown-bg"
+              className="border-dropdown-border bg-dropdown-bg z-50"
             >
               {onProjectEdit && (
                 <DropdownMenuItem
                   onClick={handleProjectEdit}
-                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
                   <Edit className="mr-2 h-4 w-4" />
                   {t('layout.edit') || 'Edit'}
@@ -483,7 +485,7 @@ export default function ProjectGroup({
               {onProjectDelete && (
                 <DropdownMenuItem
                   onClick={() => onProjectDelete(project.project_id)}
-                  className="cursor-pointer bg-dropdown-item-bg-default text-text-cuation hover:bg-dropdown-item-bg-hover"
+                  className="bg-dropdown-item-bg-default text-text-cuation hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   {t('layout.delete')}

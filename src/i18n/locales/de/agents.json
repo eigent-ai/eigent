@@ -46,5 +46,12 @@
   "custom-skill": "Benutzerdefinierte Fähigkeit",
   "delete-skill": "Fähigkeit löschen",
   "delete-skill-confirmation": "Sind Sie sicher, dass Sie \"{{name}}\" löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
-  "skill-deleted-success": "Fähigkeit erfolgreich gelöscht!"
+  "skill-deleted-success": "Fähigkeit erfolgreich gelöscht!",
+  "create-skill": "Fähigkeit erstellen",
+  "upload-skill": "Fähigkeit hochladen",
+  "browse-skills": "Fähigkeiten durchsuchen",
+  "create-skill-default-name": "Neue Fähigkeit",
+  "create-skill-default-description": "Beschreiben Sie, was diese Fähigkeit tut.",
+  "save-skill": "Fähigkeit speichern",
+  "compose-skill-hint": "Bearbeiten Sie SKILL.md (YAML-Frontmatter mit Name und Beschreibung ist erforderlich), dann speichern."
 }

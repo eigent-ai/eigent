@@ -46,5 +46,12 @@
   "custom-skill": "Пользовательский навык",
   "delete-skill": "Удалить навык",
   "delete-skill-confirmation": "Вы уверены, что хотите удалить \"{{name}}\"? Это действие нельзя отменить.",
-  "skill-deleted-success": "Навык успешно удалён!"
+  "skill-deleted-success": "Навык успешно удалён!",
+  "create-skill": "Создать навык",
+  "upload-skill": "Загрузить навык",
+  "browse-skills": "Обзор навыков",
+  "create-skill-default-name": "Новый навык",
+  "create-skill-default-description": "Опишите, что делает этот навык.",
+  "save-skill": "Сохранить навык",
+  "compose-skill-hint": "Отредактируйте SKILL.md (нужен YAML frontmatter с именем и описанием), затем сохраните."
 }

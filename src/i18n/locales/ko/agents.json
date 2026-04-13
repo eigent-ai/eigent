@@ -46,5 +46,12 @@
   "custom-skill": "사용자 정의 스킬",
   "delete-skill": "스킬 삭제",
   "delete-skill-confirmation": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
-  "skill-deleted-success": "스킬이 성공적으로 삭제되었습니다!"
+  "skill-deleted-success": "스킬이 성공적으로 삭제되었습니다!",
+  "create-skill": "스킬 만들기",
+  "upload-skill": "스킬 업로드",
+  "browse-skills": "스킬 찾아보기",
+  "create-skill-default-name": "새 스킬",
+  "create-skill-default-description": "이 스킬이 하는 일을 설명하세요.",
+  "save-skill": "스킬 저장",
+  "compose-skill-hint": "SKILL.md를 편집(YAML 프론트매터에 이름과 설명 필요)한 뒤 저장하세요."
 }

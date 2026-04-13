@@ -67,26 +67,26 @@ export function TaskItem({
     <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group relative flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-sm hover:bg-task-fill-hover ${
+        className={`group min-h-2 gap-0 rounded-lg p-sm hover:bg-task-fill-hover relative flex w-full items-start border border-solid ${
           isFocus
             ? 'border-task-border-focus-default bg-task-fill-default'
             : 'border-task-border-default group-hover:border-transparent'
         }`}
       >
-        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-0.5">
+        <div className="h-4 w-7 pr-sm pt-0.5 flex flex-shrink-0 cursor-pointer items-center justify-center">
           {taskInfo.id === '' ? (
             <CircleDashed size={13} className="text-icon-secondary" />
           ) : (
-            <div className="h-2 w-2 rounded-full bg-icon-information"></div>
+            <div className="h-2 w-2 bg-icon-information rounded-full"></div>
           )}
         </div>
-        <div className="relative flex min-h-4 min-w-0 flex-1 items-center self-stretch overflow-hidden py-0.5 transition-all duration-300">
+        <div className="min-h-4 min-w-0 py-0.5 relative flex flex-1 items-center self-stretch overflow-hidden transition-all duration-300">
           <Textarea
             ref={textareaRef}
             placeholder={t('layout.add-new-task')}
             className={`${
               isFocus && 'w-[calc(100%-52px)]'
-            } min-h-2 min-w-0 resize-none overflow-hidden break-words rounded-none border-none bg-transparent p-0 text-xs leading-[20px] shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
+            } min-h-2 min-w-0 p-0 text-xs resize-none overflow-hidden rounded-none border-none bg-transparent leading-[20px] break-words shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
             value={taskInfo.content}
             onChange={(e) => onUpdate(e.target.value)}
             onBlur={() => {
@@ -98,11 +98,11 @@ export function TaskItem({
             rows={1}
           />
           {!isFocus && (
-            <div className="absolute inset-0 h-full w-full bg-transparent"></div>
+            <div className="inset-0 absolute h-full w-full bg-transparent"></div>
           )}
         </div>
         <div
-          className={`absolute right-2 top-2 flex items-center gap-xs group-hover:opacity-100 ${
+          className={`right-2 top-2 gap-xs absolute flex items-center group-hover:opacity-100 ${
             isFocus ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-300`}
         >
@@ -111,7 +111,8 @@ export function TaskItem({
               onClick={(e) => handleFocus(e, true)}
               className="rounded-full"
               variant="outline"
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
             >
               <PenLine size={16} className="" />
             </Button>
@@ -123,7 +124,8 @@ export function TaskItem({
               }}
               className="rounded-full"
               variant="success"
-              size="icon"
+              size="xs"
+              buttonContent="icon-only"
             >
               <Check
                 size={16}
@@ -135,7 +137,8 @@ export function TaskItem({
             onClick={() => onDelete()}
             className="rounded-full"
             variant="cuation"
-            size="icon"
+            size="xs"
+            buttonContent="icon-only"
           >
             <Trash2 size={16} className="text-icon-tertiary" />
           </Button>

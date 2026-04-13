@@ -46,5 +46,12 @@
   "custom-skill": "自訂技能",
   "delete-skill": "刪除技能",
   "delete-skill-confirmation": "您確定要刪除 \"{{name}}\" 嗎？此操作無法撤銷。",
-  "skill-deleted-success": "技能刪除成功！"
+  "skill-deleted-success": "技能刪除成功！",
+  "create-skill": "建立技能",
+  "upload-skill": "上傳技能",
+  "browse-skills": "瀏覽技能",
+  "create-skill-default-name": "新技能",
+  "create-skill-default-description": "描述此技能的用途。",
+  "save-skill": "儲存技能",
+  "compose-skill-hint": "編輯 SKILL.md（需要含名稱與描述的 YAML 前言），然後儲存。"
 }

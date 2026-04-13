@@ -30,10 +30,11 @@ export const ZoomControls = ({
   onZoomReset,
 }: ZoomControlsProps) => {
   return (
-    <div className="group absolute left-1/2 top-0 z-10 -translate-x-1/2">
-      <div className="bg-surface-hover-subtle/90 border-border-subtle-strong/50 flex translate-y-[calc(-100%-8px)] items-center gap-1 rounded-full border px-3 py-1.5 shadow-lg backdrop-blur-xl transition-transform duration-300 ease-out group-hover:translate-y-[20px]">
+    <div className="group top-0 absolute left-1/2 z-10 -translate-x-1/2">
+      <div className="bg-surface-hover-subtle/90 border-border-subtle-strong/50 gap-1 px-3 py-1.5 shadow-lg backdrop-blur-xl ease-out flex translate-y-[calc(-100%-8px)] items-center rounded-full border transition-transform duration-300 group-hover:translate-y-[20px]">
         <Button
-          size="icon"
+          size="xs"
+          buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomOut}
           title="Zoom Out"
@@ -41,11 +42,12 @@ export const ZoomControls = ({
         >
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
-        <span className="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-text-primary">
+        <span className="text-xs font-medium text-text-primary min-w-[2.5rem] text-center tabular-nums">
           {zoom}%
         </span>
         <Button
-          size="icon"
+          size="xs"
+          buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomIn}
           title="Zoom In"
@@ -53,9 +55,10 @@ export const ZoomControls = ({
         >
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
-        <div className="mx-0.5 h-4 w-px bg-border-secondary" />
+        <div className="mx-0.5 h-4 bg-border-secondary w-px" />
         <Button
-          size="icon"
+          size="xs"
+          buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomReset}
           title="Reset Zoom"
