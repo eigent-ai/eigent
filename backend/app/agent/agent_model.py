@@ -134,7 +134,7 @@ def agent_model(
             ModelPlatformType.ANTHROPIC,
             ModelPlatformType.AWS_BEDROCK_CONVERSE,
         }:
-            model_config.setdefault("cache_control", "1h")
+            model_config.setdefault("cache_control", "5m")
         elif model_platform_enum == ModelPlatformType.OPENAI:
             model_config.setdefault(
                 "prompt_cache_key", str(options.project_id)
