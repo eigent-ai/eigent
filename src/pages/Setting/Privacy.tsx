@@ -24,7 +24,7 @@ export default function SettingPrivacy() {
   const [isHowWeHandleOpen, setIsHowWeHandleOpen] = useState(false);
 
   useEffect(() => {
-    proxyFetchGet('/api/user/privacy')
+    proxyFetchGet('/api/v1/user/privacy')
       .then((res) => {
         setHelpImprove(res.help_improve || false);
       })
@@ -33,8 +33,8 @@ export default function SettingPrivacy() {
 
   const handleToggleHelpImprove = (checked: boolean) => {
     setHelpImprove(checked);
-    proxyFetchPut('/api/user/privacy', { help_improve: checked }).catch((err) =>
-      console.error('Failed to update settings:', err)
+    proxyFetchPut('/api/v1/user/privacy', { help_improve: checked }).catch(
+      (err) => console.error('Failed to update settings:', err)
     );
   };
 

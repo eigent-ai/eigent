@@ -140,7 +140,7 @@ export default function GroupedHistoryView({
           // Delete each task one by one
           for (const history of targetProject.tasks) {
             try {
-              await proxyFetchDelete(`/api/chat/history/${history.id}`);
+              await proxyFetchDelete(`/api/v1/chat/history/${history.id}`);
               console.log(`Successfully deleted task ${history.task_id}`);
 
               // Also delete local files for this task if available (via Electron IPC)
@@ -220,7 +220,7 @@ export default function GroupedHistoryView({
     // Call API to update project name
     try {
       const response = await proxyFetchPut(
-        `/api/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`
+        `/api/v1/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`
       );
 
       if (response && response.code !== undefined && response.code !== 0) {

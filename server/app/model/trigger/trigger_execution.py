@@ -18,7 +18,7 @@ from sqlmodel import Field, Column, SmallInteger, JSON, String, Float
 from sqlalchemy_utils import ChoiceType
 from pydantic import BaseModel
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from app.type.trigger_types import ExecutionType, ExecutionStatus
+from app.shared.types.trigger_types import ExecutionType, ExecutionStatus
 
 
 class TriggerExecution(AbstractModel, DefaultTimes, table=True):

@@ -404,9 +404,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  // Reset hasFetchedRemote when activeTaskId changes
+  // Reset state when activeTaskId changes (e.g., new project created)
   useEffect(() => {
     hasFetchedRemote.current = false;
+    setSelectedFile(null);
+    setFileTree({ name: 'root', path: '', children: [], isFolder: true });
+    setFileGroups([{ folder: 'Reports', files: [] }]);
+    setExpandedFolders(new Set());
   }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
@@ -427,7 +431,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       } else {
         if (!hasFetchedRemote.current) {
           //TODO(file): rename endpoint to use project_id
-          res = await proxyFetchGet('/api/chat/files', {
+          res = await proxyFetchGet('/api/v1/chat/files', {
             task_id: projectStore.activeProjectId as string,
           });
           hasFetchedRemote.current = true;
@@ -486,6 +490,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
         selectedFileChange(file as FileInfo, isShowSourceCode);
       }
+    } else if (!chatStoreSelectedFile && selectedFile) {
+      setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);

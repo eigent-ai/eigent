@@ -64,6 +64,7 @@ import azureImage from '@/assets/model/azure.svg';
 import bedrockImage from '@/assets/model/bedrock.svg';
 import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
+import ernieImage from '@/assets/model/ernie.png';
 import geminiImage from '@/assets/model/gemini.svg';
 import llamaCppImage from '@/assets/model/llamacpp.svg';
 import lmstudioImage from '@/assets/model/lmstudio.svg';
@@ -266,7 +267,7 @@ export default function SettingModels() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await proxyFetchGet('/api/providers');
+        const res = await proxyFetchGet('/api/v1/providers');
         const providerList = Array.isArray(res) ? res : res.items || [];
         // Handle custom models
         setForm((f) =>
@@ -494,7 +495,10 @@ export default function SettingModels() {
     { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5.4', name: 'GPT-5.4' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
+    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
 
@@ -593,12 +597,12 @@ export default function SettingModels() {
     }
     try {
       if (provider_id) {
-        await proxyFetchPut(`/api/provider/${provider_id}`, data);
+        await proxyFetchPut(`/api/v1/provider/${provider_id}`, data);
       } else {
-        await proxyFetchPost('/api/provider', data);
+        await proxyFetchPost('/api/v1/provider', data);
       }
       // add: refresh provider list after saving, update form and switch editable status
-      const res = await proxyFetchGet('/api/providers');
+      const res = await proxyFetchGet('/api/v1/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
       setForm((f) =>
         f.map((fi, i) => {
@@ -788,15 +792,15 @@ export default function SettingModels() {
 
       // Update or create provider
       if (currentProviderId) {
-        await proxyFetchPut(`/api/provider/${currentProviderId}`, data);
+        await proxyFetchPut(`/api/v1/provider/${currentProviderId}`, data);
       } else {
-        await proxyFetchPost('/api/provider', data);
+        await proxyFetchPost('/api/v1/provider', data);
       }
 
       setLocalError(null);
       setLocalInputError(false);
       // add: refresh provider list after saving, update localProviderIds and localPrefer
-      const res = await proxyFetchGet('/api/providers');
+      const res = await proxyFetchGet('/api/v1/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
       const local = providerList.find(
         (p: any) => p.provider_name === localPlatform
@@ -872,7 +876,7 @@ export default function SettingModels() {
       });
     }
     try {
-      await proxyFetchPost('/api/provider/prefer', {
+      await proxyFetchPost('/api/v1/provider/prefer', {
         provider_id: form[idx].provider_id,
       });
       setModelType('custom');
@@ -906,7 +910,7 @@ export default function SettingModels() {
       const targetProviderId =
         providerId !== undefined ? providerId : localProviderIds[localPlatform];
       if (targetProviderId === undefined) return;
-      await proxyFetchPost('/api/provider/prefer', {
+      await proxyFetchPost('/api/v1/provider/prefer', {
         provider_id: targetProviderId,
       });
       setModelType('local');
@@ -925,7 +929,7 @@ export default function SettingModels() {
     try {
       const currentProviderId = localProviderIds[localPlatform];
       if (currentProviderId !== undefined) {
-        await proxyFetchDelete(`/api/provider/${currentProviderId}`);
+        await proxyFetchDelete(`/api/v1/provider/${currentProviderId}`);
       }
       // Set endpoint to platform default
       const defaultEndpoint = getDefaultLocalEndpoint(localPlatform);
@@ -957,7 +961,7 @@ export default function SettingModels() {
     try {
       const { provider_id } = form[idx];
       if (provider_id) {
-        await proxyFetchDelete(`/api/provider/${provider_id}`);
+        await proxyFetchDelete(`/api/v1/provider/${provider_id}`);
       }
       // reset single form entry to default empty values
       setForm((prev) =>
@@ -997,7 +1001,7 @@ export default function SettingModels() {
   // removed bulk reset; only single-provider delete is supported
 
   const checkHasSearchKey = async () => {
-    const configsRes = await proxyFetchGet('/api/configs');
+    const configsRes = await proxyFetchGet('/api/v1/configs');
     const configs = Array.isArray(configsRes) ? configsRes : [];
     console.log(configsRes, configs);
     const _hasApiKey = configs.find(
@@ -1011,7 +1015,7 @@ export default function SettingModels() {
 
   const [subscription, setSubscription] = useState<any>(null);
   const fetchSubscription = async () => {
-    const res = await proxyFetchGet('/api/subscription');
+    const res = await proxyFetchGet('/api/v1/subscription');
     console.log(res);
     if (res) {
       setSubscription(res);
@@ -1022,7 +1026,7 @@ export default function SettingModels() {
   const updateCredits = async () => {
     try {
       setLoadingCredits(true);
-      const res = await proxyFetchGet(`/api/user/current_credits`);
+      const res = await proxyFetchGet(`/api/v1/user/current_credits`);
       console.log(res?.credits);
       setCredits(res?.credits);
     } catch (error) {
@@ -1055,6 +1059,7 @@ export default function SettingModels() {
       openrouter: openrouterImage,
       'tongyi-qianwen': qwenImage,
       deepseek: deepseekImage,
+      ernie: ernieImage,
       minimax: minimaxImage,
       'z.ai': zaiImage,
       moonshot: moonshotImage,
@@ -1274,8 +1279,17 @@ export default function SettingModels() {
                   <SelectItem value="gpt-5-mini">
                     {t('setting.gpt-5-mini-name')}
                   </SelectItem>
+                  <SelectItem value="claude-haiku-4-5">
+                    {t('setting.claude-haiku-4-5-name')}
+                  </SelectItem>
                   <SelectItem value="claude-sonnet-4-5">
                     {t('setting.claude-sonnet-4-5-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-sonnet-4-6">
+                    {t('setting.claude-sonnet-4-6-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-opus-4-6">
+                    {t('setting.claude-opus-4-6-name')}
                   </SelectItem>
                   <SelectItem value="minimax_m2_5">
                     {t('setting.minimax-m2-5-name')}

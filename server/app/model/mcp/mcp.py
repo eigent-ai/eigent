@@ -24,7 +24,7 @@ from sqlmodel import JSON, Field, Relationship
 from app.model.abstract.model import AbstractModel, DefaultTimes
 from app.model.mcp.category import Category, CategoryOut
 from app.model.mcp.mcp_env import McpEnv
-from app.type.pydantic import HttpUrlStr
+from app.shared.types.pydantic import HttpUrlStr
 
 if TYPE_CHECKING:
     from app.model.mcp.mcp_user import McpUser

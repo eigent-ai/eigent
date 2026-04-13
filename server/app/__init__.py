@@ -13,10 +13,10 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi_pagination import add_pagination
 from fastapi_limiter import FastAPILimiter
-from app.component.environment import env_or_fail
+from app.core.environment import env_or_fail
 from redis import asyncio as aioredis
 import logging
 
@@ -43,3 +43,5 @@ api = FastAPI(
   lifespan=lifespan
 )
 add_pagination(api)
+
+router = APIRouter()

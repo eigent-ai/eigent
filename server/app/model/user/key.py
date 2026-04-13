@@ -18,7 +18,7 @@ from pydantic import BaseModel, computed_field
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import Column, Field, SmallInteger
 
-from app.component.environment import env_not_empty
+from app.core.environment import env_not_empty
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 

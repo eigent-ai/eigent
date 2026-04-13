@@ -67,7 +67,7 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         self.worker = worker  # change type hint
 
     async def _process_task(
-        self, task: Task, dependencies: list[Task]
+        self, task: Task, dependencies: list[Task], stream_callback=None
     ) -> TaskState:
         r"""Processes a task with its dependencies using an efficient agent
         management system.

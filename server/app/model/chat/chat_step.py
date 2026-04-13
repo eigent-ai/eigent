@@ -59,3 +59,9 @@ class ChatStepOut(BaseModel):
     step: str
     data: Any
     timestamp: float | None = None
+
+
+class ChatStepUpdate(BaseModel):
+    step: str | None = None
+    data: Any | None = None
+    timestamp: float | None = None

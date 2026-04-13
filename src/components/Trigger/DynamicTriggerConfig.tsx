@@ -929,7 +929,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
   const fetchSavedConfigs = useCallback(async (configGroup: string) => {
     try {
-      const response = await proxyFetchGet('/api/configs', {
+      const response = await proxyFetchGet('/api/v1/configs', {
         config_group: configGroup,
       });
       if (response && Array.isArray(response)) {
@@ -953,7 +953,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
           delete newErrors[fieldKey];
           return newErrors;
         });
-        const response = await proxyFetchGet(`/api/${apiPath}`);
+        const response = await proxyFetchGet(`/api/v1/${apiPath}`);
         if (response && Array.isArray(response)) {
           // Transform response to options format
           const options = response.map((item: any) => ({
@@ -1024,14 +1024,14 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
 
     try {
       if (existingConfig) {
-        await proxyFetchPut(`/api/configs/${existingConfig.id}`, {
+        await proxyFetchPut(`/api/v1/configs/${existingConfig.id}`, {
           config_group: configGroup,
           config_name: key,
           config_value: configValue,
         });
         toast.success(t('triggers.dynamic.config-updated'));
       } else {
-        const response = await proxyFetchPost('/api/configs', {
+        const response = await proxyFetchPost('/api/v1/configs', {
           config_group: configGroup,
           config_name: key,
           config_value: configValue,

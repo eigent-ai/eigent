@@ -2140,26 +2140,7 @@ async def construct_workforce(
                 key,
                 prompt,
                 options,
-                [
-                    *(
-                        ToolkitMessageIntegration(
-                            message_handler=HumanToolkit(
-                                options.project_id, key
-                            ).send_message_to_user
-                        ).register_toolkits(
-                            NoteTakingToolkit(
-                                options.project_id,
-                                working_directory=working_directory,
-                            )
-                        )
-                    ).get_tools(),
-                    *SkillToolkit(
-                        options.project_id,
-                        key,
-                        working_directory=working_directory,
-                        user_id=options.skill_config_user_id(),
-                    ).get_tools(),
-                ],
+                [],
             )
             for key, prompt in {
                 Agents.coordinator_agent: f"""

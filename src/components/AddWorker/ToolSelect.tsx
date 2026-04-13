@@ -103,7 +103,7 @@ const ToolSelect = forwardRef<
 
   const fetchIntegrationsData = useCallback(
     (keyword?: string) => {
-      proxyFetchGet('/api/config/info')
+      proxyFetchGet('/api/v1/config/info')
         .then((res) => {
           if (res && typeof res === 'object' && !res.error) {
             const baseURL = getProxyBaseURL();
@@ -131,7 +131,7 @@ const ToolSelect = forwardRef<
                           // Still proceed but log the warning
                         }
                         // Save to config to mark as installed
-                        await proxyFetchPost('/api/configs', {
+                        await proxyFetchPost('/api/v1/configs', {
                           config_group: 'Notion',
                           config_name: 'MCP_REMOTE_CONFIG_DIR',
                           config_value:
@@ -181,7 +181,7 @@ const ToolSelect = forwardRef<
                         }
                         try {
                           const existingConfigs =
-                            await proxyFetchGet('/api/configs');
+                            await proxyFetchGet('/api/v1/configs');
                           const existing = Array.isArray(existingConfigs)
                             ? existingConfigs.find(
                                 (c: any) =>
@@ -199,11 +199,14 @@ const ToolSelect = forwardRef<
 
                           if (existing) {
                             await proxyFetchPut(
-                              `/api/configs/${existing.id}`,
+                              `/api/v1/configs/${existing.id}`,
                               configPayload
                             );
                           } else {
-                            await proxyFetchPost('/api/configs', configPayload);
+                            await proxyFetchPost(
+                              '/api/v1/configs',
+                              configPayload
+                            );
                           }
                         } catch (configError) {
                           console.warn(
@@ -253,7 +256,7 @@ const ToolSelect = forwardRef<
                 } else {
                   onInstall = () =>
                     window.open(
-                      `${baseURL}/api/oauth/${key.toLowerCase()}/login`,
+                      `${baseURL}/api/v1/oauth/${key.toLowerCase()}/login`,
                       '_blank',
                       'width=600,height=700'
                     );
@@ -313,7 +316,7 @@ const ToolSelect = forwardRef<
 
   // data fetching
   const fetchData = useCallback((keyword?: string) => {
-    proxyFetchGet('/api/mcps', {
+    proxyFetchGet('/api/v1/mcps', {
       keyword: keyword || '',
       page: 1,
       size: 100,
@@ -334,7 +337,7 @@ const ToolSelect = forwardRef<
   }, []);
 
   const fetchInstalledMcps = useCallback(() => {
-    proxyFetchGet('/api/mcp/users')
+    proxyFetchGet('/api/v1/mcp/users')
       .then((res) => {
         let dataList = [];
         let ids: number[] = [];
@@ -378,7 +381,7 @@ const ToolSelect = forwardRef<
     value: string
   ) => {
     // First fetch current configs to check for existing ones
-    const configsRes = await proxyFetchGet('/api/configs');
+    const configsRes = await proxyFetchGet('/api/v1/configs');
     const configs = Array.isArray(configsRes) ? configsRes : [];
 
     const configPayload = {
@@ -396,10 +399,13 @@ const ToolSelect = forwardRef<
 
     if (existingConfig) {
       // Update existing config
-      await proxyFetchPut(`/api/configs/${existingConfig.id}`, configPayload);
+      await proxyFetchPut(
+        `/api/v1/configs/${existingConfig.id}`,
+        configPayload
+      );
     } else {
       // Create new config
-      await proxyFetchPost('/api/configs', configPayload);
+      await proxyFetchPost('/api/v1/configs', configPayload);
     }
 
     if (window.electronAPI?.envWrite) {
@@ -476,7 +482,7 @@ const ToolSelect = forwardRef<
           if (response.success) {
             console.log('[ToolSelect installMcp] Immediate success');
             // Mark as successfully installed by writing refresh token marker
-            const existingConfigs = await proxyFetchGet('/api/configs');
+            const existingConfigs = await proxyFetchGet('/api/v1/configs');
             const existing = Array.isArray(existingConfigs)
               ? existingConfigs.find(
                   (c: any) =>
@@ -492,9 +498,12 @@ const ToolSelect = forwardRef<
             };
 
             if (existing) {
-              await proxyFetchPut(`/api/configs/${existing.id}`, configPayload);
+              await proxyFetchPut(
+                `/api/v1/configs/${existing.id}`,
+                configPayload
+              );
             } else {
-              await proxyFetchPost('/api/configs', configPayload);
+              await proxyFetchPost('/api/v1/configs', configPayload);
             }
 
             // Refresh integrations to update install status
@@ -541,7 +550,8 @@ const ToolSelect = forwardRef<
                   );
                   if (retryResponse.success) {
                     // Mark as successfully installed
-                    const existingConfigs = await proxyFetchGet('/api/configs');
+                    const existingConfigs =
+                      await proxyFetchGet('/api/v1/configs');
                     const existing = Array.isArray(existingConfigs)
                       ? existingConfigs.find(
                           (c: any) =>
@@ -559,11 +569,11 @@ const ToolSelect = forwardRef<
 
                     if (existing) {
                       await proxyFetchPut(
-                        `/api/configs/${existing.id}`,
+                        `/api/v1/configs/${existing.id}`,
                         configPayload
                       );
                     } else {
-                      await proxyFetchPost('/api/configs', configPayload);
+                      await proxyFetchPost('/api/v1/configs', configPayload);
                     }
 
                     fetchIntegrationsData();
@@ -622,7 +632,7 @@ const ToolSelect = forwardRef<
     }
     setInstalling((prev) => ({ ...prev, [id]: true }));
     try {
-      await proxyFetchPost('/api/mcp/install?mcp_id=' + id);
+      await proxyFetchPost('/api/v1/mcp/install?mcp_id=' + id);
       setInstalled((prev) => ({ ...prev, [id]: true }));
       const installedMcp = mcpList.find((mcp) => mcp.id === id);
       if (window.ipcRenderer && installedMcp) {

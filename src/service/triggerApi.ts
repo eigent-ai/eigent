@@ -89,7 +89,7 @@ export const proxyFetchTriggers = async (
       params.status = status;
     }
 
-    const res = await proxyFetchGet(`/api/trigger/`, params);
+    const res = await proxyFetchGet(`/api/v1/trigger/`, params);
     return res;
   } catch (error) {
     console.error('Failed to fetch triggers:', error);
@@ -123,7 +123,7 @@ export const proxyFetchProjectTriggers = async (
       throw new Error('Project ID is required to fetch project triggers.');
     }
 
-    const res = await proxyFetchGet(`/api/trigger/`, params);
+    const res = await proxyFetchGet(`/api/v1/trigger/`, params);
     return res;
   } catch (error) {
     console.error('Failed to fetch triggers:', error);
@@ -135,7 +135,7 @@ export const proxyFetchTrigger = async (
   triggerId: number
 ): Promise<Trigger> => {
   try {
-    const res = await proxyFetchGet(`/api/trigger/${triggerId}`);
+    const res = await proxyFetchGet(`/api/v1/trigger/${triggerId}`);
     return res;
   } catch (error) {
     console.error('Failed to fetch trigger:', error);
@@ -145,7 +145,7 @@ export const proxyFetchTrigger = async (
 
 export const proxyFetchTriggerConfig = async (triggerType: TriggerType) => {
   try {
-    const res = await proxyFetchGet(`/api/trigger/${triggerType}/config`);
+    const res = await proxyFetchGet(`/api/v1/trigger/${triggerType}/config`);
     return res;
   } catch (error) {
     console.error('Failed to fetch trigger config:', error);
@@ -157,7 +157,7 @@ export const proxyCreateTrigger = async (
   triggerData: TriggerInput
 ): Promise<Trigger> => {
   try {
-    const res = await proxyFetchPost(`/api/trigger/`, triggerData);
+    const res = await proxyFetchPost(`/api/v1/trigger/`, triggerData);
     return res;
   } catch (error) {
     console.error('Failed to create trigger:', error);
@@ -170,7 +170,7 @@ export const proxyUpdateTrigger = async (
   updateData: TriggerUpdate
 ): Promise<Trigger> => {
   try {
-    const res = await proxyFetchPut(`/api/trigger/${triggerId}`, updateData);
+    const res = await proxyFetchPut(`/api/v1/trigger/${triggerId}`, updateData);
     return res;
   } catch (error) {
     console.error('Failed to update trigger:', error);
@@ -180,7 +180,7 @@ export const proxyUpdateTrigger = async (
 
 export const proxyDeleteTrigger = async (triggerId: number): Promise<void> => {
   try {
-    await proxyFetchDelete(`/api/trigger/${triggerId}`);
+    await proxyFetchDelete(`/api/v1/trigger/${triggerId}`);
   } catch (error) {
     console.error('Failed to delete trigger:', error);
     throw error;
@@ -191,7 +191,7 @@ export const proxyActivateTrigger = async (
   triggerId: number
 ): Promise<Trigger> => {
   try {
-    const res = await proxyFetchPost(`/api/trigger/${triggerId}/activate`);
+    const res = await proxyFetchPost(`/api/v1/trigger/${triggerId}/activate`);
     return res;
   } catch (error) {
     console.error('Failed to activate trigger:', error);
@@ -203,7 +203,7 @@ export const proxyDeactivateTrigger = async (
   triggerId: number
 ): Promise<Trigger> => {
   try {
-    const res = await proxyFetchPost(`/api/trigger/${triggerId}/deactivate`);
+    const res = await proxyFetchPost(`/api/v1/trigger/${triggerId}/deactivate`);
     return res;
   } catch (error) {
     console.error('Failed to deactivate trigger:', error);
@@ -224,7 +224,7 @@ export const proxyFetchTriggerExecutions = async (
     };
 
     const res = await proxyFetchGet(
-      `/api/trigger/${triggerId}/executions`,
+      `/api/v1/trigger/${triggerId}/executions`,
       params
     );
     return res;
@@ -255,7 +255,7 @@ export const proxyUpdateTriggerExecution = async (
 ) => {
   try {
     const res = await proxyFetchPut(
-      `/api/execution/${executionId}`,
+      `/api/v1/execution/${executionId}`,
       updateData
     );
 
@@ -320,7 +320,7 @@ export const proxyRetryTriggerExecution = async (
   }
 ) => {
   try {
-    const res = await proxyFetchPost(`/api/execution/${executionId}/retry`);
+    const res = await proxyFetchPost(`/api/v1/execution/${executionId}/retry`);
 
     updateExecutionLog(
       executionId,

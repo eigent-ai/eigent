@@ -63,7 +63,7 @@ export function useTriggerTaskExecutor() {
 
         // Fetch grouped history to find the project
         const historyProject = await proxyFetchGet(
-          `/api/chat/histories/grouped/${projectId}?include_tasks=true`
+          `/api/v1/chat/histories/grouped/${projectId}?include_tasks=true`
         );
 
         if (!historyProject) {

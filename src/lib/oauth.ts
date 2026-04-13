@@ -45,7 +45,7 @@ export class OAuth {
     this.url = mcp.url;
     this.provider = mcp.provider;
     this.redirect_uris = [
-      `https://dev.eigent.ai/api/oauth/${this.provider}/callback`,
+      `https://dev.eigent.ai/api/v1/oauth/${this.provider}/callback`,
     ];
     this.authServerUrl = new URL(mcp.url).origin;
     this.resourcePath = mcp?.resourcePath || this.resourcePath;

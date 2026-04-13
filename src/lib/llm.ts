@@ -165,6 +165,15 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: '',
   },
   {
+    id: 'ernie',
+    name: 'Ernie',
+    apiKey: '',
+    apiHost: 'https://qianfan.baidubce.com/v2',
+    description: 'Baidu Ernie model configuration.',
+    is_valid: false,
+    model_type: '',
+  },
+  {
     id: 'openai-compatible-model',
     name: 'OpenAI Compatible',
     apiKey: '',

@@ -30,7 +30,7 @@ export const stackClientApp = hasSlackKeys
         oauthCallback:
           (import.meta.env.DEV
             ? import.meta.env.VITE_PROXY_URL
-            : import.meta.env.VITE_BASE_URL) + '/api/redirect/callback',
+            : import.meta.env.VITE_BASE_URL) + '/api/v1/redirect/callback',
       },
     })
   : null;

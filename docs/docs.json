@@ -68,6 +68,7 @@
                   "/core/models/byok",
                   "/core/models/local-model",
                   "/core/models/gemini",
+                  "/core/models/ernie",
                   "/core/models/minimax",
                   "/core/models/kimi",
                   "/core/models/sambanova"

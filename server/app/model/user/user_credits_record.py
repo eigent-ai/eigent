@@ -21,7 +21,7 @@ from sqlalchemy import Boolean, SmallInteger, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import Column, Field, Session, col, select
 
-from app.component.database import session_make
+from app.core.database import session_make
 from app.model.abstract.model import AbstractModel, DefaultTimes
 
 logger = logging.getLogger("user_credits_record")

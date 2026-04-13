@@ -32,7 +32,7 @@ export default function SettingAPI() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    proxyFetchGet('/api/config/info').then((res) => {
+    proxyFetchGet('/api/v1/config/info').then((res) => {
       const configs = Object.entries(res || {})
         .map(([name, v]: [string, any]) => ({ name, env_vars: v.env_vars }))
         .filter(
@@ -40,7 +40,7 @@ export default function SettingAPI() {
         );
       setItems(configs);
     });
-    proxyFetchGet('/api/configs').then((res) => {
+    proxyFetchGet('/api/v1/configs').then((res) => {
       if (Array.isArray(res)) {
         const envMap: Record<string, string> = {};
         res.forEach((item: any) => {
@@ -70,7 +70,7 @@ export default function SettingAPI() {
     }
     setLoading((prev) => ({ ...prev, [env]: true }));
     try {
-      await proxyFetchPost('/api/configs', {
+      await proxyFetchPost('/api/v1/configs', {
         config_name: env,
         config_value: value,
         config_group: configGroup,
