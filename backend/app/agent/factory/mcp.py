@@ -12,15 +12,18 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 import asyncio
+import logging
 import uuid
 
 from camel.models import ModelFactory
+from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
+from app.model.model_platform import patch_bedrock_cloud_config
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
@@ -73,6 +76,38 @@ async def mcp_agent(options: Chat):
             )
         )
     )
+    extra_params = {
+        k: v
+        for k, v in (options.extra_params or {}).items()
+        if k not in ["model_platform", "model_type", "api_key", "url"]
+    }
+    api_url = options.api_url
+    if options.model_platform == "aws-bedrock-converse" and options.is_cloud():
+        api_url, extra_params = patch_bedrock_cloud_config(
+            api_url, extra_params
+        )
+
+    # Build model_config_dict with prompt caching
+    model_config_dict = {}
+    if options.is_cloud():
+        model_config_dict["user"] = str(options.project_id)
+    try:
+        platform_enum = ModelPlatformType(options.model_platform.lower())
+        if platform_enum in {
+            ModelPlatformType.ANTHROPIC,
+            ModelPlatformType.AWS_BEDROCK_CONVERSE,
+        }:
+            model_config_dict.setdefault("cache_control", "5m")
+        elif platform_enum == ModelPlatformType.OPENAI:
+            model_config_dict.setdefault(
+                "prompt_cache_key", str(options.project_id)
+            )
+    except (ValueError, AttributeError):
+        logging.error(
+            f"Invalid model platform: {options.model_platform}",
+            exc_info=True,
+        )
+
     return ListenChatAgent(
         options.project_id,
         Agents.mcp_agent,
@@ -81,20 +116,10 @@ async def mcp_agent(options: Chat):
             model_platform=options.model_platform,
             model_type=options.model_type,
             api_key=options.api_key,
-            url=options.api_url,
-            model_config_dict=(
-                {
-                    "user": str(options.project_id),
-                }
-                if options.is_cloud()
-                else None
-            ),
+            url=api_url,
+            model_config_dict=model_config_dict or None,
             timeout=600,  # 10 minutes
-            **{
-                k: v
-                for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
-            },
+            **extra_params,
         ),
         # output_language=options.language,
         tools=tools,

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.11.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -242,7 +242,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.90a6" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.90" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -313,7 +313,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.90a6"
+version = "0.2.90"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -331,9 +331,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/52/5113d146328de8cb538f0616d0e7c65395dc52c6147a7b74d901978108da/camel_ai-0.2.90a6.tar.gz", hash = "sha256:9f1f537e49de690b03b4c110ace2ac17afa41663b108f65a0c0e609ef3b4eb27", size = 1206365, upload-time = "2026-03-13T14:49:21.5Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/b3/da958646c69b42cfafd3fc081b77bb19bb625773766da6ffa2d77c9c66e0/camel_ai-0.2.90.tar.gz", hash = "sha256:43f11673390cc8d4451d6b1bb2913ddef6131f411f47da02d16a3989c8096d02", size = 1212904, upload-time = "2026-03-22T08:37:04.611Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/a2/fa855f44589640b8ec1a3c21767d4fdf23ab5918a9aa2a73f21d1f7c2e3b/camel_ai-0.2.90a6-py3-none-any.whl", hash = "sha256:5ccc9af05559af51e421eb9ac1f48b30950117c061dd62dd67cb3e5b13f42d89", size = 1690382, upload-time = "2026-03-13T14:49:18.718Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/e2/7005080797edcc760dcf7695ece29f97e18189ea2c56cd7514592801f0c9/camel_ai-0.2.90-py3-none-any.whl", hash = "sha256:9998c434779a1a847d9ccddce1c069f22fb9667b19ba06a2452c479882169082", size = 1700705, upload-time = "2026-03-22T08:37:02.259Z" },
 ]
 
 [package.optional-dependencies]
