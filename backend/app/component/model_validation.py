@@ -19,6 +19,8 @@ from typing import Any
 from camel.agents import ChatAgent
 from camel.models import ModelFactory, ModelProcessingError
 
+from app.model.model_platform import BEDROCK_CONVERSE_REGION
+
 logger = logging.getLogger("model_validation")
 
 # Expected result from tool execution for validation
@@ -227,6 +229,12 @@ def create_agent(
         raise ValueError(f"Invalid model_type: {model_type}")
     if platform is None:
         raise ValueError(f"Invalid model_platform: {model_platform}")
+    if str(platform).lower() == "anthropic":
+        model_config_dict = dict(model_config_dict or {})
+        if model_config_dict.get("max_tokens") is None:
+            model_config_dict["max_tokens"] = 4096
+    if str(platform).lower() == "aws-bedrock-converse":
+        kwargs.setdefault("region_name", BEDROCK_CONVERSE_REGION)
     model = ModelFactory.create(
         model_platform=platform,
         model_type=mtype,
@@ -326,6 +334,12 @@ def validate_model_with_details(
             "Creating model",
             extra={"platform": model_platform, "model_type": model_type},
         )
+        if str(model_platform).lower() == "anthropic":
+            model_config_dict = dict(model_config_dict or {})
+            if model_config_dict.get("max_tokens") is None:
+                model_config_dict["max_tokens"] = 4096
+        if str(model_platform).lower() == "aws-bedrock-converse":
+            kwargs.setdefault("region_name", BEDROCK_CONVERSE_REGION)
         model = ModelFactory.create(
             model_platform=model_platform,
             model_type=model_type,
