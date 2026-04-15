@@ -116,7 +116,7 @@ class Chat(BaseModel):
         )
 
     def is_cloud(self):
-        return self.api_url is not None and "44.247.171.124" in self.api_url
+        return self.api_url is not None and "eigent-proxy" in self.api_url
 
     def file_save_path(self, path: str | None = None):
         email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(
