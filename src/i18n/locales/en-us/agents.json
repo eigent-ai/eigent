@@ -47,6 +47,8 @@
   "delete-skill": "Delete Skill",
   "delete-skill-confirmation": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
   "skill-deleted-success": "Skill deleted successfully!",
+  "delete-template": "Delete template",
+  "delete-template-confirmation": "Are you sure you want to delete the template \"{{name}}\"? This action cannot be undone.",
   "global-agents": "Global Agents",
   "global-agents-description": "Reusable Worker Agent templates available to all projects. Create once, use everywhere.",
   "global-agents-empty": "No global agent templates yet. Create one when adding a Worker Agent by checking \"Save as global template\", or import from a file.",

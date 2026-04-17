@@ -16,7 +16,7 @@ import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
-import { useAuthStore, useWorkerList } from '@/store/authStore';
+import { getWorkerList, useAuthStore, useWorkerList } from '@/store/authStore';
 import {
   AgentStatusValue,
   ChatTaskStatus,
@@ -58,7 +58,11 @@ function nextUniqueCustomWorkerName(
   workers: Agent[]
 ): string {
   const used = new Set(
-    workers.flatMap((w) => [w.type, w.name].filter(Boolean) as string[])
+    workers.flatMap((w) =>
+      [w.type, w.name, w.agent_id, w.workerInfo?.name].filter(
+        (x): x is string => typeof x === 'string' && x.length > 0
+      )
+    )
   );
   let candidate = `${baseName} (copy)`;
   let i = 2;
@@ -495,9 +499,10 @@ export function Node({ id, data }: NodeProps) {
                               const base = data.agent as Agent;
                               const baseName =
                                 base.workerInfo?.name ?? base.name ?? 'Worker';
+                              const current = getWorkerList();
                               const copyName = nextUniqueCustomWorkerName(
                                 baseName,
-                                workerList
+                                current
                               );
                               const newWorker: Agent = {
                                 tasks: [],
@@ -519,7 +524,7 @@ export function Node({ id, data }: NodeProps) {
                                     base.workerInfo?.selectedTools ?? [],
                                 },
                               };
-                              setWorkerList([...workerList, newWorker]);
+                              setWorkerList([...current, newWorker]);
                             }}
                           >
                             <Copy

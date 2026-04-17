@@ -37,6 +37,7 @@ import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
   hasGlobalAgentTemplatesApi,
+  sanitizeCustomModelConfigForPersistence,
   useGlobalAgentTemplatesStore,
 } from '@/store/globalAgentTemplatesStore';
 import {
@@ -103,6 +104,12 @@ function parseSelectedToolsSnapshot(raw: unknown): McpItem[] {
     });
   }
   return out;
+}
+
+/** Safe download basename for agent JSON (matches GlobalAgents export pattern). */
+function sanitizeAgentExportFilenameStem(raw: string): string {
+  const stem = raw?.trim() || 'config';
+  return stem.replace(/[^a-z0-9-_]/gi, '-');
 }
 
 export function AddWorker({
@@ -218,13 +225,14 @@ export function AddWorker({
         (mcpLocal.mcpServers as Record<string, unknown>)[tool.key] = {};
       }
     });
-    const custom_model_config =
+    const custom_model_config = sanitizeCustomModelConfigForPersistence(
       !useWorkspaceCloudModel && useCustomModel && customModelPlatform
         ? {
             model_platform: customModelPlatform,
             model_type: customModelType || undefined,
           }
-        : undefined;
+        : undefined
+    );
     const blob = new Blob(
       [
         JSON.stringify(
@@ -245,7 +253,7 @@ export function AddWorker({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `agent-${workerName || 'config'}.json`;
+    a.download = `agent-${sanitizeAgentExportFilenameStem(workerName)}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(t('workforce.export-agent-success'));
@@ -257,7 +265,6 @@ export function AddWorker({
     customModelPlatform,
     customModelType,
     useWorkspaceCloudModel,
-    selectedTools,
     t,
   ]);
 
@@ -541,13 +548,14 @@ export function AddWorker({
     }
 
     if (saveAsGlobalTemplate && hasGlobalTemplatesApi) {
-      const customModelConfig =
+      const customModelConfig = sanitizeCustomModelConfigForPersistence(
         !useWorkspaceCloudModel && useCustomModel && customModelPlatform
           ? {
               model_platform: customModelPlatform,
               model_type: customModelType || undefined,
             }
-          : undefined;
+          : undefined
+      );
       await addGlobalTemplate({
         name: workerName,
         description: workerDescription,

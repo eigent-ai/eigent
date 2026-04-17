@@ -25,6 +25,7 @@ import {
   getGlobalAgentTemplatesStore,
   hasGlobalAgentTemplatesApi,
   parseImportedAgentTemplateJson,
+  sanitizeTemplateForPersistence,
   useGlobalAgentTemplatesStore,
   type GlobalAgentTemplate,
 } from '@/store/globalAgentTemplatesStore';
@@ -57,8 +58,9 @@ function formatDate(ts: number): string {
 }
 
 function exportTemplate(t: GlobalAgentTemplate): void {
+  const safe = sanitizeTemplateForPersistence(t);
   const blob = new Blob(
-    [JSON.stringify({ ...t, _exportVersion: 1 }, null, 2)],
+    [JSON.stringify({ ...safe, _exportVersion: 1 }, null, 2)],
     { type: 'application/json' }
   );
   const url = URL.createObjectURL(blob);
@@ -243,8 +245,8 @@ export default function GlobalAgents() {
             toast.success(t('agents.global-agent-delete-success'));
           }
         }}
-        title={t('agents.delete-skill')}
-        message={t('agents.delete-skill-confirmation', {
+        title={t('agents.delete-template')}
+        message={t('agents.delete-template-confirmation', {
           name: deleteId
             ? (templates.find((x) => x.id === deleteId)?.name ?? '')
             : '',

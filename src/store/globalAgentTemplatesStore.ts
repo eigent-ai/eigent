@@ -23,19 +23,22 @@ function emailToUserId(email: string | null): string | null {
     .replace(/^\.+|\.+$/g, '');
 }
 
+/**
+ * Only platform + model id are persisted or exported.
+ * Do not store api_key, api_url, or extra_params in templates — use workspace / env at runtime.
+ */
+export type GlobalAgentTemplateCustomModelConfig = {
+  model_platform?: string;
+  model_type?: string;
+};
+
 export interface GlobalAgentTemplate {
   id: string;
   name: string;
   description: string;
   tools: string[];
   mcp_tools: Record<string, unknown> | { mcpServers?: Record<string, unknown> };
-  custom_model_config?: {
-    model_platform?: string;
-    model_type?: string;
-    api_key?: string;
-    api_url?: string;
-    extra_params?: Record<string, unknown>;
-  };
+  custom_model_config?: GlobalAgentTemplateCustomModelConfig;
   /** Serialized ToolSelect rows so “Create from template” restores MCP/local tool picks */
   selected_tools_snapshot?: unknown[];
   updatedAt: number;
@@ -60,6 +63,40 @@ interface GlobalAgentTemplatesState {
 
 function generateId(): string {
   return `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Strip secrets and non-persisted fields from imported or legacy JSON. */
+export function sanitizeCustomModelConfigForPersistence(
+  cfg: unknown
+): GlobalAgentTemplateCustomModelConfig | undefined {
+  if (
+    cfg === null ||
+    cfg === undefined ||
+    typeof cfg !== 'object' ||
+    Array.isArray(cfg)
+  ) {
+    return undefined;
+  }
+  const c = cfg as Record<string, unknown>;
+  const out: GlobalAgentTemplateCustomModelConfig = {};
+  if (typeof c.model_platform === 'string' && c.model_platform.trim()) {
+    out.model_platform = c.model_platform.trim();
+  }
+  if (typeof c.model_type === 'string' && c.model_type.trim()) {
+    out.model_type = c.model_type.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+export function sanitizeTemplateForPersistence(
+  t: GlobalAgentTemplate
+): GlobalAgentTemplate {
+  return {
+    ...t,
+    custom_model_config: sanitizeCustomModelConfigForPersistence(
+      t.custom_model_config
+    ),
+  };
 }
 
 function normalizeMcpTools(mcp: unknown): GlobalAgentTemplate['mcp_tools'] {
@@ -120,7 +157,7 @@ export function parseImportedAgentTemplateJson(
   if (snap !== undefined && (snap === null || !Array.isArray(snap))) {
     return null;
   }
-  return {
+  return sanitizeTemplateForPersistence({
     id: generateId(),
     name: nameRaw.trim(),
     description: typeof o.description === 'string' ? o.description : '',
@@ -134,7 +171,7 @@ export function parseImportedAgentTemplateJson(
       ? JSON.parse(JSON.stringify(snap))
       : undefined,
     updatedAt: Date.now(),
-  };
+  });
 }
 
 function isPersistedTemplateRow(t: unknown): t is GlobalAgentTemplate {
@@ -167,26 +204,36 @@ function isPersistedTemplateRow(t: unknown): t is GlobalAgentTemplate {
 }
 
 function sanitizePersistedTemplates(rows: unknown[]): GlobalAgentTemplate[] {
-  return rows.filter(isPersistedTemplateRow).map((r) => ({
-    ...r,
-    name: r.name.trim(),
-    description: typeof r.description === 'string' ? r.description : '',
-    tools: [...r.tools],
-    mcp_tools:
-      typeof r.mcp_tools === 'object' && r.mcp_tools !== null
-        ? JSON.parse(JSON.stringify(r.mcp_tools))
-        : { mcpServers: {} },
-    selected_tools_snapshot: Array.isArray(r.selected_tools_snapshot)
-      ? JSON.parse(JSON.stringify(r.selected_tools_snapshot))
-      : undefined,
-  }));
+  return rows.filter(isPersistedTemplateRow).map((r) =>
+    sanitizeTemplateForPersistence({
+      ...r,
+      name: r.name.trim(),
+      description: typeof r.description === 'string' ? r.description : '',
+      tools: [...r.tools],
+      mcp_tools:
+        typeof r.mcp_tools === 'object' && r.mcp_tools !== null
+          ? JSON.parse(JSON.stringify(r.mcp_tools))
+          : { mcpServers: {} },
+      selected_tools_snapshot: Array.isArray(r.selected_tools_snapshot)
+        ? JSON.parse(JSON.stringify(r.selected_tools_snapshot))
+        : undefined,
+    })
+  );
 }
 
 function hasAgentTemplatesApi(): boolean {
+  if (typeof window === 'undefined') return false;
+  const api = (
+    window as unknown as {
+      electronAPI?: {
+        agentTemplatesLoad?: unknown;
+        agentTemplatesSave?: unknown;
+      };
+    }
+  ).electronAPI;
   return (
-    typeof window !== 'undefined' &&
-    !!(window as unknown as { electronAPI?: { agentTemplatesLoad?: unknown } })
-      .electronAPI?.agentTemplatesLoad
+    typeof api?.agentTemplatesLoad === 'function' &&
+    typeof api?.agentTemplatesSave === 'function'
   );
 }
 
@@ -221,12 +268,13 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
       if (!hasAgentTemplatesApi()) return false;
       const userId = emailToUserId(useAuthStore.getState().email);
       if (!userId) return false;
+      const safe = templates.map(sanitizeTemplateForPersistence);
       try {
         const result = await window.electronAPI.agentTemplatesSave(
           userId,
-          templates
+          safe
         );
-        if (result.success) set({ templates });
+        if (result.success) set({ templates: safe });
         return result.success ?? false;
       } catch (error) {
         console.error('[GlobalAgentTemplates] Save failed:', error);
@@ -235,21 +283,26 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
     },
 
     addTemplate: async (template) => {
-      const tpl: GlobalAgentTemplate = {
+      const tpl = sanitizeTemplateForPersistence({
         ...template,
         id: generateId(),
         updatedAt: Date.now(),
         mcp_tools: template.mcp_tools ?? { mcpServers: {} },
-      };
+      });
       const templates = [...get().templates, tpl];
       const ok = await get().saveTemplates(templates);
       return ok ? tpl : null;
     },
 
     updateTemplate: async (id: string, patch: Partial<GlobalAgentTemplate>) => {
-      const templates = get().templates.map((t) =>
-        t.id === id ? { ...t, ...patch, updatedAt: Date.now() } : t
-      );
+      const templates = get().templates.map((t) => {
+        if (t.id !== id) return t;
+        return sanitizeTemplateForPersistence({
+          ...t,
+          ...patch,
+          updatedAt: Date.now(),
+        });
+      });
       return get().saveTemplates(templates);
     },
 
@@ -261,12 +314,12 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
     duplicateTemplate: async (id: string) => {
       const t = get().templates.find((x) => x.id === id);
       if (!t) return null;
-      const copy: GlobalAgentTemplate = {
+      const copy = sanitizeTemplateForPersistence({
         ...JSON.parse(JSON.stringify(t)),
         id: generateId(),
         name: `${t.name} (copy)`,
         updatedAt: Date.now(),
-      };
+      });
       const templates = [...get().templates, copy];
       const ok = await get().saveTemplates(templates);
       return ok ? copy : null;

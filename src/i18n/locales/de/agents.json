@@ -46,5 +46,7 @@
   "custom-skill": "Benutzerdefinierte Fähigkeit",
   "delete-skill": "Fähigkeit löschen",
   "delete-skill-confirmation": "Sind Sie sicher, dass Sie \"{{name}}\" löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
-  "skill-deleted-success": "Fähigkeit erfolgreich gelöscht!"
+  "skill-deleted-success": "Fähigkeit erfolgreich gelöscht!",
+  "delete-template": "Vorlage löschen",
+  "delete-template-confirmation": "Möchten Sie die Vorlage \"{{name}}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
 }

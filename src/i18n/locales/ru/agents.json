@@ -46,5 +46,7 @@
   "custom-skill": "Пользовательский навык",
   "delete-skill": "Удалить навык",
   "delete-skill-confirmation": "Вы уверены, что хотите удалить \"{{name}}\"? Это действие нельзя отменить.",
-  "skill-deleted-success": "Навык успешно удалён!"
+  "skill-deleted-success": "Навык успешно удалён!",
+  "delete-template": "Удалить шаблон",
+  "delete-template-confirmation": "Удалить шаблон «{{name}}»? Это действие нельзя отменить."
 }

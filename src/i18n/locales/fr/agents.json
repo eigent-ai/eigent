@@ -46,5 +46,7 @@
   "custom-skill": "Compétence personnalisée",
   "delete-skill": "Supprimer la compétence",
   "delete-skill-confirmation": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
-  "skill-deleted-success": "Compétence supprimée avec succès !"
+  "skill-deleted-success": "Compétence supprimée avec succès !",
+  "delete-template": "Supprimer le modèle",
+  "delete-template-confirmation": "Voulez-vous vraiment supprimer le modèle « {{name}} » ? Cette action est irréversible."
 }
