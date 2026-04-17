@@ -40,6 +40,10 @@ const buttonVariants = cva(
         warning:
           'bg-button-fill-warning !text-button-fill-warning-foreground font-bold rounded-xs shadow-button-shadow focus:ring-2 focus:ring-gray-4 focus:ring-offset-2 cursor-pointer',
       },
+      rounded: {
+        default: '',
+        full: '!rounded-full',
+      },
       size: {
         xxs: 'inline-flex justify-start items-center gap-1 px-1 py-0.5 rounded-md text-label-xs font-bold [&_svg]:size-16',
         xs: 'inline-flex justify-start items-center gap-1 px-2 py-1 rounded-md text-label-xs font-bold [&_svg]:size-10',
@@ -52,6 +56,7 @@ const buttonVariants = cva(
     defaultVariants: {
       variant: 'primary',
       size: 'md',
+      rounded: 'default',
     },
   }
 );
@@ -60,21 +65,26 @@ const Button = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<'button'> &
     VariantProps<typeof buttonVariants> & { asChild?: boolean }
->(({ className, variant, size, asChild = false, children, ...props }, ref) => {
-  const Comp = asChild ? Slot : 'button';
+>(
+  (
+    { className, variant, size, rounded, asChild = false, children, ...props },
+    ref
+  ) => {
+    const Comp = asChild ? Slot : 'button';
 
-  return (
-    <Comp
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      ref={ref}
-      {...props}
-    >
-      {children}
-      {/* {variant === "primary" && <div />} */}
-    </Comp>
-  );
-});
+    return (
+      <Comp
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, rounded, className }))}
+        ref={ref}
+        {...props}
+      >
+        {children}
+        {/* {variant === "primary" && <div />} */}
+      </Comp>
+    );
+  }
+);
 
 Button.displayName = 'Button';
 

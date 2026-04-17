@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Toaster } from '@/components/ui/sonner';
 import { queryClient } from '@/lib/queryClient';
 import AppRoutes from '@/routers/index';
 import { stackClientApp } from '@/stack/client';
@@ -19,7 +20,6 @@ import { StackProvider, StackTheme } from '@stackframe/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Toaster } from 'sonner';
 import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
 import { useTriggerTaskExecutor } from './hooks/useTriggerTaskExecutor';
@@ -88,14 +88,14 @@ function App() {
       return (
         <StackProvider app={stackClientApp}>
           <StackTheme>{content}</StackTheme>
-          <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
+          <Toaster />
         </StackProvider>
       );
     }
     return (
       <>
         {content}
-        <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
+        <Toaster />
       </>
     );
   };

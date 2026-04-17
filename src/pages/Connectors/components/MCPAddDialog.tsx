@@ -106,11 +106,11 @@ export default function MCPAddDialog({
         size="lg"
         showCloseButton
         onClose={onClose}
-        className="p-0"
+        className="p-0 flex max-h-[90vh] min-h-[min(90vh,32rem)] flex-col"
       >
         <DialogHeader title={t('setting.add-your-agent')} />
-        <DialogContentSection>
-          <div className="mb-4 text-body-sm text-text-label">
+        <DialogContentSection className="min-h-0 flex flex-1 flex-col">
+          <div className="mb-4 text-body-sm text-text-label shrink-0">
             {t(
               'setting.add-a-local-mcp-server-by-providing-a-valid-json-configuration'
             )}
@@ -124,28 +124,32 @@ export default function MCPAddDialog({
             </a>
           </div>
           {jsonError && (
-            <div className="mb-2 text-label-md text-text-cuation">
+            <div className="mb-2 text-label-md text-text-cuation shrink-0">
               {jsonError}
             </div>
           )}
-          <div className="rounded-xl border-border-primary overflow-hidden border">
-            <MonacoEditor
-              height="300px"
-              width="100%"
-              language="json"
-              theme="vs-dark"
-              value={localJson}
-              onChange={(v) => {
-                setLocalJson(v ?? '');
-              }}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                scrollBeyondLastLine: false,
-                readOnly: installing,
-                automaticLayout: true,
-              }}
-            />
+          <div className="rounded-xl border-border-primary relative min-h-[12rem] w-full flex-1 overflow-hidden border">
+            <div className="inset-0 absolute">
+              <MonacoEditor
+                height="100%"
+                width="100%"
+                language="json"
+                theme="vs-dark"
+                value={localJson}
+                onChange={(v) => {
+                  setLocalJson(v ?? '');
+                }}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  scrollBeyondLastLine: false,
+                  readOnly: installing,
+                  automaticLayout: true,
+                  wordWrap: 'on',
+                  wrappingStrategy: 'advanced',
+                }}
+              />
+            </div>
           </div>
         </DialogContentSection>
         <DialogFooter

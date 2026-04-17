@@ -38,6 +38,10 @@ const meta: Meta<typeof Button> = {
       control: 'select',
       options: ['xxs', 'xs', 'sm', 'md', 'lg', 'icon'],
     },
+    rounded: {
+      control: 'select',
+      options: ['default', 'full'],
+    },
     disabled: {
       control: 'boolean',
     },
@@ -134,7 +138,7 @@ export const IconOnly: Story = {
 
 export const AllVariants: Story = {
   render: () => (
-    <div className="flex flex-wrap gap-4">
+    <div className="gap-4 flex flex-wrap">
       <Button variant="primary">Primary</Button>
       <Button variant="secondary">Secondary</Button>
       <Button variant="outline">Outline</Button>
@@ -145,9 +149,17 @@ export const AllVariants: Story = {
   ),
 };
 
+export const RoundedFull: Story = {
+  args: {
+    variant: 'primary',
+    rounded: 'full',
+    children: 'Connect',
+  },
+};
+
 export const AllSizes: Story = {
   render: () => (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="gap-4 flex flex-wrap items-center">
       <Button variant="primary" size="xxs">
         XXS
       </Button>

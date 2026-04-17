@@ -385,12 +385,14 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
             cancelButtonText={t('setting.cancel')}
             onCancel={handleCloseMcpEnvSetting}
             cancelButtonVariant="ghost"
+            cancelButtonRounded="full"
             showConfirmButton
             confirmButtonText={
               isValidating ? 'Validating...' : t('setting.connect')
             }
             onConfirm={handleConfigureMcpEnvSetting}
             confirmButtonVariant="primary"
+            confirmButtonRounded="full"
             // Optional: consumers of DialogFooter may support disabled prop
             {...(isValidating ? ({ confirmButtonDisabled: true } as any) : {})}
           />

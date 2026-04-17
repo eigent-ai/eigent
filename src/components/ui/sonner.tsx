@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useTheme } from 'next-themes';
+import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Toaster as Sonner } from 'sonner';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
@@ -20,7 +22,9 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme();
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <Sonner
       theme={theme as ToasterProps['theme']}
       className="toaster group"
@@ -36,7 +40,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
         },
       }}
       {...props}
-    />
+    />,
+    document.body
   );
 };
 

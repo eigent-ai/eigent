@@ -18,7 +18,7 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import type { Preview } from '@storybook/react-vite';
-import { Toaster } from 'sonner';
+import { Toaster } from '../src/components/ui/sonner';
 import '../src/style/index.css';
 import './storybook.css'; // Storybook-specific overrides
 

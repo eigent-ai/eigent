@@ -67,6 +67,7 @@ def _read_server_code_hash() -> str:
         h = subprocess.check_output(
             ["git", "log", "-1", "--format=%H", "--", "server/"],
             cwd=str(_project_root), text=True, stderr=subprocess.DEVNULL,
+            timeout=5,
         ).strip()
         if h:
             return h

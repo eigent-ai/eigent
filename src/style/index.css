@@ -501,6 +501,11 @@ code {
   background: rgba(255, 255, 255, 0.8);
 }
 
+/* Ensure toast notifications are always visible above dialogs and modals */
+[data-sonner-toaster] {
+  z-index: 2147483647 !important;
+}
+
 .stack-login-btn,
 .stack-login-btn button {
   width: 100%;
