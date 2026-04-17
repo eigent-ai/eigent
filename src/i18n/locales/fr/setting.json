@@ -19,6 +19,12 @@
   "light": "Light",
   "transparent": "Transparent",
 
+  "workspace-main-background": "Arrière-plan de l’espace de travail",
+  "workspace-main-background-description": "Motif appliqué uniquement aux panneaux principaux Workforce et Session.",
+  "workspace-main-background-none": "Par défaut",
+  "workspace-main-background-dots": "Points",
+  "workspace-main-background-blocks": "Grille",
+
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",
   "privacy-policy": "Privacy Policy",
@@ -79,6 +85,12 @@
   "dark": "Dark",
   "light": "Light",
   "transparent": "Transparent",
+
+  "workspace-main-background": "Arrière-plan de l’espace de travail",
+  "workspace-main-background-description": "Motif appliqué uniquement aux panneaux principaux Workforce et Session.",
+  "workspace-main-background-none": "Par défaut",
+  "workspace-main-background-dots": "Points",
+  "workspace-main-background-blocks": "Grille",
 
   "data-privacy": "Data Privacy",
   "data-privacy-description": "Eigent is built on a local-first principle to ensure your privacy. Your data remains on your device by default. Cloud features are optional and only use the minimum data necessary to function. For full details, visit our",

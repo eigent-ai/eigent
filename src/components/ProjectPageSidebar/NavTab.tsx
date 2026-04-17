@@ -21,8 +21,11 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WebSocketConnectionStatus } from '@/store/triggerStore';
+import { motion } from 'framer-motion';
 import { RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
+
+import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
 
 /** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
 export function workspaceTabButtonClass(active: boolean): string {
@@ -37,7 +40,7 @@ export const WORKSPACE_TAB_LABEL_CLASS =
   'min-w-0 flex-1 truncate text-text-label text-body-sm font-medium';
 
 const SPLIT_MAIN_BUTTON_CLASS =
-  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 pl-3 pr-1 relative flex flex-1 items-center text-left outline-none focus-visible:ring-border-secondary hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
+  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none focus-visible:ring-border-secondary hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
 
 const SPLIT_OUTER_EXTRA_CLASS =
   'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible';
@@ -135,8 +138,10 @@ export interface NavTabProps {
    */
   layout?: NavTabLayout;
   suffix?: ReactNode;
-  collapsed: boolean;
+  /** Split only: extra control after `suffix`; shown when the tab row is hovered (or focused within). */
+  endAction?: ReactNode;
   tooltip: string;
+  /** When true, tooltips are hidden (labels are visible in the fixed-width sidebar). */
   tooltipEnabledWhenCollapsed?: boolean;
   ariaLabel?: string;
   ariaCurrentPage?: boolean;
@@ -144,6 +149,8 @@ export interface NavTabProps {
   className?: string;
   /** When `layout="split"`, extra classes on the primary `button` only. */
   mainButtonClassName?: string;
+  /** Icon-only rail: fade/shrink label, trailing, and dot; keep leading icon fixed. */
+  folded?: boolean;
 }
 
 function tabMainInner({
@@ -153,6 +160,7 @@ function tabMainInner({
   showNotificationDot,
   notificationDotClassName,
   notificationDotTone = 'default',
+  folded = false,
 }: Pick<
   NavTabProps,
   | 'leading'
@@ -161,24 +169,37 @@ function tabMainInner({
   | 'showNotificationDot'
   | 'notificationDotClassName'
   | 'notificationDotTone'
+  | 'folded'
 >): ReactNode {
   return (
     <>
       {leading}
-      <span className={WORKSPACE_TAB_LABEL_CLASS}>{label}</span>
-      {trailing}
-      {showNotificationDot && (
-        <span
-          className={cn(
-            'shrink-0 rounded-full transition-all duration-300',
-            notificationDotTone === 'attention'
-              ? 'bg-text-error'
-              : 'bg-red-500',
-            notificationDotClassName
-          )}
-          aria-hidden
-        />
-      )}
+      <motion.div
+        className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden"
+        initial={false}
+        animate={{
+          opacity: folded ? 0 : 1,
+          maxWidth: folded ? 0 : 1600,
+        }}
+        transition={PROJECT_SIDEBAR_FOLD_SPRING}
+        aria-hidden={folded}
+        style={{ pointerEvents: folded ? 'none' : undefined }}
+      >
+        <span className={WORKSPACE_TAB_LABEL_CLASS}>{label}</span>
+        {trailing}
+        {showNotificationDot && (
+          <span
+            className={cn(
+              'shrink-0 rounded-full transition-all duration-300',
+              notificationDotTone === 'attention'
+                ? 'bg-text-error'
+                : 'bg-red-500',
+              notificationDotClassName
+            )}
+            aria-hidden
+          />
+        )}
+      </motion.div>
     </>
   );
 }
@@ -198,13 +219,14 @@ export function NavTab({
   notificationDotTone = 'default',
   layout = 'simple',
   suffix,
-  collapsed,
   tooltip,
   tooltipEnabledWhenCollapsed = false,
   ariaLabel,
   ariaCurrentPage,
   className,
   mainButtonClassName,
+  folded = false,
+  endAction,
 }: NavTabProps) {
   const inner = tabMainInner({
     leading,
@@ -213,9 +235,10 @@ export function NavTab({
     showNotificationDot,
     notificationDotClassName,
     notificationDotTone,
+    folded,
   });
 
-  const tooltipEnabled = tooltipEnabledWhenCollapsed ? collapsed : true;
+  const tooltipEnabled = folded || !tooltipEnabledWhenCollapsed;
 
   if (layout === 'split') {
     return (
@@ -229,19 +252,49 @@ export function NavTab({
           className={cn(
             workspaceTabButtonClass(active),
             SPLIT_OUTER_EXTRA_CLASS,
+            'group',
             className
           )}
         >
           <button
             type="button"
             onClick={onClick}
-            className={cn(SPLIT_MAIN_BUTTON_CLASS, mainButtonClassName)}
+            className={cn(
+              SPLIT_MAIN_BUTTON_CLASS,
+              folded && '!gap-0',
+              mainButtonClassName
+            )}
             aria-label={ariaLabel}
             aria-current={ariaCurrentPage ? 'page' : undefined}
           >
             {inner}
           </button>
-          {suffix}
+          {suffix || endAction ? (
+            <motion.div
+              className="min-h-8 min-w-0 flex items-stretch overflow-hidden"
+              initial={false}
+              animate={{
+                opacity: folded ? 0 : 1,
+                maxWidth: folded ? 0 : 160,
+              }}
+              transition={PROJECT_SIDEBAR_FOLD_SPRING}
+              aria-hidden={folded}
+              style={{ pointerEvents: folded ? 'none' : undefined }}
+            >
+              {suffix}
+              {endAction ? (
+                <div
+                  className={cn(
+                    'max-w-0 ease-out flex shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150',
+                    'group-hover:max-w-10 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100',
+                    'focus-within:max-w-10 focus-within:pointer-events-auto focus-within:opacity-100'
+                  )}
+                >
+                  {endAction}
+                </div>
+              ) : null}
+            </motion.div>
+          ) : null}
         </div>
       </TooltipSimple>
     );
@@ -257,7 +310,11 @@ export function NavTab({
       <button
         type="button"
         onClick={onClick}
-        className={cn(workspaceTabButtonClass(active), className)}
+        className={cn(
+          workspaceTabButtonClass(active),
+          folded && 'gap-0',
+          className
+        )}
         aria-label={ariaLabel}
         aria-current={ariaCurrentPage ? 'page' : undefined}
       >

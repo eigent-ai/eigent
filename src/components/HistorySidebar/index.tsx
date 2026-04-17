@@ -20,7 +20,6 @@ import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
@@ -51,9 +50,6 @@ import SearchInput from './SearchInput';
 export default function HistorySidebar() {
   const { t } = useTranslation();
   const { isOpen, close } = useSidebarStore();
-  const projectSidebarCollapsed = usePageTabStore(
-    (s) => s.projectSidebarCollapsed
-  );
   const navigate = useNavigate();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -318,7 +314,7 @@ export default function HistorySidebar() {
       const topBarTitleEl = document.getElementById('active-task-title-btn');
 
       let anchorEl: HTMLElement | null = null;
-      if (!projectSidebarCollapsed && sidebarTitleEl) {
+      if (sidebarTitleEl) {
         const r = sidebarTitleEl.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
           anchorEl = sidebarTitleEl;
@@ -352,7 +348,7 @@ export default function HistorySidebar() {
     return () => {
       window.removeEventListener('resize', updateAnchor);
     };
-  }, [isOpen, projectSidebarCollapsed]);
+  }, [isOpen]);
 
   if (!chatStore) {
     return <div>Loading...</div>;

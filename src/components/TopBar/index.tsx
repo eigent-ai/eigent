@@ -12,16 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
+import { proxyFetchGet } from '@/api/http';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
@@ -31,12 +31,13 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import {
+  Bell,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   House,
   Minus,
   Plus,
-  Power,
   Settings,
   Share,
   Sparkles,
@@ -52,6 +53,8 @@ import {
   useNavigationType,
 } from 'react-router-dom';
 import { toast } from 'sonner';
+
+const SUPPORT_EMAIL = 'support@eigent.ai';
 
 /** Tracks linear in-app history so back/forward buttons can enable/disable like a browser. */
 function useStackNavigationBounds() {
@@ -120,14 +123,9 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
-  const projectSidebarCollapsed = usePageTabStore(
-    (s) => s.projectSidebarCollapsed
-  );
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
-  const [endDialogOpen, setEndDialogOpen] = useState(false);
-  const [endProjectLoading, setEndProjectLoading] = useState(false);
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
@@ -137,9 +135,12 @@ function HeaderWin() {
     setPlatform(p);
   }, []);
 
-  // create new project handler reused by plus icon and label
+  const isHistoryRoute = useMemo(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/';
+    return path === '/history' || path.endsWith('/history');
+  }, [location.pathname]);
+
   const createNewProject = () => {
-    //Handles refocusing id & nonduplicate internally
     projectStore.createProject('new project');
     navigate('/');
   };
@@ -153,11 +154,6 @@ function HeaderWin() {
     }
     return t('layout.new-project');
   }, [chatStore, summaryTask, t]);
-
-  const isHistoryRoute = useMemo(() => {
-    const path = location.pathname.replace(/\/$/, '') || '/';
-    return path === '/history' || path.endsWith('/history');
-  }, [location.pathname]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -179,74 +175,43 @@ function HeaderWin() {
     }
   };
 
-  //TODO: Mark ChatStore details as completed
-  const handleEndProject = async () => {
-    const taskId = chatStore.activeTaskId;
-    const projectId = projectStore.activeProjectId;
+  const handleShare = async (taskId: string) => {
+    share(taskId);
+  };
 
-    if (!taskId) {
-      toast.error(t('layout.no-active-project-to-end'));
-      return;
-    }
-
-    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
-
-    setEndProjectLoading(true);
+  const handleDownloadLog = async () => {
     try {
-      const task = chatStore.tasks[taskId];
-
-      // Stop the task if it's running
-      if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
-          action: 'stop',
-        });
+      const exportLog = window.electronAPI?.exportLog;
+      if (!exportLog) {
+        toast.error(t('layout.general-error'));
+        return;
       }
-
-      // Stop Workforce
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch (error) {
-        console.log('Task may not exist on backend:', error);
-      }
-
-      // Delete from history using historyId
-      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          // Remove from local store
-          chatStore.removeTask(taskId);
-        } catch (error) {
-          console.log('History may not exist:', error);
+      const response = await exportLog();
+      if (!response?.success) {
+        if (response?.error) {
+          toast.error(response.error);
         }
-      } else {
-        console.warn(
-          'No historyId found for project or task finished, skipping history deletion'
-        );
+        return;
       }
-
-      // Create a completely new project instead of just a new task
-      // This ensures we start fresh without any residual state
-      projectStore.createProject('new project');
-
-      // Navigate to home with replace to force refresh
-      navigate('/', { replace: true });
-
-      toast.success(t('layout.project-ended-successfully'), {
-        closeButton: true,
-      });
-    } catch (error) {
-      console.error('Failed to end project:', error);
-      toast.error(t('layout.failed-to-end-project'), {
-        closeButton: true,
-      });
-    } finally {
-      setEndProjectLoading(false);
-      setEndDialogOpen(false);
+      if (response.savedPath) {
+        toast.success(`${t('layout.log-saved')} ${response.savedPath}`);
+        return;
+      }
+      if (response.data === 'log file is empty') {
+        toast.info(t('layout.log-file-empty'));
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : t('layout.general-error'));
     }
   };
 
-  const handleShare = async (taskId: string) => {
-    share(taskId);
+  const handleCopySupportEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(SUPPORT_EMAIL);
+      toast.success(t('layout.email-copied'));
+    } catch {
+      toast.error(t('layout.copy-failed'));
+    }
   };
 
   if (!chatStore) {
@@ -261,20 +226,11 @@ function HeaderWin() {
       id="titlebar"
       ref={titlebarRef}
     >
-      {/* left — macOS uses pl-16 for traffic lights only; no extra spacer */}
-      {platform !== 'darwin' && (
-        <div className="no-drag ml-2 gap-1 pr-4 mt-[1.5px] flex w-auto items-center justify-center">
-          <span className="text-label-md font-bold text-text-heading whitespace-nowrap">
-            Eigent
-          </span>
-        </div>
-      )}
-
       {/* center */}
       <div className="drag pr-2 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
-          <div className="no-drag gap-2 pl-2 flex items-center">
-            <div className="flex items-center">
+          <div className="no-drag gap-2 flex items-center">
+            <div className="pl-2 flex items-center">
               {isHistoryRoute ? (
                 <TooltipSimple
                   content={t('layout.home')}
@@ -352,7 +308,7 @@ function HeaderWin() {
                 </Button>
               </TooltipSimple>
             </div>
-            {location.pathname === '/' && projectSidebarCollapsed && (
+            {location.pathname === '/' && (
               <div className="no-drag ease-out animate-in fade-in-0 bg-surface-secondary inline-flex items-stretch overflow-hidden rounded-full duration-200">
                 <TooltipSimple
                   content={
@@ -404,30 +360,6 @@ function HeaderWin() {
           {location.pathname !== '/history' && (
             <>
               {chatStore.activeTaskId &&
-                chatStore.tasks[chatStore.activeTaskId as string] &&
-                ((chatStore.tasks[chatStore.activeTaskId as string]?.messages
-                  ?.length || 0) > 0 ||
-                  chatStore.tasks[chatStore.activeTaskId as string]
-                    ?.hasMessages ||
-                  chatStore.tasks[chatStore.activeTaskId as string]?.status !==
-                    ChatTaskStatus.PENDING) && (
-                  <TooltipSimple
-                    content={t('layout.end-project')}
-                    side="bottom"
-                    align="end"
-                  >
-                    <Button
-                      onClick={() => setEndDialogOpen(true)}
-                      variant="ghost"
-                      size="xs"
-                      className="no-drag bg-surface-cuation !text-text-cuation justify-center rounded-full"
-                    >
-                      <Power />
-                      {t('layout.end-project')}
-                    </Button>
-                  </TooltipSimple>
-                )}
-              {chatStore.activeTaskId &&
                 chatStore.tasks[chatStore.activeTaskId as string]?.status ===
                   ChatTaskStatus.FINISHED && (
                   <TooltipSimple
@@ -448,6 +380,57 @@ function HeaderWin() {
                     </Button>
                   </TooltipSimple>
                 )}
+              <TooltipSimple
+                content={t('layout.notifications')}
+                side="bottom"
+                align="end"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="no-drag rounded-full"
+                  aria-label={t('layout.notifications')}
+                >
+                  <Bell className="h-4 w-4" aria-hidden />
+                </Button>
+              </TooltipSimple>
+              <DropdownMenu>
+                <TooltipSimple
+                  content={t('layout.support')}
+                  side="bottom"
+                  align="end"
+                >
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="no-drag rounded-full"
+                      aria-label={t('layout.support')}
+                      aria-haspopup="menu"
+                    >
+                      <CircleAlert className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipSimple>
+                <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void handleDownloadLog();
+                    }}
+                  >
+                    {t('layout.download-logs')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void handleCopySupportEmail();
+                    }}
+                  >
+                    {t('layout.copy-email')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <TooltipSimple
                 content={t('layout.refer-friends')}
                 side="bottom"
@@ -511,12 +494,6 @@ function HeaderWin() {
           </div>
         </div>
       )}
-      <EndNoticeDialog
-        open={endDialogOpen}
-        onOpenChange={setEndDialogOpen}
-        onConfirm={handleEndProject}
-        loading={endProjectLoading}
-      />
     </div>
   );
 }

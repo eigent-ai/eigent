@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Check, Copy, FileText } from 'lucide-react';
+import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -106,7 +106,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`rounded-xl px-sm py-3 flex w-full flex-col bg-transparent ${className || ''} group overflow-hidden`}
+      className={`rounded-xl px-sm py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
     >
       <MarkDown
         content={content}
@@ -143,21 +143,38 @@ export function AgentMessageCard({
       {showDeferredFileUi && deferredFooter != null && (
         <div className="mt-[10px] w-full">{deferredFooter}</div>
       )}
-      <div className="mt-1 flex shrink-0 justify-end">
-        <div className="pointer-events-none opacity-0 transition-opacity duration-300 group-hover:pointer-events-auto group-hover:opacity-100">
-          <Button
-            onClick={handleCopy}
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-          >
-            {copied ? (
-              <Check className="h-4 w-4 text-text-success" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
+      <div className="mt-3 gap-1 flex shrink-0 justify-start">
+        <Button
+          onClick={handleCopy}
+          variant="ghost"
+          size="xs"
+          buttonContent="icon-only"
+          aria-label={t('setting.copy')}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-text-success" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+        <Button
+          onClick={() => {}}
+          variant="ghost"
+          size="xs"
+          buttonContent="icon-only"
+          aria-label="Thumb up"
+        >
+          <ThumbsUp className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => {}}
+          variant="ghost"
+          size="xs"
+          buttonContent="icon-only"
+          aria-label="Thumb down"
+        >
+          <ThumbsDown className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );

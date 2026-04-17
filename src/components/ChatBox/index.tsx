@@ -19,21 +19,14 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
-import { AddWorker } from '@/components/AddWorker';
-import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
-import FoldedPanel from '@/components/Workforce/FoldedPanel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { generateUniqueId, replayActiveTask } from '@/lib';
+import { generateUniqueId } from '@/lib';
 import { cn } from '@/lib/utils';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
-import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Maximize2, Plus, TriangleAlert, X } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -46,36 +39,28 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
-import { CHAT_TIMELINE_DEFAULT_COLLAPSED, ChatTimeline } from './ChatTimeline';
-import { HeaderBox } from './HeaderBox';
+import { type ChatTimelineEntry, ChatTimeline } from './ChatTimeline';
 import { ProjectChatContainer } from './ProjectChatContainer';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
 const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
 /** Small gap between last message and BottomBox top. */
 const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
-/** Below this ChatBox width, the timeline uses a header dropdown instead of the left rail. */
-const CHAT_TIMELINE_BREAKPOINT_PX = 600;
-/** Fixed width for the folded workforce rail (matches useInitialWorkforceFoldedLayout target). */
-const WORKFORCE_FOLDED_RAIL_CLASS = 'w-[360px]';
-
 export type ChatBoxProps = {
-  /** When the full-screen workforce overlay is open; pauses folded panel agent sync. */
-  workforceExpandedOverlayOpen?: boolean;
-  onToggleWorkforceExpandedOverlay?: () => void;
+  /** When true, chat history is shown in the header popover instead of the left rail. */
+  isNarrowTimelineLayout: boolean;
+  chatTimelineCollapsed: boolean;
+  onToggleChatTimeline: () => void;
+  taskTimelineEntries: ChatTimelineEntry[];
 };
 
 export default function ChatBox({
-  workforceExpandedOverlayOpen = false,
-  onToggleWorkforceExpandedOverlay,
+  isNarrowTimelineLayout,
+  chatTimelineCollapsed,
+  onToggleChatTimeline,
+  taskTimelineEntries,
 }: ChatBoxProps): JSX.Element {
   const [message, setMessage] = useState<string>('');
-  const [chatTimelineCollapsed, setChatTimelineCollapsed] = useState(
-    CHAT_TIMELINE_DEFAULT_COLLAPSED
-  );
-  const [timelineDropdownOpen, setTimelineDropdownOpen] = useState(false);
-  const chatBoxContainerRef = useRef<HTMLDivElement>(null);
-  const [chatBoxWidth, setChatBoxWidth] = useState<number | null>(null);
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -86,17 +71,6 @@ export default function ChatBox({
     (s) => s.workspaceChatFocusRequestId
   );
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
-  const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
-  const workforceRailCollapsed = usePageTabStore(
-    (s) => s.workforceRailCollapsed
-  );
-  const toggleWorkforceRailCollapsed = usePageTabStore(
-    (s) => s.toggleWorkforceRailCollapsed
-  );
-  const setHasAgentFiles = usePageTabStore((s) => s.setHasAgentFiles);
-  const markTabAsUnviewed = usePageTabStore((s) => s.markTabAsUnviewed);
-  const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [hasModel, setHasModel] = useState(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -186,6 +160,28 @@ export default function ChatBox({
 
   const navigate = useNavigate();
 
+  const starterSuggestions = useMemo(
+    () => [
+      {
+        label: t('layout.it-ticket-creation'),
+        message: t('layout.it-ticket-creation-message'),
+      },
+      {
+        label: t('layout.bank-transfer-csv-analysis'),
+        message: t('layout.bank-transfer-csv-analysis-message'),
+      },
+      {
+        label: t('layout.find-duplicate-files'),
+        message: t('layout.find-duplicate-files-message'),
+      },
+    ],
+    [t]
+  );
+
+  const handleSelectModel = useCallback(() => {
+    navigate('/history?tab=agents');
+  }, [navigate]);
+
   // Task time tracking
   const [taskTime, setTaskTime] = useState(
     chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
@@ -193,7 +189,6 @@ export default function ChatBox({
   );
 
   const [loading, setLoading] = useState(false);
-  const [isReplayLoading, setIsReplayLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
   const activeTaskId = chatStore?.activeTaskId;
@@ -233,67 +228,6 @@ export default function ChatBox({
     return projectStore.getAllChatStores(projectStore.activeProjectId);
   }, [projectStore]);
 
-  const allTaskEntries = useMemo(() => {
-    const pid = projectStore.activeProjectId;
-    if (!pid) return [];
-    const stores = projectStore.getAllChatStores(pid);
-    const entries: Array<{
-      chatId: string;
-      taskId: string;
-      task: ChatStore['tasks'][string];
-      firstUserMessageId: string | null;
-    }> = [];
-    for (const { chatId, chatStore: cs } of stores) {
-      const state = cs.getState();
-      const tid = state.activeTaskId;
-      if (!tid || !state.tasks[tid]) continue;
-      const task = state.tasks[tid];
-      const hasUserMessages = task.messages.some(
-        (m) => m.role === 'user' && m.content
-      );
-      if (!hasUserMessages) continue;
-      const firstUser = task.messages.find((m) => m.role === 'user');
-      entries.push({
-        chatId,
-        taskId: tid,
-        task,
-        firstUserMessageId: firstUser?.id ?? null,
-      });
-    }
-    return entries;
-    // `chatStore` triggers recalculation when the active chat store changes (adapter subscription);
-    // the body reads all project stores via `getAllChatStores`, so it must re-run on any chat update.
-  }, [projectStore, chatStore]);
-
-  const isNarrowTimelineLayout = useMemo(
-    () => chatBoxWidth !== null && chatBoxWidth < CHAT_TIMELINE_BREAKPOINT_PX,
-    [chatBoxWidth]
-  );
-
-  useLayoutEffect(() => {
-    const el = chatBoxContainerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (typeof w === 'number' && Number.isFinite(w)) setChatBoxWidth(w);
-    });
-    ro.observe(el);
-    setChatBoxWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!isNarrowTimelineLayout) setTimelineDropdownOpen(false);
-  }, [isNarrowTimelineLayout]);
-
-  const handleScrollToQueryForTimeline = useCallback(
-    (id: string) => {
-      setScrollToQueryId(id);
-      if (isNarrowTimelineLayout) setTimelineDropdownOpen(false);
-    },
-    [setScrollToQueryId, isNarrowTimelineLayout]
-  );
-
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
     if (!chatStore) return false;
@@ -319,20 +253,6 @@ export default function ChatBox({
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);
-
-  /** Persisted fold only applies once the project has chat content; welcome state keeps the rail expanded. */
-  const workforceRailEffectiveCollapsed =
-    workforceRailCollapsed && hasAnyMessages;
-
-  useEffect(() => {
-    if (!hasAnyMessages && workforceExpandedOverlayOpen) {
-      onToggleWorkforceExpandedOverlay?.();
-    }
-  }, [
-    hasAnyMessages,
-    workforceExpandedOverlayOpen,
-    onToggleWorkforceExpandedOverlay,
-  ]);
 
   useLayoutEffect(() => {
     if (!chatStore?.activeTaskId || !hasAnyMessages) return;
@@ -777,44 +697,6 @@ export default function ChatBox({
     }
   }, [share_token, handleSendShare]);
 
-  const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const activeProjectId = projectStore.activeProjectId;
-      if (!activeProjectId) return;
-
-      for (const file of Array.from(files)) {
-        try {
-          const reader = new FileReader();
-          reader.onload = async () => {
-            if (reader.result && window.ipcRenderer) {
-              await window.ipcRenderer.invoke('save-file-to-agent-folder', {
-                projectId: activeProjectId,
-                fileName: file.name,
-                content: reader.result,
-              });
-              setHasAgentFiles(true);
-              if (activeWorkspaceTab !== 'inbox') {
-                markTabAsUnviewed('inbox', activeProjectId);
-              }
-            }
-          };
-          reader.onerror = () => {
-            console.error('Error reading file:', file.name, reader.error);
-          };
-          reader.readAsArrayBuffer(file);
-        } catch (error) {
-          console.error('Error uploading file:', error);
-        }
-      }
-
-      e.target.value = '';
-    },
-    [projectStore, setHasAgentFiles, markTabAsUnviewed, activeWorkspaceTab]
-  );
-
   if (!chatStore) {
     return <div>Loading...</div>;
   }
@@ -853,13 +735,6 @@ export default function ChatBox({
     } catch (error) {
       console.error('Select File Error:', error);
     }
-  };
-
-  // Replay handler
-  const handleReplay = async () => {
-    setIsReplayLoading(true);
-    await replayActiveTask(chatStore, projectStore, navigate);
-    setIsReplayLoading(false);
   };
 
   // Pause/Resume handler
@@ -1123,51 +998,8 @@ export default function ChatBox({
     }
   };
 
-  const workforcePanelKey = chatStore.activeTaskId ?? '';
-
   const chatColumn = (
     <>
-      {/* Header: hidden on new-project welcome state; shown once there is chat content */}
-      {chatStore.activeTaskId && hasAnyMessages && (
-        <HeaderBox
-          totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
-          status={chatStore.tasks[chatStore.activeTaskId]?.status}
-          replayLoading={isReplayLoading}
-          onReplay={handleReplay}
-          narrowTimelineLayout={isNarrowTimelineLayout}
-          timelineDropdownOpen={timelineDropdownOpen}
-          onTimelineDropdownOpenChange={setTimelineDropdownOpen}
-          timelineDropdownContent={
-            isNarrowTimelineLayout ? (
-              <ChatTimeline
-                collapsed={false}
-                entries={allTaskEntries}
-                activeTaskId={chatStore.activeTaskId}
-                setScrollToQueryId={handleScrollToQueryForTimeline}
-                title={t('layout.chat-history-title', {
-                  defaultValue: 'Chat history',
-                })}
-                emptyLabel={t('layout.no-tasks', {
-                  defaultValue: 'No tasks',
-                })}
-              />
-            ) : null
-          }
-          chatTimelineCollapsed={chatTimelineCollapsed}
-          onToggleChatTimeline={() => setChatTimelineCollapsed((c) => !c)}
-          workforceRailCollapsed={
-            activeWorkspaceTab === 'workforce'
-              ? workforceRailEffectiveCollapsed
-              : undefined
-          }
-          onToggleWorkforceRail={
-            activeWorkspaceTab === 'workforce'
-              ? toggleWorkforceRailCollapsed
-              : undefined
-          }
-        />
-      )}
-
       {/* Main: chat timeline rail + scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
       <div className="min-h-0 relative flex flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex flex-1 flex-row overflow-hidden">
@@ -1182,7 +1014,7 @@ export default function ChatBox({
             >
               <ChatTimeline
                 collapsed={chatTimelineCollapsed}
-                entries={allTaskEntries}
+                entries={taskTimelineEntries}
                 activeTaskId={chatStore.activeTaskId}
                 setScrollToQueryId={setScrollToQueryId}
                 title={t('layout.chat-history-title', {
@@ -1219,6 +1051,12 @@ export default function ChatBox({
                       state="input"
                       queuedMessages={queuedMessages}
                       onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                      noModelOverlay={!hasModel}
+                      onSelectModel={handleSelectModel}
+                      starterSuggestions={
+                        hasModel ? starterSuggestions : undefined
+                      }
+                      onStarterSuggestion={setMessage}
                       inputProps={{
                         value: message,
                         onChange: setMessage,
@@ -1243,56 +1081,6 @@ export default function ChatBox({
                       }}
                     />
                   )}
-
-                  <div className="mt-3 gap-2 flex h-[210px] flex-1 items-start justify-center">
-                    {!hasModel ? (
-                      <div className="gap-2 flex items-center">
-                        <div
-                          onClick={() => {
-                            navigate('/history?tab=agents');
-                          }}
-                          className="gap-2 rounded-md bg-surface-warning px-sm py-xs flex cursor-pointer items-center"
-                        >
-                          <TriangleAlert
-                            size={20}
-                            className="text-icon-warning"
-                          />
-                          <span className="text-xs font-medium text-text-warning flex-1 leading-[20px]">
-                            {t('layout.please-select-model')}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mr-2 gap-2 flex flex-col items-center">
-                        {[
-                          {
-                            label: t('layout.it-ticket-creation'),
-                            message: t('layout.it-ticket-creation-message'),
-                          },
-                          {
-                            label: t('layout.bank-transfer-csv-analysis'),
-                            message: t(
-                              'layout.bank-transfer-csv-analysis-message'
-                            ),
-                          },
-                          {
-                            label: t('layout.find-duplicate-files'),
-                            message: t('layout.find-duplicate-files-message'),
-                          },
-                        ].map(({ label, message }) => (
-                          <div
-                            key={label}
-                            className="rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium text-button-tertiery-text-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
-                            onClick={() => {
-                              setMessage(message);
-                            }}
-                          >
-                            <span>{label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
@@ -1307,6 +1095,8 @@ export default function ChatBox({
                     state={getBottomBoxState()}
                     queuedMessages={queuedMessages}
                     onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                    noModelOverlay={!hasModel}
+                    onSelectModel={handleSelectModel}
                     subtitle={
                       getBottomBoxState() === 'confirm'
                         ? (() => {
@@ -1366,113 +1156,8 @@ export default function ChatBox({
   );
 
   return (
-    <div
-      ref={chatBoxContainerRef}
-      className="rounded-2xl border-border-tertiary bg-surface-secondary h-full w-full flex-none items-center justify-center overflow-hidden border-solid"
-    >
-      {activeWorkspaceTab === 'workforce' ? (
-        <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-          <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
-            {chatColumn}
-          </div>
-          <div
-            id="workforce-folded-rail"
-            className={cn(
-              'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
-              workforceRailEffectiveCollapsed
-                ? 'w-0'
-                : WORKFORCE_FOLDED_RAIL_CLASS
-            )}
-            aria-hidden={workforceRailEffectiveCollapsed}
-          >
-            <div className="bg-surface-secondary gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
-              <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
-                <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
-                  {t('layout.aiWorkforce')}
-                </span>
-              </div>
-              <div className="gap-1 flex shrink-0 items-center">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="rounded-lg items-center justify-center"
-                  onClick={() => setAddWorkerDialogOpen(true)}
-                >
-                  <Plus />
-                  {t('triggers.add')}
-                </Button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  multiple
-                  className="hidden"
-                />
-                <AddWorker
-                  isOpen={addWorkerDialogOpen}
-                  onOpenChange={setAddWorkerDialogOpen}
-                />
-                {hasAnyMessages && (
-                  <TooltipSimple
-                    content={
-                      workforceExpandedOverlayOpen
-                        ? t('layout.close')
-                        : t('layout.expand-workforce', {
-                            defaultValue: 'Expand workforce',
-                          })
-                    }
-                    delayDuration={300}
-                    side="bottom"
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      buttonRadius="lg"
-                      className="shrink-0"
-                      onClick={() => onToggleWorkforceExpandedOverlay?.()}
-                      aria-pressed={workforceExpandedOverlayOpen}
-                      aria-label={
-                        workforceExpandedOverlayOpen
-                          ? t('layout.close')
-                          : t('layout.expand-workforce', {
-                              defaultValue: 'Expand workforce',
-                            })
-                      }
-                    >
-                      {workforceExpandedOverlayOpen ? (
-                        <X className="h-4 w-4" />
-                      ) : (
-                        <Maximize2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipSimple>
-                )}
-              </div>
-            </div>
-            <div className="min-h-0 min-w-0 w-full flex-1">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`${workforcePanelKey}-folded`}
-                  initial={{ opacity: 0, filter: 'blur(4px)' }}
-                  animate={{ opacity: 1, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, filter: 'blur(4px)' }}
-                  transition={{ duration: 0.2 }}
-                  className="min-w-0 h-full w-full"
-                >
-                  <FoldedPanel
-                    pauseAgentWorkspaceSync={workforceExpandedOverlayOpen}
-                  />
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="relative flex h-full w-full flex-col overflow-hidden">
-          {chatColumn}
-        </div>
-      )}
+    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
+      {chatColumn}
     </div>
   );
 }

@@ -598,7 +598,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="border-border-tertiary gap-2 p-2 flex w-full shrink-0 items-center border-x-0 border-t-0 border-b border-solid">
+      <div className="gap-2 p-2 flex w-full shrink-0 items-center">
         <div className="min-w-0 gap-1 flex max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"
@@ -689,7 +689,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         </div>
       </div>
 
-      <div className="min-h-0 flex flex-1 overflow-hidden">
+      <div className="min-h-0 border-border-tertiary flex flex-1 overflow-hidden border-x-0 border-b-0 border-solid">
         {/* sidebar */}
         <div className="border-border-tertiary w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
           <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">

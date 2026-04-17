@@ -19,6 +19,12 @@
   "light": "라이트",
   "transparent": "투명",
 
+  "workspace-main-background": "작업 영역 배경",
+  "workspace-main-background-description": "Workforce 및 Session 메인 패널에만 적용됩니다.",
+  "workspace-main-background-none": "기본",
+  "workspace-main-background-dots": "도트",
+  "workspace-main-background-blocks": "격자",
+
   "data-privacy": "데이터 개인정보 보호",
   "data-privacy-description": "Eigent는 개인정보 보호를 위해 로컬 우선 원칙을 기반으로 구축되었습니다. 기본적으로 데이터는 사용자의 기기에 남아 있습니다. 클라우드 기능은 선택 사항이며 작동에 필요한 최소한의 데이터만 사용합니다. 자세한 내용은 당사의",
   "privacy-policy": "개인정보 처리방침",
@@ -79,6 +85,12 @@
   "dark": "다크",
   "light": "라이트",
   "transparent": "투명",
+
+  "workspace-main-background": "작업 영역 배경",
+  "workspace-main-background-description": "Workforce 및 Session 메인 패널에만 적용됩니다.",
+  "workspace-main-background-none": "기본",
+  "workspace-main-background-dots": "도트",
+  "workspace-main-background-blocks": "격자",
 
   "data-privacy": "데이터 개인정보 보호",
   "data-privacy-description": "Eigent는 개인정보 보호를 위해 로컬 우선 원칙을 기반으로 구축되었습니다. 기본적으로 데이터는 사용자의 기기에 남아 있습니다. 클라우드 기능은 선택 사항이며 작동에 필요한 최소한의 데이터만 사용합니다. 자세한 내용은 당사의",

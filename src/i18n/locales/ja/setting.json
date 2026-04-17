@@ -19,6 +19,12 @@
   "light": "ライト",
   "transparent": "透明",
 
+  "workspace-main-background": "ワークスペースの背景",
+  "workspace-main-background-description": "Workforce と Session のメインパネルにのみ適用されます。",
+  "workspace-main-background-none": "デフォルト",
+  "workspace-main-background-dots": "ドット",
+  "workspace-main-background-blocks": "グリッド",
+
   "data-privacy": "データプライバシー",
   "data-privacy-description": "Eigentはプライバシーを確保するためにローカルファーストの原則に基づいて構築されています。デフォルトでは、データはお客様のデバイスに残ります。クラウド機能はオプションであり、機能するために必要な最小限のデータのみを使用します。詳細については、当社の",
   "privacy-policy": "プライバシーポリシー",
@@ -79,6 +85,12 @@
   "dark": "ダーク",
   "light": "ライト",
   "transparent": "透明",
+
+  "workspace-main-background": "ワークスペースの背景",
+  "workspace-main-background-description": "Workforce と Session のメインパネルにのみ適用されます。",
+  "workspace-main-background-none": "デフォルト",
+  "workspace-main-background-dots": "ドット",
+  "workspace-main-background-blocks": "グリッド",
 
   "data-privacy": "データプライバシー",
   "data-privacy-description": "Eigentはプライバシーを確保するためにローカルファーストの原則に基づいて構築されています。デフォルトでは、データはお客様のデバイスに残ります。クラウド機能はオプションであり、機能するために必要な最小限のデータのみを使用します。詳細については、当社の",

@@ -99,3 +99,13 @@ export const AgentStatusValue = {
 
 export type AgentStatusType =
   (typeof AgentStatusValue)[keyof typeof AgentStatusValue];
+
+/**
+ * Session side-panel mode: multi-agent workforce or single-agent focus.
+ */
+export const SessionMode = {
+  WORKFORCE: 'workforce',
+  SINGLE_AGENT: 'single-agent',
+} as const;
+
+export type SessionModeType = (typeof SessionMode)[keyof typeof SessionMode];

@@ -179,8 +179,11 @@ function ChatTimelineRow({
   );
 }
 
-/** Initial fold state for the task timeline rail (ChatBox `useState` should match). */
+/** Initial fold state for the task timeline rail (session chrome `useState` should match). */
 export const CHAT_TIMELINE_DEFAULT_COLLAPSED = true;
+
+/** Below this chat column width, the timeline uses a header dropdown instead of the left rail. */
+export const CHAT_TIMELINE_BREAKPOINT_PX = 600;
 
 export type ChatTimelineEntry = {
   chatId: string;

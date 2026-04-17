@@ -19,6 +19,12 @@
   "light": "Claro",
   "transparent": "Transparente",
 
+  "workspace-main-background": "Fondo del espacio de trabajo",
+  "workspace-main-background-description": "Solo para los paneles principales de Workforce y Session.",
+  "workspace-main-background-none": "Predeterminado",
+  "workspace-main-background-dots": "Puntos",
+  "workspace-main-background-blocks": "Cuadrícula",
+
   "data-privacy": "Privacidad de datos",
   "data-privacy-description": "Eigent está construido sobre un principio local-first para garantizar tu privacidad. Tus datos permanecen en tu dispositivo por defecto. Las características en la nube son opcionales y solo utilizan los datos mínimos necesarios para funcionar. Para obtener más detalles, visita nuestra",
   "privacy-policy": "Política de privacidad",
@@ -79,6 +85,12 @@
   "dark": "Oscuro",
   "light": "Claro",
   "transparent": "Transparente",
+
+  "workspace-main-background": "Fondo del espacio de trabajo",
+  "workspace-main-background-description": "Solo para los paneles principales de Workforce y Session.",
+  "workspace-main-background-none": "Predeterminado",
+  "workspace-main-background-dots": "Puntos",
+  "workspace-main-background-blocks": "Cuadrícula",
 
   "data-privacy": "Privacidad de datos",
   "data-privacy-description": "Eigent está construido sobre un principio local-first para garantizar tu privacidad. Tus datos permanecen en tu dispositivo por defecto. Las características en la nube son opcionales y solo utilizan los datos mínimos necesarios para funcionar. Para obtener más detalles, visita nuestra",

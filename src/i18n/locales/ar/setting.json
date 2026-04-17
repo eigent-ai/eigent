@@ -19,6 +19,12 @@
   "light": "فاتح",
   "transparent": "شفاف",
 
+  "workspace-main-background": "خلفية مساحة العمل",
+  "workspace-main-background-description": "تُطبَّق على لوحتي Workforce وSession الرئيسيتين فقط.",
+  "workspace-main-background-none": "افتراضي",
+  "workspace-main-background-dots": "نقاط",
+  "workspace-main-background-blocks": "شبكة",
+
   "data-privacy": "خصوصية البيانات",
   "data-privacy-description": "يعتمد أيجنت على الوضع المحلي الجديد ويضمن خصوصيتك. تبقى بياناتك على جهازك افتراضيًا. أذونات السحابة اختيارية، ويُستخدم حد البيانات لأغراض العمل فقط",
   "privacy-policy": "سياسة الخصوصية",
@@ -197,6 +203,12 @@
   "dark": "غامق",
   "light": "فاتح",
   "transparent": "شفاف",
+
+  "workspace-main-background": "خلفية مساحة العمل",
+  "workspace-main-background-description": "تُطبَّق على لوحتي Workforce وSession الرئيسيتين فقط.",
+  "workspace-main-background-none": "افتراضي",
+  "workspace-main-background-dots": "نقاط",
+  "workspace-main-background-blocks": "شبكة",
 
   "data-privacy": "خصوصية البيانات",
   "data-privacy-description": "يعتمد أيجنت على الوضع المحلي الجديد ويضمن خصوصيتك. تبقى بياناتك على جهازك افتراضيًا. أذونات السحابة اختيارية، ويُستخدم حد البيانات لأغراض العمل فقط",

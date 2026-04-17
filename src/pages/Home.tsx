@@ -13,77 +13,101 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { checkLocalServerStale } from '@/api/http';
-import ChatBox from '@/components/ChatBox';
+import {
+  DotPatternBackground,
+  GridPatternBackground,
+} from '@/components/Background';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
+import {
+  PROJECT_SIDEBAR_FOLD_SPRING,
+  PROJECT_SIDEBAR_RAIL_WIDTH_PX,
+} from '@/components/ProjectPageSidebar/constants';
+import SessionGroup from '@/components/Session/SessionGroup';
+import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
+import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
-import { AnimatePresence, motion, type Transition } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { AddWorker } from '@/components/AddWorker';
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { TooltipSimple } from '@/components/ui/tooltip';
-import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
-import { WorkspaceContent } from '@/components/Workforce/WorkspaceContent';
-
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useTriggerStore } from '@/store/triggerStore';
 import {
-  ArrowUpDown,
-  Maximize2,
-  Plus,
-  SquareChevronRight,
-  SquareCode,
-  X,
-} from 'lucide-react';
-import Overview, {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
-  sortTriggersList,
   type TriggerSortKey,
 } from '../components/Trigger/Triggers';
 
-import { ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import Session from '@/components/Session';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable';
+import type {
+  ImperativePanelGroupHandle,
+  ImperativePanelHandle,
+} from 'react-resizable-panels';
 
-import BottomBar from '@/components/BottomBar';
+/** Same spring as project sidebar fold animation. */
+const HOME_MAIN_LAYOUT_SPRING = PROJECT_SIDEBAR_FOLD_SPRING;
 
-/** Keep in sync with ProjectPageSidebar PROJECT_SIDEBAR_SPRING */
-const HOME_MAIN_LAYOUT_SPRING: Transition = {
-  type: 'spring',
-  stiffness: 380,
-  damping: 38,
-  mass: 0.85,
-};
+/** Sidebar width bounds (react-resizable-panels uses %; derived from shell width). */
+const SIDEBAR_MIN_PX = 240;
+const SIDEBAR_MAX_PX = 400;
+/** Default expanded sidebar width when nothing is stored (px). */
+const DEFAULT_SIDEBAR_WIDTH_PX = 288;
+const SIDEBAR_WIDTH_STORAGE_KEY = 'eigent-home-sidebar-width-px';
+
+function clampPct(n: number): number {
+  return Math.min(100, Math.max(1, n));
+}
+
+function readStoredSidebarWidthPx(): number {
+  if (typeof window === 'undefined') return DEFAULT_SIDEBAR_WIDTH_PX;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    if (raw == null) return DEFAULT_SIDEBAR_WIDTH_PX;
+    const n = Number.parseFloat(raw);
+    if (!Number.isFinite(n)) return DEFAULT_SIDEBAR_WIDTH_PX;
+    return Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, n));
+  } catch {
+    return DEFAULT_SIDEBAR_WIDTH_PX;
+  }
+}
 
 export default function Home() {
   const { t } = useTranslation();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
-  const { activeWorkspaceTab, setHasAgentFiles } = usePageTabStore();
-  const workspaceChatFocusRequestId = usePageTabStore(
-    (s) => s.workspaceChatFocusRequestId
+  const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
+    usePageTabStore();
+  const triggerAddDialogRequestId = usePageTabStore(
+    (s) => s.triggerAddDialogRequestId
+  );
+  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
+  const setProjectSidebarFolded = usePageTabStore(
+    (s) => s.setProjectSidebarFolded
   );
 
-  const { wsConnectionStatus, triggers } = useTriggerStore();
   const email = useAuthStore((s) => s.email);
+  const workspaceMainBackground = useAuthStore(
+    (s) => s.workspaceMainBackground
+  );
 
-  const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
-  const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
-  const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
-  const [isWorkforceExpandedOverlayOpen, setIsWorkforceExpandedOverlayOpen] =
-    useState(false);
+  const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const [triggerSortBy, setTriggerSortBy] =
     useState<TriggerSortKey>('createdAt');
@@ -99,23 +123,184 @@ export default function Home() {
     }
   );
 
-  const sortedTriggersForHeader = useMemo(
-    () => sortTriggersList(triggers, triggerSortBy),
-    [triggers, triggerSortBy]
+  const shellPanelGroupRef = useRef<HTMLDivElement>(null);
+  const shellWidthRef = useRef(0);
+  const shellPanelGroupImperativeRef = useRef<ImperativePanelGroupHandle>(null);
+  const projectSidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const applyingSidebarLayoutRef = useRef(false);
+  /** Expanded sidebar width in px; only user drag (or stored value) changes this — window resize adjusts % to keep this width. */
+  const sidebarWidthPxRef = useRef(readStoredSidebarWidthPx());
+  const persistSidebarWidthTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  /** Percent constraints for the sidebar panel (1–100). `rail` = folded rail width. */
+  const [sidebarPct, setSidebarPct] = useState({
+    min: 18,
+    max: 35,
+    rail: 4,
+  });
+
+  const mainPanelPct = useMemo(() => {
+    const min = Math.max(1, 100 - sidebarPct.max);
+    const max = Math.max(min, Math.min(99, 100 - sidebarPct.min));
+    return { min, max };
+  }, [sidebarPct.min, sidebarPct.max]);
+
+  /** When folded, main must be allowed to reach `100 - rail` (~98%); else max ~82% blocks a 40px sidebar. */
+  const mainPanelMaxSize = useMemo(() => {
+    if (projectSidebarFolded) {
+      return Math.min(99, 100 - sidebarPct.rail);
+    }
+    return mainPanelPct.max;
+  }, [projectSidebarFolded, sidebarPct.rail, mainPanelPct.max]);
+
+  const schedulePersistSidebarWidth = useCallback((px: number) => {
+    if (persistSidebarWidthTimeoutRef.current) {
+      clearTimeout(persistSidebarWidthTimeoutRef.current);
+    }
+    persistSidebarWidthTimeoutRef.current = setTimeout(() => {
+      persistSidebarWidthTimeoutRef.current = null;
+      try {
+        window.localStorage.setItem(
+          SIDEBAR_WIDTH_STORAGE_KEY,
+          String(Math.round(px))
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 250);
+  }, []);
+
+  /** Recompute sidebar % from fixed px so the rail does not grow/shrink when the window resizes. */
+  const applyExpandedSidebarLayout = useCallback(() => {
+    const shell = shellPanelGroupRef.current;
+    const group = shellPanelGroupImperativeRef.current;
+    if (!shell || !group) return;
+    if (usePageTabStore.getState().projectSidebarFolded) return;
+    const w = shell.getBoundingClientRect().width;
+    if (w <= 0) return;
+    const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
+    const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
+    const px = Math.min(
+      SIDEBAR_MAX_PX,
+      Math.max(SIDEBAR_MIN_PX, sidebarWidthPxRef.current)
+    );
+    let pct = (px / w) * 100;
+    pct = Math.min(maxPct, Math.max(minPct, pct));
+    applyingSidebarLayoutRef.current = true;
+    group.setLayout([pct, 100 - pct]);
+    requestAnimationFrame(() => {
+      applyingSidebarLayoutRef.current = false;
+    });
+  }, []);
+
+  const handleShellPanelLayout = useCallback(
+    (sizes: number[]) => {
+      if (applyingSidebarLayoutRef.current) return;
+      const shell = shellPanelGroupRef.current;
+      if (!shell) return;
+      const shellW = shell.getBoundingClientRect().width;
+      if (shellW <= 0) return;
+
+      const sidebarPx = (sizes[0] / 100) * shellW;
+      const folded = usePageTabStore.getState().projectSidebarFolded;
+
+      if (!folded && sidebarPx < SIDEBAR_MIN_PX - 0.5) {
+        applyingSidebarLayoutRef.current = true;
+        setProjectSidebarFolded(true);
+        const rail = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / shellW) * 100);
+        const main = Math.min(99, Math.max(0, 100 - rail));
+        shellPanelGroupImperativeRef.current?.setLayout([rail, main]);
+        requestAnimationFrame(() => {
+          applyingSidebarLayoutRef.current = false;
+        });
+        return;
+      }
+
+      if (folded && sidebarPx > PROJECT_SIDEBAR_RAIL_WIDTH_PX + 1.5) {
+        applyingSidebarLayoutRef.current = true;
+        setProjectSidebarFolded(false);
+        requestAnimationFrame(() => {
+          applyingSidebarLayoutRef.current = false;
+        });
+        return;
+      }
+
+      if (!folded) {
+        sidebarWidthPxRef.current = Math.min(
+          SIDEBAR_MAX_PX,
+          Math.max(SIDEBAR_MIN_PX, sidebarPx)
+        );
+        schedulePersistSidebarWidth(sidebarWidthPxRef.current);
+      }
+    },
+    [schedulePersistSidebarWidth, setProjectSidebarFolded]
   );
 
-  const triggerSortLabel = useMemo(() => {
-    switch (triggerSortBy) {
-      case 'createdAt':
-        return t('triggers.created-time');
-      case 'lastExecutionTime':
-        return t('triggers.last-execution-label');
-      case 'tokens':
-        return t('triggers.token-cost');
-      default:
-        return t('triggers.created-time');
-    }
-  }, [triggerSortBy, t]);
+  /** Expanded: apply stored px width when leaving folded or on first paint. */
+  useLayoutEffect(() => {
+    if (projectSidebarFolded) return;
+    applyExpandedSidebarLayout();
+  }, [projectSidebarFolded, applyExpandedSidebarLayout]);
+
+  /** Folded: exact rail + main split (`setLayout`); update when shell width changes rail %. */
+  useLayoutEffect(() => {
+    if (!projectSidebarFolded) return;
+    const shell = shellPanelGroupRef.current;
+    const group = shellPanelGroupImperativeRef.current;
+    if (!shell || !group) return;
+    const w = shell.getBoundingClientRect().width;
+    if (w <= 0) return;
+
+    applyingSidebarLayoutRef.current = true;
+    const rail = sidebarPct.rail;
+    const main = Math.min(99, Math.max(0, 100 - rail));
+    group.setLayout([rail, main]);
+    requestAnimationFrame(() => {
+      applyingSidebarLayoutRef.current = false;
+    });
+  }, [projectSidebarFolded, sidebarPct.rail]);
+
+  useEffect(() => {
+    const el = shellPanelGroupRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w <= 0) return;
+      const prevW = shellWidthRef.current;
+      shellWidthRef.current = w;
+      const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
+      const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
+      const railPct = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / w) * 100);
+      setSidebarPct({
+        min: minPct,
+        max: Math.max(minPct, maxPct),
+        rail: railPct,
+      });
+
+      if (
+        !usePageTabStore.getState().projectSidebarFolded &&
+        prevW > 0 &&
+        Math.abs(w - prevW) > 0.5
+      ) {
+        applyExpandedSidebarLayout();
+      }
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [applyExpandedSidebarLayout]);
+
+  useEffect(() => {
+    return () => {
+      if (persistSidebarWidthTimeoutRef.current) {
+        clearTimeout(persistSidebarWidthTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -125,28 +310,13 @@ export default function Home() {
   }, [triggerExecutionLogsOpen]);
 
   useEffect(() => {
+    if (triggerAddDialogRequestId === 0) return;
+    setTriggerDialogOpen(true);
+  }, [triggerAddDialogRequestId]);
+
+  useEffect(() => {
     setTriggerSelectedId(null);
-    setIsWorkforceExpandedOverlayOpen(false);
   }, [projectStore.activeProjectId]);
-
-  useEffect(() => {
-    if (activeWorkspaceTab !== 'workforce') {
-      setIsWorkforceExpandedOverlayOpen(false);
-    }
-  }, [activeWorkspaceTab]);
-
-  useEffect(() => {
-    if (workspaceChatFocusRequestId === 0) return;
-    setIsChatBoxVisible(true);
-  }, [workspaceChatFocusRequestId]);
-
-  const toggleWorkforceExpandedOverlay = useCallback(() => {
-    setIsWorkforceExpandedOverlayOpen((prev) => !prev);
-  }, []);
-
-  const closeWorkforceExpandedOverlay = useCallback(() => {
-    setIsWorkforceExpandedOverlayOpen(false);
-  }, []);
 
   useEffect(() => {
     checkLocalServerStale();
@@ -321,323 +491,167 @@ export default function Home() {
     }
   }, [chatStore, projectStore, getSize]);
 
-  const getAllChatStoresMemoized = useMemo(() => {
-    if (!projectStore.activeProjectId) return [];
-    return projectStore.getAllChatStores(projectStore.activeProjectId);
-  }, [projectStore]);
+  const sessionsForMainList = useMemo(
+    () =>
+      Object.entries(chatStore.tasks)
+        .filter(([, task]) => {
+          const hasStarted =
+            (task.messages?.length || 0) > 0 ||
+            task.hasMessages ||
+            task.status !== ChatTaskStatus.PENDING;
+          return hasStarted;
+        })
+        .map(([id, task]) => ({
+          id,
+          title:
+            task.summaryTask?.trim() ||
+            t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
+        })),
+    [chatStore.tasks, t]
+  );
 
-  /** Matches ChatBox: any task in the project has chat content (not welcome-only). */
-  const hasAnyMessages = useMemo(() => {
-    if (!chatStore) return false;
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
+  const mainPanelSurfaceClass =
+    'rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 flex h-full w-full flex-col border-solid overflow-hidden';
+  const mainPanelContentClass = 'min-h-0 min-w-0 flex h-full w-full flex-col';
+  const mainPanelSurfaceOverrides: Record<string, string> = {
+    workforce: '',
+    session: '',
+    inbox: '',
+    triggers: '',
+    sessions: '',
+  };
+  const mainPanelShellClass = cn(
+    mainPanelSurfaceClass,
+    mainPanelSurfaceOverrides[activeWorkspaceTab]
+  );
+
+  const useWorkspacePatternBg =
+    activeWorkspaceTab === 'workforce' || activeWorkspaceTab === 'session';
+  const workspacePatternMode = useMemo((): 'dots' | 'blocks' | null => {
+    if (!useWorkspacePatternBg) return null;
+    const mode = (workspaceMainBackground ?? 'none') as WorkspaceMainBackground;
+    if (mode === 'none') return null;
+    if (mode === 'dots') return 'dots';
+    return 'blocks';
+  }, [useWorkspacePatternBg, workspaceMainBackground]);
+
+  const workspaceMainContentClass = cn(
+    mainPanelContentClass,
+    workspacePatternMode != null && 'relative'
+  );
+
+  const workspacePatternOverlayEl =
+    workspacePatternMode === 'dots' ? (
+      <DotPatternBackground />
+    ) : workspacePatternMode === 'blocks' ? (
+      <GridPatternBackground />
+    ) : null;
+
+  const renderActiveWorkspaceTab = () => {
+    switch (activeWorkspaceTab) {
+      case 'workforce':
+        return (
+          <div className={workspaceMainContentClass}>
+            {workspacePatternOverlayEl}
+            <Workspace />
+          </div>
+        );
+      case 'session':
+        return (
+          <div className={workspaceMainContentClass}>
+            {workspacePatternOverlayEl}
+            <Session />
+          </div>
+        );
+      case 'inbox':
+        return (
+          <div className={mainPanelContentClass}>
+            <Folder />
+          </div>
+        );
+      case 'triggers':
+        return (
+          <TriggerPanel
+            className={mainPanelContentClass}
+            sortBy={triggerSortBy}
+            onSortByChange={setTriggerSortBy}
+            selectedTriggerId={triggerSelectedId}
+            onSelectedTriggerIdChange={setTriggerSelectedId}
+            isExecutionLogsOpen={triggerExecutionLogsOpen}
+            onExecutionLogsOpenChange={setTriggerExecutionLogsOpen}
+            isDialogOpen={triggerDialogOpen}
+            onDialogOpenChange={setTriggerDialogOpen}
+          />
+        );
+      case 'sessions':
+        return (
+          <SessionGroup
+            className={mainPanelContentClass}
+            sessions={sessionsForMainList}
+            activeSessionId={chatStore.activeTaskId}
+            onSelectSession={(sessionId) => {
+              chatStore.setActiveTaskId(sessionId);
+              setActiveWorkspaceTab('session');
+            }}
+          />
+        );
+      default:
+        return null;
     }
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
-      const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
-      );
-    });
-  }, [chatStore, getAllChatStoresMemoized]);
+  };
 
   if (!chatStore) {
     return <div>{t('triggers.loading')}</div>;
   }
 
-  // Task id only — including `activeWorkspace` remounted the motion wrapper on every
-  // agent tab switch and replayed the blur/fade on the folded agent list.
-  const workforcePanelKey = chatStore.activeTaskId ?? '';
-
   return (
     <ReactFlowProvider>
       <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
-        <ProjectPageSidebar chatStore={chatStore} />
-        <motion.div
-          layout
-          transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-          className="min-h-0 min-w-0 gap-4 relative flex h-full flex-1 items-center justify-center overflow-hidden"
+        <div
+          ref={shellPanelGroupRef}
+          className="min-h-0 min-w-0 h-full w-full flex-1"
         >
           <ResizablePanelGroup
-            id="home-main-panel-group"
+            ref={shellPanelGroupImperativeRef}
+            id="home-shell-panel-group"
             direction="horizontal"
-            key={`${isChatBoxVisible}-${activeWorkspaceTab}`}
-            className="gap-0.5 w-full items-center justify-center"
+            className="min-h-0 gap-0 h-full w-full"
+            onLayout={handleShellPanelLayout}
           >
-            <ResizablePanel className="min-h-0 h-full w-full min-w-[300px]">
-              {activeWorkspaceTab === 'workforce' && isChatBoxVisible && (
-                <ChatBox
-                  workforceExpandedOverlayOpen={isWorkforceExpandedOverlayOpen}
-                  onToggleWorkforceExpandedOverlay={
-                    toggleWorkforceExpandedOverlay
-                  }
-                />
+            <ResizablePanel
+              ref={projectSidebarPanelRef}
+              defaultSize={24}
+              minSize={sidebarPct.rail}
+              maxSize={sidebarPct.max}
+              className="min-h-0 min-w-0"
+            >
+              <ProjectPageSidebar chatStore={chatStore} />
+            </ResizablePanel>
+            <ResizableHandle
+              className={cn(
+                'w-1.5 after:bg-border-tertiary shrink-0 bg-transparent after:transition-colors',
+                'hover:after:bg-tag-fill-info transition-colors',
+                'data-[resize-handle-state=drag]:after:bg-tag-fill-info'
               )}
-              {activeWorkspaceTab === 'workforce' && !isChatBoxVisible && (
-                <div className="rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 relative flex h-full w-full flex-col border-solid">
-                  <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
-                    <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
-                      <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
-                        {t('layout.aiWorkforce')}
-                      </span>
-                    </div>
-                    <div className="gap-1 flex shrink-0 items-center">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="rounded-lg items-center justify-center"
-                        onClick={() => setAddWorkerDialogOpen(true)}
-                      >
-                        <Plus />
-                        {t('triggers.add')}
-                      </Button>
-                      <AddWorker
-                        isOpen={addWorkerDialogOpen}
-                        onOpenChange={setAddWorkerDialogOpen}
-                      />
-                      {hasAnyMessages && (
-                        <TooltipSimple
-                          content={
-                            isWorkforceExpandedOverlayOpen
-                              ? t('layout.close')
-                              : t('layout.expand-workforce', {
-                                  defaultValue: 'Expand workforce',
-                                })
-                          }
-                          delayDuration={300}
-                          side="bottom"
-                        >
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            buttonContent="icon-only"
-                            buttonRadius="lg"
-                            className="shrink-0"
-                            onClick={toggleWorkforceExpandedOverlay}
-                            aria-pressed={isWorkforceExpandedOverlayOpen}
-                            aria-label={
-                              isWorkforceExpandedOverlayOpen
-                                ? t('layout.close')
-                                : t('layout.expand-workforce', {
-                                    defaultValue: 'Expand workforce',
-                                  })
-                            }
-                          >
-                            {isWorkforceExpandedOverlayOpen ? (
-                              <X className="h-4 w-4" />
-                            ) : (
-                              <Maximize2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </TooltipSimple>
-                      )}
-                    </div>
-                  </div>
-                  <div className="min-h-0 min-w-0 w-full flex-1">
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={`${workforcePanelKey}-expanded`}
-                        initial={{ opacity: 0, filter: 'blur(4px)' }}
-                        animate={{ opacity: 1, filter: 'blur(0px)' }}
-                        exit={{ opacity: 0, filter: 'blur(4px)' }}
-                        transition={{ duration: 0.2 }}
-                        className="min-w-0 h-full w-full"
-                      >
-                        <WorkspaceContent />
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                  <div className="inset-x-0 bottom-0 pointer-events-none absolute z-50">
-                    <div className="pointer-events-auto">
-                      <BottomBar />
-                    </div>
-                  </div>
+            />
+            <ResizablePanel
+              defaultSize={76}
+              minSize={mainPanelPct.min}
+              maxSize={mainPanelMaxSize}
+              className="min-h-0 min-w-[300px]"
+            >
+              <motion.div
+                layout
+                transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
+                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
+              >
+                <div className={mainPanelShellClass}>
+                  {renderActiveWorkspaceTab()}
                 </div>
-              )}
-              {activeWorkspaceTab === 'inbox' && (
-                <div className="rounded-2xl border-border-tertiary bg-surface-secondary flex h-full w-full flex-col overflow-hidden border-solid">
-                  <div className="min-h-0 w-full flex-1">
-                    <div className="flex h-full w-full flex-1 items-center justify-center">
-                      <div className="relative z-10 h-full w-full">
-                        <Folder />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {activeWorkspaceTab === 'triggers' && (
-                <div className="rounded-2xl border-border-tertiary bg-surface-secondary flex h-full w-full flex-col border-solid">
-                  <div className="gap-2 px-2 py-2 flex w-full shrink-0 items-center justify-between">
-                    <div className="text-text-heading min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
-                      <span className="truncate">{t('triggers.title')}</span>
-                    </div>
-                    <div className="gap-2 flex shrink-0 items-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            buttonContent="text"
-                            size="sm"
-                            className="rounded-lg"
-                          >
-                            {triggerSortLabel}
-                            <ArrowUpDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => setTriggerSortBy('createdAt')}
-                          >
-                            {t('triggers.created-time')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              setTriggerSortBy('lastExecutionTime')
-                            }
-                          >
-                            {t('triggers.last-execution-label')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="rounded-lg items-center justify-center"
-                        onClick={() => setTriggerDialogOpen(true)}
-                      >
-                        <Plus />
-                        {t('triggers.create')}
-                      </Button>
-                      <TooltipSimple
-                        content={
-                          triggerExecutionLogsOpen
-                            ? t('triggers.fold-execution-logs')
-                            : t('triggers.open-execution-logs')
-                        }
-                        delayDuration={300}
-                        side="bottom"
-                      >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="opacity-70"
-                          disabled={sortedTriggersForHeader.length === 0}
-                          onClick={() => {
-                            if (triggerExecutionLogsOpen) {
-                              setTriggerExecutionLogsOpen(false);
-                              return;
-                            }
-                            if (
-                              !triggerSelectedId &&
-                              sortedTriggersForHeader.length > 0
-                            ) {
-                              setTriggerSelectedId(
-                                sortedTriggersForHeader[0].id
-                              );
-                            }
-                            setTriggerExecutionLogsOpen(true);
-                          }}
-                        >
-                          {triggerExecutionLogsOpen ? (
-                            <SquareChevronRight className="h-4 w-4" />
-                          ) : (
-                            <SquareCode className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TooltipSimple>
-                      <TriggerDialog
-                        selectedTrigger={null}
-                        isOpen={triggerDialogOpen}
-                        onOpenChange={setTriggerDialogOpen}
-                      />
-                    </div>
-                  </div>
-                  <div
-                    className={`min-h-0 w-full flex-1 ${wsConnectionStatus === 'disconnected' ? 'pointer-events-none opacity-50 grayscale' : ''}`}
-                  >
-                    <Overview
-                      sortBy={triggerSortBy}
-                      selectedTriggerId={triggerSelectedId}
-                      onSelectedTriggerIdChange={setTriggerSelectedId}
-                      isExecutionLogsOpen={triggerExecutionLogsOpen}
-                      onExecutionLogsOpenChange={setTriggerExecutionLogsOpen}
-                    />
-                  </div>
-                </div>
-              )}
+              </motion.div>
             </ResizablePanel>
           </ResizablePanelGroup>
-        </motion.div>
-        <ExpandedOverlay
-          open={isWorkforceExpandedOverlayOpen}
-          onClose={closeWorkforceExpandedOverlay}
-          titleLabel={t('layout.aiWorkforce')}
-          backdropDismissLabel={t('layout.close')}
-          header={
-            <>
-              <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
-                <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
-                  {t('layout.aiWorkforce')}
-                </span>
-              </div>
-              <div className="gap-1 flex shrink-0 items-center">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="rounded-lg items-center justify-center"
-                  onClick={() => setAddWorkerDialogOpen(true)}
-                >
-                  <Plus />
-                  {t('triggers.add')}
-                </Button>
-                <TooltipSimple
-                  content={t('layout.close')}
-                  delayDuration={300}
-                  side="bottom"
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    buttonContent="icon-only"
-                    buttonRadius="lg"
-                    className="shrink-0"
-                    onClick={closeWorkforceExpandedOverlay}
-                    aria-pressed={true}
-                    aria-label={t('layout.close')}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </TooltipSimple>
-              </div>
-            </>
-          }
-          bottomBar={
-            <div className="pointer-events-auto">
-              <BottomBar />
-            </div>
-          }
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`overlay-${workforcePanelKey}`}
-              initial={{ opacity: 0, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, filter: 'blur(4px)' }}
-              transition={{ duration: 0.2 }}
-              className="min-w-0 h-full w-full"
-            >
-              <WorkspaceContent />
-            </motion.div>
-          </AnimatePresence>
-        </ExpandedOverlay>
+        </div>
         <UpdateElectron />
       </div>
     </ReactFlowProvider>

@@ -484,6 +484,8 @@
     --text-browser: var(--colors-sky-default);
     --text-developer: var(--colors-emerald-default);
     --text-multimodal: var(--colors-fuchsia-default);
+    --text-session-single-agent: var(--colors-purple-700);
+    --text-session-workforce: var(--colors-emerald-700);
     --text-on-hover: var(--colors-primary-2);
     --text-primary: var(--text-body);
     --text-secondary: var(--text-label);
@@ -613,6 +615,8 @@
     --text-browser: var(--colors-sky-default);
     --text-developer: var(--colors-emerald-default);
     --text-multimodal: var(--colors-fuchsia-default);
+    --text-session-single-agent: var(--colors-purple-700);
+    --text-session-workforce: var(--colors-emerald-700);
     --text-on-hover: var(--colors-primary-2);
     --surface-primary: var(--colors-off-white-100);
     --surface-secondary: var(--colors-primary-2);
@@ -735,6 +739,8 @@
     --text-browser: #7dd3fc;
     --text-developer: #6ee7b7;
     --text-multimodal: #f5a8ff;
+    --text-session-single-agent: #e9d5ff;
+    --text-session-workforce: var(--text-developer);
     --text-on-hover: #ffffff;
     --text-primary: #f4f6ff;
     --text-secondary: var(--text-label);

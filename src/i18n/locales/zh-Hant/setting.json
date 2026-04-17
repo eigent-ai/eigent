@@ -20,6 +20,12 @@
   "light": "淺色",
   "transparent": "透明",
 
+  "workspace-main-background": "工作區背景",
+  "workspace-main-background-description": "僅套用於 Workforce 與 Session 主內容區。",
+  "workspace-main-background-none": "預設",
+  "workspace-main-background-dots": "點狀圖案",
+  "workspace-main-background-blocks": "網格圖案",
+
   "data-privacy": "數據隱私",
   "data-privacy-description": "Eigent 以本地優先原則確保您的隱私。您的數據預設儲存在您的設備上。雲端功能是可選的，僅使用最少量的數據來實現功能。詳細資訊請參閱我們的",
   "privacy-policy": "隱私政策",

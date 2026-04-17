@@ -19,6 +19,12 @@
   "light": "Hell",
   "transparent": "Transparent",
 
+  "workspace-main-background": "Arbeitsbereich-Hintergrund",
+  "workspace-main-background-description": "Nur für die Hauptbereiche von Workforce und Session.",
+  "workspace-main-background-none": "Standard",
+  "workspace-main-background-dots": "Punktmuster",
+  "workspace-main-background-blocks": "Raster",
+
   "data-privacy": "Datenschutz",
   "data-privacy-description": "Eigent basiert auf einem Local-First-Prinzip, um Ihre Privatsphäre zu gewährleisten. Ihre Daten verbleiben standardmäßig auf Ihrem Gerät. Cloud-Funktionen sind optional und verwenden nur die minimal erforderlichen Daten, um zu funktionieren. Für vollständige Details besuchen Sie bitte unsere",
   "privacy-policy": "Datenschutzrichtlinie",
@@ -79,6 +85,12 @@
   "dark": "Dunkel",
   "light": "Hell",
   "transparent": "Transparent",
+
+  "workspace-main-background": "Arbeitsbereich-Hintergrund",
+  "workspace-main-background-description": "Nur für die Hauptbereiche von Workforce und Session.",
+  "workspace-main-background-none": "Standard",
+  "workspace-main-background-dots": "Punktmuster",
+  "workspace-main-background-blocks": "Raster",
 
   "data-privacy": "Datenschutz",
   "data-privacy-description": "Eigent basiert auf einem Local-First-Prinzip, um Ihre Privatsphäre zu gewährleisten. Ihre Daten verbleiben standardmäßig auf Ihrem Gerät. Cloud-Funktionen sind optional und verwenden nur die minimal erforderlichen Daten, um zu funktionieren. Für vollständige Details besuchen Sie bitte unsere",

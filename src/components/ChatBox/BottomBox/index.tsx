@@ -12,11 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import { type ChatTaskStatusType } from '@/types/constants';
+import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
+
+export type StarterSuggestion = { label: string; message: string };
 
 export type BottomBoxState =
   | 'input'
@@ -53,6 +57,14 @@ interface BottomBoxProps {
 
   // Loading states
   loading?: boolean;
+
+  /** Full-area warning overlay on the input card when no model is configured. */
+  noModelOverlay?: boolean;
+  onSelectModel?: () => void;
+
+  /** Optional starter prompts below the input (empty chat); hidden when `noModelOverlay` is true. */
+  starterSuggestions?: StarterSuggestion[];
+  onStarterSuggestion?: (message: string) => void;
 }
 
 export default function BottomBox({
@@ -64,6 +76,10 @@ export default function BottomBox({
   onEdit,
   inputProps,
   loading = false,
+  noModelOverlay = false,
+  onSelectModel,
+  starterSuggestions,
+  onStarterSuggestion,
 }: BottomBoxProps) {
   const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
@@ -86,7 +102,7 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`rounded-3xl mb-sm flex w-full flex-col ${backgroundClass}`}
+        className={`rounded-3xl mb-sm relative flex w-full flex-col ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
         {state === 'splitting' && <BoxHeaderSplitting />}
@@ -101,6 +117,58 @@ export default function BottomBox({
 
         {/* Inputbox (always visible) */}
         <Inputbox {...inputProps} />
+
+        {!noModelOverlay &&
+          starterSuggestions &&
+          starterSuggestions.length > 0 &&
+          onStarterSuggestion && (
+            <div className="gap-2 px-2 pb-3 pt-1 flex flex-col items-center">
+              {starterSuggestions.map(({ label, message }) => (
+                <div
+                  key={label}
+                  className="rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium text-button-tertiery-text-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
+                  onClick={() => onStarterSuggestion(message)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onStarterSuggestion(message);
+                    }
+                  }}
+                >
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+        {noModelOverlay && onSelectModel ? (
+          <div
+            className="inset-0 rounded-3xl gap-3 backdrop-blur-md px-4 py-5 absolute z-[15] flex flex-row items-center justify-center bg-transparent"
+            role="alert"
+          >
+            <TriangleAlert
+              className="h-4 w-4 text-icon-warning shrink-0"
+              aria-hidden
+            />
+            <p className="text-sm font-medium leading-snug text-text-warning">
+              {t('layout.please-select-model')}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonRadius="full"
+              className="bg-surface-warning !text-text-warning"
+              onClick={onSelectModel}
+            >
+              {t('layout.select-model-cta', {
+                defaultValue: 'Select a model',
+              })}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

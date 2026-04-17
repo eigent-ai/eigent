@@ -14,26 +14,20 @@
 
 import tokenDarkIcon from '@/assets/token-dark.svg';
 import tokenLightIcon from '@/assets/token-light.svg';
+import { AnimatedTokenNumber } from '@/components/ChatBox/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
-import { Menu, PanelRight, PanelRightClose, PlayCircle } from 'lucide-react';
+import { Menu, PanelRight, PanelRightClose } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AnimatedTokenNumber } from '../TokenUtils';
 
-interface HeaderBoxProps {
+export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
-  /** Task status – controls visibility of replay button */
-  status?: 'running' | 'finished' | 'pending' | 'pause';
-  /** Whether the replay action is in a loading state */
-  replayLoading?: boolean;
-  /** Callback fired when the replay button is clicked */
-  onReplay?: () => void;
   /** When true, the chat timeline rail is folded closed */
   chatTimelineCollapsed?: boolean;
   /** Toggles the chat timeline rail open / folded (wide layout only) */
@@ -45,27 +39,24 @@ interface HeaderBoxProps {
   onTimelineDropdownOpenChange?: (open: boolean) => void;
   /** Timeline content rendered inside the popover when `narrowTimelineLayout` */
   timelineDropdownContent?: ReactNode;
-  /** When true, the workforce rail on the right is folded closed (workforce tab only) */
-  workforceRailCollapsed?: boolean;
-  /** Toggles the workforce rail open / folded (workforce tab only) */
-  onToggleWorkforceRail?: () => void;
+  /** When false, the session right rail (workforce / side panel) is folded closed */
+  isSessionSidePanelVisible?: boolean;
+  /** Toggle the session right panel rail open / folded */
+  onToggleSessionSidePanel?: () => void;
   /** Optional extra class names for the outer container */
   className?: string;
 }
 
 export function HeaderBox({
   totalTokens = 0,
-  status,
-  replayLoading = false,
-  onReplay,
   chatTimelineCollapsed = false,
   onToggleChatTimeline,
   narrowTimelineLayout = false,
   timelineDropdownOpen,
   onTimelineDropdownOpenChange,
   timelineDropdownContent,
-  workforceRailCollapsed = false,
-  onToggleWorkforceRail,
+  isSessionSidePanelVisible = true,
+  onToggleSessionSidePanel,
   className,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
@@ -74,20 +65,17 @@ export function HeaderBox({
   const chatHistoryTooltip = t('layout.chat-history-tooltip', {
     defaultValue: 'Chat history',
   });
-  const workforceRailExpandTooltip = t('layout.show-workforce-panel', {
-    defaultValue: 'Show workforce panel',
-  });
-  const workforceRailCollapseTooltip = t('layout.minimize-workforce');
-
-  const showReplayButton = status === 'finished';
-  const isReplayDisabled =
-    status === 'running' || status === 'pending' || status === 'pause';
+  const sessionSidePanelTooltip = isSessionSidePanelVisible
+    ? t('layout.hide-workforce-panel', {
+        defaultValue: 'Hide workforce panel',
+      })
+    : t('layout.show-workforce-panel');
 
   return (
     <div
       className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
     >
-      {/* Left: timeline menu + replay */}
+      {/* Left: timeline menu */}
       <div className="gap-2 flex items-center">
         {narrowTimelineLayout && timelineDropdownContent ? (
           <Popover
@@ -142,21 +130,9 @@ export function HeaderBox({
             </TooltipSimple>
           )
         )}
-        {showReplayButton && (
-          <Button
-            onClick={onReplay}
-            disabled={isReplayDisabled || replayLoading}
-            variant="ghost"
-            size="sm"
-            className="no-drag bg-surface-information font-semibold !text-text-information rounded-full"
-          >
-            <PlayCircle className="mr-1 h-3.5 w-3.5" />
-            {replayLoading ? t('common.loading') : t('chat.replay')}
-          </Button>
-        )}
       </div>
 
-      {/* Right: project total token count + workforce rail toggle (workforce tab) */}
+      {/* Right: project total token count + session side panel fold (far right) */}
       <div className="gap-2 text-text-label flex items-center">
         <div className="gap-1 flex items-center">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
@@ -165,33 +141,23 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        {onToggleWorkforceRail && (
-          <TooltipSimple
-            content={
-              workforceRailCollapsed
-                ? workforceRailExpandTooltip
-                : workforceRailCollapseTooltip
-            }
-          >
+        {onToggleSessionSidePanel && (
+          <TooltipSimple content={sessionSidePanelTooltip}>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
-              onClick={onToggleWorkforceRail}
-              aria-expanded={!workforceRailCollapsed}
-              aria-controls="workforce-folded-rail"
+              onClick={onToggleSessionSidePanel}
+              aria-expanded={isSessionSidePanelVisible}
+              aria-controls="session-side-panel"
               className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
-              aria-label={
-                workforceRailCollapsed
-                  ? workforceRailExpandTooltip
-                  : workforceRailCollapseTooltip
-              }
+              aria-label={sessionSidePanelTooltip}
             >
-              {workforceRailCollapsed ? (
-                <PanelRight className="h-4 w-4" />
+              {isSessionSidePanelVisible ? (
+                <PanelRightClose className="h-4 w-4" aria-hidden />
               ) : (
-                <PanelRightClose className="h-4 w-4" />
+                <PanelRight className="h-4 w-4" aria-hidden />
               )}
             </Button>
           </TooltipSimple>

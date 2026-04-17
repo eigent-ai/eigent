@@ -503,6 +503,8 @@ module.exports = {
         'text-camel': 'var(--text-camel)',
         'text-developer': 'var(--text-developer)',
         'text-multimodal': 'var(--text-multimodal)',
+        'session-single-agent': 'var(--text-session-single-agent)',
+        'session-workforce': 'var(--text-session-workforce)',
         'text-on-hover': 'var(--text-on-hover)',
 
         'surface-primary': 'var(--surface-primary)',

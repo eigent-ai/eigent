@@ -12,28 +12,33 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { SessionModeType } from '@/types/constants';
+import { SessionMode } from '@/types/constants';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 interface PageTabState {
   activeTab: 'tasks' | 'trigger';
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
-  // Workspace tabs within the Tasks page
-  activeWorkspaceTab: 'triggers' | 'workforce' | 'inbox';
+  // Workspace tabs within the Tasks page (sidebar → main panel)
+  activeWorkspaceTab:
+    | 'workforce'
+    | 'inbox'
+    | 'triggers'
+    | 'sessions'
+    | 'session';
   setActiveWorkspaceTab: (
-    tab: 'triggers' | 'workforce' | 'inbox',
+    tab: 'workforce' | 'inbox' | 'triggers' | 'sessions' | 'session',
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
-  /** Project (Home) page left sidebar rail */
-  projectSidebarCollapsed: boolean;
-  toggleProjectSidebarCollapsed: () => void;
-  /** Workforce tab: right rail folded to give chat more width (persisted) */
-  workforceRailCollapsed: boolean;
-  toggleWorkforceRailCollapsed: () => void;
+  /** Project page left sidebar: icon-only rail (labels fade + width collapse). Persisted. */
+  projectSidebarFolded: boolean;
+  toggleProjectSidebarFolded: () => void;
+  setProjectSidebarFolded: (folded: boolean) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -72,6 +77,12 @@ interface PageTabState {
    */
   workspaceChatFocusRequestId: number;
   requestWorkspaceChatFocus: () => void;
+  /** Incremented to open the add-trigger dialog from the sidebar (Home owns dialog state). */
+  triggerAddDialogRequestId: number;
+  requestOpenTriggerAddDialog: () => void;
+  /** Session view: workforce vs single-agent side panel (Workspace toggle + Session). */
+  sessionSidePanelMode: SessionModeType;
+  setSessionSidePanelMode: (mode: SessionModeType) => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -110,16 +121,13 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
-      projectSidebarCollapsed: false,
-      toggleProjectSidebarCollapsed: () =>
+      projectSidebarFolded: false,
+      toggleProjectSidebarFolded: () =>
         set((state) => ({
-          projectSidebarCollapsed: !state.projectSidebarCollapsed,
+          projectSidebarFolded: !state.projectSidebarFolded,
         })),
-      workforceRailCollapsed: false,
-      toggleWorkforceRailCollapsed: () =>
-        set((state) => ({
-          workforceRailCollapsed: !state.workforceRailCollapsed,
-        })),
+      setProjectSidebarFolded: (folded) =>
+        set({ projectSidebarFolded: folded }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -175,17 +183,30 @@ export const usePageTabStore = create<PageTabState>()(
       workspaceChatFocusRequestId: 0,
       requestWorkspaceChatFocus: () =>
         set((state) => ({
-          activeWorkspaceTab: 'workforce',
+          activeWorkspaceTab: 'session',
           workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
         })),
+      triggerAddDialogRequestId: 0,
+      requestOpenTriggerAddDialog: () =>
+        set((state) => {
+          const newUnviewedTabs = new Set(state.unviewedTabs);
+          newUnviewedTabs.delete('triggers');
+          return {
+            activeWorkspaceTab: 'triggers',
+            unviewedTabs: newUnviewedTabs,
+            triggerAddDialogRequestId: state.triggerAddDialogRequestId + 1,
+          };
+        }),
+      sessionSidePanelMode: SessionMode.WORKFORCE,
+      setSessionSidePanelMode: (mode) => set({ sessionSidePanelMode: mode }),
     }),
     {
       name: 'eigent-page-tab',
       partialize: (state) => ({
-        projectSidebarCollapsed: state.projectSidebarCollapsed,
-        workforceRailCollapsed: state.workforceRailCollapsed,
+        projectSidebarFolded: state.projectSidebarFolded,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
+        sessionSidePanelMode: state.sessionSidePanelMode,
       }),
     }
   )

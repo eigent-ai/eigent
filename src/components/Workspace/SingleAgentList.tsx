@@ -1,0 +1,29 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { Bot } from 'lucide-react';
+
+/**
+ * Workspace single-agent mode placeholder (visual only until wired).
+ */
+export function SingleAgentList() {
+  return (
+    <div
+      className="rounded-xl bg-worker-surface-primary p-2 inline-flex border-0 opacity-80"
+      aria-hidden
+    >
+      <Bot className="h-6 w-6 text-text-secondary shrink-0" strokeWidth={2} />
+    </div>
+  );
+}

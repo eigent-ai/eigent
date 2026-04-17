@@ -19,6 +19,12 @@
   "light": "Светлый",
   "transparent": "Прозрачный",
 
+  "workspace-main-background": "Фон рабочей области",
+  "workspace-main-background-description": "Только для основных панелей Workforce и Session.",
+  "workspace-main-background-none": "По умолчанию",
+  "workspace-main-background-dots": "Точки",
+  "workspace-main-background-blocks": "Сетка",
+
   "data-privacy": "Конфиденциальность данных",
   "data-privacy-description": "Eigent построен по принципу \"сначала локально\", чтобы обеспечить вашу конфиденциальность. Ваши данные по умолчанию остаются на вашем устройстве. Облачные функции являются необязательными и используют только минимальные необходимые данные для функционирования. Полные сведения см. в нашей",
   "privacy-policy": "Политике конфиденциальности",
@@ -79,6 +85,12 @@
   "dark": "Тёмный",
   "light": "Светлый",
   "transparent": "Прозрачный",
+
+  "workspace-main-background": "Фон рабочей области",
+  "workspace-main-background-description": "Только для основных панелей Workforce и Session.",
+  "workspace-main-background-none": "По умолчанию",
+  "workspace-main-background-dots": "Точки",
+  "workspace-main-background-blocks": "Сетка",
 
   "data-privacy": "Конфиденциальность данных",
   "data-privacy-description": "Eigent построен по принципу \"сначала локально\", чтобы обеспечить вашу конфиденциальность. Ваши данные по умолчанию остаются на вашем устройстве. Облачные функции являются необязательными и используют только минимальные необходимые данные для функционирования. Полные сведения см. в нашей",

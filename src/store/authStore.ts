@@ -19,6 +19,9 @@ import { persist } from 'zustand/middleware';
 type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
+
+/** Main workspace panel background (Workforce + Session tabs only). */
+export type WorkspaceMainBackground = 'none' | 'dots' | 'blocks';
 type CloudModelType =
   | 'gemini-3.1-pro-preview'
   | 'gemini-3-pro-preview'
@@ -63,6 +66,9 @@ interface AuthState {
   // IDE preference
   preferredIDE: PreferredIDE;
 
+  /** Pattern behind the main workspace area (Workforce / Session). */
+  workspaceMainBackground: WorkspaceMainBackground;
+
   // shared token
   share_token?: string | null;
 
@@ -85,6 +91,7 @@ interface AuthState {
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
+  setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
 
   // worker related methods
   setWorkerList: (workerList: Agent[]) => void;
@@ -112,6 +119,7 @@ const authStore = create<AuthState>()(
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       preferredIDE: 'system',
+      workspaceMainBackground: 'none',
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
@@ -148,6 +156,9 @@ const authStore = create<AuthState>()(
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
+
+      setWorkspaceMainBackground: (workspaceMainBackground) =>
+        set({ workspaceMainBackground }),
 
       setLocalProxyValue: (value) => set({ localProxyValue: value }),
 
@@ -206,6 +217,7 @@ const authStore = create<AuthState>()(
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
         preferredIDE: state.preferredIDE,
+        workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,
         workerListData: state.workerListData,
       }),

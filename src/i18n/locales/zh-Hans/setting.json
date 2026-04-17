@@ -20,6 +20,12 @@
   "light": "亮色",
   "transparent": "透明",
 
+  "workspace-main-background": "工作区背景",
+  "workspace-main-background-description": "仅应用于 Workforce 与 Session 主内容区。",
+  "workspace-main-background-none": "默认",
+  "workspace-main-background-dots": "点状图案",
+  "workspace-main-background-blocks": "网格图案",
+
   "data-privacy": "数据隐私",
   "data-privacy-description": "Eigent 基于本地优先原则确保您的隐私。您的数据默认存储在您的设备上。云功能是可选的，仅使用最小的数据来实现功能。详细信息请访问我们的",
   "privacy-policy": "隐私政策",

@@ -18,7 +18,7 @@ import transparent from '@/assets/transparent.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
 import { createRef, RefObject, useEffect, useState } from 'react';
@@ -48,6 +48,8 @@ export default function SettingGeneral() {
   const navigate = useNavigate();
   const [_isLoading, _setIsLoading] = useState(false);
   const setAppearance = authStore.setAppearance;
+  const setWorkspaceMainBackground = authStore.setWorkspaceMainBackground;
+  const workspaceMainBackground = authStore.workspaceMainBackground;
   const language = authStore.language;
   const _setLanguage = authStore.setLanguage;
   const appearance = authStore.appearance;
@@ -236,8 +238,8 @@ export default function SettingGeneral() {
   return (
     <div className="m-auto h-auto w-full flex-1">
       {/* Header Section */}
-      <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-6 pt-8">
-        <div className="flex w-full flex-row items-center justify-between gap-4">
+      <div className="px-6 pb-6 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
+        <div className="gap-4 flex w-full flex-row items-center justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-text-heading">
               {t('setting.general')}
@@ -246,10 +248,10 @@ export default function SettingGeneral() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-xl flex flex-col gap-6">
+      <div className="mb-xl gap-6 flex flex-col">
         {/* Profile Section */}
-        <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="flex flex-col gap-2">
+        <div className="item-center rounded-2xl bg-surface-secondary px-6 py-4 flex flex-row justify-between">
+          <div className="gap-2 flex flex-col">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.profile')}
             </div>
@@ -263,7 +265,7 @@ export default function SettingGeneral() {
               />
             </div>
           </div>
-          <div className="flex items-center gap-sm">
+          <div className="gap-sm flex items-center">
             <Button
               onClick={() => {
                 window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
@@ -294,7 +296,7 @@ export default function SettingGeneral() {
         </div>
 
         {/* Language Section */}
-        <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="item-center rounded-2xl bg-surface-secondary px-6 py-4 flex flex-row justify-between">
           <div className="flex flex-1 items-center">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.language')}
@@ -304,7 +306,7 @@ export default function SettingGeneral() {
             <SelectTrigger className="w-48">
               <SelectValue placeholder={t('setting.select-language')} />
             </SelectTrigger>
-            <SelectContent className="border bg-input-bg-default">
+            <SelectContent className="bg-input-bg-default border">
               <SelectGroup>
                 <SelectItem value="system">
                   {t('setting.system-default')}
@@ -320,20 +322,20 @@ export default function SettingGeneral() {
         </div>
 
         {/* Appearance Section */}
-        <div className="item-center flex flex-col justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="item-center gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex flex-col justify-between">
           <div className="text-body-base font-bold text-text-heading">
             {t('setting.appearance')}
           </div>
-          <div className="flex w-full flex-row items-center gap-md">
+          <div className="gap-md flex w-full flex-row items-center">
             {themeList.map((item: any) => (
               <div
                 key={item.label}
-                className="group flex w-full flex-col items-center gap-sm hover:cursor-pointer"
+                className="group gap-sm flex w-full flex-col items-center hover:cursor-pointer"
                 onClick={() => setAppearance(item.value)}
               >
                 <img
                   src={item.img}
-                  className={`group-hover:border-bg-fill-info-primary aspect-[183/91.67] w-full rounded-lg border border-solid border-transparent transition-all ${
+                  className={`group-hover:border-bg-fill-info-primary rounded-lg aspect-[183/91.67] w-full border border-solid border-transparent transition-all ${
                     item.value == appearance
                       ? 'border-bg-fill-info-primary'
                       : ''
@@ -352,9 +354,44 @@ export default function SettingGeneral() {
           </div>
         </div>
 
+        {/* Workspace main panel background */}
+        <div className="item-center rounded-2xl bg-surface-secondary px-6 py-4 flex flex-row justify-between">
+          <div className="gap-1 flex max-w-[55%] flex-col">
+            <div className="text-body-base font-bold text-text-heading">
+              {t('setting.workspace-main-background')}
+            </div>
+            <div className="text-body-sm text-text-secondary">
+              {t('setting.workspace-main-background-description')}
+            </div>
+          </div>
+          <Select
+            value={workspaceMainBackground ?? 'none'}
+            onValueChange={(v) =>
+              setWorkspaceMainBackground(v as WorkspaceMainBackground)
+            }
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-input-bg-default border">
+              <SelectGroup>
+                <SelectItem value="none">
+                  {t('setting.workspace-main-background-none')}
+                </SelectItem>
+                <SelectItem value="dots">
+                  {t('setting.workspace-main-background-dots')}
+                </SelectItem>
+                <SelectItem value="blocks">
+                  {t('setting.workspace-main-background-blocks')}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Network Proxy Section */}
-        <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="flex flex-col gap-1">
+        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex flex-col">
+          <div className="gap-1 flex flex-col">
             <div className="text-body-base font-bold text-text-heading">
               {t('setting.network-proxy')}
             </div>

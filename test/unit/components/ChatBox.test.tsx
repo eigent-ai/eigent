@@ -24,6 +24,7 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '../../../src/api/http';
+import type { ChatTimelineEntry } from '../../../src/components/ChatBox/ChatTimeline';
 import ChatBox from '../../../src/components/ChatBox/index';
 import { useAuthStore } from '../../../src/store/authStore';
 
@@ -87,28 +88,31 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('../../../src/components/AddWorker', () => ({
-  AddWorker: () => null,
-}));
-
 // Mock BottomBox component
 vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
-  default: vi.fn(({ inputProps }: any) => {
-    if (!inputProps) return null;
-    return (
-      <div data-testid="bottom-box">
-        <input
-          data-testid="message-input"
-          placeholder={inputProps.placeholder}
-          value={inputProps.value}
-          onChange={(e) => inputProps.onChange(e.target.value)}
-        />
-        <button data-testid="send-button" onClick={() => inputProps.onSend()}>
-          Send
-        </button>
-      </div>
-    );
-  }),
+  default: vi.fn(
+    ({ inputProps, starterSuggestions, onStarterSuggestion }: any) => {
+      if (!inputProps) return null;
+      return (
+        <div data-testid="bottom-box">
+          <input
+            data-testid="message-input"
+            placeholder={inputProps.placeholder}
+            value={inputProps.value}
+            onChange={(e) => inputProps.onChange(e.target.value)}
+          />
+          <button data-testid="send-button" onClick={() => inputProps.onSend()}>
+            Send
+          </button>
+          {starterSuggestions?.map((s: { label: string; message: string }) => (
+            <div key={s.label} onClick={() => onStarterSuggestion?.(s.message)}>
+              {s.label}
+            </div>
+          ))}
+        </div>
+      );
+    }
+  ),
 }));
 
 // Mock ProjectChatContainer to avoid scrollTo issues
@@ -135,10 +139,6 @@ vi.mock('../../../src/components/ChatBox/NoticeCard', () => ({
 
 vi.mock('../../../src/components/ChatBox/TypeCardSkeleton', () => ({
   TypeCardSkeleton: vi.fn(() => <div data-testid="skeleton">Loading...</div>),
-}));
-
-vi.mock('../../../src/components/Workforce/FoldedPanel', () => ({
-  default: () => <div data-testid="workforce-folded-panel" />,
 }));
 
 describe('ChatBox Component', async () => {
@@ -283,10 +283,17 @@ describe('ChatBox Component', async () => {
     vi.clearAllMocks();
   });
 
+  const defaultSessionChatBoxProps = {
+    isNarrowTimelineLayout: false,
+    chatTimelineCollapsed: true,
+    onToggleChatTimeline: () => {},
+    taskTimelineEntries: [] as ChatTimelineEntry[],
+  };
+
   const renderChatBox = () => {
     return render(
       <BrowserRouter>
-        <ChatBox />
+        <ChatBox {...defaultSessionChatBoxProps} />
       </BrowserRouter>
     );
   };
