@@ -12,14 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AddWorker } from '@/components/AddWorker';
 import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
 import { cn } from '@/lib/utils';
-import { Maximize2, Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { Maximize2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export const WORKFORCE_MAIN_SURFACE_CLASS =
@@ -46,7 +44,6 @@ export function WorkforceSidePanel({
   onCloseExpandedOverlay,
 }: WorkforceSidePanelProps) {
   const { t } = useTranslation();
-  const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
 
   return (
     <>
@@ -57,15 +54,6 @@ export function WorkforceSidePanel({
               {t('layout.aiWorkforce')}
             </span>
             <div className="gap-1 flex shrink-0 items-center">
-              <Button
-                variant="primary"
-                size="sm"
-                className="rounded-lg items-center justify-center"
-                onClick={() => setAddWorkerDialogOpen(true)}
-              >
-                <Plus />
-                {t('triggers.add')}
-              </Button>
               <TooltipSimple
                 content={
                   isExpandedOverlayOpen
@@ -163,18 +151,12 @@ export function WorkforceSidePanel({
         </div>
       )}
 
-      <AddWorker
-        isOpen={addWorkerDialogOpen}
-        onOpenChange={setAddWorkerDialogOpen}
-      />
-
       <ExpandedOverlay
         open={isExpandedOverlayOpen}
         onClose={onCloseExpandedOverlay}
         workforcePanelKey={workforcePanelKey}
         onToggleSidePanel={onToggleSidePanel}
         isSidePanelVisible={isSidePanelVisible}
-        onOpenAddWorker={() => setAddWorkerDialogOpen(true)}
       />
     </>
   );

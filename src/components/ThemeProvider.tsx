@@ -26,9 +26,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.removeAttribute('data-theme');
 
     switch (appearance) {
-      case 'transparent':
-        root.setAttribute('data-theme', 'transparent');
-        break;
       case 'light':
         root.setAttribute('data-theme', 'light');
         break;
@@ -46,9 +43,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const currentTheme = root.getAttribute('data-theme');
 
     if (!currentTheme) {
-      if (appearance === 'transparent') {
-        root.setAttribute('data-theme', 'transparent');
-      } else if (appearance === 'dark') {
+      if (appearance === 'dark') {
         root.setAttribute('data-theme', 'dark');
       } else {
         root.setAttribute('data-theme', 'light');

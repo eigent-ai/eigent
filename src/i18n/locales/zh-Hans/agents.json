@@ -37,6 +37,7 @@
   "upload": "上传",
   "invalid-file-type": "无效的文件类型。请上传 .skill、.md、.txt 或 .json 文件。",
   "file-too-large": "文件太大。最大大小为 1MB。",
+  "zip-import-too-large": "ZIP 文件过大。最大大小为 50 MB。",
   "file-read-error": "读取文件失败。请重试。",
   "reupload-file": "重新上传文件",
   "upload-error-invalid-format": "文件必须为 .zip 或技能包（.skill 或 .md）。",

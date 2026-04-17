@@ -140,7 +140,10 @@ const authStore = create<AuthState>()(
         }),
 
       // set related methods
-      setAppearance: (appearance) => set({ appearance }),
+      setAppearance: (appearance) =>
+        set({
+          appearance: appearance === 'transparent' ? 'light' : appearance,
+        }),
 
       setLanguage: (language) => set({ language }),
 
@@ -205,6 +208,14 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      version: 1,
+      migrate: (persistedState, _version) => {
+        const s = persistedState as { appearance?: string } | undefined;
+        if (s?.appearance === 'transparent') {
+          return { ...s, appearance: 'light' };
+        }
+        return persistedState as typeof persistedState;
+      },
       partialize: (state) => ({
         token: state.token,
         username: state.username,

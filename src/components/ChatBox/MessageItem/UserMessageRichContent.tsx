@@ -12,6 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  RICH_SKILL_STYLE_CLASSES,
+  hashSkillLabel,
+  httpUrlOrNull,
+  isSafeSkillFolderName,
+  tokenizeRichPlainText,
+} from '@/lib/richText';
 import { cn } from '@/lib/utils';
 import { Fragment, type ReactNode } from 'react';
 
@@ -20,93 +27,6 @@ export const USER_MESSAGE_BODY_STYLE = {
   fontSize: 'var(--fontSize-sm, 13px)',
   lineHeight: 'var(--lineHeight-14, 20px)',
 } as const;
-
-type MessageRichSegment = { type: 'text' | 'url' | 'skill'; text: string };
-
-const MESSAGE_SKILL_STYLE_CLASSES = [
-  'text-text-information bg-surface-information/35',
-  'text-text-success bg-surface-success/25',
-  'text-text-warning bg-surface-warning/35',
-  'text-icon-information bg-surface-action/20',
-] as const;
-
-function hashMessageSkillLabel(label: string): number {
-  let h = 0;
-  for (let i = 0; i < label.length; i++) {
-    h = (h << 5) - h + label.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h);
-}
-
-function trimMessageUrlTail(raw: string): string {
-  return raw.replace(/[`'".,;:!?)\]]+$/g, '');
-}
-
-const MESSAGE_URL_AT_START = /^(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/i;
-
-function tokenizeMessagePlainText(text: string): MessageRichSegment[] {
-  const out: MessageRichSegment[] = [];
-  let i = 0;
-  const len = text.length;
-
-  while (i < len) {
-    const slice = text.slice(i);
-    const urlMatch = slice.match(MESSAGE_URL_AT_START);
-    if (urlMatch) {
-      const full = urlMatch[0];
-      const trimmed = trimMessageUrlTail(full);
-      if (trimmed.length > 0) {
-        out.push({ type: 'url', text: trimmed });
-        if (full.length > trimmed.length) {
-          out.push({ type: 'text', text: full.slice(trimmed.length) });
-        }
-        i += full.length;
-        continue;
-      }
-    }
-
-    if (slice[0] === '#') {
-      const skillMatch = slice.match(/^#([a-zA-Z0-9_-]+)/);
-      if (skillMatch) {
-        out.push({ type: 'skill', text: skillMatch[0] });
-        i += skillMatch[0].length;
-        continue;
-      }
-    }
-
-    let j = i + 1;
-    while (j < len) {
-      const tail = text.slice(j);
-      if (MESSAGE_URL_AT_START.test(tail)) break;
-      if (text[j] === '#' && /^#([a-zA-Z0-9_-]+)/.test(tail)) break;
-      j++;
-    }
-    out.push({ type: 'text', text: text.slice(i, j) });
-    i = j;
-  }
-
-  return out;
-}
-
-function messageHttpUrlOrNull(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const withScheme = /^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed;
-  try {
-    const u = new URL(withScheme);
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-    return u.href;
-  } catch {
-    if (/^https?:\/\//i.test(trimmed)) {
-      return trimmed;
-    }
-    if (/^www\./i.test(trimmed)) {
-      return `https://${trimmed}`;
-    }
-    return null;
-  }
-}
 
 const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
@@ -155,13 +75,13 @@ const MENTION_TEXT_CLASS: Record<string, string> = {
 };
 
 function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
-  return tokenizeMessagePlainText(text).map((seg, i) => {
+  return tokenizeRichPlainText(text).map((seg, i) => {
     const key = `${keyPrefix}-${i}`;
     if (seg.type === 'text') {
       return <span key={key}>{seg.text}</span>;
     }
     if (seg.type === 'url') {
-      const href = messageHttpUrlOrNull(seg.text);
+      const href = httpUrlOrNull(seg.text);
       if (href) {
         return (
           <a
@@ -178,14 +98,13 @@ function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
       }
       return <span key={key}>{seg.text}</span>;
     }
-    const clsIdx =
-      hashMessageSkillLabel(seg.text) % MESSAGE_SKILL_STYLE_CLASSES.length;
+    const clsIdx = hashSkillLabel(seg.text) % RICH_SKILL_STYLE_CLASSES.length;
     return (
       <span
         key={key}
         className={cn(
           'rounded px-0.5 font-normal inline align-baseline',
-          MESSAGE_SKILL_STYLE_CLASSES[clsIdx]
+          RICH_SKILL_STYLE_CLASSES[clsIdx]
         )}
       >
         {seg.text}
@@ -213,6 +132,7 @@ export function UserMessageRichContent({
   const contentNodes = parseContentWithTags(content);
 
   const handleOpenSkillFolder = (skillName: string) => {
+    if (!isSafeSkillFolderName(skillName)) return;
     window.electronAPI?.openSkillFolder?.(skillName);
   };
 
@@ -248,8 +168,7 @@ export function UserMessageRichContent({
           }
           const skillToken = `#${node.name}`;
           const clsIdx =
-            hashMessageSkillLabel(skillToken) %
-            MESSAGE_SKILL_STYLE_CLASSES.length;
+            hashSkillLabel(skillToken) % RICH_SKILL_STYLE_CLASSES.length;
           return (
             <button
               key={i}
@@ -261,7 +180,7 @@ export function UserMessageRichContent({
               title="Open skill folder"
               className={cn(
                 'mx-0 rounded px-0.5 font-normal inline cursor-pointer align-baseline [font:inherit] hover:opacity-90',
-                MESSAGE_SKILL_STYLE_CLASSES[clsIdx]
+                RICH_SKILL_STYLE_CLASSES[clsIdx]
               )}
             >
               {skillToken}

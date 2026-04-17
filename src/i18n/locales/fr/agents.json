@@ -37,6 +37,7 @@
   "upload": "Télécharger",
   "invalid-file-type": "Type de fichier non valide. Veuillez télécharger un fichier .skill, .md, .txt ou .json.",
   "file-too-large": "Le fichier est trop volumineux. La taille maximale est de 1 Mo.",
+  "zip-import-too-large": "Le fichier ZIP est trop volumineux. La taille maximale est de 50 Mo.",
   "file-read-error": "Échec de la lecture du fichier. Veuillez réessayer.",
   "reupload-file": "Téléverser à nouveau un fichier",
   "upload-error-invalid-format": "Le fichier doit être un .zip ou un package de compétence (.skill ou .md).",

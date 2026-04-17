@@ -28,6 +28,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+/** Guard renderer memory when sending zip bytes to the main process. */
+const MAX_SKILL_ZIP_IMPORT_BYTES = 50 * 1024 * 1024;
+
 interface SkillUploadDialogProps {
   open: boolean;
   onClose: () => void;
@@ -152,6 +155,12 @@ export default function SkillUploadDialog({
         return;
       }
 
+      if (pendingFileBuffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
+        toast.error(t('agents.zip-import-too-large'));
+        resetConflictState();
+        return;
+      }
+
       try {
         const result = await (window as any).electronAPI.skillImportZip(
           pendingFileBuffer,
@@ -201,6 +210,12 @@ export default function SkillUploadDialog({
       // All conflicts handled, proceed with import
       setConflictDialog(null);
       if (!pendingFileBuffer || confirmedReplacements.size === 0) {
+        resetConflictState();
+        return;
+      }
+
+      if (pendingFileBuffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
+        toast.error(t('agents.zip-import-too-large'));
         resetConflictState();
         return;
       }
@@ -258,6 +273,11 @@ export default function SkillUploadDialog({
             buffer = await fileToUse.arrayBuffer();
           } catch {
             toast.error(t('agents.file-read-error'));
+            return;
+          }
+
+          if (buffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
+            toast.error(t('agents.zip-import-too-large'));
             return;
           }
 

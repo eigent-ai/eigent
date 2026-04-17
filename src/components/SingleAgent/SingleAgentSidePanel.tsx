@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import BottomBar from '@/components/BottomBar';
 import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
 export interface SingleAgentSidePanelProps {
@@ -23,7 +23,7 @@ export interface SingleAgentSidePanelProps {
 
 export function SingleAgentSidePanel({
   isSidePanelVisible,
-  onToggleSidePanel,
+  onToggleSidePanel: _onToggleSidePanel,
 }: SingleAgentSidePanelProps) {
   const { t } = useTranslation();
 
@@ -32,8 +32,19 @@ export function SingleAgentSidePanel({
   }
 
   return (
-    <div className="min-w-0 relative flex h-full w-full flex-col overflow-hidden">
-      <div className="gap-2 p-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+    <div
+      className={cn(
+        'min-w-0 flex h-full w-full flex-col overflow-hidden',
+        'relative'
+      )}
+    >
+      <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
+        <span className="text-text-heading px-1 text-body-md font-semibold truncate">
+          {t('layout.workspace-session-single-agent')}
+        </span>
+      </div>
+
+      <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
         <SidePanelAccordionBox
           title={t('layout.workforce-progress', {
             defaultValue: 'Progress',
@@ -75,14 +86,6 @@ export function SingleAgentSidePanel({
             </li>
           </ul>
         </SidePanelAccordionBox>
-      </div>
-      <div className="inset-x-0 bottom-0 pointer-events-none absolute z-50">
-        <div className="pointer-events-auto">
-          <BottomBar
-            onToggleChatBox={onToggleSidePanel}
-            isChatBoxVisible={!isSidePanelVisible}
-          />
-        </div>
       </div>
     </div>
   );

@@ -27,28 +27,11 @@ const Update = () => {
     window.ipcRenderer.invoke('check-update');
   };
 
-  const onUpdateCanAvailable = useCallback(
-    (_event: Electron.IpcRendererEvent, info: VersionInfo) => {
-      if (info.update) {
-        toast(t('update.new-version-available'), {
-          description: `v${info.version} → v${info.newVersion}`,
-          action: {
-            label: t('update.download'),
-            onClick: () => {
-              setIsDownloading(true);
-              setDownloadProgress(0);
-              window.ipcRenderer.invoke('start-download');
-            },
-          },
-          duration: Infinity,
-        });
-      }
-    },
-    [t]
-  );
-
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
+      toast.dismiss('download-progress');
+      setIsDownloading(false);
+      setDownloadProgress(0);
       toast.error(t('update.update-error'), {
         description: err.message,
       });
@@ -58,7 +41,7 @@ const Update = () => {
 
   const onDownloadProgress = useCallback(
     (_event: Electron.IpcRendererEvent, progress: ProgressInfo) => {
-      console.log('Download progress received:', progress);
+      setIsDownloading(true);
       setDownloadProgress(progress.percent ?? 0);
     },
     []
@@ -69,7 +52,7 @@ const Update = () => {
     if (isDownloading) {
       toast.custom(
         (_toastId) => (
-          <div className="w-[300px] rounded-lg bg-white-100% p-4 shadow-lg">
+          <div className="rounded-lg bg-white-100% p-4 shadow-lg w-[300px]">
             <div className="mb-2 text-sm font-medium">
               {t('update.downloading-update')}
             </div>
@@ -82,6 +65,7 @@ const Update = () => {
         {
           id: 'download-progress',
           duration: Infinity,
+          position: 'bottom-right',
         }
       );
     }
@@ -109,24 +93,17 @@ const Update = () => {
     }
     sessionStorage.setItem('updateElectronShown', '1');
 
-    window.ipcRenderer?.on('update-can-available', onUpdateCanAvailable);
     window.ipcRenderer?.on('update-error', onUpdateError);
     window.ipcRenderer?.on('download-progress', onDownloadProgress);
     window.ipcRenderer?.on('update-downloaded', onUpdateDownloaded);
     checkUpdate();
 
     return () => {
-      window.ipcRenderer?.off('update-can-available', onUpdateCanAvailable);
       window.ipcRenderer?.off('update-error', onUpdateError);
       window.ipcRenderer?.off('download-progress', onDownloadProgress);
       window.ipcRenderer?.off('update-downloaded', onUpdateDownloaded);
     };
-  }, [
-    onUpdateCanAvailable,
-    onUpdateError,
-    onDownloadProgress,
-    onUpdateDownloaded,
-  ]);
+  }, [onUpdateError, onDownloadProgress, onUpdateDownloaded]);
 
   return null;
 };

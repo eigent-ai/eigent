@@ -182,10 +182,17 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       workspaceChatFocusRequestId: 0,
       requestWorkspaceChatFocus: () =>
-        set((state) => ({
-          activeWorkspaceTab: 'session',
-          workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
-        })),
+        set((state) => {
+          const tab = state.activeWorkspaceTab;
+          const alreadyOnWorkspaceChat =
+            tab === 'workforce' || tab === 'session' || tab === 'sessions';
+          return {
+            ...(alreadyOnWorkspaceChat
+              ? {}
+              : { activeWorkspaceTab: 'session' as const }),
+            workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
+          };
+        }),
       triggerAddDialogRequestId: 0,
       requestOpenTriggerAddDialog: () =>
         set((state) => {

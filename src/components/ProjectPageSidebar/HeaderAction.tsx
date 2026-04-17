@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import folderIcon from '@/assets/Folder.svg';
 import {
   Accordion,
   AccordionContent,
@@ -24,7 +25,13 @@ import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { motion } from 'framer-motion';
 import { PanelLeft, PanelLeftClose, PenLine, ScrollText } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
 import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
@@ -76,6 +83,10 @@ export function HeaderAction() {
   const toggleProjectSidebarFolded = usePageTabStore(
     (s) => s.toggleProjectSidebarFolded
   );
+  const setProjectSidebarFolded = usePageTabStore(
+    (s) => s.setProjectSidebarFolded
+  );
+  const openInstructionsAfterExpandRef = useRef(false);
   const [memoryOn, setMemoryOn] = useState(readMemoryInitial);
   const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState<string | undefined>(
@@ -85,6 +96,9 @@ export function HeaderAction() {
   useLayoutEffect(() => {
     if (projectSidebarFolded) {
       setInstructionsOpen(undefined);
+    } else if (openInstructionsAfterExpandRef.current) {
+      openInstructionsAfterExpandRef.current = false;
+      setInstructionsOpen('instructions');
     } else {
       setInstructionsOpen(readInstructionsAccordionPreference());
     }
@@ -193,7 +207,7 @@ export function HeaderAction() {
             <motion.span
               className={cn(
                 WORKSPACE_TAB_LABEL_CLASS,
-                'min-w-0 text-body-sm font-bold flex-1 overflow-hidden text-left'
+                'min-w-0 text-body-sm font-bold gap-2 flex flex-1 items-center overflow-hidden text-left'
               )}
               initial={false}
               animate={{
@@ -203,7 +217,13 @@ export function HeaderAction() {
               transition={PROJECT_SIDEBAR_FOLD_SPRING}
               aria-hidden={projectSidebarFolded}
             >
-              {coworkLabel}
+              <img
+                src={folderIcon}
+                alt=""
+                className="h-6 w-6 mt-1 -ml-0.5 shrink-0"
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate">{coworkLabel}</span>
             </motion.span>
             <motion.div
               className="mr-3 min-h-8 min-w-0 flex shrink-0 items-center justify-end overflow-hidden"
@@ -252,6 +272,12 @@ export function HeaderAction() {
                 title={
                   projectSidebarFolded ? String(instructionsLabel) : undefined
                 }
+                onClick={(e) => {
+                  if (!projectSidebarFolded) return;
+                  openInstructionsAfterExpandRef.current = true;
+                  setProjectSidebarFolded(false);
+                  e.preventDefault();
+                }}
               >
                 <span
                   className={cn(

@@ -58,31 +58,15 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-// Import model images
-import anthropicImage from '@/assets/model/anthropic.svg';
-import azureImage from '@/assets/model/azure.svg';
-import bedrockImage from '@/assets/model/bedrock.svg';
-import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
-import ernieImage from '@/assets/model/ernie.png';
-import geminiImage from '@/assets/model/gemini.svg';
-import llamaCppImage from '@/assets/model/llamacpp.svg';
-import lmstudioImage from '@/assets/model/lmstudio.svg';
-import minimaxImage from '@/assets/model/minimax.svg';
-import modelarkImage from '@/assets/model/modelark.svg';
-import moonshotImage from '@/assets/model/moonshot.svg';
-import ollamaImage from '@/assets/model/ollama.svg';
-import openaiImage from '@/assets/model/openai.svg';
-import openrouterImage from '@/assets/model/openrouter.svg';
-import qwenImage from '@/assets/model/qwen.svg';
-import sglangImage from '@/assets/model/sglang.svg';
-import vllmImage from '@/assets/model/vllm.svg';
-import zaiImage from '@/assets/model/zai.svg';
+import {
+  getModelImage,
+  needsInvertModelImage,
+} from '@/Shared/modelProviderImages';
 
 import {
   appendV1ToEndpoint,
   canAutoFixOllamaEndpoint,
-  DARK_FILL_MODELS,
   getDefaultLocalEndpoint,
   getLocalPlatformName,
   LLAMA_CPP_PROVIDER_ID,
@@ -91,7 +75,6 @@ import {
   OLLAMA_ENDPOINT_AUTO_FIX_DESC,
   OLLAMA_ENDPOINT_AUTO_FIX_TITLE,
   OLLAMA_PROVIDER_ID,
-  PROVIDER_AVATAR_URLS,
   SGLANG_PROVIDER_ID,
   toEndpointBaseUrl,
   VLLM_PROVIDER_ID,
@@ -1036,55 +1019,8 @@ export default function SettingModels() {
     }
   };
 
-  // Check if a model logo needs inversion in dark mode
-  const needsInvert = (modelId: string | null): boolean => {
-    if (!modelId || appearance !== 'dark') return false;
-    // Strip 'local-' prefix for local model tab IDs
-    const key = modelId.startsWith('local-')
-      ? modelId.replace('local-', '')
-      : modelId;
-    return DARK_FILL_MODELS.has(key);
-  };
-
-  // Helper to get model image based on model ID
-  const getModelImage = (modelId: string | null): string | null => {
-    if (!modelId) return null;
-    const modelImageMap: Record<string, string> = {
-      // Cloud version
-      cloud: eigentImage,
-      // Cloud models
-      openai: openaiImage,
-      anthropic: anthropicImage,
-      gemini: geminiImage,
-      openrouter: openrouterImage,
-      'tongyi-qianwen': qwenImage,
-      deepseek: deepseekImage,
-      ernie: ernieImage,
-      minimax: minimaxImage,
-      'z.ai': zaiImage,
-      moonshot: moonshotImage,
-      ModelArk: modelarkImage,
-      'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
-      grok: PROVIDER_AVATAR_URLS.grok,
-      mistral: PROVIDER_AVATAR_URLS.mistral,
-      'aws-bedrock': bedrockImage,
-      azure: azureImage,
-      'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
-      // Local models
-      ollama: ollamaImage,
-      vllm: vllmImage,
-      sglang: sglangImage,
-      lmstudio: lmstudioImage,
-      [LLAMA_CPP_PROVIDER_ID]: llamaCppImage,
-      // Local model tab IDs
-      'local-ollama': ollamaImage,
-      'local-vllm': vllmImage,
-      'local-sglang': sglangImage,
-      'local-lmstudio': lmstudioImage,
-      'local-llama.cpp': llamaCppImage,
-    };
-    return modelImageMap[modelId] || null;
-  };
+  const needsInvert = (modelId: string | null): boolean =>
+    needsInvertModelImage(modelId, appearance);
 
   // Helper to render sidebar tab item
   const renderSidebarItem = (

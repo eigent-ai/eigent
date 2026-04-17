@@ -12,6 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  httpUrlOrNull,
+  segmentsToHtml,
+  tokenizeRichPlainText,
+} from '@/lib/richText';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import React, {
@@ -23,130 +28,9 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
+export { tokenizeRichPlainText } from '@/lib/richText';
+
 const PLACEHOLDER_ROTATE_MS = 30_000;
-
-type RichSegment = { type: 'text' | 'url' | 'skill'; text: string };
-
-const SKILL_STYLE_CLASSES = [
-  'text-text-information bg-surface-information/35',
-  'text-text-success bg-surface-success/25',
-  'text-text-warning bg-surface-warning/35',
-  'text-icon-information bg-surface-action/20',
-] as const;
-
-function hashSkillLabel(label: string): number {
-  let h = 0;
-  for (let i = 0; i < label.length; i++) {
-    h = (h << 5) - h + label.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h);
-}
-
-/** Strip trailing punctuation often typed after pasted URLs. */
-function trimUrlTail(raw: string): string {
-  return raw.replace(/[`'".,;:!?)\]]+$/g, '');
-}
-
-const URL_AT_START = /^(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/i;
-
-/** Plain-text tokenizer: http(s) / www URLs and #skill tokens (alphanumeric + _-). */
-export function tokenizeRichPlainText(text: string): RichSegment[] {
-  const out: RichSegment[] = [];
-  let i = 0;
-  const len = text.length;
-
-  while (i < len) {
-    const slice = text.slice(i);
-    const urlMatch = slice.match(URL_AT_START);
-    if (urlMatch) {
-      const full = urlMatch[0];
-      const trimmed = trimUrlTail(full);
-      if (trimmed.length > 0) {
-        out.push({ type: 'url', text: trimmed });
-        if (full.length > trimmed.length) {
-          out.push({ type: 'text', text: full.slice(trimmed.length) });
-        }
-        i += full.length;
-        continue;
-      }
-    }
-
-    if (slice[0] === '#') {
-      const skillMatch = slice.match(/^#([a-zA-Z0-9_-]+)/);
-      if (skillMatch) {
-        out.push({ type: 'skill', text: skillMatch[0] });
-        i += skillMatch[0].length;
-        continue;
-      }
-    }
-
-    let j = i + 1;
-    while (j < len) {
-      const tail = text.slice(j);
-      if (URL_AT_START.test(tail)) break;
-      if (text[j] === '#' && /^#([a-zA-Z0-9_-]+)/.test(tail)) break;
-      j++;
-    }
-    out.push({ type: 'text', text: text.slice(i, j) });
-    i = j;
-  }
-
-  return out;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function httpUrlOrNull(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const withScheme = /^www\./i.test(trimmed) ? `https://${trimmed}` : trimmed;
-  try {
-    const u = new URL(withScheme);
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-    return u.href;
-  } catch {
-    if (/^https?:\/\//i.test(trimmed)) {
-      return trimmed;
-    }
-    if (/^www\./i.test(trimmed)) {
-      return `https://${trimmed}`;
-    }
-    return null;
-  }
-}
-
-function segmentsToHtml(segments: RichSegment[]): string {
-  const parts: string[] = [];
-  for (const seg of segments) {
-    if (seg.type === 'text') {
-      parts.push(escapeHtml(seg.text).replace(/\n/g, '<br />'));
-    } else if (seg.type === 'url') {
-      const href = httpUrlOrNull(seg.text);
-      const safe = escapeHtml(seg.text);
-      if (href) {
-        parts.push(
-          `<a href="${escapeHtml(href)}" data-rich-url="1" class="text-text-information underline decoration-text-information/80 underline-offset-2">${safe}</a>`
-        );
-      } else {
-        parts.push(safe);
-      }
-    } else {
-      const idx = hashSkillLabel(seg.text) % SKILL_STYLE_CLASSES.length;
-      const cls = SKILL_STYLE_CLASSES[idx];
-      parts.push(
-        `<span data-rich-skill="1" class="rounded px-0.5 py-px font-medium ${cls}">${escapeHtml(seg.text)}</span>`
-      );
-    }
-  }
-  return parts.join('');
-}
 
 function brToNewlineInTree(container: HTMLElement): void {
   container.querySelectorAll('br').forEach((br) => {
@@ -363,6 +247,20 @@ export const RichChatInput = React.forwardRef<
     el.style.height = `${Math.min(el.scrollHeight, maxHeightPx)}px`;
   }, [maxHeightPx]);
 
+  const handleBlur = useCallback(() => {
+    const el = rootRef.current;
+    if (!el || composingRef.current) {
+      onBlur?.();
+      return;
+    }
+    const plain = getPlainTextFromRoot(el);
+    internalUpdate.current = true;
+    onChange(plain, plain.length);
+    applyHtml(plain);
+    resizeHeight();
+    onBlur?.();
+  }, [applyHtml, onBlur, onChange, resizeHeight]);
+
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -407,7 +305,6 @@ export const RichChatInput = React.forwardRef<
     const caret = getCaretOffset(el);
     internalUpdate.current = true;
     onChange(plain, caret);
-    applyHtml(plain, caret);
     resizeHeight();
   };
 
@@ -497,7 +394,7 @@ export const RichChatInput = React.forwardRef<
         onPaste={handlePaste}
         onKeyDown={onKeyDown}
         onFocus={onFocus}
-        onBlur={onBlur}
+        onBlur={handleBlur}
         onCompositionStart={() => {
           composingRef.current = true;
           onCompositionStart?.();

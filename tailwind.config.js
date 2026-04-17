@@ -522,6 +522,10 @@ module.exports = {
         'surface-card-hover': 'var(--surface-card-hover)',
         'surface-card-focus': 'var(--surface-card-focus)',
         'surface-card-default': 'var(--surface-card-default)',
+        'surface-session-single-agent-selected':
+          'var(--surface-session-single-agent-selected)',
+        'surface-session-workforce-selected':
+          'var(--surface-session-workforce-selected)',
 
         'border-primary': 'var(--border-primary)',
         'border-secondary': 'var(--border-secondary)',

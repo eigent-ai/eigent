@@ -16,7 +16,6 @@ import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
 import { SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
-import { User, Users } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -30,6 +29,8 @@ export interface WorkspaceSessionModeToggleProps {
   value: SessionModeType;
   onValueChange: (mode: SessionModeType) => void;
   className?: string;
+  /** When true, only the current mode is shown (no switching). Used in session chat input. */
+  readOnly?: boolean;
 }
 
 const SLIDE_TRANSITION = {
@@ -51,6 +52,7 @@ export function WorkspaceSessionModeToggle({
   value,
   onValueChange,
   className,
+  readOnly = false,
 }: WorkspaceSessionModeToggleProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,6 +63,17 @@ export function WorkspaceSessionModeToggle({
   const [highlight, setHighlight] = useState({ left: 0, width: 0 });
 
   const targetSegment = hoverSegment ?? segmentFromMode(value);
+
+  const labelSingle = t('layout.workspace-session-single-agent', {
+    defaultValue: 'Single Agent',
+  });
+  const labelWorkforce = t('layout.workspace-session-workforce', {
+    defaultValue: 'Workforce',
+  });
+
+  const modeAriaLabel = t('layout.workspace-session-mode-label', {
+    defaultValue: 'Session mode',
+  });
 
   const measure = useCallback((segment: Segment) => {
     const container = containerRef.current;
@@ -88,12 +101,26 @@ export function WorkspaceSessionModeToggle({
     };
   }, [hoverSegment, measure, value]);
 
-  const labelSingle = t('layout.workspace-session-single-agent', {
-    defaultValue: 'Single Agent',
-  });
-  const labelWorkforce = t('layout.workspace-session-workforce', {
-    defaultValue: 'Workforce',
-  });
+  if (readOnly) {
+    const isSingle = value === SessionMode.SINGLE_AGENT;
+    return (
+      <div
+        role="status"
+        aria-label={modeAriaLabel}
+        className={cn(
+          'rounded-xl px-2 py-1 pointer-events-none inline-flex items-center',
+          isSingle
+            ? 'bg-surface-session-single-agent-selected text-session-single-agent'
+            : 'bg-surface-session-workforce-selected text-session-workforce',
+          className
+        )}
+      >
+        <span className="!text-label-xs font-semibold inline-flex items-center">
+          {isSingle ? labelSingle : labelWorkforce}
+        </span>
+      </div>
+    );
+  }
 
   const cardOver = (segment: Segment) => targetSegment === segment;
 
@@ -101,17 +128,20 @@ export function WorkspaceSessionModeToggle({
     <div
       ref={containerRef}
       role="radiogroup"
-      aria-label={t('layout.workspace-session-mode-label', {
-        defaultValue: 'Session mode',
-      })}
-      className={cn('min-h-8 relative inline-flex items-stretch', className)}
+      aria-label={modeAriaLabel}
+      className={cn(
+        'bg-surface-primary rounded-xl ring-surface-primary relative inline-flex items-stretch ring-1 ring-offset-2',
+        className
+      )}
       onMouseLeave={() => setHoverSegment(null)}
     >
       <motion.div
         aria-hidden
         className={cn(
-          'inset-y-0 pointer-events-none absolute z-0',
-          'rounded-t-xl border-border-secondary/60 bg-surface-tertiary shadow-sm border'
+          'inset-y-0 rounded-xl pointer-events-none absolute z-0 transition-colors duration-150',
+          targetSegment === 'single'
+            ? 'bg-surface-session-single-agent-selected'
+            : 'bg-surface-session-workforce-selected'
         )}
         initial={false}
         animate={{
@@ -127,8 +157,8 @@ export function WorkspaceSessionModeToggle({
         role="radio"
         aria-checked={value === SessionMode.SINGLE_AGENT}
         className={cn(
-          'min-h-8 rounded-t-xl px-3 py-1.5 relative z-10 border-0 bg-transparent',
-          '!text-label-sm font-medium transition-colors duration-150',
+          'rounded-xl px-2 py-1 relative z-10 border-0 bg-transparent',
+          '!text-label-xs font-semibold transition-colors duration-150',
           cardOver('single')
             ? 'text-session-single-agent'
             : 'text-text-secondary'
@@ -137,15 +167,10 @@ export function WorkspaceSessionModeToggle({
         onClick={() => onValueChange(SessionMode.SINGLE_AGENT)}
       >
         <motion.span
-          className="gap-1.5 inline-flex origin-center items-center will-change-transform"
+          className="inline-flex origin-center items-center will-change-transform"
           whileTap={{ scale: 1.05 }}
           transition={LABEL_TAP_TRANSITION}
         >
-          <User
-            className="h-3.5 w-3.5 shrink-0 opacity-90"
-            strokeWidth={2}
-            aria-hidden
-          />
           {labelSingle}
         </motion.span>
       </button>
@@ -155,8 +180,8 @@ export function WorkspaceSessionModeToggle({
         role="radio"
         aria-checked={value === SessionMode.WORKFORCE}
         className={cn(
-          'min-h-8 rounded-t-xl px-3 py-1.5 relative z-10 border-0 bg-transparent',
-          '!text-label-sm font-medium transition-colors duration-150',
+          'rounded-xl px-2 py-1 relative z-10 border-0 bg-transparent',
+          '!text-label-xs font-semibold transition-colors duration-150',
           cardOver('workforce')
             ? 'text-session-workforce'
             : 'text-text-secondary'
@@ -165,15 +190,10 @@ export function WorkspaceSessionModeToggle({
         onClick={() => onValueChange(SessionMode.WORKFORCE)}
       >
         <motion.span
-          className="gap-1.5 inline-flex origin-center items-center will-change-transform"
+          className="inline-flex origin-center items-center will-change-transform"
           whileTap={{ scale: 1.05 }}
           transition={LABEL_TAP_TRANSITION}
         >
-          <Users
-            className="h-3.5 w-3.5 shrink-0 opacity-90"
-            strokeWidth={2}
-            aria-hidden
-          />
           {labelWorkforce}
         </motion.span>
       </button>

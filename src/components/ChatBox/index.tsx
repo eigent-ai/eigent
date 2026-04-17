@@ -26,7 +26,7 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ExecutionStatus } from '@/types';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
   useCallback,
   useEffect,
@@ -71,6 +71,9 @@ export default function ChatBox({
     (s) => s.workspaceChatFocusRequestId
   );
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
+  const sessionSidePanelMode = usePageTabStore(
+    (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
+  );
   const [hasModel, setHasModel] = useState(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1078,6 +1081,8 @@ export default function ChatBox({
                         textareaRef: textareaRef,
                         allowDragDrop: true,
                         useCloudModelInDev: useCloudModelInDev,
+                        sessionMode: sessionSidePanelMode,
+                        sessionModeSelectInteractive: false,
                       }}
                     />
                   )}
@@ -1144,6 +1149,8 @@ export default function ChatBox({
                       textareaRef: textareaRef,
                       allowDragDrop: true,
                       useCloudModelInDev: useCloudModelInDev,
+                      sessionMode: sessionSidePanelMode,
+                      sessionModeSelectInteractive: false,
                     }}
                   />
                 </div>

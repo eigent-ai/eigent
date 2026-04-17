@@ -37,6 +37,7 @@
   "upload": "Cargar",
   "invalid-file-type": "Tipo de archivo no válido. Por favor cargue un archivo .skill, .md, .txt o .json.",
   "file-too-large": "El archivo es demasiado grande. El tamaño máximo es 1MB.",
+  "zip-import-too-large": "El ZIP es demasiado grande. El tamaño máximo es 50 MB.",
   "file-read-error": "Error al leer el archivo. Por favor intente de nuevo.",
   "reupload-file": "Volver a subir un archivo",
   "upload-error-invalid-format": "El archivo debe ser un .zip o paquete de habilidad (.skill o .md).",

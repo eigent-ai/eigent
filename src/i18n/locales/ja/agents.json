@@ -37,6 +37,7 @@
   "upload": "アップロード",
   "invalid-file-type": "無効なファイル形式です。.skill、.md、.txt、または .json ファイルをアップロードしてください。",
   "file-too-large": "ファイルが大きすぎます。最大サイズは 1MB です。",
+  "zip-import-too-large": "ZIP が大きすぎます。最大サイズは 50 MB です。",
   "file-read-error": "ファイルの読み込みに失敗しました。もう一度お試しください。",
   "reupload-file": "ファイルを再アップロード",
   "upload-error-invalid-format": "ファイルは .zip またはスキルパッケージ（.skill または .md）である必要があります。",

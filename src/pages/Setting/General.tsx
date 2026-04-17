@@ -14,7 +14,6 @@
 
 import dark from '@/assets/dark.png';
 import light from '@/assets/light.png';
-import transparent from '@/assets/transparent.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
@@ -59,7 +58,7 @@ export default function SettingGeneral() {
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
 
-  const [themeList, setThemeList] = useState<any>([
+  const themeList = [
     {
       img: dark,
       label: 'setting.dark',
@@ -70,47 +69,12 @@ export default function SettingGeneral() {
       label: 'setting.light',
       value: 'light',
     },
-    {
-      img: transparent,
-      label: 'setting.transparent',
-      value: 'transparent',
-    },
-  ]);
+  ];
 
   // Proxy configuration state
   const [proxyUrl, setProxyUrl] = useState('');
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
-
-  useEffect(() => {
-    const platform = window.electronAPI.getPlatform();
-    console.log(platform);
-    const baseThemes = [
-      {
-        img: dark,
-        label: 'setting.dark',
-        value: 'dark',
-      },
-      {
-        img: light,
-        label: 'setting.light',
-        value: 'light',
-      },
-    ];
-
-    if (platform === 'darwin') {
-      setThemeList([
-        ...baseThemes,
-        {
-          img: transparent,
-          label: 'setting.transparent',
-          value: 'transparent',
-        },
-      ]);
-    } else {
-      setThemeList(baseThemes);
-    }
-  }, []);
 
   const languageList = [
     {

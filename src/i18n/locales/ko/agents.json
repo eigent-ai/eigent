@@ -37,6 +37,7 @@
   "upload": "업로드",
   "invalid-file-type": "잘못된 파일 유형입니다. .skill, .md, .txt 또는 .json 파일을 업로드해 주세요.",
   "file-too-large": "파일이 너무 큽니다. 최대 크기는 1MB입니다.",
+  "zip-import-too-large": "ZIP 파일이 너무 큽니다. 최대 크기는 50MB입니다.",
   "file-read-error": "파일 읽기에 실패했습니다. 다시 시도해 주세요.",
   "reupload-file": "파일 다시 업로드",
   "upload-error-invalid-format": "파일은 .zip 또는 스킬 패키지(.skill 또는 .md)여야 합니다.",

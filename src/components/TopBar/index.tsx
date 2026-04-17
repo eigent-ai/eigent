@@ -34,7 +34,7 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
+  CircleHelp,
   House,
   Minus,
   Plus,
@@ -410,7 +410,7 @@ function HeaderWin() {
                       aria-label={t('layout.support')}
                       aria-haspopup="menu"
                     >
-                      <CircleAlert className="h-4 w-4" aria-hidden />
+                      <CircleHelp className="h-4 w-4" aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipSimple>

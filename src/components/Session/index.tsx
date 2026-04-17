@@ -183,6 +183,7 @@ export default function Session() {
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
+            sessionSidePanelMode={sessionMode}
             narrowTimelineLayout={isNarrowTimelineLayout}
             timelineDropdownOpen={timelineDropdownOpen}
             onTimelineDropdownOpenChange={setTimelineDropdownOpen}

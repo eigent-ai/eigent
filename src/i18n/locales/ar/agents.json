@@ -37,6 +37,7 @@
   "upload": "رفع",
   "invalid-file-type": "نوع ملف غير صالح. يرجى رفع ملف .skill أو .md أو .txt أو .json.",
   "file-too-large": "الملف كبير جداً. الحد الأقصى للحجم هو 1 ميجابايت.",
+  "zip-import-too-large": "ملف ZIP كبير جداً. الحد الأقصى 50 ميجابايت.",
   "file-read-error": "فشل في قراءة الملف. يرجى المحاولة مرة أخرى.",
   "reupload-file": "إعادة رفع ملف",
   "upload-error-invalid-format": "يجب أن يكون الملف .zip أو حزمة مهارة (.skill أو .md).",

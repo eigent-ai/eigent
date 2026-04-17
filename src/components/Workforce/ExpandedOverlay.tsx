@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -34,7 +34,6 @@ export interface ExpandedOverlayProps {
   workforcePanelKey: string;
   onToggleSidePanel: () => void;
   isSidePanelVisible: boolean;
-  onOpenAddWorker: () => void;
 }
 
 function WorkforceOverlayCanvas() {
@@ -129,7 +128,6 @@ export default function ExpandedOverlay({
   workforcePanelKey,
   onToggleSidePanel,
   isSidePanelVisible,
-  onOpenAddWorker,
 }: ExpandedOverlayProps) {
   const { t } = useTranslation();
   const { chatStore } = useChatStoreAdapter();
@@ -200,15 +198,6 @@ export default function ExpandedOverlay({
                 </span>
               </div>
               <div className="gap-1 flex shrink-0 items-center">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="rounded-lg items-center justify-center"
-                  onClick={onOpenAddWorker}
-                >
-                  <Plus />
-                  {t('triggers.add')}
-                </Button>
                 <TooltipSimple
                   content={backdropDismissLabel}
                   delayDuration={300}

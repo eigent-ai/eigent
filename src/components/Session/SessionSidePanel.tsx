@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SingleAgentSidePanel } from '@/components/SingleAgent';
+import { SingleAgentSidePanel } from '@/components/SingleAgent/SingleAgentSidePanel';
 import { WorkforceSidePanel } from '@/components/Workforce/WorkforceSidePanel';
 import type { SessionModeType } from '@/types/constants';
 

@@ -23,7 +23,6 @@ import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExamplePrompts';
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
-import { WorkspaceSessionModeToggle } from '@/components/Workspace/WorkspaceSessionModeToggle';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -317,24 +316,17 @@ export default function Workspace() {
         <div className="min-h-0 flex w-full flex-1 flex-col items-stretch justify-center">
           <div className="mx-auto flex w-full max-w-[600px] flex-col">
             <div className="mb-12 flex w-full flex-col">
-              <span className="text-text-heading text-heading-lg font-semibold w-full text-center">
+              <span className="text-text-heading text-heading-lg font-bold w-full text-center">
                 {t('layout.workspace-lets-do-this', {
                   defaultValue: "Let's do this",
                 })}
               </span>
-              <div className="mt-3 flex w-full justify-center">
+              <div className="mt-4 flex w-full justify-center">
                 <WorkspaceProjectPicker />
               </div>
             </div>
 
             <div className="w-full">
-              <div className="px-5 flex w-full justify-center">
-                <WorkspaceSessionModeToggle
-                  className="shrink-0"
-                  value={sessionSidePanelMode}
-                  onValueChange={setSessionSidePanelMode}
-                />
-              </div>
               <BottomBox
                 state="input"
                 queuedMessages={[]}
@@ -365,6 +357,9 @@ export default function Workspace() {
                   placeholder: t('layout.project-task-placeholder', {
                     defaultValue: 'Describe what you want to accomplish...',
                   }),
+                  sessionMode: sessionSidePanelMode,
+                  onSessionModeChange: setSessionSidePanelMode,
+                  sessionModeSelectInteractive: true,
                 }}
               />
               <div className="mt-3 px-5 flex w-full justify-center">

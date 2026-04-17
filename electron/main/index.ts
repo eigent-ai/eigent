@@ -1567,8 +1567,12 @@ function registerIpcHandlers() {
     try {
       const name = String(skillName || '').trim();
       if (!name) return { success: false, error: 'Skill name is required' };
+      if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+        return { success: false, error: 'Invalid skill name' };
+      }
       if (!existsSync(SKILLS_ROOT))
         return { success: false, error: 'Skills dir not found' };
+      const resolvedSkillsRoot = path.resolve(SKILLS_ROOT);
       const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
       const nameLower = name.toLowerCase();
       for (const e of entries) {
@@ -1578,7 +1582,11 @@ function registerIpcHandlers() {
           const raw = await fsp.readFile(skillPath, 'utf-8');
           const meta = parseSkillFrontmatter(raw);
           if (meta && meta.name.toLowerCase().trim() === nameLower) {
-            const dirPath = path.join(SKILLS_ROOT, e.name);
+            const dirPath = path.resolve(path.join(SKILLS_ROOT, e.name));
+            const rel = path.relative(resolvedSkillsRoot, dirPath);
+            if (rel.startsWith('..') || path.isAbsolute(rel)) {
+              return { success: false, error: 'Invalid skill path' };
+            }
             await shell.openPath(dirPath);
             return { success: true };
           }

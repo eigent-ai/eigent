@@ -20,6 +20,7 @@ import { Popover, PopoverContent } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import type { SessionModeType } from '@/types/constants';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { Menu, PanelRight, PanelRightClose } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -43,6 +44,8 @@ export interface HeaderBoxProps {
   isSessionSidePanelVisible?: boolean;
   /** Toggle the session right panel rail open / folded */
   onToggleSessionSidePanel?: () => void;
+  /** Which session right rail is active (affects panel toggle copy in the chat header). */
+  sessionSidePanelMode?: SessionModeType;
   /** Optional extra class names for the outer container */
   className?: string;
 }
@@ -57,6 +60,7 @@ export function HeaderBox({
   timelineDropdownContent,
   isSessionSidePanelVisible = true,
   onToggleSessionSidePanel,
+  sessionSidePanelMode = 'workforce',
   className,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
@@ -65,11 +69,20 @@ export function HeaderBox({
   const chatHistoryTooltip = t('layout.chat-history-tooltip', {
     defaultValue: 'Chat history',
   });
-  const sessionSidePanelTooltip = isSessionSidePanelVisible
-    ? t('layout.hide-workforce-panel', {
-        defaultValue: 'Hide workforce panel',
-      })
-    : t('layout.show-workforce-panel');
+  const sessionSidePanelTooltip =
+    sessionSidePanelMode === 'single-agent'
+      ? isSessionSidePanelVisible
+        ? t('layout.hide-side-panel', {
+            defaultValue: 'Hide side panel',
+          })
+        : t('layout.show-side-panel', {
+            defaultValue: 'Show side panel',
+          })
+      : isSessionSidePanelVisible
+        ? t('layout.hide-workforce-panel', {
+            defaultValue: 'Hide workforce panel',
+          })
+        : t('layout.show-workforce-panel');
 
   return (
     <div

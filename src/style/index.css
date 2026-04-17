@@ -101,10 +101,6 @@ body {
   [data-theme='dark'] .theme-image-invert-dark {
     filter: brightness(0) invert(1);
   }
-
-  [data-theme='transparent'] .theme-image-invert-dark {
-    filter: brightness(0) invert(1);
-  }
 }
 
 #root,

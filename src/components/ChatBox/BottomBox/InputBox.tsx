@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -29,9 +28,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { WorkspaceSessionModeToggle } from '@/components/Workspace/WorkspaceSessionModeToggle';
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
+import type { SessionModeType } from '@/types/constants';
 import {
   ArrowRight,
   Compass,
@@ -43,12 +44,12 @@ import {
   UploadCloud,
   Wand2,
   X,
-  Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ChatInputModelDropdown } from './ChatInputModelDropdown';
 import { RichChatInput } from './RichChatInput';
 
 /**
@@ -91,6 +92,12 @@ export interface InputboxProps {
   privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
+  /** Session mode for the mode-select row; omit to hide it. */
+  sessionMode?: SessionModeType;
+  /** Called when the user changes mode (workspace only). */
+  onSessionModeChange?: (mode: SessionModeType) => void;
+  /** Full toggle on workspace; on session chat, only the current mode is shown. */
+  sessionModeSelectInteractive?: boolean;
   /** Callback when trigger is being created (for placeholder) */
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
@@ -151,6 +158,9 @@ export const Inputbox = ({
   allowDragDrop = false,
   privacy = true,
   useCloudModelInDev = false,
+  sessionMode,
+  onSessionModeChange,
+  sessionModeSelectInteractive = false,
   onTriggerCreating: _onTriggerCreating,
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
@@ -165,7 +175,6 @@ export const Inputbox = ({
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const hoverCloseTimerRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
-  const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
 
   const openRemainingPopover = () => {
     if (hoverCloseTimerRef.current) {
@@ -323,7 +332,18 @@ export const Inputbox = ({
           </div>
         </div>
       )}
-      {/* Layer 1: File attachments (only show if has files) */}
+      {/* Layer 1: Session mode (workspace: full toggle; session: current mode only) */}
+      {sessionMode !== undefined && (
+        <div className="pb-3 flex w-full justify-start">
+          <WorkspaceSessionModeToggle
+            value={sessionMode}
+            onValueChange={onSessionModeChange ?? (() => {})}
+            readOnly={!sessionModeSelectInteractive}
+            className="shrink-0"
+          />
+        </div>
+      )}
+      {/* Layer 2: File attachments (only show if has files) */}
       {files.length > 0 && (
         <div className="gap-1 pb-2 relative box-border flex w-full flex-wrap items-start">
           {visibleFiles.map((file) => {
@@ -451,7 +471,7 @@ export const Inputbox = ({
         </div>
       )}
 
-      {/* Layer 2: Text input area */}
+      {/* Layer 3: Text input area */}
       <div className="gap-2.5 pb-3 relative box-border flex w-full flex-1 items-start justify-center">
         <RichChatInput
           ref={textareaRef as React.RefObject<HTMLDivElement>}
@@ -483,10 +503,10 @@ export const Inputbox = ({
         />
       </div>
 
-      {/* Layer 3: Action buttons */}
+      {/* Layer 4: Action buttons */}
       <div className="relative flex w-full items-center justify-between">
         {/* Left: Add File Button and Add Trigger Button */}
-        <div className="gap-1 relative flex items-center">
+        <div className="gap-2 relative flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -601,29 +621,7 @@ export const Inputbox = ({
               </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* Add Trigger Button - opens TriggerDialog */}
-          <Button
-            variant="ghost"
-            size="xs"
-            buttonContent="text"
-            textWeight="bold"
-            buttonRadius="full"
-            className="rounded-lg"
-            disabled={disabled}
-            onClick={() => setTriggerDialogOpen(true)}
-          >
-            <Zap className="text-icon-primary" />
-            {t('triggers.trigger-label')}
-          </Button>
-
-          {/* TriggerDialog for adding trigger and task */}
-          <TriggerDialog
-            selectedTrigger={null}
-            isOpen={triggerDialogOpen}
-            onOpenChange={setTriggerDialogOpen}
-            initialTaskPrompt={value}
-          />
+          <ChatInputModelDropdown disabled={disabled} />
         </div>
 
         {/* Right: Send Button */}

@@ -52,6 +52,8 @@
   "minimize-workforce": "Minimize workforce",
   "show-workforce-panel": "Show workforce panel",
   "hide-workforce-panel": "Hide workforce panel",
+  "show-side-panel": "Show side panel",
+  "hide-side-panel": "Hide side panel",
   "chat-panel-left": "Show chat on the left",
   "chat-panel-right": "Show chat on the right",
   "triggers": "Triggers",
