@@ -36,7 +36,7 @@ import {
 import {
   getModelImage,
   needsInvertModelImage,
-} from '@/Shared/modelProviderImages';
+} from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
 import type { Provider } from '@/types';
 

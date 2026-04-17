@@ -62,7 +62,7 @@ import eigentImage from '@/assets/model/eigent.svg';
 import {
   getModelImage,
   needsInvertModelImage,
-} from '@/Shared/modelProviderImages';
+} from '@/shared/modelProviderImages';
 
 import {
   appendV1ToEndpoint,
