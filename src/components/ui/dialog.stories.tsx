@@ -49,7 +49,7 @@ export const Default: Story = {
             subtitle="Optional subtitle text"
           />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               This is the main content area of the dialog. You can add any
               content here including forms, text, images, or other components.
             </p>
@@ -80,7 +80,7 @@ export const SmallSize: Story = {
         <DialogContent size="sm">
           <DialogHeader title="Small Dialog" />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               A compact dialog for simple actions.
             </p>
           </DialogContentSection>
@@ -109,7 +109,7 @@ export const LargeSize: Story = {
             subtitle="This dialog is wider for more complex content"
           />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               Large dialogs are useful when you need to display more content,
               such as detailed forms, tables, or multi-step processes.
             </p>
@@ -140,7 +140,7 @@ export const WithForm: Story = {
             subtitle="Enter your details to create a new account"
           />
           <DialogContentSection>
-            <div className="flex flex-col gap-4">
+            <div className="gap-4 flex flex-col">
               <Input
                 title="Full Name"
                 placeholder="Enter your full name"
@@ -192,7 +192,7 @@ export const WithTooltip: Story = {
             showTooltip
           />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               Hover over the icon next to the title to see the tooltip.
             </p>
           </DialogContentSection>
@@ -223,7 +223,7 @@ export const WithBackButton: Story = {
             onBackClick={() => console.log('Back clicked')}
           />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               Click the back button to return to the previous step.
             </p>
           </DialogContentSection>
@@ -258,7 +258,7 @@ export const DestructiveAction: Story = {
             subtitle="This action cannot be undone"
           />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               Are you sure you want to delete this item? All associated data
               will be permanently removed.
             </p>
@@ -291,7 +291,7 @@ export const NoCloseButton: Story = {
         <DialogContent showCloseButton={false}>
           <DialogHeader title="Required Action" />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               This dialog does not have a close button. User must interact with
               the footer buttons.
             </p>
@@ -313,7 +313,7 @@ export const AllSizes: Story = {
     const [openMd, setOpenMd] = useState(false);
     const [openLg, setOpenLg] = useState(false);
     return (
-      <div className="flex gap-4">
+      <div className="gap-4 flex">
         <Dialog open={openSm} onOpenChange={setOpenSm}>
           <DialogTrigger asChild>
             <Button variant="outline">Small (400px)</Button>
@@ -321,7 +321,9 @@ export const AllSizes: Story = {
           <DialogContent size="sm">
             <DialogHeader title="Small Dialog" />
             <DialogContentSection>
-              <p className="text-text-body">Max width: 400px</p>
+              <p className="text-ds-text-neutral-default-default">
+                Max width: 400px
+              </p>
             </DialogContentSection>
             <DialogFooter
               showConfirmButton
@@ -338,7 +340,9 @@ export const AllSizes: Story = {
           <DialogContent size="md">
             <DialogHeader title="Medium Dialog" />
             <DialogContentSection>
-              <p className="text-text-body">Max width: 600px (default)</p>
+              <p className="text-ds-text-neutral-default-default">
+                Max width: 600px (default)
+              </p>
             </DialogContentSection>
             <DialogFooter
               showConfirmButton
@@ -355,7 +359,9 @@ export const AllSizes: Story = {
           <DialogContent size="lg">
             <DialogHeader title="Large Dialog" />
             <DialogContentSection>
-              <p className="text-text-body">Max width: 900px</p>
+              <p className="text-ds-text-neutral-default-default">
+                Max width: 900px
+              </p>
             </DialogContentSection>
             <DialogFooter
               showConfirmButton
@@ -384,7 +390,7 @@ export const OpenCloseInteraction: Story = {
             subtitle="Test opening and closing"
           />
           <DialogContentSection>
-            <p className="text-text-body">
+            <p className="text-ds-text-neutral-default-default">
               This dialog tests the open/close interaction.
             </p>
           </DialogContentSection>
@@ -431,7 +437,7 @@ export const FormInteraction: Story = {
           <DialogContent>
             <DialogHeader title="Sign Up" subtitle="Create your account" />
             <DialogContentSection>
-              <div className="flex flex-col gap-4">
+              <div className="gap-4 flex flex-col">
                 <Input title="Name" placeholder="Enter your name" required />
                 <Input
                   title="Email"
@@ -504,7 +510,7 @@ export const ConfirmDialogInteraction: Story = {
               subtitle="This action cannot be undone"
             />
             <DialogContentSection>
-              <p className="text-text-body">
+              <p className="text-ds-text-neutral-default-default">
                 Are you sure you want to delete this item?
               </p>
             </DialogContentSection>

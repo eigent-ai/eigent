@@ -67,17 +67,20 @@ export function TaskItem({
     <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group min-h-2 gap-0 rounded-lg p-sm hover:bg-task-fill-hover relative flex w-full items-start border border-solid ${
+        className={`group min-h-2 gap-0 rounded-lg p-sm relative flex w-full items-start border border-solid hover:bg-[var(--ds-bg-neutral-default-hover)] ${
           isFocus
-            ? 'border-task-border-focus-default bg-task-fill-default'
-            : 'border-task-border-default group-hover:border-transparent'
+            ? 'border-[color:var(--ds-border-brand-default-focus)] bg-[var(--ds-bg-neutral-default-default)]'
+            : 'border-[color:var(--ds-border-neutral-subtle-default)] group-hover:border-transparent'
         }`}
       >
         <div className="h-4 w-7 pr-sm pt-0.5 flex flex-shrink-0 cursor-pointer items-center justify-center">
           {taskInfo.id === '' ? (
-            <CircleDashed size={13} className="text-icon-secondary" />
+            <CircleDashed
+              size={13}
+              className="text-[color:var(--ds-icon-neutral-muted-default)]"
+            />
           ) : (
-            <div className="h-2 w-2 bg-icon-information rounded-full"></div>
+            <div className="h-2 w-2 rounded-full bg-[var(--ds-icon-information-default-default)]"></div>
           )}
         </div>
         <div className="min-h-4 min-w-0 py-0.5 relative flex flex-1 items-center self-stretch overflow-hidden transition-all duration-300">
@@ -127,10 +130,7 @@ export function TaskItem({
               size="xs"
               buttonContent="icon-only"
             >
-              <Check
-                size={16}
-                className="text-button-fill-success-foreground"
-              />
+              <Check size={16} className="text-current" />
             </Button>
           )}
           <Button
@@ -140,7 +140,10 @@ export function TaskItem({
             size="xs"
             buttonContent="icon-only"
           >
-            <Trash2 size={16} className="text-icon-tertiary" />
+            <Trash2
+              size={16}
+              className="text-[color:var(--ds-icon-neutral-muted-default)]"
+            />
           </Button>
         </div>
       </div>

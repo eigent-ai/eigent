@@ -221,24 +221,24 @@ export default function Cookies() {
       />
 
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-text-heading">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('layout.browser-cookie-management')}
         </div>
       </div>
 
       <div className="gap-4 flex flex-col">
-        <div className="rounded-xl border-border-disabled bg-surface-secondary p-6 relative flex w-full flex-col border">
-          <div className="text-body-sm text-text-label max-w-[600px]">
+        <div className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default p-6 relative flex w-full flex-col border">
+          <div className="text-body-sm text-ds-text-neutral-muted-default max-w-[600px]">
             {t('layout.browser-cookies-description')}
           </div>
-          <div className="mt-4 gap-3 border-border-secondary pt-3 flex w-full flex-col border-[0.5px] border-x-0 border-b-0 border-solid">
+          <div className="mt-4 gap-3 border-ds-border-neutral-default-default pt-3 flex w-full flex-col border-[0.5px] border-x-0 border-b-0 border-solid">
             <div className="py-2 flex flex-row items-center justify-between">
               <div className="gap-2 flex flex-row items-center justify-start">
-                <div className="text-body-base font-bold text-text-body">
+                <div className="text-body-base font-bold text-ds-text-neutral-default-default">
                   {t('layout.cookie-domains')}
                 </div>
                 {cookieDomains.length > 0 && (
-                  <div className="rounded-lg bg-tag-fill-info px-2 text-label-sm font-bold text-text-information">
+                  <div className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold text-ds-text-information-strong-default">
                     {groupDomainsByMain(cookieDomains).length}
                   </div>
                 )}
@@ -251,7 +251,7 @@ export default function Cookies() {
                     size="sm"
                     onClick={handleDeleteAll}
                     disabled={deletingAll}
-                    className="!text-text-cuation uppercase"
+                    className="!text-ds-text-status-error-strong-default uppercase"
                   >
                     {deletingAll
                       ? t('layout.deleting')
@@ -287,13 +287,13 @@ export default function Cookies() {
                 {groupDomainsByMain(cookieDomains).map((group, index) => (
                   <div
                     key={index}
-                    className="rounded-xl border-border-disabled bg-surface-tertiary px-4 py-2 flex items-center justify-between border-solid"
+                    className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-strong-default px-4 py-2 flex items-center justify-between border-solid"
                   >
                     <div className="flex w-full flex-col items-start justify-start">
-                      <span className="text-body-sm font-bold text-text-body truncate">
+                      <span className="text-body-sm font-bold text-ds-text-neutral-default-default truncate">
                         {group.mainDomain}
                       </span>
-                      <span className="mt-1 text-label-xs text-text-label">
+                      <span className="mt-1 text-label-xs text-ds-text-neutral-muted-default">
                         {group.totalCookies} Cookie
                         {group.totalCookies !== 1 ? 's' : ''}
                       </span>
@@ -311,18 +311,18 @@ export default function Cookies() {
                       disabled={deletingDomain === group.mainDomain}
                       className="ml-3 flex-shrink-0"
                     >
-                      <Trash2 className="h-4 w-4 text-text-cuation" />
+                      <Trash2 className="h-4 w-4 text-ds-text-status-error-strong-default" />
                     </Button>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="px-4 py-8 flex flex-col items-center justify-center">
-                <Cookie className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
-                <div className="text-body-base font-bold text-text-label text-center">
+                <Cookie className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
+                <div className="text-body-base font-bold text-ds-text-neutral-muted-default text-center">
                   {t('layout.no-cookies-saved-yet')}
                 </div>
-                <p className="text-label-xs font-medium text-text-label text-center">
+                <p className="text-label-xs font-medium text-ds-text-neutral-muted-default text-center">
                   {t('layout.no-cookies-saved-yet-description')}
                 </p>
               </div>
@@ -330,12 +330,12 @@ export default function Cookies() {
           </div>
         </div>
 
-        <div className="text-label-xs text-text-label w-full text-center">
+        <div className="text-label-xs text-ds-text-neutral-muted-default w-full text-center">
           For more information, check out our
           <a
             href="https://www.eigent.ai/privacy-policy"
             target="_blank"
-            className="ml-1 text-text-information underline"
+            className="ml-1 text-ds-text-status-splitting-strong-default underline"
             rel="noreferrer"
           >
             {t('layout.privacy-policy')}

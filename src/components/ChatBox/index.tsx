@@ -1011,7 +1011,7 @@ export default function ChatBox({
               ) : (
                 <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
                   <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end">
-                    <div className="text-heading-base font-bold text-text-heading text-center">
+                    <div className="text-heading-base font-bold text-center text-[color:var(--ds-text-neutral-default-default)]">
                       {t('layout.welcome-to-eigent')}
                     </div>
                   </div>

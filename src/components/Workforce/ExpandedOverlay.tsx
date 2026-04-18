@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import BottomBar from '@/components/BottomBar';
 import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
 import Folder from '@/components/Folder';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import Workflow from '@/components/WorkFlow';
+import WorkforceMenu from '@/components/WorkforceMenu';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -85,7 +85,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'documentWorkSpace' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
+            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -97,7 +97,7 @@ function WorkforceOverlayCanvas() {
       )?.type === 'document_agent' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
+            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder
                 data={activeTask.taskAssigning?.find(
@@ -111,7 +111,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'inbox' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-surface-secondary pointer-events-none absolute"></div>
+            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -181,7 +181,7 @@ export default function ExpandedOverlay({
             onClick={onClose}
           />
           <motion.div
-            className="border-border-tertiary bg-surface-secondary min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
+            className="border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
             role="dialog"
             aria-modal="true"
             aria-label={titleLabel}
@@ -193,7 +193,7 @@ export default function ExpandedOverlay({
           >
             <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
               <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
-                <span className="text-text-heading px-1 text-body-md font-semibold shrink-0">
+                <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold shrink-0">
                   {titleLabel}
                 </span>
               </div>
@@ -234,7 +234,7 @@ export default function ExpandedOverlay({
             </div>
             <div className="relative z-50 shrink-0">
               <div className="pointer-events-auto">
-                <BottomBar
+                <WorkforceMenu
                   onToggleChatBox={onToggleSidePanel}
                   isChatBoxVisible={!isSidePanelVisible}
                 />

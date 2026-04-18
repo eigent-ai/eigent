@@ -47,14 +47,14 @@ const AgentResultCard: React.FC<{
       {/* Header (always visible) */}
       <button
         type="button"
-        className="gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-text-heading hover:bg-surface-tertiary active:bg-surface-tertiary focus-visible:ring-border-primary/40 flex w-full items-center text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        className="gap-2 rounded-xl px-3 py-2 text-sm font-semibold flex w-full items-center text-left text-[color:var(--ds-text-neutral-default-default)] transition-colors hover:bg-[var(--ds-bg-neutral-default-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ds-border-brand-default-focus)]/40 focus-visible:outline-none active:bg-[var(--ds-bg-neutral-default-active)]"
         onClick={() => setIsOpen((v) => !v)}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <ChevronDown
           size={14}
           aria-hidden
-          className={`text-icon-primary shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+          className={`shrink-0 text-[color:var(--ds-icon-neutral-default-default)] transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
 
@@ -62,7 +62,7 @@ const AgentResultCard: React.FC<{
       <div
         className={`ease-in-out overflow-hidden transition-all duration-200 ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
-        <div className="border-border-default px-1 py-1 border-t">
+        <div className="px-1 py-1 border-t border-[color:var(--ds-border-neutral-default-default)]">
           <AgentMessageCard
             id={id}
             content={content}
@@ -409,13 +409,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                                   'documentWorkSpace'
                                 );
                               }}
-                              className="gap-2 rounded-sm bg-message-fill-default px-2 py-1 hover:bg-message-fill-hover flex w-[140px] cursor-pointer items-center transition-colors"
+                              className="gap-2 rounded-sm px-2 py-1 flex w-[140px] cursor-pointer items-center bg-[var(--ds-bg-neutral-default-default)] transition-colors hover:bg-[var(--ds-bg-neutral-default-hover)]"
                             >
                               <div className="flex flex-col">
-                                <div className="text-body text-sm font-bold text-text-body max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap">
+                                <div className="text-body text-sm font-bold max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
                                   {file.name.split('.')[0]}
                                 </div>
-                                <div className="text-xs font-medium leading-29 text-text-body">
+                                <div className="text-xs font-medium leading-29 text-[color:var(--ds-text-neutral-default-default)]">
                                   {file.type}
                                 </div>
                               </div>
@@ -510,17 +510,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                           'documentWorkSpace'
                         );
                       }}
-                      className="gap-2 rounded-2xl bg-message-fill-default px-2 py-1 hover:bg-message-fill-hover flex w-[120px] cursor-pointer items-center transition-colors"
+                      className="gap-2 rounded-2xl px-2 py-1 flex w-[120px] cursor-pointer items-center bg-[var(--ds-bg-neutral-default-default)] transition-colors hover:bg-[var(--ds-bg-neutral-default-hover)]"
                     >
                       <FileText
                         size={16}
-                        className="text-icon-primary flex-shrink-0"
+                        className="flex-shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
                       />
                       <div className="flex flex-col">
-                        <div className="text-body max-w-48 text-sm font-bold text-text-body overflow-hidden text-ellipsis whitespace-nowrap">
+                        <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
                           {file.name.split('.')[0]}
                         </div>
-                        <div className="text-xs font-medium leading-29 text-text-body">
+                        <div className="text-xs font-medium leading-29 text-[color:var(--ds-text-neutral-default-default)]">
                           {file.type}
                         </div>
                       </div>

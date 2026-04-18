@@ -41,7 +41,9 @@ export default function BrowserAgentWorkspace() {
   const agentMap = {
     developer_agent: {
       name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-text-primary" />,
+      icon: (
+        <CodeXml size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-emerald-700',
       bgColor: 'bg-bg-fill-coding-active',
       shapeColor: 'bg-bg-fill-coding-default',
@@ -50,7 +52,9 @@ export default function BrowserAgentWorkspace() {
     },
     browser_agent: {
       name: 'Browser Agent',
-      icon: <Globe size={16} className="text-text-primary" />,
+      icon: (
+        <Globe size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-blue-700',
       bgColor: 'bg-bg-fill-browser-active',
       shapeColor: 'bg-bg-fill-browser-default',
@@ -59,7 +63,9 @@ export default function BrowserAgentWorkspace() {
     },
     document_agent: {
       name: 'Document Agent',
-      icon: <FileText size={16} className="text-text-primary" />,
+      icon: (
+        <FileText size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-yellow-700',
       bgColor: 'bg-bg-fill-writing-active',
       shapeColor: 'bg-bg-fill-writing-default',
@@ -68,7 +74,9 @@ export default function BrowserAgentWorkspace() {
     },
     multi_modal_agent: {
       name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-text-primary" />,
+      icon: (
+        <Image size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-fuchsia-700',
       bgColor: 'bg-bg-fill-multimodal-active',
       shapeColor: 'bg-bg-fill-multimodal-default',
@@ -77,7 +85,7 @@ export default function BrowserAgentWorkspace() {
     },
     social_media_agent: {
       name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-text-primary" />,
+      icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -167,9 +175,9 @@ export default function BrowserAgentWorkspace() {
   }
 
   return isTakeControl ? (
-    <div className="rounded-xl border-border-success bg-menutabs-bg-default flex h-full w-full flex-col items-center justify-start border border-solid">
+    <div className="rounded-xl border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default flex h-full w-full flex-col items-center justify-start border border-solid">
       <div className="gap-sm p-sm flex w-full items-start justify-start">
-        <div className="border-border-primary p-1 rounded-full border border-solid bg-transparent">
+        <div className="border-ds-border-neutral-strong-default p-1 rounded-full border border-solid bg-transparent">
           <Button
             onClick={() => {
               fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
@@ -194,7 +202,7 @@ export default function BrowserAgentWorkspace() {
     <div
       className={`ease-in-out flex h-full w-full flex-1 items-center justify-center transition-all duration-300`}
     >
-      <div className="blur-bg rounded-xl bg-surface-secondary relative flex h-full w-full flex-col overflow-hidden">
+      <div className="blur-bg rounded-xl bg-ds-bg-neutral-default-default relative flex h-full w-full flex-col overflow-hidden">
         <div className="rounded-t-2xl px-2 pb-2 pt-3 flex flex-shrink-0 items-center justify-between">
           <div className="gap-sm flex items-center justify-start">
             <Button
@@ -256,7 +264,7 @@ export default function BrowserAgentWorkspace() {
                 ).length || 0
               }
             />
-            {/* <div className="text-[10px] leading-17 font-medium text-text-tertiary">
+            {/* <div className="text-[10px] leading-17 font-medium text-ds-text-neutral-muted-default">
 							{
 								activeAgent?.tasks?.filter(
 									(task) => task.status && task.status !== "running"
@@ -353,7 +361,7 @@ export default function BrowserAgentWorkspace() {
           </div>
         )}
         {activeAgent?.activeWebviewIds?.length !== 1 && (
-          <div className="bottom-2 right-2 gap-1 rounded-lg border-border-primary bg-menutabs-bg-default p-1 absolute z-100 flex w-auto items-center border border-solid">
+          <div className="bottom-2 right-2 gap-1 rounded-lg border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1 absolute z-100 flex w-auto items-center border border-solid">
             <Button
               size="xs"
               buttonContent="icon-only"

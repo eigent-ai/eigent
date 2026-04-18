@@ -188,16 +188,16 @@ export function AgentDetailPane({
   }
 
   return (
-    <div className="min-h-0 min-w-0 bg-surface-tertiary rounded-xl flex h-full w-full flex-col overflow-hidden">
+    <div className="min-h-0 min-w-0 bg-ds-bg-neutral-strong-default rounded-xl flex h-full w-full flex-col overflow-hidden">
       <div
         className={cn(
-          'bg-surface-tertiary top-0 min-h-0 min-w-0 pb-2 pt-2 w-full max-w-full shrink-0'
+          'bg-ds-bg-neutral-strong-default top-0 min-h-0 min-w-0 pb-2 pt-2 w-full max-w-full shrink-0'
         )}
       >
         <div
           className={cn(
             'min-w-0 text-base px-3 font-bold leading-relaxed',
-            preset?.textColor ?? 'text-text-primary'
+            preset?.textColor ?? 'text-ds-text-neutral-default-default'
           )}
         >
           {preset?.name ?? agent.name}
@@ -210,12 +210,12 @@ export function AgentDetailPane({
           <HoverScrollText
             text={toolkitLine}
             active={toolkitHovered}
-            className="text-xs font-normal leading-tight text-text-label"
-            innerClassName="text-xs font-normal leading-tight text-text-label"
+            className="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
+            innerClassName="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
           />
         </div>
         {agent.tasks && agent.tasks.length > 0 && (
-          <div className="gap-1 border-task-border-default px-3 py-sm flex flex-col items-start justify-between border-0 border-b border-solid">
+          <div className="gap-1 border-ds-border-neutral-default-default px-3 py-sm flex flex-col items-start justify-between border-0 border-b border-solid">
             <div className="flex w-full flex-1 justify-start">
               <TaskState
                 all={agent.tasks?.length || 0}
@@ -295,7 +295,7 @@ export function AgentDetailPane({
                   (_, index) => (
                     <div
                       key={`browser-placeholder-${index}`}
-                      className="rounded-sm bg-surface-primary h-full w-full"
+                      className="rounded-sm bg-ds-bg-neutral-subtle-default h-full w-full"
                     />
                   )
                 )}
@@ -329,7 +329,7 @@ export function AgentDetailPane({
                   (_, index) => (
                     <div
                       key={`terminal-placeholder-${index}`}
-                      className="rounded-lg bg-surface-primary h-full w-full"
+                      className="rounded-lg bg-ds-bg-neutral-subtle-default h-full w-full"
                     />
                   )
                 )}
@@ -363,25 +363,25 @@ export function AgentDetailPane({
                     className={cn(
                       'rounded-xl px-sm py-sm gap-1 flex cursor-pointer flex-col border border-solid transition-all duration-300',
                       task.reAssignTo
-                        ? 'bg-task-fill-warning'
+                        ? 'bg-ds-bg-status-blocked-subtle-default'
                         : task.status === TaskStatus.COMPLETED
-                          ? 'bg-task-fill-success'
+                          ? 'bg-ds-bg-status-completed-subtle-default'
                           : task.status === TaskStatus.FAILED
-                            ? 'bg-task-fill-error'
+                            ? 'bg-ds-bg-status-error-subtle-default'
                             : task.status === TaskStatus.RUNNING
-                              ? 'bg-task-fill-running'
+                              ? 'bg-ds-bg-status-running-subtle-default'
                               : task.status === TaskStatus.BLOCKED
-                                ? 'bg-task-fill-warning'
-                                : 'bg-task-fill-running',
+                                ? 'bg-ds-bg-status-blocked-subtle-default'
+                                : 'bg-ds-bg-status-running-subtle-default',
                       task.status === TaskStatus.COMPLETED
-                        ? 'hover:border-task-border-focus-success'
+                        ? 'hover:border-ds-border-status-completed-default-focus'
                         : task.status === TaskStatus.FAILED
-                          ? 'hover:border-task-border-focus-error'
+                          ? 'hover:border-ds-border-status-error-default-focus'
                           : task.status === TaskStatus.RUNNING
-                            ? 'hover:border-border-primary'
+                            ? 'hover:border-ds-border-neutral-strong-default'
                             : task.status === TaskStatus.BLOCKED
-                              ? 'hover:border-task-border-focus-warning'
-                              : 'hover:border-task-border-focus',
+                              ? 'hover:border-ds-border-status-blocked-default-focus'
+                              : 'hover:border-ds-border-neutral-default-focus',
                       'border-transparent'
                     )}
                   >
@@ -391,7 +391,7 @@ export function AgentDetailPane({
                           {task.reAssignTo ? (
                             <CircleSlash2
                               size={16}
-                              className="text-icon-warning"
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           ) : (
                             <>
@@ -399,7 +399,7 @@ export function AgentDetailPane({
                                 <LoaderCircle
                                   size={16}
                                   className={cn(
-                                    'text-icon-information',
+                                    'text-ds-icon-status-splitting-default-default',
                                     activeTaskId &&
                                       chatStore.tasks[activeTaskId]?.status ===
                                         ChatTaskStatus.RUNNING &&
@@ -410,40 +410,43 @@ export function AgentDetailPane({
                               {task.status === TaskStatus.SKIPPED && (
                                 <LoaderCircle
                                   size={16}
-                                  className="text-icon-secondary"
+                                  className="text-ds-icon-neutral-muted-default"
                                 />
                               )}
                               {task.status === TaskStatus.COMPLETED && (
                                 <CircleCheckBig
                                   size={16}
-                                  className="text-icon-success"
+                                  className="text-ds-icon-status-completed-default-default"
                                 />
                               )}
                               {task.status === TaskStatus.FAILED && (
                                 <CircleSlash
                                   size={16}
-                                  className="text-icon-cuation"
+                                  className="text-ds-icon-status-error-default-default"
                                 />
                               )}
                               {task.status === TaskStatus.BLOCKED && (
                                 <TriangleAlert
                                   size={16}
-                                  className="text-icon-warning"
+                                  className="text-ds-icon-status-pending-default-default"
                                 />
                               )}
                               {(task.status === TaskStatus.EMPTY ||
                                 task.status === TaskStatus.WAITING) && (
-                                <Circle size={16} className="text-slate-400" />
+                                <Circle
+                                  size={16}
+                                  className="text-ds-icon-neutral-muted-default"
+                                />
                               )}
                             </>
                           )}
                         </div>
                         <div className="min-w-0 gap-x-2 gap-y-0.5 flex flex-wrap items-center">
-                          <span className="text-xs font-bold leading-13 text-text-body shrink-0">
+                          <span className="text-xs font-bold leading-13 text-ds-text-neutral-default-default shrink-0">
                             No. {getTaskIdDisplay(task.id)}
                           </span>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-tag-fill-document px-1 py-0.5 text-xs font-bold text-text-warning leading-none">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold text-ds-text-warning-strong-default leading-none">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
@@ -452,10 +455,10 @@ export function AgentDetailPane({
                                 className={cn(
                                   'rounded-lg px-1 py-0.5 text-xs font-bold leading-none',
                                   task.status === TaskStatus.FAILED
-                                    ? 'bg-surface-error-subtle text-text-cuation'
+                                    ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-strong-default'
                                     : task.status === TaskStatus.COMPLETED
-                                      ? 'text-text-success-default bg-tag-fill-developer'
-                                      : 'bg-tag-surface-hover text-text-label'
+                                      ? 'text-ds-text-status-completed-strong-default bg-ds-bg-neutral-default-default'
+                                      : 'bg-ds-bg-neutral-default-hover text-ds-text-neutral-muted-default'
                                 )}
                               >
                                 Attempt {task.failure_count}
@@ -470,7 +473,7 @@ export function AgentDetailPane({
                         size="xxs"
                         buttonContent="icon-only"
                         buttonRadius="lg"
-                        className="text-icon-secondary shrink-0 opacity-50"
+                        className="text-ds-icon-neutral-muted-default shrink-0 opacity-50"
                         aria-expanded={isExpanded}
                         aria-label={
                           isExpanded ? 'Collapse task details' : 'Expand task'
@@ -496,10 +499,10 @@ export function AgentDetailPane({
                       className={cn(
                         'mt-0.5 pl-4 min-w-0 w-full max-w-full text-left',
                         task.status === TaskStatus.FAILED
-                          ? 'text-text-cuation-default'
+                          ? 'text-ds-text-status-error-strong-default'
                           : task.status === TaskStatus.BLOCKED
-                            ? 'text-text-body'
-                            : 'text-text-primary'
+                            ? 'text-ds-text-neutral-default-default'
+                            : 'text-ds-text-neutral-default-default'
                       )}
                     >
                       <div
@@ -520,10 +523,10 @@ export function AgentDetailPane({
                             {getToolkitIcon(
                               lastActiveToolkit.toolkitName ?? ''
                             )}
-                            <div className="min-w-0 pt-1 text-xs leading-17 text-text-primary max-w-full flex-shrink flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                            <div className="min-w-0 pt-1 text-xs leading-17 text-ds-text-neutral-default-default max-w-full flex-shrink flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap">
                               <ShinyText
                                 text={task.toolkits?.[0]?.toolkitName ?? ''}
-                                className="text-xs font-bold leading-17 text-text-primary pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
+                                className="text-xs font-bold leading-17 text-ds-text-neutral-default-default pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
                               />
                             </div>
                           </div>
@@ -544,7 +547,7 @@ export function AgentDetailPane({
               initial="initial"
               animate="animate"
               exit="exit"
-              className="inset-0 rounded-br-xl bg-surface-tertiary absolute z-20 flex flex-col overflow-hidden will-change-transform"
+              className="inset-0 rounded-br-xl bg-ds-bg-neutral-strong-default absolute z-20 flex flex-col overflow-hidden will-change-transform"
             >
               <div className="gap-1 px-2 pb-2 flex shrink-0 items-center">
                 <Button
@@ -553,13 +556,13 @@ export function AgentDetailPane({
                   size="xxs"
                   buttonContent="icon-only"
                   buttonRadius="lg"
-                  className="text-icon-secondary shrink-0"
+                  className="text-ds-icon-neutral-muted-default shrink-0"
                   aria-label="Back to agent details"
                   onClick={() => setDetailTask(null)}
                 >
                   <ChevronLeft className="size-4" aria-hidden />
                 </Button>
-                <span className="min-w-0 text-label-sm font-bold text-text-primary truncate">
+                <span className="min-w-0 text-label-sm font-bold text-ds-text-neutral-default-default truncate">
                   No. {getTaskIdDisplay(detailTask.id)}
                 </span>
               </div>

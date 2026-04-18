@@ -202,7 +202,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`text-primary gap-2 rounded-xl bg-fill-fill-transparent p-2 text-sm backdrop-blur-lg hover:bg-fill-fill-transparent-active flex w-full items-center justify-start text-left transition-colors ${
+              className={`text-ds-text-brand-default-default gap-2 rounded-xl bg-fill-fill-transparent p-2 text-sm backdrop-blur-lg hover:bg-fill-fill-transparent-active flex w-full items-center justify-start text-left transition-colors ${
                 selectedFile?.path === child.path
                   ? 'bg-fill-fill-transparent-active'
                   : ''
@@ -617,7 +617,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
           </Button>
           <span
-            className="text-text-heading text-body-sm min-w-0 font-semibold truncate leading-none"
+            className="text-ds-text-neutral-default-default text-body-sm min-w-0 font-semibold truncate leading-none"
             title={workingFolderPath ?? undefined}
           >
             {folderHeaderTitle}
@@ -625,13 +625,13 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         </div>
         <div className="min-w-0 gap-2 ml-auto flex items-center">
           <div className="h-7 w-32 max-w-xs rounded-lg relative min-w-[10rem] shrink-0">
-            <Search className="text-primary left-2 h-3.5 w-3.5 pointer-events-none absolute top-1/2 -translate-y-1/2" />
+            <Search className="text-ds-text-brand-default-default left-2 h-3.5 w-3.5 pointer-events-none absolute top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={fileSearchQuery}
               onChange={(e) => setFileSearchQuery(e.target.value)}
               placeholder={t('chat.search')}
-              className="border-border-subtle focus:ring-text-link h-7 rounded-lg py-0 pl-7 pr-2 text-sm w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
+              className="border-ds-border-neutral-subtle-default focus:ring-ds-ring-brand-default-focus h-7 rounded-lg py-0 pl-7 pr-2 text-sm w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
               aria-label={t('chat.search')}
             />
           </div>
@@ -650,7 +650,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="border-dropdown-border bg-dropdown-bg z-50"
+                className="border-ds-border-neutral-default-default bg-dropdown-bg z-50"
               >
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('system')}
@@ -689,11 +689,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         </div>
       </div>
 
-      <div className="min-h-0 border-border-tertiary flex flex-1 overflow-hidden border-x-0 border-b-0 border-solid">
+      <div className="min-h-0 border-ds-border-neutral-subtle-default flex flex-1 overflow-hidden border-x-0 border-b-0 border-solid">
         {/* sidebar */}
-        <div className="border-border-tertiary w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
+        <div className="border-ds-border-neutral-subtle-default w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
           <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
-            <div className="h-10 text-text-primary px-3 py-2 font-bold text-body-sm">
+            <div className="h-10 text-ds-text-neutral-default-default px-3 py-2 font-bold text-body-sm">
               {t('chat.files')}
             </div>
             <div className="p-2">
@@ -731,11 +731,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   }}
                   className="min-w-0 gap-2 flex flex-1 cursor-pointer items-center overflow-hidden"
                 >
-                  <span className="text-text-primary font-bold text-body-sm block overflow-hidden text-ellipsis whitespace-nowrap">
+                  <span className="text-ds-text-neutral-default-default font-bold text-body-sm block overflow-hidden text-ellipsis whitespace-nowrap">
                     {selectedFile.name}
                   </span>
                   <Button size="icon" variant="ghost">
-                    <Download className="h-4 w-4 text-icon-secondary" />
+                    <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                   </Button>
                 </div>
                 <Button
@@ -744,7 +744,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   className="flex-shrink-0"
                   onClick={() => isShowSourceCodeChange()}
                 >
-                  <CodeXml className="h-4 w-4 text-icon-secondary" />
+                  <CodeXml className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                 </Button>
               </div>
             </div>
@@ -795,9 +795,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       />
                     )
                   ) : selectedFile.type === 'zip' ? (
-                    <div className="text-text-secondary flex h-full items-center justify-center">
+                    <div className="text-ds-text-neutral-muted-default flex h-full items-center justify-center">
                       <div className="text-center">
-                        <FileText className="mb-4 h-12 w-12 text-text-tertiary mx-auto" />
+                        <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
                         <p className="text-sm">
                           {t('folder.zip-file-is-not-supported-yet')}
                         </p>
@@ -816,7 +816,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       <ImageLoader selectedFile={selectedFile} />
                     </div>
                   ) : (
-                    <pre className="font-mono text-sm text-text-primary overflow-auto break-words whitespace-pre-wrap">
+                    <pre className="font-mono text-sm text-ds-text-neutral-default-default overflow-auto break-words whitespace-pre-wrap">
                       {selectedFile.content}
                     </pre>
                   )
@@ -824,16 +824,16 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   <div className="flex h-full items-center justify-center">
                     <div className="text-center">
                       <div className="mb-4 h-8 w-8 animate-spin border-blue-600 mx-auto rounded-full border-b-2"></div>
-                      <p className="text-sm text-text-secondary">
+                      <p className="text-sm text-ds-text-neutral-muted-default">
                         {t('chat.loading')}
                       </p>
                     </div>
                   </div>
                 )
               ) : (
-                <div className="text-text-secondary flex flex-1 items-center justify-center">
+                <div className="text-ds-text-neutral-muted-default flex flex-1 items-center justify-center">
                   <div className="text-center">
-                    <FileText className="mb-4 h-12 w-12 text-text-tertiary mx-auto" />
+                    <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
                     <p className="text-sm">
                       {t('chat.select-a-file-to-view-its-contents')}
                     </p>
@@ -926,7 +926,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
 
   return (
     <div className="gap-4 px-8 flex w-full flex-col items-center">
-      <p className="text-sm font-medium text-text-primary">
+      <p className="text-sm font-medium text-ds-text-neutral-default-default">
         {selectedFile.name}
       </p>
       <audio

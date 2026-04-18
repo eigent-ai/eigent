@@ -105,7 +105,7 @@ export function HeaderBox({
                   aria-expanded={Boolean(timelineDropdownOpen)}
                   aria-haspopup="dialog"
                   aria-controls="chat-timeline-popover-panel"
-                  className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
+                  className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
                   aria-label={chatHistoryTooltip}
                 >
                   <Menu className="h-4 w-4" />
@@ -135,7 +135,7 @@ export function HeaderBox({
                 onClick={onToggleChatTimeline}
                 aria-expanded={!chatTimelineCollapsed}
                 aria-controls="chat-timeline-panel"
-                className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
+                className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
                 aria-label={chatHistoryTooltip}
               >
                 <Menu className="h-4 w-4" />
@@ -146,7 +146,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count + session side panel fold (far right) */}
-      <div className="gap-2 text-text-label flex items-center">
+      <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
         <div className="gap-1 flex items-center">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
@@ -164,7 +164,7 @@ export function HeaderBox({
               onClick={onToggleSessionSidePanel}
               aria-expanded={isSessionSidePanelVisible}
               aria-controls="session-side-panel"
-              className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
+              className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
               aria-label={sessionSidePanelTooltip}
             >
               {isSessionSidePanelVisible ? (

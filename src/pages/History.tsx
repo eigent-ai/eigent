@@ -12,18 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Bot } from '@/components/animate-ui/icons/bot';
-import { Compass } from '@/components/animate-ui/icons/compass';
-import { Hammer } from '@/components/animate-ui/icons/hammer';
-import { Radio } from '@/components/animate-ui/icons/radio';
-import { Settings } from '@/components/animate-ui/icons/settings';
-import { Sparkle } from '@/components/animate-ui/icons/sparkle';
-import {
-  MenuToggleGroup,
-  MenuToggleItem,
-} from '@/components/MenuButton/MenuButton';
 import AlertDialog from '@/components/ui/alertDialog';
+import { Bot } from '@/components/ui/animate-ui/icons/bot';
+import { Compass } from '@/components/ui/animate-ui/icons/compass';
+import { Hammer } from '@/components/ui/animate-ui/icons/hammer';
+import { Radio } from '@/components/ui/animate-ui/icons/radio';
+import { Settings } from '@/components/ui/animate-ui/icons/settings';
+import { Sparkle } from '@/components/ui/animate-ui/icons/sparkle';
 import { Button } from '@/components/ui/button';
+import { MenuToggleGroup, MenuToggleItem } from '@/components/ui/menu-button';
 import WordCarousel from '@/components/ui/WordCarousel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import Project from '@/pages/Projects/Project';
@@ -127,7 +124,7 @@ export default function Home() {
         cancelText={t('layout.cancel')}
       />
       {/* welcome text */}
-      <div className="flex w-full flex-row bg-gradient-to-b from-surface-primary to-surface-primary px-20 pt-16">
+      <div className="from-ds-bg-neutral-subtle-default to-ds-bg-neutral-subtle-default px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
         <WordCarousel
           words={[`${t('layout.welcome')}, ${welcomeName} !`]}
           className="text-heading-xl font-bold tracking-tight"
@@ -145,10 +142,10 @@ export default function Home() {
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
-        className={`sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-border-disabled bg-bg-page-default px-20 pb-4 pt-10`}
+        className={`border-ds-border-neutral-muted-disabled bg-bg-page-default px-20 pb-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid`}
       >
         <div className="mx-auto flex w-full flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="gap-2 flex items-center">
             <MenuToggleGroup
               type="single"
               value={activeTab}

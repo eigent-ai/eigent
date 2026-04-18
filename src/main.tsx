@@ -21,7 +21,7 @@ import { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
-import { ThemeProvider } from './components/ThemeProvider';
+import { ThemeProvider } from './components/Layout/ThemeProvider';
 import { TooltipProvider } from './components/ui/tooltip';
 import './i18n';
 import './style/index.css';

@@ -20,10 +20,13 @@ import { Bot } from 'lucide-react';
 export function SingleAgentList() {
   return (
     <div
-      className="rounded-xl bg-worker-surface-primary p-2 inline-flex border-0 opacity-80"
+      className="rounded-xl bg-ds-bg-neutral-strong-default p-2 inline-flex border-0 opacity-80"
       aria-hidden
     >
-      <Bot className="h-6 w-6 text-text-secondary shrink-0" strokeWidth={2} />
+      <Bot
+        className="h-6 w-6 text-ds-text-neutral-muted-default shrink-0"
+        strokeWidth={2}
+      />
     </div>
   );
 }

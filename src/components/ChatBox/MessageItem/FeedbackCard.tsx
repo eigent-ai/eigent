@@ -70,7 +70,7 @@ export function FeedbackCard({
   return (
     <div
       key={id}
-      className={`bg-message-fill-secondary group gap-4 rounded-xl px-4 py-3 relative flex w-full flex-col items-center justify-center overflow-hidden border ${className || ''}`}
+      className={`group gap-4 rounded-xl px-4 py-3 relative flex w-full flex-col items-center justify-center overflow-hidden border bg-[var(--ds-bg-neutral-strong-default)] ${className || ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -83,7 +83,7 @@ export function FeedbackCard({
           buttonContent="icon-only"
         >
           {copied ? (
-            <Check className="h-4 w-4 text-text-success" />
+            <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
           ) : (
             <Copy className="h-4 w-4" />
           )}
@@ -91,12 +91,12 @@ export function FeedbackCard({
       </div>
 
       {/* Title */}
-      <p className="font-inter text-sm font-bold leading-normal text-text-body w-full">
+      <p className="font-inter text-sm font-bold leading-normal w-full text-[color:var(--ds-text-neutral-default-default)]">
         {title}
       </p>
 
       {/* Content */}
-      <p className="font-inter text-sm font-medium leading-normal text-text-body w-full">
+      <p className="font-inter text-sm font-medium leading-normal w-full text-[color:var(--ds-text-neutral-default-default)]">
         {content}
       </p>
 

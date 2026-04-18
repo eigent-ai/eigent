@@ -204,7 +204,6 @@ export const Inputbox = ({
 
   // Determine if we're in the "Input" state (has content or files)
   const hasContent = value.trim().length > 0 || files.length > 0;
-  const isActive = isFocused || hasContent;
 
   const handleTextChange = useCallback(
     (newValue: string, _cursorPos?: number) => {
@@ -238,9 +237,13 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="size-3.5 text-icon-primary" />;
+      return (
+        <Image className="size-3.5 text-[color:var(--ds-icon-neutral-default-default)]" />
+      );
     }
-    return <FileText className="size-3.5 text-icon-primary" />;
+    return (
+      <FileText className="size-3.5 text-[color:var(--ds-icon-neutral-default-default)]" />
+    );
   };
 
   // Drag & drop handlers
@@ -314,9 +317,11 @@ export const Inputbox = ({
   return (
     <div
       className={cn(
-        'rounded-3xl border-input-border-default bg-input-bg-input p-3 relative box-border flex w-full flex-col items-start border border-solid transition-colors',
-        isFocused && 'border-input-border-focus',
-        isDragging && 'border-info-primary bg-info-primary/10',
+        'rounded-3xl p-3 relative box-border flex w-full flex-col items-start border border-solid border-[color:var(--ds-border-neutral-default-default)] bg-[var(--ds-bg-neutral-default-default)] transition-colors',
+        (isFocused || hasContent) &&
+          'border-[color:var(--ds-border-brand-default-focus)]',
+        isDragging &&
+          'border-[color:var(--ds-border-information-default-default)] bg-[var(--ds-bg-status-splitting-subtle-default)]',
         className
       )}
       onDragEnter={handleDragEnter}
@@ -325,7 +330,7 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="border-info-primary bg-info-primary/10 text-info-primary inset-0 gap-2 rounded-2xl backdrop-blur-sm pointer-events-none absolute z-20 flex flex-col items-center justify-center border-2 border-dashed">
+        <div className="inset-0 gap-2 rounded-2xl backdrop-blur-sm pointer-events-none absolute z-20 flex flex-col items-center justify-center border-2 border-dashed border-[color:var(--ds-border-information-default-default)] bg-[var(--ds-bg-status-splitting-subtle-default)] text-[color:var(--ds-text-information-default-default)]">
           <UploadCloud className="h-8 w-8" />
           <div className="text-sm font-semibold">
             {t('chat.drop-files-to-attach')}
@@ -352,7 +357,7 @@ export const Inputbox = ({
               <div
                 key={file.filePath}
                 className={cn(
-                  'max-w-24 gap-0.5 rounded-md bg-tag-surface pr-1 relative box-border flex h-auto items-center'
+                  'max-w-24 gap-0.5 rounded-md pr-1 relative box-border flex h-auto items-center bg-[var(--ds-bg-neutral-strong-default)]'
                 )}
                 onMouseEnter={() => setHoveredFilePath(file.filePath)}
                 onMouseLeave={() =>
@@ -375,7 +380,7 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-3.5 text-icon-secondary" />
+                    <X className="size-3.5 text-[color:var(--ds-icon-neutral-muted-default)]" />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -384,7 +389,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <p
                   className={cn(
-                    "my-0 text-xs font-bold leading-tight text-text-body relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
+                    "my-0 text-xs font-bold leading-tight relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]"
                   )}
                   title={file.fileName}
                 >
@@ -403,14 +408,14 @@ export const Inputbox = ({
                   buttonContent="text"
                   textWeight="bold"
                   buttonRadius="full"
-                  className="rounded-lg bg-tag-surface relative box-border flex h-auto items-center"
+                  className="rounded-lg relative box-border flex h-auto items-center bg-[var(--ds-bg-neutral-strong-default)]"
                   onMouseEnter={openRemainingPopover}
                   onMouseLeave={scheduleCloseRemainingPopover}
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 text-xs font-bold leading-tight text-text-body font-['Inter'] whitespace-nowrap">
+                  <p className="my-0 text-xs font-bold leading-tight font-['Inter'] whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
                     {remainingCount}+
                   </p>
                 </Button>
@@ -419,7 +424,7 @@ export const Inputbox = ({
                 align="end"
                 side="right"
                 sideOffset={4}
-                className="max-w-40 rounded-lg border-dropdown-border bg-dropdown-bg p-1 shadow-perfect !w-auto border"
+                className="max-w-40 rounded-lg p-1 shadow-perfect !w-auto border border-[color:var(--ds-border-neutral-subtle-default)] bg-[var(--ds-bg-neutral-default-default)]"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
@@ -429,7 +434,7 @@ export const Inputbox = ({
                     return (
                       <div
                         key={file.filePath}
-                        className="gap-1 rounded-lg bg-tag-surface px-1 py-0.5 hover:bg-tag-surface-hover flex cursor-pointer items-center transition-colors duration-300"
+                        className="gap-1 rounded-lg px-1 py-0.5 flex cursor-pointer items-center bg-[var(--ds-bg-neutral-strong-default)] transition-colors duration-300 hover:bg-[var(--ds-bg-neutral-default-hover)]"
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
@@ -453,12 +458,12 @@ export const Inputbox = ({
                           }
                         >
                           {isHovered ? (
-                            <X className="size-4 text-icon-secondary" />
+                            <X className="size-4 text-[color:var(--ds-icon-neutral-muted-default)]" />
                           ) : (
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 text-xs font-bold leading-tight text-text-body flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap">
+                        <p className="my-0 text-xs font-bold leading-tight flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
                           {file.fileName}
                         </p>
                       </div>
@@ -491,9 +496,7 @@ export const Inputbox = ({
             'border-none shadow-none focus-visible:ring-0',
             'max-h-[200px] min-h-[40px]'
           )}
-          textClassName={
-            isActive ? 'text-input-text-focus' : 'text-input-text-default'
-          }
+          textClassName="text-[color:var(--ds-text-neutral-default-default)]"
           style={{
             fontFamily: 'Inter',
             fontSize: '13px',
@@ -520,7 +523,7 @@ export const Inputbox = ({
                 aria-label={t('chat.input-attach-menu-trigger')}
                 aria-haspopup="menu"
               >
-                <Plus className="text-icon-primary" />
+                <Plus className="text-[color:var(--ds-icon-neutral-default-default)]" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -538,14 +541,20 @@ export const Inputbox = ({
                   onAddFile?.();
                 }}
               >
-                <Paperclip className="text-icon-primary" aria-hidden />
+                <Paperclip
+                  className="text-[color:var(--ds-icon-neutral-default-default)]"
+                  aria-hidden
+                />
                 {t('chat.input-attach-add-files-or-photos')}
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-border-secondary -mx-1 my-1" />
+              <DropdownMenuSeparator className="-mx-1 my-1 bg-[var(--ds-border-neutral-default-default)]" />
               {/* Submenus use alignOffset: Radix SubContent is fixed top-aligned; negative offset bottom-aligns panel to trigger row */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Wand2 className="text-icon-primary" aria-hidden />
+                  <Wand2
+                    className="text-[color:var(--ds-icon-neutral-default-default)]"
+                    aria-hidden
+                  />
                   {t('chat.input-attach-skills')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent
@@ -573,7 +582,10 @@ export const Inputbox = ({
               </DropdownMenuSub>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Hammer className="text-icon-primary" aria-hidden />
+                  <Hammer
+                    className="text-[color:var(--ds-icon-neutral-default-default)]"
+                    aria-hidden
+                  />
                   {t('layout.connectors')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent
@@ -597,7 +609,10 @@ export const Inputbox = ({
               </DropdownMenuSub>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Compass className="text-icon-primary" aria-hidden />
+                  <Compass
+                    className="text-[color:var(--ds-icon-neutral-default-default)]"
+                    aria-hidden
+                  />
                   {t('layout.browser')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent
@@ -638,7 +653,7 @@ export const Inputbox = ({
           >
             <ArrowRight
               className={cn(
-                'text-button-primary-icon-default transition-transform duration-200',
+                'text-current transition-transform duration-200',
                 value.trim().length > 0 && 'rotate-[-90deg]'
               )}
             />

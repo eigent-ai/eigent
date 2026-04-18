@@ -43,11 +43,11 @@ export default function CloseNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="gap-0 !rounded-xl border border-border-subtle-strong !bg-popup-surface p-0 shadow-sm sm:max-w-[600px]">
-        <DialogHeader className="!rounded-t-xl !bg-popup-surface p-md">
+      <DialogContent className="gap-0 !rounded-xl border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[600px] border">
+        <DialogHeader className="!rounded-t-xl !bg-ds-bg-neutral-strong-default p-md">
           <DialogTitle className="m-0">{t('layout.close-notice')}</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-md bg-popup-bg p-md">
+        <div className="gap-md bg-ds-bg-neutral-strong-default p-md flex flex-col">
           {t('layout.a-task-is-currently-running')}
         </div>
         <DialogFooter className="!rounded-b-xl bg-white-100% p-md">

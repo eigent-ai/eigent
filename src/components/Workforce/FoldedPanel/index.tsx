@@ -386,7 +386,7 @@ export default function FoldedPanel({
 
   return (
     <div
-      className="bg-surface-secondary min-h-0 min-w-0 flex h-full w-full flex-col"
+      className="bg-ds-bg-neutral-default-default min-h-0 min-w-0 flex h-full w-full flex-col"
       data-workforce-folded={isTaskLiveLayout ? 'task-live' : 'initial'}
     >
       <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
@@ -480,7 +480,7 @@ export default function FoldedPanel({
                     }
                   />
                 ) : (
-                  <div className="text-text-label p-3 text-body-sm">
+                  <div className="text-ds-text-neutral-muted-default p-3 text-body-sm">
                     {t('chat.select-agent')}
                   </div>
                 )}

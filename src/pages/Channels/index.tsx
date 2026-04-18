@@ -14,7 +14,7 @@
 
 import VerticalNavigation, {
   type VerticalNavItem,
-} from '@/components/Navigation';
+} from '@/components/Dashboard/Navigation';
 import { MessageSquare } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -59,21 +59,21 @@ export default function Channels() {
           <div className="m-auto flex h-auto w-full flex-1 flex-col">
             {/* Header Section */}
             <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-              <div className="text-heading-sm font-bold text-text-heading">
+              <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
                 {menuItems.find((m) => m.id === activeTab)?.name ?? ''}
               </div>
             </div>
 
             {/* Content Section */}
             <div className="mb-12 gap-6 flex flex-col">
-              <div className="rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
+              <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
                 <div className="h-16 w-16 flex items-center justify-center">
-                  <MessageSquare className="h-8 w-8 text-icon-secondary" />
+                  <MessageSquare className="h-8 w-8 text-ds-icon-neutral-muted-default" />
                 </div>
-                <h2 className="mb-2 text-body-md font-bold text-text-heading">
+                <h2 className="mb-2 text-body-md font-bold text-ds-text-neutral-default-default">
                   {t('layout.coming-soon')}
                 </h2>
-                <p className="max-w-md text-body-sm text-text-label text-center">
+                <p className="max-w-md text-body-sm text-ds-text-neutral-muted-default text-center">
                   {activeTab === 'overview'
                     ? t('layout.channels-overview-coming-soon-description')
                     : t('layout.channels-coming-soon-description')}

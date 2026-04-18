@@ -314,17 +314,17 @@ export function ChatInputModelDropdown({
           disabled={disabled}
           title={triggerModelName}
           aria-label={triggerModelName}
-          className="gap-1.5 rounded-xl px-2 py-1 font-semibold hover:bg-surface-primary active:bg-surface-secondary flex max-w-[min(100%,320px)] shrink-0 items-center justify-between bg-transparent transition-colors disabled:pointer-events-none disabled:opacity-50"
+          className="gap-1.5 rounded-xl px-2 py-1 font-semibold flex max-w-[min(100%,320px)] shrink-0 items-center justify-between bg-transparent transition-colors hover:bg-[var(--ds-bg-neutral-subtle-default)] active:bg-[var(--ds-bg-neutral-default-default)] disabled:pointer-events-none disabled:opacity-50"
         >
           <Sparkles
-            className="h-4 w-4 text-icon-primary shrink-0"
+            className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
             aria-hidden
           />
-          <span className="text-body-xs text-text-body min-w-0 font-semibold flex-1 truncate text-left">
+          <span className="text-body-xs min-w-0 font-semibold flex-1 truncate text-left text-[color:var(--ds-text-neutral-default-default)]">
             {triggerModelName}
           </span>
           <ChevronDown
-            className="h-4 w-4 text-icon-primary shrink-0"
+            className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
             aria-hidden
           />
         </button>
@@ -350,7 +350,10 @@ export function ChatInputModelDropdown({
                 activeSubTriggerRef.current = e.currentTarget;
               }}
             >
-              <Sparkles className="text-icon-primary shrink-0" aria-hidden />
+              <Sparkles
+                className="shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+                aria-hidden
+              />
               <span className="text-body-sm min-w-0 flex-1 text-left">
                 {t('setting.eigent-cloud')}
               </span>
@@ -372,7 +375,7 @@ export function ChatInputModelDropdown({
                 >
                   <span className="text-body-sm">{model.name}</span>
                   {cloudPrefer && cloud_model_type === model.id && (
-                    <Check className="h-4 w-4 text-text-success" />
+                    <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
                   )}
                 </DropdownMenuItem>
               ))}
@@ -391,7 +394,10 @@ export function ChatInputModelDropdown({
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
-            <Layers className="text-icon-primary shrink-0" aria-hidden />
+            <Layers
+              className="shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+              aria-hidden
+            />
             <span className="text-body-sm min-w-0 flex-1 text-left">
               {t('setting.custom-model')}
             </span>
@@ -429,23 +435,23 @@ export function ChatInputModelDropdown({
                         }
                       />
                     ) : (
-                      <Key className="h-4 w-4 text-icon-secondary" />
+                      <Key className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]" />
                     )}
                     <span
-                      className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                      className={`text-body-sm ${isConfigured ? 'text-[color:var(--ds-text-neutral-default-default)]' : 'text-[color:var(--ds-text-neutral-muted-default)]'}`}
                     >
                       {item.name}
                     </span>
                   </div>
                   <div className="gap-1 flex items-center">
                     {!isConfigured && (
-                      <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-neutral-muted-default)] opacity-10" />
                     )}
                     {isPreferred && (
-                      <Check className="h-4 w-4 text-text-success" />
+                      <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 bg-text-success rounded-full" />
+                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-success-default-default)]" />
                     )}
                   </div>
                 </DropdownMenuItem>
@@ -465,7 +471,10 @@ export function ChatInputModelDropdown({
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
-            <HardDrive className="text-icon-primary shrink-0" aria-hidden />
+            <HardDrive
+              className="shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+              aria-hidden
+            />
             <span className="text-body-sm min-w-0 flex-1 text-left">
               {t('setting.local-model')}
             </span>
@@ -503,23 +512,23 @@ export function ChatInputModelDropdown({
                         }
                       />
                     ) : (
-                      <Server className="h-4 w-4 text-icon-secondary" />
+                      <Server className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]" />
                     )}
                     <span
-                      className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                      className={`text-body-sm ${isConfigured ? 'text-[color:var(--ds-text-neutral-default-default)]' : 'text-[color:var(--ds-text-neutral-muted-default)]'}`}
                     >
                       {model.name}
                     </span>
                   </div>
                   <div className="gap-1 flex items-center">
                     {!isConfigured && (
-                      <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-neutral-muted-default)] opacity-10" />
                     )}
                     {isPreferred && (
-                      <Check className="h-4 w-4 text-text-success" />
+                      <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 bg-text-success rounded-full" />
+                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-success-default-default)]" />
                     )}
                   </div>
                 </DropdownMenuItem>

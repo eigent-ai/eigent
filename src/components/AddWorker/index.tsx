@@ -273,8 +273,9 @@ export function AddWorker({
 
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
-    if (!categoryName) return <Bot className="h-10 w-10 text-icon-primary" />;
-    return <Bot className="h-10 w-10 text-icon-primary" />;
+    if (!categoryName)
+      return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+    return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -473,10 +474,10 @@ export function AddWorker({
                 <div className="gap-md flex items-center">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
-                    <div className="text-base font-bold leading-9 text-text-action">
+                    <div className="text-base font-bold leading-9 text-ds-text-brand-default-default">
                       {activeMcp?.name}
                     </div>
-                    <div className="text-sm font-bold leading-normal text-text-body">
+                    <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
                       {getGithubRepoName(activeMcp?.home_page) && (
                         <div className="flex items-center">
                           <img
@@ -572,7 +573,10 @@ export function AddWorker({
                 <div className="gap-4 flex flex-col">
                   <div className="gap-sm flex items-center">
                     <div className="h-16 w-16 flex items-center justify-center">
-                      <Bot size={32} className="text-icon-primary" />
+                      <Bot
+                        size={32}
+                        className="text-ds-icon-neutral-default-default"
+                      />
                     </div>
                     <Input
                       size="sm"
@@ -611,7 +615,7 @@ export function AddWorker({
                 <div className="mt-2 gap-2 flex flex-col">
                   <button
                     type="button"
-                    className="gap-1 text-sm text-text-body hover:text-text-action flex items-center"
+                    className="gap-1 text-sm text-ds-text-neutral-default-default hover:text-ds-text-brand-default-hover flex items-center"
                     onClick={() => setShowModelConfig(!showModelConfig)}
                   >
                     {showModelConfig ? (
@@ -623,13 +627,13 @@ export function AddWorker({
                   </button>
 
                   {showModelConfig && (
-                    <div className="gap-3 rounded-lg bg-surface-tertiary-subtle p-3 flex flex-col">
+                    <div className="gap-3 rounded-lg bg-ds-bg-neutral-subtle-default p-3 flex flex-col">
                       <label className="gap-2 text-sm flex items-center">
                         <input
                           type="checkbox"
                           checked={useCustomModel}
                           onChange={(e) => setUseCustomModel(e.target.checked)}
-                          className="rounded border-border-subtle-strong"
+                          className="rounded border-ds-border-neutral-strong-default"
                         />
                         {t('workforce.use-custom-model')}
                       </label>
@@ -637,7 +641,7 @@ export function AddWorker({
                       {useCustomModel && (
                         <>
                           <div className="gap-1 flex flex-col">
-                            <label className="text-xs text-text-body">
+                            <label className="text-xs text-ds-text-neutral-default-default">
                               {t('workforce.model-platform')}
                             </label>
                             <Select
@@ -663,7 +667,7 @@ export function AddWorker({
                           </div>
 
                           <div className="gap-1 flex flex-col">
-                            <label className="text-xs text-text-body">
+                            <label className="text-xs text-ds-text-neutral-default-default">
                               {t('workforce.model-type')}
                             </label>
                             <Input

@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AnimateIcon } from '@/components/animate-ui/icons/icon';
-import { Orbit } from '@/components/animate-ui/icons/orbit';
 import { UserMessageRichContent } from '@/components/ChatBox/MessageItem/UserMessageRichContent';
+import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
+import { Orbit } from '@/components/ui/animate-ui/icons/orbit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
@@ -47,12 +47,15 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
             loop
             className="h-4 w-4 items-center justify-center"
           >
-            <Orbit size={16} className="text-icon-information" />
+            <Orbit
+              size={16}
+              className="text-[color:var(--ds-icon-information-default-default)]"
+            />
           </AnimateIcon>
         </Button>
 
         <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
-          <span className="text-sm font-bold text-text-information whitespace-nowrap">
+          <span className="text-sm font-bold whitespace-nowrap text-[color:var(--ds-text-information-default-default)]">
             {t('chat.splitting-tasks')}
           </span>
         </div>
@@ -94,7 +97,10 @@ export const BoxHeaderConfirm = ({
           className="px-1 focus:ring-0 focus-visible:outline-none"
           onClick={onEdit}
         >
-          <ChevronLeft size={16} className="text-icon-primary" />
+          <ChevronLeft
+            size={16}
+            className="text-[color:var(--ds-icon-neutral-default-default)]"
+          />
         </Button>
 
         <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">

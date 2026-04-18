@@ -284,7 +284,7 @@ export default function ProjectPageSidebar({
                   onClick={() => setActiveWorkspaceTab('workforce')}
                   leading={
                     <LayoutGrid
-                      className="h-4 w-4 text-icon-primary shrink-0"
+                      className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
                       aria-hidden
                     />
                   }
@@ -308,12 +308,12 @@ export default function ProjectPageSidebar({
                   leading={
                     <span className="h-4 w-4 relative inline-flex shrink-0">
                       <Inbox
-                        className="h-4 w-4 text-icon-primary"
+                        className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                         aria-hidden
                       />
                       {folderTabHasUnviewedFiles ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-red-500 absolute shrink-0 rounded-full"
+                          className="-right-1 -top-1 h-2 w-2 absolute shrink-0 rounded-full bg-[var(--ds-text-status-error-strong-default)]"
                           aria-hidden
                         />
                       ) : null}
@@ -322,7 +322,7 @@ export default function ProjectPageSidebar({
                   label={t('layout.folder')}
                   trailing={
                     <span
-                      className="bg-surface-secondary text-text-secondary rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]"
+                      className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-[var(--ds-bg-neutral-default-default)] py-px text-[10px] text-[color:var(--ds-text-neutral-muted-default)]"
                       title={
                         customFolderPath &&
                         folderSettingTagLabel !== t('layout.default')
@@ -365,7 +365,7 @@ export default function ProjectPageSidebar({
                   label={t('layout.triggers')}
                   trailing={
                     showTriggersDisconnectedTag ? (
-                      <span className="bg-surface-secondary text-text-error rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate py-px text-[10px]">
+                      <span className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-[var(--ds-bg-neutral-default-default)] py-px text-[10px] text-[color:var(--ds-text-status-error-strong-default)]">
                         {t('layout.triggers-disconnected')}
                       </span>
                     ) : undefined
@@ -392,8 +392,8 @@ export default function ProjectPageSidebar({
                       size="sm"
                       buttonContent="icon-only"
                       className={cn(
-                        'no-drag mr-1 rounded-xl hover:bg-surface-tertiary shrink-0',
-                        'focus-visible:ring-border-secondary focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                        'no-drag mr-1 rounded-xl shrink-0 hover:bg-[var(--ds-bg-neutral-strong-default)]',
+                        'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
                       )}
                       aria-label={t('triggers.add-trigger')}
                       onClick={(e) => {
@@ -403,7 +403,7 @@ export default function ProjectPageSidebar({
                       }}
                     >
                       <Plus
-                        className="h-4 w-4 text-icon-secondary"
+                        className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]"
                         aria-hidden
                       />
                     </Button>

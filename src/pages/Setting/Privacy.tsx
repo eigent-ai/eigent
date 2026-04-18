@@ -44,7 +44,7 @@ export default function SettingPrivacy() {
       <div className="px-6 pb-6 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
         <div className="gap-4 flex w-full flex-row items-center justify-between">
           <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-text-heading">
+            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.privacy')}
             </div>
           </div>
@@ -54,13 +54,13 @@ export default function SettingPrivacy() {
       {/* Content Section */}
       <div className="mb-8 gap-6 flex flex-col">
         {/* How We Handle Your Data Section */}
-        <div className="rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="gap-4 flex items-start justify-between">
             <div className="gap-2 flex flex-1 flex-col">
-              <div className="text-body-base font-bold text-text-heading">
+              <div className="text-body-base font-bold text-ds-text-neutral-default-default">
                 {t('setting.how-we-handle-your-data')}
               </div>
-              <span className="text-body-sm font-normal text-text-body">
+              <span className="text-body-sm font-normal text-ds-text-neutral-default-default">
                 {t('setting.data-privacy-description')}{' '}
                 <a
                   className="text-blue-500 no-underline"
@@ -87,10 +87,10 @@ export default function SettingPrivacy() {
             </Button>
           </div>
           {isHowWeHandleOpen && (
-            <div className="mr-10 mt-4 border-border-secondary border-x-0 border-t-[0.5px] border-b-0 border-solid">
+            <div className="mr-10 mt-4 border-ds-border-neutral-default-default border-x-0 border-t-[0.5px] border-b-0 border-solid">
               <ol
                 id="how-we-handle-your-data"
-                className="pl-5 text-body-sm font-normal text-text-body"
+                className="pl-5 text-body-sm font-normal text-ds-text-neutral-default-default"
               >
                 <li>
                   {t(
@@ -113,13 +113,13 @@ export default function SettingPrivacy() {
         </div>
 
         {/* Help Improve Eigent Section */}
-        <div className="rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="gap-md flex items-center justify-between">
             <div className="gap-2 flex flex-col">
-              <div className="text-body-base font-bold text-text-heading">
+              <div className="text-body-base font-bold text-ds-text-neutral-default-default">
                 {t('setting.help-improve-eigent')}
               </div>
-              <div className="text-body-sm font-normal text-text-body">
+              <div className="text-body-sm font-normal text-ds-text-neutral-default-default">
                 {t('setting.help-improve-eigent-description')}
               </div>
             </div>

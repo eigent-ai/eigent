@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import SearchInput from '@/components/SearchInput';
+import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
@@ -91,16 +91,16 @@ export default function Skills() {
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-text-heading">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('agents.skills')}
         </div>
       </div>
 
       {/* Content Section */}
       <div className="mb-12 gap-6 flex flex-col">
-        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
           <Tabs defaultValue="your-skills" className="w-full">
-            <div className="gap-4 border-border-secondary bg-surface-secondary sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
                 variant="outline"
                 className="h-auto flex-1 justify-start border-0 bg-transparent"

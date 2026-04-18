@@ -177,7 +177,7 @@ export function TaskCard({
   return (
     <div>
       <div className="gap-2 px-sm flex h-auto w-full flex-col transition-all duration-300">
-        <div className="rounded-xl bg-task-surface py-sm relative h-auto w-full overflow-hidden">
+        <div className="rounded-xl py-sm relative h-auto w-full overflow-hidden bg-[var(--ds-bg-neutral-strong-default)]">
           <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
@@ -290,7 +290,7 @@ export function TaskCard({
                 {taskType === 2 && (
                   <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
                     {(isExpanded || isAllTaskFinished) && (
-                      <div className="text-xs font-medium leading-17 text-text-tertiary">
+                      <div className="text-xs font-medium leading-17 text-[color:var(--ds-text-neutral-subtle-default)]">
                         {taskRunning?.filter(
                           (task) =>
                             task.status === TaskStatus.COMPLETED ||
@@ -392,23 +392,23 @@ export function TaskCard({
                         key={`taskList-${task.id}`}
                         className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'bg-task-fill-success'
+                            ? 'bg-[var(--ds-bg-status-completed-subtle-default)]'
                             : task.status === TaskStatus.FAILED
-                              ? 'bg-task-fill-error'
+                              ? 'bg-[var(--ds-bg-status-error-subtle-default)]'
                               : task.status === TaskStatus.RUNNING
-                                ? 'bg-task-fill-running'
+                                ? 'bg-[var(--ds-bg-status-running-subtle-default)]'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'bg-task-fill-warning'
-                                  : 'bg-task-fill-running'
+                                  ? 'bg-[var(--ds-bg-status-blocked-subtle-default)]'
+                                  : 'bg-[var(--ds-bg-status-running-subtle-default)]'
                         } cursor-pointer border border-solid border-transparent ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'hover:border-bg-fill-success-primary'
+                            ? 'hover:border-[color:var(--ds-border-status-completed-default-focus)]'
                             : task.status === TaskStatus.FAILED
-                              ? 'hover:border-task-border-focus-error'
+                              ? 'hover:border-[color:var(--ds-border-status-error-default-focus)]'
                               : task.status === TaskStatus.RUNNING
-                                ? 'hover:border-border-primary'
+                                ? 'hover:border-[color:var(--ds-border-status-running-default-focus)]'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'hover:border-task-border-focus-warning'
+                                  ? 'hover:border-[color:var(--ds-border-status-blocked-default-focus)]'
                                   : 'border-transparent'
                         } `}
                       >
@@ -416,7 +416,7 @@ export function TaskCard({
                           {task.status === TaskStatus.RUNNING && (
                             <LoaderCircle
                               size={16}
-                              className={`text-icon-information ${
+                              className={`text-[color:var(--ds-icon-information-default-default)] ${
                                 activeTaskStatus === ChatTaskStatus.RUNNING &&
                                 'animate-spin'
                               } `}
@@ -425,39 +425,42 @@ export function TaskCard({
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className={`text-icon-secondary`}
+                              className={`text-[color:var(--ds-icon-neutral-muted-default)]`}
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
                             <CircleCheckBig
                               size={16}
-                              className="text-icon-success"
+                              className="text-[color:var(--ds-icon-success-default-default)]"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
                             <CircleSlash
                               size={16}
-                              className="text-icon-cuation"
+                              className="text-[color:var(--ds-icon-caution-default-default)]"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
                             <TriangleAlert
                               size={16}
-                              className="text-icon-warning"
+                              className="text-[color:var(--ds-icon-warning-default-default)]"
                             />
                           )}
                           {task.status === TaskStatus.EMPTY && (
-                            <Circle size={16} className="text-icon-secondary" />
+                            <Circle
+                              size={16}
+                              className="text-[color:var(--ds-icon-neutral-muted-default)]"
+                            />
                           )}
                         </div>
                         <div className="min-w-0 flex flex-1 flex-col items-start justify-center">
                           <div
                             className={`min-w-0 w-full [overflow-wrap:anywhere] break-words whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
-                                ? 'text-text-cuation-default'
+                                ? 'text-[color:var(--ds-text-caution-default-default)]'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'text-text-body'
-                                  : 'text-text-primary'
+                                  ? 'text-[color:var(--ds-text-warning-default-default)]'
+                                  : 'text-[color:var(--ds-text-neutral-default-default)]'
                             } text-sm font-medium leading-13`}
                           >
                             {task.content}

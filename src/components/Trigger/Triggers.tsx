@@ -272,7 +272,7 @@ export default function Overview({
 
   return (
     <div className="min-h-0 min-w-0 flex h-full flex-1 flex-col">
-      <div className="bg-surface-secondary pl-2 pt-2 flex h-full flex-row">
+      <div className="bg-ds-bg-neutral-default-default pl-2 pt-2 flex h-full flex-row">
         {/* Left Side: Trigger List */}
         <div className="min-w-0 flex flex-1 flex-col">
           {/* List View Section */}
@@ -284,16 +284,16 @@ export default function Overview({
                     setEditingTrigger(null);
                     setEditDialogOpen(true);
                   }}
-                  className="group gap-3 rounded-xl border-border-tertiary bg-surface-primary p-3 hover:border-border-secondary hover:bg-surface-tertiary flex cursor-pointer items-center justify-center border transition-all duration-200"
+                  className="group gap-3 rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-3 hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-strong-default flex cursor-pointer items-center justify-center border transition-all duration-200"
                 >
                   {/* Zap Icon */}
                   <div className="bg-amber-500/10 h-10 w-10 rounded-lg flex flex-shrink-0 items-center justify-center">
-                    <Plus className="h-5 w-5 text-icon-primary" />
+                    <Plus className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   </div>
 
                   {/* Create Trigger Text */}
                   <div className="w-full flex-1">
-                    <div className="text-sm font-semibold text-text-heading group-hover:text-text-action truncate transition-colors">
+                    <div className="text-sm font-semibold text-ds-text-neutral-default-default group-hover:text-ds-text-brand-default-hover truncate transition-colors">
                       {t('triggers.create-hint')}
                     </div>
                   </div>
@@ -344,15 +344,15 @@ export default function Overview({
             damping: 34,
             mass: 0.9,
           }}
-          className={`mb-2 rounded-xl bg-surface-primary flex h-full flex-col overflow-hidden ${
+          className={`mb-2 rounded-xl bg-ds-bg-neutral-subtle-default flex h-full flex-col overflow-hidden ${
             selectedTriggerId && isExecutionLogsOpen
               ? ''
               : 'pointer-events-none'
           }`}
         >
           <div className="min-h-0 flex h-full flex-col">
-            <div className="bg-surface-tertiary px-3 py-3 relative flex flex-row items-center justify-start">
-              <span className="text-label-sm font-bold text-text-body">
+            <div className="bg-ds-bg-neutral-strong-default px-3 py-3 relative flex flex-row items-center justify-start">
+              <span className="text-label-sm font-bold text-ds-text-neutral-default-default">
                 {t('triggers.execution-logs')}
               </span>
             </div>
@@ -384,7 +384,7 @@ export default function Overview({
         >
           <DialogHeader title={t('triggers.delete-trigger')} />
           <DialogContentSection className="space-y-4">
-            <p className="text-sm text-text-body">
+            <p className="text-sm text-ds-text-neutral-default-default">
               {t('triggers.confirm-delete-message', {
                 name: deletingTrigger?.name,
               })}

@@ -16,13 +16,13 @@ import { useId } from 'react';
 
 const PATTERN_STEP = 20;
 
-/** Solid dot grid overlay (`var(--border-secondary)`), for use inside a `relative` container. */
+/** Dot grid overlay derived from theme background tokens, for use inside a `relative` container. */
 export default function DotPatternBackground() {
   const patternId = `${useId().replace(/:/g, '')}-dot`;
 
   return (
     <svg
-      className="inset-0 pointer-events-none absolute z-0 h-full w-full opacity-30"
+      className="inset-0 pointer-events-none absolute z-0 h-full w-full"
       aria-hidden
     >
       <defs>
@@ -36,7 +36,8 @@ export default function DotPatternBackground() {
             cx={PATTERN_STEP / 2}
             cy={PATTERN_STEP / 2}
             r={1.25}
-            fill="var(--border-secondary)"
+            fill="var(--ds-bg-neutral-muted-default)"
+            opacity={0.05}
           />
         </pattern>
       </defs>

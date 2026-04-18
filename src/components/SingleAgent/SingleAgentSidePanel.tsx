@@ -39,7 +39,7 @@ export function SingleAgentSidePanel({
       )}
     >
       <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
-        <span className="text-text-heading px-1 text-body-md font-semibold truncate">
+        <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold truncate">
           {t('layout.workspace-session-single-agent')}
         </span>
       </div>
@@ -50,8 +50,8 @@ export function SingleAgentSidePanel({
             defaultValue: 'Progress',
           })}
         >
-          <ul className="text-text-muted text-body-sm space-y-1.5 p-0 m-0 list-none">
-            <li className="text-text-secondary px-1 py-1">
+          <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
+            <li className="text-ds-text-neutral-muted-default px-1 py-1">
               {t('layout.workforce-empty-list', {
                 defaultValue: 'No items yet',
               })}
@@ -64,8 +64,8 @@ export function SingleAgentSidePanel({
             defaultValue: 'Context',
           })}
         >
-          <ul className="text-text-muted text-body-sm space-y-1.5 p-0 m-0 list-none">
-            <li className="text-text-secondary px-1 py-1">
+          <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
+            <li className="text-ds-text-neutral-muted-default px-1 py-1">
               {t('layout.workforce-empty-list', {
                 defaultValue: 'No items yet',
               })}
@@ -78,8 +78,8 @@ export function SingleAgentSidePanel({
             defaultValue: 'Agent Folder',
           })}
         >
-          <ul className="text-text-muted text-body-sm space-y-1.5 p-0 m-0 list-none">
-            <li className="text-text-secondary px-1 py-1">
+          <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
+            <li className="text-ds-text-neutral-muted-default px-1 py-1">
               {t('layout.workforce-empty-list', {
                 defaultValue: 'No items yet',
               })}

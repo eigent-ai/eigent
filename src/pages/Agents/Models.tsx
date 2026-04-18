@@ -1060,12 +1060,18 @@ export default function SettingModels() {
               style={needsInvert(modelId) ? { filter: 'invert(1)' } : undefined}
             />
           ) : (
-            <span className={isActive ? 'text-text-body' : 'text-text-label'}>
+            <span
+              className={
+                isActive
+                  ? 'text-ds-text-neutral-default-default'
+                  : 'text-ds-text-neutral-muted-default'
+              }
+            >
               {fallbackIcon}
             </span>
           )}
           <span
-            className={`text-body-sm font-medium ${isActive ? 'text-text-body' : 'text-text-label'}`}
+            className={`text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
           >
             {label}
           </span>
@@ -1083,16 +1089,16 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="h-64 text-text-label flex items-center justify-center">
+          <div className="h-64 text-ds-text-neutral-muted-default flex items-center justify-center">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
       return (
-        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="rounded-2xl bg-ds-bg-neutral-strong-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="gap-2 inline-flex items-center justify-start self-stretch">
-              <div className="text-body-base my-2 font-bold text-text-heading flex-1 justify-center">
+              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default flex-1 justify-center">
                 {t('setting.eigent-cloud')}
               </div>
               {cloudPrefer ? (
@@ -1111,7 +1117,7 @@ export default function SettingModels() {
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="!text-text-label rounded-full"
+                  className="!text-ds-text-neutral-muted-default rounded-full"
                   onClick={() => {
                     setLocalPrefer(false);
                     setActiveModelIdx(null);
@@ -1125,7 +1131,7 @@ export default function SettingModels() {
               )}
             </div>
             <div className="justify-center self-stretch">
-              <span className="text-body-sm text-text-label">
+              <span className="text-body-sm text-ds-text-neutral-muted-default">
                 {t('setting.you-are-currently-subscribed-to-the')}{' '}
                 {subscription?.plan_key?.charAt(0).toUpperCase() +
                   subscription?.plan_key?.slice(1)}
@@ -1135,18 +1141,18 @@ export default function SettingModels() {
                 onClick={() => {
                   window.location.href = `https://www.eigent.ai/pricing`;
                 }}
-                className="text-body-sm text-text-label cursor-pointer underline"
+                className="text-body-sm text-ds-text-neutral-muted-default cursor-pointer underline"
               >
                 {t('setting.pricing-options')}
               </span>
-              <span className="text-label-sm font-normal text-text-body">
+              <span className="text-label-sm font-normal text-ds-text-neutral-default-default">
                 .
               </span>
             </div>
           </div>
           {/*Content Area*/}
           <div className="gap-4 px-6 pb-4 flex w-full flex-row items-center justify-between">
-            <div className="text-body-sm text-text-body">
+            <div className="text-body-sm text-ds-text-neutral-default-default">
               {t('setting.credits')}:{' '}
               {loadingCredits ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1248,15 +1254,15 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="rounded-2xl bg-ds-bg-neutral-strong-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="gap-2 inline-flex items-center justify-between self-stretch">
-              <div className="text-body-base my-2 font-bold text-text-heading">
+              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
               <div className="gap-2 flex items-center">
                 {form[idx].prefer ? (
-                  <span className="px-2 py-1 text-label-xs font-bold text-text-success inline-flex items-center rounded-full">
+                  <span className="px-2 py-1 text-label-xs font-bold text-ds-text-status-completed-strong-default inline-flex items-center rounded-full">
                     {t('setting.default')}
                   </span>
                 ) : (
@@ -1267,7 +1273,7 @@ export default function SettingModels() {
                     onClick={() => handleSwitch(idx, true)}
                     className={
                       canSwitch
-                        ? 'bg-button-transparent-fill-hover !text-text-label hover:bg-button-transparent-fill-active inline-flex items-center rounded-full shadow-none'
+                        ? 'bg-button-transparent-fill-hover !text-ds-text-neutral-muted-default hover:bg-button-transparent-fill-active inline-flex items-center rounded-full shadow-none'
                         : 'gap-1.5 inline-flex items-center'
                     }
                   >
@@ -1283,7 +1289,7 @@ export default function SettingModels() {
                 )}
               </div>
             </div>
-            <div className="text-body-sm text-text-label">
+            <div className="text-body-sm text-ds-text-neutral-muted-default">
               {item.description}
             </div>
           </div>
@@ -1439,7 +1445,7 @@ export default function SettingModels() {
             <Button
               variant="ghost"
               size="sm"
-              className="!text-text-label"
+              className="!text-ds-text-neutral-muted-default"
               onClick={() => handleDelete(idx)}
             >
               {t('setting.reset')}
@@ -1450,7 +1456,7 @@ export default function SettingModels() {
               onClick={() => handleVerify(idx)}
               disabled={loading === idx}
             >
-              <span className="text-text-inverse-primary">
+              <span className="text-ds-text-neutral-inverse-default">
                 {loading === idx ? t('setting.configuring') : t('setting.save')}
               </span>
             </Button>
@@ -1475,11 +1481,11 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-          <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="rounded-2xl bg-ds-bg-neutral-strong-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="gap-2 inline-flex items-center justify-between self-stretch">
               <div className="gap-2 flex items-center">
-                <div className="text-body-base my-2 font-bold text-text-heading">
+                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {getLocalPlatformName(platform)}
                 </div>
                 {isPreferred ? (
@@ -1500,7 +1506,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-button-transparent-fill-hover !text-text-label rounded-full shadow-none'
+                        ? 'bg-button-transparent-fill-hover !text-ds-text-neutral-muted-default rounded-full shadow-none'
                         : ''
                     }
                   >
@@ -1634,7 +1640,7 @@ export default function SettingModels() {
                   </Button>
                 </div>
                 {platformModelsError && (
-                  <span className="text-label-sm text-text-error">
+                  <span className="text-label-sm text-ds-text-status-error-strong-default">
                     {platformModelsError}
                   </span>
                 )}
@@ -1661,7 +1667,7 @@ export default function SettingModels() {
             <Button
               variant="ghost"
               size="sm"
-              className="!text-text-label"
+              className="!text-ds-text-neutral-muted-default"
               onClick={handleLocalReset}
             >
               {t('setting.reset')}
@@ -1672,7 +1678,7 @@ export default function SettingModels() {
               variant="primary"
               size="sm"
             >
-              <span className="text-text-inverse-primary">
+              <span className="text-ds-text-neutral-inverse-default">
                 {localVerifying ? t('setting.configuring') : t('setting.save')}
               </span>
             </Button>
@@ -1687,10 +1693,10 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="top-0 bg-surface-primary px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+      <div className="top-0 bg-ds-bg-neutral-subtle-default px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
         <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-text-heading">
+            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.models')}
             </div>
           </div>
@@ -1699,9 +1705,9 @@ export default function SettingModels() {
       {/* Content Section */}
       <div className="mb-8 gap-6 flex flex-col">
         {/* Default Model Cascading Dropdown */}
-        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-end justify-between">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
           <div className="gap-1 flex w-full flex-col items-start justify-center">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.models-default-setting-title')}
             </div>
             <div className="text-body-sm">
@@ -1710,11 +1716,11 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="gap-2 rounded-lg border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
+              <button className="gap-2 rounded-lg border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default px-3 py-1 font-semibold text-ds-text-status-completed-strong-default flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
                 <span className="text-body-sm whitespace-nowrap">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 text-text-success flex-shrink-0" />
+                <ChevronDown className="h-4 w-4 text-ds-text-status-completed-strong-default flex-shrink-0" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1738,7 +1744,7 @@ export default function SettingModels() {
                       >
                         <span className="text-body-sm">{model.name}</span>
                         {cloudPrefer && cloud_model_type === model.id && (
-                          <Check className="h-4 w-4 text-text-success" />
+                          <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                         )}
                       </DropdownMenuItem>
                     ))}
@@ -1749,7 +1755,7 @@ export default function SettingModels() {
               {/* Custom Model Category */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Key className="h-5 w-5 text-icon-primary" />
+                  <Key className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   <span className="text-body-sm">
                     {t('setting.custom-model')}
                   </span>
@@ -1781,10 +1787,10 @@ export default function SettingModels() {
                               }
                             />
                           ) : (
-                            <Key className="h-4 w-4 text-icon-secondary" />
+                            <Key className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                           )}
                           <span
-                            className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                            className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
                           >
                             {item.name}
                           </span>
@@ -1794,7 +1800,7 @@ export default function SettingModels() {
                             <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
-                            <Check className="h-4 w-4 text-text-success" />
+                            <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
                             <div className="h-2 w-2 bg-text-success rounded-full" />
@@ -1809,7 +1815,7 @@ export default function SettingModels() {
               {/* Local Host Category */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Server className="h-5 w-5 text-icon-primary" />
+                  <Server className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   <span className="text-body-sm">
                     {t('setting.local-model')}
                   </span>
@@ -1842,10 +1848,10 @@ export default function SettingModels() {
                               }
                             />
                           ) : (
-                            <Server className="h-4 w-4 text-icon-secondary" />
+                            <Server className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                           )}
                           <span
-                            className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                            className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
                           >
                             {model.name}
                           </span>
@@ -1855,7 +1861,7 @@ export default function SettingModels() {
                             <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
-                            <Check className="h-4 w-4 text-text-success" />
+                            <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
                             <div className="h-2 w-2 bg-text-success rounded-full" />
@@ -1871,18 +1877,18 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="gap-2 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-start justify-between">
-          <div className="text-body-base mb-2 border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-start justify-between">
+          <div className="text-body-base mb-2 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-4 font-bold text-ds-text-neutral-default-default sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
           <div className="flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 rounded-2xl bg-surface-secondary h-full w-[240px]">
+            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px]">
               <div className="gap-4 flex flex-col">
                 {/* Eigent Cloud Section */}
                 <div className="gap-1 flex flex-col">
-                  <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
+                  <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
                     {t('setting.eigent-cloud')}
                   </div>
                   {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
@@ -1899,15 +1905,15 @@ export default function SettingModels() {
                 <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-surface-secondary flex items-center justify-between bg-transparent transition-colors"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
-                    <div className="text-body-sm font-bold text-text-heading">
+                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.custom-model')}
                     </div>
                     {byokCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-text-label" />
+                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
                     ) : (
-                      <ChevronUp className="h-4 w-4 text-text-label" />
+                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
                     )}
                   </button>
                   <div
@@ -1934,15 +1940,15 @@ export default function SettingModels() {
                 <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-surface-secondary flex items-center justify-between bg-transparent transition-colors"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
-                    <div className="text-body-sm font-bold text-text-heading">
+                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.local-model')}
                     </div>
                     {localCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-text-label" />
+                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
                     ) : (
-                      <ChevronUp className="h-4 w-4 text-text-label" />
+                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
                     )}
                   </button>
                   <div

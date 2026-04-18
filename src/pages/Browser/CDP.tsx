@@ -199,7 +199,7 @@ export default function CDP() {
       />
 
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-text-heading">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('layout.cdp-browser-connection')}
         </div>
       </div>
@@ -221,7 +221,7 @@ export default function CDP() {
         </div>
 
         <div className="gap-2 flex flex-col">
-          <div className="text-body-base font-bold text-text-body">
+          <div className="text-body-base font-bold text-ds-text-neutral-default-default">
             {t('layout.cdp-browser-pool')}
           </div>
 
@@ -230,15 +230,15 @@ export default function CDP() {
               {cdpBrowsers.map((browser) => (
                 <div
                   key={browser.id}
-                  className="rounded-xl border-border-disabled bg-surface-tertiary px-4 py-2 flex items-center justify-between border-solid"
+                  className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-strong-default px-4 py-2 flex items-center justify-between border-solid"
                 >
                   <div className="gap-2 flex w-full flex-row items-center">
                     <div className="h-2 w-2 bg-text-success shrink-0 rounded-full" />
                     <div className="flex flex-col items-start justify-start">
-                      <span className="text-body-sm font-bold text-text-body">
+                      <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
                         {browser.name || `Browser ${browser.port}`}
                       </span>
-                      <span className="text-label-xs text-text-label">
+                      <span className="text-label-xs text-ds-text-neutral-muted-default">
                         {t('layout.port')} {browser.port}
                       </span>
                     </div>
@@ -251,18 +251,18 @@ export default function CDP() {
                     disabled={deletingBrowser === browser.id}
                     className="ml-3 flex-shrink-0"
                   >
-                    <Trash2 className="h-4 w-4 text-text-cuation" />
+                    <Trash2 className="h-4 w-4 text-ds-text-status-error-strong-default" />
                   </Button>
                 </div>
               ))}
             </div>
           ) : (
             <div className="px-4 py-8 flex flex-col items-center justify-center">
-              <Globe className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
-              <div className="text-body-base font-bold text-text-label text-center">
+              <Globe className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
+              <div className="text-body-base font-bold text-ds-text-neutral-muted-default text-center">
                 {t('layout.no-browsers-in-pool')}
               </div>
-              <p className="text-label-xs font-medium text-text-label text-center">
+              <p className="text-label-xs font-medium text-ds-text-neutral-muted-default text-center">
                 {t('layout.add-browsers-hint')}
               </p>
             </div>
@@ -272,11 +272,11 @@ export default function CDP() {
 
       {showConnectDialog && (
         <div className="bg-black/50 inset-0 fixed z-50 flex items-center justify-center">
-          <div className="max-w-md rounded-xl bg-surface-primary p-6 shadow-lg w-full">
-            <div className="text-body-base mb-2 font-bold text-text-heading">
+          <div className="max-w-md rounded-xl bg-ds-bg-neutral-subtle-default p-6 shadow-lg w-full">
+            <div className="text-body-base mb-2 font-bold text-ds-text-neutral-default-default">
               {t('layout.connect-existing-browser')}
             </div>
-            <p className="mb-4 text-label-xs text-text-label">
+            <p className="mb-4 text-label-xs text-ds-text-neutral-muted-default">
               {t('layout.connect-existing-browser-description')}
             </p>
             <input
@@ -287,13 +287,13 @@ export default function CDP() {
                 setConnectError('');
               }}
               placeholder={t('layout.enter-port-number')}
-              className="rounded-lg border-border-disabled bg-surface-secondary px-4 py-2 text-body-sm text-text-body focus:border-border-focus w-full border outline-none"
+              className="rounded-lg border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default px-4 py-2 text-body-sm text-ds-text-neutral-default-default focus:border-ds-border-brand-default-focus w-full border outline-none"
               onKeyDown={(event) => {
                 if (event.key === 'Enter') handleCheckAndConnect();
               }}
             />
             {connectError && (
-              <p className="mt-2 text-label-xs text-text-cuation">
+              <p className="mt-2 text-label-xs text-ds-text-status-error-strong-default">
                 {connectError}
               </p>
             )}

@@ -92,7 +92,7 @@ export function NoticeCard() {
                       key={`taskList-${index}`}
                       className={`gap-2 rounded-lg ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex cursor-pointer border border-solid border-transparent transition-all duration-300`}
                     >
-                      <div className="m-1.5 mt-2 h-1 w-1 bg-icon-primary rounded-full"></div>
+                      <div className="m-1.5 mt-2 h-1 w-1 rounded-full bg-[var(--ds-icon-neutral-default-default)]"></div>
                       <div className="text-sm font-normal leading-normal flex flex-1 flex-col items-start justify-center">
                         {cot}
                       </div>

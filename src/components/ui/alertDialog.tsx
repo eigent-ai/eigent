@@ -55,7 +55,7 @@ export default function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="alert-dialog bg-black/20 fixed inset-0 z-[99]"
+            className="alert-dialog bg-black/20 inset-0 fixed z-[99]"
             style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
             onClick={onClose}
           />
@@ -65,15 +65,17 @@ export default function ConfirmModal({
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl"
+            className="alert-dialog-wrapper max-w-md rounded-xl fixed top-1/2 left-1/2 z-[100] -translate-x-1/2 -translate-y-1/2"
           >
-            <div className="rounded-xl border border-popup-border bg-surface-tertiary p-6 shadow-perfect">
-              <span className="mb-2 text-body-lg font-bold text-text-primary">
+            <div className="rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-6 shadow-perfect border">
+              <span className="mb-2 text-body-lg font-bold text-ds-text-neutral-default-default">
                 {title}
               </span>
-              <p className="mb-6 text-label-md text-text-label">{message}</p>
+              <p className="mb-6 text-label-md text-ds-text-neutral-muted-default">
+                {message}
+              </p>
 
-              <div className="flex justify-end gap-3">
+              <div className="gap-3 flex justify-end">
                 <Button variant="ghost" onClick={onClose}>
                   {cancelText}
                 </Button>

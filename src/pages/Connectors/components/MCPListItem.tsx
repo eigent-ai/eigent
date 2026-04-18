@@ -37,15 +37,15 @@ export default function MCPListItem({
   const [_showMenu, setShowMenu] = useState(false);
   const { t } = useTranslation();
   return (
-    <div className="mb-4 gap-4 rounded-2xl bg-surface-tertiary p-4 flex items-center justify-between">
+    <div className="mb-4 gap-4 rounded-2xl bg-ds-bg-neutral-strong-default p-4 flex items-center justify-between">
       <div className="gap-xs flex items-center">
         <div className="mx-xs h-3 w-3 bg-green-500 rounded-full"></div>
-        <div className="text-base font-bold leading-9 text-text-primary">
+        <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
           {item.mcp_name}
         </div>
         <div className="flex items-center">
           <TooltipSimple content={item.mcp_desc}>
-            <CircleAlert className="h-4 w-4 text-icon-secondary" />
+            <CircleAlert className="h-4 w-4 text-ds-icon-neutral-muted-default" />
           </TooltipSimple>
         </div>
       </div>
@@ -75,10 +75,10 @@ export default function MCPListItem({
 								onClick={() => setShowMenu((v) => !v)}
 								disabled={loading}
 							>
-								<Ellipsis className="w-4 h-4 text-icon-primary" />
+								<Ellipsis className="w-4 h-4 text-ds-icon-neutral-default-default" />
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+						<PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-ds-border-neutral-default-default">
 							<div className="space-y-1">
 								<PopoverClose asChild>
 									<Button
@@ -97,7 +97,7 @@ export default function MCPListItem({
 									<Button
 										variant="ghost"
 										size="sm"
-										className="w-full !text-text-cuation"
+										className="w-full !text-ds-text-status-error-strong-default"
 										onClick={() => {
 											onDelete(item);
 											setShowMenu(false);

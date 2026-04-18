@@ -22,10 +22,13 @@ import { ChatTaskStatus } from '@/types/constants';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const TASK_LIST_ROW_BG = {
-  information: 'bg-surface-information hover:brightness-[0.98]',
-  success: 'bg-surface-success hover:brightness-[0.98]',
-  caution: 'bg-surface-caution hover:brightness-[0.98]',
-  idle: 'bg-transparent hover:bg-surface-tertiary',
+  information:
+    'bg-[var(--ds-bg-status-splitting-subtle-default)] hover:brightness-[0.98]',
+  success:
+    'bg-[var(--ds-bg-status-completed-subtle-default)] hover:brightness-[0.98]',
+  caution:
+    'bg-[var(--ds-bg-status-error-subtle-default)] hover:brightness-[0.98]',
+  idle: 'bg-transparent hover:bg-[var(--ds-bg-neutral-default-hover)]',
 } as const;
 
 /** Brief success highlight after a run completes; then idle (transparent). */
@@ -83,7 +86,9 @@ function TaskQueryScrollLabel({
   return (
     <div
       ref={outerRef}
-      className={cn('text-text-label min-w-0 w-full overflow-hidden')}
+      className={cn(
+        'min-w-0 w-full overflow-hidden text-[color:var(--ds-text-neutral-muted-default)]'
+      )}
     >
       <span
         ref={innerRef}
@@ -223,13 +228,15 @@ export function ChatTimeline({
           collapsed && 'hidden'
         )}
       >
-        <span className="text-text-label min-w-0 text-xs font-semibold truncate">
+        <span className="min-w-0 text-xs font-semibold truncate text-[color:var(--ds-text-neutral-muted-default)]">
           {title}
         </span>
       </div>
       <div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto">
         {entries.length === 0 ? (
-          <p className="text-text-label px-3 text-xs w-full">{emptyLabel}</p>
+          <p className="px-3 text-xs w-full text-[color:var(--ds-text-neutral-muted-default)]">
+            {emptyLabel}
+          </p>
         ) : (
           <div className="gap-2 min-w-0 flex w-full flex-col">
             {entries.map(({ chatId, taskId, task, firstUserMessageId }) => (

@@ -63,7 +63,7 @@ export default function Sessions({
       )}
     >
       <div className="h-11 gap-2 px-2 flex w-full shrink-0 items-center justify-between">
-        <div className="text-text-heading min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
+        <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
           <span className="truncate">
             {t('layout.sessions-full-title', {
               defaultValue: 'All sessions',
@@ -76,7 +76,7 @@ export default function Sessions({
         role="list"
       >
         {sessions.length === 0 ? (
-          <li className="text-text-secondary px-3 py-6 text-body-sm text-center">
+          <li className="text-ds-text-neutral-muted-default px-3 py-6 text-body-sm text-center">
             {t('layout.sessions-create-task-hint', {
               defaultValue: 'Create a task to start a session',
             })}
@@ -93,16 +93,16 @@ export default function Sessions({
                   className={cn(
                     'no-drag min-w-0 h-10 gap-3 rounded-xl px-3 flex w-full items-center overflow-hidden text-left transition-colors outline-none',
                     active
-                      ? 'bg-surface-tertiary'
-                      : 'hover:bg-surface-tertiary/80',
-                    'focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
+                      ? 'bg-ds-bg-neutral-strong-default'
+                      : 'hover:bg-ds-bg-neutral-strong-default/80',
+                    'focus-visible:ring-ds-ring-neutral-default-focus focus-visible:ring-2 focus-visible:outline-none'
                   )}
                 >
                   <MessageCircle
-                    className="text-icon-primary h-4 w-4 shrink-0"
+                    className="text-ds-icon-neutral-default-default h-4 w-4 shrink-0"
                     aria-hidden
                   />
-                  <span className="text-text-label min-w-0 text-body-sm font-medium flex-1 truncate">
+                  <span className="text-ds-text-neutral-muted-default min-w-0 text-body-sm font-medium flex-1 truncate">
                     {session.title}
                   </span>
                 </button>

@@ -56,14 +56,14 @@ function readInstructionsAccordionPreference(): string | undefined {
 
 const accordionItemClass = cn(
   'border-none rounded-xl transition-colors',
-  'data-[state=open]:bg-surface-tertiary'
+  'data-[state=open]:bg-[var(--ds-bg-neutral-strong-default)]'
 );
 
 const accordionTriggerClass = cn(
   workspaceTabButtonClass(false),
   'hover:no-underline',
   'py-0 min-h-8',
-  '[&>svg:last-child]:text-icon-secondary [&>svg:last-child]:shrink-0'
+  '[&>svg:last-child]:text-[color:var(--ds-icon-neutral-muted-default)] [&>svg:last-child]:shrink-0'
 );
 
 const coworkRowClass = cn(
@@ -190,8 +190,8 @@ export function HeaderAction() {
                 <button
                   type="button"
                   className={cn(
-                    'no-drag h-8 px-3 rounded-lg text-icon-primary flex shrink-0 items-center justify-center',
-                    'hover:bg-surface-secondary/80 focus-visible:ring-border-secondary focus-visible:ring-2 focus-visible:outline-none'
+                    'no-drag h-8 px-3 rounded-lg flex shrink-0 items-center justify-center text-[color:var(--ds-icon-neutral-default-default)]',
+                    'hover:bg-[var(--ds-bg-neutral-default-hover)] focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
                   )}
                   aria-label={foldTooltip}
                   onClick={() => toggleProjectSidebarFolded()}
@@ -286,7 +286,7 @@ export function HeaderAction() {
                   )}
                 >
                   <ScrollText
-                    className="h-4 w-4 text-icon-primary shrink-0"
+                    className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
                     aria-hidden
                   />
                   <motion.span
@@ -305,8 +305,8 @@ export function HeaderAction() {
               </AccordionTrigger>
               <AccordionContent className="px-3 py-3">
                 <div className="gap-3 pl-7 -mr-1 flex flex-col">
-                  <div className="gap-2 min-w-0 hover:bg-surface-primary rounded-lg hover:ring-surface-primary hover:ring-offset-surface-primary flex items-center justify-between hover:ring-2 hover:ring-offset-2">
-                    <span className="min-w-0 text-text-label text-body-sm font-medium flex-1">
+                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-[var(--ds-bg-neutral-subtle-default)] hover:ring-2 hover:ring-[var(--ds-bg-neutral-subtle-default)] hover:ring-offset-2 hover:ring-offset-[var(--ds-bg-neutral-subtle-default)]">
+                    <span className="min-w-0 text-body-sm font-medium flex-1 text-[color:var(--ds-text-neutral-muted-default)]">
                       {instructionsHint}
                     </span>
                     <Button
@@ -321,8 +321,8 @@ export function HeaderAction() {
                       <PenLine className="h-4 w-4 shrink-0" aria-hidden />
                     </Button>
                   </div>
-                  <div className="gap-2 min-w-0 hover:bg-surface-primary rounded-lg hover:ring-surface-primary hover:ring-offset-surface-primary flex items-center justify-between hover:ring-2 hover:ring-offset-2">
-                    <span className="min-w-0 text-text-label text-body-sm font-medium">
+                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-[var(--ds-bg-neutral-subtle-default)] hover:ring-2 hover:ring-[var(--ds-bg-neutral-subtle-default)] hover:ring-offset-2 hover:ring-offset-[var(--ds-bg-neutral-subtle-default)]">
+                    <span className="min-w-0 text-body-sm font-medium text-[color:var(--ds-text-neutral-muted-default)]">
                       {memoryLabel}
                     </span>
                     <Button
@@ -337,8 +337,8 @@ export function HeaderAction() {
                       {memoryOn ? memoryOnLabel : memoryOffLabel}
                     </Button>
                   </div>
-                  <div className="gap-2 min-w-0 hover:bg-surface-primary rounded-lg hover:ring-surface-primary hover:ring-offset-surface-primary flex items-center justify-between hover:ring-2 hover:ring-offset-2">
-                    <span className="min-w-0 text-text-label text-body-sm font-medium">
+                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-[var(--ds-bg-neutral-subtle-default)] hover:ring-2 hover:ring-[var(--ds-bg-neutral-subtle-default)] hover:ring-offset-2 hover:ring-offset-[var(--ds-bg-neutral-subtle-default)]">
+                    <span className="min-w-0 text-body-sm font-medium text-[color:var(--ds-text-neutral-muted-default)]">
                       {workforceSettingLabel}
                     </span>
                     <Button

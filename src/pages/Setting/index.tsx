@@ -16,7 +16,7 @@ import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
 import VerticalNavigation, {
   type VerticalNavItem,
-} from '@/components/Navigation';
+} from '@/components/Dashboard/Navigation';
 import useAppVersion from '@/hooks/use-app-version';
 import General from '@/pages/Setting/General';
 import Privacy from '@/pages/Setting/Privacy';
@@ -88,7 +88,7 @@ export default function Setting() {
             listClassName="w-full h-full overflow-y-auto"
             contentClassName="hidden"
           />
-          <div className="mt-4 gap-4 border-border-secondary py-4 flex w-full flex-shrink-0 flex-grow-0 flex-col items-center justify-center border-x-0 border-t-[0.5px] border-b-0 border-solid">
+          <div className="mt-4 gap-4 border-ds-border-neutral-default-default py-4 flex w-full flex-shrink-0 flex-grow-0 flex-col items-center justify-center border-x-0 border-t-[0.5px] border-b-0 border-solid">
             <button
               onClick={() =>
                 window.open(
@@ -97,10 +97,10 @@ export default function Setting() {
                   'noopener,noreferrer'
                 )
               }
-              className="gap-2 rounded-lg bg-surface-tertiary px-6 py-1.5 flex w-full cursor-pointer flex-row items-center justify-center transition-opacity duration-200 hover:opacity-60"
+              className="gap-2 rounded-lg bg-ds-bg-neutral-strong-default px-6 py-1.5 flex w-full cursor-pointer flex-row items-center justify-center transition-opacity duration-200 hover:opacity-60"
             >
-              <TagIcon className="h-4 w-4 text-text-success" />
-              <div className="text-label-sm font-semibold text-text-body">
+              <TagIcon className="h-4 w-4 text-ds-text-status-completed-strong-default" />
+              <div className="text-label-sm font-semibold text-ds-text-neutral-default-default">
                 {version}
               </div>
             </button>

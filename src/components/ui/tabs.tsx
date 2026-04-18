@@ -110,8 +110,8 @@ const TabsList = React.forwardRef<
           ref={combinedRef}
           className={cn(
             variant === 'outline'
-              ? 'relative inline-flex items-center justify-center gap-0 bg-surface-disabled p-0'
-              : 'inline-flex items-center justify-center rounded-xl border border-solid border-menutabs-border-default bg-menutabs-bg-default p-0.5',
+              ? 'gap-0 bg-ds-bg-neutral-muted-disabled p-0 relative inline-flex items-center justify-center'
+              : 'rounded-xl border-menutabs-border-default bg-ds-bg-neutral-strong-default p-0.5 inline-flex items-center justify-center border border-solid',
             'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
             className
           )}
@@ -120,7 +120,7 @@ const TabsList = React.forwardRef<
         />
         {variant === 'outline' && sliderStyle.width > 0 && (
           <motion.div
-            className="absolute bottom-0 z-10 h-[1.5px] bg-text-heading"
+            className="bottom-0 bg-text-heading absolute z-10 h-[1.5px]"
             initial={false}
             animate={{
               left: sliderStyle.left,
@@ -157,8 +157,8 @@ const TabsTrigger = React.forwardRef<
       ref={ref}
       className={cn(
         variant === 'outline'
-          ? 'relative flex cursor-pointer flex-row items-center justify-center gap-2 bg-transparent px-4 py-3 !text-body-sm !font-semibold text-text-label transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-surface-disabled data-[state=active]:!font-bold data-[state=active]:text-text-heading'
-          : 'ring-offset-background focus-visible:ring-ring inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-menutabs-fill-default px-2 py-1 text-body-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm',
+          ? 'gap-2 px-4 py-3 !text-body-sm !font-semibold text-ds-text-neutral-muted-default data-[state=active]:bg-ds-bg-neutral-muted-disabled data-[state=active]:!font-bold data-[state=active]:text-ds-text-neutral-default-default relative flex cursor-pointer flex-row items-center justify-center bg-transparent transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
+          : 'ring-offset-background focus-visible:ring-ring gap-1 rounded-xl bg-menutabs-fill-default px-2 py-1 text-body-sm font-semibold data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
         className
       )}
       data-variant={variant}
@@ -177,7 +177,7 @@ const TabsContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       className={cn(
-        'ring-offset-background focus-visible:ring-ring mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'ring-offset-background focus-visible:ring-ring mt-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
         className
       )}
       {...props}
@@ -189,7 +189,7 @@ const TabsContent = React.forwardRef<
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="flex flex-col gap-4"
+          className="gap-4 flex flex-col"
         >
           {children}
         </motion.div>

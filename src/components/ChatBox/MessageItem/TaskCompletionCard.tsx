@@ -41,7 +41,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="group rounded-xl bg-surface-primary p-3 relative flex w-full flex-row items-center"
+        className="group rounded-xl p-3 relative flex w-full flex-row items-center bg-[var(--ds-bg-neutral-subtle-default)]"
       >
         {onDismiss && (
           <Button
@@ -60,10 +60,10 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
         <div
           className={`min-w-0 gap-0.5 flex w-full flex-col ${onDismiss ? 'pr-10' : ''}`}
         >
-          <div className="text-label-sm font-bold leading-normal text-text-body">
+          <div className="text-label-sm font-bold leading-normal text-[color:var(--ds-text-neutral-default-default)]">
             {t('chat.task-completed-card-title')}
           </div>
-          <div className="text-label-sm font-medium leading-normal text-text-label">
+          <div className="text-label-sm font-medium leading-normal text-[color:var(--ds-text-neutral-muted-default)]">
             {t('chat.task-completed-card-subtitle')}
           </div>
         </div>

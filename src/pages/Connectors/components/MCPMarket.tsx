@@ -18,7 +18,7 @@ import AnthropicIcon from '@/assets/mcp/Anthropic.svg?url';
 import CamelIcon from '@/assets/mcp/Camel.svg?url';
 import CommunityIcon from '@/assets/mcp/Community.svg?url';
 import OfficialIcon from '@/assets/mcp/Official.svg?url';
-import SearchInput from '@/components/SearchInput';
+import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -273,7 +273,7 @@ export default function MCPMarket({
     <div className="flex h-full flex-col items-center">
       {externalKeyword === undefined && (
         <>
-          <div className="text-body sticky top-0 z-[20] mb-0 flex w-full max-w-4xl items-center justify-between py-2">
+          <div className="text-body top-0 mb-0 max-w-4xl py-2 sticky z-[20] flex w-full items-center justify-between">
             <Button
               variant="ghost"
               size="sm"
@@ -282,7 +282,7 @@ export default function MCPMarket({
             >
               <ChevronLeft className="h-6 w-6" />
             </Button>
-            <span className="text-base font-bold leading-12 text-text-primary">
+            <span className="text-base font-bold leading-12 text-ds-text-neutral-default-default">
               {t('setting.mcp-market')}
             </span>
           </div>
@@ -296,7 +296,7 @@ export default function MCPMarket({
       )}
 
       {/* Category toggle row */}
-      <div className="flex w-full py-2">
+      <div className="py-2 flex w-full">
         <ToggleGroup
           type="single"
           value={categoryId ? String(categoryId) : 'all'}
@@ -321,24 +321,26 @@ export default function MCPMarket({
         onConnect={onConnect}
         activeMcp={activeMcp}
       ></MCPEnvDialog>
-      <div className="flex w-full flex-col gap-4 pt-4">
+      <div className="gap-4 pt-4 flex w-full flex-col">
         {isLoading && items.length === 0 && (
-          <div className="py-8 text-center text-text-muted">
+          <div className="py-8 text-ds-text-neutral-muted-default text-center">
             {t('setting.loading')}
           </div>
         )}
         {error && (
-          <div className="py-8 text-center text-text-error">{error}</div>
+          <div className="py-8 text-ds-text-status-error-strong-default text-center">
+            {error}
+          </div>
         )}
         {!isLoading && !error && items.length === 0 && (
-          <div className="py-8 text-center text-text-muted">
+          <div className="py-8 text-ds-text-neutral-muted-default text-center">
             {t('setting.no-mcp-services')}
           </div>
         )}
         {items.map((item) => (
           <div
             key={item.id}
-            className="flex items-center rounded-2xl bg-surface-secondary p-4"
+            className="rounded-2xl bg-ds-bg-neutral-default-default p-4 flex items-center"
           >
             {/* Left: Icon */}
             <div className="mr-4 flex items-center">
@@ -352,18 +354,18 @@ export default function MCPMarket({
                 return iconUrl ? (
                   <img src={iconUrl} alt={catName} className="h-11 w-9" />
                 ) : (
-                  <Store className="h-11 w-9 text-icon-primary" />
+                  <Store className="h-11 w-9 text-ds-icon-neutral-default-default" />
                 );
               })()}
             </div>
-            <div className="flex min-w-0 flex-1 flex-col justify-center">
-              <div className="flex w-full items-center gap-xs pb-1">
-                <div className="flex flex-1 items-center gap-xs">
-                  <span className="truncate text-base font-bold leading-9 text-text-primary">
+            <div className="min-w-0 flex flex-1 flex-col justify-center">
+              <div className="gap-xs pb-1 flex w-full items-center">
+                <div className="gap-xs flex flex-1 items-center">
+                  <span className="text-base font-bold leading-9 text-ds-text-neutral-default-default truncate">
                     {item.name}
                   </span>
                   <TooltipSimple content={item.description}>
-                    <CircleAlert className="h-4 w-4 text-icon-secondary" />
+                    <CircleAlert className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                   </TooltipSimple>
                 </div>
                 <Button
@@ -400,7 +402,7 @@ export default function MCPMarket({
                         verticalAlign: 'middle',
                       }}
                     />
-                    <span className="items-center justify-center self-stretch text-xs font-medium leading-3">
+                    <span className="text-xs font-medium leading-3 items-center justify-center self-stretch">
                       {(() => {
                         const parts = item.home_page.split('/');
                         return parts.length > 4 ? parts[4] : item.home_page;
@@ -408,7 +410,7 @@ export default function MCPMarket({
                     </span>
                   </div>
                 )}
-              <div className="mt-1 whitespace-pre-line break-words text-sm text-text-muted">
+              <div className="mt-1 text-sm text-ds-text-neutral-muted-default break-words whitespace-pre-line">
                 {item.description}
               </div>
             </div>
@@ -416,12 +418,12 @@ export default function MCPMarket({
         ))}
         <div ref={loader} />
         {isLoading && items.length > 0 && (
-          <div className="py-4 text-center text-text-muted">
+          <div className="py-4 text-ds-text-neutral-muted-default text-center">
             {t('setting.loading-more')}
           </div>
         )}
         {!hasMore && items.length > 0 && (
-          <div className="py-4 text-center text-text-muted">
+          <div className="py-4 text-ds-text-neutral-muted-default text-center">
             {t('setting.no-more-mcp-servers')}
           </div>
         )}

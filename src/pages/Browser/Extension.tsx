@@ -21,17 +21,17 @@ export default function Extension() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-text-heading">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('layout.browser-plugins')}
         </div>
       </div>
       <div className="gap-4 px-6 flex flex-col">
-        <div className="rounded-xl border-border-disabled bg-surface-secondary px-6 py-16 flex flex-col items-center justify-center border">
-          <Puzzle className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
-          <div className="text-body-base font-bold text-text-label text-center">
+        <div className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default px-6 py-16 flex flex-col items-center justify-center border">
+          <Puzzle className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
+          <div className="text-body-base font-bold text-ds-text-neutral-muted-default text-center">
             {t('layout.coming-soon')}
           </div>
-          <p className="mt-2 text-label-sm text-text-label text-center">
+          <p className="mt-2 text-label-sm text-ds-text-neutral-muted-default text-center">
             {t('layout.browser-plugins-description')}
           </p>
         </div>

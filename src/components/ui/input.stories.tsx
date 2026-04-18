@@ -149,7 +149,7 @@ export const WithBackIcon: Story = {
 
 export const AllStates: Story = {
   render: () => (
-    <div className="flex flex-col gap-4">
+    <div className="gap-4 flex flex-col">
       <Input title="Default" state="default" placeholder="Default state" />
       <Input title="Hover" state="hover" placeholder="Hover state" />
       <Input title="Input" state="input" placeholder="Input state" />
@@ -173,7 +173,9 @@ export const AllStates: Story = {
 export const FormExample: Story = {
   render: () => (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-text-heading">Contact Form</h3>
+      <h3 className="text-lg font-semibold text-ds-text-neutral-default-default">
+        Contact Form
+      </h3>
       <Input title="Full Name" placeholder="John Doe" required />
       <Input
         title="Email"

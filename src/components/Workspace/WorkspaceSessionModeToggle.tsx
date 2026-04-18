@@ -110,8 +110,8 @@ export function WorkspaceSessionModeToggle({
         className={cn(
           'rounded-xl px-2 py-1 pointer-events-none inline-flex items-center',
           isSingle
-            ? 'bg-surface-session-single-agent-selected text-session-single-agent'
-            : 'bg-surface-session-workforce-selected text-session-workforce',
+            ? 'bg-ds-bg-single-agent-subtle-selected text-ds-text-single-agent-default-default'
+            : 'bg-ds-bg-workforce-subtle-selected text-ds-text-workforce-default-default',
           className
         )}
       >
@@ -130,7 +130,7 @@ export function WorkspaceSessionModeToggle({
       role="radiogroup"
       aria-label={modeAriaLabel}
       className={cn(
-        'bg-surface-primary rounded-xl ring-surface-primary relative inline-flex items-stretch ring-1 ring-offset-2',
+        'bg-ds-bg-neutral-subtle-default rounded-xl ring-ds-ring-neutral-default-default relative inline-flex items-stretch ring-1 ring-offset-2',
         className
       )}
       onMouseLeave={() => setHoverSegment(null)}
@@ -140,8 +140,8 @@ export function WorkspaceSessionModeToggle({
         className={cn(
           'inset-y-0 rounded-xl pointer-events-none absolute z-0 transition-colors duration-150',
           targetSegment === 'single'
-            ? 'bg-surface-session-single-agent-selected'
-            : 'bg-surface-session-workforce-selected'
+            ? 'bg-ds-bg-single-agent-subtle-selected'
+            : 'bg-ds-bg-workforce-subtle-selected'
         )}
         initial={false}
         animate={{
@@ -160,8 +160,8 @@ export function WorkspaceSessionModeToggle({
           'rounded-xl px-2 py-1 relative z-10 border-0 bg-transparent',
           '!text-label-xs font-semibold transition-colors duration-150',
           cardOver('single')
-            ? 'text-session-single-agent'
-            : 'text-text-secondary'
+            ? 'text-ds-text-single-agent-default-default'
+            : 'text-ds-text-neutral-muted-default'
         )}
         onMouseEnter={() => setHoverSegment('single')}
         onClick={() => onValueChange(SessionMode.SINGLE_AGENT)}
@@ -183,8 +183,8 @@ export function WorkspaceSessionModeToggle({
           'rounded-xl px-2 py-1 relative z-10 border-0 bg-transparent',
           '!text-label-xs font-semibold transition-colors duration-150',
           cardOver('workforce')
-            ? 'text-session-workforce'
-            : 'text-text-secondary'
+            ? 'text-ds-text-workforce-default-default'
+            : 'text-ds-text-neutral-muted-default'
         )}
         onMouseEnter={() => setHoverSegment('workforce')}
         onClick={() => onValueChange(SessionMode.WORKFORCE)}

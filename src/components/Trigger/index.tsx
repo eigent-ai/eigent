@@ -85,7 +85,7 @@ export default function TriggerPanel({
       )}
     >
       <div className="gap-2 px-2 py-2 flex w-full shrink-0 items-center justify-between">
-        <div className="text-text-heading min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
+        <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
           <span className="truncate">{t('triggers.title')}</span>
         </div>
         <div className="gap-2 flex shrink-0 items-center">

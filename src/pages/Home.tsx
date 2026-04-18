@@ -492,7 +492,7 @@ export default function Home() {
   }, [chatStore, projectStore, getSize]);
 
   const mainPanelSurfaceClass =
-    'rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 flex h-full w-full flex-col border-solid overflow-hidden';
+    'rounded-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
   const mainPanelContentClass = 'min-h-0 min-w-0 flex h-full w-full flex-col';
   const mainPanelShellClass = cn(mainPanelSurfaceClass);
 
@@ -600,9 +600,9 @@ export default function Home() {
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-1.5 after:bg-border-tertiary shrink-0 bg-transparent after:transition-colors',
-                'hover:after:bg-tag-fill-info transition-colors',
-                'data-[resize-handle-state=drag]:after:bg-tag-fill-info'
+                'w-1.5 shrink-0 bg-transparent after:bg-[var(--ds-border-neutral-subtle-default)] after:transition-colors',
+                'transition-colors hover:after:bg-[var(--ds-border-brand-default-focus)]',
+                'data-[resize-handle-state=drag]:after:bg-[var(--ds-border-brand-default-focus)]'
               )}
             />
             <ResizablePanel

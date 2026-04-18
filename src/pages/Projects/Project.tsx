@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut, proxyFetchDelete } from '@/api/http';
-import GroupedHistoryView from '@/components/GroupedHistoryView';
+import GroupedHistoryView from '@/components/Dashboard/GroupedHistoryView';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
@@ -52,7 +52,7 @@ export default function Project() {
   const agentMap = {
     developer_agent: {
       name: t('dashboard.developer-agent'),
-      textColor: 'text-text-developer',
+      textColor: 'text-ds-text-terminal-default-default',
       bgColor: 'bg-bg-fill-coding-active',
       shapeColor: 'bg-bg-fill-coding-default',
       borderColor: 'border-bg-fill-coding-active',
@@ -268,11 +268,11 @@ export default function Project() {
       />
 
       {/* Header Section */}
-      <div className="flex w-full border-x-0 border-t-0 border-solid border-border-disabled">
-        <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-4 pt-8">
-          <div className="flex w-full flex-row items-center justify-between gap-4">
+      <div className="border-ds-border-neutral-muted-disabled flex w-full border-x-0 border-t-0 border-solid">
+        <div className="px-6 pb-4 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
+          <div className="gap-4 flex w-full flex-row items-center justify-between">
             <div className="flex flex-col">
-              <div className="text-heading-sm font-bold text-text-heading">
+              <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
                 {t('layout.projects-hub')}
               </div>
             </div>
@@ -281,7 +281,7 @@ export default function Project() {
       </div>
 
       <div className="flex w-full">
-        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start px-6 py-8">
+        <div className="px-6 py-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
           <GroupedHistoryView
             onTaskSelect={handleSetActive}
             onTaskDelete={handleDelete}

@@ -398,15 +398,15 @@ export function Node({ id, data }: NodeProps) {
               : 'w-[342px]'
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
-        } rounded-xl border-worker-border-default bg-worker-surface-primary flex overflow-hidden border border-solid ${
+        } rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default flex overflow-hidden border border-solid ${
           getCurrentTask()?.activeAgent === id
             ? `${agentMap[data.type]?.borderColor} z-50`
-            : 'border-worker-border-default z-10'
+            : 'border-ds-border-neutral-subtle-default z-10'
         } ease-in-out transition-all duration-300 ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
-        <div className="border-border-secondary flex w-[342px] shrink-0 flex-col border-y-0 border-r-[0.5px] border-l-0 border-solid">
+        <div className="border-ds-border-neutral-default-default flex w-[342px] shrink-0 flex-col border-y-0 border-r-[0.5px] border-l-0 border-solid">
           <div className="gap-sm px-3 pb-1 pt-2 flex items-center justify-between">
             <div className="gap-md flex items-center justify-between">
               <div
@@ -439,7 +439,7 @@ export function Node({ id, data }: NodeProps) {
                         <Ellipsis />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="border-dropdown-border bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid">
+                    <PopoverContent className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm w-[98px] rounded-[12px] border border-solid">
                       <div className="space-y-1">
                         <PopoverClose asChild>
                           <AddWorker
@@ -462,7 +462,7 @@ export function Node({ id, data }: NodeProps) {
                           >
                             <Trash2
                               size={16}
-                              className="text-icon-primary group-hover:text-icon-cuation"
+                              className="text-ds-icon-neutral-default-default group-hover:text-ds-icon-status-error-default-default"
                             />
                             Delete
                           </Button>
@@ -475,7 +475,7 @@ export function Node({ id, data }: NodeProps) {
           </div>
           <div
             ref={toolsRef}
-            className="mb-sm min-h-4 px-3 text-xs font-normal leading-tight text-text-label flex flex-shrink-0 flex-wrap"
+            className="mb-sm min-h-4 px-3 text-xs font-normal leading-tight text-ds-text-neutral-muted-default flex flex-shrink-0 flex-wrap"
           >
             {/* {JSON.stringify(data.agent)} */}
             {toolkitLabels.map((toolkit, index) => (
@@ -515,7 +515,7 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`browser-placeholder-${index}`}
-                      className="rounded-sm bg-surface-primary h-full w-full"
+                      className="rounded-sm bg-ds-bg-neutral-subtle-default h-full w-full"
                     />
                   )
                 )}
@@ -549,7 +549,7 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`terminal-placeholder-${index}`}
-                      className="rounded-lg bg-surface-primary h-full w-full"
+                      className="rounded-lg bg-ds-bg-neutral-subtle-default h-full w-full"
                     />
                   )
                 )}
@@ -557,7 +557,7 @@ export function Node({ id, data }: NodeProps) {
             )}
           </div>
           {data.agent?.tasks && data.agent?.tasks.length > 0 && (
-            <div className="gap-1 border-task-border-default px-3 py-sm flex flex-col items-start justify-between border-[0px] border-t border-solid">
+            <div className="gap-1 border-ds-border-neutral-default-default px-3 py-sm flex flex-col items-start justify-between border-[0px] border-t border-solid">
               {/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
               <div className="flex flex-1 justify-end">
                 <TaskState
@@ -643,51 +643,54 @@ export function Node({ id, data }: NodeProps) {
                     key={`taskList-${task.id}-${task.failure_count}`}
                     className={`gap-2 rounded-xl px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
                       task.reAssignTo
-                        ? 'bg-task-fill-warning'
+                        ? 'bg-ds-bg-status-blocked-subtle-default'
                         : task.status === TaskStatus.COMPLETED
-                          ? 'bg-task-fill-success'
+                          ? 'bg-ds-bg-status-completed-subtle-default'
                           : task.status === TaskStatus.FAILED
-                            ? 'bg-task-fill-error'
+                            ? 'bg-ds-bg-status-error-subtle-default'
                             : task.status === TaskStatus.RUNNING
-                              ? 'bg-task-fill-running'
+                              ? 'bg-ds-bg-status-running-subtle-default'
                               : task.status === TaskStatus.BLOCKED
-                                ? 'bg-task-fill-warning'
-                                : 'bg-task-fill-running'
+                                ? 'bg-ds-bg-status-blocked-subtle-default'
+                                : 'bg-ds-bg-status-running-subtle-default'
                     } cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
-                        ? 'hover:border-task-border-focus-success'
+                        ? 'hover:border-ds-border-status-completed-default-focus'
                         : task.status === TaskStatus.FAILED
-                          ? 'hover:border-task-border-focus-error'
+                          ? 'hover:border-ds-border-status-error-default-focus'
                           : task.status === TaskStatus.RUNNING
-                            ? 'hover:border-border-primary'
+                            ? 'hover:border-ds-border-neutral-strong-default'
                             : task.status === TaskStatus.BLOCKED
-                              ? 'hover:border-task-border-focus-warning'
-                              : 'hover:border-task-border-focus'
+                              ? 'hover:border-ds-border-status-blocked-default-focus'
+                              : 'hover:border-ds-border-neutral-default-focus'
                     } ${
                       selectedTask?.id === task.id
                         ? task.status === TaskStatus.COMPLETED
-                          ? '!border-task-border-focus-success'
+                          ? '!border-ds-border-status-completed-default-focus'
                           : task.status === TaskStatus.FAILED
-                            ? '!border-task-border-focus-error'
+                            ? '!border-ds-border-status-error-default-focus'
                             : task.status === TaskStatus.RUNNING
-                              ? '!border-border-primary'
+                              ? '!border-ds-border-neutral-strong-default'
                               : task.status === TaskStatus.BLOCKED
-                                ? '!border-task-border-focus-warning'
-                                : '!border-task-border-focus'
+                                ? '!border-ds-border-status-blocked-default-focus'
+                                : '!border-ds-border-neutral-default-focus'
                         : 'border-transparent'
                     }`}
                   >
                     <div className="">
                       {task.reAssignTo ? (
                         //  reassign to other agent
-                        <CircleSlash2 size={16} className="text-icon-warning" />
+                        <CircleSlash2
+                          size={16}
+                          className="text-ds-icon-status-pending-default-default"
+                        />
                       ) : (
                         // normal task
                         <>
                           {task.status === TaskStatus.RUNNING && (
                             <LoaderCircle
                               size={16}
-                              className={`text-icon-information ${
+                              className={`text-ds-icon-status-splitting-default-default ${
                                 chatStore.tasks[
                                   chatStore.activeTaskId as string
                                 ].status === ChatTaskStatus.RUNNING &&
@@ -698,30 +701,33 @@ export function Node({ id, data }: NodeProps) {
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className={`text-icon-secondary`}
+                              className={`text-ds-icon-neutral-muted-default`}
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
                             <CircleCheckBig
                               size={16}
-                              className="text-icon-success"
+                              className="text-ds-icon-status-completed-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
                             <CircleSlash
                               size={16}
-                              className="text-icon-cuation"
+                              className="text-ds-icon-status-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
                             <TriangleAlert
                               size={16}
-                              className="text-icon-warning"
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
-                            <Circle size={16} className="text-slate-400" />
+                            <Circle
+                              size={16}
+                              className="text-ds-icon-neutral-muted-default"
+                            />
                           )}
                         </>
                       )}
@@ -730,18 +736,18 @@ export function Node({ id, data }: NodeProps) {
                       <div
                         className={`w-full flex-grow-0 ${
                           task.status === TaskStatus.FAILED
-                            ? 'text-text-cuation-default'
+                            ? 'text-ds-text-status-error-strong-default'
                             : task.status === TaskStatus.BLOCKED
-                              ? 'text-text-body'
-                              : 'text-text-primary'
+                              ? 'text-ds-text-neutral-default-default'
+                              : 'text-ds-text-neutral-default-default'
                         } text-xs font-medium leading-13 pointer-events-auto text-wrap break-all whitespace-pre-line select-text`}
                       >
                         <div className="gap-sm flex items-center">
-                          <div className="text-xs font-bold leading-13 text-text-body">
+                          <div className="text-xs font-bold leading-13 text-ds-text-neutral-default-default">
                             No. {getTaskId(task.id)}
                           </div>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-tag-fill-document px-1 py-0.5 text-xs font-bold text-text-warning leading-none">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold text-ds-text-warning-strong-default leading-none">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
@@ -749,10 +755,10 @@ export function Node({ id, data }: NodeProps) {
                               <div
                                 className={`${
                                   task.status === TaskStatus.FAILED
-                                    ? 'bg-surface-error-subtle text-text-cuation'
+                                    ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-strong-default'
                                     : task.status === TaskStatus.COMPLETED
-                                      ? 'text-text-success-default bg-tag-fill-developer'
-                                      : 'bg-tag-surface-hover text-text-label'
+                                      ? 'text-ds-text-status-completed-strong-default bg-ds-bg-neutral-default-default'
+                                      : 'bg-ds-bg-neutral-default-hover text-ds-text-neutral-muted-default'
                                 } rounded-lg px-1 py-0.5 text-xs font-bold leading-none`}
                               >
                                 Attempt {task.failure_count}
@@ -778,11 +784,11 @@ export function Node({ id, data }: NodeProps) {
                                   ].activeWorkspace
                                     ? '!w-[100px]'
                                     : '!w-[500px]'
-                                } min-w-0 pt-1 text-xs leading-17 text-text-primary flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap`}
+                                } min-w-0 pt-1 text-xs leading-17 text-ds-text-neutral-default-default flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap`}
                               >
                                 <ShinyText
                                   text={task.toolkits?.[0].toolkitName}
-                                  className="text-xs font-bold leading-17 text-text-primary pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
+                                  className="text-xs font-bold leading-17 text-ds-text-neutral-default-default pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
                                 />
                               </div>
                             </div>
@@ -803,7 +809,7 @@ export function Node({ id, data }: NodeProps) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 24 }}
               transition={{ duration: 0.3, ease: 'easeIn' }}
-              className="gap-sm rounded-r-xl bg-worker-surface-secondary py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
+              className="gap-sm rounded-r-xl bg-ds-bg-neutral-muted-disabled py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
             >
               <div
                 ref={logRef}

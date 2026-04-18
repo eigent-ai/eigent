@@ -67,11 +67,11 @@ const MENTION_LABELS: Record<string, string> = {
 };
 
 const MENTION_TEXT_CLASS: Record<string, string> = {
-  workforce: 'text-text-camel',
-  browser: 'text-text-browser',
-  dev: 'text-text-developer',
-  doc: 'text-text-document',
-  media: 'text-text-multimodal',
+  workforce: 'text-[color:var(--ds-text-workforce-default-default)]',
+  browser: 'text-[color:var(--ds-text-browser-default-default)]',
+  dev: 'text-[color:var(--ds-text-terminal-default-default)]',
+  doc: 'text-[color:var(--ds-text-document-default-default)]',
+  media: 'text-[color:var(--ds-text-neutral-muted-default)]',
 };
 
 function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
@@ -89,7 +89,7 @@ function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-text-information decoration-text-information/80 underline underline-offset-2"
+            className="text-[color:var(--ds-text-information-default-default)] underline underline-offset-2"
             onClick={(e) => e.stopPropagation()}
           >
             {seg.text}
@@ -138,8 +138,8 @@ export function UserMessageRichContent({
 
   const bodyClass =
     variant === 'card'
-      ? 'text-text-body font-sans relative z-0 break-words whitespace-pre-wrap'
-      : 'text-text-label font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
+      ? 'text-[color:var(--ds-text-neutral-default-default)] font-sans relative z-0 break-words whitespace-pre-wrap'
+      : 'text-[color:var(--ds-text-neutral-muted-default)] font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
 
   return (
     <div className={cn('min-w-0', className)}>
@@ -159,7 +159,8 @@ export function UserMessageRichContent({
                 key={i}
                 className={cn(
                   'font-normal inline align-baseline',
-                  MENTION_TEXT_CLASS[node.id] ?? 'text-text-body'
+                  MENTION_TEXT_CLASS[node.id] ??
+                    'text-[color:var(--ds-text-neutral-default-default)]'
                 )}
               >
                 @{label}

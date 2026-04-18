@@ -43,8 +43,8 @@ export function GlobalSearchDialog({
       open={open}
       onOpenChange={onOpenChange}
       overlayClassName="backdrop-blur-none"
-      contentClassName="border-0 bg-surface-primary shadow-perfect"
-      commandClassName="bg-surface-primary"
+      contentClassName="border-0 bg-ds-bg-neutral-subtle-default shadow-perfect"
+      commandClassName="bg-ds-bg-neutral-subtle-default"
     >
       <DialogTitle className="sr-only">{t('dashboard.search')}</DialogTitle>
       <CommandInput placeholder="Type a command or search..." />
@@ -76,11 +76,11 @@ export function GlobalSearch() {
   return (
     <>
       <div
-        className="bg-surface-primary no-drag h-6 w-60 space-x-2 rounded-lg flex items-center justify-center"
+        className="bg-ds-bg-neutral-subtle-default no-drag h-6 w-60 space-x-2 rounded-lg flex items-center justify-center"
         onClick={() => setOpen(true)}
       >
-        <Search className="h-4 w-4 text-text-secondary"></Search>
-        <span className="font-inter leading-4 text-text-secondary text-[10px]">
+        <Search className="h-4 w-4 text-ds-text-neutral-muted-default"></Search>
+        <span className="font-inter leading-4 text-ds-text-neutral-muted-default text-[10px]">
           {t('dashboard.search-for-a-task-or-document')}
         </span>
       </div>

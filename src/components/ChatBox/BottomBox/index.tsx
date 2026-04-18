@@ -85,12 +85,14 @@ export default function BottomBox({
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
-  let backgroundClass = 'bg-surface-secondary';
-  if (state === 'splitting') backgroundClass = 'bg-input-bg-spliting';
-  else if (state === 'confirm') backgroundClass = 'bg-input-bg-confirm';
+  let backgroundClass = 'bg-[var(--ds-bg-neutral-default-default)]';
+  if (state === 'splitting')
+    backgroundClass = 'bg-[var(--ds-bg-status-splitting-subtle-default)]';
+  else if (state === 'confirm')
+    backgroundClass = 'bg-[var(--ds-bg-status-pending-subtle-default)]';
 
   return (
-    <div className="bg-surface-secondary relative z-50 flex w-full flex-col">
+    <div className="relative z-50 flex w-full flex-col bg-[var(--ds-bg-neutral-default-default)]">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
         <div className="px-2 pointer-events-auto z-50">
@@ -126,7 +128,7 @@ export default function BottomBox({
               {starterSuggestions.map(({ label, message }) => (
                 <div
                   key={label}
-                  className="rounded-md bg-surface-tertiary px-sm py-xs text-xs font-medium text-button-tertiery-text-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
+                  className="rounded-md px-sm py-xs text-xs font-medium cursor-pointer bg-[var(--ds-bg-neutral-strong-default)] leading-none text-[color:var(--ds-text-neutral-default-default)] opacity-70 transition-all duration-300 hover:opacity-100"
                   onClick={() => onStarterSuggestion(message)}
                   role="button"
                   tabIndex={0}
@@ -149,10 +151,10 @@ export default function BottomBox({
             role="alert"
           >
             <TriangleAlert
-              className="h-4 w-4 text-icon-warning shrink-0"
+              className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-warning-default-default)]"
               aria-hidden
             />
-            <p className="text-sm font-medium leading-snug text-text-warning">
+            <p className="text-sm font-medium leading-snug text-[color:var(--ds-text-warning-default-default)]">
               {t('layout.please-select-model')}
             </p>
             <Button
@@ -160,7 +162,7 @@ export default function BottomBox({
               variant="ghost"
               size="sm"
               buttonRadius="full"
-              className="bg-surface-warning !text-text-warning"
+              className="bg-[var(--ds-bg-status-pending-subtle-default)] !text-[color:var(--ds-text-warning-default-default)]"
               onClick={onSelectModel}
             >
               {t('layout.select-model-cta', {

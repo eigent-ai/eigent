@@ -93,19 +93,19 @@ export function TaskLogPanelContent({
                       ) : (
                         getToolkitIcon(toolkit.toolkitName)
                       )}
-                      <span className="gap-sm text-label-xs font-bold text-text-primary flex items-center text-nowrap">
+                      <span className="gap-sm text-label-xs font-bold text-ds-text-neutral-default-default flex items-center text-nowrap">
                         {toolkit.toolkitName}
                       </span>
                     </div>
                     <div className="gap-sm pl-6 pointer-events-auto flex w-full items-start justify-center overflow-hidden select-text">
-                      <div className="text-label-xs font-bold text-text-primary text-nowrap">
+                      <div className="text-label-xs font-bold text-ds-text-neutral-default-default text-nowrap">
                         {toolkit.toolkitMethods
                           ? toolkit.toolkitMethods.charAt(0).toUpperCase() +
                             toolkit.toolkitMethods.slice(1)
                           : ''}
                       </div>
                       <div
-                        className={`text-label-xs font-normal text-text-primary max-w-full flex-1 truncate ${
+                        className={`text-label-xs font-normal text-ds-text-neutral-default-default max-w-full flex-1 truncate ${
                           isEditMode
                             ? 'overflow-hidden'
                             : 'truncate overflow-hidden'
@@ -119,7 +119,7 @@ export function TaskLogPanelContent({
                 {toolkit.message && (
                   <TooltipContent
                     align="start"
-                    className="scrollbar left-6 rounded-lg border-task-border-default bg-surface-tertiary p-2 text-label-xs pointer-events-auto !fixed z-[9999] max-h-[200px] w-max max-w-[296px] overflow-y-auto border border-solid text-wrap break-words select-text"
+                    className="scrollbar left-6 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-2 text-label-xs pointer-events-auto !fixed z-[9999] max-h-[200px] w-max max-w-[296px] overflow-y-auto border border-solid text-wrap break-words select-text"
                     side="bottom"
                     sideOffset={4}
                   >
@@ -141,10 +141,10 @@ export function TaskLogPanelContent({
           onWheel={(e) => {
             e.stopPropagation();
           }}
-          className="group my-2 rounded-lg bg-surface-primary relative flex w-full flex-col"
+          className="group my-2 rounded-lg bg-ds-bg-neutral-subtle-default relative flex w-full flex-col"
         >
-          <div className="top-0 rounded-lg bg-surface-primary py-2 pl-2 pr-2 sticky z-10 flex items-center justify-between">
-            <div className="text-label-sm font-bold text-text-primary">
+          <div className="top-0 rounded-lg bg-ds-bg-neutral-subtle-default py-2 pl-2 pr-2 sticky z-10 flex items-center justify-between">
+            <div className="text-label-sm font-bold text-ds-text-neutral-default-default">
               Completion Report
             </div>
             <Button
@@ -164,8 +164,8 @@ export function TaskLogPanelContent({
               }}
               className="text-label-xs"
             >
-              <Copy className="text-icon-secondary" />
-              <span className="text-icon-secondary">Copy</span>
+              <Copy className="text-ds-icon-neutral-muted-default" />
+              <span className="text-ds-icon-neutral-muted-default">Copy</span>
             </Button>
           </div>
           <div className="px-2 py-2">

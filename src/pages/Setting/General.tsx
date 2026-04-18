@@ -205,7 +205,7 @@ export default function SettingGeneral() {
       <div className="px-6 pb-6 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
         <div className="gap-4 flex w-full flex-row items-center justify-between">
           <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-text-heading">
+            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.general')}
             </div>
           </div>
@@ -214,9 +214,9 @@ export default function SettingGeneral() {
       {/* Content Section */}
       <div className="mb-xl gap-6 flex flex-col">
         {/* Profile Section */}
-        <div className="item-center rounded-2xl bg-surface-secondary px-6 py-4 flex flex-row justify-between">
+        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
           <div className="gap-2 flex flex-col">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.profile')}
             </div>
             <div className="text-body-sm">
@@ -224,7 +224,9 @@ export default function SettingGeneral() {
                 i18nKey="setting.you-are-currently-signed-in-with"
                 values={{ email: authStore.email }}
                 components={{
-                  email: <span className="text-text-information underline" />,
+                  email: (
+                    <span className="text-ds-text-status-splitting-strong-default underline" />
+                  ),
                 }}
               />
             </div>
@@ -260,9 +262,9 @@ export default function SettingGeneral() {
         </div>
 
         {/* Language Section */}
-        <div className="item-center rounded-2xl bg-surface-secondary px-6 py-4 flex flex-row justify-between">
+        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
           <div className="flex flex-1 items-center">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.language')}
             </div>
           </div>
@@ -286,8 +288,8 @@ export default function SettingGeneral() {
         </div>
 
         {/* Appearance Section */}
-        <div className="item-center gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex flex-col justify-between">
-          <div className="text-body-base font-bold text-text-heading">
+        <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col justify-between">
+          <div className="text-body-base font-bold text-ds-text-neutral-default-default">
             {t('setting.appearance')}
           </div>
           <div className="gap-md flex w-full flex-row items-center">
@@ -307,7 +309,7 @@ export default function SettingGeneral() {
                   alt=""
                 />
                 <div
-                  className={`text-sm text-text-primary group-hover:underline ${
+                  className={`text-sm text-ds-text-neutral-default-default group-hover:underline ${
                     item.value == appearance ? 'underline' : ''
                   }`}
                 >
@@ -319,12 +321,12 @@ export default function SettingGeneral() {
         </div>
 
         {/* Workspace main panel background */}
-        <div className="item-center rounded-2xl bg-surface-secondary px-6 py-4 flex flex-row justify-between">
+        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
           <div className="gap-1 flex max-w-[55%] flex-col">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.workspace-main-background')}
             </div>
-            <div className="text-body-sm text-text-secondary">
+            <div className="text-body-sm text-ds-text-neutral-muted-default">
               {t('setting.workspace-main-background-description')}
             </div>
           </div>
@@ -354,12 +356,12 @@ export default function SettingGeneral() {
         </div>
 
         {/* Network Proxy Section */}
-        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex flex-col">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col">
           <div className="gap-1 flex flex-col">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.network-proxy')}
             </div>
-            <div className="mb-4 text-sm leading-13 text-text-secondary">
+            <div className="mb-4 text-sm leading-13 text-ds-text-neutral-muted-default">
               {t('setting.network-proxy-description')}
             </div>
           </div>

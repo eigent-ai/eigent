@@ -28,19 +28,19 @@ export function SidePanelAccordionBox({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-xl bg-worker-surface-primary border-worker-border-default ease-in-out min-w-0 z-10 flex shrink-0 flex-col overflow-hidden border border-solid transition-all duration-200">
+    <div className="rounded-xl bg-ds-bg-neutral-strong-default border-ds-border-neutral-subtle-default ease-in-out min-w-0 z-10 flex shrink-0 flex-col overflow-hidden border border-solid transition-all duration-200">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="hover:bg-surface-tertiary/50 gap-2 px-3 py-2.5 flex w-full shrink-0 items-center justify-between text-left transition-colors"
+        className="hover:bg-ds-bg-neutral-strong-default/50 gap-2 px-3 py-2.5 flex w-full shrink-0 items-center justify-between text-left transition-colors"
         aria-expanded={open}
       >
-        <span className="text-text-heading text-body-sm font-semibold">
+        <span className="text-ds-text-neutral-default-default text-body-sm font-semibold">
           {title}
         </span>
         <ChevronDown
           className={cn(
-            'text-text-muted h-4 w-4 shrink-0 transition-transform duration-200',
+            'text-ds-text-neutral-muted-default h-4 w-4 shrink-0 transition-transform duration-200',
             open ? 'rotate-0' : '-rotate-90'
           )}
           aria-hidden

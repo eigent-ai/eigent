@@ -31,18 +31,18 @@ export const ZoomControls = ({
 }: ZoomControlsProps) => {
   return (
     <div className="group top-0 absolute left-1/2 z-10 -translate-x-1/2">
-      <div className="bg-surface-hover-subtle/90 border-border-subtle-strong/50 gap-1 px-3 py-1.5 shadow-lg backdrop-blur-xl ease-out flex translate-y-[calc(-100%-8px)] items-center rounded-full border transition-transform duration-300 group-hover:translate-y-[20px]">
+      <div className="bg-ds-bg-neutral-default-hover/90 border-ds-border-neutral-strong-default/50 gap-1 px-3 py-1.5 shadow-lg backdrop-blur-xl ease-out flex translate-y-[calc(-100%-8px)] items-center rounded-full border transition-transform duration-300 group-hover:translate-y-[20px]">
         <Button
           size="xs"
           buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomOut}
           title="Zoom Out"
-          className="h-7 w-7 text-text-secondary hover:bg-fill-fill-transparent-hover hover:text-text-primary"
+          className="h-7 w-7 text-ds-text-neutral-muted-default hover:bg-fill-fill-transparent-hover hover:text-ds-text-neutral-default-default"
         >
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
-        <span className="text-xs font-medium text-text-primary min-w-[2.5rem] text-center tabular-nums">
+        <span className="text-xs font-medium text-ds-text-neutral-default-default min-w-[2.5rem] text-center tabular-nums">
           {zoom}%
         </span>
         <Button
@@ -51,7 +51,7 @@ export const ZoomControls = ({
           variant="ghost"
           onClick={onZoomIn}
           title="Zoom In"
-          className="h-7 w-7 text-text-secondary hover:bg-fill-fill-transparent-hover hover:text-text-primary"
+          className="h-7 w-7 text-ds-text-neutral-muted-default hover:bg-fill-fill-transparent-hover hover:text-ds-text-neutral-default-default"
         >
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
@@ -62,7 +62,7 @@ export const ZoomControls = ({
           variant="ghost"
           onClick={onZoomReset}
           title="Reset Zoom"
-          className="h-7 w-7 text-text-secondary hover:bg-fill-fill-transparent-hover hover:text-text-primary"
+          className="h-7 w-7 text-ds-text-neutral-muted-default hover:bg-fill-fill-transparent-hover hover:text-ds-text-neutral-default-default"
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </Button>

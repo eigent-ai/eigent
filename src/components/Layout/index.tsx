@@ -13,8 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import animationData from '@/assets/animation/onboarding_success.json';
-import { AnimationJson } from '@/components/AnimationJson';
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
+import { AnimationJson } from '@/components/Layout/AnimationJson';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
@@ -89,9 +89,9 @@ const Layout = () => {
   }
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
+    <div className="bg-ds-bg-neutral-muted-default relative flex h-full flex-col overflow-hidden">
       <TopBar />
-      <div className="relative h-full min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 relative h-full flex-1 overflow-hidden">
         {/* Onboarding animation */}
         {shouldShowOnboarding && (
           <AnimationJson

@@ -24,7 +24,7 @@ const ProgressInstall = React.forwardRef<
   <ProgressPrimitive.Root
     ref={ref}
     className={cn(
-      'relative h-3 w-full overflow-hidden rounded-full bg-surface-tertiary',
+      'h-3 bg-ds-bg-neutral-strong-default relative w-full overflow-hidden rounded-full',
       className
     )}
     {...props}

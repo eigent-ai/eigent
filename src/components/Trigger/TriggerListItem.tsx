@@ -95,23 +95,23 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   return (
     <div
       onClick={() => onSelect(trigger.id)}
-      className={`group gap-3 p-3 bg-surface-primary rounded-xl flex cursor-pointer items-center border transition-all duration-200 ${
+      className={`group gap-3 p-3 bg-ds-bg-neutral-subtle-default rounded-xl flex cursor-pointer items-center border transition-all duration-200 ${
         isSelected
-          ? 'border-border-action bg-surface-tertiary'
+          ? 'border-ds-border-brand-default-default bg-ds-bg-neutral-strong-default'
           : needsAuth
-            ? 'border-yellow-500 hover:border-yellow-600 hover:bg-surface-tertiary'
-            : 'border-border-tertiary hover:border-border-secondary hover:bg-surface-tertiary'
+            ? 'border-ds-border-warning-default-default hover:border-ds-border-warning-default-hover hover:bg-ds-bg-neutral-strong-default'
+            : 'border-ds-border-neutral-subtle-default hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-strong-default'
       }`}
     >
       {/* 1. Zap Icon */}
       <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex flex-shrink-0 items-center justify-center">
-        <Zap className="w-5 h-5 text-icon-primary" />
+        <Zap className="w-5 h-5 text-ds-icon-neutral-default-default" />
       </div>
 
       {/* 2. Trigger Name + Task Prompt */}
       <div className="min-w-0 flex-1">
         <div className="gap-2 flex items-center">
-          <div className="text-sm font-semibold text-text-heading group-hover:text-text-action truncate transition-colors">
+          <div className="text-sm font-semibold text-ds-text-neutral-default-default group-hover:text-ds-text-brand-default-hover truncate transition-colors">
             {trigger.name}
           </div>
           {needsAuth && (
@@ -122,7 +122,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             </TooltipSimple>
           )}
         </div>
-        <div className="text-xs text-text-label mt-0.5 truncate">
+        <div className="text-xs text-ds-text-neutral-muted-default mt-0.5 truncate">
           {trigger.task_prompt ||
             trigger.description ||
             t('triggers.no-task-prompt')}
@@ -130,7 +130,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
       </div>
 
       {/* 3. Trigger Type */}
-      <div className="gap-1.5 text-xs text-text-label flex min-w-[80px] items-center">
+      <div className="gap-1.5 text-xs text-ds-text-neutral-muted-default flex min-w-[80px] items-center">
         {getTriggerTypeIcon()}
         <span>{getTriggerTypeLabel()}</span>
       </div>

@@ -20,7 +20,7 @@ import {
   proxyFetchPut,
 } from '@/api/http';
 import githubIcon from '@/assets/github.svg';
-import IntegrationList from '@/components/IntegrationList';
+import IntegrationList from '@/components/Dashboard/IntegrationList';
 import { Badge } from '@/components/ui/badge';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
@@ -685,7 +685,8 @@ const ToolSelect = forwardRef<
 
   // tool functions
   const getCategoryIcon = (categoryName?: string) => {
-    if (!categoryName) return <Store className="h-4 w-4 text-icon-primary" />;
+    if (!categoryName)
+      return <Store className="h-4 w-4 text-ds-icon-neutral-default-default" />;
 
     const normalizedName = categoryName.toLowerCase();
     const iconKey = categoryIconMap[normalizedName];
@@ -694,7 +695,7 @@ const ToolSelect = forwardRef<
     return iconUrl ? (
       <img src={iconUrl} alt={categoryName} className="h-4 w-4" />
     ) : (
-      <Store className="h-4 w-4 text-icon-primary" />
+      <Store className="h-4 w-4 text-ds-icon-neutral-default-default" />
     );
   };
 
@@ -788,16 +789,16 @@ const ToolSelect = forwardRef<
           checkEnv(item.id);
         }
       }}
-      className="px-3 py-2 hover:bg-surface-hover-subtle flex cursor-pointer justify-between"
+      className="px-3 py-2 hover:bg-ds-bg-neutral-default-hover flex cursor-pointer justify-between"
     >
       <div className="gap-1 flex items-center">
         {getCategoryIcon(item.category?.name)}
-        <div className="text-sm font-bold leading-17 text-text-action line-clamp-1 overflow-hidden break-words text-ellipsis">
+        <div className="text-sm font-bold leading-17 text-ds-text-brand-default-default line-clamp-1 overflow-hidden break-words text-ellipsis">
           {item.name}
         </div>
         <TooltipSimple content={item.description}>
           <CircleAlert
-            className="h-4 w-4 text-icon-primary cursor-pointer"
+            className="h-4 w-4 text-ds-icon-neutral-default-default cursor-pointer"
             onClick={(e) => e.stopPropagation()}
           />
         </TooltipSimple>
@@ -847,16 +848,16 @@ const ToolSelect = forwardRef<
         addOption(item);
         setKeyword('');
       }}
-      className="px-3 py-2 hover:bg-surface-hover-subtle flex cursor-pointer justify-between"
+      className="px-3 py-2 hover:bg-ds-bg-neutral-default-hover flex cursor-pointer justify-between"
     >
       <div className="gap-1 flex items-center">
         {/* {getCategoryIcon(item.category?.name)} */}
-        <div className="text-sm font-bold leading-17 text-text-action line-clamp-1 overflow-hidden break-words text-ellipsis">
+        <div className="text-sm font-bold leading-17 text-ds-text-brand-default-default line-clamp-1 overflow-hidden break-words text-ellipsis">
           {item.mcp_name}
         </div>
         <TooltipSimple content={item.mcp_desc}>
           <CircleAlert
-            className="h-4 w-4 text-icon-primary cursor-pointer"
+            className="h-4 w-4 text-ds-icon-neutral-default-default cursor-pointer"
             onClick={(e) => e.stopPropagation()}
           />
         </TooltipSimple>
@@ -874,10 +875,13 @@ const ToolSelect = forwardRef<
   return (
     <div className="relative w-full" ref={containerRef}>
       <div className="bg-white gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
-        <div className="gap-1 text-sm font-bold leading-normal text-text-body flex items-center">
+        <div className="gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default flex items-center">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
-            <CircleAlert size={16} className="text-icon-primary" />
+            <CircleAlert
+              size={16}
+              className="text-ds-icon-neutral-default-default"
+            />
           </TooltipSimple>
         </div>
         <div

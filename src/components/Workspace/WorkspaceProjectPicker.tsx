@@ -155,15 +155,15 @@ export function WorkspaceProjectPicker() {
           id="workspace-project-picker-trigger"
           type="button"
           variant="outline"
-          className="no-drag min-h-10 gap-2 rounded-xl border-border-secondary bg-surface-primary px-3 py-2 font-semibold shadow-sm hover:bg-surface-secondary/80 inline-flex h-auto w-fit max-w-[300px] justify-between text-left"
+          className="no-drag min-h-10 gap-2 rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-3 py-2 font-semibold shadow-sm hover:bg-ds-bg-neutral-default-default/80 inline-flex h-auto w-fit max-w-[300px] justify-between text-left"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
-          <span className="text-text-heading min-w-0 text-label-sm truncate">
+          <span className="text-ds-text-neutral-default-default min-w-0 text-label-sm truncate">
             {activeTaskTitle}
           </span>
           <ChevronDown
-            className="text-icon-secondary h-4 w-4 shrink-0 opacity-80"
+            className="text-ds-icon-neutral-muted-default h-4 w-4 shrink-0 opacity-80"
             aria-hidden
           />
         </Button>
@@ -199,7 +199,7 @@ export function WorkspaceProjectPicker() {
           })}
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator className="bg-border-secondary" />
+        <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2">
@@ -214,7 +214,7 @@ export function WorkspaceProjectPicker() {
             alignOffset={-4}
           >
             {historyTasks.length === 0 ? (
-              <div className="text-text-muted px-2 py-3 text-body-sm text-center">
+              <div className="text-ds-text-neutral-muted-default px-2 py-3 text-body-sm text-center">
                 {t('layout.workspace-no-history-projects', {
                   defaultValue: 'No history projects yet',
                 })}
@@ -229,7 +229,7 @@ export function WorkspaceProjectPicker() {
                     onSelectHistoryProject(project);
                   }}
                 >
-                  <span className="text-body-sm font-medium leading-tight text-text-heading">
+                  <span className="text-body-sm font-medium leading-tight text-ds-text-neutral-default-default">
                     {project.project_name || t('layout.new-project')}
                   </span>
                 </DropdownMenuItem>

@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete } from '@/api/http';
-import { Sparkle } from '@/components/animate-ui/icons/sparkle';
+import { Sparkle } from '@/components/ui/animate-ui/icons/sparkle';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
@@ -384,7 +384,7 @@ export default function HistorySidebar() {
             transition={{ type: 'spring', damping: 22, stiffness: 220 }}
             onMouseLeave={close}
             ref={panelRef}
-            className="bg-surface-tertiary rounded-xl p-2 shadow-perfect fixed z-50 flex max-h-[80vh] w-[360px] flex-col overflow-hidden"
+            className="rounded-xl p-2 shadow-perfect fixed z-50 flex max-h-[80vh] w-[360px] flex-col overflow-hidden bg-[var(--ds-bg-neutral-strong-default)]"
             style={{
               left: anchorStyle.left,
               top: anchorStyle.top,
@@ -394,7 +394,7 @@ export default function HistorySidebar() {
               {/* Search */}
               <SearchInput value={searchValue} onChange={handleSearch} />
               <Button variant="ghost" size="md" onClick={createChat}>
-                <Plus className="text-icon-tertiary h-8 w-8 group-hover:text-icon-primary transition-all duration-300" />
+                <Plus className="h-8 w-8 text-[color:var(--ds-icon-neutral-muted-default)] transition-all duration-300 group-hover:text-[color:var(--ds-icon-neutral-default-default)]" />
               </Button>
             </div>
             <div className="scrollbar-hide mt-2 min-h-0 flex-1 overflow-y-auto">
@@ -418,24 +418,24 @@ export default function HistorySidebar() {
                         navigate(`/`);
                         close();
                       }}
-                      className="gap-sm rounded-xl border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item hover:bg-project-surface-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
+                      className="gap-sm rounded-xl px-4 py-3 shadow-history-item relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid border-[var(--ds-border-neutral-subtle-default)] bg-[var(--ds-bg-neutral-default-default)] transition-all duration-300 hover:bg-[var(--ds-bg-neutral-default-hover)]"
                     >
                       <Sparkles
                         size={20}
-                        className="text-icon-information flex-shrink-0"
+                        className="flex-shrink-0 text-[color:var(--ds-icon-status-splitting-default-default)]"
                       />
 
                       <div className="min-w-0 gap-1 flex flex-1 flex-col">
                         <TooltipSimple
                           align="start"
-                          className="bg-surface-tertiary p-2 text-label-xs shadow-perfect pointer-events-auto w-[300px] text-wrap break-words select-text"
+                          className="p-2 text-label-xs shadow-perfect pointer-events-auto w-[300px] bg-[var(--ds-bg-neutral-strong-default)] text-wrap break-words select-text"
                           content={
                             <div>
                               {project.project_name || t('layout.new-project')}
                             </div>
                           }
                         >
-                          <span className="text-body-sm font-semibold text-text-heading block overflow-hidden text-ellipsis whitespace-nowrap">
+                          <span className="text-body-sm font-semibold block overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
                             {project.project_name || t('layout.new-project')}
                           </span>
                         </TooltipSimple>
@@ -469,10 +469,13 @@ export default function HistorySidebar() {
                             variant="ghost"
                             className="flex-shrink-0"
                           >
-                            <Ellipsis size={16} className="text-text-primary" />
+                            <Ellipsis
+                              size={16}
+                              className="text-[color:var(--ds-text-neutral-default-default)]"
+                            />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="border-dropdown-border bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid">
+                        <PopoverContent className="p-sm w-[98px] rounded-[12px] border border-solid border-[var(--ds-border-neutral-default-default)] bg-[var(--ds-bg-neutral-strong-default)]">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button
@@ -501,7 +504,7 @@ export default function HistorySidebar() {
                               >
                                 <Trash2
                                   size={16}
-                                  className="text-icon-primary group-hover:text-icon-cuation"
+                                  className="text-[color:var(--ds-icon-neutral-default-default)] group-hover:text-[color:var(--ds-icon-status-error-default-default)]"
                                 />
                                 {t('layout.delete')}
                               </Button>
@@ -533,17 +536,17 @@ export default function HistorySidebar() {
                         );
                       }}
                       key={project.project_id}
-                      className="gap-sm rounded-xl border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item hover:bg-project-surface-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
+                      className="gap-sm rounded-xl px-4 py-3 shadow-history-item relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid border-[var(--ds-border-neutral-subtle-default)] bg-[var(--ds-bg-neutral-default-default)] transition-all duration-300 hover:bg-[var(--ds-bg-neutral-default-hover)]"
                     >
                       <Sparkle
                         size={20}
-                        className="text-icon-secondary flex-shrink-0"
+                        className="flex-shrink-0 text-[color:var(--ds-icon-neutral-muted-default)]"
                       />
 
                       <div className="min-w-0 flex-1">
                         <TooltipSimple
                           align="start"
-                          className="bg-surface-tertiary p-2 text-label-xs shadow-perfect pointer-events-auto w-[300px] text-wrap break-words select-text"
+                          className="p-2 text-label-xs shadow-perfect pointer-events-auto w-[300px] bg-[var(--ds-bg-neutral-strong-default)] text-wrap break-words select-text"
                           content={
                             <div>
                               {project.last_prompt ||
@@ -552,7 +555,7 @@ export default function HistorySidebar() {
                             </div>
                           }
                         >
-                          <span className="text-body-sm font-semibold text-text-heading block overflow-hidden text-ellipsis whitespace-nowrap">
+                          <span className="text-body-sm font-semibold block overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
                             {project.last_prompt ||
                               project.project_name ||
                               t('layout.new-project')}
@@ -588,10 +591,13 @@ export default function HistorySidebar() {
                             variant="ghost"
                             className="flex-shrink-0"
                           >
-                            <Ellipsis size={16} className="text-text-primary" />
+                            <Ellipsis
+                              size={16}
+                              className="text-[color:var(--ds-text-neutral-default-default)]"
+                            />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="border-dropdown-border bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid">
+                        <PopoverContent className="p-sm w-[98px] rounded-[12px] border border-solid border-[var(--ds-border-neutral-default-default)] bg-[var(--ds-bg-neutral-strong-default)]">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button
@@ -620,7 +626,7 @@ export default function HistorySidebar() {
                               >
                                 <Trash2
                                   size={16}
-                                  className="text-icon-primary group-hover:text-icon-cuation"
+                                  className="text-[color:var(--ds-icon-neutral-default-default)] group-hover:text-[color:var(--ds-icon-status-error-default-default)]"
                                 />
                                 {t('layout.delete')}
                               </Button>

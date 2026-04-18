@@ -14,7 +14,7 @@
 
 import VerticalNavigation, {
   type VerticalNavItem,
-} from '@/components/Navigation';
+} from '@/components/Dashboard/Navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import MCP from './MCP';

@@ -60,7 +60,9 @@ export default function TerminalAgentWorkspace() {
   const agentMap = {
     developer_agent: {
       name: 'Developer Agent',
-      icon: <CodeXml size={16} className="text-text-primary" />,
+      icon: (
+        <CodeXml size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-emerald-700',
       bgColor: 'bg-bg-fill-coding-active',
       shapeColor: 'bg-bg-fill-coding-default',
@@ -69,7 +71,9 @@ export default function TerminalAgentWorkspace() {
     },
     browser_agent: {
       name: 'Browser Agent',
-      icon: <Globe size={16} className="text-text-primary" />,
+      icon: (
+        <Globe size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-blue-700',
       bgColor: 'bg-bg-fill-browser-active',
       shapeColor: 'bg-bg-fill-browser-default',
@@ -78,7 +82,9 @@ export default function TerminalAgentWorkspace() {
     },
     document_agent: {
       name: 'Document Agent',
-      icon: <FileText size={16} className="text-text-primary" />,
+      icon: (
+        <FileText size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-yellow-700',
       bgColor: 'bg-bg-fill-writing-active',
       shapeColor: 'bg-bg-fill-writing-default',
@@ -87,7 +93,9 @@ export default function TerminalAgentWorkspace() {
     },
     multi_modal_agent: {
       name: 'Multi Modal Agent',
-      icon: <Image size={16} className="text-text-primary" />,
+      icon: (
+        <Image size={16} className="text-ds-text-neutral-default-default" />
+      ),
       textColor: 'text-fuchsia-700',
       bgColor: 'bg-bg-fill-multimodal-active',
       shapeColor: 'bg-bg-fill-multimodal-default',
@@ -96,7 +104,7 @@ export default function TerminalAgentWorkspace() {
     },
     social_media_agent: {
       name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-text-primary" />,
+      icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -113,9 +121,9 @@ export default function TerminalAgentWorkspace() {
   };
 
   return isTakeControl ? (
-    <div className="border-border-success bg-menutabs-bg-default flex h-full w-full flex-col items-center justify-start border border-solid">
+    <div className="border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default flex h-full w-full flex-col items-center justify-start border border-solid">
       <div className="p-sm flex w-full items-start justify-start">
-        <div className="border-border-primary p-1 rounded-full border border-solid bg-transparent">
+        <div className="border-ds-border-neutral-strong-default p-1 rounded-full border border-solid bg-transparent">
           <Button
             size="sm"
             variant="success"
@@ -128,8 +136,11 @@ export default function TerminalAgentWorkspace() {
             }}
             className="rounded-full"
           >
-            <ChevronLeft size={16} className="text-text-inverse-primary" />
-            <span className="text-sm font-bold leading-13 text-text-inverse-primary">
+            <ChevronLeft
+              size={16}
+              className="text-ds-text-neutral-inverse-default"
+            />
+            <span className="text-sm font-bold leading-13 text-ds-text-neutral-inverse-default">
               {t('chat.give-back-to-agent')}
             </span>
           </Button>
@@ -141,7 +152,7 @@ export default function TerminalAgentWorkspace() {
     <div
       className={`ease-in-out flex h-full w-full flex-1 items-center justify-center transition-all duration-300`}
     >
-      <div className="blur-bg rounded-xl bg-surface-secondary relative flex h-full w-full flex-col overflow-hidden">
+      <div className="blur-bg rounded-xl bg-ds-bg-neutral-default-default relative flex h-full w-full flex-col overflow-hidden">
         <div className="rounded-t-2xl px-2 pb-2 pt-3 flex flex-shrink-0 items-center justify-between">
           <div className="gap-sm flex items-center justify-start">
             <Button
@@ -163,7 +174,7 @@ export default function TerminalAgentWorkspace() {
                   ?.bgColorLight
               }`}
             >
-              <Bot className="h-4 w-4 text-icon-primary" />
+              <Bot className="h-4 w-4 text-ds-icon-neutral-default-default" />
               <div
                 className={`font-bold leading-17 text-[10px] ${
                   agentMap[activeAgent?.type as keyof typeof agentMap]
@@ -173,7 +184,7 @@ export default function TerminalAgentWorkspace() {
                 {agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
               </div>
             </div>
-            <div className="font-medium leading-17 text-text-tertiary text-[10px]">
+            <div className="font-medium leading-17 text-ds-text-neutral-muted-default text-[10px]">
               {
                 activeAgent?.tasks?.filter(
                   (task) => task.status && task.status !== 'running'
@@ -212,8 +223,8 @@ export default function TerminalAgentWorkspace() {
                 />
                 {/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
 									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
-										<Hand size={24} className="text-icon-inverse-primary" />
-										<span className="text-base leading-9 font-medium text-text-inverse-primary">
+										<Hand size={24} className="text-ds-icon-neutral-inverse-default" />
+										<span className="text-base leading-9 font-medium text-ds-text-neutral-inverse-default">
 											Take Control
 										</span>
 									</Button>
@@ -251,9 +262,9 @@ export default function TerminalAgentWorkspace() {
 												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
 													<Hand
 														size={24}
-														className="text-icon-inverse-primary"
+														className="text-ds-icon-neutral-inverse-default"
 													/>
-													<span className="text-base leading-9 font-medium text-text-inverse-primary">
+													<span className="text-base leading-9 font-medium text-ds-text-neutral-inverse-default">
 														Take Control
 													</span>
 												</Button>
@@ -267,7 +278,7 @@ export default function TerminalAgentWorkspace() {
         {activeAgent?.tasks.filter(
           (task) => task?.terminal && task?.terminal.length > 0
         ).length !== 1 && (
-          <div className="bottom-2 right-2 gap-1 rounded-lg border-border-primary bg-menutabs-bg-default p-1 absolute z-[200] flex w-auto items-center border border-solid">
+          <div className="bottom-2 right-2 gap-1 rounded-lg border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1 absolute z-[200] flex w-auto items-center border border-solid">
             {isSingleMode && (
               <Button
                 size="xs"

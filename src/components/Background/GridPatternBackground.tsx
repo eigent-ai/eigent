@@ -16,13 +16,13 @@ import { useId } from 'react';
 
 const PATTERN_STEP = 24;
 
-/** Solid grid-line overlay (`var(--border-secondary)`), for use inside a `relative` container. */
+/** Grid overlay derived from theme background tokens, for use inside a `relative` container. */
 export default function GridPatternBackground() {
   const patternId = `${useId().replace(/:/g, '')}-grid`;
 
   return (
     <svg
-      className="inset-0 pointer-events-none absolute z-0 h-full w-full opacity-30"
+      className="inset-0 pointer-events-none absolute z-0 h-full w-full"
       aria-hidden
     >
       <defs>
@@ -35,8 +35,9 @@ export default function GridPatternBackground() {
           <path
             d={`M ${PATTERN_STEP} 0 L 0 0 0 ${PATTERN_STEP}`}
             fill="none"
-            stroke="var(--border-secondary)"
+            stroke="var(--ds-border-neutral-default-default)"
             strokeWidth={1}
+            opacity={0.5}
           />
         </pattern>
       </defs>

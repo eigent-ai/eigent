@@ -20,8 +20,8 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import IntegrationList from '@/components/IntegrationList';
-import SearchInput from '@/components/SearchInput';
+import IntegrationList from '@/components/Dashboard/IntegrationList';
+import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getProxyBaseURL } from '@/lib';
@@ -558,20 +558,20 @@ export default function SettingMCP() {
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-text-heading">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('setting.mcp-and-tools')}
         </div>
       </div>
 
       {/* Content Section */}
       <div className="mb-12 gap-6 flex flex-col">
-        <div className="gap-4 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-center justify-between">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
           <Tabs
             value={activeTab}
             onValueChange={(v) => setActiveTab(v as 'mcp-tools' | 'your-mcp')}
             className="w-full"
           >
-            <div className="gap-4 border-border-secondary bg-surface-secondary sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
                 variant="outline"
                 className="h-auto flex-1 justify-start border-0 bg-transparent"
@@ -612,15 +612,15 @@ export default function SettingMCP() {
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="rounded-2xl bg-surface-tertiary px-6 py-4 relative w-full overflow-hidden"
+                      className="rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4 relative w-full overflow-hidden"
                     >
                       <div className="gap-xs flex w-full flex-row items-center justify-between">
                         <div className="gap-xs flex flex-row items-center">
-                          <div className="mr-2 h-3 w-3 bg-surface-hover-subtle rounded-full" />
-                          <div className="h-5 w-32 rounded-md bg-surface-hover-subtle" />
-                          <div className="h-4 w-4 rounded bg-surface-hover-subtle" />
+                          <div className="mr-2 h-3 w-3 bg-ds-bg-neutral-default-hover rounded-full" />
+                          <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
+                          <div className="h-4 w-4 rounded bg-ds-bg-neutral-default-hover" />
                         </div>
-                        <div className="h-9 w-20 rounded-lg bg-surface-hover-subtle" />
+                        <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
                       </div>
                       <motion.div
                         className="via-white/20 inset-0 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
@@ -636,7 +636,7 @@ export default function SettingMCP() {
                   ))}
                 </div>
               ) : filteredIntegrations.length === 0 ? (
-                <div className="py-8 text-text-label text-center">
+                <div className="py-8 text-ds-text-neutral-muted-default text-center">
                   {searchQuery.trim()
                     ? t('dashboard.no-results')
                     : t('setting.no-mcp-servers')}
@@ -653,16 +653,18 @@ export default function SettingMCP() {
             </TabsContent>
             <TabsContent value="your-mcp" className="mt-4">
               {isLoading && (
-                <div className="py-8 text-text-label text-center">
+                <div className="py-8 text-ds-text-neutral-muted-default text-center">
                   {t('setting.loading')}
                 </div>
               )}
               {error && (
-                <div className="py-8 text-text-error text-center">{error}</div>
+                <div className="py-8 text-ds-text-status-error-strong-default text-center">
+                  {error}
+                </div>
               )}
               {!isLoading && !error && items.length === 0 && (
                 <div className="gap-4 py-12 flex flex-col items-center justify-center">
-                  <p className="text-body-md text-text-label">
+                  <p className="text-body-md text-ds-text-neutral-muted-default">
                     {t('setting.no-mcp-servers')}
                   </p>
                   <Button
@@ -679,7 +681,7 @@ export default function SettingMCP() {
                 !error &&
                 items.length > 0 &&
                 filteredItems.length === 0 && (
-                  <div className="py-8 text-text-label text-center">
+                  <div className="py-8 text-ds-text-neutral-muted-default text-center">
                     {t('dashboard.no-results')}
                   </div>
                 )}

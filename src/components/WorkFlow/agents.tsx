@@ -35,8 +35,10 @@ export interface AgentDisplayInfo {
 export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   developer_agent: {
     name: 'Developer Agent',
-    icon: <CodeXml size={16} className="text-text-primary" />,
-    textColor: 'text-text-developer',
+    icon: (
+      <CodeXml size={16} className="text-ds-text-neutral-default-default" />
+    ),
+    textColor: 'text-ds-text-terminal-default-default',
     bgColor: 'bg-bg-fill-coding-active',
     shapeColor: 'bg-bg-fill-coding-default',
     borderColor: 'border-bg-fill-coding-active',
@@ -44,7 +46,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   browser_agent: {
     name: 'Browser Agent',
-    icon: <Globe size={16} className="text-text-primary" />,
+    icon: <Globe size={16} className="text-ds-text-neutral-default-default" />,
     textColor: 'text-blue-700',
     bgColor: 'bg-bg-fill-browser-active',
     shapeColor: 'bg-bg-fill-browser-default',
@@ -53,7 +55,9 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   document_agent: {
     name: 'Document Agent',
-    icon: <FileText size={16} className="text-text-primary" />,
+    icon: (
+      <FileText size={16} className="text-ds-text-neutral-default-default" />
+    ),
     textColor: 'text-yellow-700',
     bgColor: 'bg-bg-fill-writing-active',
     shapeColor: 'bg-bg-fill-writing-default',
@@ -62,7 +66,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   multi_modal_agent: {
     name: 'Multi Modal Agent',
-    icon: <Image size={16} className="text-text-primary" />,
+    icon: <Image size={16} className="text-ds-text-neutral-default-default" />,
     textColor: 'text-fuchsia-700',
     bgColor: 'bg-bg-fill-multimodal-active',
     shapeColor: 'bg-bg-fill-multimodal-default',
@@ -71,7 +75,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   social_media_agent: {
     name: 'Social Media Agent',
-    icon: <Bird size={16} className="text-text-primary" />,
+    icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
     textColor: 'text-purple-700',
     bgColor: 'bg-violet-700',
     shapeColor: 'bg-violet-300',

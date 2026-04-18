@@ -77,9 +77,9 @@ export function WorkspaceExamplePrompts({
               )
             }
             disabled={disabled}
-            className="rounded-xl border-worker-border-default bg-worker-surface-primary p-3 hover:bg-surface-tertiary/40 focus-visible:ring-ring border border-solid text-center opacity-50 transition-opacity duration-200 hover:opacity-100 focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30"
+            className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default p-3 hover:bg-ds-bg-neutral-strong-default/40 focus-visible:ring-ds-ring-neutral-default-focus border border-solid text-center opacity-50 transition-opacity duration-200 hover:opacity-100 focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30"
           >
-            <span className="text-text-heading text-body-sm font-semibold leading-snug block">
+            <span className="text-ds-text-neutral-default-default text-body-sm font-semibold leading-snug block">
               {t(item.titleKey, { defaultValue: item.titleDefault })}
             </span>
           </button>

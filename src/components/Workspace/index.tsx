@@ -305,7 +305,7 @@ export default function Workspace() {
             onClick={() => setWorkspaceWorkWithPanelOpen((open) => !open)}
             aria-expanded={workspaceWorkWithPanelOpen}
             aria-controls="workspace-work-with-panel"
-            className="no-drag text-text-label hover:bg-surface-tertiary shrink-0"
+            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
             aria-label={workWithPanelToggleLabel}
           >
             <Cast className="h-4 w-4" aria-hidden />
@@ -316,7 +316,7 @@ export default function Workspace() {
         <div className="min-h-0 flex w-full flex-1 flex-col items-stretch justify-center">
           <div className="mx-auto flex w-full max-w-[600px] flex-col">
             <div className="mb-12 flex w-full flex-col">
-              <span className="text-text-heading text-heading-lg font-bold w-full text-center">
+              <span className="text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
                 {t('layout.workspace-lets-do-this', {
                   defaultValue: "Let's do this",
                 })}
@@ -411,10 +411,10 @@ export default function Workspace() {
             className="left-0 top-8 ease-out animate-in fade-in-0 slide-in-from-left-2 absolute z-50 flex max-h-[calc(100%-2.75rem)] w-[300px] flex-col overflow-y-auto duration-200"
           >
             <div className="gap-3 p-3 flex flex-col">
-              <div className="rounded-xl border-worker-border-default bg-worker-surface-primary min-w-0 p-3 flex flex-col border border-solid">
+              <div className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default min-w-0 p-3 flex flex-col border border-solid">
                 <span
                   id="workspace-work-with-heading"
-                  className="text-text-heading text-body-sm font-semibold"
+                  className="text-ds-text-neutral-default-default text-body-sm font-semibold"
                 >
                   {t('layout.workspace-work-with-title', {
                     defaultValue: 'Work with',
@@ -426,10 +426,10 @@ export default function Workspace() {
                     variant="ghost"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag text-text-body hover:bg-surface-tertiary/50 h-8 min-h-8 gap-2 px-2 !font-normal text-body-sm w-full shrink-0 justify-start"
+                    className="no-drag text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-strong-default/50 h-8 min-h-8 gap-2 px-2 !font-normal text-body-sm w-full shrink-0 justify-start"
                   >
                     <MonitorSmartphone
-                      className="text-text-muted h-4 w-4 shrink-0"
+                      className="text-ds-text-neutral-muted-default h-4 w-4 shrink-0"
                       aria-hidden
                     />
                     {t('layout.workspace-work-with-remote-control', {
@@ -441,10 +441,10 @@ export default function Workspace() {
                     variant="ghost"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag text-text-body hover:bg-surface-tertiary/50 h-8 min-h-8 gap-2 px-2 !font-normal text-body-sm w-full shrink-0 justify-start"
+                    className="no-drag text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-strong-default/50 h-8 min-h-8 gap-2 px-2 !font-normal text-body-sm w-full shrink-0 justify-start"
                   >
                     <Puzzle
-                      className="text-text-muted h-4 w-4 shrink-0"
+                      className="text-ds-text-neutral-muted-default h-4 w-4 shrink-0"
                       aria-hidden
                     />
                     {t('layout.workspace-work-with-browser-extension', {

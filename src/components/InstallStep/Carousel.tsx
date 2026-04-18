@@ -153,7 +153,7 @@ export const CarouselStep: React.FC = () => {
   return (
     <div className="flex h-full w-full flex-col">
       <div className="min-h-0 flex h-full w-full flex-col">
-        <div className="mb-md text-heading-sm font-bold text-text-heading">
+        <div className="mb-md text-heading-sm font-bold text-ds-text-neutral-default-default">
           {carouselItems[currentSlide].title}
         </div>
 

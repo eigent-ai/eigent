@@ -67,7 +67,7 @@ export const SummaryMarkDown = ({
       .trim();
     return (
       <div className="prose prose-sm max-w-none">
-        <pre className="mb-3 overflow-x-auto whitespace-pre-wrap rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-mono text-xs">
+        <pre className="mb-3 rounded-lg p-3 font-mono text-xs overflow-x-auto border border-[color:var(--ds-border-status-completed-default-default)] bg-[var(--ds-bg-status-completed-subtle-default)] whitespace-pre-wrap text-[color:var(--ds-text-neutral-default-default)]">
           <code>{formattedHtml}</code>
         </pre>
       </div>
@@ -79,62 +79,68 @@ export const SummaryMarkDown = ({
       <ReactMarkdown
         components={{
           h1: ({ children }) => (
-            <h1 className="mb-3 flex items-center gap-2 border-b border-emerald-200 pb-2 text-xl font-bold text-emerald-800">
+            <h1 className="mb-3 gap-2 pb-2 text-xl font-bold flex items-center border-b border-[color:var(--ds-border-status-completed-default-default)] text-[color:var(--ds-text-success-default-default)]">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mb-3 mt-4 flex items-center gap-2 text-lg font-semibold text-emerald-700">
+            <h2 className="mb-3 mt-4 gap-2 text-lg font-semibold flex items-center text-[color:var(--ds-text-status-completed-muted-default)]">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mb-2 mt-3 text-base font-medium text-emerald-600">
+            <h3 className="mb-2 mt-3 text-base font-medium text-[color:var(--ds-text-status-completed-muted-default)]">
               {children}
             </h3>
           ),
           p: ({ children }) => (
-            <p className="m-0 mb-3 whitespace-pre-wrap text-sm font-normal leading-relaxed text-gray-700">
+            <p className="m-0 mb-3 text-sm font-normal leading-relaxed whitespace-pre-wrap text-[color:var(--ds-text-neutral-default-default)]">
               {children}
             </p>
           ),
           ul: ({ children }) => (
-            <ul className="mb-3 ml-2 list-inside list-disc space-y-1 text-sm text-gray-700">
+            <ul className="mb-3 ml-2 space-y-1 text-sm list-inside list-disc text-[color:var(--ds-text-neutral-default-default)]">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="mb-3 ml-2 list-inside list-decimal space-y-1 text-sm text-gray-700">
+            <ol className="mb-3 ml-2 space-y-1 text-sm list-inside list-decimal text-[color:var(--ds-text-neutral-default-default)]">
               {children}
             </ol>
           ),
           li: ({ children }) => (
-            <li className="mb-1 leading-relaxed text-gray-700">{children}</li>
+            <li className="mb-1 leading-relaxed text-[color:var(--ds-text-neutral-default-default)]">
+              {children}
+            </li>
           ),
           code: ({ children }) => (
-            <code className="rounded bg-surface-success-subtle px-2 py-1 font-mono text-xs text-text-success">
+            <code className="rounded px-2 py-1 font-mono text-xs bg-[var(--ds-bg-status-completed-subtle-default)] text-[color:var(--ds-text-success-default-default)]">
               {children}
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="mb-3 overflow-x-auto whitespace-pre-wrap rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-mono text-xs">
+            <pre className="mb-3 rounded-lg p-3 font-mono text-xs overflow-x-auto border border-[color:var(--ds-border-status-completed-default-default)] bg-[var(--ds-bg-status-completed-subtle-default)] whitespace-pre-wrap text-[color:var(--ds-text-neutral-default-default)]">
               {children}
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="mb-3 rounded-r-lg border-l-4 border-emerald-300 bg-emerald-50 py-2 pl-4 italic text-emerald-700">
+            <blockquote className="mb-3 rounded-r-lg py-2 pl-4 border-l-4 border-[color:var(--ds-border-status-completed-default-default)] bg-[var(--ds-bg-status-completed-subtle-default)] text-[color:var(--ds-text-status-completed-muted-default)] italic">
               {children}
             </blockquote>
           ),
           strong: ({ children }) => (
-            <strong className="font-semibold text-emerald-800">
+            <strong className="font-semibold text-[color:var(--ds-text-success-default-default)]">
               {children}
             </strong>
           ),
           em: ({ children }) => (
-            <em className="italic text-emerald-600">{children}</em>
+            <em className="text-[color:var(--ds-text-status-completed-muted-default)] italic">
+              {children}
+            </em>
           ),
-          hr: () => <hr className="my-4 border-emerald-200" />,
+          hr: () => (
+            <hr className="my-4 border-[color:var(--ds-border-status-completed-default-default)]" />
+          ),
         }}
       >
         {displayedContent}

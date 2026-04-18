@@ -50,7 +50,7 @@ export type DialogOverlayVariant = 'default' | 'dark';
 
 // Size variants for dialog content
 const dialogContentVariants = cva(
-  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 border border-solid border-popup-border bg-popup-bg shadow-perfect duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl max-h-[90vh] flex flex-col overflow-hidden',
+  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default shadow-perfect duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl max-h-[90vh] flex flex-col overflow-hidden',
   {
     variants: {
       size: {
@@ -172,7 +172,7 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
     <div
       ref={ref}
       className={cn(
-        'gap-2 rounded-t-xl bg-popup-surface p-4 relative flex w-full shrink-0 items-center justify-between overflow-hidden',
+        'gap-2 rounded-t-xl bg-ds-bg-neutral-strong-default p-4 relative flex w-full shrink-0 items-center justify-between overflow-hidden',
         className
       )}
       {...props}
@@ -186,27 +186,27 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
             onClick={onBackClick}
             className="hover:bg-transparent"
           >
-            <ChevronLeft className="h-4 w-4 text-icon-primary" />
+            <ChevronLeft className="h-4 w-4 text-ds-icon-neutral-default-default" />
           </Button>
         )}
         <div className="sm:text-left flex flex-col text-center">
           {title && (
             <div className="gap-1 flex items-center">
               <DialogPrimitive.Title asChild>
-                <span className="text-body-md font-bold text-text-heading my-[1px]">
+                <span className="text-body-md font-bold text-ds-text-neutral-default-default my-[1px]">
                   {title}
                 </span>
               </DialogPrimitive.Title>
               {showTooltip && tooltip && (
                 <TooltipSimple content={tooltip}>
-                  <AlertCircle className="h-4 w-4 text-icon-primary" />
+                  <AlertCircle className="h-4 w-4 text-ds-icon-neutral-default-default" />
                 </TooltipSimple>
               )}
             </div>
           )}
           {subtitle && (
             <DialogPrimitive.Description asChild>
-              <span className="mt-1 text-label-sm font-extralight text-text-label">
+              <span className="mt-1 text-label-sm font-extralight text-ds-text-neutral-muted-default">
                 {subtitle}
               </span>
             </DialogPrimitive.Description>
@@ -338,7 +338,7 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
         className={cn(
           'gap-2 px-4 pb-4 pt-2 relative flex w-full shrink-0 items-center justify-end',
           hasScrollbar &&
-            'border-border-secondary border-x-0 border-t-[0.5px] border-b-0 border-solid',
+            'border-ds-border-neutral-default-default border-x-0 border-t-[0.5px] border-b-0 border-solid',
           className
         )}
         {...props}
@@ -377,7 +377,10 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn('text-body-sm font-bold text-text-heading', className)}
+    className={cn(
+      'text-body-sm font-bold text-ds-text-neutral-default-default',
+      className
+    )}
     {...props}
   />
 ));
@@ -390,7 +393,10 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('text-label-sm text-text-label', className)}
+    className={cn(
+      'text-label-sm text-ds-text-neutral-muted-default',
+      className
+    )}
     {...props}
   />
 ));
