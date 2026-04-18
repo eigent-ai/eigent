@@ -182,7 +182,7 @@ export function FoldedAgentCard({
       <DropdownMenu>
         <TooltipSimple
           content={agentLabel}
-          side="right"
+          side="top"
           sideOffset={8}
           delayDuration={300}
         >
@@ -335,7 +335,7 @@ export function FoldedAgentCard({
     return (
       <TooltipSimple
         content={agentLabel}
-        side="right"
+        side="top"
         sideOffset={8}
         delayDuration={300}
       >

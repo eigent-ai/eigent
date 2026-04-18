@@ -13,30 +13,47 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
+import type { ChatStore } from '@/store/chatStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { MessageCircle } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export { default as SessionWorkspace } from '.';
 
-type SessionListItem = {
-  id: string;
-  title: string;
-};
-
 type SessionsProps = {
   className?: string;
-  sessions: SessionListItem[];
+  tasks: ChatStore['tasks'];
   activeSessionId?: string | null;
   onSelectSession: (sessionId: string) => void;
 };
 
 export default function Sessions({
   className,
-  sessions,
+  tasks,
   activeSessionId,
   onSelectSession,
 }: SessionsProps) {
   const { t } = useTranslation();
+
+  const sessions = useMemo(
+    () =>
+      Object.entries(tasks)
+        .filter(([, task]) => {
+          const hasStarted =
+            (task.messages?.length || 0) > 0 ||
+            task.hasMessages ||
+            task.status !== ChatTaskStatus.PENDING;
+          return hasStarted;
+        })
+        .map(([id, task]) => ({
+          id,
+          title:
+            task.summaryTask?.trim() ||
+            t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
+        })),
+    [tasks, t]
+  );
 
   return (
     <div

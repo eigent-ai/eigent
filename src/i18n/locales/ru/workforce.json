@@ -16,5 +16,8 @@
   "model-type": "Тип модели",
   "model-type-placeholder": "например, gpt-4o-mini",
   "worker-name-cannot-be-empty": "Имя работника не может быть пустым",
-  "worker-name-already-exists": "Имя работника уже существует"
+  "worker-name-already-exists": "Имя работника уже существует",
+  "detail": "Подробнее",
+  "duplicate": "Дублировать",
+  "delete": "Удалить"
 }

@@ -79,7 +79,7 @@ export function WorkforceAgentList({
         <div className="flex shrink-0 flex-col justify-center">
           <TooltipSimple
             content={t('triggers.add')}
-            side="bottom"
+            side="top"
             sideOffset={8}
             delayDuration={300}
           >

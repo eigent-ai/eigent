@@ -491,39 +491,10 @@ export default function Home() {
     }
   }, [chatStore, projectStore, getSize]);
 
-  const sessionsForMainList = useMemo(
-    () =>
-      Object.entries(chatStore.tasks)
-        .filter(([, task]) => {
-          const hasStarted =
-            (task.messages?.length || 0) > 0 ||
-            task.hasMessages ||
-            task.status !== ChatTaskStatus.PENDING;
-          return hasStarted;
-        })
-        .map(([id, task]) => ({
-          id,
-          title:
-            task.summaryTask?.trim() ||
-            t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
-        })),
-    [chatStore.tasks, t]
-  );
-
   const mainPanelSurfaceClass =
     'rounded-2xl border-border-tertiary bg-surface-secondary min-w-0 flex h-full w-full flex-col border-solid overflow-hidden';
   const mainPanelContentClass = 'min-h-0 min-w-0 flex h-full w-full flex-col';
-  const mainPanelSurfaceOverrides: Record<string, string> = {
-    workforce: '',
-    session: '',
-    inbox: '',
-    triggers: '',
-    sessions: '',
-  };
-  const mainPanelShellClass = cn(
-    mainPanelSurfaceClass,
-    mainPanelSurfaceOverrides[activeWorkspaceTab]
-  );
+  const mainPanelShellClass = cn(mainPanelSurfaceClass);
 
   const useWorkspacePatternBg =
     activeWorkspaceTab === 'workforce' || activeWorkspaceTab === 'session';
@@ -587,7 +558,7 @@ export default function Home() {
         return (
           <SessionGroup
             className={mainPanelContentClass}
-            sessions={sessionsForMainList}
+            tasks={chatStore.tasks}
             activeSessionId={chatStore.activeTaskId}
             onSelectSession={(sessionId) => {
               chatStore.setActiveTaskId(sessionId);

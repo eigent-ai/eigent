@@ -32,6 +32,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { AgentDetailPane } from './AgentDetailPane';
 
@@ -101,6 +102,7 @@ export interface FoldedPanelProps {
 export default function FoldedPanel({
   pauseAgentWorkspaceSync = false,
 }: FoldedPanelProps) {
+  const { t } = useTranslation();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
   const { setWorkerList } = useAuthStore();
@@ -469,7 +471,7 @@ export default function FoldedPanel({
                     )}
                   </div>
                 )}
-              <div className="min-h-0 min-w-0 px-2 pb-2 hidden flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 min-w-0 px-2 pb-2 flex flex-1 flex-col overflow-hidden">
                 {detailAgent ? (
                   <AgentDetailPane
                     agent={detailAgent}
@@ -479,7 +481,7 @@ export default function FoldedPanel({
                   />
                 ) : (
                   <div className="text-text-label p-3 text-body-sm">
-                    Select an agent
+                    {t('chat.select-agent')}
                   </div>
                 )}
               </div>

@@ -119,7 +119,6 @@ export default function Overview({
         const response = await proxyFetchProjectTriggers(
           projectStore.activeProjectId
         );
-        console.log('Fetched triggers:', response);
 
         setTriggers(response.items || []);
       } catch (error) {
@@ -146,13 +145,11 @@ export default function Overview({
     const isActivating = newStatus === TriggerStatus.Active;
 
     try {
-      const response = isActivating
-        ? await proxyActivateTrigger(trigger.id)
-        : await proxyDeactivateTrigger(trigger.id);
-      console.log(
-        `Trigger ${isActivating ? 'activation' : 'deactivation'} response:`,
-        response
-      );
+      if (isActivating) {
+        await proxyActivateTrigger(trigger.id);
+      } else {
+        await proxyDeactivateTrigger(trigger.id);
+      }
 
       updateTrigger(trigger.id, { status: newStatus });
       toast.success(

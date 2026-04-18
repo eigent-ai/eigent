@@ -16,7 +16,7 @@
 /* global console, process */
 
 /**
- * Ensures every locale has the same JSON keys as `en-us` for each namespace file.
+ * Ensures every locale has the same JSON keys as `en-us` for every namespace JSON under `src/i18n/locales/<locale>/`.
  * Run from repo root: `node scripts/check-i18n-locale-parity.js`
  */
 
@@ -65,12 +65,7 @@ function main() {
   }
 
   const refFiles = collectJsonFiles(refPath);
-  /** Compare layout copy only — other namespaces may intentionally diverge during rollout. */
-  const refRelative = refFiles
-    .map((f) => path.relative(refPath, f))
-    .filter(
-      (rel) => rel === 'layout.json' || rel.endsWith(`${path.sep}layout.json`)
-    );
+  const refRelative = refFiles.map((f) => path.relative(refPath, f));
 
   const localeDirs = fs
     .readdirSync(localesDir, { withFileTypes: true })

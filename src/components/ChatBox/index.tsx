@@ -520,10 +520,6 @@ export default function ChatBox({
           chatStore.setActiveAsk(_taskId, '');
         } else {
           let activeAskList = chatStore.tasks[_taskId].askList;
-          console.log(
-            'activeAskList',
-            JSON.parse(JSON.stringify(activeAskList))
-          );
           let message = activeAskList.shift();
           chatStore.setActiveAskList(_taskId, [...activeAskList]);
           chatStore.setActiveAsk(_taskId, message?.agent_name || '');
@@ -609,10 +605,6 @@ export default function ChatBox({
             // keep hasWaitComfirm as true so that follow-up improves work as usual
           } else {
             // Continue conversation: simple response, complex task, or finished task
-            console.log(
-              '[Multi-turn] Continuing conversation with improve API'
-            );
-
             const attachesForThisTurn = JSON.parse(
               JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
             );
@@ -768,37 +760,21 @@ export default function ChatBox({
   // Stop task handler - triggers Action.skip_task which preserves context
   const handleSkip = async () => {
     const taskId = chatStore.activeTaskId as string;
-    console.log('='.repeat(80));
-    console.log('🛑 [STOP-BUTTON] handleSkip CALLED from frontend');
-    console.log(
-      `[STOP-BUTTON] taskId: ${taskId}, projectId: ${projectStore.activeProjectId}`
-    );
-    console.log('='.repeat(80));
     setIsPauseResumeLoading(true);
 
     try {
       // Call skip-task endpoint to trigger Action.skip_task
       // This will stop the task gracefully while preserving context for multi-turn
-      console.log(
-        `[STOP-BUTTON] Sending POST request to /chat/${projectStore.activeProjectId}/skip-task`
-      );
       await fetchPost(`/chat/${projectStore.activeProjectId}/skip-task`, {
         project_id: projectStore.activeProjectId,
       });
-      console.log('[STOP-BUTTON] ✅ Backend skip-task request successful');
 
       // DO NOT call chatStore.stopTask here!
       // Keep SSE connection alive to receive "end" event from backend
       // The "end" event will set status to 'finished' and allow multi-turn conversation
-      console.log(
-        "[STOP-BUTTON] ⚠️  SSE connection kept alive, waiting for backend 'end' event"
-      );
 
       // Only set isPending to false so UI shows task is stopped
       chatStore.setIsPending(taskId, false);
-      console.log(
-        '[STOP-BUTTON] ✅ Task marked as not pending, SSE connection remains open'
-      );
 
       toast.success('Task stopped successfully', {
         closeButton: true,
@@ -807,15 +783,9 @@ export default function ChatBox({
       console.error('[STOP-BUTTON] ❌ Failed to stop task:', error);
 
       // If backend call failed, close SSE connection as fallback
-      console.log(
-        '[STOP-BUTTON] Backend call failed, closing SSE connection as fallback'
-      );
       try {
         chatStore.stopTask(taskId);
         chatStore.setIsPending(taskId, false);
-        console.log(
-          '[STOP-BUTTON] ⚠️  SSE connection closed due to backend failure'
-        );
         toast.warning(
           'Task stopped locally, but backend notification failed. Backend task may continue running.',
           {
@@ -836,7 +806,6 @@ export default function ChatBox({
         );
       }
     } finally {
-      console.log('[STOP-BUTTON] handleSkip completed');
       setIsPauseResumeLoading(false);
     }
   };
@@ -989,8 +958,6 @@ export default function ChatBox({
           }
         );
       }
-
-      console.log(`[ChatBox] Task ${task_id} cancelled successfully`);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
       // Restore the message if backend update failed

@@ -294,7 +294,14 @@ export const RichChatInput = React.forwardRef<
       resizeHeight();
       return;
     }
-    applyHtml(value);
+    const sel = window.getSelection();
+    const shouldRestoreCaret =
+      document.activeElement === el &&
+      sel &&
+      sel.rangeCount > 0 &&
+      el.contains(sel.anchorNode);
+    const caretBefore = shouldRestoreCaret ? getCaretOffset(el) : undefined;
+    applyHtml(value, caretBefore);
     resizeHeight();
   }, [value, applyHtml, resizeHeight]);
 

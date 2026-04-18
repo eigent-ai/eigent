@@ -14,6 +14,7 @@
 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
+import { escapeHtml } from '@/lib/richText';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -138,7 +139,7 @@ export const MarkDown = memo(
             .join('\n')
             .trim();
           setHtml(
-            `<pre class="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
+            `<pre class="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${escapeHtml(formattedHtml)}</code></pre>`
           );
           if (displayedContent === content && renderCompleteRef.current) {
             renderCompleteRef.current();

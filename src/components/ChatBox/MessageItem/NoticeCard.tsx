@@ -35,7 +35,6 @@ export function NoticeCard() {
   // when cotList is added, smooth scroll to the bottom
   useEffect(() => {
     if (!isExpanded && contentRef.current) {
-      console.log('contentRef.current', contentRef.current);
       // use setTimeout to ensure DOM update is completed before scrolling
       setTimeout(() => {
         const container = contentRef.current;

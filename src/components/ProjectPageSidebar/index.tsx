@@ -172,16 +172,16 @@ export default function ProjectPageSidebar({
 
       try {
         await fetchDelete(`/chat/${projectId}`);
-      } catch (error) {
-        console.log('Task may not exist on backend:', error);
+      } catch {
+        /* Backend may already have removed the chat */
       }
 
       if (historyId && task.status !== ChatTaskStatus.FINISHED) {
         try {
           await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
           chatStore.removeTask(taskId);
-        } catch (error) {
-          console.log('History may not exist:', error);
+        } catch {
+          /* History may already be deleted */
         }
       } else {
         console.warn(
