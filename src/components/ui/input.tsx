@@ -17,6 +17,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
+import { formControlTokenAliases } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type InputSize = 'default' | 'sm';
@@ -53,7 +54,7 @@ function resolveStateClasses(state: InputState | undefined) {
     return {
       container: 'opacity-50 cursor-not-allowed',
       field: 'border-input-border-default bg-input-bg-default',
-      input: 'text-text-heading',
+      input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
   }
@@ -61,7 +62,7 @@ function resolveStateClasses(state: InputState | undefined) {
     return {
       container: '',
       field: 'border-input-border-hover bg-input-bg-default',
-      input: 'text-text-heading',
+      input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
   }
@@ -69,7 +70,7 @@ function resolveStateClasses(state: InputState | undefined) {
     return {
       container: '',
       field: 'border-input-border-focus bg-input-bg-input',
-      input: 'text-text-heading',
+      input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
   }
@@ -77,7 +78,7 @@ function resolveStateClasses(state: InputState | undefined) {
     return {
       container: '',
       field: 'border-input-border-cuation bg-input-bg-default',
-      input: 'text-text-heading',
+      input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
   }
@@ -85,14 +86,14 @@ function resolveStateClasses(state: InputState | undefined) {
     return {
       container: '',
       field: 'border-input-border-success bg-input-bg-confirm',
-      input: 'text-text-heading',
+      input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
   }
   return {
     container: '',
     field: 'border-input-border-default bg-input-bg-default',
-    input: 'text-text-heading',
+    input: 'text-ds-text-neutral-default-default',
     placeholder: 'placeholder-input-label-default/10',
   };
 }
@@ -126,19 +127,27 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     const hasRight = Boolean(backIcon) || Boolean(trailingButton);
 
     return (
-      <div className={cn('w-full', stateCls.container)}>
+      <div
+        className={cn('w-full', stateCls.container)}
+        style={formControlTokenAliases}
+      >
         {title ? (
-          <div className="mb-1.5 gap-1 text-body-sm font-bold text-text-heading flex items-center">
+          <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
             <span>{title}</span>
-            {required && <span className="text-text-body">*</span>}
+            {required && (
+              <span className="text-ds-text-neutral-default-default">*</span>
+            )}
             {optional && (
-              <span className="rounded bg-surface-disabled px-1.5 py-0.5 text-xs font-normal text-text-label">
+              <span className="rounded bg-ds-bg-neutral-muted-disabled px-1.5 py-0.5 text-xs font-normal text-ds-text-neutral-muted-default">
                 (optional)
               </span>
             )}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert size={16} className="text-icon-primary" />
+                <CircleAlert
+                  size={16}
+                  className="text-ds-icon-neutral-default-default"
+                />
               </TooltipSimple>
             )}
           </div>
@@ -156,7 +165,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           )}
         >
           {leadingIcon ? (
-            <span className="left-2 h-5 w-5 text-icon-primary pointer-events-none absolute inline-flex items-center justify-center">
+            <span className="left-2 h-5 w-5 text-ds-icon-neutral-default-default pointer-events-none absolute inline-flex items-center justify-center">
               {leadingIcon}
             </span>
           ) : null}
@@ -190,7 +199,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
               size="xs"
               buttonContent="icon-only"
               tabIndex={-1}
-              className="right-2 text-icon-primary absolute inline-flex items-center justify-center rounded-full focus:ring-0 disabled:opacity-50"
+              className="right-2 text-ds-icon-neutral-default-default absolute inline-flex items-center justify-center rounded-full focus:ring-0 disabled:opacity-50"
               disabled={disabled}
               onClick={onBackIconClick}
             >
@@ -210,15 +219,15 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             className={cn(
               'mt-1.5 !text-body-xs',
               state === 'error'
-                ? 'text-text-cuation'
+                ? 'text-ds-text-status-error-strong-default'
                 : state === 'success'
-                  ? 'text-text-success'
-                  : 'text-text-label'
+                  ? 'text-ds-text-status-completed-strong-default'
+                  : 'text-ds-text-neutral-muted-default'
             )}
             dangerouslySetInnerHTML={{
               __html: note.replace(
                 /(https?:\/\/[^\s]+)/g,
-                '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-text-information hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
+                '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-ds-text-status-splitting-strong-default hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
               ),
             }}
           />

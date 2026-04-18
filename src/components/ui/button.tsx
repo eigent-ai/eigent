@@ -17,6 +17,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { buttonTokenAliases, mergeAliasStyles } from './tokenAliases';
 
 export type ButtonContent = 'text' | 'icon-only';
 export type ButtonTextWeight = 'normal' | 'medium' | 'semibold' | 'bold';
@@ -172,6 +173,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       buttonRadius,
       asChild = false,
       children,
+      style,
       ...props
     },
     ref
@@ -204,6 +206,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           buttonRadius ? RADIUS_CLASSES[buttonRadius] : null,
           className
         )}
+        style={mergeAliasStyles(buttonTokenAliases, style)}
         ref={ref}
         {...props}
       >

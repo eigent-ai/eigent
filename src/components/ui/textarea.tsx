@@ -17,6 +17,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
+import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type TextareaVariant = 'none' | 'enhanced';
@@ -74,14 +75,16 @@ function resolveStateClasses(state: TextareaState | undefined) {
   if (state === 'error') {
     return {
       container: '',
-      field: 'border-input-border-cuation bg-input-bg-default text-text-body',
+      field:
+        'border-input-border-cuation bg-input-bg-default text-ds-text-neutral-default-default',
       placeholder: 'text-input-label-default',
     };
   }
   if (state === 'success') {
     return {
       container: '',
-      field: 'border-input-border-success bg-input-bg-confirm text-text-body',
+      field:
+        'border-input-border-success bg-input-bg-confirm text-ds-text-neutral-default-default',
       placeholder: 'text-input-label-default',
     };
   }
@@ -123,10 +126,13 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <textarea
             data-scrollbar="ui-textarea"
             className={cn(
-              'border-input placeholder:text-text-label/20 focus-visible:ring-ring rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              'border-input placeholder:text-ds-text-neutral-muted-default/20 focus-visible:ring-ring rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
               className
             )}
-            style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
+            style={mergeAliasStyles(formControlTokenAliases, {
+              paddingRight: '4px',
+              ...(style as React.CSSProperties),
+            })}
             ref={ref}
             disabled={disabled}
             placeholder={placeholder}
@@ -162,14 +168,22 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
 
     return (
       <>
-        <div className={cn('w-full', stateCls.container)}>
+        <div
+          className={cn('w-full', stateCls.container)}
+          style={formControlTokenAliases}
+        >
           {title ? (
-            <div className="mb-1.5 gap-1 text-body-sm font-bold text-text-heading flex items-center">
+            <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
               <span>{title}</span>
-              {required && <span className="text-text-body">*</span>}
+              {required && (
+                <span className="text-ds-text-neutral-default-default">*</span>
+              )}
               {tooltip && (
                 <TooltipSimple content={tooltip}>
-                  <CircleAlert size={16} className="text-icon-primary" />
+                  <CircleAlert
+                    size={16}
+                    className="text-ds-icon-neutral-default-default"
+                  />
                 </TooltipSimple>
               )}
             </div>
@@ -187,7 +201,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             )}
           >
             {leadingIcon ? (
-              <span className="left-2 top-2 h-5 w-5 text-icon-primary pointer-events-none absolute inline-flex items-center justify-center">
+              <span className="left-2 top-2 h-5 w-5 text-ds-icon-neutral-default-default pointer-events-none absolute inline-flex items-center justify-center">
                 {leadingIcon}
               </span>
             ) : null}
@@ -249,15 +263,15 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
               className={cn(
                 'mt-1.5 !text-body-xs',
                 state === 'error'
-                  ? 'text-text-cuation'
+                  ? 'text-ds-text-status-error-strong-default'
                   : state === 'success'
-                    ? 'text-text-success'
-                    : 'text-text-label'
+                    ? 'text-ds-text-status-completed-strong-default'
+                    : 'text-ds-text-neutral-muted-default'
               )}
               dangerouslySetInnerHTML={{
                 __html: note.replace(
                   /(https?:\/\/[^\s]+)/g,
-                  '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-text-information hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
+                  '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-ds-text-status-splitting-strong-default hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
                 ),
               }}
             />

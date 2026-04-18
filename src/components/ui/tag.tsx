@@ -17,6 +17,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { mergeAliasStyles, tagTokenAliases } from './tokenAliases';
 
 const tagVariants = cva(
   'inline-flex justify-start items-center leading-relaxed',
@@ -61,6 +62,7 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
       text,
       icon,
       children,
+      style,
       ...props
     },
     ref
@@ -73,6 +75,7 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
         <Comp
           ref={ref}
           className={cn(tagVariants({ variant, size, className }))}
+          style={mergeAliasStyles(tagTokenAliases, style)}
           {...props}
         >
           {children}
@@ -85,6 +88,7 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
       <Comp
         ref={ref}
         className={cn(tagVariants({ variant, size, className }))}
+        style={mergeAliasStyles(tagTokenAliases, style)}
         {...props}
       >
         {icon && <span className="flex-shrink-0">{icon}</span>}

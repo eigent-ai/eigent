@@ -25,6 +25,7 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
+import { DEFAULT_THEME_CATALOG } from '@/lib/themeTokens/catalog';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -126,9 +127,22 @@ function HeaderWin() {
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
+  const setAppearance = useAuthStore((state) => state.setAppearance);
+  const lightColorThemeId = useAuthStore((state) => state.lightColorThemeId);
+  const darkColorThemeId = useAuthStore((state) => state.darkColorThemeId);
+  const setColorThemeForMode = useAuthStore(
+    (state) => state.setColorThemeForMode
+  );
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
+  const resolvedMode = appearance === 'dark' ? 'dark' : 'light';
+  const activeThemeId =
+    resolvedMode === 'dark' ? darkColorThemeId : lightColorThemeId;
+  const availableThemeIds = useMemo(
+    () => Object.keys(DEFAULT_THEME_CATALOG[resolvedMode] ?? {}),
+    [resolvedMode]
+  );
 
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
@@ -246,7 +260,7 @@ function HeaderWin() {
                     aria-current="page"
                   >
                     <Sparkles
-                      className="h-4 w-4 text-icon-primary"
+                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                       aria-hidden
                     />
                   </Button>
@@ -265,7 +279,10 @@ function HeaderWin() {
                     aria-label={t('layout.dashboard')}
                     aria-current="page"
                   >
-                    <House className="h-4 w-4 text-icon-primary" aria-hidden />
+                    <House
+                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                      aria-hidden
+                    />
                   </Button>
                 </TooltipSimple>
               )}
@@ -283,7 +300,7 @@ function HeaderWin() {
                   aria-label={t('layout.back')}
                 >
                   <ChevronLeft
-                    className="h-4 w-4 text-icon-primary"
+                    className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                     aria-hidden
                   />
                 </Button>
@@ -302,14 +319,14 @@ function HeaderWin() {
                   aria-label={t('layout.forward')}
                 >
                   <ChevronRight
-                    className="h-4 w-4 text-icon-primary"
+                    className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                     aria-hidden
                   />
                 </Button>
               </TooltipSimple>
             </div>
             {location.pathname === '/' && (
-              <div className="no-drag ease-out animate-in fade-in-0 bg-surface-secondary inline-flex items-stretch overflow-hidden rounded-full duration-200">
+              <div className="no-drag ease-out animate-in fade-in-0 inline-flex items-stretch overflow-hidden rounded-full bg-[var(--ds-bg-neutral-default-default)] duration-200">
                 <TooltipSimple
                   content={
                     activeTaskTitle === t('layout.new-project')
@@ -322,7 +339,7 @@ function HeaderWin() {
                   <button
                     id="active-task-title-btn"
                     type="button"
-                    className="no-drag min-w-0 px-2 text-label-sm font-bold !text-button-transparent-text-default hover:bg-button-transparent-fill-hover active:bg-button-transparent-fill-active focus-visible:ring-ring/50 flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
+                    className="no-drag min-w-0 px-2 text-label-sm font-bold focus-visible:ring-ring/50 flex min-h-[28px] max-w-[300px] flex-1 items-center text-left !text-[color:var(--ds-text-neutral-default-default)] outline-none hover:bg-[var(--ds-bg-neutral-default-hover)] focus-visible:ring-[3px] active:bg-[var(--ds-bg-neutral-default-active)]"
                     onClick={toggleHistorySidebar}
                     aria-expanded={historySidebarOpen}
                     aria-haspopup="dialog"
@@ -339,7 +356,7 @@ function HeaderWin() {
                 >
                   <button
                     type="button"
-                    className="no-drag w-8 !text-button-transparent-text-default hover:bg-button-transparent-fill-hover active:bg-button-transparent-fill-active focus-visible:ring-ring/50 box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
+                    className="no-drag w-8 focus-visible:ring-ring/50 box-border flex min-h-[28px] shrink-0 items-center justify-center !text-[color:var(--ds-text-neutral-default-default)] outline-none hover:bg-[var(--ds-bg-neutral-default-hover)] focus-visible:ring-[3px] active:bg-[var(--ds-bg-neutral-default-active)]"
                     onClick={createNewProject}
                     aria-label={t('layout.new-project')}
                   >
@@ -357,6 +374,56 @@ function HeaderWin() {
             platform === 'darwin' && 'pr-2'
           } no-drag gap-1 relative z-50 flex h-full items-center`}
         >
+          <div className="no-drag mr-1 gap-1 flex items-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="no-drag px-2 !text-label-xs font-medium rounded-full"
+                  aria-label="Quick mode switch"
+                  aria-haspopup="menu"
+                >
+                  {`Mode: ${resolvedMode}`}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+                <DropdownMenuItem onSelect={() => setAppearance('light')}>
+                  {resolvedMode === 'light' ? 'Light ✓' : 'Light'}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setAppearance('dark')}>
+                  {resolvedMode === 'dark' ? 'Dark ✓' : 'Dark'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="no-drag px-2 !text-label-xs font-medium rounded-full"
+                  aria-label="Quick theme switch"
+                  aria-haspopup="menu"
+                >
+                  {`Theme: ${activeThemeId}`}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+                {availableThemeIds.map((themeId) => (
+                  <DropdownMenuItem
+                    key={themeId}
+                    onSelect={() => setColorThemeForMode(resolvedMode, themeId)}
+                  >
+                    {activeThemeId === themeId ? `${themeId} ✓` : themeId}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           {location.pathname !== '/history' && (
             <>
               {chatStore.activeTaskId &&
@@ -373,7 +440,7 @@ function HeaderWin() {
                       }
                       variant="ghost"
                       size="icon"
-                      className="no-drag bg-surface-information !text-text-information rounded-full"
+                      className="no-drag rounded-full bg-[var(--ds-bg-status-splitting-subtle-default)] !text-[color:var(--ds-text-status-splitting-strong-default)]"
                       aria-label={t('layout.share')}
                     >
                       <Share className="h-4 w-4" aria-hidden />
@@ -475,19 +542,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="leading-5 flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center hover:bg-[var(--ds-bg-neutral-default-hover)]"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="leading-5 flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center hover:bg-[var(--ds-bg-neutral-default-hover)]"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="leading-5 flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center hover:bg-[var(--ds-bg-neutral-default-hover)]"
             onClick={() => window.electronAPI.closeWindow()}
           >
             <X className="h-4 w-4" />

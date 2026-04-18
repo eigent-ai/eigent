@@ -12,6 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  DEFAULT_COLOR_THEME_ID,
+  DEFAULT_CONTRAST,
+} from '@/lib/themeTokens/catalog';
+import type { Mode } from '@/lib/themeTokens/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -57,6 +62,9 @@ interface AuthState {
 
   // application settings
   appearance: string;
+  lightColorThemeId: string;
+  darkColorThemeId: string;
+  themeContrast: number;
   language: string;
   isFirstLaunch: boolean;
   modelType: ModelType;
@@ -85,6 +93,8 @@ interface AuthState {
 
   // set related methods
   setAppearance: (appearance: string) => void;
+  setColorThemeForMode: (mode: Mode, colorThemeId: string) => void;
+  setThemeContrast: (contrast: number) => void;
   setLanguage: (language: string) => void;
   setInitState: (initState: InitState) => void;
   setModelType: (modelType: ModelType) => void;
@@ -114,6 +124,9 @@ const authStore = create<AuthState>()(
       email: null,
       user_id: null,
       appearance: 'light',
+      lightColorThemeId: DEFAULT_COLOR_THEME_ID,
+      darkColorThemeId: DEFAULT_COLOR_THEME_ID,
+      themeContrast: DEFAULT_CONTRAST,
       language: 'system',
       isFirstLaunch: true,
       modelType: 'cloud',
@@ -143,6 +156,18 @@ const authStore = create<AuthState>()(
       setAppearance: (appearance) =>
         set({
           appearance: appearance === 'transparent' ? 'light' : appearance,
+        }),
+
+      setColorThemeForMode: (mode, colorThemeId) =>
+        set(
+          mode === 'dark'
+            ? { darkColorThemeId: colorThemeId }
+            : { lightColorThemeId: colorThemeId }
+        ),
+
+      setThemeContrast: (contrast) =>
+        set({
+          themeContrast: Math.min(100, Math.max(0, Math.round(contrast))),
         }),
 
       setLanguage: (language) => set({ language }),
@@ -222,6 +247,9 @@ const authStore = create<AuthState>()(
         email: state.email,
         user_id: state.user_id,
         appearance: state.appearance,
+        lightColorThemeId: state.lightColorThemeId,
+        darkColorThemeId: state.darkColorThemeId,
+        themeContrast: state.themeContrast,
         language: state.language,
         modelType: state.modelType,
         cloud_model_type: state.cloud_model_type,

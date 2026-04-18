@@ -17,17 +17,19 @@ import { Check } from 'lucide-react';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { checkboxTokenAliases, mergeAliasStyles } from './tokenAliases';
 
 const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitives.Root>,
   React.ComponentPropsWithoutRef<typeof CheckboxPrimitives.Root>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <CheckboxPrimitives.Root
     ref={ref}
     className={cn(
-      'focus-visible:ring-ring peer h-4 w-4 shrink-0 rounded border border-solid border-input-border-default bg-input-bg-default transition-colors hover:border-input-border-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-switch-on-fill-track-fill data-[state=checked]:bg-switch-on-fill-track-fill data-[state=checked]:text-switch-on-fill-thumb-fill',
+      'focus-visible:ring-ring peer h-4 w-4 rounded border-input-border-default bg-input-bg-default hover:border-input-border-hover data-[state=checked]:border-switch-on-fill-track-fill data-[state=checked]:bg-switch-on-fill-track-fill data-[state=checked]:text-switch-on-fill-thumb-fill shrink-0 border border-solid transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}
+    style={mergeAliasStyles(checkboxTokenAliases, style)}
     {...props}
   >
     <CheckboxPrimitives.Indicator

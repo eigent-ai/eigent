@@ -12,45 +12,77 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  applyThemeContractV1,
+  createDefaultThemeContract,
+} from '@/lib/themeTokens';
+import { DEFAULT_THEME_CATALOG } from '@/lib/themeTokens/catalog';
+import type { Mode } from '@/lib/themeTokens/types';
 import { useAuthStore } from '@/store/authStore';
 import { useEffect } from 'react';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const { appearance } = useAuthStore();
+  const { appearance, lightColorThemeId, darkColorThemeId, themeContrast } =
+    useAuthStore();
+
+  const resolvedMode = appearance === 'dark' ? 'dark' : 'light';
+  const colorThemeId =
+    resolvedMode === 'dark' ? darkColorThemeId : lightColorThemeId;
 
   useEffect(() => {
-    // set data-theme attribute based on appearance
     const root = document.documentElement;
 
-    // remove all possible data-theme attributes
-    root.removeAttribute('data-theme');
+    root.setAttribute('data-theme', resolvedMode);
+    root.setAttribute('data-color-theme', colorThemeId);
+    root.style.setProperty('--ds-theme-contrast', String(themeContrast));
 
-    switch (appearance) {
-      case 'light':
-        root.setAttribute('data-theme', 'light');
-        break;
-      case 'dark':
-        root.setAttribute('data-theme', 'dark');
-        break;
-      default:
-        root.setAttribute('data-theme', 'light');
-    }
-  }, [appearance]);
+    // V2 semantic tokens are generated in parallel to legacy tokens.
+    // Existing components continue to use legacy variables until migration.
+    applyThemeContractV1(
+      createDefaultThemeContract(resolvedMode, {
+        colorThemeId,
+        contrast: themeContrast,
+      }),
+      root
+    );
+  }, [colorThemeId, resolvedMode, themeContrast]);
 
-  // initialize theme
   useEffect(() => {
-    const root = document.documentElement;
-    const currentTheme = root.getAttribute('data-theme');
+    if (!import.meta.env.DEV) return;
 
-    if (!currentTheme) {
-      if (appearance === 'dark') {
-        root.setAttribute('data-theme', 'dark');
-      } else {
-        root.setAttribute('data-theme', 'light');
+    const api = {
+      listThemes(mode?: Mode) {
+        if (mode) {
+          return Object.keys(DEFAULT_THEME_CATALOG[mode] ?? {});
+        }
+        return {
+          light: Object.keys(DEFAULT_THEME_CATALOG.light ?? {}),
+          dark: Object.keys(DEFAULT_THEME_CATALOG.dark ?? {}),
+        };
+      },
+      setTheme(mode: Mode, themeId: string) {
+        useAuthStore.getState().setColorThemeForMode(mode, themeId);
+      },
+      setContrast(contrast: number) {
+        useAuthStore.getState().setThemeContrast(contrast);
+      },
+      getState() {
+        const state = useAuthStore.getState();
+        return {
+          appearance: state.appearance,
+          lightColorThemeId: state.lightColorThemeId,
+          darkColorThemeId: state.darkColorThemeId,
+          themeContrast: state.themeContrast,
+        };
+      },
+    };
+
+    (
+      window as Window & {
+        __eigentThemeV1?: typeof api;
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // only execute once when the component is mounted
+    ).__eigentThemeV1 = api;
+  }, []);
 
   return <>{children}</>;
 }

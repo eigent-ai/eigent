@@ -1,4 +1,53 @@
 /** @type {import('tailwindcss').Config} */
+const DS_TOKEN_ELEMENTS = ['bg', 'text', 'border', 'icon', 'ring'];
+const DS_TOKEN_EMPHASIS = ['subtle', 'muted', 'default', 'strong', 'inverse'];
+const DS_TOKEN_STATES = [
+  'default',
+  'hover',
+  'active',
+  'selected',
+  'focus',
+  'disabled',
+];
+const DS_TOKEN_TONES = [
+  'neutral',
+  'brand',
+  'status-running',
+  'status-splitting',
+  'status-pending',
+  'status-error',
+  'status-reassigning',
+  'status-completed',
+  'status-blocked',
+  'status-paused',
+  'status-skipped',
+  'status-cancelled',
+  'single-agent',
+  'workforce',
+  'browser',
+  'terminal',
+  'document',
+  'success',
+  'caution',
+  'warning',
+  'information',
+];
+
+function buildDsTokenColorMap() {
+  const map = {};
+  for (const element of DS_TOKEN_ELEMENTS) {
+    for (const tone of DS_TOKEN_TONES) {
+      for (const emphasis of DS_TOKEN_EMPHASIS) {
+        for (const state of DS_TOKEN_STATES) {
+          const token = `ds-${element}-${tone}-${emphasis}-${state}`;
+          map[token] = `var(--${token})`;
+        }
+      }
+    }
+  }
+  return map;
+}
+
 module.exports = {
   darkMode: ['class'],
   content: [
@@ -9,6 +58,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        ...buildDsTokenColorMap(),
         red: {
           50: 'var(--colors-red-50)',
           100: 'var(--colors-red-100)',
