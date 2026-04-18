@@ -42,11 +42,13 @@ from camel.tasks.task import Task, TaskState, validate_task_content
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.component import code
+from app.component.error_format import normalize_error_to_openai_format
 from app.exception.exception import UserException
 from app.service.task import (
     Action,
     ActionAssignTaskData,
     ActionEndData,
+    ActionErrorData,
     ActionTaskStateData,
     ActionTimeoutData,
     get_camel_task,
@@ -260,6 +262,27 @@ class Workforce(BaseWorkforce):
                 exc_info=True,
             )
             self._state = WorkforceState.STOPPED
+            # Push error event to SSE queue so frontend receives notification
+            try:
+                task_lock = get_task_lock(self.api_task_id)
+                if task_lock is not None:
+                    message, error_code, _ = normalize_error_to_openai_format(
+                        e
+                    )
+                    await task_lock.put_queue(
+                        ActionErrorData(
+                            data={
+                                "message": message,
+                                "error_code": error_code,
+                            },
+                        )
+                    )
+            except Exception as queue_err:
+                logger.error(
+                    "[WF-LIFECYCLE] Failed to push error to SSE queue: "
+                    f"{queue_err}",
+                    exc_info=True,
+                )
             raise
         finally:
             if self._state != WorkforceState.STOPPED:
