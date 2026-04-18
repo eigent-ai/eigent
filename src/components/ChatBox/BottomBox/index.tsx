@@ -85,14 +85,14 @@ export default function BottomBox({
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
-  let backgroundClass = 'bg-[var(--ds-bg-neutral-default-default)]';
+  let backgroundClass = 'bg-ds-bg-neutral-subtle-default';
   if (state === 'splitting')
-    backgroundClass = 'bg-[var(--ds-bg-status-splitting-subtle-default)]';
+    backgroundClass = 'bg-ds-bg-splitting-subtle-default';
   else if (state === 'confirm')
-    backgroundClass = 'bg-[var(--ds-bg-status-pending-subtle-default)]';
+    backgroundClass = 'bg-ds-bg-pending-subtle-default';
 
   return (
-    <div className="relative z-50 flex w-full flex-col bg-[var(--ds-bg-neutral-default-default)]">
+    <div className="backdrop-blur-md rounded-t-2xl relative z-50 flex w-full flex-col bg-transparent">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
         <div className="px-2 pointer-events-auto z-50">
@@ -128,7 +128,7 @@ export default function BottomBox({
               {starterSuggestions.map(({ label, message }) => (
                 <div
                   key={label}
-                  className="rounded-md px-sm py-xs text-xs font-medium cursor-pointer bg-[var(--ds-bg-neutral-strong-default)] leading-none text-[color:var(--ds-text-neutral-default-default)] opacity-70 transition-all duration-300 hover:opacity-100"
+                  className="rounded-md px-sm py-xs text-xs font-medium bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
                   onClick={() => onStarterSuggestion(message)}
                   role="button"
                   tabIndex={0}
@@ -147,22 +147,22 @@ export default function BottomBox({
 
         {noModelOverlay && onSelectModel ? (
           <div
-            className="inset-0 rounded-3xl gap-3 backdrop-blur-md px-4 py-5 absolute z-[15] flex flex-row items-center justify-center bg-transparent"
+            className="inset-0 rounded-3xl gap-3 backdrop-blur-md px-4 py-5 bg-ds-bg-warning-subtle-default absolute z-[15] flex flex-row items-center justify-center"
             role="alert"
           >
             <TriangleAlert
-              className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-warning-default-default)]"
+              className="h-4 w-4 text-ds-icon-warning-default-default shrink-0"
               aria-hidden
             />
-            <p className="text-sm font-medium leading-snug text-[color:var(--ds-text-warning-default-default)]">
+            <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">
               {t('layout.please-select-model')}
             </p>
             <Button
               type="button"
-              variant="ghost"
+              variant="primary"
+              tone="warning"
               size="sm"
               buttonRadius="full"
-              className="bg-[var(--ds-bg-status-pending-subtle-default)] !text-[color:var(--ds-text-warning-default-default)]"
               onClick={onSelectModel}
             >
               {t('layout.select-model-cta', {

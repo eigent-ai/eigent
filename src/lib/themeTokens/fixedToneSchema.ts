@@ -49,6 +49,9 @@ export const DEFAULT_FIXED_TONE_SCHEMA: FixedToneSchema = {
     caution: {
       color: '#e7000b',
     },
+    error: {
+      color: '#e7000b',
+    },
     warning: {
       color: '#d08700',
     },
@@ -78,6 +81,9 @@ export const DEFAULT_FIXED_TONE_SCHEMA: FixedToneSchema = {
       color: '#4ade80',
     },
     caution: {
+      color: '#f87171',
+    },
+    error: {
       color: '#f87171',
     },
     warning: {

@@ -30,7 +30,7 @@ export const DEFAULT_THEME_CATALOG: ThemeCatalog = {
       mode: 'light',
       seed: {
         accent: '#000000',
-        background: '#fafafa',
+        background: '#faf7f6',
         ink: '#1d1d1d',
       },
     },
@@ -57,7 +57,7 @@ export const DEFAULT_THEME_CATALOG: ThemeCatalog = {
       mode: 'light',
       seed: {
         accent: '#4c19e8',
-        background: '#f2f2ff',
+        background: '#ffffff',
         ink: '#1d1d1d',
       },
     },
@@ -68,7 +68,7 @@ export const DEFAULT_THEME_CATALOG: ThemeCatalog = {
       mode: 'dark',
       seed: {
         accent: '#ede1db',
-        background: '#101010',
+        background: '#1f1f1f',
         ink: '#ffffff',
       },
     },
@@ -95,7 +95,7 @@ export const DEFAULT_THEME_CATALOG: ThemeCatalog = {
       mode: 'dark',
       seed: {
         accent: '#b5afff',
-        background: '#060606',
+        background: '#1f1f1f',
         ink: '#fafafa',
       },
     },

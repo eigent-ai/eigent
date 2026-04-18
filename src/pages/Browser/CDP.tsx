@@ -230,7 +230,7 @@ export default function CDP() {
               {cdpBrowsers.map((browser) => (
                 <div
                   key={browser.id}
-                  className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-strong-default px-4 py-2 flex items-center justify-between border-solid"
+                  className="rounded-xl bg-ds-bg-neutral-strong-default px-4 py-2 flex items-center justify-between"
                 >
                   <div className="gap-2 flex w-full flex-row items-center">
                     <div className="h-2 w-2 bg-text-success shrink-0 rounded-full" />

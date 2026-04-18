@@ -226,6 +226,7 @@
   "workspace-no-history-projects": "暂无历史项目",
   "workspace-session-single-agent": "单智能体",
   "workspace-session-workforce": "工作群",
+  "workspace-get-things-done-with-eigent": "用 Eigent 把事情做好",
   "project-task-placeholder": "描述你想完成的任务...",
   "cdp-browser-connection": "CDP 浏览器连接",
   "cdp-browser-connection-description": "连接到启用了远程调试的 Chrome 浏览器",

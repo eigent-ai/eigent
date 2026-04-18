@@ -268,7 +268,7 @@ export default function Project() {
       />
 
       {/* Header Section */}
-      <div className="border-ds-border-neutral-muted-disabled flex w-full border-x-0 border-t-0 border-solid">
+      <div className="flex w-full border-x-0">
         <div className="px-6 pb-4 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
           <div className="gap-4 flex w-full flex-row items-center justify-between">
             <div className="flex flex-col">

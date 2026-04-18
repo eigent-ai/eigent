@@ -272,11 +272,11 @@ export default function Overview({
 
   return (
     <div className="min-h-0 min-w-0 flex h-full flex-1 flex-col">
-      <div className="bg-ds-bg-neutral-default-default pl-2 pt-2 flex h-full flex-row">
+      <div className="pl-2 flex h-full flex-row">
         {/* Left Side: Trigger List */}
         <div className="min-w-0 flex flex-1 flex-col">
           {/* List View Section */}
-          <div className="scrollbar-always-visible flex h-full flex-col overflow-auto">
+          <div className="scrollbar-always-visible pt-2 mx-auto flex h-full w-full max-w-[800px] flex-col overflow-auto">
             <div className="gap-2 flex flex-col">
               {sortedTriggers.length === 0 ? (
                 <div
@@ -284,16 +284,16 @@ export default function Overview({
                     setEditingTrigger(null);
                     setEditDialogOpen(true);
                   }}
-                  className="group gap-3 rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-3 hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-strong-default flex cursor-pointer items-center justify-center border transition-all duration-200"
+                  className="group gap-3 rounded-xl bg-ds-bg-neutral-default-default p-3 flex cursor-pointer items-center justify-center transition-all duration-200 hover:opacity-60"
                 >
                   {/* Zap Icon */}
-                  <div className="bg-amber-500/10 h-10 w-10 rounded-lg flex flex-shrink-0 items-center justify-center">
+                  <div className="bg-ds-bg-neutral-subtle-default h-10 w-10 rounded-lg flex flex-shrink-0 items-center justify-center">
                     <Plus className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   </div>
 
                   {/* Create Trigger Text */}
                   <div className="w-full flex-1">
-                    <div className="text-sm font-semibold text-ds-text-neutral-default-default group-hover:text-ds-text-brand-default-hover truncate transition-colors">
+                    <div className="text-sm font-semibold text-ds-text-neutral-muted-default group-hover:text-ds-text-brand-default-hover truncate transition-colors">
                       {t('triggers.create-hint')}
                     </div>
                   </div>
@@ -344,14 +344,14 @@ export default function Overview({
             damping: 34,
             mass: 0.9,
           }}
-          className={`mb-2 rounded-xl bg-ds-bg-neutral-subtle-default flex h-full flex-col overflow-hidden ${
+          className={`mb-2 bg-ds-bg-neutral-subtle-default border-ds-border-neutral-subtle-default flex h-full flex-col overflow-hidden border border-y-0 border-r-0 border-l-1 border-solid ${
             selectedTriggerId && isExecutionLogsOpen
               ? ''
               : 'pointer-events-none'
           }`}
         >
           <div className="min-h-0 flex h-full flex-col">
-            <div className="bg-ds-bg-neutral-strong-default px-3 py-3 relative flex flex-row items-center justify-start">
+            <div className="bg-ds-bg-neutral-muted-default px-3 py-3 relative flex flex-row items-center justify-start">
               <span className="text-label-sm font-bold text-ds-text-neutral-default-default">
                 {t('triggers.execution-logs')}
               </span>

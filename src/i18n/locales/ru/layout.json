@@ -226,6 +226,7 @@
   "workspace-no-history-projects": "Пока нет недавних проектов",
   "workspace-session-single-agent": "Один агент",
   "workspace-session-workforce": "Команда",
+  "workspace-get-things-done-with-eigent": "Делайте дела с Eigent",
   "project-task-placeholder": "Опишите, чего хотите достичь...",
   "cdp-browser-connection": "Подключение CDP-браузера",
   "cdp-browser-connection-description": "Подключиться к браузеру Chrome с включённой удалённой отладкой",

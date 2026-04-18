@@ -157,7 +157,7 @@ const TabsTrigger = React.forwardRef<
       ref={ref}
       className={cn(
         variant === 'outline'
-          ? 'gap-2 px-4 py-3 !text-body-sm !font-semibold text-ds-text-neutral-muted-default data-[state=active]:bg-ds-bg-neutral-muted-disabled data-[state=active]:!font-bold data-[state=active]:text-ds-text-neutral-default-default relative flex cursor-pointer flex-row items-center justify-center bg-transparent transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
+          ? 'gap-2 px-4 py-3 !text-body-sm !font-semibold text-ds-text-neutral-default-default data-[state=active]:bg-ds-bg-neutral-muted-disabled data-[state=active]:!font-bold [&_svg]:text-ds-icon-neutral-default-default relative flex cursor-pointer flex-row items-center justify-center bg-transparent transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
           : 'ring-offset-background focus-visible:ring-ring gap-1 rounded-xl bg-menutabs-fill-default px-2 py-1 text-body-sm font-semibold data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
         className
       )}

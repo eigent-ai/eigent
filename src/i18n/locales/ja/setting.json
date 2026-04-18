@@ -25,6 +25,13 @@
   "workspace-main-background-dots": "ドット",
   "workspace-main-background-blocks": "グリッド",
 
+  "appearance-tab": "外観",
+  "color-mode": "カラーモード",
+  "accent-palette": "アクセントの配色",
+  "accent-palette-description": "UIのプリセット配色です。ライトモードとダークモードで別々に保存されます。",
+  "accent-for-light": "ライトモード",
+  "accent-for-dark": "ダークモード",
+
   "data-privacy": "データプライバシー",
   "data-privacy-description": "Eigentはプライバシーを確保するためにローカルファーストの原則に基づいて構築されています。デフォルトでは、データはお客様のデバイスに残ります。クラウド機能はオプションであり、機能するために必要な最小限のデータのみを使用します。詳細については、当社の",
   "privacy-policy": "プライバシーポリシー",
@@ -91,6 +98,13 @@
   "workspace-main-background-none": "デフォルト",
   "workspace-main-background-dots": "ドット",
   "workspace-main-background-blocks": "グリッド",
+
+  "appearance-tab": "外観",
+  "color-mode": "カラーモード",
+  "accent-palette": "アクセントの配色",
+  "accent-palette-description": "UIのプリセット配色です。ライトモードとダークモードで別々に保存されます。",
+  "accent-for-light": "ライトモード",
+  "accent-for-dark": "ダークモード",
 
   "data-privacy": "データプライバシー",
   "data-privacy-description": "Eigentはプライバシーを確保するためにローカルファーストの原則に基づいて構築されています。デフォルトでは、データはお客様のデバイスに残ります。クラウド機能はオプションであり、機能するために必要な最小限のデータのみを使用します。詳細については、当社の",

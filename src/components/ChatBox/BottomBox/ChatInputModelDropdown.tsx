@@ -19,6 +19,7 @@
  */
 
 import { proxyFetchGet } from '@/api/http';
+import folderIcon from '@/assets/Folder.svg';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -314,17 +315,17 @@ export function ChatInputModelDropdown({
           disabled={disabled}
           title={triggerModelName}
           aria-label={triggerModelName}
-          className="gap-1.5 rounded-xl px-2 py-1 font-semibold flex max-w-[min(100%,320px)] shrink-0 items-center justify-between bg-transparent transition-colors hover:bg-[var(--ds-bg-neutral-subtle-default)] active:bg-[var(--ds-bg-neutral-default-default)] disabled:pointer-events-none disabled:opacity-50"
+          className="gap-1.5 rounded-xl px-2 py-1 font-semibold hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-default-default flex max-w-[min(100%,320px)] shrink-0 items-center justify-between bg-transparent transition-colors disabled:pointer-events-none disabled:opacity-50"
         >
           <Sparkles
-            className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+            className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
             aria-hidden
           />
-          <span className="text-body-xs min-w-0 font-semibold flex-1 truncate text-left text-[color:var(--ds-text-neutral-default-default)]">
+          <span className="text-body-xs min-w-0 font-semibold text-ds-text-neutral-default-default flex-1 truncate text-left">
             {triggerModelName}
           </span>
           <ChevronDown
-            className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+            className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
             aria-hidden
           />
         </button>
@@ -345,13 +346,15 @@ export function ChatInputModelDropdown({
             }}
           >
             <DropdownMenuSubTrigger
-              className="gap-2 min-w-0 [&>svg:first-child]:!h-5 [&>svg:first-child]:!w-5 [&>svg:first-child]:!min-h-5 [&>svg:first-child]:!min-w-5 flex w-full items-center justify-start"
+              className="gap-2 min-w-0 [&>svg:first-child]:!h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
               onPointerEnter={(e) => {
                 activeSubTriggerRef.current = e.currentTarget;
               }}
             >
-              <Sparkles
-                className="shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+              <img
+                src={folderIcon}
+                alt=""
+                className="h-4 w-4 mt-0.5 shrink-0"
                 aria-hidden
               />
               <span className="text-body-sm min-w-0 flex-1 text-left">
@@ -375,7 +378,7 @@ export function ChatInputModelDropdown({
                 >
                   <span className="text-body-sm">{model.name}</span>
                   {cloudPrefer && cloud_model_type === model.id && (
-                    <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+                    <Check className="h-4 w-4 text-ds-text-success-default-default" />
                   )}
                 </DropdownMenuItem>
               ))}
@@ -389,13 +392,13 @@ export function ChatInputModelDropdown({
           }}
         >
           <DropdownMenuSubTrigger
-            className="gap-2 min-w-0 [&>svg:first-child]:!h-5 [&>svg:first-child]:!w-5 [&>svg:first-child]:!min-h-5 [&>svg:first-child]:!min-w-5 flex w-full items-center justify-start"
+            className="gap-2 min-w-0 [&>svg:first-child]:!h-5 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
             onPointerEnter={(e) => {
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
             <Layers
-              className="shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+              className="text-ds-icon-neutral-default-default shrink-0"
               aria-hidden
             />
             <span className="text-body-sm min-w-0 flex-1 text-left">
@@ -435,23 +438,23 @@ export function ChatInputModelDropdown({
                         }
                       />
                     ) : (
-                      <Key className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]" />
+                      <Key className="h-3 w-3 text-ds-icon-neutral-muted-default" />
                     )}
                     <span
-                      className={`text-body-sm ${isConfigured ? 'text-[color:var(--ds-text-neutral-default-default)]' : 'text-[color:var(--ds-text-neutral-muted-default)]'}`}
+                      className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
                     >
                       {item.name}
                     </span>
                   </div>
                   <div className="gap-1 flex items-center">
                     {!isConfigured && (
-                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-neutral-muted-default)] opacity-10" />
+                      <div className="h-2 w-2 bg-ds-text-neutral-subtle-default rounded-full opacity-10" />
                     )}
                     {isPreferred && (
-                      <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+                      <Check className="h-4 w-4 text-ds-text-success-default-default" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-success-default-default)]" />
+                      <div className="h-2 w-2 bg-ds-text-success-default-default rounded-full" />
                     )}
                   </div>
                 </DropdownMenuItem>
@@ -466,13 +469,13 @@ export function ChatInputModelDropdown({
           }}
         >
           <DropdownMenuSubTrigger
-            className="gap-2 min-w-0 [&>svg:first-child]:!h-5 [&>svg:first-child]:!w-5 [&>svg:first-child]:!min-h-5 [&>svg:first-child]:!min-w-5 flex w-full items-center justify-start"
+            className="gap-2 min-w-0 [&>svg:first-child]:!h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
             onPointerEnter={(e) => {
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
             <HardDrive
-              className="shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+              className="text-ds-icon-neutral-default-default shrink-0"
               aria-hidden
             />
             <span className="text-body-sm min-w-0 flex-1 text-left">
@@ -512,23 +515,23 @@ export function ChatInputModelDropdown({
                         }
                       />
                     ) : (
-                      <Server className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]" />
+                      <Server className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                     )}
                     <span
-                      className={`text-body-sm ${isConfigured ? 'text-[color:var(--ds-text-neutral-default-default)]' : 'text-[color:var(--ds-text-neutral-muted-default)]'}`}
+                      className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
                     >
                       {model.name}
                     </span>
                   </div>
                   <div className="gap-1 flex items-center">
                     {!isConfigured && (
-                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-neutral-muted-default)] opacity-10" />
+                      <div className="h-2 w-2 bg-ds-text-neutral-subtle-default rounded-full opacity-10" />
                     )}
                     {isPreferred && (
-                      <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+                      <Check className="h-4 w-4 text-ds-text-success-default-default" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 rounded-full bg-[var(--ds-text-success-default-default)]" />
+                      <div className="h-2 w-2 bg-ds-text-success-default-default rounded-full" />
                     )}
                   </div>
                 </DropdownMenuItem>

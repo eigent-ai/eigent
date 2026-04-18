@@ -317,9 +317,7 @@ export default function Workspace() {
           <div className="mx-auto flex w-full max-w-[600px] flex-col">
             <div className="mb-12 flex w-full flex-col">
               <span className="text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
-                {t('layout.workspace-lets-do-this', {
-                  defaultValue: "Let's do this",
-                })}
+                {t('layout.workspace-get-things-done-with-eigent')}
               </span>
               <div className="mt-4 flex w-full justify-center">
                 <WorkspaceProjectPicker />
@@ -397,7 +395,7 @@ export default function Workspace() {
         <>
           <button
             type="button"
-            className="inset-0 bg-black/20 absolute z-40 cursor-default backdrop-blur-[1px]"
+            className="inset-0 absolute z-40 cursor-default bg-transparent backdrop-blur-[1px]"
             aria-label={t('layout.workspace-work-with-dismiss-overlay', {
               defaultValue: 'Dismiss',
             })}
@@ -411,7 +409,7 @@ export default function Workspace() {
             className="left-0 top-8 ease-out animate-in fade-in-0 slide-in-from-left-2 absolute z-50 flex max-h-[calc(100%-2.75rem)] w-[300px] flex-col overflow-y-auto duration-200"
           >
             <div className="gap-3 p-3 flex flex-col">
-              <div className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default min-w-0 p-3 flex flex-col border border-solid">
+              <div className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default min-w-0 p-3 flex flex-col border border-solid">
                 <span
                   id="workspace-work-with-heading"
                   className="text-ds-text-neutral-default-default text-body-sm font-semibold"
@@ -424,9 +422,11 @@ export default function Workspace() {
                   <Button
                     type="button"
                     variant="ghost"
+                    tone="default"
+                    emphasis="default"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-strong-default/50 h-8 min-h-8 gap-2 px-2 !font-normal text-body-sm w-full shrink-0 justify-start"
+                    className="no-drag gap-2 justify-start"
                   >
                     <MonitorSmartphone
                       className="text-ds-text-neutral-muted-default h-4 w-4 shrink-0"
@@ -439,9 +439,11 @@ export default function Workspace() {
                   <Button
                     type="button"
                     variant="ghost"
+                    tone="default"
+                    emphasis="default"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-strong-default/50 h-8 min-h-8 gap-2 px-2 !font-normal text-body-sm w-full shrink-0 justify-start"
+                    className="no-drag gap-2 justify-start"
                   >
                     <Puzzle
                       className="text-ds-text-neutral-muted-default h-4 w-4 shrink-0"

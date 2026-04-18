@@ -23,16 +23,19 @@ const meta: Meta<typeof Button> = {
   argTypes: {
     variant: {
       control: 'select',
-      options: [
-        'primary',
-        'secondary',
-        'outline',
-        'ghost',
-        'success',
-        'cuation',
-        'information',
-        'warning',
-      ],
+      options: ['primary', 'secondary', 'outline', 'ghost'],
+      description:
+        'Component chrome pattern. Legacy one-word variants are still accepted for compatibility.',
+    },
+    emphasis: {
+      control: 'select',
+      options: ['subtle', 'muted', 'default', 'strong', 'inverse'],
+      description: 'Visual intensity axis, independent from semantic tone.',
+    },
+    tone: {
+      control: 'select',
+      options: ['neutral', 'success', 'error', 'information', 'warning'],
+      description: 'Semantic palette (pairs with variant).',
     },
     size: {
       control: 'select',
@@ -63,6 +66,7 @@ const meta: Meta<typeof Button> = {
   args: {
     children: 'Button',
     variant: 'primary',
+    tone: 'neutral',
     size: 'md',
   },
 };
@@ -99,16 +103,26 @@ export const Ghost: Story = {
   },
 };
 
+export const Inverse: Story = {
+  args: {
+    variant: 'primary',
+    emphasis: 'inverse',
+    children: 'Inverse (canvas + ink)',
+  },
+};
+
 export const Success: Story = {
   args: {
-    variant: 'success',
+    variant: 'primary',
+    tone: 'success',
     children: 'Success Button',
   },
 };
 
 export const Warning: Story = {
   args: {
-    variant: 'warning',
+    variant: 'primary',
+    tone: 'warning',
     children: 'Warning Button',
   },
 };
@@ -146,13 +160,44 @@ export const IconOnly: Story = {
 
 export const AllVariants: Story = {
   render: () => (
-    <div className="gap-4 flex flex-wrap">
-      <Button variant="primary">Primary</Button>
-      <Button variant="secondary">Secondary</Button>
-      <Button variant="outline">Outline</Button>
-      <Button variant="ghost">Ghost</Button>
-      <Button variant="success">Success</Button>
-      <Button variant="warning">Warning</Button>
+    <div className="gap-6 flex flex-col">
+      <div className="gap-4 flex flex-wrap items-center">
+        <Button variant="primary">Primary</Button>
+        <Button variant="secondary">Secondary</Button>
+        <Button variant="outline">Outline</Button>
+        <Button variant="ghost">Ghost</Button>
+        <Button variant="primary" emphasis="inverse">
+          Inverse
+        </Button>
+      </div>
+      <div className="gap-4 flex flex-wrap items-center">
+        <Button variant="primary" tone="success">
+          Success
+        </Button>
+        <Button variant="primary" tone="error">
+          Error
+        </Button>
+        <Button variant="primary" tone="information">
+          Information
+        </Button>
+        <Button variant="primary" tone="warning">
+          Warning
+        </Button>
+      </div>
+      <div className="gap-4 flex flex-wrap items-center">
+        <Button variant="primary" emphasis="subtle">
+          Subtle
+        </Button>
+        <Button variant="primary" emphasis="muted">
+          Muted
+        </Button>
+        <Button variant="primary" emphasis="default">
+          Default
+        </Button>
+        <Button variant="primary" emphasis="strong">
+          Strong
+        </Button>
+      </div>
     </div>
   ),
 };

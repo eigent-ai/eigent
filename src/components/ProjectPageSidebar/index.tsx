@@ -269,7 +269,7 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 pt-2 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'min-h-0 min-w-0 py-2 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
           className
         )}
       >
@@ -283,10 +283,7 @@ export default function ProjectPageSidebar({
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
                   leading={
-                    <LayoutGrid
-                      className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
-                      aria-hidden
-                    />
+                    <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
                   }
                   label={t('triggers.workspace')}
                   tooltip={t('triggers.workspace')}
@@ -307,13 +304,10 @@ export default function ProjectPageSidebar({
                   }}
                   leading={
                     <span className="h-4 w-4 relative inline-flex shrink-0">
-                      <Inbox
-                        className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
-                        aria-hidden
-                      />
+                      <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 absolute shrink-0 rounded-full bg-[var(--ds-text-status-error-strong-default)]"
+                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
                           aria-hidden
                         />
                       ) : null}
@@ -322,7 +316,7 @@ export default function ProjectPageSidebar({
                   label={t('layout.folder')}
                   trailing={
                     <span
-                      className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-[var(--ds-bg-neutral-default-default)] py-px text-[10px] text-[color:var(--ds-text-neutral-muted-default)]"
+                      className="rounded-md px-1.5 font-medium leading-tight bg-ds-bg-neutral-default-default text-ds-text-neutral-subtle-default text-body-xs py-0.5 max-w-[5.5rem] shrink-0 truncate"
                       title={
                         customFolderPath &&
                         folderSettingTagLabel !== t('layout.default')

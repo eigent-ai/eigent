@@ -226,6 +226,7 @@
   "workspace-no-history-projects": "Nessun progetto recente",
   "workspace-session-single-agent": "Agente singolo",
   "workspace-session-workforce": "Workforce",
+  "workspace-get-things-done-with-eigent": "Porta a termine le cose con Eigent",
   "project-task-placeholder": "Descrivi cosa vuoi ottenere...",
   "cdp-browser-connection": "Connessione browser CDP",
   "cdp-browser-connection-description": "Connetti a un browser Chrome con il debug remoto abilitato",

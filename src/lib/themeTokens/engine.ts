@@ -45,6 +45,53 @@ const STATUS_TONES: StatusTone[] = [
 ];
 
 type RuntimeStatusTone = Record<StatusTone, `#${string}`>;
+type NeutralTokenElement = 'bg' | 'text' | 'border' | 'icon' | 'ring';
+
+const NEUTRAL_EMPHASIS = [
+  'subtle',
+  'muted',
+  'default',
+  'strong',
+  'inverse',
+] as const;
+const UI_STATES = [
+  'default',
+  'hover',
+  'active',
+  'selected',
+  'focus',
+  'disabled',
+] as const;
+
+type NeutralEmphasis = (typeof NEUTRAL_EMPHASIS)[number];
+type UiState = (typeof UI_STATES)[number];
+type NeutralStateMatrix = Record<NeutralEmphasis, Record<UiState, string>>;
+
+function setTokenIfMissing(
+  tokens: ThemeTokens,
+  tokenKey: TokenKey,
+  value: string
+): void {
+  if (!(tokenKey in tokens)) {
+    tokens[tokenKey] = value;
+  }
+}
+
+function ensureNeutralMatrix(
+  tokens: ThemeTokens,
+  element: NeutralTokenElement,
+  matrix: NeutralStateMatrix
+): void {
+  for (const emphasis of NEUTRAL_EMPHASIS) {
+    for (const state of UI_STATES) {
+      setTokenIfMissing(
+        tokens,
+        `${element}.neutral.${emphasis}.${state}` as TokenKey,
+        matrix[emphasis][state]
+      );
+    }
+  }
+}
 
 function resolveStatusToneBase(
   accent: `#${string}`,
@@ -84,35 +131,60 @@ function buildCoreTokens(
   const panelStrong = mix(background, ink, 0.04 + contrastT * 0.08);
   const panelSelected = mix(background, ink, 0.1 + contrastT * 0.1);
   const panelSelectedStrong = mix(background, ink, 0.16 + contrastT * 0.12);
+  const mutedDefault = mix(background, ink, 0.06 + contrastT * 0.06);
+  const mutedHover = mix(background, ink, 0.08 + contrastT * 0.07);
+  const mutedActive = mix(background, ink, 0.1 + contrastT * 0.08);
+  const mutedSelected = mix(background, ink, 0.12 + contrastT * 0.09);
+  const mutedDisabled = mix(background, ink, 0.08 + contrastT * 0.07);
+  const subtleHover = mix(background, ink, 0.04 + contrastT * 0.065);
+  const subtleActive = mix(background, ink, 0.05 + contrastT * 0.08);
+  const subtleSelected = mix(background, ink, 0.06 + contrastT * 0.08);
+  const inverseBgDefault = mix(ink, background, 0.88);
+  const inverseBgHover = mix(ink, background, 0.82);
+  const inverseBgActive = mix(ink, background, 0.76);
+  const inverseBgSelected = mix(ink, background, 0.7);
+  const inverseBgDisabled = mix(ink, background, 0.5);
   const textMuted = mix(ink, background, 0.45 - contrastT * 0.12);
+  const textDisabled = alpha(ink, 0.38);
+  const textDefaultHover = mix(ink, background, 0.9);
+  const textDefaultActive = mix(ink, background, 0.82);
+  const textDefaultSelected = mix(ink, background, 0.86);
+  const textMutedHover = mix(textSecondary, ink, 0.16);
+  const textMutedActive = mix(textSecondary, ink, 0.26);
+  const textMutedSelected = mix(textSecondary, ink, 0.22);
+  const textSubtleHover = mix(textMuted, ink, 0.2);
+  const textSubtleActive = mix(textMuted, ink, 0.3);
+  const textSubtleSelected = mix(textMuted, ink, 0.26);
+  const textStrong = mix(ink, background, 0.95);
+  const textInverse = chooseReadableText(inverseBgDefault, ink);
 
   tokens['bg.neutral.subtle.default'] = background;
-  tokens['bg.neutral.subtle.selected'] = mix(
-    background,
-    ink,
-    0.06 + contrastT * 0.08
-  );
+  // Hover between canvas and selected (used by nav tabs, outline buttons, etc.)
+  tokens['bg.neutral.subtle.hover'] = subtleHover;
+  tokens['bg.neutral.subtle.selected'] = subtleSelected;
   tokens['bg.neutral.default.default'] = panel;
   tokens['bg.neutral.default.hover'] = hover;
   tokens['bg.neutral.default.active'] = active;
   tokens['bg.neutral.default.selected'] = panelSelected;
   tokens['bg.neutral.strong.default'] = panelStrong;
   tokens['bg.neutral.strong.selected'] = panelSelectedStrong;
-  // Disabled surfaces remain solid fills (no alpha overlays).
-  tokens['bg.neutral.muted.disabled'] = mix(
-    background,
-    ink,
-    0.08 + contrastT * 0.07
-  );
+  // Muted surfaces remain solid fills (no alpha overlays).
+  tokens['bg.neutral.muted.default'] = mutedDefault;
+  tokens['bg.neutral.muted.hover'] = mutedHover;
+  tokens['bg.neutral.muted.active'] = mutedActive;
+  tokens['bg.neutral.muted.selected'] = mutedSelected;
+  tokens['bg.neutral.muted.disabled'] = mutedDisabled;
 
   tokens['text.neutral.default.default'] = ink;
   tokens['text.neutral.muted.default'] = textSecondary;
   tokens['text.neutral.subtle.default'] = textMuted;
-  tokens['text.neutral.muted.disabled'] = alpha(ink, 0.38);
+  tokens['text.neutral.muted.disabled'] = textDisabled;
 
   const accentHover = mix(accent, ink, 0.08 + contrastT * 0.08);
   const accentActive = mix(accent, ink, 0.14 + contrastT * 0.1);
-  const accentForeground = chooseReadableText(accent, ink);
+  // Brand buttons should prefer white text when contrast is acceptable for
+  // UI button label sizing; fall back to darker text for very light accents.
+  const accentForeground = chooseReadableText(accent, '#ffffff', 3);
   tokens['bg.brand.default.default'] = accent;
   tokens['bg.brand.default.hover'] = accentHover;
   tokens['bg.brand.default.active'] = accentActive;
@@ -120,6 +192,9 @@ function buildCoreTokens(
   tokens['icon.brand.default.default'] = accent;
 
   tokens['border.neutral.subtle.default'] = alpha(ink, 0.05 + contrastT * 0.1);
+  tokens['border.neutral.muted.default'] = alpha(ink, 0.07 + contrastT * 0.12);
+  tokens['border.neutral.muted.hover'] = alpha(ink, 0.1 + contrastT * 0.14);
+  tokens['border.neutral.muted.disabled'] = alpha(ink, 0.05 + contrastT * 0.08);
   tokens['border.neutral.default.default'] = border;
   tokens['border.neutral.strong.default'] = alpha(ink, 0.14 + contrastT * 0.2);
   tokens['border.brand.default.focus'] = alpha(accent, 0.55 + contrastT * 0.25);
@@ -129,6 +204,221 @@ function buildCoreTokens(
 
   tokens['icon.neutral.default.default'] = textSecondary;
   tokens['icon.neutral.muted.default'] = textMuted;
+
+  ensureNeutralMatrix(tokens, 'bg', {
+    subtle: {
+      default: background,
+      hover: subtleHover,
+      active: subtleActive,
+      selected: subtleSelected,
+      focus: subtleSelected,
+      disabled: mutedDisabled,
+    },
+    muted: {
+      default: mutedDefault,
+      hover: mutedHover,
+      active: mutedActive,
+      selected: mutedSelected,
+      focus: mutedHover,
+      disabled: mutedDisabled,
+    },
+    default: {
+      default: panel,
+      hover,
+      active,
+      selected: panelSelected,
+      focus: active,
+      disabled: mutedDisabled,
+    },
+    strong: {
+      default: panelStrong,
+      hover: panelSelected,
+      active: panelSelectedStrong,
+      selected: panelSelectedStrong,
+      focus: panelSelected,
+      disabled: mutedDisabled,
+    },
+    inverse: {
+      default: inverseBgDefault,
+      hover: inverseBgHover,
+      active: inverseBgActive,
+      selected: inverseBgSelected,
+      focus: inverseBgHover,
+      disabled: inverseBgDisabled,
+    },
+  });
+
+  ensureNeutralMatrix(tokens, 'text', {
+    subtle: {
+      default: textMuted,
+      hover: textSubtleHover,
+      active: textSubtleActive,
+      selected: textSubtleSelected,
+      focus: textSubtleHover,
+      disabled: textDisabled,
+    },
+    muted: {
+      default: textSecondary,
+      hover: textMutedHover,
+      active: textMutedActive,
+      selected: textMutedSelected,
+      focus: textMutedHover,
+      disabled: textDisabled,
+    },
+    default: {
+      default: ink,
+      hover: textDefaultHover,
+      active: textDefaultActive,
+      selected: textDefaultSelected,
+      focus: textDefaultHover,
+      disabled: textDisabled,
+    },
+    strong: {
+      default: textStrong,
+      hover: ink,
+      active: textDefaultHover,
+      selected: ink,
+      focus: ink,
+      disabled: textDisabled,
+    },
+    inverse: {
+      default: textInverse,
+      hover: textInverse,
+      active: textInverse,
+      selected: textInverse,
+      focus: textInverse,
+      disabled: alpha(textInverse, 0.5),
+    },
+  });
+
+  ensureNeutralMatrix(tokens, 'border', {
+    subtle: {
+      default: alpha(ink, 0.05 + contrastT * 0.1),
+      hover: alpha(ink, 0.08 + contrastT * 0.12),
+      active: alpha(ink, 0.1 + contrastT * 0.14),
+      selected: alpha(ink, 0.11 + contrastT * 0.16),
+      focus: alpha(ink, 0.14 + contrastT * 0.2),
+      disabled: alpha(ink, 0.04 + contrastT * 0.08),
+    },
+    muted: {
+      default: alpha(ink, 0.07 + contrastT * 0.12),
+      hover: alpha(ink, 0.1 + contrastT * 0.14),
+      active: alpha(ink, 0.12 + contrastT * 0.16),
+      selected: alpha(ink, 0.13 + contrastT * 0.17),
+      focus: alpha(ink, 0.15 + contrastT * 0.2),
+      disabled: alpha(ink, 0.05 + contrastT * 0.08),
+    },
+    default: {
+      default: border,
+      hover: alpha(ink, 0.1 + contrastT * 0.18),
+      active: alpha(ink, 0.12 + contrastT * 0.2),
+      selected: alpha(ink, 0.11 + contrastT * 0.19),
+      focus: alpha(ink, 0.14 + contrastT * 0.22),
+      disabled: alpha(ink, 0.05 + contrastT * 0.08),
+    },
+    strong: {
+      default: alpha(ink, 0.14 + contrastT * 0.2),
+      hover: alpha(ink, 0.16 + contrastT * 0.22),
+      active: alpha(ink, 0.18 + contrastT * 0.24),
+      selected: alpha(ink, 0.2 + contrastT * 0.24),
+      focus: alpha(ink, 0.22 + contrastT * 0.26),
+      disabled: alpha(ink, 0.06 + contrastT * 0.1),
+    },
+    inverse: {
+      default: alpha(textInverse, 0.35),
+      hover: alpha(textInverse, 0.45),
+      active: alpha(textInverse, 0.55),
+      selected: alpha(textInverse, 0.5),
+      focus: alpha(textInverse, 0.58),
+      disabled: alpha(textInverse, 0.22),
+    },
+  });
+
+  ensureNeutralMatrix(tokens, 'icon', {
+    subtle: {
+      default: textMuted,
+      hover: textSubtleHover,
+      active: textSubtleActive,
+      selected: textSubtleSelected,
+      focus: textSubtleHover,
+      disabled: textDisabled,
+    },
+    muted: {
+      default: textMuted,
+      hover: textMutedHover,
+      active: textMutedActive,
+      selected: textMutedSelected,
+      focus: textMutedHover,
+      disabled: textDisabled,
+    },
+    default: {
+      default: textSecondary,
+      hover: textDefaultHover,
+      active: textDefaultActive,
+      selected: textDefaultSelected,
+      focus: textDefaultHover,
+      disabled: textDisabled,
+    },
+    strong: {
+      default: textStrong,
+      hover: ink,
+      active: textDefaultHover,
+      selected: ink,
+      focus: ink,
+      disabled: textDisabled,
+    },
+    inverse: {
+      default: textInverse,
+      hover: textInverse,
+      active: textInverse,
+      selected: textInverse,
+      focus: textInverse,
+      disabled: alpha(textInverse, 0.5),
+    },
+  });
+
+  ensureNeutralMatrix(tokens, 'ring', {
+    subtle: {
+      default: alpha(ink, 0.1 + contrastT * 0.12),
+      hover: alpha(ink, 0.14 + contrastT * 0.14),
+      active: alpha(ink, 0.18 + contrastT * 0.18),
+      selected: alpha(ink, 0.2 + contrastT * 0.2),
+      focus: alpha(ink, 0.2 + contrastT * 0.2),
+      disabled: alpha(ink, 0.06 + contrastT * 0.1),
+    },
+    muted: {
+      default: alpha(ink, 0.12 + contrastT * 0.14),
+      hover: alpha(ink, 0.16 + contrastT * 0.16),
+      active: alpha(ink, 0.2 + contrastT * 0.2),
+      selected: alpha(ink, 0.22 + contrastT * 0.22),
+      focus: alpha(ink, 0.26 + contrastT * 0.22),
+      disabled: alpha(ink, 0.07 + contrastT * 0.1),
+    },
+    default: {
+      default: alpha(ink, 0.14 + contrastT * 0.16),
+      hover: alpha(ink, 0.18 + contrastT * 0.2),
+      active: alpha(ink, 0.22 + contrastT * 0.22),
+      selected: alpha(ink, 0.24 + contrastT * 0.24),
+      focus: alpha(ink, 0.28 + contrastT * 0.24),
+      disabled: alpha(ink, 0.08 + contrastT * 0.1),
+    },
+    strong: {
+      default: alpha(ink, 0.18 + contrastT * 0.2),
+      hover: alpha(ink, 0.22 + contrastT * 0.24),
+      active: alpha(ink, 0.26 + contrastT * 0.26),
+      selected: alpha(ink, 0.28 + contrastT * 0.28),
+      focus: alpha(ink, 0.32 + contrastT * 0.28),
+      disabled: alpha(ink, 0.1 + contrastT * 0.12),
+    },
+    inverse: {
+      default: alpha(textInverse, 0.3),
+      hover: alpha(textInverse, 0.36),
+      active: alpha(textInverse, 0.42),
+      selected: alpha(textInverse, 0.44),
+      focus: alpha(textInverse, 0.5),
+      disabled: alpha(textInverse, 0.2),
+    },
+  });
 
   return tokens;
 }
@@ -197,9 +487,27 @@ function buildFixedToneTokens(
     const borderHover = alpha(base, 0.38 + contrastT * 0.3);
     const borderFocus = alpha(base, 0.45 + contrastT * 0.3);
 
+    // Text: full emphasis ramp (UI state `default`). Regular semantic color is
+    // `text.<tone>.default.default` (e.g. `text.error.default.default`).
+    tokens[`text.${tone}.subtle.default`] = mix(
+      base,
+      background,
+      0.48 + contrastT * 0.1
+    );
+    tokens[`text.${tone}.muted.default`] = mix(
+      base,
+      ink,
+      0.18 + contrastT * 0.06
+    );
     tokens[`text.${tone}.default.default`] = base;
     tokens[`text.${tone}.default.hover`] = textHover;
     tokens[`text.${tone}.default.active`] = textActive;
+    tokens[`text.${tone}.strong.default`] = mix(
+      base,
+      ink,
+      0.4 + contrastT * 0.12
+    );
+    tokens[`text.${tone}.inverse.default`] = chooseReadableText(bgDefault, ink);
 
     tokens[`icon.${tone}.default.default`] = base;
     tokens[`icon.${tone}.default.hover`] = textHover;

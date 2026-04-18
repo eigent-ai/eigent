@@ -226,6 +226,7 @@
   "workspace-no-history-projects": "لا توجد مشاريع سابقة بعد",
   "workspace-session-single-agent": "وكيل واحد",
   "workspace-session-workforce": "القوى العاملة",
+  "workspace-get-things-done-with-eigent": "أنجِز مهامك مع Eigent",
   "project-task-placeholder": "صِف ما تريد إنجازه...",
   "cdp-browser-connection": "اتصال متصفح CDP",
   "cdp-browser-connection-description": "الاتصال بمتصفح Chrome مع تمكين التصحيح عن بُعد",

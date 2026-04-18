@@ -226,6 +226,7 @@
   "workspace-no-history-projects": "Aucun projet récent pour l'instant",
   "workspace-session-single-agent": "Agent unique",
   "workspace-session-workforce": "Workforce",
+  "workspace-get-things-done-with-eigent": "Accomplissez vos tâches avec Eigent",
   "project-task-placeholder": "Décrivez ce que vous souhaitez accomplir...",
   "cdp-browser-connection": "Connexion navigateur CDP",
   "cdp-browser-connection-description": "Se connecter à un navigateur Chrome avec le débogage à distance activé",

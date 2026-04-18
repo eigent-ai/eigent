@@ -49,7 +49,7 @@ export function WorkforceSidePanel({
     <>
       {isSidePanelVisible && (
         <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
-          <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
+          <div className="gap-2 py-2 pl-2 pr-4 relative z-50 flex w-full shrink-0 items-center justify-between">
             <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold truncate">
               {t('layout.aiWorkforce')}
             </span>
@@ -97,7 +97,7 @@ export function WorkforceSidePanel({
                 defaultValue: 'Active Agent Pool',
               })}
             >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
+              <ul className="text-ds-text-neutral-default-default text-body-sm space-y-1.5 p-0 m-0 list-none">
                 <li className="text-ds-text-neutral-muted-default px-1 py-1">
                   {t('layout.workforce-empty-list', {
                     defaultValue: 'No items yet',

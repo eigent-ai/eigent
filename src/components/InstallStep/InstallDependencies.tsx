@@ -23,7 +23,7 @@ export const InstallDependencies: React.FC = () => {
 
   return (
     <div className="inset-0 px-2 pb-2 pt-10 fixed !z-[100] flex h-full w-full items-center justify-center overflow-hidden">
-      <div className="gap-lg rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-md flex h-full w-full flex-row justify-center border-solid">
+      <div className="gap-lg rounded-2xl bg-ds-bg-neutral-subtle-default p-md flex h-full w-full flex-row justify-center">
         <div className="pt-6 flex h-full w-1/3">
           {/* {isInstalling.toString()} */}
           <div className="flex w-full flex-col">
@@ -59,7 +59,7 @@ export const InstallDependencies: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="rounded-2xl bg-ds-bg-neutral-strong-default p-md flex h-full w-2/3">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default p-md flex h-full w-2/3">
           <CarouselStep />
         </div>
       </div>

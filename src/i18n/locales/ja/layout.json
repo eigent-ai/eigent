@@ -226,6 +226,7 @@
   "workspace-no-history-projects": "まだ履歴プロジェクトはありません",
   "workspace-session-single-agent": "シングルエージェント",
   "workspace-session-workforce": "ワークフォース",
+  "workspace-get-things-done-with-eigent": "Eigentでタスクを進めよう",
   "project-task-placeholder": "達成したいことを説明してください...",
   "cdp-browser-connection": "CDP ブラウザ接続",
   "cdp-browser-connection-description": "リモートデバッグが有効な Chrome ブラウザに接続",

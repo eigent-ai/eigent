@@ -19,20 +19,68 @@ import {
 import { DEFAULT_THEME_CATALOG } from '@/lib/themeTokens/catalog';
 import type { Mode } from '@/lib/themeTokens/types';
 import { useAuthStore } from '@/store/authStore';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const { appearance, lightColorThemeId, darkColorThemeId, themeContrast } =
-    useAuthStore();
+  const {
+    appearance,
+    appearanceMode,
+    lightColorThemeId,
+    darkColorThemeId,
+    customThemeCatalog,
+    themeContrast,
+    setResolvedAppearance,
+  } = useAuthStore();
 
-  const resolvedMode = appearance === 'dark' ? 'dark' : 'light';
+  const [systemMode, setSystemMode] = useState<Mode>(() => {
+    if (typeof window === 'undefined') return 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  });
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = () => {
+      setSystemMode(media.matches ? 'dark' : 'light');
+    };
+    update();
+
+    media.addEventListener('change', update);
+    return () => {
+      media.removeEventListener('change', update);
+    };
+  }, []);
+
+  const resolvedMode: Mode =
+    appearanceMode === 'system' ? systemMode : appearanceMode;
   const colorThemeId =
     resolvedMode === 'dark' ? darkColorThemeId : lightColorThemeId;
+  const mergedCatalog = useMemo(
+    () => ({
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        ...customThemeCatalog.light,
+      },
+      dark: {
+        ...DEFAULT_THEME_CATALOG.dark,
+        ...customThemeCatalog.dark,
+      },
+    }),
+    [customThemeCatalog.dark, customThemeCatalog.light]
+  );
+
+  useEffect(() => {
+    if (appearance !== resolvedMode) {
+      setResolvedAppearance(resolvedMode);
+    }
+  }, [appearance, resolvedMode, setResolvedAppearance]);
 
   useEffect(() => {
     const root = document.documentElement;
 
     root.setAttribute('data-theme', resolvedMode);
+    root.setAttribute('data-theme-mode', appearanceMode);
     root.setAttribute('data-color-theme', colorThemeId);
     root.style.setProperty('--ds-theme-contrast', String(themeContrast));
 
@@ -43,9 +91,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         colorThemeId,
         contrast: themeContrast,
       }),
-      root
+      root,
+      mergedCatalog
     );
-  }, [colorThemeId, resolvedMode, themeContrast]);
+  }, [
+    appearanceMode,
+    colorThemeId,
+    mergedCatalog,
+    resolvedMode,
+    themeContrast,
+  ]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -53,11 +108,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const api = {
       listThemes(mode?: Mode) {
         if (mode) {
-          return Object.keys(DEFAULT_THEME_CATALOG[mode] ?? {});
+          return Object.keys(mergedCatalog[mode] ?? {});
         }
         return {
-          light: Object.keys(DEFAULT_THEME_CATALOG.light ?? {}),
-          dark: Object.keys(DEFAULT_THEME_CATALOG.dark ?? {}),
+          light: Object.keys(mergedCatalog.light ?? {}),
+          dark: Object.keys(mergedCatalog.dark ?? {}),
         };
       },
       setTheme(mode: Mode, themeId: string) {
@@ -70,9 +125,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const state = useAuthStore.getState();
         return {
           appearance: state.appearance,
+          appearanceMode: state.appearanceMode,
           lightColorThemeId: state.lightColorThemeId,
           darkColorThemeId: state.darkColorThemeId,
           themeContrast: state.themeContrast,
+          customThemeCatalog: state.customThemeCatalog,
         };
       },
     };
@@ -82,7 +139,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         __eigentThemeV1?: typeof api;
       }
     ).__eigentThemeV1 = api;
-  }, []);
+  }, [mergedCatalog]);
 
   return <>{children}</>;
 }

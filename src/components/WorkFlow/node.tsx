@@ -398,10 +398,10 @@ export function Node({ id, data }: NodeProps) {
               : 'w-[342px]'
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
-        } rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default flex overflow-hidden border border-solid ${
+        } rounded-xl border-ds-border-neutral-subtle-default shadow-sm bg-ds-bg-neutral-subtle-default flex overflow-hidden border border-solid ${
           getCurrentTask()?.activeAgent === id
             ? `${agentMap[data.type]?.borderColor} z-50`
-            : 'border-ds-border-neutral-subtle-default z-10'
+            : 'border-ds-border-neutral-default-default z-10'
         } ease-in-out transition-all duration-300 ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
@@ -809,7 +809,7 @@ export function Node({ id, data }: NodeProps) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 24 }}
               transition={{ duration: 0.3, ease: 'easeIn' }}
-              className="gap-sm rounded-r-xl bg-ds-bg-neutral-muted-disabled py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
+              className="gap-sm rounded-r-xl bg-ds-bg-neutral-subtle-hover py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
             >
               <div
                 ref={logRef}

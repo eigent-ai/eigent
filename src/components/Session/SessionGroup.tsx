@@ -62,7 +62,7 @@ export default function Sessions({
         className
       )}
     >
-      <div className="h-11 gap-2 px-2 flex w-full shrink-0 items-center justify-between">
+      <div className="h-11 gap-2 px-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center justify-between border-x-0 border-t-0 border-b-1 border-solid">
         <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
           <span className="truncate">
             {t('layout.sessions-full-title', {

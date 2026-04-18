@@ -72,16 +72,16 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
     // Show a loading state when no tasks have been parsed yet
     return (
       <div className="gap-2 py-sm px-2 flex h-auto w-full flex-col transition-all duration-300">
-        <div className="rounded-xl py-sm relative h-auto w-full overflow-hidden bg-[var(--ds-bg-neutral-strong-default)] backdrop-blur-[5px]">
+        <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
           <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={100} className="h-[2px] w-full" />
           </div>
           <div className="gap-2 px-sm py-2 flex items-center">
             <LoaderCircle
               size={16}
-              className="animate-spin text-[color:var(--ds-icon-information-default-default)]"
+              className="animate-spin text-ds-icon-information-default-default"
             />
-            <span className="animate-pulse text-sm text-[color:var(--ds-text-neutral-muted-default)]">
+            <span className="animate-pulse text-sm text-ds-text-neutral-subtle-default">
               {t('layout.task-splitting')}...
             </span>
           </div>
@@ -92,7 +92,7 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
 
   return (
     <div className="gap-2 py-sm px-2 flex h-auto w-full flex-col transition-all duration-300">
-      <div className="rounded-xl py-sm relative h-auto w-full overflow-hidden bg-[var(--ds-bg-neutral-strong-default)] backdrop-blur-[5px]">
+      <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
         {/* Progress bar at top */}
         <div className="left-0 top-0 absolute w-full bg-transparent">
           <Progress value={100} className="h-[2px] w-full" />
@@ -101,7 +101,7 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
         {/* Task type badge */}
         <div className="mb-2 gap-2 px-sm flex items-center">
           <TaskType type={1} />
-          <span className="text-xs font-medium text-[color:var(--ds-text-neutral-subtle-default)]">
+          <span className="text-xs font-medium text-ds-text-neutral-subtle-default">
             {t('layout.tasks')} {tasks.length}
           </span>
         </div>
@@ -122,22 +122,22 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
                   {isCurrentlyStreaming ? (
                     <LoaderCircle
                       size={13}
-                      className="animate-spin text-[color:var(--ds-icon-information-default-default)]"
+                      className="animate-spin text-ds-icon-information-default-default"
                     />
                   ) : (
                     <CircleDashed
                       size={13}
-                      className="text-[color:var(--ds-icon-neutral-muted-default)]"
+                      className="text-ds-icon-neutral-muted-default"
                     />
                   )}
                 </div>
 
                 {/* Task content */}
-                <div className="min-h-4 pb-2 relative flex w-full items-start border-[0px] border-b border-solid border-[color:var(--ds-border-neutral-subtle-default)]">
-                  <span className="text-xs leading-[20px] text-[color:var(--ds-text-neutral-default-default)]">
+                <div className="min-h-4 pb-2 border-ds-border-neutral-subtle-default relative flex w-full items-start border-[0px] border-b border-solid">
+                  <span className="text-xs text-ds-text-neutral-default-default leading-[20px]">
                     {task}
                     {isCurrentlyStreaming && (
-                      <span className="ml-0.5 h-4 w-1 animate-pulse inline-block bg-[var(--ds-icon-information-default-default)]" />
+                      <span className="ml-0.5 h-4 w-1 animate-pulse bg-ds-icon-information-default-default inline-block" />
                     )}
                   </span>
                 </div>

@@ -177,7 +177,7 @@ export function TaskCard({
   return (
     <div>
       <div className="gap-2 px-sm flex h-auto w-full flex-col transition-all duration-300">
-        <div className="rounded-xl py-sm relative h-auto w-full overflow-hidden bg-[var(--ds-bg-neutral-strong-default)]">
+        <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
           <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
@@ -290,7 +290,7 @@ export function TaskCard({
                 {taskType === 2 && (
                   <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
                     {(isExpanded || isAllTaskFinished) && (
-                      <div className="text-xs font-medium leading-17 text-[color:var(--ds-text-neutral-subtle-default)]">
+                      <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
                         {taskRunning?.filter(
                           (task) =>
                             task.status === TaskStatus.COMPLETED ||

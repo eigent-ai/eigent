@@ -38,7 +38,7 @@ export function SingleAgentSidePanel({
         'relative'
       )}
     >
-      <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
+      <div className="gap-2 py-2 pl-2 pr-4 relative z-50 flex w-full shrink-0 items-center justify-between">
         <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold truncate">
           {t('layout.workspace-session-single-agent')}
         </span>

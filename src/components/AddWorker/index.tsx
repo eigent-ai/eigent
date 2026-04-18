@@ -443,8 +443,8 @@ export function AddWorker({
           )}
         </DialogTrigger>
         <DialogContent
-          size="sm"
-          className="gap-0 p-0"
+          size="md"
+          className="gap-0 p-0 min-h-[60vh]"
           onInteractOutside={(e: any) => {
             if (isValidating) e.preventDefault();
           }}
@@ -470,11 +470,11 @@ export function AddWorker({
           {showEnvConfig ? (
             // environment configuration interface
             <>
-              <DialogContentSection className="gap-3 bg-white-100% p-md flex flex-col">
+              <DialogContentSection className="gap-3 p-md flex flex-col">
                 <div className="gap-md flex items-center">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
-                    <div className="text-base font-bold leading-9 text-ds-text-brand-default-default">
+                    <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
                       {activeMcp?.name}
                     </div>
                     <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">

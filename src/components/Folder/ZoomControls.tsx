@@ -31,7 +31,7 @@ export const ZoomControls = ({
 }: ZoomControlsProps) => {
   return (
     <div className="group top-0 absolute left-1/2 z-10 -translate-x-1/2">
-      <div className="bg-ds-bg-neutral-default-hover/90 border-ds-border-neutral-strong-default/50 gap-1 px-3 py-1.5 shadow-lg backdrop-blur-xl ease-out flex translate-y-[calc(-100%-8px)] items-center rounded-full border transition-transform duration-300 group-hover:translate-y-[20px]">
+      <div className="bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-default gap-1 px-3 py-1.5 shadow-lg backdrop-blur-xl ease-out flex translate-y-[calc(-100%-8px)] items-center rounded-full border transition-transform duration-300 group-hover:translate-y-[20px]">
         <Button
           size="xs"
           buttonContent="icon-only"

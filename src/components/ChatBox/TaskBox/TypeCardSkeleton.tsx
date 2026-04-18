@@ -27,23 +27,23 @@ export const TypeCardSkeleton = ({
   return (
     <div>
       <div className="gap-2 py-sm px-2 flex h-auto w-full flex-col transition-all duration-300">
-        <div className="rounded-xl py-sm relative h-auto w-full overflow-hidden bg-[var(--ds-bg-neutral-strong-default)] backdrop-blur-[5px]">
+        <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
           <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={100} className="h-[2px] w-full" />
           </div>
           <div className="mb-2.5 gap-sm px-sm text-sm font-bold leading-13 flex flex-col">
             <div
-              className={`h-5 w-full rounded-full bg-[var(--ds-bg-neutral-muted-disabled)] ${
+              className={`h-5 bg-ds-bg-neutral-subtle-disabled w-full rounded-full ${
                 !isTakeControl ? 'animate-pulse' : ''
               }`}
             ></div>
             <div
-              className={`h-5 w-1/2 rounded-full bg-[var(--ds-bg-neutral-muted-disabled)] ${
+              className={`h-5 bg-ds-bg-neutral-subtle-disabled w-1/2 rounded-full ${
                 !isTakeControl ? 'animate-pulse' : ''
               }`}
             ></div>
             <div
-              className={`h-5 w-1/2 rounded-full bg-[var(--ds-bg-neutral-muted-disabled)] ${
+              className={`h-5 bg-ds-bg-neutral-subtle-disabled w-1/2 rounded-full ${
                 !isTakeControl ? 'animate-pulse' : ''
               }`}
             ></div>
@@ -56,7 +56,7 @@ export const TypeCardSkeleton = ({
 
             <div className="ease-in-out transition-all duration-300">
               <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
-                <div className="text-xs font-medium leading-17 text-[color:var(--ds-text-neutral-subtle-default)]">
+                <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
                   {t('layout.tasks')}
                 </div>
                 <Button variant="ghost" size="xs" buttonContent="icon-only">
@@ -75,24 +75,24 @@ export const TypeCardSkeleton = ({
                   return (
                     <div
                       key={`taskList-${task}`}
-                      className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex cursor-pointer border border-solid border-transparent bg-[var(--ds-bg-neutral-default-default)] transition-all duration-300`}
+                      className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 bg-ds-bg-neutral-default-default flex cursor-pointer border border-solid border-transparent transition-all duration-300`}
                     >
                       <div className="pt-0.5">
                         <LoaderCircle
                           size={16}
-                          className={`text-[color:var(--ds-icon-status-running-default-default)] ${
+                          className={`text-ds-icon-status-running-default-default ${
                             !isTakeControl ? 'animate-spin' : ''
                           }`}
                         />
                       </div>
                       <div className="gap-sm flex flex-1 flex-col items-start justify-center">
                         <div
-                          className={`h-5 text-sm font-medium leading-13 w-full rounded-full bg-[var(--ds-bg-neutral-muted-disabled)] ${
+                          className={`h-5 text-sm font-medium leading-13 bg-ds-bg-neutral-subtle-disabled w-full rounded-full ${
                             !isTakeControl ? 'animate-pulse' : ''
                           }`}
                         ></div>
                         <div
-                          className={`h-5 text-sm font-medium leading-13 w-1/3 rounded-full bg-[var(--ds-bg-neutral-muted-disabled)] ${
+                          className={`h-5 text-sm font-medium leading-13 bg-ds-bg-neutral-subtle-disabled w-1/3 rounded-full ${
                             !isTakeControl ? 'animate-pulse' : ''
                           }`}
                         ></div>

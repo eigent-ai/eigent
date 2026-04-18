@@ -18,10 +18,11 @@ import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Dashboard/Navigation';
 import useAppVersion from '@/hooks/use-app-version';
+import Appearance from '@/pages/Setting/Appearance';
 import General from '@/pages/Setting/General';
 import Privacy from '@/pages/Setting/Privacy';
 import { useAuthStore } from '@/store/authStore';
-import { Fingerprint, Settings, TagIcon } from 'lucide-react';
+import { Fingerprint, Palette, Settings, TagIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -40,6 +41,12 @@ export default function Setting() {
       name: t('setting.general'),
       icon: Settings,
       path: '/setting/general',
+    },
+    {
+      id: 'appearance',
+      name: t('setting.appearance-tab'),
+      icon: Palette,
+      path: '/setting/appearance',
     },
     {
       id: 'privacy',
@@ -122,6 +129,7 @@ export default function Setting() {
         <div className="flex h-auto w-full flex-1 flex-col">
           <div className="gap-4 flex flex-col">
             {activeTab === 'general' && <General />}
+            {activeTab === 'appearance' && <Appearance />}
             {activeTab === 'privacy' && <Privacy />}
           </div>
         </div>

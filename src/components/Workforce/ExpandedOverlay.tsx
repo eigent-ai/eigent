@@ -181,7 +181,7 @@ export default function ExpandedOverlay({
             onClick={onClose}
           />
           <motion.div
-            className="border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
+            className="border-ds-border-neutral-inverse-default bg-ds-bg-neutral-muted-default min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
             role="dialog"
             aria-modal="true"
             aria-label={titleLabel}

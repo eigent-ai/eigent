@@ -48,7 +48,7 @@ export function BottomAction({
   }
 
   return (
-    <div className="pt-2 mt-auto w-full shrink-0 border-t border-[var(--ds-border-neutral-default-default)]">
+    <div className="pt-2 mt-auto w-full shrink-0">
       <div className="min-w-0 gap-1 flex w-full flex-col overflow-hidden">
         <div className="min-h-0 min-w-0 flex w-full">
           <TooltipSimple
@@ -64,7 +64,7 @@ export function BottomAction({
               aria-label={endProjectAriaLabel}
             >
               <Power
-                className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-status-error-default-default)]"
+                className="h-4 w-4 text-ds-icon-error-default-default shrink-0"
                 aria-hidden
               />
               <motion.span
@@ -80,7 +80,7 @@ export function BottomAction({
                 <span
                   className={cn(
                     WORKSPACE_TAB_LABEL_CLASS,
-                    'font-medium text-body-sm !text-[color:var(--ds-text-status-error-strong-default)]'
+                    'font-medium text-body-sm !text-ds-text-error-default-default'
                   )}
                 >
                   {endProjectLabel}

@@ -805,6 +805,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           showCloseButton={true}
           onClose={handleClose}
           aria-describedby={undefined}
+          className="min-h-0 h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)]"
         >
           <DialogHeader title={getDialogTitle()} />
           <DialogContentSection className="scrollbar-overlay min-h-0 p-0 flex-1">

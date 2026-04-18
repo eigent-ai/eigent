@@ -52,6 +52,7 @@ export const FIXED_TONES = [
   'document',
   'success',
   'caution',
+  'error',
   'warning',
   'information',
 ] as const;

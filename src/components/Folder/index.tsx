@@ -19,20 +19,38 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import type { LucideIcon } from 'lucide-react';
 import {
   ChevronDown,
   ChevronRight,
   CodeXml,
   Download,
+  File,
+  FileArchive,
+  FileCode,
+  FileJson,
   FileText,
   Folder as FolderIcon,
   FolderOpen,
+  Image,
+  Music,
   Search,
   SquareTerminal,
+  Table2,
+  Video,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createElement,
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import FolderComponent from './FolderComponent';
 
 import { proxyFetchGet } from '@/api/http';
@@ -48,9 +66,132 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ZoomControls } from './ZoomControls';
 
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
-const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
-const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
+const IMAGE_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'bmp',
+  'webp',
+  'svg',
+  'ico',
+  'heic',
+  'avif',
+];
+const AUDIO_EXTENSIONS = [
+  'mp3',
+  'wav',
+  'ogg',
+  'flac',
+  'aac',
+  'm4a',
+  'wma',
+  'opus',
+  'm4b',
+  'aiff',
+  'alac',
+];
+const VIDEO_EXTENSIONS = [
+  'mp4',
+  'webm',
+  'mov',
+  'avi',
+  'mkv',
+  'flv',
+  'wmv',
+  'm4v',
+  'mpg',
+  'mpeg',
+  '3gp',
+  'ogv',
+];
+
+const ARCHIVE_EXTENSIONS = [
+  'zip',
+  'rar',
+  '7z',
+  'tar',
+  'gz',
+  'bz2',
+  'xz',
+  'tgz',
+  'lz4',
+  'zst',
+];
+
+const CODE_EXTENSIONS = [
+  'js',
+  'mjs',
+  'cjs',
+  'ts',
+  'tsx',
+  'jsx',
+  'py',
+  'java',
+  'go',
+  'rs',
+  'cpp',
+  'cc',
+  'cxx',
+  'c',
+  'h',
+  'hpp',
+  'cs',
+  'php',
+  'rb',
+  'swift',
+  'kt',
+  'kts',
+  'sql',
+  'vue',
+  'svelte',
+  'wasm',
+  'ps1',
+  'bat',
+  'cmd',
+  'gradle',
+  'cmake',
+  'make',
+  'dockerfile',
+];
+
+const MARKUP_STYLE_EXTENSIONS = [
+  'html',
+  'htm',
+  'xml',
+  'css',
+  'scss',
+  'sass',
+  'less',
+  'yaml',
+  'yml',
+];
+
+/** Office / binary documents — use generic {@link File} icon */
+const DOCUMENT_EXTENSIONS = [
+  'pdf',
+  'doc',
+  'docx',
+  'odt',
+  'ppt',
+  'pptx',
+  'odp',
+  'key',
+  'pages',
+  'rtf',
+];
+
+const PLAIN_TEXT_EXTENSIONS = [
+  'txt',
+  'md',
+  'markdown',
+  'log',
+  'rst',
+  'adoc',
+  'tex',
+];
+
+const SPREADSHEET_EXTENSIONS = ['xls', 'xlsx', 'csv', 'ods', 'tsv'];
 
 type FileTypeTarget = {
   name?: string;
@@ -116,6 +257,37 @@ function isVideoFile(file: FileTypeTarget) {
   return VIDEO_EXTENSIONS.includes(getFileType(file));
 }
 
+function isArchiveFile(file: FileTypeTarget) {
+  return ARCHIVE_EXTENSIONS.includes(getFileType(file));
+}
+
+function isCodeLikeFile(file: FileTypeTarget) {
+  const ext = getFileType(file);
+  if (!ext) return false;
+  if (CODE_EXTENSIONS.includes(ext)) return true;
+  if (MARKUP_STYLE_EXTENSIONS.includes(ext)) return true;
+  return false;
+}
+
+/** Leading icon for file tree leaves (when no custom `icon` on the node). */
+function getLeafFileTreeIcon(file: FileTypeTarget): LucideIcon {
+  if (isImageFile(file)) return Image;
+  if (isVideoFile(file)) return Video;
+  if (isAudioFile(file)) return Music;
+  if (isArchiveFile(file)) return FileArchive;
+
+  const ext = getFileType(file);
+  if (!ext) return File;
+
+  if (ext === 'json' || ext === 'jsonl' || ext === 'jsonc') return FileJson;
+  if (isCodeLikeFile(file)) return FileCode;
+  if (SPREADSHEET_EXTENSIONS.includes(ext)) return Table2;
+  if (DOCUMENT_EXTENSIONS.includes(ext)) return File;
+  if (PLAIN_TEXT_EXTENSIONS.includes(ext)) return FileText;
+
+  return File;
+}
+
 // Type definitions
 interface FileTreeNode {
   name: string;
@@ -146,6 +318,38 @@ function filterFileTree(node: FileTreeNode, query: string): FileTreeNode {
   return { ...node, children: filteredChildren };
 }
 
+/** Keep folder hierarchy; only include file leaves whose `path` is in the set. */
+function filterTreeToAllowedLeafPaths(
+  node: FileTreeNode,
+  allowedLeafPaths: Set<string>
+): FileTreeNode | null {
+  if (!node.children?.length) return null;
+  const children: FileTreeNode[] = [];
+  for (const child of node.children) {
+    if (child.isFolder) {
+      const nested = filterTreeToAllowedLeafPaths(child, allowedLeafPaths);
+      if (nested?.children?.length) {
+        children.push(nested);
+      }
+    } else if (allowedLeafPaths.has(child.path)) {
+      children.push(child);
+    }
+  }
+  if (!children.length) return null;
+  return { ...node, children };
+}
+
+function pathsFromFileList(res: unknown[] | null): Set<string> {
+  const s = new Set<string>();
+  for (const item of res || []) {
+    const p = (item as { path?: string; url?: string })?.path;
+    const u = (item as { url?: string })?.url;
+    if (p) s.add(p);
+    else if (u) s.add(u);
+  }
+  return s;
+}
+
 interface FileInfo {
   name: string;
   path: string;
@@ -155,6 +359,19 @@ interface FileInfo {
   content?: string;
   relativePath?: string;
   isRemote?: boolean;
+}
+
+/** Breadcrumb: project root label → parent folders (from `relativePath`) → file name. */
+function getFileBreadcrumbSegments(
+  file: FileInfo,
+  options: { projectRootLabel: string; remoteRootLabel: string }
+): string[] {
+  if (file.isRemote) {
+    return [options.remoteRootLabel, file.name];
+  }
+  const rel = (file.relativePath || '').replace(/\\/g, '/').trim();
+  const folders = rel ? rel.split('/').filter(Boolean) : [];
+  return [options.projectRootLabel, ...folders, file.name];
 }
 
 // FileTree component to render nested file structure
@@ -180,9 +397,12 @@ export const FileTree: React.FC<FileTreeProps> = ({
   if (!node.children || node.children.length === 0) return null;
 
   return (
-    <div className={level > 0 ? 'ml-4' : ''}>
+    <div className="min-w-0">
       {node.children.map((child) => {
         const isExpanded = expandedFolders.has(child.path);
+        const hasNested = Boolean(
+          child.isFolder && isExpanded && child.children?.length
+        );
         const fileInfo: FileInfo = {
           name: child.name,
           path: child.path,
@@ -192,9 +412,17 @@ export const FileTree: React.FC<FileTreeProps> = ({
           isRemote: child.isRemote,
         };
 
+        const isRowSelected = selectedFile?.path === child.path;
+        const rowIconClass = `size-4 shrink-0 ${
+          isRowSelected
+            ? 'text-ds-icon-neutral-default-default'
+            : 'text-ds-icon-neutral-muted-default'
+        }`;
+
         return (
-          <div key={child.path}>
+          <div key={child.path} className="min-w-0">
             <button
+              type="button"
               onClick={() => {
                 if (child.isFolder) {
                   onToggleFolder(child.path);
@@ -202,55 +430,50 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`text-ds-text-brand-default-default gap-2 rounded-xl bg-fill-fill-transparent p-2 text-sm backdrop-blur-lg hover:bg-fill-fill-transparent-active flex w-full items-center justify-start text-left transition-colors ${
-                selectedFile?.path === child.path
-                  ? 'bg-fill-fill-transparent-active'
-                  : ''
+              className={`rounded-lg px-2 py-1.5 min-w-0 gap-2 mb-1 hover:bg-ds-bg-neutral-subtle-hover flex w-full flex-row items-center justify-start text-left transition-colors ${
+                isRowSelected
+                  ? 'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
+                  : 'text-ds-text-neutral-muted-default bg-transparent'
               }`}
             >
               {child.isFolder ? (
-                <span className="h-4 w-4 flex flex-shrink-0 items-center justify-center">
+                <span className="w-4 inline-flex shrink-0 items-center justify-start">
                   {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className={rowIconClass} />
                   ) : (
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className={rowIconClass} />
                   )}
                 </span>
               ) : (
-                <span
-                  className="h-4 w-4 flex flex-shrink-0 items-center justify-center"
-                  aria-hidden
-                />
+                createElement(
+                  child.icon ??
+                    getLeafFileTreeIcon({
+                      name: child.name,
+                      path: child.path,
+                      type: child.type,
+                    }),
+                  { className: rowIconClass }
+                )
               )}
 
-              {child.isFolder ? (
-                <FolderIcon className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-              ) : child.icon ? (
-                <child.icon className="h-5 w-5 flex-shrink-0" />
-              ) : (
-                <FileText className="h-5 w-5 flex-shrink-0" />
-              )}
-
-              <span
-                className={`leading-5 truncate text-[13px] ${
-                  child.isFolder ? 'font-semibold' : 'font-medium'
-                }`}
-              >
+              <span className="min-w-0 text-body-sm font-medium leading-normal flex-1 truncate text-left">
                 {child.name}
               </span>
             </button>
 
-            {child.isFolder && isExpanded && child.children && (
-              <FileTree
-                node={child}
-                level={level + 1}
-                selectedFile={selectedFile}
-                expandedFolders={expandedFolders}
-                onToggleFolder={onToggleFolder}
-                onSelectFile={onSelectFile}
-                isShowSourceCode={isShowSourceCode}
-              />
-            )}
+            {hasNested ? (
+              <div className="border-ds-border-neutral-subtle-default ml-2 pl-2.5 border-l border-solid">
+                <FileTree
+                  node={child}
+                  level={level + 1}
+                  selectedFile={selectedFile}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={onToggleFolder}
+                  onSelectFile={onSelectFile}
+                  isShowSourceCode={isShowSourceCode}
+                />
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -310,11 +533,41 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     },
   ]);
   const hasFetchedRemote = useRef(false);
+  const priorFilePathsSnapshotRef = useRef<Set<string>>(new Set());
+  const [fileTreeScope, setFileTreeScope] = useState<'all' | 'new'>('all');
+  const [newFilePathsAccumulated, setNewFilePathsAccumulated] = useState<
+    Set<string>
+  >(() => new Set());
+  const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
 
   const filteredFileTree = useMemo(
     () => filterFileTree(fileTree, fileSearchQuery),
     [fileTree, fileSearchQuery]
   );
+
+  const sidebarFileTree = useMemo(() => {
+    if (fileTreeScope === 'all') return filteredFileTree;
+    if (newFilePathsAccumulated.size === 0) {
+      return {
+        name: 'root',
+        path: '',
+        children: [],
+        isFolder: true,
+      } satisfies FileTreeNode;
+    }
+    const filtered = filterTreeToAllowedLeafPaths(
+      filteredFileTree,
+      newFilePathsAccumulated
+    );
+    return (
+      filtered ?? {
+        name: 'root',
+        path: '',
+        children: [],
+        isFolder: true,
+      }
+    );
+  }, [filteredFileTree, fileTreeScope, newFilePathsAccumulated]);
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
     if (file.type === 'zip') {
@@ -450,6 +703,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     setFileTree({ name: 'root', path: '', children: [], isFolder: true });
     setFileGroups([{ folder: 'Reports', files: [] }]);
     setExpandedFolders(new Set());
+    priorFilePathsSnapshotRef.current = new Set();
+    setNewFilePathsAccumulated(new Set());
+    setFileTreeScope('all');
   }, [chatStore?.activeTaskId]);
 
   useEffect(() => {
@@ -515,6 +771,27 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           tree = buildFileTree(res || []);
         }
       }
+      if (res && Array.isArray(res)) {
+        const currentPaths = pathsFromFileList(res);
+        const prior = priorFilePathsSnapshotRef.current;
+        const isFirstPopulate = prior.size === 0 && currentPaths.size > 0;
+        if (isFirstPopulate) {
+          priorFilePathsSnapshotRef.current = new Set(currentPaths);
+        } else {
+          const added = new Set<string>();
+          for (const p of currentPaths) {
+            if (!prior.has(p)) added.add(p);
+          }
+          priorFilePathsSnapshotRef.current = new Set(currentPaths);
+          if (added.size > 0) {
+            setNewFilePathsAccumulated((prev) => {
+              const next = new Set(prev);
+              for (const p of added) next.add(p);
+              return next;
+            });
+          }
+        }
+      }
       setFileTree(tree);
       // Keep the old structure for compatibility
       setFileGroups((prev) => {
@@ -562,6 +839,19 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);
 
+  const fileBreadcrumbSegments = useMemo(() => {
+    if (!selectedFile) return [];
+    const projectRootLabel = workingFolderPath
+      ? workingFolderBasename(workingFolderPath)
+      : t('chat.agent-folder');
+    return getFileBreadcrumbSegments(selectedFile, {
+      projectRootLabel,
+      remoteRootLabel: t('folder.file-path-remote-root', {
+        defaultValue: 'Remote',
+      }),
+    });
+  }, [selectedFile, workingFolderPath, t]);
+
   if (!chatStore) {
     return <div>Loading...</div>;
   }
@@ -598,23 +888,40 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="gap-2 p-2 flex w-full shrink-0 items-center">
-        <div className="min-w-0 gap-1 flex max-w-[min(20rem,45%)] items-center">
+      <div className="gap-2 p-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
+        <div className="min-w-0 flex max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            disabled
-            className="shrink-0 cursor-not-allowed opacity-60"
-            aria-label={t('chat.choose-agent-work-folder', {
-              defaultValue: 'Choose folder for agent',
-            })}
-            title={t('chat.choose-agent-work-folder-placeholder', {
-              defaultValue: 'Choose a folder on your computer (coming soon)',
-            })}
+            aria-pressed={isFileSidebarOpen}
+            className="text-ds-icon-neutral-default-default shrink-0"
+            aria-label={
+              isFileSidebarOpen
+                ? t('chat.hide-file-sidebar', {
+                    defaultValue: 'Hide file sidebar',
+                  })
+                : t('chat.show-file-sidebar', {
+                    defaultValue: 'Show file sidebar',
+                  })
+            }
+            title={
+              isFileSidebarOpen
+                ? t('chat.hide-file-sidebar', {
+                    defaultValue: 'Hide file sidebar',
+                  })
+                : t('chat.show-file-sidebar', {
+                    defaultValue: 'Show file sidebar',
+                  })
+            }
+            onClick={() => setIsFileSidebarOpen((open) => !open)}
           >
-            <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {isFileSidebarOpen ? (
+              <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : (
+              <FolderIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            )}
           </Button>
           <span
             className="text-ds-text-neutral-default-default text-body-sm min-w-0 font-semibold truncate leading-none"
@@ -689,59 +996,130 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         </div>
       </div>
 
-      <div className="min-h-0 border-ds-border-neutral-subtle-default flex flex-1 overflow-hidden border-x-0 border-b-0 border-solid">
+      <div className="min-h-0 flex flex-1 overflow-hidden">
         {/* sidebar */}
-        <div className="border-ds-border-neutral-subtle-default w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
-          <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
-            <div className="h-10 text-ds-text-neutral-default-default px-3 py-2 font-bold text-body-sm">
-              {t('chat.files')}
+        {isFileSidebarOpen ? (
+          <div className="border-ds-border-neutral-subtle-default w-64 flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
+            <div className="px-1 h-8 flex items-center">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="text"
+                  >
+                    <span className="min-w-0 font-bold truncate text-left">
+                      {t('chat.files')}
+                    </span>
+                    <ChevronDown className="size-3.5 shrink-0 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="bottom"
+                  align="start"
+                  className="border-ds-border-neutral-default-default bg-dropdown-bg z-50 min-w-[10rem]"
+                >
+                  <DropdownMenuRadioGroup
+                    value={fileTreeScope}
+                    onValueChange={(v) =>
+                      setFileTreeScope(v === 'new' ? 'new' : 'all')
+                    }
+                  >
+                    <DropdownMenuRadioItem
+                      value="all"
+                      className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                    >
+                      {t('folder.files-scope-all', {
+                        defaultValue: 'All files',
+                      })}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      value="new"
+                      className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                    >
+                      {t('folder.files-scope-new', {
+                        defaultValue: 'New files',
+                      })}
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <div className="p-2">
-              <FileTree
-                node={filteredFileTree}
-                selectedFile={selectedFile}
-                expandedFolders={expandedFolders}
-                onToggleFolder={toggleFolder}
-                onSelectFile={(file) =>
-                  selectedFileChange(file, isShowSourceCode)
-                }
-                isShowSourceCode={isShowSourceCode}
-              />
+            <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
+              <div className="pl-1.5 h-full">
+                <FileTree
+                  node={sidebarFileTree}
+                  selectedFile={selectedFile}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={toggleFolder}
+                  onSelectFile={(file) =>
+                    selectedFileChange(file, isShowSourceCode)
+                  }
+                  isShowSourceCode={isShowSourceCode}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         {/* content */}
-        <div className="min-w-0 flex flex-1 flex-col overflow-hidden">
+        <div className="min-w-0 bg-ds-bg-neutral-muted-default flex flex-1 flex-col overflow-hidden">
           {/* head */}
           {selectedFile && (
-            <div className="px-3 py-2 flex-shrink-0">
-              <div className="gap-2 flex items-center justify-between">
-                <div
-                  onClick={() => {
-                    // if file is remote, don't call reveal-in-folder
-                    if (selectedFile.isRemote) {
-                      downloadByBrowser(selectedFile.path);
-                      return;
-                    }
-                    window.ipcRenderer.invoke(
-                      'reveal-in-folder',
-                      selectedFile.path
-                    );
-                  }}
-                  className="min-w-0 gap-2 flex flex-1 cursor-pointer items-center overflow-hidden"
+            <div className="pl-3 pr-2 h-8 gap-2 flex flex-shrink-0 items-center justify-between">
+              <div
+                onClick={() => {
+                  // if file is remote, don't call reveal-in-folder
+                  if (selectedFile.isRemote) {
+                    downloadByBrowser(selectedFile.path);
+                    return;
+                  }
+                  window.ipcRenderer.invoke(
+                    'reveal-in-folder',
+                    selectedFile.path
+                  );
+                }}
+                className="min-w-0 flex flex-1 cursor-pointer items-center overflow-hidden"
+              >
+                <nav
+                  className="text-ds-text-neutral-muted-default scrollbar-always-visible min-w-0 gap-1 text-body-sm flex max-w-full items-center overflow-x-auto"
+                  aria-label={t('folder.file-path-breadcrumb', {
+                    defaultValue: 'File path',
+                  })}
                 >
-                  <span className="text-ds-text-neutral-default-default font-bold text-body-sm block overflow-hidden text-ellipsis whitespace-nowrap">
-                    {selectedFile.name}
-                  </span>
-                  <Button size="icon" variant="ghost">
-                    <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
-                  </Button>
-                </div>
+                  {fileBreadcrumbSegments.map((segment, index) => {
+                    const isLast = index === fileBreadcrumbSegments.length - 1;
+                    return (
+                      <Fragment key={`${index}-${segment}`}>
+                        {index > 0 ? (
+                          <ChevronRight
+                            className="text-ds-icon-neutral-muted-default h-3.5 w-3.5 shrink-0"
+                            aria-hidden
+                          />
+                        ) : null}
+                        <span
+                          className={
+                            isLast
+                              ? 'text-ds-text-neutral-default-default font-bold shrink-0'
+                              : 'font-normal shrink-0'
+                          }
+                        >
+                          {segment}
+                        </span>
+                      </Fragment>
+                    );
+                  })}
+                </nav>
+              </div>
+              <div className="gap-0.5 flex flex-shrink-0 items-center">
+                <Button size="icon" variant="ghost" type="button">
+                  <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+                </Button>
                 <Button
+                  type="button"
                   variant="ghost"
                   size="icon"
-                  className="flex-shrink-0"
                   onClick={() => isShowSourceCodeChange()}
                 >
                   <CodeXml className="h-4 w-4 text-ds-icon-neutral-muted-default" />
@@ -795,7 +1173,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       />
                     )
                   ) : selectedFile.type === 'zip' ? (
-                    <div className="text-ds-text-neutral-muted-default flex h-full items-center justify-center">
+                    <div className="text-ds-text-neutral-muted-default flex h-full w-full items-center justify-center">
                       <div className="text-center">
                         <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
                         <p className="text-sm">
@@ -804,15 +1182,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       </div>
                     </div>
                   ) : isAudioFile(selectedFile) ? (
-                    <div className="flex h-full items-center justify-center">
+                    <div className="flex h-full w-full items-center justify-center">
                       <AudioLoader selectedFile={selectedFile} />
                     </div>
                   ) : isVideoFile(selectedFile) ? (
-                    <div className="flex h-full items-center justify-center">
+                    <div className="flex h-full w-full items-center justify-center">
                       <VideoLoader selectedFile={selectedFile} />
                     </div>
                   ) : isImageFile(selectedFile) ? (
-                    <div className="flex h-full items-center justify-center">
+                    <div className="flex h-full w-full items-center justify-center">
                       <ImageLoader selectedFile={selectedFile} />
                     </div>
                   ) : (
@@ -821,17 +1199,17 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     </pre>
                   )
                 ) : (
-                  <div className="flex h-full items-center justify-center">
+                  <div className="flex h-full w-full items-center justify-center">
                     <div className="text-center">
-                      <div className="mb-4 h-8 w-8 animate-spin border-blue-600 mx-auto rounded-full border-b-2"></div>
-                      <p className="text-sm text-ds-text-neutral-muted-default">
+                      <div className="mb-4 h-8 w-8 animate-spin mx-auto rounded-full"></div>
+                      <p className="text-body-sm text-ds-text-neutral-muted-default">
                         {t('chat.loading')}
                       </p>
                     </div>
                   </div>
                 )
               ) : (
-                <div className="text-ds-text-neutral-muted-default flex flex-1 items-center justify-center">
+                <div className="text-ds-text-neutral-muted-default flex h-full w-full flex-1 items-center justify-center">
                   <div className="text-center">
                     <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
                     <p className="text-sm">

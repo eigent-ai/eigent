@@ -130,7 +130,7 @@ export function WorkspaceSessionModeToggle({
       role="radiogroup"
       aria-label={modeAriaLabel}
       className={cn(
-        'bg-ds-bg-neutral-subtle-default rounded-xl ring-ds-ring-neutral-default-default relative inline-flex items-stretch ring-1 ring-offset-2',
+        'bg-ds-bg-neutral-default-default rounded-xl relative inline-flex items-stretch',
         className
       )}
       onMouseLeave={() => setHoverSegment(null)}

@@ -29,6 +29,7 @@ const DS_TOKEN_TONES = [
   'document',
   'success',
   'caution',
+  'error',
   'warning',
   'information',
 ];
@@ -48,6 +49,51 @@ function buildDsTokenColorMap() {
   return map;
 }
 
+/** `bg-ds-bg-{status}-subtle-default` → `var(--ds-bg-status-{status}-subtle-default)` (drops `status` from the utility name). */
+function buildDsBgStatusSubtleShortAliases() {
+  const map = {};
+  const statuses = [
+    'running',
+    'splitting',
+    'pending',
+    'error',
+    'reassigning',
+    'completed',
+    'blocked',
+    'paused',
+    'skipped',
+    'cancelled',
+  ];
+  for (const s of statuses) {
+    map[`ds-bg-${s}-subtle-default`] =
+      `var(--ds-bg-status-${s}-subtle-default)`;
+  }
+  return map;
+}
+
+/** Safelist neutral DS tokens (all emphasis × state) so JIT always emits bg/text/border/icon/ring/divide/outline utilities. */
+function neutralDsSemanticSafelist() {
+  const variants = [
+    'hover',
+    'focus',
+    'active',
+    'disabled',
+    'focus-visible',
+    'group-hover',
+    'dark',
+    'placeholder',
+  ];
+  return [
+    { pattern: /^bg-ds-bg-neutral-/, variants },
+    { pattern: /^text-ds-text-neutral-/, variants },
+    { pattern: /^text-ds-icon-neutral-/, variants },
+    { pattern: /^border-ds-border-neutral-/, variants },
+    { pattern: /^ring-ds-ring-neutral-/, variants },
+    { pattern: /^divide-ds-border-neutral-/, variants },
+    { pattern: /^outline-ds-border-neutral-/, variants },
+  ];
+}
+
 module.exports = {
   darkMode: ['class'],
   content: [
@@ -55,10 +101,12 @@ module.exports = {
     './src/**/*.{js,ts,jsx,tsx}',
     './.storybook/**/*.{js,ts,jsx,tsx}',
   ],
+  safelist: neutralDsSemanticSafelist(),
   theme: {
     extend: {
       colors: {
         ...buildDsTokenColorMap(),
+        ...buildDsBgStatusSubtleShortAliases(),
         red: {
           50: 'var(--colors-red-50)',
           100: 'var(--colors-red-100)',
