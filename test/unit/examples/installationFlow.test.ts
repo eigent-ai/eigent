@@ -254,8 +254,19 @@ describe('Installation Flow Examples', () => {
         await result.current.performInstallation();
       });
 
-      // Should complete successfully
-      await waitForInstallationState(() => result.current, 'completed', 1000);
+      // After performInstallation, state should be waiting-backend
+      await waitForInstallationState(
+        () => result.current,
+        'waiting-backend',
+        1000
+      );
+      expect(result.current.state).toBe('waiting-backend');
+
+      // Simulate backend ready signal completing the flow
+      act(() => {
+        result.current.setSuccess();
+      });
+
       expect(result.current.state).toBe('completed');
     });
 

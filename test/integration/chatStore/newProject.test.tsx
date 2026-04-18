@@ -165,7 +165,7 @@ describe('Integration Test: Case 1 - New Project', () => {
   });
 
   it('should create historyId after starting task', async () => {
-    const { result } = renderHook(() => useProjectStore());
+    const { result, rerender } = renderHook(() => useProjectStore());
 
     await act(async () => {
       const projectId = result.current.createProject('Test Project');
@@ -190,12 +190,15 @@ describe('Integration Test: Case 1 - New Project', () => {
 
       // Step 4: Start task
       await chatStore.getState().startTask(taskId);
+      rerender();
 
       // Wait for historyId to be set
       await waitFor(
         () => {
+          rerender();
           const historyId = result.current.getHistoryId(projectId);
           expect(historyId).toBeDefined();
+          expect(typeof historyId).toBe('string');
           expect(historyId).toMatch(/^history-/);
         },
         { timeout: 2000 }
