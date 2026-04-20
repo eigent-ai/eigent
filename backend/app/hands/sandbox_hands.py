@@ -16,11 +16,6 @@ from pathlib import Path
 
 from app.hands.interface import IHands
 
-# Terminal command allowlist for sandbox
-SANDBOX_TERMINAL_ALLOWLIST = frozenset(
-    {"ls", "cat", "python", "node", "pwd", "echo"}
-)
-
 
 class SandboxHands(IHands):
     """Limited capabilities: workspace only, MCP allowed, no browser"""

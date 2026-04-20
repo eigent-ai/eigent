@@ -39,7 +39,7 @@ from app.hands import (
 from app.hands.capabilities import detect_capabilities
 from app.hands.environment_hands import EnvironmentHands
 
-logger = logging.getLogger("hands.resolver")
+logger = logging.getLogger(__name__)
 
 # Global EnvironmentHands singleton, initialized at startup
 _environment_hands: IHands | None = None

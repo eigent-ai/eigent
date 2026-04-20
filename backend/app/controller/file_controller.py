@@ -145,6 +145,11 @@ def _sanitize_email(email: str) -> str:
     return re.sub(r'[\\/*?:"<>|\s]', "_", email.split("@")[0]).strip(".")
 
 
+def _normalize_relative_path(path: str) -> str:
+    """Normalize relative path to URL-safe POSIX style."""
+    return path.replace("\\", "/")
+
+
 def _get_project_root(email: str, project_id: str) -> Path:
     """Get project root path: ~/eigent/{email}/project_{project_id}/."""
     root = _get_eigent_root()
@@ -221,7 +226,9 @@ async def list_project_files(
     result: list[dict] = []
     for abs_path in paths:
         try:
-            rel = str(Path(abs_path).relative_to(base_path))
+            rel = _normalize_relative_path(
+                Path(abs_path).relative_to(base_path).as_posix()
+            )
             # URL-encode the relative path for stream endpoint
             path_param = quote(rel, safe="")
             result.append(
