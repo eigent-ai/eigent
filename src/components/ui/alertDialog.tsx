@@ -12,18 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
+import {
+  Button,
+  type ButtonLegacyVariant,
+  type ButtonVariant,
+} from '@/components/ui/button';
 import { AnimatePresence, motion } from 'framer-motion';
 
-type ButtonVariant =
-  | 'primary'
-  | 'secondary'
-  | 'outline'
-  | 'ghost'
-  | 'success'
-  | 'cuation'
-  | 'information'
-  | 'warning';
+type ConfirmVariant = ButtonVariant | ButtonLegacyVariant;
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -33,7 +29,7 @@ interface ConfirmModalProps {
   message?: string;
   confirmText?: string;
   cancelText?: string;
-  confirmVariant?: ButtonVariant;
+  confirmVariant?: ConfirmVariant;
 }
 
 export default function ConfirmModal({
@@ -44,7 +40,7 @@ export default function ConfirmModal({
   message = 'Confirm content?',
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  confirmVariant = 'cuation',
+  confirmVariant = 'caution',
 }: ConfirmModalProps) {
   return (
     <AnimatePresence>

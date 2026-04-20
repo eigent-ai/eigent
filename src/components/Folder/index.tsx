@@ -957,7 +957,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="border-ds-border-neutral-default-default bg-dropdown-bg z-50"
+                className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
               >
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('system')}
@@ -1018,7 +1018,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 <DropdownMenuContent
                   side="bottom"
                   align="start"
-                  className="border-ds-border-neutral-default-default bg-dropdown-bg z-50 min-w-[10rem]"
+                  className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50 min-w-[10rem]"
                 >
                   <DropdownMenuRadioGroup
                     value={fileTreeScope}

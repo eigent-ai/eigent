@@ -28,31 +28,29 @@ import {
   DEFAULT_THEME_CATALOG,
 } from '@/lib/themeTokens/catalog';
 import type {
-  ColorThemeDefinitionV1,
+  ColorThemeDefinitionV2,
   Mode,
   ThemeCatalog,
   ThemeSeed,
 } from '@/lib/themeTokens/types';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type SaveStatus = {
-  type: 'success' | 'error';
-  message: string;
-} | null;
-
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const NEW_TEMPLATE_TAB_ID = '__new_template__';
+const DEFAULT_EDITABLE_THEME_IDS = [
+  'eigent',
+  'claude',
+  'codex',
+  'camel',
+] as const;
+const CUSTOM_THEME_IDS = ['custom-1', 'custom-2'] as const;
 
-function normalizeThemeId(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+type ThemeOption = {
+  id: string;
+  label: string;
+  isDefault: boolean;
+};
 
 function normalizeHexColor(input: string): `#${string}` | null {
   const trimmed = input.trim();
@@ -74,21 +72,10 @@ function buildMergedCatalog(customThemeCatalog: ThemeCatalog): ThemeCatalog {
   };
 }
 
-function extractThemeList(
-  mode: Mode,
-  catalog: ThemeCatalog
-): ColorThemeDefinitionV1[] {
-  return Object.values(catalog[mode] ?? {}).sort((a, b) =>
-    a.id.localeCompare(b.id)
-  );
-}
-
-function nextAutoThemeId(mode: Mode, catalog: ThemeCatalog): string {
-  let index = 1;
-  while (catalog[mode][`custom-${index}`]) {
-    index += 1;
-  }
-  return `custom-${index}`;
+function formatThemeLabel(id: string): string {
+  if (id === 'custom-1') return 'Custom 1';
+  if (id === 'custom-2') return 'Custom 2';
+  return id;
 }
 
 function ColorSeedEditor({
@@ -101,17 +88,54 @@ function ColorSeedEditor({
   onChange: (value: string) => void;
 }) {
   const normalizedPreview = normalizeHexColor(value) ?? '#000000';
+
   return (
     <div className="gap-2 grid grid-cols-[96px_minmax(0,1fr)_40px] items-center">
       <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
         {label}
       </div>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        note={normalizeHexColor(value) ? '' : 'Hex format: #1a2b3c'}
+      />
       <div
         className="h-9 w-9 rounded-md border-ds-border-neutral-default-default border"
         style={{ backgroundColor: normalizedPreview }}
       />
     </div>
+  );
+}
+
+function ModePanel({
+  title,
+  description,
+  active,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'rounded-xl px-4 py-4 border text-left transition-colors',
+        active
+          ? 'border-ds-border-brand-default-focus bg-ds-bg-brand-subtle-default'
+          : 'border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-hover',
+      ].join(' ')}
+    >
+      <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+        {title}
+      </div>
+      <div className="mt-1 text-label-sm text-ds-text-neutral-muted-default">
+        {description}
+      </div>
+    </button>
   );
 }
 
@@ -130,6 +154,8 @@ export default function AppearanceSettings() {
   const removeCustomThemeTemplate = useAuthStore(
     (s) => s.removeCustomThemeTemplate
   );
+  const themeContrast = useAuthStore((s) => s.themeContrast);
+  const setThemeContrast = useAuthStore((s) => s.setThemeContrast);
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
@@ -139,142 +165,163 @@ export default function AppearanceSettings() {
 
   const activeMode: Mode =
     appearanceMode === 'system' ? appearance : appearanceMode;
+
   const mergedCatalog = useMemo(
     () => buildMergedCatalog(customThemeCatalog),
     [customThemeCatalog]
   );
-  const themeList = useMemo(
-    () => extractThemeList(activeMode, mergedCatalog),
-    [activeMode, mergedCatalog]
-  );
-  const selectedThemeId =
-    activeMode === 'dark' ? darkColorThemeId : lightColorThemeId;
-  const selectedTheme =
-    themeList.find((theme) => theme.id === selectedThemeId) ??
-    themeList[0] ??
-    null;
 
-  const [activeThemeTab, setActiveThemeTab] = useState<string>(
-    selectedThemeId || NEW_TEMPLATE_TAB_ID
+  const themeOptions = useMemo<ThemeOption[]>(
+    () => [
+      ...DEFAULT_EDITABLE_THEME_IDS.map((id) => ({
+        id,
+        label: formatThemeLabel(id),
+        isDefault: true,
+      })),
+      ...CUSTOM_THEME_IDS.map((id) => ({
+        id,
+        label: formatThemeLabel(id),
+        isDefault: false,
+      })),
+    ],
+    []
   );
-  const [templateName, setTemplateName] = useState('');
+
+  const allowedThemeIds = useMemo(
+    () => themeOptions.map((option) => option.id),
+    [themeOptions]
+  );
+
+  const modeThemeId =
+    activeMode === 'dark' ? darkColorThemeId : lightColorThemeId;
+
+  const [activeThemeId, setActiveThemeId] = useState<string>(
+    allowedThemeIds.includes(modeThemeId) ? modeThemeId : DEFAULT_COLOR_THEME_ID
+  );
   const [accent, setAccent] = useState('');
   const [background, setBackground] = useState('');
   const [ink, setInk] = useState('');
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
 
   useEffect(() => {
-    if (!selectedTheme && themeList.length > 0) {
-      setColorThemeForMode(activeMode, themeList[0].id);
+    const nextThemeId = allowedThemeIds.includes(modeThemeId)
+      ? modeThemeId
+      : DEFAULT_COLOR_THEME_ID;
+    setActiveThemeId(nextThemeId);
+
+    if (modeThemeId !== nextThemeId) {
+      setColorThemeForMode(activeMode, nextThemeId);
     }
-  }, [activeMode, selectedTheme, setColorThemeForMode, themeList]);
+  }, [activeMode, allowedThemeIds, modeThemeId, setColorThemeForMode]);
+
+  const fallbackSeed =
+    DEFAULT_THEME_CATALOG[activeMode][DEFAULT_COLOR_THEME_ID]?.seed ??
+    Object.values(DEFAULT_THEME_CATALOG[activeMode])[0]?.seed;
+
+  const activeTheme = useMemo<ColorThemeDefinitionV2 | null>(() => {
+    const fromMerged = mergedCatalog[activeMode]?.[activeThemeId];
+    if (fromMerged) return fromMerged;
+
+    const fromDefault = DEFAULT_THEME_CATALOG[activeMode]?.[activeThemeId];
+    if (fromDefault) {
+      return {
+        id: activeThemeId,
+        mode: activeMode,
+        seed: fromDefault.seed,
+      };
+    }
+
+    if (!fallbackSeed) return null;
+    return {
+      id: activeThemeId,
+      mode: activeMode,
+      seed: fallbackSeed,
+    };
+  }, [activeMode, activeThemeId, fallbackSeed, mergedCatalog]);
 
   useEffect(() => {
-    if (activeThemeTab === NEW_TEMPLATE_TAB_ID) return;
-    const fallbackTab = selectedTheme?.id ?? themeList[0]?.id ?? '';
-    if (!fallbackTab) return;
-    if (!themeList.some((theme) => theme.id === activeThemeTab)) {
-      setActiveThemeTab(fallbackTab);
-    }
-  }, [activeThemeTab, selectedTheme?.id, themeList]);
+    if (!activeTheme) return;
+    setAccent(activeTheme.seed.accent);
+    setBackground(activeTheme.seed.background);
+    setInk(activeTheme.seed.ink);
+  }, [
+    activeTheme?.id,
+    activeTheme?.seed.accent,
+    activeTheme?.seed.background,
+    activeTheme?.seed.ink,
+    activeMode,
+  ]);
 
-  const currentTheme =
-    activeThemeTab === NEW_TEMPLATE_TAB_ID
-      ? null
-      : (themeList.find((theme) => theme.id === activeThemeTab) ??
-        selectedTheme ??
-        null);
-  const isCurrentCustom = Boolean(
-    currentTheme && customThemeCatalog[activeMode][currentTheme.id]
-  );
+  const commitThemeSeed = (
+    nextAccent: string,
+    nextBackground: string,
+    nextInk: string
+  ) => {
+    const accentHex = normalizeHexColor(nextAccent);
+    const backgroundHex = normalizeHexColor(nextBackground);
+    const inkHex = normalizeHexColor(nextInk);
+    if (!accentHex || !backgroundHex || !inkHex || !activeTheme) return;
 
-  const resetDraftTemplate = useCallback(() => {
-    setTemplateName('');
-    setAccent('');
-    setBackground('');
-    setInk('');
-  }, []);
-
-  useEffect(() => {
-    if (activeThemeTab === NEW_TEMPLATE_TAB_ID) {
-      resetDraftTemplate();
-      setSaveStatus(null);
-      return;
-    }
-
-    if (!currentTheme) return;
-    setAccent(currentTheme.seed.accent);
-    setBackground(currentTheme.seed.background);
-    setInk(currentTheme.seed.ink);
-    setSaveStatus(null);
-  }, [activeThemeTab, currentTheme, resetDraftTemplate]);
-
-  const createTemplate = () => {
-    const accentHex = normalizeHexColor(accent);
-    const backgroundHex = normalizeHexColor(background);
-    const inkHex = normalizeHexColor(ink);
-    const explicitId = normalizeThemeId(templateName);
-    const themeId = explicitId || nextAutoThemeId(activeMode, mergedCatalog);
-
-    if (!accentHex || !backgroundHex || !inkHex) {
-      setSaveStatus({
-        type: 'error',
-        message: 'Colors must be valid hex values (example: #1a2b3c).',
-      });
-      return;
-    }
-
-    if (mergedCatalog[activeMode][themeId]) {
-      setSaveStatus({
-        type: 'error',
-        message: 'Theme id already exists. Choose another id.',
-      });
-      return;
-    }
-
-    const seed: ThemeSeed = {
+    const nextSeed: ThemeSeed = {
       accent: accentHex,
       background: backgroundHex,
       ink: inkHex,
     };
 
-    upsertCustomThemeTemplate(activeMode, themeId, seed);
-    resetDraftTemplate();
-    setSaveStatus({
-      type: 'success',
-      message: `Created "${themeId}" in ${activeMode} themes.`,
-    });
-  };
-
-  const deleteTemplate = () => {
-    if (!currentTheme) return;
-    if (!isCurrentCustom) {
-      setSaveStatus({
-        type: 'error',
-        message: 'Built-in themes cannot be deleted.',
-      });
+    const current = activeTheme.seed;
+    if (
+      current.accent === nextSeed.accent &&
+      current.background === nextSeed.background &&
+      current.ink === nextSeed.ink
+    ) {
       return;
     }
 
-    const fallbackTheme =
-      themeList.find(
-        (theme) =>
-          theme.id !== currentTheme.id && theme.id === DEFAULT_COLOR_THEME_ID
-      ) ?? themeList.find((theme) => theme.id !== currentTheme.id);
-
-    if (fallbackTheme) {
-      setColorThemeForMode(activeMode, fallbackTheme.id);
-      setActiveThemeTab(fallbackTheme.id);
-    }
-    removeCustomThemeTemplate(activeMode, currentTheme.id);
-    setSaveStatus({
-      type: 'success',
-      message: `Deleted "${currentTheme.id}".`,
-    });
+    upsertCustomThemeTemplate(activeMode, activeThemeId, nextSeed);
   };
 
-  const openDraftTemplate = () => {
-    setActiveThemeTab(NEW_TEMPLATE_TAB_ID);
+  const handleAccentChange = (value: string) => {
+    setAccent(value);
+    commitThemeSeed(value, background, ink);
+  };
+
+  const handleBackgroundChange = (value: string) => {
+    setBackground(value);
+    commitThemeSeed(accent, value, ink);
+  };
+
+  const handleInkChange = (value: string) => {
+    setInk(value);
+    commitThemeSeed(accent, background, value);
+  };
+
+  const handleThemeChange = (themeId: string) => {
+    setActiveThemeId(themeId);
+    setColorThemeForMode(activeMode, themeId);
+  };
+
+  const resetActiveTheme = () => {
+    if (!activeTheme || !fallbackSeed) return;
+
+    const isDefaultTheme = DEFAULT_EDITABLE_THEME_IDS.includes(
+      activeThemeId as (typeof DEFAULT_EDITABLE_THEME_IDS)[number]
+    );
+
+    if (isDefaultTheme) {
+      const defaultSeed =
+        DEFAULT_THEME_CATALOG[activeMode][activeThemeId]?.seed;
+      if (defaultSeed) {
+        removeCustomThemeTemplate(activeMode, activeThemeId);
+        setAccent(defaultSeed.accent);
+        setBackground(defaultSeed.background);
+        setInk(defaultSeed.ink);
+      }
+      return;
+    }
+
+    upsertCustomThemeTemplate(activeMode, activeThemeId, fallbackSeed);
+    setAccent(fallbackSeed.accent);
+    setBackground(fallbackSeed.background);
+    setInk(fallbackSeed.ink);
   };
 
   return (
@@ -294,30 +341,28 @@ export default function AppearanceSettings() {
           <div className="text-body-base font-bold text-ds-text-neutral-default-default">
             Mode
           </div>
-          <Select
-            value={appearanceMode}
-            onValueChange={(value) =>
-              setAppearanceMode(value as Mode | 'system')
-            }
-          >
-            <SelectTrigger className="w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-input-bg-default border">
-              <SelectGroup>
-                <SelectItem value="light">{t('setting.light')}</SelectItem>
-                <SelectItem value="dark">{t('setting.dark')}</SelectItem>
-                <SelectItem value="system">
-                  {t('setting.system-default')}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <div className="text-body-sm text-ds-text-neutral-muted-default">
-            {appearanceMode === 'system'
-              ? `Following system. Current system mode: ${appearance}.`
-              : `Using ${appearanceMode} mode.`}
+
+          <div className="gap-3 grid grid-cols-2">
+            <ModePanel
+              title={t('setting.light')}
+              description="Use light mode as the active UI mode."
+              active={appearanceMode === 'light'}
+              onClick={() => setAppearanceMode('light')}
+            />
+            <ModePanel
+              title={t('setting.dark')}
+              description="Use dark mode as the active UI mode."
+              active={appearanceMode === 'dark'}
+              onClick={() => setAppearanceMode('dark')}
+            />
           </div>
+
+          <ModePanel
+            title={t('setting.system-default')}
+            description={`Follow system. Current system mode: ${appearance}.`}
+            active={appearanceMode === 'system'}
+            onClick={() => setAppearanceMode('system')}
+          />
         </div>
 
         <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col">
@@ -326,120 +371,67 @@ export default function AppearanceSettings() {
               Schema Customization
             </div>
             <div className="text-body-sm text-ds-text-neutral-muted-default">
-              Theme tabs are mode-specific. Select a current theme for
-              Add/Delete. Use New Template for Create.
+              4 default themes + 2 custom slots. Changes are auto-saved and
+              applied live.
             </div>
           </div>
 
-          <div className="gap-3 flex w-full flex-col">
-            <div className="w-full overflow-x-auto">
-              <Tabs
-                value={activeThemeTab}
-                onValueChange={(value) => {
-                  setSaveStatus(null);
-                  setActiveThemeTab(value);
-                  if (value !== NEW_TEMPLATE_TAB_ID) {
-                    setColorThemeForMode(activeMode, value);
-                  }
-                }}
-              >
+          <div className="gap-3 flex w-full items-center justify-between">
+            <div className="min-w-0 flex-1 overflow-x-auto">
+              <Tabs value={activeThemeId} onValueChange={handleThemeChange}>
                 <TabsList className="min-w-max">
-                  {themeList.map((theme) => {
-                    const isCustom = Boolean(
-                      customThemeCatalog[activeMode][theme.id]
-                    );
-                    return (
-                      <TabsTrigger key={theme.id} value={theme.id}>
-                        {isCustom ? `${theme.id} *` : theme.id}
-                      </TabsTrigger>
-                    );
-                  })}
-                  <TabsTrigger value={NEW_TEMPLATE_TAB_ID}>
-                    + New Template
-                  </TabsTrigger>
+                  {themeOptions.map((option) => (
+                    <TabsTrigger key={option.id} value={option.id}>
+                      {option.label}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
               </Tabs>
             </div>
 
-            <div className="gap-2 flex">
-              {activeThemeTab === NEW_TEMPLATE_TAB_ID ? (
-                <Button variant="secondary" onClick={createTemplate}>
-                  Create
-                </Button>
-              ) : (
-                <>
-                  <Button variant="secondary" onClick={openDraftTemplate}>
-                    Add
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={deleteTemplate}
-                    disabled={!isCurrentCustom}
-                  >
-                    Delete
-                  </Button>
-                </>
-              )}
-            </div>
+            <Button variant="secondary" onClick={resetActiveTheme}>
+              Reset
+            </Button>
           </div>
-
-          <Input
-            title="New Template ID"
-            placeholder="my-theme-template (optional, auto-generated when empty)"
-            value={templateName}
-            onChange={(e) => setTemplateName(e.target.value)}
-            note="Use lowercase letters, numbers, hyphen, or underscore."
-          />
 
           <div className="gap-3 flex flex-col">
             <ColorSeedEditor
               label="Accent"
               value={accent}
-              onChange={setAccent}
+              onChange={handleAccentChange}
             />
             <ColorSeedEditor
               label="Background"
               value={background}
-              onChange={setBackground}
+              onChange={handleBackgroundChange}
             />
-            <ColorSeedEditor label="Ink" value={ink} onChange={setInk} />
+            <ColorSeedEditor
+              label="Ink"
+              value={ink}
+              onChange={handleInkChange}
+            />
           </div>
 
-          <div
-            className="h-16 rounded-lg border-ds-border-neutral-default-default w-full overflow-hidden border"
-            style={{
-              backgroundColor: normalizeHexColor(background) ?? '#ffffff',
-            }}
-          >
-            <div className="flex h-full">
-              <div
-                className="w-4 shrink-0 self-stretch"
-                style={{
-                  backgroundColor: normalizeHexColor(accent) ?? '#000000',
-                }}
-              />
-              <div className="min-w-0 p-2 flex flex-1 flex-col justify-end">
-                <span
-                  className="text-label-sm font-semibold truncate text-left capitalize"
-                  style={{ color: normalizeHexColor(ink) ?? '#1d1d1d' }}
-                >
-                  Preview
-                </span>
+          <div className="gap-2 flex flex-col">
+            <div className="flex items-center justify-between">
+              <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+                Contract (Contrast)
+              </div>
+              <div className="text-body-sm font-semibold text-ds-text-neutral-muted-default">
+                {themeContrast}
               </div>
             </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={themeContrast}
+              onChange={(e) => setThemeContrast(Number(e.target.value))}
+              className="h-2 bg-ds-bg-neutral-strong-default w-full cursor-pointer appearance-none rounded-full accent-[var(--ds-bg-brand-default-default)]"
+              aria-label="Theme contrast"
+            />
           </div>
-
-          {saveStatus ? (
-            <div
-              className={
-                saveStatus.type === 'error'
-                  ? 'text-body-sm text-ds-text-status-error-strong-default'
-                  : 'text-body-sm text-ds-text-status-completed-strong-default'
-              }
-            >
-              {saveStatus.message}
-            </div>
-          ) : null}
         </div>
 
         <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">

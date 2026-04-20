@@ -192,7 +192,7 @@ export function HeaderAction() {
                   type="button"
                   className={cn(
                     'no-drag h-8 px-3 rounded-lg text-ds-icon-neutral-muted-default ease-in-out flex shrink-0 items-center justify-center transition-colors duration-200',
-                    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-border-neutral-subtle-default hover:text-ds-icon-neutral-muted-hover focus-visible:ring-2 focus-visible:outline-none'
+                    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-ring-neutral-subtle-default hover:text-ds-icon-neutral-muted-hover focus-visible:ring-2 focus-visible:outline-none'
                   )}
                   aria-label={foldTooltip}
                   onClick={() => toggleProjectSidebarFolded()}

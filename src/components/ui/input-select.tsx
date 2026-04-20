@@ -73,27 +73,29 @@ function resolveStateClasses(
   if (disabled) {
     return {
       wrapper: 'opacity-50 cursor-not-allowed',
-      container: 'border-transparent bg-input-bg-default',
+      container: 'border-transparent bg-ds-bg-neutral-default-default',
       note: 'text-ds-text-neutral-muted-default',
     };
   }
   if (state === 'error') {
     return {
       wrapper: '',
-      container: 'border-input-border-cuation bg-input-bg-default',
+      container:
+        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
       note: 'text-ds-text-status-error-strong-default',
     };
   }
   if (state === 'success') {
     return {
       wrapper: '',
-      container: 'border-input-border-success bg-input-bg-confirm',
+      container:
+        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
       note: 'text-ds-text-status-completed-strong-default',
     };
   }
   return {
     wrapper: '',
-    container: 'border-transparent bg-input-bg-default',
+    container: 'border-transparent bg-ds-bg-neutral-default-default',
     note: 'text-ds-text-neutral-muted-default',
   };
 }
@@ -358,9 +360,9 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
             !disabled &&
               state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-input-bg-hover hover:ring-input-border-hover hover:ring-1 hover:ring-offset-0',
+                'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
                 isOpen &&
-                  'bg-input-bg-input ring-input-border-focus ring-1 ring-offset-0',
+                  'bg-ds-bg-neutral-strong-default ring-ds-ring-brand-default-focus ring-1 ring-offset-0',
               ]
           )}
         >
@@ -393,7 +395,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         {isOpen && (
           <div
             ref={dropdownRef}
-            className="left-0 right-0 mt-1 bg-input-bg-default rounded-lg shadow-md absolute top-full z-50 overflow-hidden border border-solid border-transparent"
+            className="left-0 right-0 mt-1 bg-ds-bg-neutral-default-default rounded-lg shadow-md absolute top-full z-50 overflow-hidden border border-solid border-transparent"
           >
             <div
               className="p-1 overflow-x-hidden overflow-y-auto overscroll-contain"
@@ -405,9 +407,9 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   key={option.value}
                   onClick={() => handleOptionClick(option)}
                   className={cn(
-                    'rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-menutabs-fill-hover relative flex w-full cursor-pointer items-center transition-colors outline-none select-none',
+                    'rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center transition-colors outline-none select-none',
                     selectedOption?.value === option.value &&
-                      'bg-menutabs-fill-hover'
+                      'bg-ds-bg-neutral-default-hover'
                   )}
                 >
                   {option.label}

@@ -165,7 +165,7 @@ export const MarkDown = ({
                 className="mb-4 min-w-0 !table w-full"
                 style={{
                   borderCollapse: 'collapse',
-                  border: '1px solid #d1d5db',
+                  border: '1px solid var(--ds-border-neutral-default-default)',
                   borderSpacing: 0,
                 }}
               >
@@ -186,7 +186,7 @@ export const MarkDown = ({
             <th
               className="text-ds-text-neutral-default-default font-semibold !table-cell text-left text-[10px]"
               style={{
-                border: '1px solid #d1d5db',
+                border: '1px solid var(--ds-border-neutral-default-default)',
                 padding: '2px 5px',
                 borderCollapse: 'collapse',
               }}
@@ -198,7 +198,7 @@ export const MarkDown = ({
             <td
               className="text-ds-text-neutral-default-default !table-cell text-[10px]"
               style={{
-                border: '1px solid #d1d5db',
+                border: '1px solid var(--ds-border-neutral-default-default)',
                 padding: '2px 5px',
                 borderCollapse: 'collapse',
               }}

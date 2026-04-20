@@ -12,60 +12,122 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { DEFAULT_THEME_CATALOG, getColorThemeDefinition } from './catalog';
-import { alpha, chooseReadableText, clamp, mix } from './colorMath';
+import baseColorTokens from '../../../tokens/base.color.json';
+import componentTokens from '../../../tokens/component.color.json';
+import semanticTokens from '../../../tokens/semantic.color.json';
+import { DEFAULT_THEME_CATALOG, getColorThemeDefinitionV2 } from './catalog';
 import {
-  DEFAULT_FIXED_TONE_SCHEMA,
-  type FixedToneSchema,
-  type FixedToneSeed,
-} from './fixedToneSchema';
+  alpha,
+  apcaContrastApprox,
+  chooseReadableText,
+  clamp,
+  contrastRatio,
+  hexToOklch,
+  mix,
+  normalizeHue,
+  oklchToHex,
+  rgbToHex,
+  wcagMinimumContrast,
+  type Oklch,
+} from './colorMath';
+import {
+  flattenDtcgTokens,
+  resolveAliasReferences,
+  resolveExtends,
+} from './dtcg';
 import { tokenKeyToCssVarName } from './naming';
 import type {
-  FixedTone,
+  Adjustment,
+  ContrastDiagnostic,
+  Element,
+  Emphasis,
   Mode,
-  ResolvedThemeV1,
-  StatusTone,
-  ThemeCatalog,
-  ThemeContractV1,
+  ResolvedThemeV2,
+  State,
+  ThemeCatalogV2,
+  ThemeContractV2,
   ThemeTokens,
   TokenKey,
+  Tone,
 } from './types';
 
-const STATUS_TONES: StatusTone[] = [
-  'status-running',
-  'status-splitting',
-  'status-pending',
-  'status-error',
-  'status-reassigning',
-  'status-completed',
-  'status-blocked',
-  'status-paused',
-  'status-skipped',
-  'status-cancelled',
-];
+type SemanticShape = {
+  axes: {
+    elements: Element[];
+    tones: Tone[];
+    emphasis: Emphasis[];
+    states: State[];
+  };
+  transforms: {
+    emphasis: Record<Emphasis, Adjustment>;
+    state: Record<State, Adjustment>;
+    element: Record<Element, Adjustment>;
+  };
+  toneSource: Record<
+    Tone,
+    {
+      source: 'accent' | 'background' | 'ink' | 'fixed';
+      sourceByElement?: Partial<
+        Record<Element, 'accent' | 'background' | 'ink' | 'fixed'>
+      >;
+      dL?: number;
+      dC?: number;
+      dH?: number;
+      dLLight?: number;
+      dLDark?: number;
+    }
+  >;
+  contrastPairs: Array<{
+    fg: TokenKey;
+    bg: TokenKey;
+    minContrast: number;
+    largeText?: boolean;
+  }>;
+};
 
-type RuntimeStatusTone = Record<StatusTone, `#${string}`>;
-type NeutralTokenElement = 'bg' | 'text' | 'border' | 'icon' | 'ring';
+type BaseShape = {
+  fixedAnchors: Record<Mode, Partial<Record<Tone, `#${string}`>>>;
+};
 
-const NEUTRAL_EMPHASIS = [
+const BASE = baseColorTokens as BaseShape;
+const SEMANTIC = semanticTokens as SemanticShape;
+const LEGACY_NEUTRAL_EMPHASIS: Emphasis[] = [
   'subtle',
   'muted',
   'default',
   'strong',
   'inverse',
-] as const;
-const UI_STATES = [
+];
+const LEGACY_UI_STATES: State[] = [
   'default',
   'hover',
   'active',
   'selected',
   'focus',
   'disabled',
-] as const;
+];
 
-type NeutralEmphasis = (typeof NEUTRAL_EMPHASIS)[number];
-type UiState = (typeof UI_STATES)[number];
-type NeutralStateMatrix = Record<NeutralEmphasis, Record<UiState, string>>;
+type NeutralStateMatrix = Record<Emphasis, Record<State, string>>;
+
+function mergeAdjustment(...values: Array<Adjustment | undefined>): Adjustment {
+  const out: Adjustment = {};
+  for (const value of values) {
+    if (!value) continue;
+    if (typeof value.dL === 'number') out.dL = (out.dL ?? 0) + value.dL;
+    if (typeof value.dC === 'number') out.dC = (out.dC ?? 0) + value.dC;
+    if (typeof value.dH === 'number') out.dH = (out.dH ?? 0) + value.dH;
+    if (typeof value.alpha === 'number') out.alpha = value.alpha;
+  }
+  return out;
+}
+
+function applyAdjustment(base: Oklch, adjustment: Adjustment): Oklch {
+  return {
+    l: clamp(base.l + (adjustment.dL ?? 0), 0, 1),
+    c: Math.max(0, base.c + (adjustment.dC ?? 0)),
+    h: normalizeHue(base.h + (adjustment.dH ?? 0)),
+  };
+}
 
 function setTokenIfMissing(
   tokens: ThemeTokens,
@@ -79,11 +141,11 @@ function setTokenIfMissing(
 
 function ensureNeutralMatrix(
   tokens: ThemeTokens,
-  element: NeutralTokenElement,
+  element: Element,
   matrix: NeutralStateMatrix
 ): void {
-  for (const emphasis of NEUTRAL_EMPHASIS) {
-    for (const state of UI_STATES) {
+  for (const emphasis of LEGACY_NEUTRAL_EMPHASIS) {
+    for (const state of LEGACY_UI_STATES) {
       setTokenIfMissing(
         tokens,
         `${element}.neutral.${emphasis}.${state}` as TokenKey,
@@ -93,40 +155,18 @@ function ensureNeutralMatrix(
   }
 }
 
-function resolveStatusToneBase(
-  accent: `#${string}`,
-  ink: `#${string}`,
-  background: `#${string}`
-): RuntimeStatusTone {
-  return {
-    'status-running': accent,
-    'status-splitting': mix(accent, '#2563eb', 0.46),
-    'status-pending': mix(accent, '#d97706', 0.65),
-    'status-error': mix(accent, '#dc2626', 0.76),
-    'status-reassigning': mix(accent, '#a16207', 0.62),
-    'status-completed': mix(accent, '#16a34a', 0.62),
-    'status-blocked': mix(accent, '#ca8a04', 0.62),
-    'status-paused': mix(accent, '#a16207', 0.48),
-    'status-skipped': mix(ink, background, 0.46),
-    'status-cancelled': mix(ink, background, 0.56),
-  };
-}
-
-function buildCoreTokens(
-  accent: `#${string}`,
-  ink: `#${string}`,
-  background: `#${string}`,
-  contrastT: number
+function buildLegacyNeutralContrastTokens(
+  seed: { accent: `#${string}`; background: `#${string}`; ink: `#${string}` },
+  contrast: number
 ): ThemeTokens {
   const tokens: ThemeTokens = {};
+  const contrastT = clamp(contrast, 0, 100) / 100;
+  const { background, ink } = seed;
 
-  // Required core formulas (contract-controlled by contrast)
   const panel = mix(background, ink, 0.02 + contrastT * 0.06);
   const border = alpha(ink, 0.08 + contrastT * 0.16);
   const textSecondary = mix(ink, background, 0.28 - contrastT * 0.08);
   const hover = mix(background, ink, 0.03 + contrastT * 0.05);
-
-  // Extended derived values for consistency across interactive states.
   const active = mix(background, ink, 0.05 + contrastT * 0.08);
   const panelStrong = mix(background, ink, 0.04 + contrastT * 0.08);
   const panelSelected = mix(background, ink, 0.1 + contrastT * 0.1);
@@ -159,7 +199,6 @@ function buildCoreTokens(
   const textInverse = chooseReadableText(inverseBgDefault, ink);
 
   tokens['bg.neutral.subtle.default'] = background;
-  // Hover between canvas and selected (used by nav tabs, outline buttons, etc.)
   tokens['bg.neutral.subtle.hover'] = subtleHover;
   tokens['bg.neutral.subtle.selected'] = subtleSelected;
   tokens['bg.neutral.default.default'] = panel;
@@ -168,7 +207,6 @@ function buildCoreTokens(
   tokens['bg.neutral.default.selected'] = panelSelected;
   tokens['bg.neutral.strong.default'] = panelStrong;
   tokens['bg.neutral.strong.selected'] = panelSelectedStrong;
-  // Muted surfaces remain solid fills (no alpha overlays).
   tokens['bg.neutral.muted.default'] = mutedDefault;
   tokens['bg.neutral.muted.hover'] = mutedHover;
   tokens['bg.neutral.muted.active'] = mutedActive;
@@ -180,28 +218,13 @@ function buildCoreTokens(
   tokens['text.neutral.subtle.default'] = textMuted;
   tokens['text.neutral.muted.disabled'] = textDisabled;
 
-  const accentHover = mix(accent, ink, 0.08 + contrastT * 0.08);
-  const accentActive = mix(accent, ink, 0.14 + contrastT * 0.1);
-  // Brand buttons should prefer white text when contrast is acceptable for
-  // UI button label sizing; fall back to darker text for very light accents.
-  const accentForeground = chooseReadableText(accent, '#ffffff', 3);
-  tokens['bg.brand.default.default'] = accent;
-  tokens['bg.brand.default.hover'] = accentHover;
-  tokens['bg.brand.default.active'] = accentActive;
-  tokens['text.brand.inverse.default'] = accentForeground;
-  tokens['icon.brand.default.default'] = accent;
-
   tokens['border.neutral.subtle.default'] = alpha(ink, 0.05 + contrastT * 0.1);
   tokens['border.neutral.muted.default'] = alpha(ink, 0.07 + contrastT * 0.12);
   tokens['border.neutral.muted.hover'] = alpha(ink, 0.1 + contrastT * 0.14);
   tokens['border.neutral.muted.disabled'] = alpha(ink, 0.05 + contrastT * 0.08);
   tokens['border.neutral.default.default'] = border;
   tokens['border.neutral.strong.default'] = alpha(ink, 0.14 + contrastT * 0.2);
-  tokens['border.brand.default.focus'] = alpha(accent, 0.55 + contrastT * 0.25);
-
   tokens['ring.neutral.subtle.focus'] = alpha(ink, 0.2 + contrastT * 0.2);
-  tokens['ring.brand.default.focus'] = alpha(accent, 0.45 + contrastT * 0.3);
-
   tokens['icon.neutral.default.default'] = textSecondary;
   tokens['icon.neutral.muted.default'] = textMuted;
 
@@ -423,110 +446,253 @@ function buildCoreTokens(
   return tokens;
 }
 
-function buildStatusTokens(
-  accent: `#${string}`,
-  ink: `#${string}`,
-  background: `#${string}`,
-  contrastT: number
-): ThemeTokens {
-  const tokens: ThemeTokens = {};
-  const statusBase = resolveStatusToneBase(accent, ink, background);
+function parseCssColor(
+  color: string | undefined
+): { oklch: Oklch; alpha?: number } | null {
+  const hex = parseHexOnly(color);
+  if (hex) return { oklch: hexToOklch(hex) };
 
-  for (const tone of STATUS_TONES) {
-    const base = statusBase[tone];
-    const bgSubtleDefault = mix(background, base, 0.1 + contrastT * 0.1);
-    const bgSubtleHover = mix(background, base, 0.14 + contrastT * 0.12);
-    const bgDefault = mix(background, base, 0.2 + contrastT * 0.14);
-
-    tokens[`bg.${tone}.subtle.default`] = bgSubtleDefault;
-    tokens[`bg.${tone}.subtle.hover`] = bgSubtleHover;
-    tokens[`bg.${tone}.default.default`] = bgDefault;
-
-    tokens[`border.${tone}.default.default`] = alpha(
-      base,
-      0.32 + contrastT * 0.28
+  if (!color) return null;
+  const rgbaMatch = color
+    .trim()
+    .match(
+      /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(0|0?\.\d+|1(?:\.0+)?)\s*\)$/i
     );
-    tokens[`border.${tone}.default.focus`] = alpha(
-      base,
-      0.45 + contrastT * 0.3
-    );
-    tokens[`ring.${tone}.default.focus`] = alpha(base, 0.4 + contrastT * 0.35);
+  if (!rgbaMatch) return null;
 
-    tokens[`icon.${tone}.default.default`] = base;
-    tokens[`text.${tone}.strong.default`] = chooseReadableText(
-      bgSubtleDefault,
-      mix(base, ink, 0.2)
-    );
-    tokens[`text.${tone}.muted.default`] = mix(base, ink, 0.35);
+  const r = clamp(Number(rgbaMatch[1]), 0, 255);
+  const g = clamp(Number(rgbaMatch[2]), 0, 255);
+  const b = clamp(Number(rgbaMatch[3]), 0, 255);
+  const a = clamp(Number(rgbaMatch[4]), 0, 1);
+  const parsedHex = rgbToHex(r, g, b);
+  return { oklch: hexToOklch(parsedHex), alpha: a };
+}
+
+function contrastBias(
+  element: Element,
+  mode: Mode,
+  contrast: number
+): Adjustment {
+  const t = clamp(contrast, 0, 100) / 100;
+  const direction = mode === 'dark' ? 1 : -1;
+  if (element === 'bg') {
+    return { dL: direction * (0.01 + t * 0.07) };
+  }
+  if (element === 'text' || element === 'icon') {
+    return { dL: direction * (0.02 + t * 0.08) };
+  }
+  if (element === 'border' || element === 'ring') {
+    return { dL: direction * (0.01 + t * 0.05) };
+  }
+  return {};
+}
+
+function toneBaseColor(
+  tone: Tone,
+  mode: Mode,
+  seed: { accent: `#${string}`; background: `#${string}`; ink: `#${string}` },
+  element: Element
+): Oklch {
+  const spec = SEMANTIC.toneSource[tone];
+  const source = spec.sourceByElement?.[element] ?? spec.source;
+  const sourceHex =
+    source === 'fixed'
+      ? (BASE.fixedAnchors[mode][tone] ?? seed.accent)
+      : seed[source as 'accent' | 'background' | 'ink'];
+  const base = hexToOklch(sourceHex);
+  return applyAdjustment(base, {
+    dL:
+      (spec.dL ?? 0) +
+      (mode === 'light' ? (spec.dLLight ?? 0) : (spec.dLDark ?? 0)),
+    dC: spec.dC ?? 0,
+    dH: spec.dH ?? 0,
+  });
+}
+
+function parseHexOnly(color: string | undefined): `#${string}` | null {
+  if (!color) return null;
+  const trimmed = color.trim().toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(trimmed)) return null;
+  return trimmed as `#${string}`;
+}
+
+function solveForegroundContrast(
+  fgHex: `#${string}`,
+  bgHex: `#${string}`,
+  minContrast: number
+): `#${string}` {
+  const current = contrastRatio(fgHex, bgHex);
+  if (current >= minContrast) return fgHex;
+
+  const base = hexToOklch(fgHex);
+  let best: { hex: `#${string}`; delta: number } | null = null;
+  for (let i = 0; i <= 100; i += 1) {
+    const targetL = i / 100;
+    const probeHex = oklchToHex({ l: targetL, c: base.c, h: base.h });
+    const ratio = contrastRatio(probeHex, bgHex);
+    if (ratio >= minContrast) {
+      const delta = Math.abs(targetL - base.l);
+      if (!best || delta < best.delta) best = { hex: probeHex, delta };
+    }
+  }
+  if (best) return best.hex;
+
+  // Chroma reduction pass if pure lightness search was insufficient.
+  for (let i = 0; i <= 100; i += 1) {
+    const targetC = (base.c * (100 - i)) / 100;
+    const probeHex = oklchToHex({ l: base.l, c: targetC, h: base.h });
+    if (contrastRatio(probeHex, bgHex) >= minContrast) return probeHex;
   }
 
+  return chooseReadableText(bgHex, fgHex, minContrast);
+}
+
+function enforceContrastPairs(tokens: ThemeTokens): {
+  tokens: ThemeTokens;
+  diagnostics: ContrastDiagnostic[];
+} {
+  const out: ThemeTokens = { ...tokens };
+  const diagnostics: ContrastDiagnostic[] = [];
+  for (const pair of SEMANTIC.contrastPairs) {
+    const fgToken = pair.fg;
+    const bgToken = pair.bg;
+    const fgValue = out[fgToken];
+    const bgValue = out[bgToken];
+    const fgHex = parseHexOnly(fgValue);
+    const bgHex = parseHexOnly(bgValue);
+    if (!fgHex || !bgHex) continue;
+
+    const minRequired = Math.max(
+      pair.minContrast ?? 0,
+      wcagMinimumContrast(pair.largeText)
+    );
+    const solvedFg = solveForegroundContrast(fgHex, bgHex, minRequired);
+    out[fgToken] = solvedFg;
+
+    const ratio = contrastRatio(solvedFg, bgHex);
+    diagnostics.push({
+      fg: fgToken,
+      bg: bgToken,
+      ratio,
+      minRequired,
+      passes: ratio >= minRequired,
+      apcaLc: apcaContrastApprox(solvedFg, bgHex),
+    });
+  }
+  return { tokens: out, diagnostics };
+}
+
+function buildSemanticTokens(
+  contract: ThemeContractV2,
+  seed: ResolvedThemeV2['seed']
+) {
+  const tokens: ThemeTokens = {};
+  const { elements, tones, emphasis, states } = SEMANTIC.axes;
+  const legacyNeutralTokens = buildLegacyNeutralContrastTokens(
+    seed,
+    contract.contrast
+  );
+
+  for (const tone of tones) {
+    for (const emph of emphasis) {
+      for (const state of states) {
+        const tokenSuffix = `${tone}.${emph}.${state}` as const;
+        const baseAdjustment = mergeAdjustment(
+          SEMANTIC.transforms.emphasis[emph],
+          SEMANTIC.transforms.state[state]
+        );
+        const axisOverride = mergeAdjustment(
+          contract.overrides?.tone?.[tone],
+          contract.overrides?.emphasis?.[emph],
+          contract.overrides?.state?.[state],
+          contract.overrides?.cell?.[tokenSuffix]
+        );
+
+        for (const element of elements) {
+          const tokenKey = `${element}.${tokenSuffix}` as TokenKey;
+          if (tone === 'neutral') {
+            const legacy = parseCssColor(legacyNeutralTokens[tokenKey]);
+            if (legacy) {
+              const adjusted = applyAdjustment(legacy.oklch, axisOverride);
+              const legacyHex = oklchToHex(adjusted);
+              const resolvedAlpha =
+                typeof axisOverride.alpha === 'number'
+                  ? axisOverride.alpha
+                  : legacy.alpha;
+              tokens[tokenKey] =
+                typeof resolvedAlpha === 'number' && resolvedAlpha < 1
+                  ? alpha(legacyHex, resolvedAlpha)
+                  : legacyHex;
+              continue;
+            }
+          }
+
+          const toneBase = toneBaseColor(tone, contract.mode, seed, element);
+          const adjustment = mergeAdjustment(
+            baseAdjustment,
+            SEMANTIC.transforms.element[element],
+            contrastBias(element, contract.mode, contract.contrast),
+            axisOverride
+          );
+
+          const colorHex = oklchToHex(applyAdjustment(toneBase, adjustment));
+          const value =
+            typeof adjustment.alpha === 'number' && adjustment.alpha < 1
+              ? alpha(colorHex, adjustment.alpha)
+              : colorHex;
+          tokens[tokenKey] = value;
+        }
+      }
+    }
+  }
   return tokens;
 }
 
-function buildFixedToneTokens(
-  mode: Mode,
-  background: `#${string}`,
-  ink: `#${string}`,
-  contrastT: number,
-  schema: FixedToneSchema = DEFAULT_FIXED_TONE_SCHEMA
+/**
+ * Tones used for filled primary-style controls (`button` `TONE_PRIMARY`): same rule as
+ * brand — prefer near-white on saturated fills (WCAG large-text ~3:1), else best black/white.
+ */
+const FILLED_ACCENT_INVERSE_TONES: Tone[] = [
+  'brand',
+  'success',
+  'error',
+  'warning',
+  'information',
+];
+
+function applyFilledAccentInverseTextHeuristic(
+  tokens: ThemeTokens
 ): ThemeTokens {
-  const tokens: ThemeTokens = {};
-  const fixed = schema[mode];
-
-  for (const [tone, values] of Object.entries(fixed) as Array<
-    [FixedTone, FixedToneSeed]
-  >) {
-    const base = values.color;
-    const bgSubtleDefault = mix(background, base, 0.1 + contrastT * 0.1);
-    const bgSubtleHover = mix(background, base, 0.14 + contrastT * 0.12);
-    const bgSubtleActive = mix(background, base, 0.18 + contrastT * 0.14);
-    const bgDefault = mix(background, base, 0.2 + contrastT * 0.14);
-    const textHover = mix(base, ink, 0.12 + contrastT * 0.06);
-    const textActive = mix(base, ink, 0.2 + contrastT * 0.08);
-    const borderDefault = alpha(base, 0.32 + contrastT * 0.28);
-    const borderHover = alpha(base, 0.38 + contrastT * 0.3);
-    const borderFocus = alpha(base, 0.45 + contrastT * 0.3);
-
-    // Text: full emphasis ramp (UI state `default`). Regular semantic color is
-    // `text.<tone>.default.default` (e.g. `text.error.default.default`).
-    tokens[`text.${tone}.subtle.default`] = mix(
-      base,
-      background,
-      0.48 + contrastT * 0.1
-    );
-    tokens[`text.${tone}.muted.default`] = mix(
-      base,
-      ink,
-      0.18 + contrastT * 0.06
-    );
-    tokens[`text.${tone}.default.default`] = base;
-    tokens[`text.${tone}.default.hover`] = textHover;
-    tokens[`text.${tone}.default.active`] = textActive;
-    tokens[`text.${tone}.strong.default`] = mix(
-      base,
-      ink,
-      0.4 + contrastT * 0.12
-    );
-    tokens[`text.${tone}.inverse.default`] = chooseReadableText(bgDefault, ink);
-
-    tokens[`icon.${tone}.default.default`] = base;
-    tokens[`icon.${tone}.default.hover`] = textHover;
-    tokens[`icon.${tone}.default.active`] = textActive;
-
-    tokens[`border.${tone}.default.default`] = borderDefault;
-    tokens[`border.${tone}.default.hover`] = borderHover;
-    tokens[`border.${tone}.default.focus`] = borderFocus;
-    tokens[`ring.${tone}.default.focus`] = alpha(base, 0.4 + contrastT * 0.35);
-
-    tokens[`bg.${tone}.subtle.default`] = bgSubtleDefault;
-    tokens[`bg.${tone}.subtle.hover`] = bgSubtleHover;
-    tokens[`bg.${tone}.subtle.active`] = bgSubtleActive;
-    tokens[`bg.${tone}.subtle.selected`] =
-      values.selectedBg ?? mix(background, base, 0.16 + contrastT * 0.12);
-    tokens[`bg.${tone}.default.default`] = bgDefault;
+  const out: ThemeTokens = { ...tokens };
+  for (const tone of FILLED_ACCENT_INVERSE_TONES) {
+    for (const state of SEMANTIC.axes.states) {
+      const bgKey = `bg.${tone}.default.${state}` as TokenKey;
+      const textKey = `text.${tone}.inverse.${state}` as TokenKey;
+      const bgHex = parseHexOnly(out[bgKey]);
+      if (!bgHex) continue;
+      out[textKey] = chooseReadableText(bgHex, '#ffffff', 3);
+    }
   }
+  return out;
+}
 
-  return tokens;
+function buildComponentAliasVariables(
+  tokens: ThemeTokens
+): Record<string, string> {
+  const resolved = resolveExtends(componentTokens as Record<string, unknown>);
+  const leaves = flattenDtcgTokens(resolved);
+  const out: Record<string, string> = {};
+  for (const leaf of leaves) {
+    if (typeof leaf.value !== 'string') continue;
+    const resolvedValue = resolveAliasReferences(leaf.value, (path) => {
+      const key = path as TokenKey;
+      return tokens[key];
+    });
+    const cssVar = (leaf.extensions?.cssVar as string | undefined) ?? null;
+    if (!cssVar || !resolvedValue) continue;
+    out[cssVar] = resolvedValue;
+  }
+  return out;
 }
 
 function toCssVariables(tokens: ThemeTokens): Record<string, string> {
@@ -538,76 +704,59 @@ function toCssVariables(tokens: ThemeTokens): Record<string, string> {
   return variables;
 }
 
-function resolveContract(contract: ThemeContractV1): ThemeContractV1 {
+function normalizeContract(contract: ThemeContractV2): ThemeContractV2 {
   return {
     ...contract,
     contrast: clamp(Math.round(contract.contrast), 0, 100),
   };
 }
 
-function getThemeSeed(
-  contract: ThemeContractV1,
-  catalog: ThemeCatalog
-): {
-  colorThemeId: string;
-  seed: ResolvedThemeV1['seed'];
-} {
-  const definition = getColorThemeDefinition(
+function getThemeSeed(contract: ThemeContractV2, catalog: ThemeCatalogV2) {
+  const definition = getColorThemeDefinitionV2(
     contract.mode,
-    contract.colorThemeId,
+    contract.themeId,
     catalog
   );
   return {
-    colorThemeId: definition.id,
+    themeId: definition.id,
     seed: definition.seed,
   };
 }
 
-export function buildThemeV1(
-  contract: ThemeContractV1,
-  catalog: ThemeCatalog = DEFAULT_THEME_CATALOG
-): ResolvedThemeV1 {
-  const resolvedContract = resolveContract(contract);
-  const { colorThemeId, seed } = getThemeSeed(resolvedContract, catalog);
-  const contrastT = resolvedContract.contrast / 100;
+export function buildThemeV2(
+  contract: ThemeContractV2,
+  catalog: ThemeCatalogV2 = DEFAULT_THEME_CATALOG
+): ResolvedThemeV2 {
+  const normalized = normalizeContract(contract);
+  const { seed, themeId } = getThemeSeed(normalized, catalog);
 
-  const core = buildCoreTokens(
-    seed.accent,
-    seed.ink,
-    seed.background,
-    contrastT
-  );
-  const status = buildStatusTokens(
-    seed.accent,
-    seed.ink,
-    seed.background,
-    contrastT
-  );
-  const fixedTone = buildFixedToneTokens(
-    resolvedContract.mode,
-    seed.background,
-    seed.ink,
-    contrastT
-  );
-  const tokens: ThemeTokens = {
-    ...core,
-    ...status,
-    ...fixedTone,
+  const semantic = buildSemanticTokens(normalized, seed);
+  const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic(semantic);
+  const enforced = enforceContrastPairs(accentInverseAdjusted);
+  const semanticCssVars = toCssVariables(enforced.tokens);
+  const componentVars = buildComponentAliasVariables(enforced.tokens);
+  const cssVariables = {
+    ...semanticCssVars,
+    ...componentVars,
+    '--ds-theme-contrast': String(normalized.contrast),
   };
 
   return {
     contract: {
-      ...resolvedContract,
-      colorThemeId,
+      ...normalized,
+      themeId,
     },
     seed,
-    tokens,
-    cssVariables: toCssVariables(tokens),
+    tokens: enforced.tokens,
+    cssVariables,
+    diagnostics: {
+      contrast: enforced.diagnostics,
+    },
   };
 }
 
 export function applyResolvedThemeToElement(
-  resolvedTheme: ResolvedThemeV1,
+  resolvedTheme: ResolvedThemeV2,
   element: HTMLElement
 ): void {
   for (const [name, value] of Object.entries(resolvedTheme.cssVariables)) {
@@ -615,12 +764,25 @@ export function applyResolvedThemeToElement(
   }
 }
 
-export function applyThemeContractV1(
-  contract: ThemeContractV1,
+export function applyThemeContractV2(
+  contract: ThemeContractV2,
   element: HTMLElement,
-  catalog: ThemeCatalog = DEFAULT_THEME_CATALOG
-): ResolvedThemeV1 {
-  const resolved = buildThemeV1(contract, catalog);
+  catalog: ThemeCatalogV2 = DEFAULT_THEME_CATALOG
+): ResolvedThemeV2 {
+  const resolved = buildThemeV2(contract, catalog);
   applyResolvedThemeToElement(resolved, element);
   return resolved;
+}
+
+export function createApcaDiagnosticsReport(
+  resolvedTheme: ResolvedThemeV2
+): string {
+  return JSON.stringify(
+    {
+      contract: resolvedTheme.contract,
+      diagnostics: resolvedTheme.diagnostics,
+    },
+    null,
+    2
+  );
 }

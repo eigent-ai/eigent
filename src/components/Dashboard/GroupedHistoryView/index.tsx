@@ -397,23 +397,20 @@ export default function GroupedHistoryView({
       {/* Summary */}
       <div className="pb-4 flex items-center justify-between">
         <div className="gap-2 flex items-center">
-          <Tag variant="default" size="sm" className="gap-2">
+          <Tag variant="secondary" tone="neutral" size="sm" className="gap-2">
             <Sparkle />
             <span className="text-body-sm"> {t('layout.projects')}</span>
-            <span className="h-5 w-5 bg-tag-fill-default-foreground text-label-xs font-bold text-ds-text-neutral-default-default flex items-center justify-center rounded-full">
-              {allProjects.length}
-            </span>
+
+            {allProjects.length}
           </Tag>
 
-          <Tag variant="default" size="sm" className="gap-2">
+          <Tag variant="secondary" tone="neutral" size="sm" className="gap-2">
             <Pin />
-            <span className="text-body-sm"> {t('layout.total-tasks')}</span>
-            <span className="h-5 w-5 bg-tag-fill-default-foreground text-label-xs font-bold text-ds-text-neutral-default-default flex items-center justify-center rounded-full">
-              {allProjects.reduce(
-                (total, project) => total + project.task_count,
-                0
-              )}
-            </span>
+            {t('layout.total-tasks')}
+            {allProjects.reduce(
+              (total, project) => total + project.task_count,
+              0
+            )}
           </Tag>
         </div>
         <div className="gap-md flex items-center">

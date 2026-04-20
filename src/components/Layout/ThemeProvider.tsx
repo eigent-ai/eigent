@@ -13,8 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  applyThemeContractV1,
-  createDefaultThemeContract,
+  applyThemeContractV2,
+  createDefaultThemeContractV2,
 } from '@/lib/themeTokens';
 import { DEFAULT_THEME_CATALOG } from '@/lib/themeTokens/catalog';
 import type { Mode } from '@/lib/themeTokens/types';
@@ -46,9 +46,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
     update();
 
-    media.addEventListener('change', update);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', update);
+    } else {
+      media.addListener(update);
+    }
     return () => {
-      media.removeEventListener('change', update);
+      if (typeof media.removeEventListener === 'function') {
+        media.removeEventListener('change', update);
+      } else {
+        media.removeListener(update);
+      }
     };
   }, []);
 
@@ -82,13 +90,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.setAttribute('data-theme', resolvedMode);
     root.setAttribute('data-theme-mode', appearanceMode);
     root.setAttribute('data-color-theme', colorThemeId);
+    root.style.setProperty('color-scheme', resolvedMode);
     root.style.setProperty('--ds-theme-contrast', String(themeContrast));
 
-    // V2 semantic tokens are generated in parallel to legacy tokens.
-    // Existing components continue to use legacy variables until migration.
-    applyThemeContractV1(
-      createDefaultThemeContract(resolvedMode, {
-        colorThemeId,
+    applyThemeContractV2(
+      createDefaultThemeContractV2(resolvedMode, {
+        themeId: colorThemeId,
         contrast: themeContrast,
       }),
       root,
@@ -136,9 +143,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     (
       window as Window & {
-        __eigentThemeV1?: typeof api;
+        __eigentThemeV2?: typeof api;
       }
-    ).__eigentThemeV1 = api;
+    ).__eigentThemeV2 = api;
   }, [mergedCatalog]);
 
   return <>{children}</>;

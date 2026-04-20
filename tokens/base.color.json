@@ -1,0 +1,75 @@
+{
+  "$description": "Base color seeds and fixed role anchors for Design Tokens V2.",
+  "themes": {
+    "light": {
+      "eigent": {
+        "accent": "#000000",
+        "background": "#faf7f6",
+        "ink": "#1d1d1d"
+      },
+      "claude": {
+        "accent": "#cc7d5e",
+        "background": "#f9f9f7",
+        "ink": "#2d2d2b"
+      },
+      "codex": {
+        "accent": "#0169cc",
+        "background": "#ffffff",
+        "ink": "#0d0d0d"
+      },
+      "camel": {
+        "accent": "#4c19e8",
+        "background": "#ffffff",
+        "ink": "#1d1d1d"
+      }
+    },
+    "dark": {
+      "eigent": {
+        "accent": "#ede1db",
+        "background": "#1f1f1f",
+        "ink": "#ffffff"
+      },
+      "claude": {
+        "accent": "#cc7d5e",
+        "background": "#2d2d2b",
+        "ink": "#f9f9f7"
+      },
+      "codex": {
+        "accent": "#0169cc",
+        "background": "#111111",
+        "ink": "#fcfcfc"
+      },
+      "camel": {
+        "accent": "#b5afff",
+        "background": "#1f1f1f",
+        "ink": "#fafafa"
+      }
+    }
+  },
+  "fixedAnchors": {
+    "light": {
+      "single-agent": "#7e22ce",
+      "workforce": "#007a55",
+      "browser": "#0084d1",
+      "terminal": "#009966",
+      "document": "#e17100",
+      "success": "#00a63e",
+      "caution": "#e7000b",
+      "error": "#e7000b",
+      "warning": "#d08700",
+      "information": "#155dfc"
+    },
+    "dark": {
+      "single-agent": "#e9d5ff",
+      "workforce": "#6ee7b7",
+      "browser": "#7dd3fc",
+      "terminal": "#6ee7b7",
+      "document": "#ffd479",
+      "success": "#4ade80",
+      "caution": "#f87171",
+      "error": "#f87171",
+      "warning": "#facc15",
+      "information": "#7ab3ff"
+    }
+  }
+}

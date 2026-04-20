@@ -53,7 +53,8 @@ function resolveStateClasses(state: InputState | undefined) {
   if (state === 'disabled') {
     return {
       container: 'opacity-50 cursor-not-allowed',
-      field: 'border-input-border-default bg-input-bg-default',
+      field:
+        'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default',
       input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
@@ -61,7 +62,8 @@ function resolveStateClasses(state: InputState | undefined) {
   if (state === 'hover') {
     return {
       container: '',
-      field: 'border-input-border-hover bg-input-bg-default',
+      field:
+        'border-ds-border-neutral-strong-default bg-ds-bg-neutral-default-default',
       input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
@@ -69,7 +71,8 @@ function resolveStateClasses(state: InputState | undefined) {
   if (state === 'input') {
     return {
       container: '',
-      field: 'border-input-border-focus bg-input-bg-input',
+      field:
+        'border-ds-border-brand-default-focus bg-ds-bg-neutral-strong-default',
       input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
@@ -77,7 +80,8 @@ function resolveStateClasses(state: InputState | undefined) {
   if (state === 'error') {
     return {
       container: '',
-      field: 'border-input-border-cuation bg-input-bg-default',
+      field:
+        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
       input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
@@ -85,14 +89,16 @@ function resolveStateClasses(state: InputState | undefined) {
   if (state === 'success') {
     return {
       container: '',
-      field: 'border-input-border-success bg-input-bg-confirm',
+      field:
+        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
       input: 'text-ds-text-neutral-default-default',
       placeholder: 'placeholder-input-label-default',
     };
   }
   return {
     container: '',
-    field: 'border-input-border-default bg-input-bg-default',
+    field:
+      'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default',
     input: 'text-ds-text-neutral-default-default',
     placeholder: 'placeholder-input-label-default/10',
   };
@@ -159,7 +165,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             // Only apply hover/focus visuals when not in error state
             state !== 'error' &&
               state !== 'success' &&
-              'focus-within:bg-input-bg-input focus-within:ring-input-border-focus hover:bg-input-bg-hover hover:ring-input-border-hover focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
+              'focus-within:bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-brand-default-focus hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
             stateCls.field,
             sizeClasses[size]
           )}

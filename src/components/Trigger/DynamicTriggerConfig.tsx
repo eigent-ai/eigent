@@ -472,7 +472,7 @@ const MultiSelectField: React.FC<FieldProps> = ({
               <Badge
                 key={val}
                 variant="secondary"
-                className="hover:bg-destructive/20 text-xs cursor-pointer"
+                className="text-xs hover:bg-ds-bg-status-error-subtle-default/50 cursor-pointer"
                 onClick={() => handleToggle(val)}
               >
                 {opt?.label || val}
@@ -602,7 +602,7 @@ const MultiTextInputField: React.FC<FieldProps> = ({
             <Badge
               key={val}
               variant="secondary"
-              className="hover:bg-destructive/20 text-xs cursor-pointer"
+              className="text-xs hover:bg-ds-bg-status-error-subtle-default/50 cursor-pointer"
               onClick={() => handleRemove(val)}
             >
               {val}

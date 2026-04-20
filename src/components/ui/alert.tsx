@@ -18,13 +18,14 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 const alertVariants = cva(
-  'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7',
+  'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-ds-text-neutral-default-default [&>svg~*]:pl-7',
   {
     variants: {
       variant: {
-        default: 'bg-background text-foreground',
+        default:
+          'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
         destructive:
-          'border-destructive/50 text-ds-text-status-error-strong-default dark:border-destructive [&>svg]:text-destructive',
+          'border-ds-border-status-error-default-default/50 text-ds-text-status-error-strong-default [&>svg]:text-ds-text-status-error-strong-default',
       },
     },
     defaultVariants: {

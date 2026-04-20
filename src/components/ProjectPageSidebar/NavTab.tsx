@@ -32,7 +32,7 @@ export function workspaceTabButtonClass(active: boolean): string {
   return cn(
     'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
     'text-ds-text-neutral-muted-default',
-    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-border-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
+    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
     active && 'bg-ds-bg-neutral-subtle-default'
   );
 }
@@ -41,7 +41,7 @@ export const WORKSPACE_TAB_LABEL_CLASS =
   'min-w-0 flex-1 truncate text-ds-text-neutral-muted-default text-body-sm font-medium';
 
 const SPLIT_MAIN_BUTTON_CLASS =
-  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none text-ds-text-neutral-muted-default focus-visible:ring-ds-border-neutral-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
+  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none text-ds-text-neutral-muted-default focus-visible:ring-ds-ring-neutral-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
 
 const SPLIT_OUTER_EXTRA_CLASS =
   'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible';
@@ -83,7 +83,7 @@ export function NavTabReconnectSuffix({
           type="button"
           className={cn(
             'no-drag h-8 w-8 rounded-xl text-ds-icon-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default flex shrink-0 items-center justify-center transition-colors outline-none',
-            'focus-visible:ring-ds-border-neutral-subtle-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
           )}
           aria-label={reconnectHint}
         >

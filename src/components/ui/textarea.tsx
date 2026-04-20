@@ -54,44 +54,48 @@ function resolveStateClasses(state: TextareaState | undefined) {
   if (state === 'disabled') {
     return {
       container: 'opacity-50 cursor-not-allowed',
-      field: 'border-transparent bg-input-bg-default text-input-text-default',
-      placeholder: 'text-input-label-default',
+      field:
+        'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+      placeholder: 'text-ds-text-neutral-muted-default',
     };
   }
   if (state === 'hover') {
     return {
       container: '',
-      field: 'border-transparent bg-input-bg-default text-input-text-default',
-      placeholder: 'text-input-label-default',
+      field:
+        'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+      placeholder: 'text-ds-text-neutral-muted-default',
     };
   }
   if (state === 'input') {
     return {
       container: '',
-      field: 'border-transparent bg-input-bg-input text-input-text-focus',
-      placeholder: 'text-input-label-default',
+      field:
+        'border-transparent bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default',
+      placeholder: 'text-ds-text-neutral-muted-default',
     };
   }
   if (state === 'error') {
     return {
       container: '',
       field:
-        'border-input-border-cuation bg-input-bg-default text-ds-text-neutral-default-default',
-      placeholder: 'text-input-label-default',
+        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+      placeholder: 'text-ds-text-neutral-muted-default',
     };
   }
   if (state === 'success') {
     return {
       container: '',
       field:
-        'border-input-border-success bg-input-bg-confirm text-ds-text-neutral-default-default',
-      placeholder: 'text-input-label-default',
+        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default text-ds-text-neutral-default-default',
+      placeholder: 'text-ds-text-neutral-muted-default',
     };
   }
   return {
     container: '',
-    field: 'border-transparent bg-input-bg-default text-input-text-default',
-    placeholder: 'text-input-label-default/10',
+    field:
+      'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+    placeholder: 'text-ds-text-neutral-muted-default/10',
   };
 }
 
@@ -126,7 +130,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <textarea
             data-scrollbar="ui-textarea"
             className={cn(
-              'border-input placeholder:text-ds-text-neutral-muted-default/20 focus-visible:ring-ring rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              'border-ds-border-neutral-default-default placeholder:text-ds-text-neutral-muted-default/20 focus-visible:ring-ds-ring-brand-default-focus rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
               className
             )}
             style={mergeAliasStyles(formControlTokenAliases, {
@@ -195,7 +199,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
               // Only apply hover/focus visuals when not in error or success state
               state !== 'error' &&
                 state !== 'success' &&
-                'focus-within:bg-input-bg-input focus-within:ring-input-border-focus hover:bg-input-bg-hover hover:ring-input-border-hover focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
+                'focus-within:bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-brand-default-focus hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
               stateCls.field,
               sizeClasses[size]
             )}

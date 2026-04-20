@@ -18,7 +18,7 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 import {
-  normalizeUiTone,
+  DEFAULT_EMPHASIS_BY_VARIANT,
   type UiEmphasis,
   type UiTone,
   type UiToneInput,
@@ -26,120 +26,316 @@ import {
 } from './semanticProps';
 import { mergeAliasStyles, tagTokenAliases } from './tokenAliases';
 
+/** User-friendly tone aliases map to {@link UiTone}. */
+export type TagToneInput = UiToneInput | 'info' | 'caution';
+
+export type TagVariant = UiVariant;
+export type TagTone = UiTone;
+export type TagEmphasis = UiEmphasis;
+
+type TagStyleTone = 'default' | 'success' | 'error' | 'information' | 'warning';
+type TagEmphasisMatrix = 'subtle' | 'muted' | 'default' | 'strong';
+
+const TAG_INVERSE =
+  'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-neutral-default-default';
+
+export function normalizeTagTone(tone?: TagToneInput): UiTone {
+  if (!tone || tone === 'default') return 'neutral';
+  if (tone === 'info') return 'information';
+  if (tone === 'caution') return 'error';
+  return tone;
+}
+
+function toStyleTone(tone: UiTone): TagStyleTone {
+  return tone === 'neutral' ? 'default' : tone;
+}
+
+function resolveTagAxes(
+  variant: TagVariant | undefined,
+  tone: TagToneInput | undefined,
+  emphasis: TagEmphasis | undefined
+): {
+  variant: UiVariant;
+  tone: UiTone;
+  emphasis: TagEmphasis;
+} {
+  const base = variant ?? 'primary';
+  return {
+    variant: base,
+    tone: normalizeTagTone(tone),
+    emphasis: emphasis ?? DEFAULT_EMPHASIS_BY_VARIANT[base],
+  };
+}
+
+/** Filled chips — emphasis ramps from quiet surface to solid semantic fill. */
+const TAG_PRIMARY: Record<TagStyleTone, Record<TagEmphasisMatrix, string>> = {
+  default: {
+    subtle:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-neutral-default-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-neutral-muted-default',
+    default:
+      'border-transparent bg-ds-bg-neutral-default-default !text-ds-text-neutral-default-default',
+    strong:
+      'border-transparent bg-ds-bg-brand-default-default !text-ds-text-brand-inverse-default',
+  },
+  success: {
+    subtle:
+      'border-transparent bg-ds-bg-status-completed-subtle-default !text-ds-text-status-completed-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-success-strong-default',
+    default:
+      'border-transparent bg-ds-bg-success-subtle-default !text-ds-text-success-strong-default',
+    strong:
+      'border-transparent bg-ds-bg-success-default-default !text-ds-text-success-inverse-default',
+  },
+  error: {
+    subtle:
+      'border-transparent bg-ds-bg-status-error-subtle-default !text-ds-text-status-error-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-error-strong-default',
+    default:
+      'border-transparent bg-ds-bg-error-subtle-default !text-ds-text-error-strong-default',
+    strong:
+      'border-transparent bg-ds-bg-error-default-default !text-ds-text-error-inverse-default',
+  },
+  information: {
+    subtle:
+      'border-transparent bg-ds-bg-status-splitting-subtle-default !text-ds-text-status-splitting-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-information-strong-default',
+    default:
+      'border-transparent bg-ds-bg-information-subtle-default !text-ds-text-information-strong-default',
+    strong:
+      'border-transparent bg-ds-bg-information-default-default !text-ds-text-information-inverse-default',
+  },
+  warning: {
+    subtle:
+      'border-transparent bg-ds-bg-status-pending-subtle-default !text-ds-text-status-pending-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-warning-strong-default',
+    default:
+      'border-transparent bg-ds-bg-warning-subtle-default !text-ds-text-warning-strong-default',
+    strong:
+      'border-transparent bg-ds-bg-warning-default-default !text-ds-text-warning-inverse-default',
+  },
+};
+
+/** Softer bordered / filled secondary surface. */
+const TAG_SECONDARY: Record<TagStyleTone, Record<TagEmphasisMatrix, string>> = {
+  default: {
+    subtle:
+      'border-ds-border-neutral-muted-default bg-ds-bg-neutral-subtle-default !text-ds-text-neutral-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-default-default !text-ds-text-neutral-muted-default',
+    default:
+      'border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default !text-ds-text-neutral-default-default',
+    strong:
+      'border-ds-border-neutral-strong-default bg-ds-bg-neutral-default-default !text-ds-text-neutral-default-default',
+  },
+  success: {
+    subtle:
+      'border-ds-border-success-muted-default bg-ds-bg-success-subtle-default !text-ds-text-status-completed-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-success-strong-default',
+    default:
+      'border-ds-border-success-default-default bg-ds-bg-success-subtle-default !text-ds-text-success-strong-default',
+    strong:
+      'border-ds-border-success-default-default bg-ds-bg-success-default-default !text-ds-text-success-inverse-default',
+  },
+  error: {
+    subtle:
+      'border-ds-border-error-muted-default bg-ds-bg-error-subtle-default !text-ds-text-status-error-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-error-strong-default',
+    default:
+      'border-ds-border-error-default-default bg-ds-bg-error-subtle-default !text-ds-text-error-strong-default',
+    strong:
+      'border-ds-border-error-default-default bg-ds-bg-error-default-default !text-ds-text-error-inverse-default',
+  },
+  information: {
+    subtle:
+      'border-ds-border-information-muted-default bg-ds-bg-information-subtle-default !text-ds-text-status-splitting-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-information-strong-default',
+    default:
+      'border-ds-border-information-default-default bg-ds-bg-information-subtle-default !text-ds-text-information-strong-default',
+    strong:
+      'border-ds-border-information-default-default bg-ds-bg-information-default-default !text-ds-text-information-inverse-default',
+  },
+  warning: {
+    subtle:
+      'border-ds-border-warning-muted-default bg-ds-bg-warning-subtle-default !text-ds-text-status-pending-muted-default',
+    muted:
+      'border-transparent bg-ds-bg-neutral-subtle-default !text-ds-text-warning-strong-default',
+    default:
+      'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default !text-ds-text-warning-strong-default',
+    strong:
+      'border-ds-border-warning-default-default bg-ds-bg-warning-default-default !text-ds-text-warning-inverse-default',
+  },
+};
+
+/** Transparent fill; semantic border. */
+const TAG_OUTLINE: Record<TagStyleTone, Record<TagEmphasisMatrix, string>> = {
+  default: {
+    subtle:
+      'border-ds-border-neutral-muted-default bg-transparent !text-ds-text-neutral-muted-default',
+    muted:
+      'border-ds-border-neutral-muted-default bg-transparent !text-ds-text-neutral-muted-default',
+    default:
+      'border-ds-border-neutral-strong-default bg-transparent !text-ds-text-neutral-default-default',
+    strong:
+      'border-ds-border-neutral-strong-default bg-transparent !text-ds-text-neutral-default-default font-semibold',
+  },
+  success: {
+    subtle:
+      'border-ds-border-success-muted-default bg-transparent !text-ds-text-status-completed-muted-default',
+    muted:
+      'border-ds-border-neutral-default-default bg-transparent !text-ds-text-success-strong-default',
+    default:
+      'border-ds-border-success-default-default bg-transparent !text-ds-text-success-strong-default',
+    strong:
+      'border-ds-border-success-strong-default bg-transparent !text-ds-text-success-strong-default font-semibold',
+  },
+  error: {
+    subtle:
+      'border-ds-border-error-muted-default bg-transparent !text-ds-text-status-error-muted-default',
+    muted:
+      'border-ds-border-neutral-default-default bg-transparent !text-ds-text-error-strong-default',
+    default:
+      'border-ds-border-error-default-default bg-transparent !text-ds-text-error-strong-default',
+    strong:
+      'border-ds-border-error-strong-default bg-transparent !text-ds-text-error-strong-default font-semibold',
+  },
+  information: {
+    subtle:
+      'border-ds-border-information-muted-default bg-transparent !text-ds-text-status-splitting-muted-default',
+    muted:
+      'border-ds-border-neutral-default-default bg-transparent !text-ds-text-information-strong-default',
+    default:
+      'border-ds-border-information-default-default bg-transparent !text-ds-text-information-strong-default',
+    strong:
+      'border-ds-border-information-strong-default bg-transparent !text-ds-text-information-strong-default font-semibold',
+  },
+  warning: {
+    subtle:
+      'border-ds-border-warning-muted-default bg-transparent !text-ds-text-status-pending-muted-default',
+    muted:
+      'border-ds-border-neutral-default-default bg-transparent !text-ds-text-warning-strong-default',
+    default:
+      'border-ds-border-warning-default-default bg-transparent !text-ds-text-warning-strong-default',
+    strong:
+      'border-ds-border-warning-strong-default bg-transparent !text-ds-text-warning-strong-default font-semibold',
+  },
+};
+
+/** No border; text-first. */
+const TAG_GHOST: Record<TagStyleTone, Record<TagEmphasisMatrix, string>> = {
+  default: {
+    subtle:
+      'border-transparent bg-transparent !text-ds-text-neutral-muted-default',
+    muted:
+      'border-transparent bg-transparent !text-ds-text-neutral-muted-default',
+    default:
+      'border-transparent bg-transparent !text-ds-text-neutral-default-default',
+    strong:
+      'border-transparent bg-transparent !text-ds-text-neutral-default-default font-semibold',
+  },
+  success: {
+    subtle:
+      'border-transparent bg-transparent !text-ds-text-status-completed-muted-default',
+    muted:
+      'border-transparent bg-transparent opacity-80 !text-ds-text-success-strong-default',
+    default:
+      'border-transparent bg-transparent !text-ds-text-success-strong-default',
+    strong:
+      'border-transparent bg-transparent !text-ds-text-success-strong-default font-semibold',
+  },
+  error: {
+    subtle:
+      'border-transparent bg-transparent !text-ds-text-status-error-muted-default',
+    muted:
+      'border-transparent bg-transparent opacity-80 !text-ds-text-error-strong-default',
+    default:
+      'border-transparent bg-transparent !text-ds-text-error-strong-default',
+    strong:
+      'border-transparent bg-transparent !text-ds-text-error-strong-default font-semibold',
+  },
+  information: {
+    subtle:
+      'border-transparent bg-transparent !text-ds-text-status-splitting-muted-default',
+    muted:
+      'border-transparent bg-transparent opacity-80 !text-ds-text-information-strong-default',
+    default:
+      'border-transparent bg-transparent !text-ds-text-information-strong-default',
+    strong:
+      'border-transparent bg-transparent !text-ds-text-information-strong-default font-semibold',
+  },
+  warning: {
+    subtle:
+      'border-transparent bg-transparent !text-ds-text-status-pending-muted-default',
+    muted:
+      'border-transparent bg-transparent opacity-80 !text-ds-text-warning-strong-default',
+    default:
+      'border-transparent bg-transparent !text-ds-text-warning-strong-default',
+    strong:
+      'border-transparent bg-transparent !text-ds-text-warning-strong-default font-semibold',
+  },
+};
+
+const TAG_BY_VARIANT: Record<
+  UiVariant,
+  Record<TagStyleTone, Record<TagEmphasisMatrix, string>>
+> = {
+  primary: TAG_PRIMARY,
+  secondary: TAG_SECONDARY,
+  outline: TAG_OUTLINE,
+  ghost: TAG_GHOST,
+};
+
+function tagChromeClasses(
+  variant: UiVariant,
+  styleTone: TagStyleTone,
+  emphasis: TagEmphasis
+): string {
+  if (emphasis === 'inverse') {
+    return TAG_INVERSE;
+  }
+  const em = emphasis as TagEmphasisMatrix;
+  return TAG_BY_VARIANT[variant][styleTone][em];
+}
+
 const tagVariants = cva(
-  'inline-flex justify-start items-center leading-relaxed',
+  'inline-flex justify-start items-center border border-solid leading-relaxed transition-colors duration-150',
   {
     variants: {
-      variant: {
-        primary: 'bg-tag-fill-info text-[var(--tag-foreground-info)]',
-        info: 'bg-tag-fill-info !text-[var(--tag-foreground-info)]',
-        success: 'bg-tag-fill-success !text-[var(--tag-foreground-success)]',
-        cuation: 'bg-tag-fill-cuation !text-[var(--tag-foreground-cuation)]',
-        warning: 'bg-tag-fill-warning !text-[var(--tag-foreground-warning)]',
-        default: 'bg-tag-fill-default !text-[var(--tag-foreground-default)]',
-        ghost: 'bg-transparent !text-[var(--tag-foreground-default)]',
-      },
       size: {
-        xs: 'px-2 py-0.5 gap-1 text-body-xs font-bold leading-tight [&_svg]:size-[10px] rounded-full',
-        sm: 'px-2 py-1.5 gap-1 text-body-xs font-bold leading-tight [&_svg]:size-[16px] rounded-full',
-        md: 'px-3 py-1.5 gap-2 text-body-md font-semibold leading-relaxed [&_svg]:size-[20px] rounded-xl',
+        xxs: 'gap-0.5 rounded-full px-1.5 py-px text-label-xs font-medium [&_svg]:size-[12px]',
+        xs: 'gap-1 rounded-full px-2 py-0.5 text-label-xs font-medium [&_svg]:size-[14px]',
+        sm: 'gap-1 rounded-full px-2 py-1 text-label-sm font-medium [&_svg]:size-[16px]',
+        md: 'gap-1.5 rounded-full px-2.5 py-1 text-label-md font-medium [&_svg]:size-[18px]',
+        lg: 'gap-2 rounded-full px-3 py-1.5 text-label-md font-semibold [&_svg]:size-[20px]',
       },
     },
     defaultVariants: {
-      variant: 'primary',
       size: 'sm',
     },
   }
 );
 
-type TagVisualVariant = NonNullable<
-  VariantProps<typeof tagVariants>['variant']
->;
 type TagSize = NonNullable<VariantProps<typeof tagVariants>['size']>;
-
-export type TagVariant = UiVariant;
-export type TagEmphasis = UiEmphasis;
-export type TagTone = UiTone;
-export type TagLegacyVariant = TagVisualVariant;
-
-const TONE_TO_TAG_VARIANT: Record<TagTone, TagVisualVariant> = {
-  neutral: 'default',
-  success: 'success',
-  error: 'cuation',
-  information: 'info',
-  warning: 'warning',
-};
-
-const OUTLINE_BORDER_BY_TONE: Record<TagTone, string> = {
-  neutral: 'border-ds-border-neutral-default-default',
-  success: 'border-ds-border-success-default-default',
-  error: 'border-ds-border-error-default-default',
-  information: 'border-ds-border-information-default-default',
-  warning: 'border-ds-border-warning-default-default',
-};
-
-function resolveTagVisual(
-  variant: TagVariant | TagLegacyVariant | undefined,
-  tone: UiToneInput | undefined,
-  emphasis: TagEmphasis | undefined
-): {
-  visualVariant: TagVisualVariant;
-  tone: TagTone;
-  emphasis: TagEmphasis;
-  outlineBorderClass: string | null;
-} {
-  const normalizedTone = normalizeUiTone(tone);
-  const resolvedEmphasis = emphasis ?? 'default';
-  const v = variant ?? 'primary';
-
-  // Legacy dedicated semantic variants remain valid.
-  if (
-    v === 'info' ||
-    v === 'success' ||
-    v === 'cuation' ||
-    v === 'warning' ||
-    v === 'default'
-  ) {
-    return {
-      visualVariant: v,
-      tone: normalizedTone,
-      emphasis: resolvedEmphasis,
-      outlineBorderClass: null,
-    };
-  }
-
-  if (resolvedEmphasis === 'inverse' || v === 'ghost') {
-    return {
-      visualVariant: 'ghost',
-      tone: normalizedTone,
-      emphasis: resolvedEmphasis,
-      outlineBorderClass: null,
-    };
-  }
-
-  const visualVariant = TONE_TO_TAG_VARIANT[normalizedTone];
-  if (v === 'outline') {
-    return {
-      visualVariant,
-      tone: normalizedTone,
-      emphasis: resolvedEmphasis,
-      outlineBorderClass: OUTLINE_BORDER_BY_TONE[normalizedTone],
-    };
-  }
-
-  return {
-    visualVariant,
-    tone: normalizedTone,
-    emphasis: resolvedEmphasis,
-    outlineBorderClass: null,
-  };
-}
 
 interface TagProps extends React.ComponentProps<'div'> {
   asChild?: boolean;
-  variant?: TagVariant | TagLegacyVariant;
+  /** Chrome pattern: filled, softer fill, outline, or text-only. */
+  variant?: TagVariant;
+  /** Visual weight within the chosen `variant`. */
   emphasis?: TagEmphasis;
-  tone?: UiToneInput;
+  /**
+   * Semantic palette. Shorthands: `info` → information, `caution` → error; `default` → neutral.
+   * Omitted tone reads as neutral.
+   */
+  tone?: TagToneInput;
   size?: TagSize;
   text?: string;
   icon?: React.ReactNode;
@@ -149,9 +345,9 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
   (
     {
       className,
-      variant,
-      emphasis,
-      tone,
+      variant: variantProp,
+      emphasis: emphasisProp,
+      tone: toneProp,
       size,
       asChild = false,
       text,
@@ -163,27 +359,22 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
     ref
   ) => {
     const Comp = asChild ? Slot : 'div';
-    const {
-      visualVariant,
-      tone: resolvedTone,
-      emphasis: resolvedEmphasis,
-      outlineBorderClass,
-    } = resolveTagVisual(variant, tone, emphasis);
+    const { variant, tone, emphasis } = resolveTagAxes(
+      variantProp,
+      toneProp,
+      emphasisProp
+    );
+    const styleTone = toStyleTone(tone);
+    const chrome = tagChromeClasses(variant, styleTone, emphasis);
 
-    // When asChild is true, just pass through the child without wrapping
     if (asChild) {
       return (
         <Comp
           ref={ref}
-          data-variant={variant ?? 'primary'}
-          data-tone={resolvedTone}
-          data-emphasis={resolvedEmphasis}
-          className={cn(
-            tagVariants({ variant: visualVariant, size, className }),
-            outlineBorderClass
-              ? ['border', 'border-solid', outlineBorderClass]
-              : null
-          )}
+          data-variant={variant}
+          data-tone={tone}
+          data-emphasis={emphasis}
+          className={cn(tagVariants({ size }), chrome, className)}
           style={mergeAliasStyles(tagTokenAliases, style)}
           {...props}
         >
@@ -192,19 +383,13 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
       );
     }
 
-    // Normal rendering when asChild is false
     return (
       <Comp
         ref={ref}
-        data-variant={variant ?? 'primary'}
-        data-tone={resolvedTone}
-        data-emphasis={resolvedEmphasis}
-        className={cn(
-          tagVariants({ variant: visualVariant, size, className }),
-          outlineBorderClass
-            ? ['border', 'border-solid', outlineBorderClass]
-            : null
-        )}
+        data-variant={variant}
+        data-tone={tone}
+        data-emphasis={emphasis}
+        className={cn(tagVariants({ size }), chrome, className)}
         style={mergeAliasStyles(tagTokenAliases, style)}
         {...props}
       >

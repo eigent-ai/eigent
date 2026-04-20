@@ -51,14 +51,16 @@ function resolveStateClasses(
   if (state === 'error') {
     return {
       wrapper: '',
-      trigger: 'border-input-border-cuation bg-input-bg-default',
+      trigger:
+        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
       note: 'text-ds-text-status-error-strong-default',
     };
   }
   if (state === 'success') {
     return {
       wrapper: '',
-      trigger: 'border-input-border-success bg-input-bg-confirm',
+      trigger:
+        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
       note: 'text-ds-text-status-completed-strong-default',
     };
   }
@@ -127,17 +129,17 @@ const SelectTrigger = React.forwardRef<
             sizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default state (when no error/success)
-            !state && 'bg-input-bg-default',
+            !state && 'bg-ds-bg-neutral-default-default',
             // Interactive states (only when no error/success state)
             state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-input-bg-hover hover:ring-input-border-hover hover:ring-1 hover:ring-offset-0',
-                'focus-visible:ring-input-border-focus data-[state=open]:bg-input-bg-input data-[state=open]:ring-input-border-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+                'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
+                'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
               ],
             // Validation states (override defaults)
             stateCls.trigger,
             // Placeholder styling
-            'data-[placeholder]:text-input-label-default/50',
+            'data-[placeholder]:text-ds-text-neutral-muted-default/50',
             className
           )}
           style={mergeAliasStyles(formControlTokenAliases, style)}
@@ -200,7 +202,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'text-popover-foreground rounded-xl bg-input-bg-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-x-hidden overflow-y-auto border border-solid border-transparent',
+        'text-ds-text-neutral-default-default rounded-xl bg-ds-bg-neutral-default-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-x-hidden overflow-y-auto border border-solid border-transparent',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
         className
@@ -244,7 +246,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-accent focus:text-accent-foreground rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-menutabs-fill-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
@@ -265,7 +267,7 @@ const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn('bg-muted -mx-1 my-1 h-px', className)}
+    className={cn('bg-ds-bg-neutral-muted-default -mx-1 my-1 h-px', className)}
     {...props}
   />
 ));
@@ -301,7 +303,7 @@ const SelectItemWithButton = React.forwardRef<
       value={value}
       disabled={!enabled}
       className={cn(
-        'focus:bg-accent focus:text-accent-foreground group rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-menutabs-fill-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default group rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}

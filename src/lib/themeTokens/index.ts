@@ -13,8 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 export * from './catalog';
+export * from './dtcg';
 export * from './engine';
-export * from './fixedToneSchema';
-export * from './legacyMapping';
 export * from './naming';
 export * from './types';

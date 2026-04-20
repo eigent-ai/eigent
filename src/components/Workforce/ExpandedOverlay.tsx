@@ -85,7 +85,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'documentWorkSpace' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -97,7 +97,7 @@ function WorkforceOverlayCanvas() {
       )?.type === 'document_agent' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder
                 data={activeTask.taskAssigning?.find(
@@ -111,7 +111,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'inbox' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>

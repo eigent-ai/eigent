@@ -45,7 +45,7 @@ type ButtonStyleVariant = UiVariant | 'inverse';
  * @deprecated Map to `variant` + `tone` (+ optional `emphasis`) instead:
  * - success → variant="primary" tone="success"
  * - warning → variant="primary" tone="warning"
- * - cuation → variant="primary" tone="error"
+ * - caution → variant="primary" tone="error"
  * - information → variant="primary" tone="information"
  * - inverse → variant="primary" emphasis="inverse"
  */
@@ -53,7 +53,7 @@ export type ButtonLegacyVariant =
   | 'inverse'
   | 'success'
   | 'warning'
-  | 'cuation'
+  | 'caution'
   | 'information';
 
 const LEGACY_VARIANT_TO_TONE: Record<
@@ -62,7 +62,7 @@ const LEGACY_VARIANT_TO_TONE: Record<
 > = {
   success: { variant: 'primary', tone: 'success' },
   warning: { variant: 'primary', tone: 'warning' },
-  cuation: { variant: 'primary', tone: 'error' },
+  caution: { variant: 'primary', tone: 'error' },
   information: { variant: 'primary', tone: 'information' },
 };
 
@@ -100,7 +100,7 @@ function resolveVariantToneAndEmphasis(
   if (
     v === 'success' ||
     v === 'warning' ||
-    v === 'cuation' ||
+    v === 'caution' ||
     v === 'information'
   ) {
     const mapped = LEGACY_VARIANT_TO_TONE[v];
@@ -194,28 +194,28 @@ const TONE_PRIMARY: Record<ButtonToneForStyles, string> = {
     `focus:bg-ds-bg-brand-default-hover focus:border-ds-bg-brand-default-hover ${FOCUS_RING}`,
   ].join(' '),
   success: [
-    'bg-ds-bg-success-default-default border-ds-bg-success-default-default !text-ds-text-success-strong-default',
+    'bg-ds-bg-success-default-default border-ds-bg-success-default-default !text-ds-text-success-inverse-default',
     'shadow-button-shadow',
     'hover:bg-ds-bg-success-default-hover hover:border-ds-bg-success-default-hover',
     'active:bg-ds-bg-success-default-active active:border-ds-bg-success-default-active',
     `focus:bg-ds-bg-success-default-hover focus:border-ds-bg-success-default-hover ${FOCUS_RING}`,
   ].join(' '),
   error: [
-    'bg-ds-bg-error-default-default border-ds-bg-error-default-default !text-ds-text-error-strong-default',
+    'bg-ds-bg-error-default-default border-ds-bg-error-default-default !text-ds-text-error-inverse-default',
     'shadow-button-shadow',
     'hover:bg-ds-bg-error-default-hover hover:border-ds-bg-error-default-hover',
     'active:bg-ds-bg-error-default-active active:border-ds-bg-error-default-active',
     `focus:bg-ds-bg-error-default-hover focus:border-ds-bg-error-default-hover ${FOCUS_RING}`,
   ].join(' '),
   information: [
-    'bg-ds-bg-information-default-default border-ds-bg-information-default-default !text-ds-text-information-strong-default',
+    'bg-ds-bg-information-default-default border-ds-bg-information-default-default !text-ds-text-information-inverse-default',
     'shadow-button-shadow',
     'hover:bg-ds-bg-information-default-hover hover:border-ds-bg-information-default-hover',
     'active:bg-ds-bg-information-default-active active:border-ds-bg-information-default-active',
     `focus:bg-ds-bg-information-default-hover focus:border-ds-bg-information-default-hover ${FOCUS_RING}`,
   ].join(' '),
   warning: [
-    'bg-ds-bg-warning-default-default border-ds-bg-warning-default-default !text-ds-text-warning-strong-default',
+    'bg-ds-bg-warning-default-default border-ds-bg-warning-default-default !text-ds-text-warning-inverse-default',
     'shadow-button-shadow',
     'hover:bg-ds-bg-warning-default-hover hover:border-ds-bg-warning-default-hover',
     'active:bg-ds-bg-warning-default-active active:border-ds-bg-warning-default-active',
@@ -233,7 +233,7 @@ const TONE_SECONDARY: Record<ButtonToneForStyles, string> = {
     `focus:bg-ds-bg-neutral-subtle-hover focus:border-ds-bg-neutral-subtle-hover ${FOCUS_RING}`,
   ].join(' '),
   success: [
-    'bg-ds-bg-status-completed-subtle-default border-ds-bg-status-completed-subtle-default !text-ds-text-status-completed-strong-default',
+    'bg-ds-bg-success-subtle-default border-ds-bg-success-subtle-default !text-ds-text-neutral-inverse-default',
     'shadow-button-shadow',
     'hover:bg-ds-bg-status-completed-subtle-hover hover:border-ds-bg-status-completed-subtle-hover',
     'active:bg-ds-bg-status-completed-subtle-active active:border-ds-bg-status-completed-subtle-active',
@@ -343,7 +343,7 @@ const INVERSE = [
 ].join(' ');
 
 const buttonVariants = cva(
-  'inline-flex items-center whitespace-nowrap border border-solid transition-all duration-200 ease-in-out disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 aria-invalid:border-destructive shrink-0 cursor-pointer',
+  'inline-flex items-center whitespace-nowrap border border-solid transition-all duration-200 ease-in-out disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 outline-none focus-visible:border-ds-border-brand-default-focus focus-visible:ring-ds-ring-brand-default-focus/50 focus-visible:ring-[3px] aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
   {
     variants: {
       variant: {

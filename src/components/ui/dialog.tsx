@@ -242,7 +242,7 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
     | 'outline'
     | 'ghost'
     | 'success'
-    | 'cuation'
+    | 'caution'
     | 'information'
     | 'warning';
   cancelButtonVariant?:
@@ -251,7 +251,7 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
     | 'outline'
     | 'ghost'
     | 'success'
-    | 'cuation'
+    | 'caution'
     | 'information'
     | 'warning';
   confirmButtonDisabled?: boolean;

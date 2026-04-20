@@ -218,13 +218,21 @@ export default function SettingGeneral() {
                 window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
               }}
               variant="primary"
+              textWeight="semibold"
+              buttonContent="text"
+              buttonRadius="lg"
+              tone="neutral"
               size="sm"
             >
-              <Settings className="h-4 w-4 text-button-primary-icon-default" />
+              <Settings />
               {t('setting.manage')}
             </Button>
             <Button
               variant="outline"
+              textWeight="semibold"
+              buttonContent="text"
+              buttonRadius="lg"
+              tone="neutral"
               size="sm"
               onClick={() => {
                 chatStore.clearTasks();
@@ -236,7 +244,7 @@ export default function SettingGeneral() {
                 navigate('/login');
               }}
             >
-              <LogOut className="h-4 w-4 text-button-tertiery-text-default" />
+              <LogOut />
               {t('setting.log-out')}
             </Button>
           </div>

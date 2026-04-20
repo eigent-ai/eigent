@@ -354,11 +354,11 @@ export default function TerminalComponent({
   return (
     <div
       ref={terminalContainerRef}
-      className="rounded-2xl border-ds-border-neutral-strong-default relative flex h-full w-full flex-col overflow-hidden border border-solid"
+      className="rounded-2xl relative flex h-full w-full flex-col overflow-hidden"
       style={{ fontFamily: '"Courier New", Courier, monospace' }}
     >
       {/* background blur effect */}
-      <div className="blur-bg inset-0 rounded-xl bg-black-100% pointer-events-none absolute"></div>
+      <div className="blur-bg inset-0 rounded-xl bg-terminal-viewport-surface pointer-events-none absolute"></div>
 
       {/* terminal container */}
       <div

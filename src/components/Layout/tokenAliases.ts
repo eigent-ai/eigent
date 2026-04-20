@@ -29,12 +29,6 @@ export function mergeLayoutAliasStyles(
 
 // Shared layout-level aliases for TopBar, HistorySidebar, and ProjectPageSidebar.
 export const productLayoutTokenAliases = asCssVarMap({
-  '--surface-primary': 'var(--ds-bg-neutral-subtle-default)',
-  '--surface-secondary': 'var(--ds-bg-neutral-default-default)',
-  '--surface-tertiary': 'var(--ds-bg-neutral-strong-default)',
-  '--surface-information': 'var(--ds-bg-status-splitting-subtle-default)',
-  '--surface-hover-subtle': 'var(--ds-bg-neutral-default-hover)',
-
   '--border-secondary': 'var(--ds-border-neutral-default-default)',
   '--border-disabled': 'var(--ds-border-neutral-subtle-default)',
 
@@ -51,7 +45,7 @@ export const productLayoutTokenAliases = asCssVarMap({
   '--icon-information': 'var(--ds-icon-status-splitting-default-default)',
   '--icon-success': 'var(--ds-icon-status-completed-default-default)',
   '--icon-warning': 'var(--ds-icon-status-pending-default-default)',
-  '--icon-cuation': 'var(--ds-icon-status-error-default-default)',
+  '--icon-caution': 'var(--ds-icon-status-error-default-default)',
 
   '--project-surface': 'var(--ds-bg-neutral-default-default)',
   '--project-surface-hover': 'var(--ds-bg-neutral-default-hover)',

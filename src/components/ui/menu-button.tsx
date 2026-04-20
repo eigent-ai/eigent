@@ -19,15 +19,15 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
 const menuButtonVariants = cva(
-  'relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-menubutton-fill-default hover:bg-menubutton-fill-hover hover:text-ds-text-neutral-default-default focus:text-ds-text-neutral-default-default data-[state=on]:bg-menubutton-fill-active data-[state=on]:text-ds-text-neutral-default-default text-ds-text-neutral-muted-default disabled:text-ds-text-neutral-muted-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg',
+  'relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default focus:text-ds-text-neutral-default-default data-[state=on]:bg-ds-bg-neutral-default-default data-[state=on]:text-ds-text-neutral-default-default text-ds-text-neutral-muted-default disabled:text-ds-text-neutral-muted-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg',
   {
     variants: {
       variant: {
         default:
-          'border border-solid text-ds-text-neutral-default-default border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-active data-[state=on]:border-menubutton-border-active data-[state=on]:shadow-button-shadow',
+          'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-brand-default-focus data-[state=on]:border-ds-border-brand-default-focus data-[state=on]:shadow-button-shadow',
         clear:
-          'border border-solid text-ds-text-neutral-default-default border-menubutton-border-default hover:border-menubutton-border-hover focus:bg-menubutton-fill-active focus:border-menubutton-border-default data-[state=on]:shadow-button-shadow',
-        info: 'text-ds-text-neutral-default-default !font-medium hover:bg-menubutton-fill-active focus:bg-menubutton-fill-active data-[state=on]:text-ds-text-neutral-default-default data-[state=on]:!font-bold',
+          'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-neutral-default-default data-[state=on]:shadow-button-shadow',
+        info: 'text-ds-text-neutral-default-default !font-medium hover:bg-ds-bg-neutral-default-default focus:bg-ds-bg-neutral-default-default data-[state=on]:text-ds-text-neutral-default-default data-[state=on]:!font-bold',
       },
       size: {
         xs: 'px-2 py-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg',

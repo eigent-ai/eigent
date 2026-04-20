@@ -402,7 +402,7 @@ export default function Overview({
             <Button
               size="md"
               onClick={handleConfirmDelete}
-              variant="cuation"
+              variant="caution"
               disabled={isDeleting}
             >
               {isDeleting

@@ -55,7 +55,7 @@ export default function EndNoticeDialog({
         <div className="gap-md bg-ds-bg-neutral-strong-default p-md flex flex-col">
           {t('layout.ending-this-project-will-stop')}
         </div>
-        <DialogFooter className="!rounded-b-xl bg-white-100% p-md">
+        <DialogFooter className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md">
           <DialogClose asChild>
             <Button variant="ghost" size="md" disabled={loading}>
               {t('layout.cancel')}
@@ -64,7 +64,7 @@ export default function EndNoticeDialog({
           <Button
             size="md"
             onClick={onSubmit}
-            variant="cuation"
+            variant="caution"
             disabled={loading}
           >
             {t('layout.yes-end-project')}

@@ -64,9 +64,9 @@ export default function TerminalAgentWorkspace() {
         <CodeXml size={16} className="text-ds-text-neutral-default-default" />
       ),
       textColor: 'text-emerald-700',
-      bgColor: 'bg-bg-fill-coding-active',
-      shapeColor: 'bg-bg-fill-coding-default',
-      borderColor: 'border-bg-fill-coding-active',
+      bgColor: 'bg-ds-bg-terminal-default-default',
+      shapeColor: 'bg-ds-bg-terminal-subtle-default',
+      borderColor: 'border-ds-border-terminal-default-default',
       bgColorLight: 'bg-emerald-200',
     },
     browser_agent: {
@@ -75,9 +75,9 @@ export default function TerminalAgentWorkspace() {
         <Globe size={16} className="text-ds-text-neutral-default-default" />
       ),
       textColor: 'text-blue-700',
-      bgColor: 'bg-bg-fill-browser-active',
-      shapeColor: 'bg-bg-fill-browser-default',
-      borderColor: 'border-bg-fill-browser-active',
+      bgColor: 'bg-ds-bg-browser-default-default',
+      shapeColor: 'bg-ds-bg-browser-subtle-default',
+      borderColor: 'border-ds-border-browser-default-default',
       bgColorLight: 'bg-blue-200',
     },
     document_agent: {
@@ -86,9 +86,9 @@ export default function TerminalAgentWorkspace() {
         <FileText size={16} className="text-ds-text-neutral-default-default" />
       ),
       textColor: 'text-yellow-700',
-      bgColor: 'bg-bg-fill-writing-active',
-      shapeColor: 'bg-bg-fill-writing-default',
-      borderColor: 'border-bg-fill-writing-active',
+      bgColor: 'bg-ds-bg-document-default-default',
+      shapeColor: 'bg-ds-bg-document-subtle-default',
+      borderColor: 'border-ds-border-document-default-default',
       bgColorLight: 'bg-yellow-200',
     },
     multi_modal_agent: {
@@ -97,9 +97,9 @@ export default function TerminalAgentWorkspace() {
         <Image size={16} className="text-ds-text-neutral-default-default" />
       ),
       textColor: 'text-fuchsia-700',
-      bgColor: 'bg-bg-fill-multimodal-active',
-      shapeColor: 'bg-bg-fill-multimodal-default',
-      borderColor: 'border-bg-fill-multimodal-active',
+      bgColor: 'bg-ds-bg-neutral-default-default',
+      shapeColor: 'bg-ds-bg-neutral-subtle-default',
+      borderColor: 'border-ds-border-neutral-default-default',
       bgColorLight: 'bg-fuchsia-200',
     },
     social_media_agent: {
@@ -152,7 +152,7 @@ export default function TerminalAgentWorkspace() {
     <div
       className={`ease-in-out flex h-full w-full flex-1 items-center justify-center transition-all duration-300`}
     >
-      <div className="blur-bg rounded-xl bg-ds-bg-neutral-default-default relative flex h-full w-full flex-col overflow-hidden">
+      <div className="backdrop-blur-sm rounded-xl bg-ds-bg-neutral-default-default relative flex h-full w-full flex-col overflow-hidden">
         <div className="rounded-t-2xl px-2 pb-2 pt-3 flex flex-shrink-0 items-center justify-between">
           <div className="gap-sm flex items-center justify-start">
             <Button
@@ -222,7 +222,7 @@ export default function TerminalAgentWorkspace() {
                   }
                 />
                 {/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
-									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
+									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-bg-brand-default-default">
 										<Hand size={24} className="text-ds-icon-neutral-inverse-default" />
 										<span className="text-base leading-9 font-medium text-ds-text-neutral-inverse-default">
 											Take Control
@@ -259,7 +259,7 @@ export default function TerminalAgentWorkspace() {
 												onClick={() => handleTakeControl(task.id)}
 												className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none"
 											>
-												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-bg-fill-primary">
+												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-bg-brand-default-default">
 													<Hand
 														size={24}
 														className="text-ds-icon-neutral-inverse-default"

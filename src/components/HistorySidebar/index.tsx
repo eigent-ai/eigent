@@ -443,7 +443,7 @@ export default function HistorySidebar() {
 
                       <div className="gap-2 flex flex-shrink-0 items-center">
                         <TooltipSimple content={t('chat.token')}>
-                          <Tag variant="info" size="sm">
+                          <Tag variant="primary" tone="information" size="sm">
                             <Hash className="h-3.5 w-3.5" />
                             <span className="text-xs">
                               {(project.total_tokens || 0).toLocaleString()}
@@ -452,7 +452,7 @@ export default function HistorySidebar() {
                         </TooltipSimple>
 
                         <TooltipSimple content="Tasks">
-                          <Tag variant="default" size="sm">
+                          <Tag variant="primary" tone="neutral" size="sm">
                             <Pin className="h-3.5 w-3.5" />
                             <span className="text-xs">
                               {project.task_count}
@@ -565,7 +565,7 @@ export default function HistorySidebar() {
 
                       <div className="gap-2 flex flex-shrink-0 items-center">
                         <TooltipSimple content={t('chat.token')}>
-                          <Tag variant="info" size="sm">
+                          <Tag variant="primary" tone="information" size="sm">
                             <Hash className="h-3.5 w-3.5" />
                             <span className="text-xs">
                               {(project.total_tokens || 0).toLocaleString()}
@@ -574,7 +574,7 @@ export default function HistorySidebar() {
                         </TooltipSimple>
 
                         <TooltipSimple content="Tasks">
-                          <Tag variant="default" size="sm">
+                          <Tag variant="primary" tone="neutral" size="sm">
                             <Pin className="h-3.5 w-3.5" />
                             <span className="text-xs">
                               {project.task_count}

@@ -245,7 +245,7 @@ export default function ProjectGroup({
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <Tag variant="info" size="xs">
+                      <Tag variant="primary" tone="information" size="xs">
                         <Activity className="w-3.5 h-3.5" />
                         {t("layout.ongoing")}
                       </Tag>
@@ -258,7 +258,7 @@ export default function ProjectGroup({
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <Tag variant="warning" size="xs">
+                      <Tag variant="primary" tone="warning" size="xs">
                         {t("layout.issue") || "Issue"}
                       </Tag>
                     </motion.div>
@@ -292,7 +292,7 @@ export default function ProjectGroup({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="border-ds-border-neutral-default-default bg-dropdown-bg z-50"
+                className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
               >
                 {onProjectEdit && (
                   <DropdownMenuItem
@@ -417,7 +417,7 @@ export default function ProjectGroup({
 
         {/* Middle: Project, Trigger, Agent tags - Aligned to right */}
         <div className="gap-4 flex w-fit flex-1 items-center justify-end">
-          <Tag variant="info" size="sm">
+          <Tag variant="primary" tone="information" size="sm">
             <Hash />
             <span>
               {project.total_tokens
@@ -427,14 +427,24 @@ export default function ProjectGroup({
           </Tag>
 
           <TooltipSimple content={t('layout.tasks')}>
-            <Tag variant="default" size="sm" className="min-w-10">
+            <Tag
+              variant="primary"
+              tone="neutral"
+              size="sm"
+              className="min-w-10"
+            >
               <Pin />
               <span>{project.task_count}</span>
             </Tag>
           </TooltipSimple>
 
           <TooltipSimple content="Triggers">
-            <Tag variant="warning" size="sm" className="min-w-10">
+            <Tag
+              variant="primary"
+              tone="warning"
+              size="sm"
+              className="min-w-10"
+            >
               <Zap />
               <span>{project.total_triggers || 0}</span>
             </Tag>
@@ -445,14 +455,14 @@ export default function ProjectGroup({
         <div className="ml-4 min-w-32 gap-2 border-ds-border-neutral-muted-disabled pl-4 flex w-fit items-center justify-end border border-y-0 border-r-0 border-solid">
           {/* Status tag */}
           {/* {isOngoing && (
-            <Tag variant="info" size="sm">
+            <Tag variant="primary" tone="information" size="sm">
               <Activity />
               {t("layout.ongoing")}
             </Tag>
           )} */}
 
           {/* {!isOngoing && hasIssue && (
-            <Tag variant="warning" size="sm">
+            <Tag variant="primary" tone="warning" size="sm">
               {t("layout.issue") || "Issue"}
             </Tag>
           )} */}
@@ -471,7 +481,7 @@ export default function ProjectGroup({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="border-ds-border-neutral-default-default bg-dropdown-bg z-50"
+              className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
             >
               {onProjectEdit && (
                 <DropdownMenuItem

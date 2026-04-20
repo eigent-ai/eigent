@@ -195,7 +195,7 @@ export default function CDP() {
         })}
         confirmText={t('layout.remove')}
         cancelText={t('layout.cancel')}
-        confirmVariant="cuation"
+        confirmVariant="caution"
       />
 
       <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
@@ -212,10 +212,14 @@ export default function CDP() {
           </Button>
           <Button
             variant="outline"
+            textWeight="semibold"
+            buttonContent="text"
+            buttonRadius="lg"
+            tone="neutral"
             size="sm"
             onClick={handleConnectExistingBrowser}
           >
-            <Link2 className="h-4 w-4 text-button-tertiery-text-default" />
+            <Link2 />
             {t('layout.connect-existing-browser')}
           </Button>
         </div>

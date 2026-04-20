@@ -36,16 +36,15 @@ export const formControlTokenAliases = asCssVarMap({
   '--input-border-hover': 'var(--ds-border-neutral-strong-default)',
   '--input-border-focus': 'var(--ds-border-brand-default-focus)',
   '--input-border-success': 'var(--ds-border-status-completed-default-default)',
-  '--input-border-cuation': 'var(--ds-border-status-error-default-default)',
+  '--input-border-caution': 'var(--ds-border-status-error-default-default)',
   '--input-text-default': 'var(--ds-text-neutral-default-default)',
   '--input-text-focus': 'var(--ds-text-neutral-default-default)',
   '--input-label-default': 'var(--ds-text-neutral-muted-default)',
-  '--surface-disabled': 'var(--ds-bg-neutral-muted-disabled)',
   '--text-heading': 'var(--ds-text-neutral-default-default)',
   '--text-body': 'var(--ds-text-neutral-default-default)',
   '--text-label': 'var(--ds-text-neutral-muted-default)',
   '--text-success': 'var(--ds-text-status-completed-strong-default)',
-  '--text-cuation': 'var(--ds-text-status-error-strong-default)',
+  '--text-caution': 'var(--ds-text-status-error-strong-default)',
   '--text-information': 'var(--ds-text-status-splitting-strong-default)',
   '--icon-primary': 'var(--ds-icon-neutral-default-default)',
   '--menutabs-fill-hover': 'var(--ds-bg-neutral-default-hover)',
@@ -70,14 +69,14 @@ export const buttonTokenAliases = asCssVarMap({
   '--button-secondary-text-active': 'var(--ds-text-neutral-default-default)',
   '--button-secondary-text-disabled': 'var(--ds-text-neutral-muted-disabled)',
 
-  '--button-tertiery-fill-default': 'var(--ds-bg-neutral-subtle-default)',
-  '--button-tertiery-fill-hover': 'var(--ds-bg-neutral-default-hover)',
-  '--button-tertiery-fill-active': 'var(--ds-bg-neutral-default-active)',
-  '--button-tertiery-fill-disabled': 'var(--ds-bg-neutral-muted-disabled)',
-  '--button-tertiery-text-default': 'var(--ds-text-neutral-default-default)',
-  '--button-tertiery-text-hover': 'var(--ds-text-neutral-default-default)',
-  '--button-tertiery-text-active': 'var(--ds-text-neutral-default-default)',
-  '--button-tertiery-text-disabled': 'var(--ds-text-neutral-muted-disabled)',
+  '--button-tertiary-fill-default': 'var(--ds-bg-neutral-subtle-default)',
+  '--button-tertiary-fill-hover': 'var(--ds-bg-neutral-default-hover)',
+  '--button-tertiary-fill-active': 'var(--ds-bg-neutral-default-active)',
+  '--button-tertiary-fill-disabled': 'var(--ds-bg-neutral-muted-disabled)',
+  '--button-tertiary-text-default': 'var(--ds-text-neutral-default-default)',
+  '--button-tertiary-text-hover': 'var(--ds-text-neutral-default-default)',
+  '--button-tertiary-text-active': 'var(--ds-text-neutral-default-default)',
+  '--button-tertiary-text-disabled': 'var(--ds-text-neutral-muted-disabled)',
 
   '--button-transparent-fill-default': 'transparent',
   '--button-transparent-fill-hover': 'var(--ds-bg-neutral-default-hover)',
@@ -94,8 +93,8 @@ export const buttonTokenAliases = asCssVarMap({
   '--fill-fill-success-hover': 'var(--ds-bg-status-completed-subtle-hover)',
   '--fill-fill-success-active': 'var(--ds-bg-status-completed-default-default)',
 
-  '--button-fill-cuation': 'var(--ds-bg-status-error-default-default)',
-  '--button-fill-cuation-foreground':
+  '--button-fill-caution': 'var(--ds-bg-status-error-default-default)',
+  '--button-fill-caution-foreground':
     'var(--ds-text-status-error-strong-default)',
 
   '--button-fill-information': 'var(--ds-bg-status-splitting-default-default)',
@@ -114,8 +113,8 @@ export const tagTokenAliases = asCssVarMap({
   '--tag-foreground-success': 'var(--ds-text-status-completed-strong-default)',
   '--tag-fill-warning': 'var(--ds-bg-status-pending-subtle-default)',
   '--tag-foreground-warning': 'var(--ds-text-status-pending-strong-default)',
-  '--tag-fill-cuation': 'var(--ds-bg-status-error-subtle-default)',
-  '--tag-foreground-cuation': 'var(--ds-text-status-error-strong-default)',
+  '--tag-fill-caution': 'var(--ds-bg-status-error-subtle-default)',
+  '--tag-foreground-caution': 'var(--ds-text-status-error-strong-default)',
   '--tag-fill-default': 'var(--ds-bg-neutral-default-default)',
   '--tag-foreground-default': 'var(--ds-text-neutral-default-default)',
 });
@@ -138,6 +137,5 @@ export const switchTokenAliases = asCssVarMap({
 
 export const tooltipTokenAliases = asCssVarMap({
   '--border-secondary': 'var(--ds-border-neutral-default-default)',
-  '--surface-tertiary': 'var(--ds-bg-neutral-strong-default)',
   '--text-primary': 'var(--ds-text-neutral-default-default)',
 });

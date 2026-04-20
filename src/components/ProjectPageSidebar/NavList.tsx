@@ -123,7 +123,7 @@ export function NavList({
             onClick={() => setExpanded((v) => !v)}
             className={cn(
               'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-bold text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default inline-flex w-fit max-w-[calc(100%-5rem)] shrink items-center text-left outline-none',
-              'focus-visible:ring-ds-border-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+              'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
             )}
             aria-expanded={expanded}
             aria-label={expanded ? collapseAria : expandAria}
@@ -149,7 +149,7 @@ export function NavList({
           className={cn(
             'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-semibold !text-ds-text-neutral-muted-default inline-flex w-fit shrink-0 items-center text-left outline-none',
             showAllActive ? 'underline underline-offset-2' : 'hover:underline',
-            'focus-visible:ring-ds-border-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
           )}
         >
           {showAllLabel}
@@ -183,7 +183,7 @@ export function NavList({
                     onClick={() => onSessionClick?.(session.id)}
                     className={cn(
                       'no-drag min-h-0 min-w-0 gap-3 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                      'focus-visible:ring-ds-border-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                      'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
                     )}
                   >
                     <MessageCircle
@@ -226,7 +226,7 @@ export function NavList({
                                   'md:group-focus-within/session-item:opacity-100',
                                   'data-[state=open]:opacity-100',
                                 ],
-                            'focus-visible:ring-ds-border-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
                           )}
                           aria-label={sessionMenuAria}
                           onClick={(e) => e.stopPropagation()}

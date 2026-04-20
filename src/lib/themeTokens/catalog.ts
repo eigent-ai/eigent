@@ -12,128 +12,99 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import baseColorTokens from '../../../tokens/base.color.json';
+import contractBase from '../../../tokens/contracts/default.base.json';
+import darkContractRaw from '../../../tokens/contracts/default.dark.json';
+import lightContractRaw from '../../../tokens/contracts/default.light.json';
+import { clamp } from './colorMath';
+import { resolveExtends } from './dtcg';
 import {
   THEME_CONTRACT_VERSION,
-  type ColorThemeDefinitionV1,
+  type ColorThemeDefinitionV2,
   type Mode,
-  type ThemeCatalog,
-  type ThemeContractV1,
+  type ThemeCatalogV2,
+  type ThemeContractV2,
+  type ThemeSeedV2,
 } from './types';
 
 export const DEFAULT_CONTRAST = 43;
-export const DEFAULT_COLOR_THEME_ID = 'eigent';
+export const DEFAULT_THEME_ID = 'eigent';
+export const DEFAULT_COLOR_THEME_ID = DEFAULT_THEME_ID;
 
-export const DEFAULT_THEME_CATALOG: ThemeCatalog = {
-  light: {
-    eigent: {
-      id: 'eigent',
-      mode: 'light',
-      seed: {
-        accent: '#000000',
-        background: '#faf7f6',
-        ink: '#1d1d1d',
-      },
-    },
-    claude: {
-      id: 'claude',
-      mode: 'light',
-      seed: {
-        accent: '#cc7d5e',
-        background: '#f9f9f7',
-        ink: '#2d2d2b',
-      },
-    },
-    codex: {
-      id: 'codex',
-      mode: 'light',
-      seed: {
-        accent: '#0169cc',
-        background: '#ffffff',
-        ink: '#0d0d0d',
-      },
-    },
-    camel: {
-      id: 'camel',
-      mode: 'light',
-      seed: {
-        accent: '#4c19e8',
-        background: '#ffffff',
-        ink: '#1d1d1d',
-      },
-    },
-  },
-  dark: {
-    eigent: {
-      id: 'eigent',
-      mode: 'dark',
-      seed: {
-        accent: '#ede1db',
-        background: '#1f1f1f',
-        ink: '#ffffff',
-      },
-    },
-    claude: {
-      id: 'claude',
-      mode: 'dark',
-      seed: {
-        accent: '#cc7d5e',
-        background: '#2d2d2b',
-        ink: '#f9f9f7',
-      },
-    },
-    codex: {
-      id: 'codex',
-      mode: 'dark',
-      seed: {
-        accent: '#0169cc',
-        background: '#111111',
-        ink: '#fcfcfc',
-      },
-    },
-    camel: {
-      id: 'camel',
-      mode: 'dark',
-      seed: {
-        accent: '#b5afff',
-        background: '#1f1f1f',
-        ink: '#fafafa',
-      },
-    },
-  },
+type BaseColorTokenShape = {
+  themes: Record<Mode, Record<string, ThemeSeedV2>>;
 };
 
-export function getColorThemeDefinition(
-  mode: Mode,
-  colorThemeId: string,
-  catalog: ThemeCatalog = DEFAULT_THEME_CATALOG
-): ColorThemeDefinitionV1 {
-  const modeThemes = catalog[mode] ?? {};
-  const selected = modeThemes[colorThemeId];
-  if (selected) {
-    return selected;
-  }
+const BASE = baseColorTokens as BaseColorTokenShape;
 
-  const fallback = modeThemes[DEFAULT_COLOR_THEME_ID];
-  if (fallback) {
-    return fallback;
-  }
+function toCatalog(themes: BaseColorTokenShape['themes']): ThemeCatalogV2 {
+  return {
+    light: Object.fromEntries(
+      Object.entries(themes.light).map(([id, seed]) => [
+        id,
+        { id, mode: 'light', seed },
+      ])
+    ),
+    dark: Object.fromEntries(
+      Object.entries(themes.dark).map(([id, seed]) => [
+        id,
+        { id, mode: 'dark', seed },
+      ])
+    ),
+  };
+}
+
+export const DEFAULT_THEME_CATALOG: ThemeCatalogV2 = toCatalog(BASE.themes);
+
+export function getColorThemeDefinitionV2(
+  mode: Mode,
+  themeId: string,
+  catalog: ThemeCatalogV2 = DEFAULT_THEME_CATALOG
+): ColorThemeDefinitionV2 {
+  const modeThemes = catalog[mode] ?? {};
+  const selected = modeThemes[themeId];
+  if (selected) return selected;
+
+  const fallback = modeThemes[DEFAULT_THEME_ID];
+  if (fallback) return fallback;
 
   const firstTheme = Object.values(modeThemes)[0];
-  if (firstTheme) {
-    return firstTheme;
-  }
+  if (firstTheme) return firstTheme;
 
   throw new Error(`No color themes configured for mode "${mode}"`);
 }
 
-export function createDefaultThemeContract(
-  mode: Mode,
-  overrides?: Partial<Omit<ThemeContractV1, 'version' | 'mode'>>
-): ThemeContractV1 {
+function resolveContractPreset(raw: unknown): ThemeContractV2 {
+  const tree = resolveExtends({
+    ...(contractBase as Record<string, unknown>),
+    contract: raw as Record<string, unknown>,
+  });
+  const contract = (tree as { contract: ThemeContractV2 }).contract;
   return {
+    ...contract,
+    version: THEME_CONTRACT_VERSION,
+    contrast: clamp(Math.round(contract.contrast), 0, 100),
+  };
+}
+
+const LIGHT_CONTRACT_PRESET = resolveContractPreset(lightContractRaw);
+const DARK_CONTRACT_PRESET = resolveContractPreset(darkContractRaw);
+
+export function createDefaultThemeContractV2(
+  mode: Mode,
+  overrides?: Partial<Omit<ThemeContractV2, 'version' | 'mode'>>
+): ThemeContractV2 {
+  const preset = mode === 'dark' ? DARK_CONTRACT_PRESET : LIGHT_CONTRACT_PRESET;
+  return {
+    ...preset,
     version: THEME_CONTRACT_VERSION,
     mode,
-    colorThemeId: overrides?.colorThemeId ?? DEFAULT_COLOR_THEME_ID,
-    contrast: overrides?.contrast ?? DEFAULT_CONTRAST,
+    themeId: overrides?.themeId ?? preset.themeId ?? DEFAULT_THEME_ID,
+    contrast: clamp(
+      Math.round(overrides?.contrast ?? preset.contrast ?? DEFAULT_CONTRAST),
+      0,
+      100
+    ),
+    overrides: overrides?.overrides ?? preset.overrides,
   };
 }

@@ -325,7 +325,7 @@ function HeaderWin() {
                   <button
                     id="active-task-title-btn"
                     type="button"
-                    className="no-drag min-w-0 px-2 text-label-sm font-bold focus-visible:ring-ring/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
+                    className="no-drag min-w-0 px-2 text-label-sm font-bold focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
                     onClick={toggleHistorySidebar}
                     aria-expanded={historySidebarOpen}
                     aria-haspopup="dialog"
@@ -342,7 +342,7 @@ function HeaderWin() {
                 >
                   <button
                     type="button"
-                    className="no-drag w-8 focus-visible:ring-ring/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
+                    className="no-drag w-8 focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
                     onClick={createNewProject}
                     aria-label={t('layout.new-project')}
                   >

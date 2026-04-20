@@ -522,12 +522,12 @@ export function AddWorker({
                               secretVisible[key] ? (
                                 <EyeOff
                                   size={16}
-                                  className="text-button-transparent-icon-disabled"
+                                  className="text-ds-text-neutral-muted-disabled"
                                 />
                               ) : (
                                 <Eye
                                   size={16}
-                                  className="text-button-transparent-icon-disabled"
+                                  className="text-ds-text-neutral-muted-disabled"
                                 />
                               )
                             ) : undefined
@@ -544,7 +544,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-white-100% p-md"
+                className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}
@@ -569,7 +569,7 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="gap-3 bg-white-100% p-md flex flex-col">
+              <DialogContentSection className="gap-3 bg-ds-bg-neutral-inverse-default p-md flex flex-col">
                 <div className="gap-4 flex flex-col">
                   <div className="gap-sm flex items-center">
                     <div className="h-16 w-16 flex items-center justify-center">
@@ -688,7 +688,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-white-100% p-md"
+                className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}

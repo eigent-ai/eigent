@@ -26,7 +26,7 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitives.Root
     ref={ref}
     className={cn(
-      'focus-visible:ring-ring peer h-4 w-4 rounded border-input-border-default bg-input-bg-default hover:border-input-border-hover data-[state=checked]:border-switch-on-fill-track-fill data-[state=checked]:bg-switch-on-fill-track-fill data-[state=checked]:text-switch-on-fill-thumb-fill shrink-0 border border-solid transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+      'focus-visible:ring-ds-ring-brand-default-focus peer h-4 w-4 rounded border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-strong-default data-[state=checked]:border-ds-border-status-completed-default-default data-[state=checked]:bg-ds-bg-status-completed-default-default data-[state=checked]:text-ds-text-brand-inverse-default shrink-0 border border-solid transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}
     style={mergeAliasStyles(checkboxTokenAliases, style)}
