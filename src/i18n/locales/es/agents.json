@@ -46,7 +46,5 @@
   "custom-skill": "Habilidad personalizada",
   "delete-skill": "Eliminar habilidad",
   "delete-skill-confirmation": "¿Está seguro de que desea eliminar \"{{name}}\"? Esta acción no se puede deshacer.",
-  "skill-deleted-success": "¡Habilidad eliminada exitosamente!",
-  "delete-template": "Eliminar plantilla",
-  "delete-template-confirmation": "¿Seguro que desea eliminar la plantilla \"{{name}}\"? Esta acción no se puede deshacer."
+  "skill-deleted-success": "¡Habilidad eliminada exitosamente!"
 }

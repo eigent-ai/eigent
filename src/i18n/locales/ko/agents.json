@@ -46,7 +46,5 @@
   "custom-skill": "사용자 정의 스킬",
   "delete-skill": "스킬 삭제",
   "delete-skill-confirmation": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
-  "skill-deleted-success": "스킬이 성공적으로 삭제되었습니다!",
-  "delete-template": "템플릿 삭제",
-  "delete-template-confirmation": "\"{{name}}\" 템플릿을 삭제하시겠습니까? 이 작업은 취소할 수 없습니다."
+  "skill-deleted-success": "스킬이 성공적으로 삭제되었습니다!"
 }

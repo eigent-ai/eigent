@@ -46,7 +46,5 @@
   "custom-skill": "自訂技能",
   "delete-skill": "刪除技能",
   "delete-skill-confirmation": "您確定要刪除 \"{{name}}\" 嗎？此操作無法撤銷。",
-  "skill-deleted-success": "技能刪除成功！",
-  "delete-template": "刪除範本",
-  "delete-template-confirmation": "您確定要刪除範本「{{name}}」嗎？此操作無法復原。"
+  "skill-deleted-success": "技能刪除成功！"
 }

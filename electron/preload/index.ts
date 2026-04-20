@@ -14,6 +14,8 @@
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
+type AgentTemplateIpcPayload = Record<string, unknown>;
+
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
     const [channel, listener] = args;
@@ -204,7 +206,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Global Agent Templates (~/.eigent/<userId>/agent-templates.json)
   agentTemplatesLoad: (userId: string) =>
     ipcRenderer.invoke('agent-templates-load', userId),
-  agentTemplatesSave: (userId: string, templates: any[]) =>
+  agentTemplatesSave: (userId: string, templates: AgentTemplateIpcPayload[]) =>
     ipcRenderer.invoke('agent-templates-save', userId, templates),
 });
 

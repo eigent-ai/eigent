@@ -35,23 +35,9 @@ import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
-import {
-  hasGlobalAgentTemplatesApi,
-  sanitizeCustomModelConfigForPersistence,
-  useGlobalAgentTemplatesStore,
-} from '@/store/globalAgentTemplatesStore';
-import {
-  Bot,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  Edit,
-  Eye,
-  EyeOff,
-} from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Bot, ChevronDown, ChevronUp, Edit, Eye, EyeOff } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import ToolSelect from './ToolSelect';
 
 interface EnvValue {
@@ -76,57 +62,18 @@ interface McpItem {
   mcp_name?: string;
 }
 
-/** Restore ToolSelect rows from template export / disk (drops invalid entries). */
-function parseSelectedToolsSnapshot(raw: unknown): McpItem[] {
-  if (!Array.isArray(raw)) return [];
-  const out: McpItem[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const o = item as Record<string, unknown>;
-    if (
-      typeof o.id !== 'number' ||
-      typeof o.name !== 'string' ||
-      typeof o.key !== 'string'
-    ) {
-      continue;
-    }
-    out.push({
-      id: o.id,
-      name: o.name,
-      key: o.key,
-      description: typeof o.description === 'string' ? o.description : '',
-      category: o.category as McpItem['category'],
-      home_page: typeof o.home_page === 'string' ? o.home_page : undefined,
-      install_command: o.install_command as McpItem['install_command'],
-      toolkit: typeof o.toolkit === 'string' ? o.toolkit : undefined,
-      isLocal: o.isLocal === true,
-      mcp_name: typeof o.mcp_name === 'string' ? o.mcp_name : undefined,
-    });
-  }
-  return out;
-}
-
-/** Safe download basename for agent JSON (matches GlobalAgents export pattern). */
-function sanitizeAgentExportFilenameStem(raw: string): string {
-  const stem = raw?.trim() || 'config';
-  return stem.replace(/[^a-z0-9-_]/gi, '-');
-}
-
 export function AddWorker({
   edit = false,
   workerInfo = null,
   variant: _variant = 'default',
   isOpen,
   onOpenChange,
-  initialTemplateId = null,
 }: {
   edit?: boolean;
   workerInfo?: Agent | null;
   variant?: 'default' | 'icon';
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** When opening from workforce "Add ▼ template", prefills name/description/model from disk */
-  initialTemplateId?: string | null;
 }) {
   const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -147,9 +94,8 @@ export function AddWorker({
   const toolSelectRef = useRef<{
     installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
   } | null>(null);
-  const { email, setWorkerList, modelType } = useAuthStore();
+  const { email, setWorkerList } = useAuthStore();
   const workerList = useWorkerList();
-  const useWorkspaceCloudModel = modelType === 'cloud';
   // save AddWorker form data
   const [workerName, setWorkerName] = useState('');
   const [workerDescription, setWorkerDescription] = useState('');
@@ -164,113 +110,13 @@ export function AddWorker({
   const [customModelPlatform, setCustomModelPlatform] = useState('');
   const [customModelType, setCustomModelType] = useState('');
 
-  const [saveAsGlobalTemplate, setSaveAsGlobalTemplate] = useState(false);
-  const { addTemplate: addGlobalTemplate, getTemplate: getGlobalTemplate } =
-    useGlobalAgentTemplatesStore();
-  const hasGlobalTemplatesApi = hasGlobalAgentTemplatesApi();
-
-  const resetForm = useCallback(() => {
-    setWorkerName('');
-    setWorkerDescription('');
-    setSelectedTools([]);
-    setShowEnvConfig(false);
-    setActiveMcp(null);
-    setEnvValues({});
-    setSecretVisible({});
-    setNameError('');
-    setShowModelConfig(false);
-    setUseCustomModel(false);
-    setCustomModelPlatform('');
-    setCustomModelType('');
-    setSaveAsGlobalTemplate(false);
-  }, []);
-
-  useEffect(() => {
-    if (!dialogOpen || edit) return;
-    resetForm();
-    if (!initialTemplateId) return;
-    const tpl = getGlobalTemplate(initialTemplateId);
-    if (!tpl) return;
-    setWorkerName(tpl.name);
-    setWorkerDescription(tpl.description);
-    setSelectedTools(parseSelectedToolsSnapshot(tpl.selected_tools_snapshot));
-    if (tpl.custom_model_config && !useWorkspaceCloudModel) {
-      setUseCustomModel(true);
-      setShowModelConfig(true);
-      setCustomModelPlatform(tpl.custom_model_config.model_platform ?? '');
-      setCustomModelType(tpl.custom_model_config.model_type ?? '');
-    }
-  }, [
-    dialogOpen,
-    edit,
-    initialTemplateId,
-    getGlobalTemplate,
-    resetForm,
-    useWorkspaceCloudModel,
-  ]);
-
-  const handleExportConfig = useCallback(() => {
-    const localTool: string[] = [];
-    const mcpList: string[] = [];
-    selectedTools.forEach((tool: McpItem) => {
-      if (tool.isLocal) {
-        localTool.push(tool.toolkit as string);
-      } else {
-        mcpList.push(tool?.key || tool?.mcp_name || '');
-      }
-    });
-    let mcpLocal: Record<string, unknown> = { mcpServers: {} };
-    selectedTools.forEach((tool: McpItem) => {
-      if (!tool.isLocal && tool.key) {
-        (mcpLocal.mcpServers as Record<string, unknown>)[tool.key] = {};
-      }
-    });
-    const custom_model_config = sanitizeCustomModelConfigForPersistence(
-      !useWorkspaceCloudModel && useCustomModel && customModelPlatform
-        ? {
-            model_platform: customModelPlatform,
-            model_type: customModelType || undefined,
-          }
-        : undefined
-    );
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          {
-            name: workerName,
-            description: workerDescription,
-            tools: localTool,
-            mcp_tools: mcpLocal,
-            custom_model_config,
-            selected_tools_snapshot: JSON.parse(JSON.stringify(selectedTools)),
-          },
-          null,
-          2
-        ),
-      ],
-      { type: 'application/json' }
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `agent-${sanitizeAgentExportFilenameStem(workerName)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(t('workforce.export-agent-success'));
-  }, [
-    selectedTools,
-    workerName,
-    workerDescription,
-    useCustomModel,
-    customModelPlatform,
-    customModelType,
-    useWorkspaceCloudModel,
-    t,
-  ]);
+  if (!chatStore) {
+    return null;
+  }
 
   const activeProjectId = projectStore.activeProjectId;
-  const activeTaskId = chatStore?.activeTaskId;
-  const tasks = chatStore?.tasks;
+  const activeTaskId = chatStore.activeTaskId;
+  const tasks = chatStore.tasks;
 
   // environment variable management
   const initializeEnvValues = (mcp: McpItem) => {
@@ -410,6 +256,21 @@ export function AddWorker({
     setSelectedTools(tools);
   };
 
+  const resetForm = () => {
+    setWorkerName('');
+    setWorkerDescription('');
+    setSelectedTools([]);
+    setShowEnvConfig(false);
+    setActiveMcp(null);
+    setEnvValues({});
+    setSecretVisible({});
+    setNameError('');
+    setShowModelConfig(false);
+    setUseCustomModel(false);
+    setCustomModelPlatform('');
+    setCustomModelType('');
+  };
+
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName) return <Bot className="h-10 w-10 text-icon-primary" />;
@@ -513,8 +374,9 @@ export function AddWorker({
       };
       setWorkerList([...workerList, worker]);
     } else {
+      // Build custom model config if custom model is enabled
       const customModelConfig =
-        !useWorkspaceCloudModel && useCustomModel && customModelPlatform
+        useCustomModel && customModelPlatform
           ? {
               model_platform: customModelPlatform,
               model_type: customModelType || undefined,
@@ -545,26 +407,6 @@ export function AddWorker({
         },
       };
       setWorkerList([...workerList, worker]);
-    }
-
-    if (saveAsGlobalTemplate && hasGlobalTemplatesApi) {
-      const customModelConfig = sanitizeCustomModelConfigForPersistence(
-        !useWorkspaceCloudModel && useCustomModel && customModelPlatform
-          ? {
-              model_platform: customModelPlatform,
-              model_type: customModelType || undefined,
-            }
-          : undefined
-      );
-      await addGlobalTemplate({
-        name: workerName,
-        description: workerDescription,
-        tools: localTool,
-        mcp_tools: mcpLocal,
-        custom_model_config: customModelConfig,
-        selected_tools_snapshot: JSON.parse(JSON.stringify(selectedTools)),
-      });
-      toast.success(t('agents.global-agent-template-saved'));
     }
 
     setDialogOpen(false);
@@ -756,22 +598,7 @@ export function AddWorker({
                   placeholder={t('layout.im-an-agent-specially-designed-for')}
                   value={workerDescription}
                   onChange={(e) => setWorkerDescription(e.target.value)}
-                  className="min-h-[120px] resize-y"
                 />
-
-                {edit && (
-                  <div className="flex flex-row flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleExportConfig}
-                    >
-                      <Download className="mr-1 h-4 w-4" />
-                      {t('workforce.export-agent')}
-                    </Button>
-                  </div>
-                )}
 
                 <ToolSelect
                   onShowEnvConfig={handleShowEnvConfig}
@@ -780,128 +607,81 @@ export function AddWorker({
                   ref={toolSelectRef}
                 />
 
-                {selectedTools.length > 0 && (
-                  <div className="rounded-lg border border-border-subtle-strong bg-surface-tertiary-subtle px-3 py-2">
-                    <div className="text-body-xs font-medium text-text-body">
-                      {t('workforce.agent-tool')} ({selectedTools.length})
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {selectedTools.map((tool, idx) => (
-                        <span
-                          key={idx}
-                          className="rounded bg-surface-primary px-1.5 py-0.5 text-body-xs text-text-body"
-                          title={tool.description || tool.name || tool.key}
-                        >
-                          {tool.name ||
-                            tool.mcp_name ||
-                            tool.key ||
-                            `Tool ${idx + 1}`}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {hasGlobalTemplatesApi && !edit && (
-                  <div className="flex flex-col gap-1">
-                    <label className="flex cursor-pointer items-center gap-2 text-body-sm text-text-body">
-                      <input
-                        type="checkbox"
-                        checked={saveAsGlobalTemplate}
-                        onChange={(e) =>
-                          setSaveAsGlobalTemplate(e.target.checked)
-                        }
-                        className="rounded border-border-subtle-strong"
-                      />
-                      {t('agents.global-agent-save-as-template')}
-                    </label>
-                    <p className="text-body-xs text-text-body">
-                      {t('agents.global-agents-import-hint')}
-                    </p>
-                  </div>
-                )}
-
-                {!useWorkspaceCloudModel && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 text-sm text-text-body hover:text-text-action"
-                      onClick={() => setShowModelConfig(!showModelConfig)}
-                    >
-                      {showModelConfig ? (
-                        <ChevronUp size={16} />
-                      ) : (
-                        <ChevronDown size={16} />
-                      )}
-                      {t('workforce.advanced-model-config')}
-                    </button>
-
-                    {showModelConfig && (
-                      <div className="flex flex-col gap-3 rounded-lg bg-surface-tertiary-subtle p-3">
-                        <p className="text-body-xs text-text-body">
-                          {t('workforce.advanced-model-config-hint')}
-                        </p>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={useCustomModel}
-                            onChange={(e) =>
-                              setUseCustomModel(e.target.checked)
-                            }
-                            className="rounded border-border-subtle-strong"
-                          />
-                          {t('workforce.use-custom-model')}
-                        </label>
-
-                        {useCustomModel && (
-                          <>
-                            <div className="flex flex-col gap-1">
-                              <label className="text-xs text-text-body">
-                                {t('workforce.model-platform')}
-                              </label>
-                              <Select
-                                value={customModelPlatform}
-                                onValueChange={setCustomModelPlatform}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue
-                                    placeholder={t('workforce.select-platform')}
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {INIT_PROVODERS.map((provider) => (
-                                    <SelectItem
-                                      key={provider.id}
-                                      value={provider.id}
-                                    >
-                                      {provider.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div className="flex flex-col gap-1">
-                              <label className="text-xs text-text-body">
-                                {t('workforce.model-type')}
-                              </label>
-                              <Input
-                                size="sm"
-                                placeholder={t(
-                                  'workforce.model-type-placeholder'
-                                )}
-                                value={customModelType}
-                                onChange={(e) =>
-                                  setCustomModelType(e.target.value)
-                                }
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
+                {/* Model Configuration Section */}
+                <div className="mt-2 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-sm text-text-body hover:text-text-action"
+                    onClick={() => setShowModelConfig(!showModelConfig)}
+                  >
+                    {showModelConfig ? (
+                      <ChevronUp size={16} />
+                    ) : (
+                      <ChevronDown size={16} />
                     )}
-                  </div>
-                )}
+                    {t('workforce.advanced-model-config')}
+                  </button>
+
+                  {showModelConfig && (
+                    <div className="flex flex-col gap-3 rounded-lg bg-surface-tertiary-subtle p-3">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={useCustomModel}
+                          onChange={(e) => setUseCustomModel(e.target.checked)}
+                          className="rounded border-border-subtle-strong"
+                        />
+                        {t('workforce.use-custom-model')}
+                      </label>
+
+                      {useCustomModel && (
+                        <>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-text-body">
+                              {t('workforce.model-platform')}
+                            </label>
+                            <Select
+                              value={customModelPlatform}
+                              onValueChange={setCustomModelPlatform}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue
+                                  placeholder={t('workforce.select-platform')}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {INIT_PROVODERS.map((provider) => (
+                                  <SelectItem
+                                    key={provider.id}
+                                    value={provider.id}
+                                  >
+                                    {provider.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-text-body">
+                              {t('workforce.model-type')}
+                            </label>
+                            <Input
+                              size="sm"
+                              placeholder={t(
+                                'workforce.model-type-placeholder'
+                              )}
+                              value={customModelType}
+                              onChange={(e) =>
+                                setCustomModelType(e.target.value)
+                              }
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </DialogContentSection>
               <DialogFooter
                 className="!rounded-b-xl bg-white-100% p-md"

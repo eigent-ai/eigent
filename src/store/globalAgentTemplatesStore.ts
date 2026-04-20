@@ -14,14 +14,7 @@
 
 import { create } from 'zustand';
 import { useAuthStore } from './authStore';
-
-function emailToUserId(email: string | null): string | null {
-  if (!email) return null;
-  return email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace(/^\.+|\.+$/g, '');
-}
+import { emailToUserId } from './userId';
 
 /**
  * Only platform + model id are persisted or exported.
@@ -47,6 +40,7 @@ export interface GlobalAgentTemplate {
 interface GlobalAgentTemplatesState {
   templates: GlobalAgentTemplate[];
   isLoading: boolean;
+  lastError: string | null;
   loadTemplates: () => Promise<void>;
   saveTemplates: (templates: GlobalAgentTemplate[]) => Promise<boolean>;
   addTemplate: (
@@ -63,6 +57,24 @@ interface GlobalAgentTemplatesState {
 
 function generateId(): string {
   return `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function cloneValue<T>(value: T): T {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
+  }
+  return value;
+}
+
+let saveQueue: Promise<void> = Promise.resolve();
+
+function enqueueSave<T>(operation: () => Promise<T>): Promise<T> {
+  const run = saveQueue.then(operation, operation);
+  saveQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
 }
 
 /** Strip secrets and non-persisted fields from imported or legacy JSON. */
@@ -167,9 +179,7 @@ export function parseImportedAgentTemplateJson(
       cmc && typeof cmc === 'object' && !Array.isArray(cmc)
         ? (cmc as GlobalAgentTemplate['custom_model_config'])
         : undefined,
-    selected_tools_snapshot: Array.isArray(snap)
-      ? JSON.parse(JSON.stringify(snap))
-      : undefined,
+    selected_tools_snapshot: Array.isArray(snap) ? cloneValue(snap) : undefined,
     updatedAt: Date.now(),
   });
 }
@@ -212,10 +222,10 @@ function sanitizePersistedTemplates(rows: unknown[]): GlobalAgentTemplate[] {
       tools: [...r.tools],
       mcp_tools:
         typeof r.mcp_tools === 'object' && r.mcp_tools !== null
-          ? JSON.parse(JSON.stringify(r.mcp_tools))
+          ? cloneValue(r.mcp_tools)
           : { mcpServers: {} },
       selected_tools_snapshot: Array.isArray(r.selected_tools_snapshot)
-        ? JSON.parse(JSON.stringify(r.selected_tools_snapshot))
+        ? cloneValue(r.selected_tools_snapshot)
         : undefined,
     })
   );
@@ -241,12 +251,13 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
   (set, get) => ({
     templates: [],
     isLoading: false,
+    lastError: null,
 
     loadTemplates: async () => {
       if (!hasAgentTemplatesApi()) return;
       const userId = emailToUserId(useAuthStore.getState().email);
       if (!userId) return;
-      set({ isLoading: true });
+      set({ isLoading: true, lastError: null });
       try {
         const result = await window.electronAPI.agentTemplatesLoad(userId);
         if (result.success && result.templates) {
@@ -256,9 +267,12 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
           if (cleaned.length !== raw.length) {
             await window.electronAPI.agentTemplatesSave(userId, cleaned);
           }
+        } else {
+          set({ lastError: result.error ?? 'Failed to load agent templates' });
         }
       } catch (error) {
         console.error('[GlobalAgentTemplates] Load failed:', error);
+        set({ lastError: 'Failed to load agent templates' });
       } finally {
         set({ isLoading: false });
       }
@@ -269,17 +283,26 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
       const userId = emailToUserId(useAuthStore.getState().email);
       if (!userId) return false;
       const safe = templates.map(sanitizeTemplateForPersistence);
-      try {
-        const result = await window.electronAPI.agentTemplatesSave(
-          userId,
-          safe
-        );
-        if (result.success) set({ templates: safe });
-        return result.success ?? false;
-      } catch (error) {
-        console.error('[GlobalAgentTemplates] Save failed:', error);
-        return false;
-      }
+      return enqueueSave(async () => {
+        try {
+          const result = await window.electronAPI.agentTemplatesSave(
+            userId,
+            safe
+          );
+          if (result.success) {
+            set({ templates: safe, lastError: null });
+          } else {
+            set({
+              lastError: result.error ?? 'Failed to save agent templates',
+            });
+          }
+          return result.success ?? false;
+        } catch (error) {
+          console.error('[GlobalAgentTemplates] Save failed:', error);
+          set({ lastError: 'Failed to save agent templates' });
+          return false;
+        }
+      });
     },
 
     addTemplate: async (template) => {
@@ -315,7 +338,7 @@ export const useGlobalAgentTemplatesStore = create<GlobalAgentTemplatesState>()(
       const t = get().templates.find((x) => x.id === id);
       if (!t) return null;
       const copy = sanitizeTemplateForPersistence({
-        ...JSON.parse(JSON.stringify(t)),
+        ...cloneValue(t),
         id: generateId(),
         name: `${t.name} (copy)`,
         updatedAt: Date.now(),

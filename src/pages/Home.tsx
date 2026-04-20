@@ -31,33 +31,14 @@ import {
 } from '@/components/MenuButton/MenuButton';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 
 import { useAuthStore } from '@/store/authStore';
-import {
-  hasGlobalAgentTemplatesApi,
-  useGlobalAgentTemplatesStore,
-} from '@/store/globalAgentTemplatesStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import {
   useTriggerStore,
   WebSocketConnectionStatus,
 } from '@/store/triggerStore';
-import {
-  ChevronDown,
-  Inbox,
-  LayoutGrid,
-  Plus,
-  RefreshCw,
-  Zap,
-  ZapOff,
-} from 'lucide-react';
+import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import Overview from './Project/Triggers';
 
 import BottomBar from '@/components/BottomBar';
@@ -156,13 +137,6 @@ export default function Home() {
   const [activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
-  const [pendingWorkerTemplateId, setPendingWorkerTemplateId] = useState<
-    string | null
-  >(null);
-  const {
-    templates: globalAgentTemplates,
-    loadTemplates: loadGlobalAgentTemplates,
-  } = useGlobalAgentTemplatesStore();
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,10 +185,6 @@ export default function Home() {
   useEffect(() => {
     checkLocalServerStale();
   }, []);
-
-  useEffect(() => {
-    if (hasGlobalAgentTemplatesApi()) loadGlobalAgentTemplates();
-  }, [loadGlobalAgentTemplates]);
 
   // Detect files and triggers when project loads
   useEffect(() => {
@@ -633,66 +603,24 @@ export default function Home() {
                       </MenuToggleGroup>
                     </div>
                     <div className="flex items-center gap-2">
-                      {activeWorkspaceTab === 'workforce' && (
-                        <div className="flex items-stretch">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            className="rounded-r-none border-r-0 px-3"
-                            onClick={() => {
-                              setPendingWorkerTemplateId(null);
-                              setAddWorkerDialogOpen(true);
-                            }}
-                          >
-                            <Plus />
-                            {t('triggers.add')}
-                          </Button>
-                          {hasGlobalAgentTemplatesApi() &&
-                            globalAgentTemplates.length > 0 && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="primary"
-                                    size="sm"
-                                    className="rounded-l-none px-2"
-                                    aria-label={t(
-                                      'agents.global-agent-create-from-template'
-                                    )}
-                                  >
-                                    <ChevronDown className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>
-                                    {t(
-                                      'agents.global-agent-create-from-template'
-                                    )}
-                                  </DropdownMenuLabel>
-                                  {globalAgentTemplates.map((tpl) => (
-                                    <DropdownMenuItem
-                                      key={tpl.id}
-                                      onClick={() => {
-                                        setPendingWorkerTemplateId(tpl.id);
-                                        setAddWorkerDialogOpen(true);
-                                      }}
-                                    >
-                                      {tpl.name}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                        </div>
-                      )}
-                      {activeWorkspaceTab === 'triggers' && (
+                      {activeWorkspaceTab !== 'inbox' && (
                         <Button
                           variant="primary"
                           size="sm"
                           className="w-24 items-center justify-center rounded-lg"
-                          onClick={() => setTriggerDialogOpen(true)}
+                          onClick={() => {
+                            if (activeWorkspaceTab === 'workforce') {
+                              setAddWorkerDialogOpen(true);
+                            } else if (activeWorkspaceTab === 'triggers') {
+                              setTriggerDialogOpen(true);
+                            }
+                          }}
                         >
                           <Plus />
-                          {t('triggers.create')}
+                          {activeWorkspaceTab === 'workforce' &&
+                            t('triggers.add')}
+                          {activeWorkspaceTab === 'triggers' &&
+                            t('triggers.create')}
                         </Button>
                       )}
                     </div>
@@ -709,11 +637,7 @@ export default function Home() {
                     {/* AddWorker Dialog */}
                     <AddWorker
                       isOpen={addWorkerDialogOpen}
-                      onOpenChange={(open) => {
-                        setAddWorkerDialogOpen(open);
-                        if (!open) setPendingWorkerTemplateId(null);
-                      }}
-                      initialTemplateId={pendingWorkerTemplateId}
+                      onOpenChange={setAddWorkerDialogOpen}
                     />
 
                     {/* TriggerDialog */}
@@ -839,66 +763,24 @@ export default function Home() {
                       </MenuToggleGroup>
                     </div>
                     <div className="flex items-center gap-2">
-                      {activeWorkspaceTab === 'workforce' && (
-                        <div className="flex items-stretch">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            className="rounded-r-none border-r-0 px-3"
-                            onClick={() => {
-                              setPendingWorkerTemplateId(null);
-                              setAddWorkerDialogOpen(true);
-                            }}
-                          >
-                            <Plus />
-                            {t('triggers.add')}
-                          </Button>
-                          {hasGlobalAgentTemplatesApi() &&
-                            globalAgentTemplates.length > 0 && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="primary"
-                                    size="sm"
-                                    className="rounded-l-none px-2"
-                                    aria-label={t(
-                                      'agents.global-agent-create-from-template'
-                                    )}
-                                  >
-                                    <ChevronDown className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>
-                                    {t(
-                                      'agents.global-agent-create-from-template'
-                                    )}
-                                  </DropdownMenuLabel>
-                                  {globalAgentTemplates.map((tpl) => (
-                                    <DropdownMenuItem
-                                      key={tpl.id}
-                                      onClick={() => {
-                                        setPendingWorkerTemplateId(tpl.id);
-                                        setAddWorkerDialogOpen(true);
-                                      }}
-                                    >
-                                      {tpl.name}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                        </div>
-                      )}
-                      {activeWorkspaceTab === 'triggers' && (
+                      {activeWorkspaceTab !== 'inbox' && (
                         <Button
                           variant="primary"
                           size="sm"
                           className="rounded-lg"
-                          onClick={() => setTriggerDialogOpen(true)}
+                          onClick={() => {
+                            if (activeWorkspaceTab === 'workforce') {
+                              setAddWorkerDialogOpen(true);
+                            } else if (activeWorkspaceTab === 'triggers') {
+                              setTriggerDialogOpen(true);
+                            }
+                          }}
                         >
                           <Plus />
-                          {t('triggers.create')}
+                          {activeWorkspaceTab === 'workforce' &&
+                            t('triggers.add')}
+                          {activeWorkspaceTab === 'triggers' &&
+                            t('triggers.create')}
                         </Button>
                       )}
                     </div>
@@ -914,11 +796,7 @@ export default function Home() {
                     {/* AddWorker Dialog */}
                     <AddWorker
                       isOpen={addWorkerDialogOpen}
-                      onOpenChange={(open) => {
-                        setAddWorkerDialogOpen(open);
-                        if (!open) setPendingWorkerTemplateId(null);
-                      }}
-                      initialTemplateId={pendingWorkerTemplateId}
+                      onOpenChange={setAddWorkerDialogOpen}
                     />
 
                     {/* TriggerDialog */}

@@ -22,6 +22,17 @@ interface IpcRenderer {
   invoke: (channel: string, ...args: any[]) => Promise<any>;
 }
 
+type AgentTemplateIpcPayload = {
+  id: string;
+  name: string;
+  description: string;
+  tools: string[];
+  mcp_tools: Record<string, unknown>;
+  custom_model_config?: Record<string, unknown>;
+  selected_tools_snapshot?: unknown[];
+  updatedAt: number;
+};
+
 interface ElectronAPI {
   closeWindow: () => void;
   minimizeWindow: () => void;
@@ -210,20 +221,12 @@ interface ElectronAPI {
   // Global Agent Templates
   agentTemplatesLoad: (userId: string) => Promise<{
     success: boolean;
-    templates?: Array<{
-      id: string;
-      name: string;
-      description: string;
-      tools: string[];
-      mcp_tools: any;
-      custom_model_config?: any;
-      updatedAt: number;
-    }>;
+    templates?: AgentTemplateIpcPayload[];
     error?: string;
   }>;
   agentTemplatesSave: (
     userId: string,
-    templates: any[]
+    templates: AgentTemplateIpcPayload[]
   ) => Promise<{ success: boolean; error?: string }>;
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;

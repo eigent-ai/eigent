@@ -16,7 +16,7 @@ import { AddWorker } from '@/components/AddWorker';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
-import { getWorkerList, useAuthStore, useWorkerList } from '@/store/authStore';
+import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
   AgentStatusValue,
   ChatTaskStatus,
@@ -51,27 +51,6 @@ import ShinyText from '../ui/ShinyText/ShinyText';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { agentMap } from './agents';
 import { MarkDown } from './MarkDown';
-
-/** Custom workers use `type === name`; names must be unique for edit/delete routing. */
-function nextUniqueCustomWorkerName(
-  baseName: string,
-  workers: Agent[]
-): string {
-  const used = new Set(
-    workers.flatMap((w) =>
-      [w.type, w.name, w.agent_id, w.workerInfo?.name].filter(
-        (x): x is string => typeof x === 'string' && x.length > 0
-      )
-    )
-  );
-  let candidate = `${baseName} (copy)`;
-  let i = 2;
-  while (used.has(candidate)) {
-    candidate = `${baseName} (copy ${i})`;
-    i += 1;
-  }
-  return candidate;
-}
 
 interface NodeProps {
   id: string;
@@ -488,51 +467,6 @@ export function Node({ id, data }: NodeProps) {
                             edit={true}
                             workerInfo={data.agent as Agent}
                           />
-                        </PopoverClose>
-                        <PopoverClose asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start gap-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const base = data.agent as Agent;
-                              const baseName =
-                                base.workerInfo?.name ?? base.name ?? 'Worker';
-                              const current = getWorkerList();
-                              const copyName = nextUniqueCustomWorkerName(
-                                baseName,
-                                current
-                              );
-                              const newWorker: Agent = {
-                                tasks: [],
-                                agent_id: copyName,
-                                name: copyName,
-                                type: copyName as AgentNameType,
-                                log: [],
-                                tools: base.tools ?? [],
-                                activeWebviewIds: [],
-                                workerInfo: {
-                                  name: copyName,
-                                  description:
-                                    base.workerInfo?.description ?? '',
-                                  tools: base.workerInfo?.tools ?? [],
-                                  mcp_tools: base.workerInfo?.mcp_tools ?? {
-                                    mcpServers: {},
-                                  },
-                                  selectedTools:
-                                    base.workerInfo?.selectedTools ?? [],
-                                },
-                              };
-                              setWorkerList([...current, newWorker]);
-                            }}
-                          >
-                            <Copy
-                              size={16}
-                              className="text-icon-primary group-hover:text-icon-cuation"
-                            />
-                            Duplicate
-                          </Button>
                         </PopoverClose>
                         <PopoverClose asChild>
                           <Button

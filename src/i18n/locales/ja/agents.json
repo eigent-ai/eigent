@@ -46,7 +46,5 @@
   "custom-skill": "カスタムスキル",
   "delete-skill": "スキルを削除",
   "delete-skill-confirmation": "\"{{name}}\" を削除してもよろしいですか？この操作は元に戻せません。",
-  "skill-deleted-success": "スキルが正常に削除されました！",
-  "delete-template": "テンプレートを削除",
-  "delete-template-confirmation": "テンプレート「{{name}}」を削除してもよろしいですか？この操作は元に戻せません。"
+  "skill-deleted-success": "スキルが正常に削除されました！"
 }

@@ -46,7 +46,5 @@
   "custom-skill": "Competenza personalizzata",
   "delete-skill": "Elimina competenza",
   "delete-skill-confirmation": "Sei sicuro di voler eliminare \"{{name}}\"? Questa azione non può essere annullata.",
-  "skill-deleted-success": "Competenza eliminata con successo!",
-  "delete-template": "Elimina modello",
-  "delete-template-confirmation": "Eliminare il modello \"{{name}}\"? Questa azione non può essere annullata."
+  "skill-deleted-success": "Competenza eliminata con successo!"
 }

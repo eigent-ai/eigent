@@ -1705,6 +1705,16 @@ function registerIpcHandlers() {
 
   // ======================== agent-templates (global Worker Agent templates) ========================
   const AGENT_TEMPLATES_FILE = 'agent-templates.json';
+  type AgentTemplateIpcPayload = {
+    id: string;
+    name: string;
+    description: string;
+    tools: string[];
+    mcp_tools: Record<string, unknown>;
+    custom_model_config?: Record<string, unknown>;
+    selected_tools_snapshot?: unknown[];
+    updatedAt: number;
+  };
 
   function getAgentTemplatesPath(userId: string): string {
     return path.join(os.homedir(), '.eigent', userId, AGENT_TEMPLATES_FILE);
@@ -1712,15 +1722,7 @@ function registerIpcHandlers() {
 
   async function loadAgentTemplates(userId: string): Promise<{
     version: number;
-    templates: Array<{
-      id: string;
-      name: string;
-      description: string;
-      tools: string[];
-      mcp_tools: any;
-      custom_model_config?: any;
-      updatedAt: number;
-    }>;
+    templates: AgentTemplateIpcPayload[];
   }> {
     const configPath = getAgentTemplatesPath(userId);
     const defaultData = { version: 1, templates: [] };
@@ -1733,7 +1735,7 @@ function registerIpcHandlers() {
           'utf-8'
         );
         return defaultData;
-      } catch (error: any) {
+      } catch (error) {
         log.error('Failed to create default agent-templates', error);
         return defaultData;
       }
@@ -1743,7 +1745,7 @@ function registerIpcHandlers() {
       const data = JSON.parse(content);
       if (!Array.isArray(data.templates)) data.templates = [];
       return { version: data.version ?? 1, templates: data.templates };
-    } catch (error: any) {
+    } catch (error) {
       log.error('Failed to load agent-templates', error);
       return defaultData;
     }
@@ -1751,7 +1753,7 @@ function registerIpcHandlers() {
 
   async function saveAgentTemplates(
     userId: string,
-    data: { version: number; templates: any[] }
+    data: { version: number; templates: AgentTemplateIpcPayload[] }
   ): Promise<void> {
     const configPath = getAgentTemplatesPath(userId);
     await fsp.mkdir(path.dirname(configPath), { recursive: true });
@@ -1762,15 +1764,16 @@ function registerIpcHandlers() {
     try {
       const data = await loadAgentTemplates(userId);
       return { success: true, templates: data.templates };
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       log.error('agent-templates-load failed', error);
-      return { success: false, error: error?.message, templates: [] };
+      return { success: false, error: message, templates: [] };
     }
   });
 
   ipcMain.handle(
     'agent-templates-save',
-    async (_event, userId: string, templates: any[]) => {
+    async (_event, userId: string, templates: AgentTemplateIpcPayload[]) => {
       try {
         const current = await loadAgentTemplates(userId);
         await saveAgentTemplates(userId, {
@@ -1778,9 +1781,10 @@ function registerIpcHandlers() {
           templates,
         });
         return { success: true };
-      } catch (error: any) {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         log.error('agent-templates-save failed', error);
-        return { success: false, error: error?.message };
+        return { success: false, error: message };
       }
     }
   );

@@ -21,16 +21,7 @@ import {
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useAuthStore } from './authStore';
-
-// Helper function to normalize email to user_id format
-// Matches the logic in backend's file_save_path
-function emailToUserId(email: string | null): string | null {
-  if (!email) return null;
-  return email
-    .split('@')[0]
-    .replace(/[\\/*?:"<>|\s]/g, '_')
-    .replace(/^\.+|\.+$/g, '');
-}
+import { emailToUserId } from './userId';
 
 // Skill scope interface
 export interface SkillScope {
