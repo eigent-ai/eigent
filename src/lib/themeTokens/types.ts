@@ -21,6 +21,7 @@ export const TOKEN_EMPHASIS = [
   'default',
   'strong',
   'inverse',
+  'transparent',
 ] as const;
 export const TOKEN_UI_STATES = [
   'default',

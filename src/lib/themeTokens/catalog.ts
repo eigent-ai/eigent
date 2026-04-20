@@ -56,6 +56,28 @@ function toCatalog(themes: BaseColorTokenShape['themes']): ThemeCatalogV2 {
 
 export const DEFAULT_THEME_CATALOG: ThemeCatalogV2 = toCatalog(BASE.themes);
 
+const warnedThemeFallbacks = new Set<string>();
+
+function warnThemeFallback(
+  mode: Mode,
+  requestedId: string,
+  fallbackId: string
+): void {
+  const key = `${mode}/${requestedId}->${fallbackId}`;
+  if (warnedThemeFallbacks.has(key)) return;
+  warnedThemeFallbacks.add(key);
+  // Vite replaces `import.meta.env.DEV` at build time; guard for non-vite
+  // consumers (vitest-node, electron main).
+  const isDev =
+    typeof import.meta !== 'undefined' &&
+    (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+  if (!isDev) return;
+
+  console.warn(
+    `[themeTokens] theme "${requestedId}" not registered for mode "${mode}"; falling back to "${fallbackId}".`
+  );
+}
+
 export function getColorThemeDefinitionV2(
   mode: Mode,
   themeId: string,
@@ -66,12 +88,40 @@ export function getColorThemeDefinitionV2(
   if (selected) return selected;
 
   const fallback = modeThemes[DEFAULT_THEME_ID];
-  if (fallback) return fallback;
+  if (fallback) {
+    warnThemeFallback(mode, themeId, DEFAULT_THEME_ID);
+    return fallback;
+  }
 
-  const firstTheme = Object.values(modeThemes)[0];
-  if (firstTheme) return firstTheme;
+  const firstEntry = Object.entries(modeThemes)[0];
+  if (firstEntry) {
+    warnThemeFallback(mode, themeId, firstEntry[0]);
+    return firstEntry[1];
+  }
 
   throw new Error(`No color themes configured for mode "${mode}"`);
+}
+
+/**
+ * Read the system's contrast preference. Returns a recommended value on the
+ * 0..100 contrast scale used by {@link ThemeContractV2}. Used as the default
+ * when no explicit contrast is provided and surfaced in settings UI so the
+ * user can jump back to the system-recommended value.
+ */
+export function getRecommendedContrast(): number {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.matchMedia !== 'function'
+  ) {
+    return DEFAULT_CONTRAST;
+  }
+  try {
+    if (window.matchMedia('(prefers-contrast: more)').matches) return 80;
+    if (window.matchMedia('(prefers-contrast: less)').matches) return 20;
+  } catch {
+    // Older engines may throw on unsupported media queries; fall through.
+  }
+  return DEFAULT_CONTRAST;
 }
 
 function resolveContractPreset(raw: unknown): ThemeContractV2 {
@@ -95,16 +145,14 @@ export function createDefaultThemeContractV2(
   overrides?: Partial<Omit<ThemeContractV2, 'version' | 'mode'>>
 ): ThemeContractV2 {
   const preset = mode === 'dark' ? DARK_CONTRACT_PRESET : LIGHT_CONTRACT_PRESET;
+  const resolvedContrast =
+    overrides?.contrast ?? preset.contrast ?? getRecommendedContrast();
   return {
     ...preset,
     version: THEME_CONTRACT_VERSION,
     mode,
     themeId: overrides?.themeId ?? preset.themeId ?? DEFAULT_THEME_ID,
-    contrast: clamp(
-      Math.round(overrides?.contrast ?? preset.contrast ?? DEFAULT_CONTRAST),
-      0,
-      100
-    ),
+    contrast: clamp(Math.round(resolvedContrast), 0, 100),
     overrides: overrides?.overrides ?? preset.overrides,
   };
 }

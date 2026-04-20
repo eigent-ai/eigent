@@ -109,6 +109,18 @@ const LEGACY_UI_STATES: State[] = [
 
 type NeutralStateMatrix = Record<Emphasis, Record<State, string>>;
 
+// Per-state opacity used for the `transparent` emphasis. The surface color is
+// the tone's base hue shown at these alphas so status chips read as "main
+// color, faded" rather than a washed-out rendered hue.
+const TRANSPARENT_OPACITY_BY_STATE: Record<State, number> = {
+  default: 0.1,
+  hover: 0.3,
+  active: 0.5,
+  selected: 0.7,
+  focus: 0.3,
+  disabled: 0.5,
+};
+
 function mergeAdjustment(...values: Array<Adjustment | undefined>): Adjustment {
   const out: Adjustment = {};
   for (const value of values) {
@@ -610,6 +622,20 @@ function buildSemanticTokens(
 
         for (const element of elements) {
           const tokenKey = `${element}.${tokenSuffix}` as TokenKey;
+
+          if (emph === 'transparent') {
+            const toneBase = toneBaseColor(tone, contract.mode, seed, element);
+            const baseHex = oklchToHex(toneBase);
+            const stateAlpha =
+              TRANSPARENT_OPACITY_BY_STATE[state as State] ?? 0.1;
+            const resolvedAlpha =
+              typeof axisOverride.alpha === 'number'
+                ? axisOverride.alpha
+                : stateAlpha;
+            tokens[tokenKey] = alpha(baseHex, resolvedAlpha);
+            continue;
+          }
+
           if (tone === 'neutral') {
             const legacy = parseCssColor(legacyNeutralTokens[tokenKey]);
             if (legacy) {
@@ -723,9 +749,9 @@ function getThemeSeed(contract: ThemeContractV2, catalog: ThemeCatalogV2) {
   };
 }
 
-export function buildThemeV2(
+function computeThemeV2(
   contract: ThemeContractV2,
-  catalog: ThemeCatalogV2 = DEFAULT_THEME_CATALOG
+  catalog: ThemeCatalogV2
 ): ResolvedThemeV2 {
   const normalized = normalizeContract(contract);
   const { seed, themeId } = getThemeSeed(normalized, catalog);
@@ -753,6 +779,49 @@ export function buildThemeV2(
       contrast: enforced.diagnostics,
     },
   };
+}
+
+// Memoize by catalog identity so swapping in a user catalog invalidates the
+// right entries without keeping dead catalogs alive. Per-catalog LRU keeps the
+// footprint bounded for the live-contrast slider case.
+const BUILD_THEME_CACHE = new WeakMap<
+  ThemeCatalogV2,
+  Map<string, ResolvedThemeV2>
+>();
+const MAX_CACHE_ENTRIES_PER_CATALOG = 32;
+
+function contractCacheKey(contract: ThemeContractV2): string {
+  const normalized = normalizeContract(contract);
+  return `${normalized.mode}|${normalized.themeId}|${normalized.contrast}|${
+    normalized.overrides ? JSON.stringify(normalized.overrides) : '-'
+  }`;
+}
+
+export function buildThemeV2(
+  contract: ThemeContractV2,
+  catalog: ThemeCatalogV2 = DEFAULT_THEME_CATALOG
+): ResolvedThemeV2 {
+  const key = contractCacheKey(contract);
+  let perCatalog = BUILD_THEME_CACHE.get(catalog);
+  if (perCatalog) {
+    const cached = perCatalog.get(key);
+    if (cached) {
+      perCatalog.delete(key);
+      perCatalog.set(key, cached);
+      return cached;
+    }
+  } else {
+    perCatalog = new Map();
+    BUILD_THEME_CACHE.set(catalog, perCatalog);
+  }
+
+  const result = computeThemeV2(contract, catalog);
+  if (perCatalog.size >= MAX_CACHE_ENTRIES_PER_CATALOG) {
+    const oldestKey = perCatalog.keys().next().value;
+    if (oldestKey !== undefined) perCatalog.delete(oldestKey);
+  }
+  perCatalog.set(key, result);
+  return result;
 }
 
 export function applyResolvedThemeToElement(

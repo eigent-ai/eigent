@@ -26,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DEFAULT_COLOR_THEME_ID,
   DEFAULT_THEME_CATALOG,
+  getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type {
   ColorThemeDefinitionV2,
@@ -102,6 +103,55 @@ function ColorSeedEditor({
       <div
         className="h-9 w-9 rounded-md border-ds-border-neutral-default-default border"
         style={{ backgroundColor: normalizedPreview }}
+      />
+    </div>
+  );
+}
+
+function ContrastSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const recommended = getRecommendedContrast();
+  const isRecommended = Math.round(value) === recommended;
+  return (
+    <div className="gap-2 flex flex-col">
+      <div className="flex items-center justify-between">
+        <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+          Contract (Contrast)
+        </div>
+        <div className="gap-2 flex items-center">
+          <div className="text-body-sm font-semibold text-ds-text-neutral-muted-default">
+            {value}
+          </div>
+          {!isRecommended ? (
+            <button
+              type="button"
+              onClick={() => onChange(recommended)}
+              className="text-body-xs font-medium text-ds-text-brand-default-default hover:text-ds-text-brand-default-hover transition-colors"
+              aria-label={`Reset to recommended contrast (${recommended})`}
+            >
+              Use recommended ({recommended})
+            </button>
+          ) : (
+            <span className="text-body-xs text-ds-text-neutral-muted-default">
+              Recommended
+            </span>
+          )}
+        </div>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-2 bg-ds-bg-neutral-strong-default w-full cursor-pointer appearance-none rounded-full accent-[var(--ds-bg-brand-default-default)]"
+        aria-label="Theme contrast"
       />
     </div>
   );
@@ -412,26 +462,7 @@ export default function AppearanceSettings() {
             />
           </div>
 
-          <div className="gap-2 flex flex-col">
-            <div className="flex items-center justify-between">
-              <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-                Contract (Contrast)
-              </div>
-              <div className="text-body-sm font-semibold text-ds-text-neutral-muted-default">
-                {themeContrast}
-              </div>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={themeContrast}
-              onChange={(e) => setThemeContrast(Number(e.target.value))}
-              className="h-2 bg-ds-bg-neutral-strong-default w-full cursor-pointer appearance-none rounded-full accent-[var(--ds-bg-brand-default-default)]"
-              aria-label="Theme contrast"
-            />
-          </div>
+          <ContrastSlider value={themeContrast} onChange={setThemeContrast} />
         </div>
 
         <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">

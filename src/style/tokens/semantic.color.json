@@ -26,7 +26,14 @@
       "warning",
       "information"
     ],
-    "emphasis": ["subtle", "muted", "default", "strong", "inverse"],
+    "emphasis": [
+      "subtle",
+      "muted",
+      "default",
+      "strong",
+      "inverse",
+      "transparent"
+    ],
     "states": ["default", "hover", "active", "selected", "focus", "disabled"]
   },
   "transforms": {
@@ -35,7 +42,8 @@
       "muted": { "dL": 0.1, "dC": -0.01 },
       "default": { "dL": 0, "dC": 0 },
       "strong": { "dL": -0.08, "dC": 0.02 },
-      "inverse": { "dL": -0.22, "dC": 0.01 }
+      "inverse": { "dL": -0.22, "dC": 0.01 },
+      "transparent": { "dL": 0, "dC": 0 }
     },
     "state": {
       "default": { "dL": 0, "dC": 0 },
@@ -137,6 +145,86 @@
     {
       "fg": "text.status-pending.strong.default",
       "bg": "bg.status-pending.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-running.strong.default",
+      "bg": "bg.status-running.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-reassigning.strong.default",
+      "bg": "bg.status-reassigning.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-blocked.strong.default",
+      "bg": "bg.status-blocked.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-paused.strong.default",
+      "bg": "bg.status-paused.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-skipped.strong.default",
+      "bg": "bg.status-skipped.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-cancelled.strong.default",
+      "bg": "bg.status-cancelled.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.single-agent.strong.default",
+      "bg": "bg.single-agent.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.workforce.strong.default",
+      "bg": "bg.workforce.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.browser.strong.default",
+      "bg": "bg.browser.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.terminal.strong.default",
+      "bg": "bg.terminal.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.document.strong.default",
+      "bg": "bg.document.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.success.strong.default",
+      "bg": "bg.success.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.caution.strong.default",
+      "bg": "bg.caution.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.error.strong.default",
+      "bg": "bg.error.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.warning.strong.default",
+      "bg": "bg.warning.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.information.strong.default",
+      "bg": "bg.information.subtle.default",
       "minContrast": 4.5
     }
   ]

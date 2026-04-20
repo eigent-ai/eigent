@@ -14,7 +14,7 @@
 
 import {
   DEFAULT_COLOR_THEME_ID,
-  DEFAULT_CONTRAST,
+  getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
 import { create } from 'zustand';
@@ -142,7 +142,7 @@ const authStore = create<AuthState>()(
         light: {},
         dark: {},
       },
-      themeContrast: DEFAULT_CONTRAST,
+      themeContrast: getRecommendedContrast(),
       language: 'system',
       isFirstLaunch: true,
       modelType: 'cloud',
