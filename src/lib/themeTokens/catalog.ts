@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import baseColorTokens from '../../../tokens/base.color.json';
-import contractBase from '../../../tokens/contracts/default.base.json';
-import darkContractRaw from '../../../tokens/contracts/default.dark.json';
-import lightContractRaw from '../../../tokens/contracts/default.light.json';
+import baseColorTokens from '../../style/tokens/base.color.json';
+import contractBase from '../../style/tokens/contracts/default.base.json';
+import darkContractRaw from '../../style/tokens/contracts/default.dark.json';
+import lightContractRaw from '../../style/tokens/contracts/default.light.json';
 import { clamp } from './colorMath';
 import { resolveExtends } from './dtcg';
 import {

@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import baseColorTokens from '../../../tokens/base.color.json';
-import componentTokens from '../../../tokens/component.color.json';
-import semanticTokens from '../../../tokens/semantic.color.json';
+import baseColorTokens from '../../style/tokens/base.color.json';
+import componentTokens from '../../style/tokens/component.color.json';
+import semanticTokens from '../../style/tokens/semantic.color.json';
 import { DEFAULT_THEME_CATALOG, getColorThemeDefinitionV2 } from './catalog';
 import {
   alpha,

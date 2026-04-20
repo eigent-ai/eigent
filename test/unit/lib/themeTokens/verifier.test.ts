@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createDefaultThemeContractV2 } from '@/lib/themeTokens/catalog';
+import { buildThemeV2 } from '@/lib/themeTokens/engine';
+import { verifyThemeEngine } from '@/lib/themeTokens/verifier';
 import { describe, expect, it } from 'vitest';
-import { createDefaultThemeContractV2 } from './catalog';
-import { buildThemeV2 } from './engine';
-import { verifyThemeEngine } from './verifier';
 
 describe('themeTokens v2 engine verifier', () => {
   it('produces zero errors across every registered theme/mode/contrast', () => {

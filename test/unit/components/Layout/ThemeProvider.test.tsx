@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuthStore } from '@/store/authStore';
 
-import { ThemeProvider } from './ThemeProvider';
+import { ThemeProvider } from '@/components/Layout/ThemeProvider';
 
 describe('ThemeProvider', () => {
   let mediaQuery: {

@@ -14,13 +14,16 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_THEME_CATALOG, createDefaultThemeContractV2 } from './catalog';
-import { contrastRatio } from './colorMath';
+import {
+  DEFAULT_THEME_CATALOG,
+  createDefaultThemeContractV2,
+} from '@/lib/themeTokens/catalog';
+import { contrastRatio } from '@/lib/themeTokens/colorMath';
 import {
   applyThemeContractV2,
   buildThemeV2,
   createApcaDiagnosticsReport,
-} from './engine';
+} from '@/lib/themeTokens/engine';
 import {
   TOKEN_ELEMENTS,
   TOKEN_EMPHASIS,
@@ -28,7 +31,7 @@ import {
   TOKEN_UI_STATES,
   type Mode,
   type ThemeCatalogV2,
-} from './types';
+} from '@/lib/themeTokens/types';
 
 function isHex(value: string): boolean {
   return /^#[0-9a-f]{6}$/i.test(value);
