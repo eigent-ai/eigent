@@ -51,10 +51,11 @@ import SearchInput from './SearchInput';
 const compactCountFormatter = new Intl.NumberFormat('en', {
   notation: 'compact',
   maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
 });
 
 const formatCompactCount = (value?: number) =>
-  compactCountFormatter.format(value || 0).replace('.0', '');
+  compactCountFormatter.format(value || 0);
 
 export default function HistorySidebar() {
   const { t } = useTranslation();

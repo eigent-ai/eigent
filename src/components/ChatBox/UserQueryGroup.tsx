@@ -25,12 +25,12 @@ import React, {
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
+import { SplittingProgressRow } from './MessageItem/SplittingProgressRow';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
+import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
-import { SplittingProgressRow } from './SplittingProgressRow';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
-import { TaskWorkLogAccordion } from './TaskWorkLogAccordion';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
 const AgentResultCard: React.FC<{

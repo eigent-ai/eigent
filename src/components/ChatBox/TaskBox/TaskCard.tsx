@@ -113,6 +113,10 @@ export function TaskCard({
   }, [expandStorageKey]);
 
   useEffect(() => {
+    writeStoredTaskCardExpanded(expandStorageKey, isExpanded);
+  }, [expandStorageKey, isExpanded]);
+
+  useEffect(() => {
     const tasks = taskRunning || [];
 
     if (selectedState === 'all') {
@@ -338,13 +342,7 @@ export function TaskCard({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => {
-                        setIsExpanded((prev) => {
-                          const next = !prev;
-                          writeStoredTaskCardExpanded(expandStorageKey, next);
-                          return next;
-                        });
-                      }}
+                      onClick={() => setIsExpanded((prev) => !prev)}
                     >
                       <ChevronDown
                         size={16}

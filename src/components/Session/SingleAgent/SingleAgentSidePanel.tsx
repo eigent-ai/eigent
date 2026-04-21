@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AgentFolderSection } from '@/components/SidePanelSections/AgentFolderSection';
-import { ContextSection } from '@/components/SidePanelSections/ContextSection';
-import { ProgressSection } from '@/components/SidePanelSections/ProgressSection';
-import { buildContextItems } from '@/components/SidePanelSections/buildContextItems';
-import { collectSidePanelOutputFiles } from '@/components/SidePanelSections/collectSidePanelOutputFiles';
+import { AgentFolderSection } from '@/components/Session/SidePanelSections/AgentFolderSection';
+import { ContextSection } from '@/components/Session/SidePanelSections/ContextSection';
+import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
+import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
+import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';

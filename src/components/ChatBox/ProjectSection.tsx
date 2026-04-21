@@ -16,7 +16,7 @@ import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { FloatingAction } from './FloatingAction';
+import { FloatingAction } from './MessageItem/FloatingAction';
 import { UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {

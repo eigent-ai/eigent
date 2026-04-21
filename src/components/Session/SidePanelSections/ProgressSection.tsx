@@ -18,7 +18,7 @@ import {
   ProgressCircle,
   ProgressConnector,
   SidePanelListRow,
-} from '@/components/SidePanelSections/primitives';
+} from '@/components/Session/SidePanelSections/primitives';
 import { TaskStatus } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 

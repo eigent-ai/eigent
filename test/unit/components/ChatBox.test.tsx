@@ -24,8 +24,8 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '../../../src/api/http';
-import type { ChatTimelineEntry } from '../../../src/components/ChatBox/ChatTimeline';
 import ChatBox from '../../../src/components/ChatBox/index';
+import type { ChatTimelineEntry } from '../../../src/components/Session/HeaderBox/ChatTimeline';
 import { useAuthStore } from '../../../src/store/authStore';
 
 // Mock dependencies (use the same relative paths as the imports above)

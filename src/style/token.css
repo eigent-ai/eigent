@@ -199,8 +199,4 @@
     --shadow-button:
       inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
   }
-
-  [data-theme='dark'] {
-    --camel-color: var(--colors-neon-400);
-  }
 }

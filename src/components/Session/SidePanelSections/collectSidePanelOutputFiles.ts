@@ -18,6 +18,12 @@
  * The chat task's top-level `fileList` is not kept in sync, so the side
  * panel must aggregate from assigning agents.
  */
+function fileInfoDedupKey(f: FileInfo): string {
+  const p = (f.path ?? '').trim();
+  if (p) return p;
+  return (f.name ?? '').trim() || 'unknown';
+}
+
 export function collectSidePanelOutputFiles(
   task:
     | {
@@ -32,5 +38,13 @@ export function collectSidePanelOutputFiles(
     agent.tasks.flatMap((t) => t.fileList ?? [])
   );
   const top = task.fileList ?? [];
-  return [...top, ...nested];
+  const seen = new Set<string>();
+  const out: FileInfo[] = [];
+  for (const f of [...top, ...nested]) {
+    const k = fileInfoDedupKey(f);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(f);
+  }
+  return out;
 }

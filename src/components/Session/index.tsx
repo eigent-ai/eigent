@@ -13,12 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import { HeaderBox } from '@/components/Session/HeaderBox';
 import {
   CHAT_TIMELINE_BREAKPOINT_PX,
   CHAT_TIMELINE_DEFAULT_COLLAPSED,
   ChatTimeline,
-} from '@/components/ChatBox/ChatTimeline';
-import { HeaderBox } from '@/components/Session/HeaderBox';
+} from '@/components/Session/HeaderBox/ChatTimeline';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useProjectTaskTimelineEntries } from '@/hooks/useProjectTaskTimelineEntries';
 import { cn } from '@/lib/utils';

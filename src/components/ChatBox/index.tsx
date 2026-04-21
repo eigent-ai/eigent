@@ -38,8 +38,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import {
+  type ChatTimelineEntry,
+  ChatTimeline,
+} from '../Session/HeaderBox/ChatTimeline';
 import BottomBox from './BottomBox';
-import { type ChatTimelineEntry, ChatTimeline } from './ChatTimeline';
 import { ProjectChatContainer } from './ProjectChatContainer';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */

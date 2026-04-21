@@ -70,7 +70,7 @@ function runtimeCategoryForToolkit(
   connectorHints: Set<string>
 ): ContextItem['category'] {
   const tn = toolkitName.trim().toLowerCase();
-  if (tn.includes('mcp')) return 'connector';
+  if (/\bmcp\b/i.test(tn)) return 'connector';
   if (skillHints.has(tn)) return 'skill';
   const noTk = tn.replace(/\s+toolkit\s*$/i, '').trim();
   if (skillHints.has(noTk)) return 'skill';

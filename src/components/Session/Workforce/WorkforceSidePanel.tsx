@@ -12,15 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AgentFolderSection } from '@/components/SidePanelSections/AgentFolderSection';
-import { AgentPoolSection } from '@/components/SidePanelSections/AgentPoolSection';
-import { buildContextItems } from '@/components/SidePanelSections/buildContextItems';
-import { collectSidePanelOutputFiles } from '@/components/SidePanelSections/collectSidePanelOutputFiles';
-import { ContextSection } from '@/components/SidePanelSections/ContextSection';
-import { ProgressSection } from '@/components/SidePanelSections/ProgressSection';
+import { AgentFolderSection } from '@/components/Session/SidePanelSections/AgentFolderSection';
+import { AgentPoolSection } from '@/components/Session/SidePanelSections/AgentPoolSection';
+import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
+import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import { ContextSection } from '@/components/Session/SidePanelSections/ContextSection';
+import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
+import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -64,8 +64,11 @@ export function WorkforceSidePanel({
     const taskInfo = activeTask?.taskInfo ?? [];
     const taskRunning = activeTask?.taskRunning ?? [];
     if (taskRunning.length === 0) return taskInfo;
+    const runById = new Map(
+      taskRunning.map((r) => [r.id, r] as [string, TaskInfo])
+    );
     return taskInfo.map((t) => {
-      const live = taskRunning.find((r) => r.id === t.id);
+      const live = runById.get(t.id);
       if (!live) return t;
       return { ...t, ...live, content: t.content || live.content };
     });

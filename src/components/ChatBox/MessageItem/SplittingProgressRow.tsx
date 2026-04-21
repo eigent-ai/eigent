@@ -23,16 +23,24 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatedTokenNumber, formatSplittingElapsed } from './TokenUtils';
 
-/** One shared start time per task so inline + bottom splitting rows stay in sync. */
+/** Shared start wall time when the task has no `taskTime` / `elapsed` yet (keeps a stable clock across remounts). */
 const splittingTimerStartMsByTaskId = new Map<string, number>();
 
-function getOrCreateSplittingTimerStart(taskId: string): number {
-  let started = splittingTimerStartMsByTaskId.get(taskId);
-  if (started === undefined) {
-    started = Date.now();
-    splittingTimerStartMsByTaskId.set(taskId, started);
+/** Matches work-log / `getFormattedTaskTime` (TaskWorkLogAccordion `getTaskElapsedMs`). */
+function getTaskElapsedMs(task: { taskTime: number; elapsed: number }): number {
+  if (task.taskTime !== 0) {
+    return Math.max(0, Date.now() - task.taskTime + task.elapsed);
   }
-  return started;
+  return Math.max(0, task.elapsed);
+}
+
+function getOrCreateSplittingMapStart(taskId: string): number {
+  let start = splittingTimerStartMsByTaskId.get(taskId);
+  if (start === undefined) {
+    start = Date.now();
+    splittingTimerStartMsByTaskId.set(taskId, start);
+  }
+  return start;
 }
 
 function clearSplittingTimerStart(taskId: string) {
@@ -77,12 +85,21 @@ function useSplittingPhaseElapsedMs(
       }
     };
     sync();
-    return chatStore.subscribe(sync);
+    const unsubscribe = chatStore.subscribe(sync);
+    return () => {
+      unsubscribe();
+      clearSplittingTimerStart(taskId);
+    };
   }, [chatStore, taskId]);
 
   if (!taskId) return 0;
-  const startMs = getOrCreateSplittingTimerStart(taskId);
-  return Math.max(0, now - startMs);
+  const task = chatStore.getState().tasks[taskId];
+  if (!task) return 0;
+  const fromTask = getTaskElapsedMs(task);
+  if (fromTask > 0 || task.taskTime !== 0) {
+    return fromTask;
+  }
+  return Math.max(0, now - getOrCreateSplittingMapStart(taskId));
 }
 
 export interface SplittingProgressRowProps {

@@ -16,10 +16,17 @@ import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatSplittingElapsed } from './TokenUtils';
+
+const CONTENT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
+const HEIGHT_MOTION = {
+  height: { duration: 0.22, ease: CONTENT_EASE },
+  opacity: { duration: 0.16, ease: CONTENT_EASE },
+} as const;
 
 function normalizeToolkitMessage(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -65,17 +72,15 @@ function formatToolSummary(
   return p ? `${head} — ${truncateText(p, 100)}` : head;
 }
 
-/** Collapsed row: only the toolkit · method prefix; preview after — or - stays in expanded detail. */
-function summaryRowLabel(fullSummary: string): string {
-  const em = fullSummary.split(' — ');
-  if (em.length > 1) return em[0]!.trim();
-  const spacedHyphen = fullSummary.split(' - ');
-  if (spacedHyphen.length > 1) return spacedHyphen[0]!.trim();
-  return fullSummary.trim();
+function toolRowTitle(toolkitName: string, method: string): string {
+  return `${toolkitName} · ${titleCaseMethod(method)}`;
 }
 
 type ToolSegment = {
   type: 'tool';
+  /** Stable for list keys (index in merged agent log at activation). */
+  id: string;
+  rowTitle: string;
   toolkitName: string;
   method: string;
   summary: string;
@@ -83,17 +88,18 @@ type ToolSegment = {
   status: 'running' | 'done';
 };
 
-type AgentSegment = { type: 'agent'; text: string };
+type AgentSegment = { type: 'agent'; id: string; text: string };
 
 type LogSegment = AgentSegment | ToolSegment;
 
 function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
   const segments: LogSegment[] = [];
 
-  for (const entry of merged) {
+  for (let entryIndex = 0; entryIndex < merged.length; entryIndex++) {
+    const entry = merged[entryIndex]!;
     if (entry.step === AgentStep.ACTIVATE_AGENT) {
       const text = normalizeToolkitMessage(entry.data?.message).trim();
-      if (text) segments.push({ type: 'agent', text });
+      if (text) segments.push({ type: 'agent', id: `a-${entryIndex}`, text });
       continue;
     }
 
@@ -103,7 +109,8 @@ function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
       const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
 
       if (name.toLowerCase() === 'notice') {
-        if (rawMsg) segments.push({ type: 'agent', text: rawMsg });
+        if (rawMsg)
+          segments.push({ type: 'agent', id: `a-${entryIndex}`, text: rawMsg });
         continue;
       }
 
@@ -111,6 +118,8 @@ function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
 
       segments.push({
         type: 'tool',
+        id: `t-${entryIndex}`,
+        rowTitle: toolRowTitle(name, method),
         toolkitName: name,
         method,
         summary: formatToolSummary(name, method, rawMsg),
@@ -125,6 +134,9 @@ function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
       const method = (entry.data?.method_name ?? '').trim();
       const msg = normalizeToolkitMessage(entry.data?.message).trim();
 
+      // Pairs the most recent *running* segment with the same toolkit+method. If the backend
+      // ever interleaves two concurrent invocations of the same tool, this could attach
+      // completion to the wrong segment; a stable per-invocation id in the log would be needed.
       for (let i = segments.length - 1; i >= 0; i--) {
         const s = segments[i];
         if (s.type !== 'tool') continue;
@@ -134,6 +146,7 @@ function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
         s.status = 'done';
         s.detail = [s.detail, msg].filter(Boolean).join('\n\n').trim();
         s.summary = formatToolSummary(name, method, s.detail);
+        s.rowTitle = toolRowTitle(name, method);
         break;
       }
     }
@@ -215,10 +228,10 @@ function useWorkLogElapsedMs(
 }
 
 function ToolDetailRow({
-  summary,
+  rowTitle,
   detail,
 }: {
-  summary: string;
+  rowTitle: string;
   detail: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -232,7 +245,7 @@ function ToolDetailRow({
         className="min-w-0 gap-1 py-2 px-2 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
       >
         <span className="text-body-sm font-medium min-w-0 text-ds-text-neutral-muted-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
-          {summaryRowLabel(summary)}
+          {rowTitle}
         </span>
         <ChevronRight
           size={16}
@@ -243,22 +256,28 @@ function ToolDetailRow({
           )}
         />
       </button>
-      <div
-        className={cn(
-          'min-w-0 ease-in-out mx-2 w-full overflow-hidden transition-all duration-200',
-          open ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
-        )}
-      >
-        {detail ? (
-          <div className="pb-2 pl-0 pr-0 pt-0">
-            <MarkDown
-              content={detail}
-              enableTypewriter={false}
-              pTextSize="text-xs"
-            />
-          </div>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="tool-detail"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={HEIGHT_MOTION}
+            className="min-w-0 mx-2 w-full overflow-hidden"
+          >
+            {detail ? (
+              <div className="pb-2 pl-0 pr-0 pt-0">
+                <MarkDown
+                  content={detail}
+                  enableTypewriter={false}
+                  pTextSize="text-xs"
+                />
+              </div>
+            ) : null}
+          </motion.div>
         ) : null}
-      </div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -345,47 +364,50 @@ export function TaskWorkLogAccordion({
         )}
       </button>
 
-      <div
-        className={cn(
-          'ease-in-out overflow-hidden transition-all duration-200',
-          outerOpen ? 'max-h-[8000px] opacity-100' : 'max-h-0 opacity-0'
-        )}
-      >
-        <div className="gap-3 pb-1 min-w-0 flex flex-col">
-          {segments.map((seg, index) => {
-            if (seg.type === 'agent') {
-              return (
-                <div
-                  key={`agent-${index}-${seg.text.slice(0, 24)}`}
-                  className="min-w-0"
-                >
-                  {useTypewriterForAgent ? (
-                    <MarkDown
-                      key={`tw-${index}-${outerOpen}`}
-                      content={seg.text}
-                      enableTypewriter
-                      speed={12}
-                      pTextSize="text-sm"
-                    />
-                  ) : (
-                    <p className="text-body-sm font-medium m-0 leading-snug text-ds-text-neutral-default-default break-words whitespace-pre-wrap">
-                      {seg.text}
-                    </p>
-                  )}
-                </div>
-              );
-            }
+      <AnimatePresence initial={false}>
+        {outerOpen ? (
+          <motion.div
+            key="work-log-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={HEIGHT_MOTION}
+            className="overflow-hidden"
+          >
+            <div className="gap-3 pb-1 min-w-0 flex flex-col">
+              {segments.map((seg) => {
+                if (seg.type === 'agent') {
+                  return (
+                    <div key={seg.id} className="min-w-0">
+                      {useTypewriterForAgent ? (
+                        <MarkDown
+                          key={`tw-${seg.id}-${outerOpen}`}
+                          content={seg.text}
+                          enableTypewriter
+                          speed={12}
+                          pTextSize="text-sm"
+                        />
+                      ) : (
+                        <p className="text-body-sm font-medium m-0 leading-snug text-ds-text-neutral-default-default break-words whitespace-pre-wrap">
+                          {seg.text}
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
 
-            return (
-              <ToolDetailRow
-                key={`tool-${index}-${seg.toolkitName}-${seg.method}`}
-                summary={seg.summary}
-                detail={seg.detail}
-              />
-            );
-          })}
-        </div>
-      </div>
+                return (
+                  <ToolDetailRow
+                    key={seg.id}
+                    rowTitle={seg.rowTitle}
+                    detail={seg.detail}
+                  />
+                );
+              })}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

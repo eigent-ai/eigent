@@ -16,7 +16,7 @@ import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBo
 import {
   CategoryLabel,
   SidePanelListRow,
-} from '@/components/SidePanelSections/primitives';
+} from '@/components/Session/SidePanelSections/primitives';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
