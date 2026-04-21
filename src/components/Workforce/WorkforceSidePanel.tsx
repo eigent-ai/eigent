@@ -12,12 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { AgentFolderSection } from '@/components/SidePanelSections/AgentFolderSection';
+import { AgentPoolSection } from '@/components/SidePanelSections/AgentPoolSection';
+import { buildContextItems } from '@/components/SidePanelSections/buildContextItems';
+import { ContextSection } from '@/components/SidePanelSections/ContextSection';
+import { ProgressSection } from '@/components/SidePanelSections/ProgressSection';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { Maximize2, X } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const WORKFORCE_MAIN_SURFACE_CLASS =
@@ -44,6 +50,15 @@ export function WorkforceSidePanel({
   onCloseExpandedOverlay,
 }: WorkforceSidePanelProps) {
   const { t } = useTranslation();
+  const { chatStore } = useChatStoreAdapter();
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+
+  const agents = activeTask?.taskAssigning ?? [];
+  const subtasks = activeTask?.taskInfo ?? [];
+  const files = activeTask?.fileList ?? [];
+  const contextItems = useMemo(() => buildContextItems(agents), [agents]);
 
   return (
     <>
@@ -92,61 +107,30 @@ export function WorkforceSidePanel({
           </div>
 
           <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-            <SidePanelAccordionBox
+            <AgentPoolSection
               title={t('layout.workforce-active-agent-pool', {
                 defaultValue: 'Active Agent Pool',
               })}
-            >
-              <ul className="text-ds-text-neutral-default-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
-
-            <SidePanelAccordionBox
+              agents={agents}
+            />
+            <ProgressSection
               title={t('layout.workforce-progress', {
                 defaultValue: 'Progress',
               })}
-            >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
-
-            <SidePanelAccordionBox
+              subtasks={subtasks}
+            />
+            <ContextSection
               title={t('layout.workforce-context', {
                 defaultValue: 'Context',
               })}
-            >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
-
-            <SidePanelAccordionBox
+              items={contextItems}
+            />
+            <AgentFolderSection
               title={t('layout.workforce-agent-folder', {
                 defaultValue: 'Agent Folder',
               })}
-            >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
+              files={files}
+            />
           </div>
         </div>
       )}

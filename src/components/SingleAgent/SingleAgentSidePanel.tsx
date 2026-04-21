@@ -12,8 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { AgentFolderSection } from '@/components/SidePanelSections/AgentFolderSection';
+import { ContextSection } from '@/components/SidePanelSections/ContextSection';
+import { ProgressSection } from '@/components/SidePanelSections/ProgressSection';
+import { buildContextItems } from '@/components/SidePanelSections/buildContextItems';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface SingleAgentSidePanelProps {
@@ -26,6 +31,16 @@ export function SingleAgentSidePanel({
   onToggleSidePanel: _onToggleSidePanel,
 }: SingleAgentSidePanelProps) {
   const { t } = useTranslation();
+  const { chatStore } = useChatStoreAdapter();
+
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+
+  const agents = activeTask?.taskAssigning ?? [];
+  const subtasks = agents[0]?.tasks ?? activeTask?.taskInfo ?? [];
+  const files = activeTask?.fileList ?? [];
+  const contextItems = useMemo(() => buildContextItems(agents), [agents]);
 
   if (!isSidePanelVisible) {
     return null;
@@ -45,47 +60,20 @@ export function SingleAgentSidePanel({
       </div>
 
       <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-        <SidePanelAccordionBox
-          title={t('layout.workforce-progress', {
-            defaultValue: 'Progress',
-          })}
-        >
-          <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-            <li className="text-ds-text-neutral-muted-default px-1 py-1">
-              {t('layout.workforce-empty-list', {
-                defaultValue: 'No items yet',
-              })}
-            </li>
-          </ul>
-        </SidePanelAccordionBox>
-
-        <SidePanelAccordionBox
-          title={t('layout.workforce-context', {
-            defaultValue: 'Context',
-          })}
-        >
-          <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-            <li className="text-ds-text-neutral-muted-default px-1 py-1">
-              {t('layout.workforce-empty-list', {
-                defaultValue: 'No items yet',
-              })}
-            </li>
-          </ul>
-        </SidePanelAccordionBox>
-
-        <SidePanelAccordionBox
+        <ProgressSection
+          title={t('layout.workforce-progress', { defaultValue: 'Progress' })}
+          subtasks={subtasks}
+        />
+        <ContextSection
+          title={t('layout.workforce-context', { defaultValue: 'Context' })}
+          items={contextItems}
+        />
+        <AgentFolderSection
           title={t('layout.workforce-agent-folder', {
             defaultValue: 'Agent Folder',
           })}
-        >
-          <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-            <li className="text-ds-text-neutral-muted-default px-1 py-1">
-              {t('layout.workforce-empty-list', {
-                defaultValue: 'No items yet',
-              })}
-            </li>
-          </ul>
-        </SidePanelAccordionBox>
+          files={files}
+        />
       </div>
     </div>
   );
