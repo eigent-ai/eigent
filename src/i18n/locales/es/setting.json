@@ -242,7 +242,7 @@
   "claude-opus-4-6-name": "Claude Opus 4.6",
   "claude-opus-4-7-name": "Claude Opus 4.7",
   "deepseek-v4-pro-name": "DeepSeek V4 Pro",
-  "minimax-m2-5-name": "Minimax M2.5",
+  "minimax-m2-7-name": "Minimax M2.7",
   "network-proxy": "Proxy de red",
   "network-proxy-description": "Configure un servidor proxy para las solicitudes de red. Esto es útil si necesita acceder a APIs externas a través de un proxy.",
   "proxy-placeholder": "http://127.0.0.1:7890",

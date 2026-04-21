@@ -32,7 +32,7 @@ export type CloudModelType =
   | 'gpt-5.5'
   | 'gpt-5-mini'
   | 'deepseek-v4-pro'
-  | 'minimax_m2_5';
+  | 'minimax_m2_7';
 
 // auth info interface
 interface AuthInfo {
