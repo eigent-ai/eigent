@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useHost } from '@/host';
 import { LocaleEnum, switchLanguage } from '@/i18n';
+import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
@@ -269,7 +270,7 @@ export default function SettingGeneral() {
           <div className="flex items-center gap-sm">
             <Button
               onClick={() => {
-                window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
+                window.location.href = `${SITE_URL}/dashboard?email=${authStore.email}`;
               }}
               variant="primary"
               size="sm"

@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
+import { SITE_URL } from '@/lib';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -115,7 +116,7 @@ function HeaderWin() {
     try {
       const res: any = await proxyFetchGet('/api/v1/user/invite_code');
       if (res?.invite_code) {
-        const inviteLink = `https://www.eigent.ai/signup?invite_code=${res.invite_code}`;
+        const inviteLink = `${SITE_URL}/signup?invite_code=${res.invite_code}`;
         await navigator.clipboard.writeText(inviteLink);
         toast.success(t('layout.invitation-link-copied'));
       } else {

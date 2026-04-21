@@ -283,17 +283,29 @@ export function Node({ id, data }: NodeProps) {
 
   const toolkits = selectedTask?.toolkits;
   const lastToolkit = toolkits?.[toolkits.length - 1];
-  const toolkitChangeKey = `${selectedTask?.id ?? ''}:${toolkits?.length ?? 0}:${lastToolkit?.toolkitId ?? ''}:${lastToolkit?.toolkitStatus ?? ''}`;
+  const toolkitChangeKey = `${selectedTask?.id ?? ''}:${toolkits?.length ?? 0}:${lastToolkit?.toolkitId ?? ''}:${lastToolkit?.toolkitStatus ?? ''}:${lastToolkit?.message?.slice(-30) ?? ''}`;
 
   useEffect(() => {
     if (!isExpanded || !toolkits?.length) return;
     scrollLogToBottom();
   }, [isExpanded, toolkits?.length, toolkitChangeKey, scrollLogToBottom]);
 
-  // Reset scroll-to-bottom flag when switching tasks so new task always starts at bottom
+  // Scroll to bottom when a report appears
+  useEffect(() => {
+    if (!isExpanded || !selectedTask?.report) return;
+    scrollLogToBottom();
+  }, [isExpanded, selectedTask?.report, scrollLogToBottom]);
+
+  // Reset scroll-to-bottom flag when switching tasks or when panel opens
   useEffect(() => {
     wasAtBottomRef.current = true;
   }, [selectedTask?.id]);
+
+  useEffect(() => {
+    if (isExpanded) {
+      wasAtBottomRef.current = true;
+    }
+  }, [isExpanded]);
 
   // Track whether user has scrolled up so we don't override manual reading
   useEffect(() => {
