@@ -31,12 +31,18 @@ export type SidePanelAccordionChildren =
 export function SidePanelAccordionBox({
   title,
   titleSuffix,
+  collapsedPreview,
   children,
   defaultOpen = true,
 }: {
   title: string;
   /** Small adornment rendered right after the title (e.g. count pill). */
   titleSuffix?: ReactNode;
+  /**
+   * Compact content below the header when collapsed (static `children` only;
+   * render-prop children control their own open/closed layout).
+   */
+  collapsedPreview?: ReactNode;
   /**
    * Static: classic accordion — body hidden when closed.
    * Render prop: body stays in one region; switch layout by `open` (e.g. summary vs full list).
@@ -74,6 +80,10 @@ export function SidePanelAccordionBox({
           aria-hidden
         />
       </button>
+
+      {!open && collapsedPreview && !isRenderProp ? (
+        <div className="px-2 pb-3 w-full">{collapsedPreview}</div>
+      ) : null}
 
       {isRenderProp ? (
         <motion.div
