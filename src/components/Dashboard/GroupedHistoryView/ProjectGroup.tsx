@@ -29,12 +29,12 @@ import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { motion } from 'framer-motion';
 import {
   Edit,
+  FolderCheck,
+  FolderClock,
   Hash,
+  ListChecks,
   Loader2,
   MoreHorizontal,
-  Pin,
-  Sparkle,
-  Sparkles,
   Trash2,
   Zap,
 } from 'lucide-react';
@@ -217,7 +217,7 @@ export default function ProjectGroup({
       <motion.div
         transition={{ duration: 0.2, ease: 'easeOut' }}
         onClick={handleProjectClick}
-        className={`rounded-xl border-ds-border-neutral-muted-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover relative h-full overflow-hidden border border-solid transition-colors ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'hover:bg-project-surface-hover cursor-pointer'}`}
+        className={`rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm hover:bg-ds-bg-neutral-default-hover hover:border-ds-border-neutral-subtle-default ease-in-out relative h-full overflow-hidden border border-solid border-transparent transition-colors duration-200 ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer'}`}
       >
         {isLoadingProject && (
           <div className="bg-white/50 inset-0 absolute z-10 flex items-center justify-center">
@@ -231,9 +231,9 @@ export default function ProjectGroup({
             <div className="gap-2 pr-4 flex w-full flex-col">
               <div className="gap-2 flex w-full flex-row items-center justify-start">
                 {isOngoing ? (
-                  <Sparkles className="h-6 w-6 text-ds-icon-status-splitting-default-default flex-shrink-0" />
+                  <FolderClock className="h-6 w-6 text-ds-icon-status-running-default-default flex-shrink-0" />
                 ) : (
-                  <Sparkle className="h-6 w-6 text-ds-icon-neutral-muted-default flex-shrink-0" />
+                  <FolderCheck className="h-6 w-6 text-ds-icon-neutral-subtle-default flex-shrink-0" />
                 )}
 
                 {/* Status badges */}
@@ -245,7 +245,7 @@ export default function ProjectGroup({
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <Tag variant="info" size="xs">
+                      <Tag variant="primary" tone="information" size="xs">
                         <Activity className="w-3.5 h-3.5" />
                         {t("layout.ongoing")}
                       </Tag>
@@ -258,7 +258,7 @@ export default function ProjectGroup({
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <Tag variant="warning" size="xs">
+                      <Tag variant="primary" tone="warning" size="xs">
                         {t("layout.issue") || "Issue"}
                       </Tag>
                     </motion.div>
@@ -292,7 +292,7 @@ export default function ProjectGroup({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="border-ds-border-neutral-default-default bg-dropdown-bg z-50"
+                className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
               >
                 {onProjectEdit && (
                   <DropdownMenuItem
@@ -339,41 +339,45 @@ export default function ProjectGroup({
             className="border-ds-border-neutral-muted-disabled px-6 py-4 flex items-center justify-between border-x-0 border-b-0 border-solid"
           >
             <div className="gap-4 flex w-full flex-row items-center justify-between">
-              {/* Token count */}
               <TooltipSimple content={t('chat.token')}>
-                <div className="gap-1 flex items-center">
-                  <Hash className="h-4 w-4 text-ds-icon-status-splitting-default-default" />
-                  <span className="text-body-sm font-semibold text-ds-text-status-splitting-strong-default">
-                    {' '}
-                    {t('chat.token')}
-                  </span>
-                  <span className="text-body-sm font-semibold text-ds-text-status-splitting-strong-default">
+                <Tag
+                  variant="primary"
+                  tone="information"
+                  emphasis="default"
+                  size="xs"
+                >
+                  <Hash />
+                  <span>
                     {project.total_tokens
                       ? project.total_tokens.toLocaleString()
                       : '0'}
                   </span>
-                </div>
+                </Tag>
               </TooltipSimple>
 
-              <div className="gap-4 flex flex-row items-center justify-end">
-                {/* Task count */}
-                <TooltipSimple content="Tasks">
-                  <div className="gap-1 flex items-center">
-                    <Pin className="h-4 w-4 text-ds-icon-neutral-default-default" />
-                    <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-                      {project.task_count}
-                    </span>
-                  </div>
+              <div className="gap-2 flex flex-row items-center justify-end">
+                <TooltipSimple content={t('layout.tasks')}>
+                  <Tag
+                    variant="primary"
+                    tone="neutral"
+                    size="xs"
+                    className="min-w-10"
+                  >
+                    <ListChecks />
+                    <span>{project.task_count}</span>
+                  </Tag>
                 </TooltipSimple>
 
-                {/* Trigger count */}
                 <TooltipSimple content="Triggers">
-                  <div className="gap-1 flex items-center">
-                    <Zap className="h-4 w-4 text-ds-icon-status-pending-default-default" />
-                    <span className="text-body-sm font-semibold text-ds-text-warning-strong-default">
-                      {project.total_triggers || 0}
-                    </span>
-                  </div>
+                  <Tag
+                    variant="primary"
+                    tone="warning"
+                    size="xs"
+                    className="min-w-10"
+                  >
+                    <Zap />
+                    <span>{project.total_triggers || 0}</span>
+                  </Tag>
                 </TooltipSimple>
               </div>
             </div>
@@ -387,7 +391,7 @@ export default function ProjectGroup({
   return (
     <div
       onClick={handleProjectClick}
-      className={`hover:perfect-shadow rounded-xl border-ds-border-neutral-muted-disabled bg-project-surface-default backdrop-blur-sm hover:bg-project-surface-hover relative overflow-hidden border border-solid ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer'}`}
+      className={`hover:perfect-shadow rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm hover:bg-ds-bg-neutral-default-hover hover:border-ds-border-neutral-subtle-default ease-in-out relative overflow-hidden border border-solid border-transparent transition-colors duration-200 ${isLoadingProject ? 'pointer-events-none cursor-wait opacity-70' : 'cursor-pointer'}`}
     >
       {isLoadingProject && (
         <div className="bg-white/50 inset-0 absolute z-10 flex items-center justify-center">
@@ -399,9 +403,9 @@ export default function ProjectGroup({
         {/* Start: Folder icon and project name - Fixed width */}
         <div className="w-48 gap-3 flex flex-shrink-0 items-center">
           {isOngoing ? (
-            <Sparkles className="h-5 w-5 text-ds-icon-status-splitting-default-default flex-shrink-0" />
+            <FolderClock className="h-5 w-5 text-ds-icon-status-running-default-default flex-shrink-0" />
           ) : (
-            <Sparkle className="h-5 w-5 text-ds-icon-neutral-muted-default flex-shrink-0" />
+            <FolderCheck className="h-5 w-5 text-ds-icon-neutral-subtle-default flex-shrink-0" />
           )}
           <TooltipSimple
             content={
@@ -417,7 +421,12 @@ export default function ProjectGroup({
 
         {/* Middle: Project, Trigger, Agent tags - Aligned to right */}
         <div className="gap-4 flex w-fit flex-1 items-center justify-end">
-          <Tag variant="info" size="sm">
+          <Tag
+            variant="primary"
+            tone="information"
+            emphasis="default"
+            size="sm"
+          >
             <Hash />
             <span>
               {project.total_tokens
@@ -427,14 +436,24 @@ export default function ProjectGroup({
           </Tag>
 
           <TooltipSimple content={t('layout.tasks')}>
-            <Tag variant="default" size="sm" className="min-w-10">
-              <Pin />
+            <Tag
+              variant="primary"
+              tone="neutral"
+              size="sm"
+              className="min-w-10"
+            >
+              <ListChecks />
               <span>{project.task_count}</span>
             </Tag>
           </TooltipSimple>
 
           <TooltipSimple content="Triggers">
-            <Tag variant="warning" size="sm" className="min-w-10">
+            <Tag
+              variant="primary"
+              tone="warning"
+              size="sm"
+              className="min-w-10"
+            >
               <Zap />
               <span>{project.total_triggers || 0}</span>
             </Tag>
@@ -445,14 +464,14 @@ export default function ProjectGroup({
         <div className="ml-4 min-w-32 gap-2 border-ds-border-neutral-muted-disabled pl-4 flex w-fit items-center justify-end border border-y-0 border-r-0 border-solid">
           {/* Status tag */}
           {/* {isOngoing && (
-            <Tag variant="info" size="sm">
+            <Tag variant="primary" tone="information" size="sm">
               <Activity />
               {t("layout.ongoing")}
             </Tag>
           )} */}
 
           {/* {!isOngoing && hasIssue && (
-            <Tag variant="warning" size="sm">
+            <Tag variant="primary" tone="warning" size="sm">
               {t("layout.issue") || "Issue"}
             </Tag>
           )} */}
@@ -471,7 +490,7 @@ export default function ProjectGroup({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="border-ds-border-neutral-default-default bg-dropdown-bg z-50"
+              className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
             >
               {onProjectEdit && (
                 <DropdownMenuItem

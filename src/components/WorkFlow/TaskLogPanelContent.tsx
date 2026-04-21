@@ -77,7 +77,7 @@ export function TaskLogPanelContent({
                         window.location.href = toolkit.message;
                       }
                     }}
-                    className="gap-1 rounded-lg bg-log-default p-1 px-2 flex flex-col items-start justify-center transition-all duration-300 hover:opacity-50"
+                    className="gap-1 rounded-lg p-1 px-2 flex flex-col items-start justify-center transition-all duration-300 hover:opacity-50"
                   >
                     <div className="gap-sm flex w-full items-center justify-start">
                       {toolkit.toolkitStatus === AgentStatusValue.RUNNING ? (

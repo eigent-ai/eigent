@@ -12,12 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import dark from '@/assets/dark.png';
-import light from '@/assets/light.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
-import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
+import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
 import { createRef, RefObject, useEffect, useState } from 'react';
@@ -46,30 +44,13 @@ export default function SettingGeneral() {
 
   const navigate = useNavigate();
   const [_isLoading, _setIsLoading] = useState(false);
-  const setAppearance = authStore.setAppearance;
-  const setWorkspaceMainBackground = authStore.setWorkspaceMainBackground;
-  const workspaceMainBackground = authStore.workspaceMainBackground;
   const language = authStore.language;
   const _setLanguage = authStore.setLanguage;
-  const appearance = authStore.appearance;
   const _fullNameRef: RefObject<HTMLInputElement> = createRef();
   const _nickNameRef: RefObject<HTMLInputElement> = createRef();
   const _workDescRef: RefObject<HTMLInputElement> = createRef();
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
-
-  const themeList = [
-    {
-      img: dark,
-      label: 'setting.dark',
-      value: 'dark',
-    },
-    {
-      img: light,
-      label: 'setting.light',
-      value: 'light',
-    },
-  ];
 
   // Proxy configuration state
   const [proxyUrl, setProxyUrl] = useState('');
@@ -237,13 +218,21 @@ export default function SettingGeneral() {
                 window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
               }}
               variant="primary"
+              textWeight="semibold"
+              buttonContent="text"
+              buttonRadius="lg"
+              tone="neutral"
               size="sm"
             >
-              <Settings className="h-4 w-4 text-button-primary-icon-default" />
+              <Settings />
               {t('setting.manage')}
             </Button>
             <Button
               variant="outline"
+              textWeight="semibold"
+              buttonContent="text"
+              buttonRadius="lg"
+              tone="neutral"
               size="sm"
               onClick={() => {
                 chatStore.clearTasks();
@@ -255,7 +244,7 @@ export default function SettingGeneral() {
                 navigate('/login');
               }}
             >
-              <LogOut className="h-4 w-4 text-button-tertiery-text-default" />
+              <LogOut />
               {t('setting.log-out')}
             </Button>
           </div>
@@ -269,7 +258,7 @@ export default function SettingGeneral() {
             </div>
           </div>
           <Select value={language} onValueChange={switchLanguage}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger variant="secondary" className="w-48">
               <SelectValue placeholder={t('setting.select-language')} />
             </SelectTrigger>
             <SelectContent className="bg-input-bg-default border">
@@ -282,74 +271,6 @@ export default function SettingGeneral() {
                     {item.label}
                   </SelectItem>
                 ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Appearance Section */}
-        <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col justify-between">
-          <div className="text-body-base font-bold text-ds-text-neutral-default-default">
-            {t('setting.appearance')}
-          </div>
-          <div className="gap-md flex w-full flex-row items-center">
-            {themeList.map((item: any) => (
-              <div
-                key={item.label}
-                className="group gap-sm flex w-full flex-col items-center hover:cursor-pointer"
-                onClick={() => setAppearance(item.value)}
-              >
-                <img
-                  src={item.img}
-                  className={`group-hover:border-bg-fill-info-primary rounded-lg aspect-[183/91.67] w-full border border-solid border-transparent transition-all ${
-                    item.value == appearance
-                      ? 'border-bg-fill-info-primary'
-                      : ''
-                  }`}
-                  alt=""
-                />
-                <div
-                  className={`text-sm text-ds-text-neutral-default-default group-hover:underline ${
-                    item.value == appearance ? 'underline' : ''
-                  }`}
-                >
-                  {t(item.label)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Workspace main panel background */}
-        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
-          <div className="gap-1 flex max-w-[55%] flex-col">
-            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
-              {t('setting.workspace-main-background')}
-            </div>
-            <div className="text-body-sm text-ds-text-neutral-muted-default">
-              {t('setting.workspace-main-background-description')}
-            </div>
-          </div>
-          <Select
-            value={workspaceMainBackground ?? 'none'}
-            onValueChange={(v) =>
-              setWorkspaceMainBackground(v as WorkspaceMainBackground)
-            }
-          >
-            <SelectTrigger className="w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-input-bg-default border">
-              <SelectGroup>
-                <SelectItem value="none">
-                  {t('setting.workspace-main-background-none')}
-                </SelectItem>
-                <SelectItem value="dots">
-                  {t('setting.workspace-main-background-dots')}
-                </SelectItem>
-                <SelectItem value="blocks">
-                  {t('setting.workspace-main-background-blocks')}
-                </SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>

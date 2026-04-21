@@ -86,11 +86,11 @@ export function WorkforceAgentList({
             <button
               type="button"
               className={cn(
-                'rounded-xl bg-ds-bg-neutral-strong-default border-0',
+                'rounded-xl bg-ds-bg-neutral-default-default border-0',
                 'p-2 inline-flex items-center justify-center',
                 'text-ds-text-neutral-muted-default transition-all duration-200',
                 'hover:text-ds-text-neutral-default-default opacity-80 hover:opacity-100',
-                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+                'focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-2 focus-visible:outline-none'
               )}
               onClick={onAddWorker}
               aria-label={t('triggers.add')}

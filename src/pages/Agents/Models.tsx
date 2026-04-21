@@ -1262,24 +1262,38 @@ export default function SettingModels() {
               </div>
               <div className="gap-2 flex items-center">
                 {form[idx].prefer ? (
-                  <span className="px-2 py-1 text-label-xs font-bold text-ds-text-status-completed-strong-default inline-flex items-center rounded-full">
+                  <Button
+                    variant="primary"
+                    tone="success"
+                    size="xs"
+                    textWeight="bold"
+                    disabled
+                    buttonRadius="full"
+                  >
                     {t('setting.default')}
-                  </span>
-                ) : (
+                  </Button>
+                ) : canSwitch ? (
                   <Button
                     variant="ghost"
+                    tone="neutral"
                     size="xs"
-                    disabled={!canSwitch || loading === idx}
+                    textWeight="bold"
+                    disabled={loading === idx}
+                    buttonRadius="full"
                     onClick={() => handleSwitch(idx, true)}
-                    className={
-                      canSwitch
-                        ? 'bg-button-transparent-fill-hover !text-ds-text-neutral-muted-default hover:bg-button-transparent-fill-active inline-flex items-center rounded-full shadow-none'
-                        : 'gap-1.5 inline-flex items-center'
-                    }
                   >
-                    {!canSwitch
-                      ? t('setting.not-configured')
-                      : t('setting.set-as-default')}
+                    {t('setting.set-as-default')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    tone="neutral"
+                    size="xs"
+                    textWeight="bold"
+                    disabled
+                    buttonRadius="full"
+                  >
+                    {t('setting.not-configured')}
                   </Button>
                 )}
                 {form[idx].provider_id ? (
@@ -1506,7 +1520,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-button-transparent-fill-hover !text-ds-text-neutral-muted-default rounded-full shadow-none'
+                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active rounded-full shadow-none'
                         : ''
                     }
                   >
@@ -1693,7 +1707,7 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="top-0 bg-ds-bg-neutral-subtle-default px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+      <div className="top-0 px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
         <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
@@ -1877,12 +1891,12 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-start justify-between">
-          <div className="text-body-base mb-2 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-4 font-bold text-ds-text-neutral-default-default sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-3 py-4 flex w-full flex-col items-start justify-between">
+          <div className="px-3 text-body-base mb-2 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-4 font-bold text-ds-text-neutral-default-default sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
-          <div className="flex w-full flex-row items-start justify-between">
+          <div className="px-3 flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
             <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px]">
               <div className="gap-4 flex flex-col">

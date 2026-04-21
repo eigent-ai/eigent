@@ -367,7 +367,7 @@ export const RichChatInput = React.forwardRef<
           {showPlaceholder ? (
             <motion.span
               key={placeholders[placeholderCycleIndex % placeholders.length]}
-              className="block w-full font-[Inter] text-[13px] leading-[20px] text-[color:var(--ds-text-neutral-muted-default)]"
+              className="text-ds-text-neutral-subtle-disabled text-body-sm block w-full"
               initial={{
                 opacity: 0,
                 filter: 'blur(8px)',

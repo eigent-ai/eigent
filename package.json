@@ -41,6 +41,7 @@
     "test:e2e": "vitest run --config vitest.config.ts",
     "test:coverage": "vitest run --coverage",
     "check:i18n": "node scripts/check-i18n-locale-parity.js",
+    "verify:theme": "vite-node scripts/verify-theme-tokens.ts",
     "type-check": "tsc -p tsconfig.build.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
     "lint:fix": "eslint . --fix --no-warn-ignored",

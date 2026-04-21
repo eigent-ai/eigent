@@ -115,23 +115,25 @@ export function NavList({
       <div className="min-w-0 gap-2 px-1 mb-2 flex w-full items-center justify-between">
         <TooltipSimple
           content={expanded ? collapseAria : expandAria}
-          side="right"
-          align="center"
+          side="top"
+          align="start"
         >
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
             className={cn(
-              'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-bold inline-flex w-fit max-w-[calc(100%-5rem)] shrink items-center text-left text-[color:var(--ds-text-neutral-muted-default)] outline-none hover:bg-[var(--ds-bg-neutral-strong-default)]',
-              'focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+              'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-bold text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default inline-flex w-fit max-w-[calc(100%-5rem)] shrink items-center text-left outline-none',
+              'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
             )}
             aria-expanded={expanded}
             aria-label={expanded ? collapseAria : expandAria}
           >
-            <span className="min-w-0 truncate">{headingLabel}</span>
+            <span className="min-w-0 text-ds-text-neutral-muted-default text-body-xs font-bold truncate">
+              {headingLabel}
+            </span>
             <ChevronDown
               className={cn(
-                'h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)] transition-[transform,opacity] duration-200',
+                'h-4 w-4 text-ds-icon-neutral-muted-default shrink-0 transition-[transform,opacity] duration-200',
                 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
                 expanded ? 'rotate-0' : '-rotate-90'
               )}
@@ -145,9 +147,9 @@ export function NavList({
           onClick={onShowAll}
           aria-current={showAllActive ? 'page' : undefined}
           className={cn(
-            'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-semibold inline-flex w-fit shrink-0 items-center text-left !text-[color:var(--ds-text-neutral-muted-default)] outline-none',
+            'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-semibold !text-ds-text-neutral-muted-default inline-flex w-fit shrink-0 items-center text-left outline-none',
             showAllActive ? 'underline underline-offset-2' : 'hover:underline',
-            'focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
           )}
         >
           {showAllLabel}
@@ -160,7 +162,7 @@ export function NavList({
           role="list"
         >
           {sessions.length === 0 ? (
-            <li className="px-3 py-1.5 text-body-sm leading-snug text-[color:var(--ds-text-neutral-muted-default)]">
+            <li className="px-3 py-1.5 text-body-sm leading-snug text-ds-text-neutral-muted-default">
               {emptySessionsHint}
             </li>
           ) : null}
@@ -172,8 +174,8 @@ export function NavList({
                   className={cn(
                     'group/session-item min-w-0 h-8 gap-1 rounded-xl px-3 relative flex w-full items-center overflow-hidden',
                     active
-                      ? 'bg-[var(--ds-bg-neutral-strong-default)] hover:bg-[var(--ds-bg-neutral-strong-default)]'
-                      : 'bg-transparent hover:bg-[var(--ds-bg-neutral-strong-default)]'
+                      ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                      : 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
                   )}
                 >
                   <button
@@ -181,7 +183,7 @@ export function NavList({
                     onClick={() => onSessionClick?.(session.id)}
                     className={cn(
                       'no-drag min-h-0 min-w-0 gap-3 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                      'focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+                      'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
                     )}
                   >
                     <MessageCircle
@@ -192,7 +194,7 @@ export function NavList({
                       aria-hidden
                     />
                     <span
-                      className="min-w-0 text-body-sm font-medium flex-1 overflow-visible whitespace-nowrap text-[color:var(--ds-text-neutral-muted-default)]"
+                      className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 overflow-visible whitespace-nowrap"
                       title={session.title}
                     >
                       {session.title}
@@ -203,8 +205,8 @@ export function NavList({
                     className={cn(
                       'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
                       active
-                        ? 'from-[var(--ds-bg-neutral-strong-default)]'
-                        : 'from-transparent group-hover/session-item:from-[var(--ds-bg-neutral-strong-default)]'
+                        ? 'from-ds-bg-neutral-subtle-default'
+                        : 'group-hover/session-item:from-ds-bg-neutral-subtle-default from-transparent'
                     )}
                     aria-hidden
                   />
@@ -215,16 +217,16 @@ export function NavList({
                         <button
                           type="button"
                           className={cn(
-                            'no-drag h-7 w-7 rounded-lg flex shrink-0 items-center justify-center text-[color:var(--ds-icon-neutral-muted-default)] transition-opacity duration-150 outline-none',
+                            'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
                             active
-                              ? 'bg-[var(--ds-bg-neutral-strong-default)] opacity-100 hover:bg-[var(--ds-bg-neutral-strong-default)]'
+                              ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
                               : [
                                   'md:opacity-0 bg-transparent opacity-100',
                                   'md:group-hover/session-item:opacity-100',
                                   'md:group-focus-within/session-item:opacity-100',
                                   'data-[state=open]:opacity-100',
                                 ],
-                            'focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+                            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
                           )}
                           aria-label={sessionMenuAria}
                           onClick={(e) => e.stopPropagation()}
@@ -234,7 +236,7 @@ export function NavList({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="min-w-[9rem]">
                         <DropdownMenuItem
-                          className="cursor-pointer text-[color:var(--ds-text-status-error-strong-default)] focus:text-[color:var(--ds-text-status-error-strong-default)]"
+                          className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
                           onClick={() => onDeleteSession?.(session.id)}
                         >
                           {deleteLabel}

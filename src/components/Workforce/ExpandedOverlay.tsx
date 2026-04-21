@@ -85,7 +85,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'documentWorkSpace' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -97,7 +97,7 @@ function WorkforceOverlayCanvas() {
       )?.type === 'document_agent' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder
                 data={activeTask.taskAssigning?.find(
@@ -111,7 +111,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'inbox' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="blur-bg inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -181,7 +181,7 @@ export default function ExpandedOverlay({
             onClick={onClose}
           />
           <motion.div
-            className="border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
+            className="border-ds-border-neutral-inverse-default bg-ds-bg-neutral-muted-default min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
             role="dialog"
             aria-modal="true"
             aria-label={titleLabel}

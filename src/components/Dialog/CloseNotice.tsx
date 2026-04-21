@@ -50,7 +50,7 @@ export default function CloseNoticeDialog({
         <div className="gap-md bg-ds-bg-neutral-strong-default p-md flex flex-col">
           {t('layout.a-task-is-currently-running')}
         </div>
-        <DialogFooter className="!rounded-b-xl bg-white-100% p-md">
+        <DialogFooter className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md">
           <DialogClose asChild>
             <Button variant="ghost" size="md">
               {t('layout.cancel')}

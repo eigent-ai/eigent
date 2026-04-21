@@ -23,6 +23,10 @@ const TabsContext = React.createContext<{ variant?: 'default' | 'outline' }>({
   variant: 'default',
 });
 
+/** Shared trigger styles — default and outline use the same dimensions. */
+const tabsTriggerClassName =
+  'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus gap-1 rounded-xl bg-ds-bg-neutral-strong-default px-2 py-1 text-body-sm font-semibold text-ds-text-neutral-default-default data-[state=active]:bg-ds-bg-neutral-subtle-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
+
 const Tabs = TabsPrimitive.Root;
 
 type TabsListProps = React.ComponentPropsWithoutRef<
@@ -109,9 +113,10 @@ const TabsList = React.forwardRef<
         <TabsPrimitive.List
           ref={combinedRef}
           className={cn(
+            'rounded-xl bg-ds-bg-neutral-strong-default p-0.5 inline-flex items-center justify-center border border-solid',
             variant === 'outline'
-              ? 'gap-0 bg-ds-bg-neutral-muted-disabled p-0 relative inline-flex items-center justify-center'
-              : 'rounded-xl border-menutabs-border-default bg-ds-bg-neutral-strong-default p-0.5 inline-flex items-center justify-center border border-solid',
+              ? 'border-ds-border-neutral-default-default relative'
+              : 'border-[color:var(--ds-bg-neutral-strong-default)]',
             'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
             className
           )}
@@ -155,12 +160,7 @@ const TabsTrigger = React.forwardRef<
   return (
     <TabsPrimitive.Trigger
       ref={ref}
-      className={cn(
-        variant === 'outline'
-          ? 'gap-2 px-4 py-3 !text-body-sm !font-semibold text-ds-text-neutral-muted-default data-[state=active]:bg-ds-bg-neutral-muted-disabled data-[state=active]:!font-bold data-[state=active]:text-ds-text-neutral-default-default relative flex cursor-pointer flex-row items-center justify-center bg-transparent transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
-          : 'ring-offset-background focus-visible:ring-ring gap-1 rounded-xl bg-menutabs-fill-default px-2 py-1 text-body-sm font-semibold data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
-        className
-      )}
+      className={cn(tabsTriggerClassName, className)}
       data-variant={variant}
       data-value={props.value}
       {...props}
@@ -177,7 +177,7 @@ const TabsContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       className={cn(
-        'ring-offset-background focus-visible:ring-ring mt-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+        'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus mt-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
         className
       )}
       {...props}

@@ -35,7 +35,7 @@ body {
 
 @layer base {
   body {
-    color: var(--text-body);
+    color: var(--ds-text-neutral-default-default);
   }
 
   p,
@@ -53,20 +53,20 @@ body {
   input,
   textarea,
   select {
-    color: var(--text-primary);
-    background-color: var(--surface-primary);
-    border: 1px solid var(--border-secondary);
+    color: var(--ds-text-neutral-default-default);
+    background-color: var(--ds-bg-neutral-subtle-default);
+    border: 1px solid var(--ds-border-neutral-default-default);
     outline: none;
   }
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--text-tertiary);
+    color: var(--ds-text-neutral-subtle-default);
     opacity: 1;
   }
 
   .lucide {
-    color: var(--icon-secondary);
+    color: var(--ds-icon-neutral-muted-default);
     stroke: currentColor;
     stroke-width: 1.5;
   }
@@ -74,7 +74,7 @@ body {
   button .lucide,
   a .lucide,
   .lucide[data-state='active'] {
-    color: var(--icon-primary);
+    color: var(--ds-icon-neutral-default-default);
   }
 
   :is(
@@ -84,13 +84,13 @@ body {
     [class*='bg-white-100%'],
     [class*='bg-white-50']
   ) {
-    color: var(--text-primary);
-    background-color: var(--surface-card) !important;
+    color: var(--ds-text-neutral-default-default);
+    background-color: var(--ds-bg-neutral-default-default) !important;
     box-shadow: none;
   }
 
   [class*='bg-white-50'] {
-    background-color: var(--surface-tertiary) !important;
+    background-color: var(--ds-bg-neutral-strong-default) !important;
   }
 
   .theme-image-invert-dark {
@@ -114,10 +114,10 @@ body {
   box-shadow:
     -2px -2px 100px rgba(255, 255, 255, 0.1) inset,
     2px 2px 100px rgba(29, 29, 29, 0.1) inset;
-  background-color: var(--bg-page) !important;
+  background-color: var(--ds-bg-neutral-subtle-default) !important;
   backdrop-filter: blur(75px);
   z-index: 0;
-  color: var(--text-body);
+  color: var(--ds-text-neutral-default-default);
   position: relative;
   isolation: isolate;
 }
@@ -148,14 +148,9 @@ body {
 }
 
 /* Perfect Shadow */
-.perfect-shadow {
-  box-shadow:
-    0 8px 20px -2px rgba(29, 33, 41, 0.1),
-    0 32px 48px -12px rgba(29, 33, 41, 0.12),
-    0 96px 120px -12px rgba(65, 74, 92, 0.06),
-    0 108px 72px -16px rgba(65, 74, 92, 0.08),
-    0 32px 64px -8px rgba(113, 153, 189, 0.12),
-    0 8px 10px 0 rgba(113, 153, 189, 0.12);
+.perfect-shadow,
+.soft-shadow {
+  box-shadow: var(--shadow-soft);
 }
 
 .blur-effect {
@@ -177,7 +172,7 @@ body {
 }
 
 .custom-resizable-handle:hover {
-  background: var(--border-information);
+  background: var(--ds-border-brand-default-focus);
   width: 2px;
   height: 40px;
   transform: none;
@@ -528,7 +523,7 @@ code {
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--text-label, rgba(0, 0, 0, 0.4));
+  background-color: var(--ds-text-neutral-muted-default, rgba(0, 0, 0, 0.4));
   opacity: 0;
   border-radius: 9999px;
   transition: opacity 0.2s ease;
@@ -546,7 +541,7 @@ code {
 
 /* Dark mode overrides for FolderComponent (CSV/table content) */
 [data-theme='dark'] .folder-component-content {
-  color: var(--text-primary);
+  color: var(--ds-text-neutral-default-default);
 }
 
 [data-theme='dark'] .folder-component-content * {
@@ -560,7 +555,7 @@ code {
 [data-theme='dark'] .folder-component-content table th,
 [data-theme='dark'] .folder-component-content table td {
   border-color: #30363d !important;
-  color: var(--text-primary) !important;
+  color: var(--ds-text-neutral-default-default) !important;
 }
 
 [data-theme='dark'] .folder-component-content table th {
@@ -611,11 +606,11 @@ code {
   color: transparent;
   background: linear-gradient(
     110deg,
-    var(--text-body) 0%,
-    var(--text-body) 35%,
+    var(--ds-text-neutral-default-default) 0%,
+    var(--ds-text-neutral-default-default) 35%,
     var(--colors-primary-4) 50%,
-    var(--text-body) 65%,
-    var(--text-body) 100%
+    var(--ds-text-neutral-default-default) 65%,
+    var(--ds-text-neutral-default-default) 100%
   );
   background-size: 250% 100%;
   background-position: 100% 0;

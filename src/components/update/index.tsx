@@ -52,7 +52,7 @@ const Update = () => {
     if (isDownloading) {
       toast.custom(
         (_toastId) => (
-          <div className="rounded-lg bg-white-100% p-4 shadow-lg w-[300px]">
+          <div className="rounded-lg bg-ds-bg-neutral-inverse-default p-4 shadow-lg w-[300px]">
             <div className="mb-2 text-sm font-medium">
               {t('update.downloading-update')}
             </div>

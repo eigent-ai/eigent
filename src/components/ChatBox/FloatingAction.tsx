@@ -54,7 +54,7 @@ export const FloatingAction = ({
         className
       )}
     >
-      <div className="gap-2 p-1 backdrop-blur-md pointer-events-auto flex items-center rounded-full border border-[color:var(--ds-border-neutral-default-default)] bg-[var(--ds-bg-neutral-subtle-default)] shadow-[0px_4px_16px_rgba(0,0,0,0.12)]">
+      <div className="gap-2 p-1 backdrop-blur-md pointer-events-auto flex items-center rounded-full border border-[color:var(--ds-border-neutral-default-default)] bg-[var(--ds-bg-neutral-subtle-default)] shadow-[0px_4px_16px_color-mix(in_srgb,var(--ds-bg-neutral-inverse-default)_14%,transparent)]">
         {/* Always show Stop Task button when running (removed pause/resume logic) */}
         <Button
           variant="outline"
@@ -70,7 +70,7 @@ export const FloatingAction = ({
 				{status === "running" ? (
 					// State 1: Running - Show Pause button
 					<Button
-						variant="cuation"
+						variant="caution"
 						size="sm"
 						onClick={onPause}
 						disabled={loading}

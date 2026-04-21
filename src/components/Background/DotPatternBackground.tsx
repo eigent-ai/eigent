@@ -37,7 +37,7 @@ export default function DotPatternBackground() {
             cy={PATTERN_STEP / 2}
             r={1.25}
             fill="var(--ds-bg-neutral-muted-default)"
-            opacity={0.05}
+            opacity={0.6}
           />
         </pattern>
       </defs>

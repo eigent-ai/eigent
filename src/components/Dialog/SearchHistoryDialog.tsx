@@ -96,11 +96,11 @@ export function SearchHistoryDialog() {
     <>
       <Button
         variant="ghost"
-        className="border-menutabs-border-default bg-ds-bg-neutral-strong-default h-[32px] border border-solid"
+        className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default h-[32px] border border-solid"
         size="sm"
         onClick={() => setOpen(true)}
       >
-        <Search className="text-menutabs-icon-active" size={16} />
+        <Search className="text-ds-icon-neutral-default-default" size={16} />
         <span>{t('dashboard.search')}</span>
       </Button>
       <CommandDialog open={open} onOpenChange={setOpen}>

@@ -27,9 +27,9 @@ import {
   CheckCircle,
   Clock,
   Hash,
+  ListChecks,
   Loader2,
   LoaderCircle,
-  Pin,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -207,7 +207,7 @@ export default function ProjectDialog({
                 {t('layout.total-tasks')}
               </span>
               <div className="gap-sm flex flex-row items-center">
-                <Pin className="h-4 w-4 text-ds-icon-neutral-default-default" />
+                <ListChecks className="h-4 w-4 text-ds-icon-neutral-default-default" />
                 <span className="text-body-lg font-bold text-ds-text-neutral-default-default">
                   {project.task_count}
                 </span>

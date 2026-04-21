@@ -580,7 +580,7 @@ export default function Home() {
       <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
-          className="min-h-0 min-w-0 h-full w-full flex-1"
+          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}

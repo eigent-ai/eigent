@@ -413,13 +413,8 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Respect system theme on Windows, keep light theme on macOS for consistency
-const isWindows = process.platform === 'win32';
-if (isWindows) {
-  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
-} else {
-  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
-}
+// Always follow OS appearance so renderer `prefers-color-scheme` stays accurate.
+nativeTheme.themeSource = 'system';
 
 // Set log level
 log.transports.console.level = 'info';
@@ -2737,6 +2732,7 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 // ==================== window create ====================
 async function createWindow() {
   const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();

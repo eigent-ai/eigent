@@ -15,15 +15,43 @@
 import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
 import { SessionMode } from '@/types/constants';
-import { motion } from 'framer-motion';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
+import { Bot, ChevronDown, ChevronUp, LayoutGrid } from 'lucide-react';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type Segment = 'single' | 'workforce';
+const ROLL = {
+  initial: { y: 14, opacity: 0 },
+  animate: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 420,
+      damping: 32,
+      mass: 0.35,
+    },
+  },
+  exit: {
+    y: -14,
+    opacity: 0,
+    transition: { duration: 0.16, ease: [0.4, 0, 1, 1] as const },
+  },
+};
 
-function segmentFromMode(mode: SessionModeType): Segment {
-  return mode === SessionMode.SINGLE_AGENT ? 'single' : 'workforce';
-}
+const CHEVRON_TAP = {
+  type: 'spring' as const,
+  stiffness: 520,
+  damping: 22,
+  mass: 0.35,
+};
+
+const CHEVRON_RELEASE = {
+  type: 'spring' as const,
+  stiffness: 400,
+  damping: 28,
+  mass: 0.35,
+};
 
 export interface WorkspaceSessionModeToggleProps {
   value: SessionModeType;
@@ -33,21 +61,6 @@ export interface WorkspaceSessionModeToggleProps {
   readOnly?: boolean;
 }
 
-const SLIDE_TRANSITION = {
-  type: 'spring' as const,
-  stiffness: 520,
-  damping: 38,
-  mass: 0.35,
-};
-
-const LABEL_TAP_TRANSITION = {
-  type: 'spring' as const,
-  stiffness: 600,
-  damping: 32,
-  mass: 0.4,
-};
-
-/** Sliding “card” highlight follows hover; rests on the selected mode when pointer leaves. */
 export function WorkspaceSessionModeToggle({
   value,
   onValueChange,
@@ -55,14 +68,7 @@ export function WorkspaceSessionModeToggle({
   readOnly = false,
 }: WorkspaceSessionModeToggleProps) {
   const { t } = useTranslation();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const singleRef = useRef<HTMLButtonElement>(null);
-  const workforceRef = useRef<HTMLButtonElement>(null);
-
-  const [hoverSegment, setHoverSegment] = useState<Segment | null>(null);
-  const [highlight, setHighlight] = useState({ left: 0, width: 0 });
-
-  const targetSegment = hoverSegment ?? segmentFromMode(value);
+  const chevronScale = useAnimationControls();
 
   const labelSingle = t('layout.workspace-session-single-agent', {
     defaultValue: 'Single Agent',
@@ -75,128 +81,103 @@ export function WorkspaceSessionModeToggle({
     defaultValue: 'Session mode',
   });
 
-  const measure = useCallback((segment: Segment) => {
-    const container = containerRef.current;
-    const el = segment === 'single' ? singleRef.current : workforceRef.current;
-    if (!container || !el) return;
-    const c = container.getBoundingClientRect();
-    const e = el.getBoundingClientRect();
-    setHighlight({ left: e.left - c.left, width: e.width });
-  }, []);
+  const isSingle = value === SessionMode.SINGLE_AGENT;
+  const nextMode = isSingle ? SessionMode.WORKFORCE : SessionMode.SINGLE_AGENT;
+  const label = isSingle ? labelSingle : labelWorkforce;
 
-  useLayoutEffect(() => {
-    measure(targetSegment);
-  }, [measure, targetSegment, t]);
+  const toggle = () => onValueChange(nextMode);
 
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const remeasure = () => measure(hoverSegment ?? segmentFromMode(value));
-    const ro = new ResizeObserver(remeasure);
-    ro.observe(container);
-    window.addEventListener('resize', remeasure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', remeasure);
-    };
-  }, [hoverSegment, measure, value]);
+  const pulseChevrons = useCallback(() => {
+    void (async () => {
+      await chevronScale.start({ scale: 1.22, transition: CHEVRON_TAP });
+      await chevronScale.start({ scale: 1, transition: CHEVRON_RELEASE });
+    })();
+  }, [chevronScale]);
+
+  const LeadingIcon = isSingle ? Bot : LayoutGrid;
+
+  const shellClass = cn(
+    'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
+    'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+    className
+  );
+
+  const chevronClass = 'size-3 shrink-0 opacity-80';
+
+  const endChevrons = (
+    <span
+      className="gap-0 inline-flex shrink-0 flex-col items-center justify-center leading-none"
+      aria-hidden
+    >
+      <ChevronUp className={cn(chevronClass, '-mb-1')} strokeWidth={2.25} />
+      <ChevronDown className={chevronClass} strokeWidth={2.25} />
+    </span>
+  );
 
   if (readOnly) {
-    const isSingle = value === SessionMode.SINGLE_AGENT;
     return (
       <div
         role="status"
         aria-label={modeAriaLabel}
-        className={cn(
-          'rounded-xl px-2 py-1 pointer-events-none inline-flex items-center',
-          isSingle
-            ? 'bg-ds-bg-single-agent-subtle-selected text-ds-text-single-agent-default-default'
-            : 'bg-ds-bg-workforce-subtle-selected text-ds-text-workforce-default-default',
-          className
-        )}
+        className={cn(shellClass, 'pointer-events-none')}
       >
-        <span className="!text-label-xs font-semibold inline-flex items-center">
-          {isSingle ? labelSingle : labelWorkforce}
+        <span className="gap-1.5 inline-flex min-h-[1.25rem] items-center overflow-hidden">
+          <LeadingIcon
+            className="size-3.5 shrink-0"
+            strokeWidth={2}
+            aria-hidden
+          />
+          <span className="!text-label-xs font-semibold">{label}</span>
         </span>
       </div>
     );
   }
 
-  const cardOver = (segment: Segment) => targetSegment === segment;
+  const cycleHint = t('layout.workspace-session-mode-cycle-hint', {
+    defaultValue: 'Click to switch session mode',
+  });
 
   return (
-    <div
-      ref={containerRef}
-      role="radiogroup"
-      aria-label={modeAriaLabel}
+    <motion.button
+      type="button"
+      aria-label={`${modeAriaLabel}: ${label}. ${cycleHint}`}
       className={cn(
-        'bg-ds-bg-neutral-subtle-default rounded-xl ring-ds-ring-neutral-default-default relative inline-flex items-stretch ring-1 ring-offset-2',
-        className
+        shellClass,
+        'cursor-pointer border-0 text-left',
+        'focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
       )}
-      onMouseLeave={() => setHoverSegment(null)}
+      onPointerDown={pulseChevrons}
+      onClick={toggle}
     >
-      <motion.div
-        aria-hidden
-        className={cn(
-          'inset-y-0 rounded-xl pointer-events-none absolute z-0 transition-colors duration-150',
-          targetSegment === 'single'
-            ? 'bg-ds-bg-single-agent-subtle-selected'
-            : 'bg-ds-bg-workforce-subtle-selected'
-        )}
-        initial={false}
-        animate={{
-          left: highlight.left,
-          width: highlight.width,
-        }}
-        transition={SLIDE_TRANSITION}
-      />
+      <span className="min-w-0 relative inline-flex min-h-[1.25rem] flex-1 items-center overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={value}
+            className="gap-1.5 inline-flex items-center will-change-transform"
+            variants={ROLL}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <LeadingIcon
+              className="size-3.5 shrink-0"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <span className="!text-label-xs font-semibold whitespace-nowrap">
+              {label}
+            </span>
+          </motion.span>
+        </AnimatePresence>
+      </span>
 
-      <button
-        ref={singleRef}
-        type="button"
-        role="radio"
-        aria-checked={value === SessionMode.SINGLE_AGENT}
-        className={cn(
-          'rounded-xl px-2 py-1 relative z-10 border-0 bg-transparent',
-          '!text-label-xs font-semibold transition-colors duration-150',
-          cardOver('single')
-            ? 'text-ds-text-single-agent-default-default'
-            : 'text-ds-text-neutral-muted-default'
-        )}
-        onMouseEnter={() => setHoverSegment('single')}
-        onClick={() => onValueChange(SessionMode.SINGLE_AGENT)}
+      <motion.span
+        className="inline-flex origin-center will-change-transform"
+        initial={{ scale: 1 }}
+        animate={chevronScale}
       >
-        <motion.span
-          className="inline-flex origin-center items-center will-change-transform"
-          whileTap={{ scale: 1.05 }}
-          transition={LABEL_TAP_TRANSITION}
-        >
-          {labelSingle}
-        </motion.span>
-      </button>
-      <button
-        ref={workforceRef}
-        type="button"
-        role="radio"
-        aria-checked={value === SessionMode.WORKFORCE}
-        className={cn(
-          'rounded-xl px-2 py-1 relative z-10 border-0 bg-transparent',
-          '!text-label-xs font-semibold transition-colors duration-150',
-          cardOver('workforce')
-            ? 'text-ds-text-workforce-default-default'
-            : 'text-ds-text-neutral-muted-default'
-        )}
-        onMouseEnter={() => setHoverSegment('workforce')}
-        onClick={() => onValueChange(SessionMode.WORKFORCE)}
-      >
-        <motion.span
-          className="inline-flex origin-center items-center will-change-transform"
-          whileTap={{ scale: 1.05 }}
-          transition={LABEL_TAP_TRANSITION}
-        >
-          {labelWorkforce}
-        </motion.span>
-      </button>
-    </div>
+        {endChevrons}
+      </motion.span>
+    </motion.button>
   );
 }

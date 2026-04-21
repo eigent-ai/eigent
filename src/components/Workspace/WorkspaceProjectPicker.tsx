@@ -61,8 +61,8 @@ export function WorkspaceProjectPicker() {
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
 
   const activeTaskTitle = useMemo(() => {
-    const defaultLabel = t('layout.workspace-work-in-project', {
-      defaultValue: 'Work in a project',
+    const defaultLabel = t('layout.workspace-select-project', {
+      defaultValue: 'Select a project',
     });
     if (!chatStore) return defaultLabel;
     if (chatStore.activeTaskId && summaryTask) {
@@ -155,7 +155,7 @@ export function WorkspaceProjectPicker() {
           id="workspace-project-picker-trigger"
           type="button"
           variant="outline"
-          className="no-drag min-h-10 gap-2 rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-3 py-2 font-semibold shadow-sm hover:bg-ds-bg-neutral-default-default/80 inline-flex h-auto w-fit max-w-[300px] justify-between text-left"
+          className="no-drag gap-2 rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-1 font-semibold shadow-sm hover:bg-ds-bg-neutral-default-default/80 inline-flex h-auto w-fit max-w-[300px] justify-between text-left"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
@@ -163,14 +163,14 @@ export function WorkspaceProjectPicker() {
             {activeTaskTitle}
           </span>
           <ChevronDown
-            className="text-ds-icon-neutral-muted-default h-4 w-4 shrink-0 opacity-80"
+            className="text-ds-icon-neutral-muted-default h-3 w-3 shrink-0"
             aria-hidden
           />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         className="w-[min(100vw-2rem,200px)]"
-        align="start"
+        align="end"
         sideOffset={6}
       >
         <DropdownMenuItem

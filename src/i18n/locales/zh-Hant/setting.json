@@ -26,6 +26,13 @@
   "workspace-main-background-dots": "點狀圖案",
   "workspace-main-background-blocks": "網格圖案",
 
+  "appearance-tab": "外觀",
+  "color-mode": "顏色模式",
+  "accent-palette": "強調色主題",
+  "accent-palette-description": "介面的預設配色方案，淺色與深色模式分別儲存。",
+  "accent-for-light": "淺色模式",
+  "accent-for-dark": "深色模式",
+
   "data-privacy": "數據隱私",
   "data-privacy-description": "Eigent 以本地優先原則確保您的隱私。您的數據預設儲存在您的設備上。雲端功能是可選的，僅使用最少量的數據來實現功能。詳細資訊請參閱我們的",
   "privacy-policy": "隱私政策",

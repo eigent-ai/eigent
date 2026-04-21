@@ -32,7 +32,6 @@ const USER_MESSAGE_FOLD_MASK_DATA_URL = `url("data:image/svg+xml,${encodeURIComp
 )}")`;
 
 const USER_MESSAGE_FOLD_FADE_STYLE = {
-  backgroundColor: 'var(--ds-bg-neutral-strong-default)',
   maskImage: USER_MESSAGE_FOLD_MASK_DATA_URL,
   WebkitMaskImage: USER_MESSAGE_FOLD_MASK_DATA_URL,
   maskSize: '100% 100%',
@@ -120,18 +119,16 @@ export function UserMessageCard({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return (
-        <Image className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]" />
-      );
+      return <Image className="h-4 w-4 text-ds-icon-neutral-default-default" />;
     }
     return (
-      <FileText className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]" />
+      <FileText className="h-4 w-4 text-ds-icon-neutral-default-default" />
     );
   };
 
   return (
     <div key={id} className={cn('group/msg relative w-full', className)}>
-      <div className="rounded-xl px-sm pt-2 w-full overflow-visible bg-[var(--ds-bg-neutral-strong-default)]">
+      <div className="rounded-xl p-sm bg-ds-bg-neutral-default-default w-full overflow-visible">
         {attaches && attaches.length > 0 && (
           <div className="mb-2 gap-1 relative box-border flex w-full flex-wrap items-start">
             {(() => {
@@ -150,7 +147,7 @@ export function UserMessageCard({
                       <div
                         key={'attache-' + file.fileName}
                         className={cn(
-                          'max-w-24 gap-0.5 rounded-lg relative box-border flex h-auto cursor-pointer items-center bg-[var(--ds-bg-neutral-strong-default)] transition-colors duration-300 hover:bg-[var(--ds-bg-neutral-default-hover)]'
+                          'max-w-24 gap-0.5 rounded-lg bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover relative box-border flex h-auto cursor-pointer items-center transition-colors duration-300'
                         )}
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
@@ -263,14 +260,14 @@ export function UserMessageCard({
             <UserMessageRichContent content={content} variant="card" />
             {canClamp && !expanded && (
               <div
-                className="inset-x-0 bottom-0 h-14 pointer-events-none absolute z-[1]"
+                className="inset-x-0 bottom-0 h-14 bg-ds-bg-neutral-default-default pointer-events-none absolute z-[1]"
                 style={USER_MESSAGE_FOLD_FADE_STYLE}
                 aria-hidden
               />
             )}
           </div>
         </div>
-        <div className="gap-0.5 pointer-events-none flex w-full shrink-0 items-center justify-end opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
+        <div className="bottom-1 right-2 gap-0.5 pointer-events-none absolute z-10 flex w-full shrink-0 items-center justify-end opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
           {canClamp && !expanded && (
             <Button
               type="button"

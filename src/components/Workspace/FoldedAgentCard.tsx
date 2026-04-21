@@ -147,7 +147,7 @@ export function FoldedAgentCard({
           !isActive && 'opacity-80'
         ),
     iconOnly ? 'inline-flex' : 'group relative w-full min-w-0 max-w-full',
-    dimmed && (borderless ? 'opacity-30' : 'border-transparent opacity-30')
+    dimmed && (borderless ? 'opacity-50' : 'border-transparent opacity-50')
   );
 
   const expandedRow = (
@@ -199,12 +199,7 @@ export function FoldedAgentCard({
             </button>
           </DropdownMenuTrigger>
         </TooltipSimple>
-        <DropdownMenuContent
-          align="end"
-          side="bottom"
-          sideOffset={8}
-          className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm min-w-[140px] rounded-[12px] border border-solid"
-        >
+        <DropdownMenuContent align="start" side="bottom" sideOffset={8}>
           <DropdownMenuItem
             className="gap-2 cursor-pointer"
             onSelect={(e) => {
@@ -235,7 +230,7 @@ export function FoldedAgentCard({
             {t('workforce.duplicate', { defaultValue: 'Duplicate' })}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="gap-2 cursor-pointer"
+            className="gap-2 text-ds-text-error-default-default cursor-pointer"
             disabled={compactContextMenu.deleteEnabled === false}
             onSelect={(e) => {
               e.preventDefault();
@@ -245,7 +240,7 @@ export function FoldedAgentCard({
             }}
           >
             <Trash2
-              className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
+              className="h-4 w-4 text-ds-icon-error-default-default shrink-0"
               aria-hidden
             />
             {t('workforce.delete', { defaultValue: 'Delete' })}

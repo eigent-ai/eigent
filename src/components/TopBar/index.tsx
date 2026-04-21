@@ -15,6 +15,8 @@
 import { proxyFetchGet } from '@/api/http';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
+import logoBlack from '@/assets/logo/logo_black.png';
+import logoWhite from '@/assets/logo/logo_white.png';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import useAppVersion from '@/hooks/use-app-version';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
@@ -35,6 +38,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
+  Download,
   House,
   Minus,
   Plus,
@@ -42,9 +46,10 @@ import {
   Share,
   Sparkles,
   Square,
+  TagIcon,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   NavigationType,
@@ -126,6 +131,12 @@ function HeaderWin() {
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
+  const version = useAppVersion();
+  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
+  const [packageNewVersion, setPackageNewVersion] = useState<string | null>(
+    null
+  );
+  const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
@@ -133,6 +144,37 @@ function HeaderWin() {
   useEffect(() => {
     const p = window.electronAPI.getPlatform();
     setPlatform(p);
+  }, []);
+
+  useEffect(() => {
+    const ipc = window.ipcRenderer;
+    if (!ipc) return;
+
+    const onUpdateCanAvailable = (
+      _event: Electron.IpcRendererEvent,
+      info: VersionInfo
+    ) => {
+      setPackageUpdateAvailable(Boolean(info.update));
+      setPackageNewVersion(info.newVersion ?? null);
+    };
+
+    const onUpdateDownloaded = () => {
+      setPackageUpdateAvailable(false);
+      setPackageNewVersion(null);
+    };
+
+    ipc.on('update-can-available', onUpdateCanAvailable);
+    ipc.on('update-downloaded', onUpdateDownloaded);
+    void ipc.invoke('check-update');
+
+    return () => {
+      ipc.off('update-can-available', onUpdateCanAvailable);
+      ipc.off('update-downloaded', onUpdateDownloaded);
+    };
+  }, []);
+
+  const handleStartPackageDownload = useCallback(() => {
+    void window.ipcRenderer?.invoke('start-download');
   }, []);
 
   const isHistoryRoute = useMemo(() => {
@@ -246,7 +288,7 @@ function HeaderWin() {
                     aria-current="page"
                   >
                     <Sparkles
-                      className="h-4 w-4 text-icon-primary"
+                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                       aria-hidden
                     />
                   </Button>
@@ -265,7 +307,10 @@ function HeaderWin() {
                     aria-label={t('layout.dashboard')}
                     aria-current="page"
                   >
-                    <House className="h-4 w-4 text-icon-primary" aria-hidden />
+                    <House
+                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                      aria-hidden
+                    />
                   </Button>
                 </TooltipSimple>
               )}
@@ -283,7 +328,7 @@ function HeaderWin() {
                   aria-label={t('layout.back')}
                 >
                   <ChevronLeft
-                    className="h-4 w-4 text-icon-primary"
+                    className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                     aria-hidden
                   />
                 </Button>
@@ -302,14 +347,14 @@ function HeaderWin() {
                   aria-label={t('layout.forward')}
                 >
                   <ChevronRight
-                    className="h-4 w-4 text-icon-primary"
+                    className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
                     aria-hidden
                   />
                 </Button>
               </TooltipSimple>
             </div>
             {location.pathname === '/' && (
-              <div className="no-drag ease-out animate-in fade-in-0 bg-surface-secondary inline-flex items-stretch overflow-hidden rounded-full duration-200">
+              <div className="no-drag ease-out animate-in fade-in-0 inline-flex items-stretch overflow-hidden rounded-full duration-200">
                 <TooltipSimple
                   content={
                     activeTaskTitle === t('layout.new-project')
@@ -322,7 +367,7 @@ function HeaderWin() {
                   <button
                     id="active-task-title-btn"
                     type="button"
-                    className="no-drag min-w-0 px-2 text-label-sm font-bold !text-button-transparent-text-default hover:bg-button-transparent-fill-hover active:bg-button-transparent-fill-active focus-visible:ring-ring/50 flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
+                    className="no-drag min-w-0 px-2 text-label-sm font-bold focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
                     onClick={toggleHistorySidebar}
                     aria-expanded={historySidebarOpen}
                     aria-haspopup="dialog"
@@ -339,7 +384,7 @@ function HeaderWin() {
                 >
                   <button
                     type="button"
-                    className="no-drag w-8 !text-button-transparent-text-default hover:bg-button-transparent-fill-hover active:bg-button-transparent-fill-active focus-visible:ring-ring/50 box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
+                    className="no-drag w-8 focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
                     onClick={createNewProject}
                     aria-label={t('layout.new-project')}
                   >
@@ -357,6 +402,59 @@ function HeaderWin() {
             platform === 'darwin' && 'pr-2'
           } no-drag gap-1 relative z-50 flex h-full items-center`}
         >
+          {isHistoryRoute && (
+            <div className="no-drag gap-2 flex h-full items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  if (packageUpdateAvailable) {
+                    handleStartPackageDownload();
+                    return;
+                  }
+                  window.open(
+                    'https://github.com/eigent-ai/eigent',
+                    '_blank',
+                    'noopener,noreferrer'
+                  );
+                }}
+                className={
+                  packageUpdateAvailable
+                    ? 'no-drag gap-1.5 bg-ds-bg-neutral-subtle-default px-3 py-1 flex cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90'
+                    : 'no-drag gap-1.5 bg-ds-bg-neutral-subtle-default px-3 py-1 flex cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-60'
+                }
+                aria-label={
+                  packageUpdateAvailable
+                    ? t('update.new-version-available')
+                    : version
+                }
+              >
+                {packageUpdateAvailable ? (
+                  <Download
+                    className="h-4 w-4 text-ds-text-neutral-default-default shrink-0 stroke-2"
+                    aria-hidden
+                  />
+                ) : (
+                  <TagIcon
+                    className="h-4 w-4 text-ds-text-success-default-default shrink-0 stroke-2"
+                    aria-hidden
+                  />
+                )}
+                <span
+                  className={
+                    packageUpdateAvailable
+                      ? 'text-label-sm font-semibold text-ds-text-neutral-default-default'
+                      : 'text-label-sm font-semibold text-ds-text-neutral-default-default'
+                  }
+                >
+                  {packageUpdateAvailable
+                    ? [t('update.new-version-available'), packageNewVersion]
+                        .filter(Boolean)
+                        .join(' ')
+                    : version}
+                </span>
+              </button>
+            </div>
+          )}
           {location.pathname !== '/history' && (
             <>
               {chatStore.activeTaskId &&
@@ -373,10 +471,10 @@ function HeaderWin() {
                       }
                       variant="ghost"
                       size="icon"
-                      className="no-drag bg-surface-information !text-text-information rounded-full"
+                      className="no-drag bg-ds-bg-information-subtle-default !text-ds-text-information-strong-default rounded-full"
                       aria-label={t('layout.share')}
                     >
-                      <Share className="h-4 w-4" aria-hidden />
+                      <Share aria-hidden />
                     </Button>
                   </TooltipSimple>
                 )}
@@ -475,19 +573,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-surface-hover-subtle flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
             onClick={() => window.electronAPI.closeWindow()}
           >
             <X className="h-4 w-4" />

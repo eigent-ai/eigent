@@ -758,12 +758,12 @@ const ToolSelect = forwardRef<
       {(initialSelectedTools || []).map((item: any) => (
         <Badge
           key={item.id + item.key + (item.isLocal + '')}
-          className="h-5 gap-1 bg-button-tertiery-fill-default px-xs flex w-auto flex-shrink-0 items-center"
+          className="h-5 gap-1 bg-ds-bg-neutral-subtle-default px-xs flex w-auto flex-shrink-0 items-center"
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
-          <div className="rounded-sm bg-button-secondary-fill-disabled flex items-center justify-center">
+          <div className="rounded-sm bg-ds-bg-neutral-muted-disabled flex items-center justify-center">
             <X
-              className="h-4 w-4 text-button-secondary-icon-disabled cursor-pointer"
+              className="h-4 w-4 text-ds-text-neutral-muted-disabled hover:text-ds-text-neutral-default-default cursor-pointer"
               onClick={() => removeOption(item)}
             />
           </div>
@@ -852,7 +852,7 @@ const ToolSelect = forwardRef<
     >
       <div className="gap-1 flex items-center">
         {/* {getCategoryIcon(item.category?.name)} */}
-        <div className="text-sm font-bold leading-17 text-ds-text-brand-default-default line-clamp-1 overflow-hidden break-words text-ellipsis">
+        <div className="text-body-md font-bold text-ds-text-brand-default-default line-clamp-1 overflow-hidden break-words text-ellipsis">
           {item.mcp_name}
         </div>
         <TooltipSimple content={item.mcp_desc}>
@@ -863,10 +863,7 @@ const ToolSelect = forwardRef<
         </TooltipSimple>
       </div>
       <div className="gap-1 flex items-center">
-        <Button
-          className="h-6 rounded-md bg-button-secondary-fill-default px-sm py-xs text-xs font-bold leading-17 text-button-secondary-text-default shadow-sm hover:bg-button-tertiery-text-default"
-          disabled={true}
-        >
+        <Button variant="secondary" size="sm" textWeight="bold" disabled>
           {t('layout.installed')}
         </Button>
       </div>
@@ -874,7 +871,7 @@ const ToolSelect = forwardRef<
   );
   return (
     <div className="relative w-full" ref={containerRef}>
-      <div className="bg-white gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
+      <div className="gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
         <div className="gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default flex items-center">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
@@ -889,7 +886,7 @@ const ToolSelect = forwardRef<
             inputRef.current?.focus();
             setIsOpen(true);
           }}
-          className="gap-1 rounded-lg border-input-border-default bg-input-bg-default py-1 flex max-h-[120px] min-h-[60px] w-full flex-wrap justify-start overflow-y-auto border border-solid px-[6px]"
+          className="gap-1 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default py-1 flex max-h-[120px] min-h-[60px] w-full flex-wrap justify-start overflow-y-auto border border-solid px-[6px]"
         >
           {renderSelectedItems()}
           <Textarea
@@ -905,7 +902,7 @@ const ToolSelect = forwardRef<
 
       {/* floating dropdown */}
       {isOpen && (
-        <div className="left-0 right-0 mt-1 rounded-lg border-input-border-default bg-dropdown-bg absolute top-full z-50 overflow-y-auto border border-solid">
+        <div className="left-0 right-0 mt-1 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default absolute top-full z-50 overflow-y-auto border border-solid">
           <div className="max-h-[192px] overflow-y-auto">
             <IntegrationList
               variant="select"

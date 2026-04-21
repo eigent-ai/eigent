@@ -136,7 +136,7 @@ export function TaskItem({
           <Button
             onClick={() => onDelete()}
             className="rounded-full"
-            variant="cuation"
+            variant="caution"
             size="xs"
             buttonContent="icon-only"
           >

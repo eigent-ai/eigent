@@ -12,6 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  DEFAULT_COLOR_THEME_ID,
+  getRecommendedContrast,
+} from '@/lib/themeTokens/catalog';
+import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -19,6 +24,7 @@ import { persist } from 'zustand/middleware';
 type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
+type AppearanceMode = Mode | 'system';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground = 'none' | 'dots' | 'blocks';
@@ -56,7 +62,12 @@ interface AuthState {
   user_id: number | null;
 
   // application settings
-  appearance: string;
+  appearance: Mode;
+  appearanceMode: AppearanceMode;
+  lightColorThemeId: string;
+  darkColorThemeId: string;
+  customThemeCatalog: ThemeCatalog;
+  themeContrast: number;
   language: string;
   isFirstLaunch: boolean;
   modelType: ModelType;
@@ -85,6 +96,16 @@ interface AuthState {
 
   // set related methods
   setAppearance: (appearance: string) => void;
+  setAppearanceMode: (mode: AppearanceMode) => void;
+  setResolvedAppearance: (appearance: Mode) => void;
+  setColorThemeForMode: (mode: Mode, colorThemeId: string) => void;
+  upsertCustomThemeTemplate: (
+    mode: Mode,
+    themeId: string,
+    seed: ThemeSeed
+  ) => void;
+  removeCustomThemeTemplate: (mode: Mode, themeId: string) => void;
+  setThemeContrast: (contrast: number) => void;
   setLanguage: (language: string) => void;
   setInitState: (initState: InitState) => void;
   setModelType: (modelType: ModelType) => void;
@@ -114,6 +135,14 @@ const authStore = create<AuthState>()(
       email: null,
       user_id: null,
       appearance: 'light',
+      appearanceMode: 'light',
+      lightColorThemeId: DEFAULT_COLOR_THEME_ID,
+      darkColorThemeId: DEFAULT_COLOR_THEME_ID,
+      customThemeCatalog: {
+        light: {},
+        dark: {},
+      },
+      themeContrast: getRecommendedContrast(),
       language: 'system',
       isFirstLaunch: true,
       modelType: 'cloud',
@@ -141,8 +170,62 @@ const authStore = create<AuthState>()(
 
       // set related methods
       setAppearance: (appearance) =>
+        set(() => {
+          if (appearance === 'transparent') {
+            return { appearance: 'light', appearanceMode: 'light' };
+          }
+
+          if (appearance === 'system') {
+            return { appearanceMode: 'system' };
+          }
+
+          const normalized: Mode = appearance === 'dark' ? 'dark' : 'light';
+          return { appearance: normalized, appearanceMode: normalized };
+        }),
+
+      setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
+
+      setResolvedAppearance: (appearance) => set({ appearance }),
+
+      setColorThemeForMode: (mode, colorThemeId) =>
+        set(
+          mode === 'dark'
+            ? { darkColorThemeId: colorThemeId }
+            : { lightColorThemeId: colorThemeId }
+        ),
+
+      upsertCustomThemeTemplate: (mode, themeId, seed) =>
+        set((state) => ({
+          customThemeCatalog: {
+            ...state.customThemeCatalog,
+            [mode]: {
+              ...state.customThemeCatalog[mode],
+              [themeId]: {
+                id: themeId,
+                mode,
+                seed,
+              },
+            },
+          },
+        })),
+
+      removeCustomThemeTemplate: (mode, themeId) =>
+        set((state) => {
+          const modeCatalog = state.customThemeCatalog[mode] ?? {};
+          if (!modeCatalog[themeId]) return {};
+
+          const { [themeId]: _removed, ...rest } = modeCatalog;
+          return {
+            customThemeCatalog: {
+              ...state.customThemeCatalog,
+              [mode]: rest,
+            },
+          };
+        }),
+
+      setThemeContrast: (contrast) =>
         set({
-          appearance: appearance === 'transparent' ? 'light' : appearance,
+          themeContrast: Math.min(100, Math.max(0, Math.round(contrast))),
         }),
 
       setLanguage: (language) => set({ language }),
@@ -210,11 +293,40 @@ const authStore = create<AuthState>()(
       name: 'auth-storage',
       version: 1,
       migrate: (persistedState, _version) => {
-        const s = persistedState as { appearance?: string } | undefined;
-        if (s?.appearance === 'transparent') {
-          return { ...s, appearance: 'light' };
+        const s = persistedState as
+          | {
+              appearance?: string;
+              appearanceMode?: AppearanceMode;
+              customThemeCatalog?: Partial<ThemeCatalog>;
+            }
+          | undefined;
+        if (!s) return persistedState as typeof persistedState;
+
+        const normalizedAppearance: Mode =
+          s.appearance === 'dark' ? 'dark' : 'light';
+        const normalizedAppearanceMode: AppearanceMode =
+          s.appearanceMode === 'system' || s.appearanceMode === 'dark'
+            ? s.appearanceMode
+            : normalizedAppearance;
+        const normalizedCustomCatalog: ThemeCatalog = {
+          light: s.customThemeCatalog?.light ?? {},
+          dark: s.customThemeCatalog?.dark ?? {},
+        };
+
+        if (s.appearance === 'transparent') {
+          return {
+            ...s,
+            appearance: 'light',
+            appearanceMode: 'light',
+            customThemeCatalog: normalizedCustomCatalog,
+          };
         }
-        return persistedState as typeof persistedState;
+        return {
+          ...s,
+          appearance: normalizedAppearance,
+          appearanceMode: normalizedAppearanceMode,
+          customThemeCatalog: normalizedCustomCatalog,
+        } as typeof persistedState;
       },
       partialize: (state) => ({
         token: state.token,
@@ -222,6 +334,11 @@ const authStore = create<AuthState>()(
         email: state.email,
         user_id: state.user_id,
         appearance: state.appearance,
+        appearanceMode: state.appearanceMode,
+        lightColorThemeId: state.lightColorThemeId,
+        darkColorThemeId: state.darkColorThemeId,
+        customThemeCatalog: state.customThemeCatalog,
+        themeContrast: state.themeContrast,
         language: state.language,
         modelType: state.modelType,
         cloud_model_type: state.cloud_model_type,

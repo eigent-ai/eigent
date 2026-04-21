@@ -28,11 +28,11 @@ export function SidePanelAccordionBox({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-xl bg-ds-bg-neutral-strong-default border-ds-border-neutral-subtle-default ease-in-out min-w-0 z-10 flex shrink-0 flex-col overflow-hidden border border-solid transition-all duration-200">
+    <div className="rounded-xl bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-disabled ease-in-out min-w-0 z-10 flex shrink-0 flex-col overflow-hidden border border-solid transition-all duration-200">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="hover:bg-ds-bg-neutral-strong-default/50 gap-2 px-3 py-2.5 flex w-full shrink-0 items-center justify-between text-left transition-colors"
+        className="hover:bg-ds-bg-neutral-default-hover gap-2 px-3 py-2.5 flex w-full shrink-0 items-center justify-between text-left transition-colors"
         aria-expanded={open}
       >
         <span className="text-ds-text-neutral-default-default text-body-sm font-semibold">

@@ -70,7 +70,7 @@ export function FeedbackCard({
   return (
     <div
       key={id}
-      className={`group gap-4 rounded-xl px-4 py-3 relative flex w-full flex-col items-center justify-center overflow-hidden border bg-[var(--ds-bg-neutral-strong-default)] ${className || ''}`}
+      className={`group gap-4 rounded-xl px-4 py-3 bg-ds-bg-neutral-default-default relative flex w-full flex-col items-center justify-center overflow-hidden border ${className || ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

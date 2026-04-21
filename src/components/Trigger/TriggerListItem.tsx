@@ -95,9 +95,9 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   return (
     <div
       onClick={() => onSelect(trigger.id)}
-      className={`group gap-3 p-3 bg-ds-bg-neutral-subtle-default rounded-xl flex cursor-pointer items-center border transition-all duration-200 ${
+      className={`group gap-3 p-3 !bg-ds-bg-neutral-default-default rounded-xl flex cursor-pointer items-center border transition-all duration-200 ${
         isSelected
-          ? 'border-ds-border-brand-default-default bg-ds-bg-neutral-strong-default'
+          ? 'border-ds-border-brand-default-default'
           : needsAuth
             ? 'border-ds-border-warning-default-default hover:border-ds-border-warning-default-hover hover:bg-ds-bg-neutral-strong-default'
             : 'border-ds-border-neutral-subtle-default hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-strong-default'
@@ -179,7 +179,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
                         {t("triggers.duplicate")}
                     </DropdownMenuItem> */}
           <DropdownMenuItem
-            className="gap-2 text-red-600 focus:text-red-600"
+            className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default"
             onSelect={(e) => {
               e.preventDefault();
               onDelete(trigger);

@@ -30,17 +30,18 @@ import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
 /** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
 export function workspaceTabButtonClass(active: boolean): string {
   return cn(
-    'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden',
-    'hover:bg-[var(--ds-bg-neutral-strong-default)] focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none',
-    active && 'bg-[var(--ds-bg-neutral-strong-default)]'
+    'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
+    'text-ds-text-neutral-muted-default',
+    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
+    active && 'bg-ds-bg-neutral-subtle-default'
   );
 }
 
 export const WORKSPACE_TAB_LABEL_CLASS =
-  'min-w-0 flex-1 truncate text-[color:var(--ds-text-neutral-muted-default)] text-body-sm font-medium';
+  'min-w-0 flex-1 truncate text-ds-text-neutral-muted-default text-body-sm font-medium';
 
 const SPLIT_MAIN_BUTTON_CLASS =
-  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none focus-visible:ring-[var(--ds-border-neutral-default-default)] hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
+  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none text-ds-text-neutral-muted-default focus-visible:ring-ds-ring-neutral-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
 
 const SPLIT_OUTER_EXTRA_CLASS =
   'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible';
@@ -50,14 +51,14 @@ export function triggerListenerLeadIconClass(
 ): string {
   switch (status) {
     case 'connected':
-      return 'text-[color:var(--ds-icon-neutral-default-default)]';
+      return 'text-ds-icon-neutral-muted-default';
     case 'connecting':
-      return 'text-[color:var(--ds-icon-status-pending-default-default)] animate-pulse';
+      return 'text-ds-icon-status-warning-default animate-pulse';
     case 'unhealthy':
-      return 'text-[color:var(--ds-icon-status-error-default-default)]';
+      return 'text-ds-icon-status-error-default';
     case 'disconnected':
     default:
-      return 'text-[color:var(--ds-icon-neutral-muted-default)]';
+      return 'text-ds-icon-neutral-muted-default';
   }
 }
 
@@ -81,8 +82,8 @@ export function NavTabReconnectSuffix({
         <button
           type="button"
           className={cn(
-            'no-drag h-8 w-8 rounded-xl flex shrink-0 items-center justify-center text-[color:var(--ds-icon-neutral-muted-default)] transition-colors outline-none hover:bg-[var(--ds-bg-neutral-strong-default)]',
-            'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+            'no-drag h-8 w-8 rounded-xl text-ds-icon-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default flex shrink-0 items-center justify-center transition-colors outline-none',
+            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
           )}
           aria-label={reconnectHint}
         >
@@ -97,7 +98,7 @@ export function NavTabReconnectSuffix({
       </PopoverTrigger>
       <PopoverContent className="w-64 p-4" side="right" align="start">
         <div className="gap-3 flex flex-col">
-          <p className="text-body-sm text-[color:var(--ds-text-neutral-default-default)]">
+          <p className="text-body-sm text-ds-text-neutral-default-default">
             {reconnectHint}
           </p>
           <Button
@@ -194,8 +195,8 @@ function tabMainInner({
             className={cn(
               'shrink-0 rounded-full transition-all duration-300',
               notificationDotTone === 'attention'
-                ? 'bg-[var(--ds-text-status-error-strong-default)]'
-                : 'bg-[var(--ds-bg-brand-default-default)]',
+                ? 'bg-ds-text-status-error-strong-default'
+                : 'bg-ds-bg-brand-default-default',
               notificationDotClassName
             )}
             aria-hidden

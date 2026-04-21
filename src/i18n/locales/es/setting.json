@@ -25,6 +25,13 @@
   "workspace-main-background-dots": "Puntos",
   "workspace-main-background-blocks": "Cuadrícula",
 
+  "appearance-tab": "Apariencia",
+  "color-mode": "Modo de color",
+  "accent-palette": "Paleta de acento",
+  "accent-palette-description": "Temas de color predefinidos para la interfaz. Se guardan por separado para los modos claro y oscuro.",
+  "accent-for-light": "Modo claro",
+  "accent-for-dark": "Modo oscuro",
+
   "data-privacy": "Privacidad de datos",
   "data-privacy-description": "Eigent está construido sobre un principio local-first para garantizar tu privacidad. Tus datos permanecen en tu dispositivo por defecto. Las características en la nube son opcionales y solo utilizan los datos mínimos necesarios para funcionar. Para obtener más detalles, visita nuestra",
   "privacy-policy": "Política de privacidad",
@@ -91,6 +98,13 @@
   "workspace-main-background-none": "Predeterminado",
   "workspace-main-background-dots": "Puntos",
   "workspace-main-background-blocks": "Cuadrícula",
+
+  "appearance-tab": "Apariencia",
+  "color-mode": "Modo de color",
+  "accent-palette": "Paleta de acento",
+  "accent-palette-description": "Temas de color predefinidos para la interfaz. Se guardan por separado para los modos claro y oscuro.",
+  "accent-for-light": "Modo claro",
+  "accent-for-dark": "Modo oscuro",
 
   "data-privacy": "Privacidad de datos",
   "data-privacy-description": "Eigent está construido sobre un principio local-first para garantizar tu privacidad. Tus datos permanecen en tu dispositivo por defecto. Las características en la nube son opcionales y solo utilizan los datos mínimos necesarios para funcionar. Para obtener más detalles, visita nuestra",

@@ -31,7 +31,7 @@ import {
   Clock,
   Ellipsis,
   Hash,
-  Pin,
+  ListChecks,
   Share,
   Trash2,
 } from 'lucide-react';
@@ -72,21 +72,21 @@ export default function TaskItem({
     switch (status) {
       case 1: // ChatStatus.ongoing
         return (
-          <Tag variant="info" size="sm">
+          <Tag variant="primary" tone="information" size="sm">
             <Clock />
             <span>{t('layout.running')}</span>
           </Tag>
         );
       case 2: // ChatStatus.done
         return (
-          <Tag variant="success" size="sm">
+          <Tag variant="primary" tone="success" size="sm">
             <CheckCircle />
             <span>{t('layout.completed')}</span>
           </Tag>
         );
       default: // Unknown status
         return (
-          <Tag variant="default" size="sm">
+          <Tag variant="primary" tone="neutral" size="sm">
             <Clock />
             <span>{t('layout.unknown')}</span>
           </Tag>
@@ -102,11 +102,11 @@ export default function TaskItem({
   return (
     <div
       onClick={onSelect}
-      className={` ${isActive ? '!bg-white-100%' : ''} h-14 gap-md rounded-xl border-ds-border-neutral-muted-disabled bg-white-30% p-3 shadow-history-item hover:bg-white-100% relative flex w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300 ${!isLast ? 'mb-2' : ''} `}
+      className={` ${isActive ? '!bg-ds-bg-neutral-inverse-default' : ''} h-14 gap-md rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-inverse-default/30 p-3 shadow-history-item hover:bg-ds-bg-neutral-inverse-default relative flex w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300 ${!isLast ? 'mb-2' : ''} `}
     >
       <div className="min-w-0 gap-2 flex flex-1 items-center">
         <TooltipSimple content={t('layout.tasks')}>
-          <Pin className="h-4 w-4 text-ds-icon-neutral-default-default" />
+          <ListChecks className="h-4 w-4 text-ds-icon-neutral-default-default" />
         </TooltipSimple>
 
         <div className="min-w-0 gap-1 flex flex-1 flex-col">
@@ -138,14 +138,15 @@ export default function TaskItem({
       <div className="gap-2 flex flex-shrink-0 items-center">
         {!isOngoing && getStatusTag(task.status)}
 
-        <Tag variant="info" size="sm">
+        <Tag variant="primary" tone="information" size="sm">
           <Hash />
           <span>{task.tokens ? task.tokens.toLocaleString() : '0'}</span>
         </Tag>
 
         {isOngoing && (onPause || onResume) && (
           <Tag
-            variant={isPaused ? 'info' : 'success'}
+            variant="primary"
+            tone={isPaused ? 'information' : 'success'}
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
@@ -176,7 +177,7 @@ export default function TaskItem({
             </PopoverTrigger>
             <PopoverContent
               align="end"
-              className="border-ds-border-neutral-default-default bg-dropdown-bg p-sm w-[98px] rounded-[12px] border border-solid"
+              className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm w-[98px] rounded-[12px] border border-solid"
             >
               <div className="space-y-1">
                 {!isOngoing && (

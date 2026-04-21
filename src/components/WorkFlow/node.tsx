@@ -398,15 +398,16 @@ export function Node({ id, data }: NodeProps) {
               : 'w-[342px]'
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
-        } rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default flex overflow-hidden border border-solid ${
+        } rounded-xl border-ds-border-neutral-subtle-default shadow-sm bg-ds-bg-neutral-subtle-default flex overflow-hidden border border-solid ${
           getCurrentTask()?.activeAgent === id
             ? `${agentMap[data.type]?.borderColor} z-50`
-            : 'border-ds-border-neutral-subtle-default z-10'
+            : 'border-ds-border-neutral-default-default z-10'
         } ease-in-out transition-all duration-300 ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
         <div className="border-ds-border-neutral-default-default flex w-[342px] shrink-0 flex-col border-y-0 border-r-[0.5px] border-l-0 border-solid">
+          {/* header */}
           <div className="gap-sm px-3 pb-1 pt-2 flex items-center justify-between">
             <div className="gap-md flex items-center justify-between">
               <div
@@ -473,6 +474,7 @@ export function Node({ id, data }: NodeProps) {
                 )}
             </div>
           </div>
+          {/* tools */}
           <div
             ref={toolsRef}
             className="mb-sm min-h-4 px-3 text-xs font-normal leading-tight text-ds-text-neutral-muted-default flex flex-shrink-0 flex-wrap"
@@ -484,6 +486,7 @@ export function Node({ id, data }: NodeProps) {
               </span>
             ))}
           </div>
+          {/* workspace */}
           <div
             className="mb-2 px-3 max-h-[180px]"
             onClick={() => {
@@ -556,6 +559,7 @@ export function Node({ id, data }: NodeProps) {
               </div>
             )}
           </div>
+          {/* subtasks */}
           {data.agent?.tasks && data.agent?.tasks.length > 0 && (
             <div className="gap-1 border-ds-border-neutral-default-default px-3 py-sm flex flex-col items-start justify-between border-[0px] border-t border-solid">
               {/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
@@ -622,6 +626,32 @@ export function Node({ id, data }: NodeProps) {
                 const lastActiveToolkit = task.toolkits
                   ?.filter((tool: any) => tool.toolkitName !== 'notice')
                   .at(-1);
+                const taskRowBgHover =
+                  task.reAssignTo || task.status === TaskStatus.BLOCKED
+                    ? 'bg-ds-bg-status-blocked-subtle-default hover:bg-ds-bg-status-blocked-subtle-hover'
+                    : task.status === TaskStatus.COMPLETED
+                      ? 'bg-ds-bg-status-completed-subtle-default hover:bg-ds-bg-status-completed-subtle-hover'
+                      : task.status === TaskStatus.FAILED
+                        ? 'bg-ds-bg-status-error-subtle-default hover:bg-ds-bg-status-error-subtle-hover'
+                        : task.status === TaskStatus.RUNNING
+                          ? 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover'
+                          : 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover';
+                const taskTextClass = task.reAssignTo
+                  ? 'text-ds-text-status-blocked-default-default'
+                  : task.status === TaskStatus.COMPLETED
+                    ? 'text-ds-text-status-completed-default-default'
+                    : task.status === TaskStatus.FAILED
+                      ? 'text-ds-text-status-error-default-default'
+                      : task.status === TaskStatus.RUNNING
+                        ? 'text-ds-text-status-running-default-default'
+                        : task.status === TaskStatus.BLOCKED
+                          ? 'text-ds-text-status-blocked-default-default'
+                          : task.status === TaskStatus.SKIPPED
+                            ? 'text-ds-text-status-skipped-default-default'
+                            : task.status === TaskStatus.WAITING ||
+                                task.status === TaskStatus.EMPTY
+                              ? 'text-ds-text-status-pending-default-default'
+                              : 'text-ds-text-status-running-default-default';
                 return (
                   <div
                     onClick={() => {
@@ -641,39 +671,27 @@ export function Node({ id, data }: NodeProps) {
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}
-                    className={`gap-2 rounded-xl px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
-                      task.reAssignTo
-                        ? 'bg-ds-bg-status-blocked-subtle-default'
-                        : task.status === TaskStatus.COMPLETED
-                          ? 'bg-ds-bg-status-completed-subtle-default'
-                          : task.status === TaskStatus.FAILED
-                            ? 'bg-ds-bg-status-error-subtle-default'
-                            : task.status === TaskStatus.RUNNING
-                              ? 'bg-ds-bg-status-running-subtle-default'
-                              : task.status === TaskStatus.BLOCKED
-                                ? 'bg-ds-bg-status-blocked-subtle-default'
-                                : 'bg-ds-bg-status-running-subtle-default'
-                    } cursor-pointer border border-solid border-transparent ${
+                    className={`gap-2 rounded-xl px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
-                        ? 'hover:border-ds-border-status-completed-default-focus'
+                        ? 'hover:border-ds-border-status-completed-subtle-focus'
                         : task.status === TaskStatus.FAILED
-                          ? 'hover:border-ds-border-status-error-default-focus'
+                          ? 'hover:border-ds-border-status-error-subtle-focus'
                           : task.status === TaskStatus.RUNNING
-                            ? 'hover:border-ds-border-neutral-strong-default'
+                            ? 'hover:border-ds-border-neutral-subtle-default'
                             : task.status === TaskStatus.BLOCKED
-                              ? 'hover:border-ds-border-status-blocked-default-focus'
-                              : 'hover:border-ds-border-neutral-default-focus'
+                              ? 'hover:border-ds-border-status-blocked-subtle-focus'
+                              : 'hover:border-ds-border-neutral-subtle-focus'
                     } ${
                       selectedTask?.id === task.id
                         ? task.status === TaskStatus.COMPLETED
-                          ? '!border-ds-border-status-completed-default-focus'
+                          ? '!border-ds-border-status-completed-subtle-focus'
                           : task.status === TaskStatus.FAILED
-                            ? '!border-ds-border-status-error-default-focus'
+                            ? '!border-ds-border-status-error-subtle-focus'
                             : task.status === TaskStatus.RUNNING
-                              ? '!border-ds-border-neutral-strong-default'
+                              ? '!border-ds-border-neutral-subtle-focus'
                               : task.status === TaskStatus.BLOCKED
-                                ? '!border-ds-border-status-blocked-default-focus'
-                                : '!border-ds-border-neutral-default-focus'
+                                ? '!border-ds-border-status-blocked-subtle-focus'
+                                : '!border-ds-border-neutral-subtle-focus'
                         : 'border-transparent'
                     }`}
                   >
@@ -682,7 +700,7 @@ export function Node({ id, data }: NodeProps) {
                         //  reassign to other agent
                         <CircleSlash2
                           size={16}
-                          className="text-ds-icon-status-pending-default-default"
+                          className="text-ds-icon-status-blocked-default-default"
                         />
                       ) : (
                         // normal task
@@ -690,7 +708,7 @@ export function Node({ id, data }: NodeProps) {
                           {task.status === TaskStatus.RUNNING && (
                             <LoaderCircle
                               size={16}
-                              className={`text-ds-icon-status-splitting-default-default ${
+                              className={`text-ds-icon-status-running-default-default ${
                                 chatStore.tasks[
                                   chatStore.activeTaskId as string
                                 ].status === ChatTaskStatus.RUNNING &&
@@ -701,7 +719,7 @@ export function Node({ id, data }: NodeProps) {
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className={`text-ds-icon-neutral-muted-default`}
+                              className="text-ds-icon-status-skipped-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
@@ -719,14 +737,14 @@ export function Node({ id, data }: NodeProps) {
                           {task.status === TaskStatus.BLOCKED && (
                             <TriangleAlert
                               size={16}
-                              className="text-ds-icon-status-pending-default-default"
+                              className="text-ds-icon-status-blocked-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
                             <Circle
                               size={16}
-                              className="text-ds-icon-neutral-muted-default"
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                         </>
@@ -734,20 +752,16 @@ export function Node({ id, data }: NodeProps) {
                     </div>
                     <div className="flex flex-1 flex-col items-start justify-center">
                       <div
-                        className={`w-full flex-grow-0 ${
-                          task.status === TaskStatus.FAILED
-                            ? 'text-ds-text-status-error-strong-default'
-                            : task.status === TaskStatus.BLOCKED
-                              ? 'text-ds-text-neutral-default-default'
-                              : 'text-ds-text-neutral-default-default'
-                        } text-xs font-medium leading-13 pointer-events-auto text-wrap break-all whitespace-pre-line select-text`}
+                        className={`w-full flex-grow-0 ${taskTextClass} text-xs font-medium leading-13 pointer-events-auto text-wrap break-all whitespace-pre-line select-text`}
                       >
                         <div className="gap-sm flex items-center">
-                          <div className="text-xs font-bold leading-13 text-ds-text-neutral-default-default">
+                          <div
+                            className={`text-xs font-bold leading-13 ${taskTextClass}`}
+                          >
                             No. {getTaskId(task.id)}
                           </div>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold text-ds-text-warning-strong-default leading-none">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover leading-none">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
@@ -755,10 +769,10 @@ export function Node({ id, data }: NodeProps) {
                               <div
                                 className={`${
                                   task.status === TaskStatus.FAILED
-                                    ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-strong-default'
+                                    ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-default-default hover:bg-ds-bg-status-error-subtle-hover'
                                     : task.status === TaskStatus.COMPLETED
-                                      ? 'text-ds-text-status-completed-strong-default bg-ds-bg-neutral-default-default'
-                                      : 'bg-ds-bg-neutral-default-hover text-ds-text-neutral-muted-default'
+                                      ? 'text-ds-text-status-completed-default-default bg-ds-bg-neutral-subtle-default'
+                                      : 'text-ds-text-neutral-default-default bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-hover'
                                 } rounded-lg px-1 py-0.5 text-xs font-bold leading-none`}
                               >
                                 Attempt {task.failure_count}
@@ -784,11 +798,11 @@ export function Node({ id, data }: NodeProps) {
                                   ].activeWorkspace
                                     ? '!w-[100px]'
                                     : '!w-[500px]'
-                                } min-w-0 pt-1 text-xs leading-17 text-ds-text-neutral-default-default flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap`}
+                                } min-w-0 pt-1 text-xs leading-17 text-ds-text-status-running-default-default flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap`}
                               >
                                 <ShinyText
                                   text={task.toolkits?.[0].toolkitName}
-                                  className="text-xs font-bold leading-17 text-ds-text-neutral-default-default pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
+                                  className="text-xs font-bold leading-17 text-ds-text-status-running-default-default pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
                                 />
                               </div>
                             </div>
@@ -809,14 +823,14 @@ export function Node({ id, data }: NodeProps) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 24 }}
               transition={{ duration: 0.3, ease: 'easeIn' }}
-              className="gap-sm rounded-r-xl bg-ds-bg-neutral-muted-disabled py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
+              className="gap-sm rounded-r-xl bg-ds-bg-neutral-subtle-default py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
             >
               <div
                 ref={logRef}
                 onWheel={(e) => {
                   e.stopPropagation();
                 }}
-                className="scrollbar scrollbar-always-visible pr-sm max-h-[calc(100vh-200px)] overflow-y-scroll"
+                className="scrollbar scrollbar-always-visible pr-sm rounded-xl max-h-[calc(100vh-200px)] overflow-y-scroll"
               >
                 <AnimatePresence mode="wait">
                   {selectedTask && (

@@ -65,7 +65,7 @@ export function WorkspaceExamplePrompts({
   const { t } = useTranslation();
 
   return (
-    <div className="mt-16 mx-auto w-full max-w-[600px] shrink-0">
+    <div className="mt-8 mx-auto w-full max-w-[600px] shrink-0">
       <div className="gap-5 sm:grid-cols-2 lg:grid-cols-3 grid w-full grid-cols-1">
         {WORKSPACE_EXAMPLE_PROMPTS.map((item) => (
           <button

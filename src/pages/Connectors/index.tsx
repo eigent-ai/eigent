@@ -14,7 +14,7 @@
 
 import VerticalNavigation, {
   type VerticalNavItem,
-} from '@/components/Dashboard/Navigation';
+} from '@/components/Dashboard/VerticalNav';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import MCP from './MCP';
@@ -40,31 +40,29 @@ export default function Connectors() {
   };
 
   return (
-    <div className="m-auto flex h-auto max-w-[940px] flex-col">
-      <div className="px-6 flex h-auto w-full">
-        <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
-          <VerticalNavigation
-            items={
-              menuItems.map((menu) => ({
-                value: menu.id,
-                label: (
-                  <span className="text-body-sm font-bold">{menu.name}</span>
-                ),
-              })) as VerticalNavItem[]
-            }
-            value={activeTab}
-            onValueChange={handleTabChange}
-            className="min-h-0 gap-0 h-full w-full flex-1"
-            listClassName="w-full h-full overflow-y-auto"
-            contentClassName="hidden"
-          />
-        </div>
+    <div className="flex h-auto w-full">
+      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
+        <VerticalNavigation
+          items={
+            menuItems.map((menu) => ({
+              value: menu.id,
+              label: (
+                <span className="text-body-sm font-bold">{menu.name}</span>
+              ),
+            })) as VerticalNavItem[]
+          }
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="min-h-0 gap-0 h-full w-full flex-1"
+          listClassName="w-full h-full overflow-y-auto"
+          contentClassName="hidden"
+        />
+      </div>
 
-        <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="gap-4 flex flex-col">
-            {activeTab === 'search' && <Search />}
-            {activeTab === 'mcp' && <MCP />}
-          </div>
+      <div className="flex h-auto w-full flex-1 flex-col">
+        <div className="gap-4 flex flex-col">
+          {activeTab === 'search' && <Search />}
+          {activeTab === 'mcp' && <MCP />}
         </div>
       </div>
     </div>

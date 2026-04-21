@@ -665,7 +665,7 @@ export default function SkillUploadDialog({
           message="There's an existing skill with the same name. Uploading this skill will replace the existing one, which can't be restored."
           confirmText="Update and Replace"
           cancelText="Cancel"
-          confirmVariant="cuation"
+          confirmVariant="caution"
         />
       )}
     </>

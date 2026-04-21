@@ -38,7 +38,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'bg-black/50 inset-0 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50',
+      'inset-0 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50 bg-transparent',
       className
     )}
     {...props}
@@ -50,7 +50,7 @@ export type DialogOverlayVariant = 'default' | 'dark';
 
 // Size variants for dialog content
 const dialogContentVariants = cva(
-  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default shadow-perfect duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl max-h-[90vh] flex flex-col overflow-hidden',
+  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default shadow-perfect duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl max-h-[90vh] flex flex-col overflow-hidden',
   {
     variants: {
       size: {
@@ -242,7 +242,7 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
     | 'outline'
     | 'ghost'
     | 'success'
-    | 'cuation'
+    | 'caution'
     | 'information'
     | 'warning';
   cancelButtonVariant?:
@@ -251,7 +251,7 @@ interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
     | 'outline'
     | 'ghost'
     | 'success'
-    | 'cuation'
+    | 'caution'
     | 'information'
     | 'warning';
   confirmButtonDisabled?: boolean;

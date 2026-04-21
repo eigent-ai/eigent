@@ -25,6 +25,13 @@
   "workspace-main-background-dots": "Punktmuster",
   "workspace-main-background-blocks": "Raster",
 
+  "appearance-tab": "Darstellung",
+  "color-mode": "Farbmodus",
+  "accent-palette": "Akzentfarben",
+  "accent-palette-description": "Vordefinierte Farbthemen für die Oberfläche. Getrennt gespeichert für Hell- und Dunkelmodus.",
+  "accent-for-light": "Hellmodus",
+  "accent-for-dark": "Dunkelmodus",
+
   "data-privacy": "Datenschutz",
   "data-privacy-description": "Eigent basiert auf einem Local-First-Prinzip, um Ihre Privatsphäre zu gewährleisten. Ihre Daten verbleiben standardmäßig auf Ihrem Gerät. Cloud-Funktionen sind optional und verwenden nur die minimal erforderlichen Daten, um zu funktionieren. Für vollständige Details besuchen Sie bitte unsere",
   "privacy-policy": "Datenschutzrichtlinie",
@@ -91,6 +98,13 @@
   "workspace-main-background-none": "Standard",
   "workspace-main-background-dots": "Punktmuster",
   "workspace-main-background-blocks": "Raster",
+
+  "appearance-tab": "Darstellung",
+  "color-mode": "Farbmodus",
+  "accent-palette": "Akzentfarben",
+  "accent-palette-description": "Vordefinierte Farbthemen für die Oberfläche. Getrennt gespeichert für Hell- und Dunkelmodus.",
+  "accent-for-light": "Hellmodus",
+  "accent-for-dark": "Dunkelmodus",
 
   "data-privacy": "Datenschutz",
   "data-privacy-description": "Eigent basiert auf einem Local-First-Prinzip, um Ihre Privatsphäre zu gewährleisten. Ihre Daten verbleiben standardmäßig auf Ihrem Gerät. Cloud-Funktionen sind optional und verwenden nur die minimal erforderlichen Daten, um zu funktionieren. Für vollständige Details besuchen Sie bitte unsere",

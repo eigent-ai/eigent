@@ -81,7 +81,7 @@ export default function SearchInput({
       <motion.div
         className={cn(
           'rounded-lg py-0.5 flex items-center justify-center overflow-hidden border border-solid border-transparent bg-transparent',
-          'focus-within:border-input-border-focus focus-within:bg-input-bg-input',
+          'focus-within:border-ds-border-brand-default-focus focus-within:bg-ds-bg-neutral-strong-default',
           'hover:bg-ds-bg-neutral-strong-hover hover:border-transparent'
         )}
         initial={false}

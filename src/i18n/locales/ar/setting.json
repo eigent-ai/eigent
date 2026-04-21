@@ -25,6 +25,13 @@
   "workspace-main-background-dots": "نقاط",
   "workspace-main-background-blocks": "شبكة",
 
+  "appearance-tab": "المظهر",
+  "color-mode": "وضع الألوان",
+  "accent-palette": "لوحة الألوان المميزة",
+  "accent-palette-description": "سمات ألوان جاهزة للواجهة. تُحفظ بشكل منفصل للوضعين الفاتح والداكن.",
+  "accent-for-light": "الوضع الفاتح",
+  "accent-for-dark": "الوضع الداكن",
+
   "data-privacy": "خصوصية البيانات",
   "data-privacy-description": "يعتمد أيجنت على الوضع المحلي الجديد ويضمن خصوصيتك. تبقى بياناتك على جهازك افتراضيًا. أذونات السحابة اختيارية، ويُستخدم حد البيانات لأغراض العمل فقط",
   "privacy-policy": "سياسة الخصوصية",
@@ -209,6 +216,13 @@
   "workspace-main-background-none": "افتراضي",
   "workspace-main-background-dots": "نقاط",
   "workspace-main-background-blocks": "شبكة",
+
+  "appearance-tab": "المظهر",
+  "color-mode": "وضع الألوان",
+  "accent-palette": "لوحة الألوان المميزة",
+  "accent-palette-description": "سمات ألوان جاهزة للواجهة. تُحفظ بشكل منفصل للوضعين الفاتح والداكن.",
+  "accent-for-light": "الوضع الفاتح",
+  "accent-for-dark": "الوضع الداكن",
 
   "data-privacy": "خصوصية البيانات",
   "data-privacy-description": "يعتمد أيجنت على الوضع المحلي الجديد ويضمن خصوصيتك. تبقى بياناتك على جهازك افتراضيًا. أذونات السحابة اختيارية، ويُستخدم حد البيانات لأغراض العمل فقط",

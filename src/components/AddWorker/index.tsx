@@ -443,8 +443,8 @@ export function AddWorker({
           )}
         </DialogTrigger>
         <DialogContent
-          size="sm"
-          className="gap-0 p-0"
+          size="md"
+          className="gap-0 p-0 min-h-[60vh]"
           onInteractOutside={(e: any) => {
             if (isValidating) e.preventDefault();
           }}
@@ -470,11 +470,11 @@ export function AddWorker({
           {showEnvConfig ? (
             // environment configuration interface
             <>
-              <DialogContentSection className="gap-3 bg-white-100% p-md flex flex-col">
+              <DialogContentSection className="gap-3 p-md flex flex-col">
                 <div className="gap-md flex items-center">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
-                    <div className="text-base font-bold leading-9 text-ds-text-brand-default-default">
+                    <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
                       {activeMcp?.name}
                     </div>
                     <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
@@ -522,12 +522,12 @@ export function AddWorker({
                               secretVisible[key] ? (
                                 <EyeOff
                                   size={16}
-                                  className="text-button-transparent-icon-disabled"
+                                  className="text-ds-text-neutral-muted-disabled"
                                 />
                               ) : (
                                 <Eye
                                   size={16}
-                                  className="text-button-transparent-icon-disabled"
+                                  className="text-ds-text-neutral-muted-disabled"
                                 />
                               )
                             ) : undefined
@@ -544,7 +544,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-white-100% p-md"
+                className="!rounded-b-xl p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}
@@ -569,7 +569,7 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="gap-3 bg-white-100% p-md flex flex-col">
+              <DialogContentSection className="gap-3 p-md flex flex-col">
                 <div className="gap-4 flex flex-col">
                   <div className="gap-sm flex items-center">
                     <div className="h-16 w-16 flex items-center justify-center">
@@ -627,7 +627,7 @@ export function AddWorker({
                   </button>
 
                   {showModelConfig && (
-                    <div className="gap-3 rounded-lg bg-ds-bg-neutral-subtle-default p-3 flex flex-col">
+                    <div className="gap-3 rounded-lg p-3 flex flex-col">
                       <label className="gap-2 text-sm flex items-center">
                         <input
                           type="checkbox"
@@ -688,7 +688,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-white-100% p-md"
+                className="!rounded-b-xl p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}

@@ -86,17 +86,17 @@ export const MarkDown = ({
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 className="text-ds-text-brand-default-default mb-1 text-label-sm font-bold break-words">
+            <h1 className="text-ds-text-neutral-default-default mb-1 text-label-sm font-bold break-words">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-ds-text-brand-default-default mb-1 text-label-sm font-semibold break-words">
+            <h2 className="text-ds-text-neutral-default-default mb-1 text-label-sm font-semibold break-words">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-ds-text-brand-default-default mb-1 text-label-sm font-medium break-words">
+            <h3 className="text-ds-text-neutral-default-default mb-1 text-label-sm font-medium break-words">
               {children}
             </h3>
           ),
@@ -127,7 +127,7 @@ export const MarkDown = ({
           a: ({ children, href }) => (
             <a
               href={href}
-              className="hover:text-ds-text-brand-default-hover break-all underline"
+              className="text-ds-text-neutral-default-default hover:text-ds-text-neutral-default-hover break-all underline"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -145,17 +145,17 @@ export const MarkDown = ({
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="text-ds-text-brand-default-default border-ds-border-neutral-strong-default pl-3 text-xs border-l-4 italic">
+            <blockquote className="text-ds-text-neutral-default-default border-ds-border-neutral-strong-default pl-3 text-xs border-l-4 italic">
               {children}
             </blockquote>
           ),
           strong: ({ children }) => (
-            <strong className="text-ds-text-brand-default-default text-xs font-semibold">
+            <strong className="text-ds-text-neutral-default-default text-xs font-semibold">
               {children}
             </strong>
           ),
           em: ({ children }) => (
-            <em className="text-ds-text-brand-default-default text-xs italic">
+            <em className="text-ds-text-neutral-default-default text-xs italic">
               {children}
             </em>
           ),
@@ -165,7 +165,7 @@ export const MarkDown = ({
                 className="mb-4 min-w-0 !table w-full"
                 style={{
                   borderCollapse: 'collapse',
-                  border: '1px solid #d1d5db',
+                  border: '1px solid var(--ds-border-neutral-default-default)',
                   borderSpacing: 0,
                 }}
               >
@@ -186,7 +186,7 @@ export const MarkDown = ({
             <th
               className="text-ds-text-neutral-default-default font-semibold !table-cell text-left text-[10px]"
               style={{
-                border: '1px solid #d1d5db',
+                border: '1px solid var(--ds-border-neutral-default-default)',
                 padding: '2px 5px',
                 borderCollapse: 'collapse',
               }}
@@ -198,7 +198,7 @@ export const MarkDown = ({
             <td
               className="text-ds-text-neutral-default-default !table-cell text-[10px]"
               style={{
-                border: '1px solid #d1d5db',
+                border: '1px solid var(--ds-border-neutral-default-default)',
                 padding: '2px 5px',
                 borderCollapse: 'collapse',
               }}

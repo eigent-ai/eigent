@@ -220,8 +220,8 @@ export const CarouselStep: React.FC = () => {
               onMouseEnter={() => handleIndicatorHover(index)}
               className={`h-1 w-32 cursor-pointer rounded-full transition-all duration-300 ${
                 index === currentSlide
-                  ? 'bg-fill-fill-secondary'
-                  : 'bg-fill-fill-tertiary hover:bg-fill-fill-secondary'
+                  ? 'bg-ds-bg-neutral-default-default'
+                  : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-default-default'
               }`}
             ></div>
           ))}

@@ -27,12 +27,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
-          description: 'group-[.toast]:text-muted-foreground',
+            'group toast group-[.toaster]:bg-ds-bg-neutral-subtle-default group-[.toaster]:text-ds-text-neutral-default-default group-[.toaster]:border-ds-border-neutral-default-default group-[.toaster]:shadow-lg',
+          description: 'group-[.toast]:text-ds-text-neutral-muted-default',
           actionButton:
-            'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
+            'group-[.toast]:bg-ds-bg-brand-default-default group-[.toast]:text-ds-text-brand-inverse-default',
           cancelButton:
-            'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+            'group-[.toast]:bg-ds-bg-neutral-muted-default group-[.toast]:text-ds-text-neutral-muted-default',
         },
       }}
       {...props}

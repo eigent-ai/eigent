@@ -56,14 +56,15 @@ function readInstructionsAccordionPreference(): string | undefined {
 
 const accordionItemClass = cn(
   'border-none rounded-xl transition-colors',
-  'data-[state=open]:bg-[var(--ds-bg-neutral-strong-default)]'
+  'data-[state=open]:bg-ds-bg-neutral-subtle-default'
 );
 
 const accordionTriggerClass = cn(
   workspaceTabButtonClass(false),
   'hover:no-underline',
+  'hover:bg-ds-bg-neutral-subtle-default',
   'py-0 min-h-8',
-  '[&>svg:last-child]:text-[color:var(--ds-icon-neutral-muted-default)] [&>svg:last-child]:shrink-0'
+  '[&>svg:last-child]:text-ds-icon-neutral-muted-default [&>svg:last-child]:shrink-0'
 );
 
 const coworkRowClass = cn(
@@ -190,8 +191,8 @@ export function HeaderAction() {
                 <button
                   type="button"
                   className={cn(
-                    'no-drag h-8 px-3 rounded-lg flex shrink-0 items-center justify-center text-[color:var(--ds-icon-neutral-default-default)]',
-                    'hover:bg-[var(--ds-bg-neutral-default-hover)] focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+                    'no-drag h-8 px-3 rounded-lg text-ds-icon-neutral-muted-default ease-in-out flex shrink-0 items-center justify-center transition-colors duration-200',
+                    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-ring-neutral-subtle-default hover:text-ds-icon-neutral-muted-hover focus-visible:ring-2 focus-visible:outline-none'
                   )}
                   aria-label={foldTooltip}
                   onClick={() => toggleProjectSidebarFolded()}
@@ -286,7 +287,7 @@ export function HeaderAction() {
                   )}
                 >
                   <ScrollText
-                    className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+                    className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                     aria-hidden
                   />
                   <motion.span
@@ -327,7 +328,7 @@ export function HeaderAction() {
                     </span>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="secondary"
                       size="xs"
                       className="no-drag shrink-0"
                       onClick={() => setMemoryOn((v) => !v)}
@@ -343,7 +344,7 @@ export function HeaderAction() {
                     </span>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="secondary"
                       size="xs"
                       className="no-drag shrink-0"
                       onClick={handleImportWorkforceTemplate}

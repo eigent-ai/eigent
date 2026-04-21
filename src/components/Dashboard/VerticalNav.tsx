@@ -74,9 +74,9 @@ export function VerticalNavigation({
             className={cn(
               'gap-2 rounded-lg px-5 py-1.5 text-body-sm w-full justify-start',
               'bg-transparent data-[state=inactive]:bg-transparent',
-              'data-[state=inactive]:text-menubutton-text-default data-[state=inactive]:opacity-70',
-              'data-[state=inactive]:hover:bg-menubutton-fill-hover data-[state=inactive]:hover:opacity-100',
-              'data-[state=active]:bg-menubutton-fill-active data-[state=active]:text-menutabs-text-active',
+              'data-[state=inactive]:text-ds-text-neutral-muted-default data-[state=inactive]:opacity-70',
+              'data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100',
+              'data-[state=active]:bg-ds-bg-neutral-subtle-selected data-[state=active]:text-ds-text-neutral-default-default',
               triggerClassName
             )}
           >
