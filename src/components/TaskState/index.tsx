@@ -13,7 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { CircleCheckBig, CircleSlash2, LoaderCircle } from 'lucide-react';
+import {
+  Circle,
+  CircleCheckBig,
+  CircleSlash2,
+  LoaderCircle,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export type TaskStateType =
@@ -74,7 +79,7 @@ export const TaskState = ({
         {/* All */}
         {all && (forceVisible || all > 0) ? (
           <div
-            className={`group gap-xs px-2 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
+            className={`group gap-xs rounded-md px-2 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
               isSelected('all')
                 ? 'bg-ds-bg-neutral-subtle-default'
                 : 'bg-transparent'
@@ -90,7 +95,7 @@ export const TaskState = ({
         {/* Done */}
         {done && (forceVisible || done > 0) ? (
           <div
-            className={`group gap-xs px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
+            className={`group gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
               isSelected('done') && 'bg-ds-bg-neutral-subtle-default'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
@@ -117,7 +122,7 @@ export const TaskState = ({
         {/* Reassigned */}
         {reAssignTo && (forceVisible || reAssignTo > 0) ? (
           <div
-            className={`group gap-xs px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
+            className={`group gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
               isSelected('reassigned') && 'bg-ds-bg-neutral-subtle-default'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
@@ -145,7 +150,7 @@ export const TaskState = ({
         {/* Ongoing */}
         {progress && (forceVisible || progress > 0) ? (
           <div
-            className={`group gap-xs px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center ${
+            className={`group gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center ${
               isSelected('ongoing') && 'bg-ds-bg-neutral-subtle-default'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
@@ -176,7 +181,7 @@ export const TaskState = ({
         {/* Failed */}
         {failed && (forceVisible || failed > 0) ? (
           <div
-            className={`group gap-xs px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
+            className={`group gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center transition-all duration-200 ${
               isSelected('failed') && 'bg-ds-bg-neutral-subtle-default'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
@@ -202,16 +207,16 @@ export const TaskState = ({
         {/* Pending */}
         {skipped && (forceVisible || skipped > 0) ? (
           <div
-            className={`group gap-xs px-0.5 py-0.5 hover:bg-ds-bg-neutral-subtle-default flex items-center ${
+            className={`group gap-xs rounded-md px-0.5 py-0.5 hover:bg-ds-bg-status-pending-subtle-hover flex items-center ${
               isSelected('pending')
-                ? 'bg-ds-bg-neutral-subtle-default'
+                ? 'bg-ds-bg-status-pending-subtle-default'
                 : 'bg-transparent'
             } ${
               clickable && 'cursor-pointer transition-opacity hover:opacity-80'
             }`}
             onClick={() => handleStateClick('pending')}
           >
-            <LoaderCircle
+            <Circle
               className={`text-ds-icon-neutral-muted-default group-hover:text-ds-icon-status-pending-default-default h-[10px] w-[10px] ${
                 (isSelected('pending') || forceVisible) &&
                 'text-ds-icon-status-pending-default-default'

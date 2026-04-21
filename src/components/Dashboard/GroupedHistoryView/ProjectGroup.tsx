@@ -43,6 +43,14 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ProjectDialog from './ProjectDialog';
 
+const compactCountFormatter = new Intl.NumberFormat('en', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+const formatCompactCount = (value?: number) =>
+  compactCountFormatter.format(value || 0).replace('.0', '');
+
 interface ProjectGroupProps {
   project: ProjectGroupType;
   onTaskSelect: (
@@ -345,12 +353,11 @@ export default function ProjectGroup({
                   tone="information"
                   emphasis="default"
                   size="xs"
+                  className="gap-1.5"
                 >
-                  <Hash />
-                  <span>
-                    {project.total_tokens
-                      ? project.total_tokens.toLocaleString()
-                      : '0'}
+                  <Hash className="h-3 w-3" />
+                  <span className="text-label-xs">
+                    {formatCompactCount(project.total_tokens)}
                   </span>
                 </Tag>
               </TooltipSimple>
@@ -359,12 +366,15 @@ export default function ProjectGroup({
                 <TooltipSimple content={t('layout.tasks')}>
                   <Tag
                     variant="primary"
-                    tone="neutral"
+                    tone="default"
+                    emphasis="default"
                     size="xs"
-                    className="min-w-10"
+                    className="gap-1.5 min-w-10"
                   >
-                    <ListChecks />
-                    <span>{project.task_count}</span>
+                    <ListChecks className="h-3 w-3" />
+                    <span className="text-label-xs">
+                      {formatCompactCount(project.task_count)}
+                    </span>
                   </Tag>
                 </TooltipSimple>
 
@@ -372,11 +382,14 @@ export default function ProjectGroup({
                   <Tag
                     variant="primary"
                     tone="warning"
+                    emphasis="default"
                     size="xs"
-                    className="min-w-10"
+                    className="gap-1.5 min-w-10"
                   >
-                    <Zap />
-                    <span>{project.total_triggers || 0}</span>
+                    <Zap className="h-3 w-3" />
+                    <span className="text-label-xs">
+                      {formatCompactCount(project.total_triggers)}
+                    </span>
                   </Tag>
                 </TooltipSimple>
               </div>
@@ -420,30 +433,32 @@ export default function ProjectGroup({
         </div>
 
         {/* Middle: Project, Trigger, Agent tags - Aligned to right */}
-        <div className="gap-4 flex w-fit flex-1 items-center justify-end">
+        <div className="gap-2 flex w-fit flex-1 items-center justify-end">
           <Tag
             variant="primary"
             tone="information"
             emphasis="default"
-            size="sm"
+            size="xs"
+            className="gap-1.5"
           >
-            <Hash />
-            <span>
-              {project.total_tokens
-                ? project.total_tokens.toLocaleString()
-                : '0'}
+            <Hash className="h-3 w-3" />
+            <span className="text-label-xs">
+              {formatCompactCount(project.total_tokens)}
             </span>
           </Tag>
 
           <TooltipSimple content={t('layout.tasks')}>
             <Tag
               variant="primary"
-              tone="neutral"
-              size="sm"
-              className="min-w-10"
+              tone="default"
+              emphasis="default"
+              size="xs"
+              className="gap-1.5 min-w-10"
             >
-              <ListChecks />
-              <span>{project.task_count}</span>
+              <ListChecks className="h-3 w-3" />
+              <span className="text-label-xs">
+                {formatCompactCount(project.task_count)}
+              </span>
             </Tag>
           </TooltipSimple>
 
@@ -451,11 +466,14 @@ export default function ProjectGroup({
             <Tag
               variant="primary"
               tone="warning"
-              size="sm"
-              className="min-w-10"
+              emphasis="default"
+              size="xs"
+              className="gap-1.5 min-w-10"
             >
-              <Zap />
-              <span>{project.total_triggers || 0}</span>
+              <Zap className="h-3 w-3" />
+              <span className="text-label-xs">
+                {formatCompactCount(project.total_triggers)}
+              </span>
             </Tag>
           </TooltipSimple>
         </div>

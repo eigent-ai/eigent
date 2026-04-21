@@ -61,6 +61,8 @@
   "new-project": "مشروع جديد",
   "no-reply-received-task-continue": "لم يتم استلام رد، تستمر المهمة",
   "splitting-tasks": "تقسيم المهام",
+  "working-on-tasks-for": "العمل على المهام لمدة {{time}}",
+  "worked-for": "عُمل لمدة {{time}}",
   "start-task": "بدء المهمة",
   "message-cannot-be-empty": "لا يمكن أن تكون الرسالة فارغة",
   "remove-file": "إزالة الملف",

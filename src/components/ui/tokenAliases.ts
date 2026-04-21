@@ -131,7 +131,7 @@ export const checkboxTokenAliases = asCssVarMap({
 export const switchTokenAliases = asCssVarMap({
   '--switch-on-fill-track-fill':
     'var(--ds-bg-status-completed-default-default)',
-  '--switch-off-fill-track-fill': 'var(--ds-bg-neutral-default-default)',
+  '--switch-off-fill-track-fill': 'var(--ds-bg-neutral-subtle-default)',
   '--switch-on-fill-thumb-fill': 'var(--ds-text-brand-inverse-default)',
 });
 

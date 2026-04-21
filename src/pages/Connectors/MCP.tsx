@@ -573,23 +573,17 @@ export default function SettingMCP() {
           >
             <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
-                variant="outline"
-                className="h-auto flex-1 justify-start border-0 bg-transparent"
+                variant="border"
+                className="h-auto flex-1 justify-start"
               >
-                <TabsTrigger
-                  value="mcp-tools"
-                  className="data-[state=active]:bg-transparent"
-                >
+                <TabsTrigger value="mcp-tools">
                   {t('setting.mcp-and-tools')}
                 </TabsTrigger>
-                <TabsTrigger
-                  value="your-mcp"
-                  className="data-[state=active]:bg-transparent"
-                >
+                <TabsTrigger value="your-mcp">
                   {t('setting.your-own-mcps')}
                 </TabsTrigger>
               </TabsList>
-              <div className="gap-2 flex items-center">
+              <div className="gap-2 mb-2 flex items-center">
                 <SearchInput
                   variant="icon"
                   value={searchQuery}

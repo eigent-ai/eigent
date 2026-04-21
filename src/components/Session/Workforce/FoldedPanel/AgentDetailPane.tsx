@@ -372,7 +372,11 @@ export function AgentDetailPane({
                               ? 'bg-ds-bg-status-running-subtle-default'
                               : task.status === TaskStatus.BLOCKED
                                 ? 'bg-ds-bg-status-blocked-subtle-default'
-                                : 'bg-ds-bg-status-running-subtle-default',
+                                : task.status === TaskStatus.SKIPPED ||
+                                    task.status === TaskStatus.WAITING ||
+                                    task.status === TaskStatus.EMPTY
+                                  ? 'bg-ds-bg-status-pending-subtle-default'
+                                  : 'bg-ds-bg-status-running-subtle-default',
                       task.status === TaskStatus.COMPLETED
                         ? 'hover:border-ds-border-status-completed-default-focus'
                         : task.status === TaskStatus.FAILED
@@ -381,7 +385,11 @@ export function AgentDetailPane({
                             ? 'hover:border-ds-border-neutral-strong-default'
                             : task.status === TaskStatus.BLOCKED
                               ? 'hover:border-ds-border-status-blocked-default-focus'
-                              : 'hover:border-ds-border-neutral-default-focus',
+                              : task.status === TaskStatus.SKIPPED ||
+                                  task.status === TaskStatus.WAITING ||
+                                  task.status === TaskStatus.EMPTY
+                                ? 'hover:border-ds-border-status-pending-default-hover'
+                                : 'hover:border-ds-border-neutral-default-focus',
                       'border-transparent'
                     )}
                   >
@@ -410,7 +418,7 @@ export function AgentDetailPane({
                               {task.status === TaskStatus.SKIPPED && (
                                 <LoaderCircle
                                   size={16}
-                                  className="text-ds-icon-neutral-muted-default"
+                                  className="text-ds-icon-status-pending-default-default"
                                 />
                               )}
                               {task.status === TaskStatus.COMPLETED && (
@@ -435,7 +443,7 @@ export function AgentDetailPane({
                                 task.status === TaskStatus.WAITING) && (
                                 <Circle
                                   size={16}
-                                  className="text-ds-icon-neutral-muted-default"
+                                  className="text-ds-icon-status-pending-default-default"
                                 />
                               )}
                             </>

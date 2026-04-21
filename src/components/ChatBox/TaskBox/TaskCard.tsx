@@ -28,7 +28,37 @@ import {
   Plus,
   TriangleAlert,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+const TASK_CARD_EXPAND_STORAGE_PREFIX = 'eigent:task-card-expanded';
+
+function getTaskCardExpandStorageKey(
+  chatId: string | undefined,
+  activeTaskId: string | undefined
+): string | null {
+  if (!activeTaskId) return null;
+  if (chatId)
+    return `${TASK_CARD_EXPAND_STORAGE_PREFIX}:${chatId}:${activeTaskId}`;
+  return `${TASK_CARD_EXPAND_STORAGE_PREFIX}:${activeTaskId}`;
+}
+
+function readStoredTaskCardExpanded(key: string | null): boolean {
+  if (!key || typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredTaskCardExpanded(key: string | null, expanded: boolean) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(key, expanded ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 interface TaskCardProps {
   taskInfo: any[];
@@ -58,7 +88,6 @@ export function TaskCard({
   clickable = true,
   chatId,
 }: TaskCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | 'auto'>('auto');
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
@@ -71,6 +100,21 @@ export function TaskCard({
   const activeTaskId = chatStore?.activeTaskId as string;
   const activeTask = chatStore?.tasks?.[activeTaskId];
   const activeTaskStatus = activeTask?.status;
+  const expandStorageKey = getTaskCardExpandStorageKey(chatId, activeTaskId);
+
+  const [isExpanded, setIsExpanded] = useState(() =>
+    readStoredTaskCardExpanded(
+      getTaskCardExpandStorageKey(chatId, activeTaskId)
+    )
+  );
+
+  useEffect(() => {
+    setIsExpanded(readStoredTaskCardExpanded(expandStorageKey));
+  }, [expandStorageKey]);
+
+  useEffect(() => {
+    writeStoredTaskCardExpanded(expandStorageKey, isExpanded);
+  }, [expandStorageKey, isExpanded]);
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -109,10 +153,6 @@ export function TaskCard({
       setFilterTasks(newFiltered);
     }
   }, [selectedState, taskInfo, taskRunning]);
-
-  const isAllTaskFinished = useMemo(() => {
-    return activeTaskStatus === ChatTaskStatus.FINISHED;
-  }, [activeTaskStatus]);
 
   // Improved height calculation logic
   useEffect(() => {
@@ -176,7 +216,7 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="gap-2 px-sm flex h-auto w-full flex-col transition-all duration-300">
+      <div className="gap-2 px-sm py-2 flex h-auto w-full flex-col transition-all duration-300">
         <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
           <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
@@ -289,7 +329,7 @@ export function TaskCard({
                 )}
                 {taskType === 2 && (
                   <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
-                    {(isExpanded || isAllTaskFinished) && (
+                    {isExpanded && (
                       <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
                         {taskRunning?.filter(
                           (task) =>
@@ -302,7 +342,7 @@ export function TaskCard({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setIsExpanded(!isExpanded)}
+                      onClick={() => setIsExpanded((prev) => !prev)}
                     >
                       <ChevronDown
                         size={16}
@@ -399,7 +439,11 @@ export function TaskCard({
                                 ? 'bg-[var(--ds-bg-status-running-subtle-default)]'
                                 : task.status === TaskStatus.BLOCKED
                                   ? 'bg-[var(--ds-bg-status-blocked-subtle-default)]'
-                                  : 'bg-[var(--ds-bg-status-running-subtle-default)]'
+                                  : task.status === TaskStatus.SKIPPED ||
+                                      task.status === TaskStatus.WAITING ||
+                                      task.status === TaskStatus.EMPTY
+                                    ? 'bg-[var(--ds-bg-status-pending-subtle-default)]'
+                                    : 'bg-[var(--ds-bg-status-running-subtle-default)]'
                         } cursor-pointer border border-solid border-transparent ${
                           task.status === TaskStatus.COMPLETED
                             ? 'hover:border-[color:var(--ds-border-status-completed-default-focus)]'
@@ -409,7 +453,11 @@ export function TaskCard({
                                 ? 'hover:border-[color:var(--ds-border-status-running-default-focus)]'
                                 : task.status === TaskStatus.BLOCKED
                                   ? 'hover:border-[color:var(--ds-border-status-blocked-default-focus)]'
-                                  : 'border-transparent'
+                                  : task.status === TaskStatus.SKIPPED ||
+                                      task.status === TaskStatus.WAITING ||
+                                      task.status === TaskStatus.EMPTY
+                                    ? 'hover:border-[color:var(--ds-border-status-pending-default-hover)]'
+                                    : 'border-transparent'
                         } `}
                       >
                         <div className="pt-0.5">
@@ -425,7 +473,7 @@ export function TaskCard({
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className={`text-[color:var(--ds-icon-neutral-muted-default)]`}
+                              className="text-[color:var(--ds-icon-status-pending-default-default)]"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
@@ -446,10 +494,11 @@ export function TaskCard({
                               className="text-[color:var(--ds-icon-warning-default-default)]"
                             />
                           )}
-                          {task.status === TaskStatus.EMPTY && (
+                          {(task.status === TaskStatus.EMPTY ||
+                            task.status === TaskStatus.WAITING) && (
                             <Circle
                               size={16}
-                              className="text-[color:var(--ds-icon-neutral-muted-default)]"
+                              className="text-[color:var(--ds-icon-status-pending-default-default)]"
                             />
                           )}
                         </div>
@@ -460,7 +509,11 @@ export function TaskCard({
                                 ? 'text-[color:var(--ds-text-caution-default-default)]'
                                 : task.status === TaskStatus.BLOCKED
                                   ? 'text-[color:var(--ds-text-warning-default-default)]'
-                                  : 'text-[color:var(--ds-text-neutral-default-default)]'
+                                  : task.status === TaskStatus.SKIPPED ||
+                                      task.status === TaskStatus.WAITING ||
+                                      task.status === TaskStatus.EMPTY
+                                    ? 'text-[color:var(--ds-text-status-pending-default-default)]'
+                                    : 'text-[color:var(--ds-text-neutral-default-default)]'
                             } text-sm font-medium leading-13`}
                           >
                             {task.content}

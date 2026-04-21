@@ -14,7 +14,7 @@
 
 import tokenDarkIcon from '@/assets/token-dark.svg';
 import tokenLightIcon from '@/assets/token-light.svg';
-import { AnimatedTokenNumber } from '@/components/ChatBox/TokenUtils';
+import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';

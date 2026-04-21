@@ -61,6 +61,8 @@
   "new-project": "Nuovo Progetto",
   "no-reply-received-task-continue": "Nessuna risposta ricevuta, il compito continua",
   "splitting-tasks": "Suddivisione dei compiti",
+  "working-on-tasks-for": "Lavoro alle attività da {{time}}",
+  "worked-for": "Ha lavorato per {{time}}",
   "start-task": "Avvia compito",
   "message-cannot-be-empty": "Il messaggio non può essere vuoto",
   "remove-file": "Rimuovi file",

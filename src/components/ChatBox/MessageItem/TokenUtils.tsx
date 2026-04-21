@@ -28,6 +28,19 @@ const TOKEN_UNITS = [
   { threshold: 1_000, suffix: 'K' },
 ] as const;
 
+/**
+ * Elapsed time during splitting / planning: seconds, then minutes + seconds.
+ * Examples: "0s", "45s", "1m 05s", "12m 00s"
+ */
+export function formatSplittingElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '0s';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
 export function formatTokenCount(n: number): string {
   if (!Number.isFinite(n)) return '0';
 

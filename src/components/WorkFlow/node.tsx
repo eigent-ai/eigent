@@ -635,7 +635,11 @@ export function Node({ id, data }: NodeProps) {
                         ? 'bg-ds-bg-status-error-subtle-default hover:bg-ds-bg-status-error-subtle-hover'
                         : task.status === TaskStatus.RUNNING
                           ? 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover'
-                          : 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover';
+                          : task.status === TaskStatus.SKIPPED ||
+                              task.status === TaskStatus.WAITING ||
+                              task.status === TaskStatus.EMPTY
+                            ? 'bg-ds-bg-status-pending-subtle-default hover:bg-ds-bg-status-pending-subtle-hover'
+                            : 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover';
                 const taskTextClass = task.reAssignTo
                   ? 'text-ds-text-status-blocked-default-default'
                   : task.status === TaskStatus.COMPLETED
@@ -646,12 +650,11 @@ export function Node({ id, data }: NodeProps) {
                         ? 'text-ds-text-status-running-default-default'
                         : task.status === TaskStatus.BLOCKED
                           ? 'text-ds-text-status-blocked-default-default'
-                          : task.status === TaskStatus.SKIPPED
-                            ? 'text-ds-text-status-skipped-default-default'
-                            : task.status === TaskStatus.WAITING ||
-                                task.status === TaskStatus.EMPTY
-                              ? 'text-ds-text-status-pending-default-default'
-                              : 'text-ds-text-status-running-default-default';
+                          : task.status === TaskStatus.SKIPPED ||
+                              task.status === TaskStatus.WAITING ||
+                              task.status === TaskStatus.EMPTY
+                            ? 'text-ds-text-status-pending-default-default'
+                            : 'text-ds-text-status-running-default-default';
                 return (
                   <div
                     onClick={() => {
@@ -691,7 +694,11 @@ export function Node({ id, data }: NodeProps) {
                               ? '!border-ds-border-neutral-subtle-focus'
                               : task.status === TaskStatus.BLOCKED
                                 ? '!border-ds-border-status-blocked-subtle-focus'
-                                : '!border-ds-border-neutral-subtle-focus'
+                                : task.status === TaskStatus.SKIPPED ||
+                                    task.status === TaskStatus.WAITING ||
+                                    task.status === TaskStatus.EMPTY
+                                  ? '!border-ds-border-status-pending-default-hover'
+                                  : '!border-ds-border-neutral-subtle-focus'
                         : 'border-transparent'
                     }`}
                   >
@@ -719,7 +726,7 @@ export function Node({ id, data }: NodeProps) {
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className="text-ds-icon-status-skipped-default-default"
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (

@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete } from '@/api/http';
-import { Sparkle } from '@/components/ui/animate-ui/icons/sparkle';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
@@ -26,12 +25,14 @@ import { HistoryTask, ProjectGroup } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Ellipsis,
+  FolderCheck,
+  FolderClock,
   Hash,
-  Pin,
+  ListChecks,
   Plus,
   Share,
-  Sparkles,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +47,15 @@ import {
 import { Tag } from '../ui/tag';
 import { TooltipSimple } from '../ui/tooltip';
 import SearchInput from './SearchInput';
+
+const compactCountFormatter = new Intl.NumberFormat('en', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+});
+
+const formatCompactCount = (value?: number) =>
+  compactCountFormatter.format(value || 0);
 
 export default function HistorySidebar() {
   const { t } = useTranslation();
@@ -67,7 +77,7 @@ export default function HistorySidebar() {
   useEffect(() => {
     if (!chatStore) return;
     fetchGroupedHistoryTasks(setHistoryTasks);
-  }, [chatStore?.updateCount]);
+  }, [chatStore, chatStore?.updateCount]);
 
   // Group ongoing tasks by project
   const ongoingProjects = useMemo(() => {
@@ -112,6 +122,9 @@ export default function HistorySidebar() {
           tasks: [],
           task_count: taskCount,
           total_tokens: totalTokens,
+          total_triggers:
+            historyTasks.find((item) => item.project_id === project.id)
+              ?.total_triggers || 0,
           last_prompt: lastPrompt,
           isOngoing: true,
         });
@@ -119,7 +132,7 @@ export default function HistorySidebar() {
     });
 
     return Array.from(projectMap.values());
-  }, [projectStore, chatStore]);
+  }, [projectStore, chatStore, historyTasks]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.value) {
@@ -420,10 +433,7 @@ export default function HistorySidebar() {
                       }}
                       className="gap-sm rounded-xl px-4 py-3 shadow-history-item border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
                     >
-                      <Sparkles
-                        size={20}
-                        className="text-ds-icon-status-splitting-default-default flex-shrink-0"
-                      />
+                      <FolderClock className="h-5 w-5 text-ds-icon-status-running-default-default flex-shrink-0" />
 
                       <div className="min-w-0 gap-1 flex flex-1 flex-col">
                         <TooltipSimple
@@ -443,19 +453,46 @@ export default function HistorySidebar() {
 
                       <div className="gap-2 flex flex-shrink-0 items-center">
                         <TooltipSimple content={t('chat.token')}>
-                          <Tag variant="primary" tone="information" size="sm">
-                            <Hash className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {(project.total_tokens || 0).toLocaleString()}
+                          <Tag
+                            variant="primary"
+                            tone="information"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <Hash className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.total_tokens)}
                             </span>
                           </Tag>
                         </TooltipSimple>
 
-                        <TooltipSimple content="Tasks">
-                          <Tag variant="primary" tone="neutral" size="sm">
-                            <Pin className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {project.task_count}
+                        <TooltipSimple content={t('layout.tasks')}>
+                          <Tag
+                            variant="primary"
+                            tone="default"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <ListChecks className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.task_count)}
+                            </span>
+                          </Tag>
+                        </TooltipSimple>
+
+                        <TooltipSimple content="Triggers">
+                          <Tag
+                            variant="primary"
+                            tone="warning"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <Zap className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.total_triggers)}
                             </span>
                           </Tag>
                         </TooltipSimple>
@@ -538,10 +575,7 @@ export default function HistorySidebar() {
                       key={project.project_id}
                       className="gap-sm rounded-xl px-4 py-3 shadow-history-item border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
                     >
-                      <Sparkle
-                        size={20}
-                        className="text-ds-icon-neutral-muted-default flex-shrink-0"
-                      />
+                      <FolderCheck className="h-5 w-5 text-ds-icon-neutral-subtle-default flex-shrink-0" />
 
                       <div className="min-w-0 flex-1">
                         <TooltipSimple
@@ -565,19 +599,46 @@ export default function HistorySidebar() {
 
                       <div className="gap-2 flex flex-shrink-0 items-center">
                         <TooltipSimple content={t('chat.token')}>
-                          <Tag variant="primary" tone="information" size="sm">
-                            <Hash className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {(project.total_tokens || 0).toLocaleString()}
+                          <Tag
+                            variant="primary"
+                            tone="information"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <Hash className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.total_tokens)}
                             </span>
                           </Tag>
                         </TooltipSimple>
 
-                        <TooltipSimple content="Tasks">
-                          <Tag variant="primary" tone="neutral" size="sm">
-                            <Pin className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {project.task_count}
+                        <TooltipSimple content={t('layout.tasks')}>
+                          <Tag
+                            variant="primary"
+                            tone="default"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <ListChecks className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.task_count)}
+                            </span>
+                          </Tag>
+                        </TooltipSimple>
+
+                        <TooltipSimple content="Triggers">
+                          <Tag
+                            variant="primary"
+                            tone="warning"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <Zap className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.total_triggers)}
                             </span>
                           </Tag>
                         </TooltipSimple>

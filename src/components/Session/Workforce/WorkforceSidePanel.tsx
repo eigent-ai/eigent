@@ -12,12 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { AgentFolderSection } from '@/components/Session/SidePanelSections/AgentFolderSection';
+import { AgentPoolSection } from '@/components/Session/SidePanelSections/AgentPoolSection';
+import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
+import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import { ContextSection } from '@/components/Session/SidePanelSections/ContextSection';
+import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
+import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Maximize2, X } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const WORKFORCE_MAIN_SURFACE_CLASS =
@@ -44,6 +52,46 @@ export function WorkforceSidePanel({
   onCloseExpandedOverlay,
 }: WorkforceSidePanelProps) {
   const { t } = useTranslation();
+  const { chatStore, projectStore } = useChatStoreAdapter();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+
+  const agents = activeTask?.taskAssigning ?? [];
+  /** Subtask status is updated in `taskRunning` (e.g. TASK_STATE); `taskInfo` keeps plan text/order. */
+  const subtasks = useMemo(() => {
+    const taskInfo = activeTask?.taskInfo ?? [];
+    const taskRunning = activeTask?.taskRunning ?? [];
+    if (taskRunning.length === 0) return taskInfo;
+    const runById = new Map(
+      taskRunning.map((r) => [r.id, r] as [string, TaskInfo])
+    );
+    return taskInfo.map((t) => {
+      const live = runById.get(t.id);
+      if (!live) return t;
+      return { ...t, ...live, content: t.content || live.content };
+    });
+  }, [activeTask?.taskInfo, activeTask?.taskRunning]);
+  const files = useMemo(
+    () => collectSidePanelOutputFiles(activeTask),
+    [activeTask]
+  );
+  const contextItems = useMemo(
+    () => buildContextItems(agents, activeTask?.taskRunning),
+    [agents, activeTask?.taskRunning]
+  );
+
+  const handleOpenAgentFile = useCallback(
+    (file: FileInfo) => {
+      if (!chatStore?.activeTaskId) return;
+      chatStore.setSelectedFile(chatStore.activeTaskId, file);
+      setActiveWorkspaceTab('inbox', {
+        clearInboxForProjectId: projectStore.activeProjectId ?? null,
+      });
+    },
+    [chatStore, projectStore.activeProjectId, setActiveWorkspaceTab]
+  );
 
   return (
     <>
@@ -92,61 +140,31 @@ export function WorkforceSidePanel({
           </div>
 
           <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-            <SidePanelAccordionBox
+            <AgentPoolSection
               title={t('layout.workforce-active-agent-pool', {
                 defaultValue: 'Active Agent Pool',
               })}
-            >
-              <ul className="text-ds-text-neutral-default-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
-
-            <SidePanelAccordionBox
+              agents={agents}
+            />
+            <ProgressSection
               title={t('layout.workforce-progress', {
                 defaultValue: 'Progress',
               })}
-            >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
-
-            <SidePanelAccordionBox
+              subtasks={subtasks}
+            />
+            <ContextSection
               title={t('layout.workforce-context', {
                 defaultValue: 'Context',
               })}
-            >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
-
-            <SidePanelAccordionBox
+              items={contextItems}
+            />
+            <AgentFolderSection
               title={t('layout.workforce-agent-folder', {
                 defaultValue: 'Agent Folder',
               })}
-            >
-              <ul className="text-ds-text-neutral-muted-default text-body-sm space-y-1.5 p-0 m-0 list-none">
-                <li className="text-ds-text-neutral-muted-default px-1 py-1">
-                  {t('layout.workforce-empty-list', {
-                    defaultValue: 'No items yet',
-                  })}
-                </li>
-              </ul>
-            </SidePanelAccordionBox>
+              files={files}
+              onOpenFile={handleOpenAgentFile}
+            />
           </div>
         </div>
       )}

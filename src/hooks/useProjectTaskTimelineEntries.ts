@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { ChatTimelineEntry } from '@/components/ChatBox/ChatTimeline';
+import type { ChatTimelineEntry } from '@/components/Session/HeaderBox/ChatTimeline';
 import type { ChatStore } from '@/store/chatStore';
 import { useMemo } from 'react';
 

@@ -314,24 +314,46 @@ describe('themeTokens v2 engine', () => {
     expect(successInverse).toBe('#ffffff');
   });
 
-  it('maps system status background emphases to 50/300/600/900 shades', () => {
-    for (const mode of ['light', 'dark'] as const) {
-      const theme = buildThemeV2(
-        createDefaultThemeContractV2(mode, {
-          themeId: 'eigent',
-          contrast: 50,
-        }),
-        DEFAULT_THEME_CATALOG
+  it('maps system status background emphases to fixed shade steps (light vs dark)', () => {
+    const lightTheme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const darkTheme = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+
+    for (const tone of SYSTEM_STATUS_TONES) {
+      const scale = FIXED_SHADE_SCALES[tone];
+      expect(scale).toBeDefined();
+      expect(lightTheme.tokens[`bg.${tone}.subtle.default`]).toBe(
+        scale?.['50']
+      );
+      expect(lightTheme.tokens[`bg.${tone}.muted.default`]).toBe(
+        scale?.['300']
+      );
+      expect(lightTheme.tokens[`bg.${tone}.default.default`]).toBe(
+        scale?.['600']
+      );
+      expect(lightTheme.tokens[`bg.${tone}.strong.default`]).toBe(
+        scale?.['900']
       );
 
-      for (const tone of SYSTEM_STATUS_TONES) {
-        const scale = FIXED_SHADE_SCALES[tone];
-        expect(scale).toBeDefined();
-        expect(theme.tokens[`bg.${tone}.subtle.default`]).toBe(scale?.['50']);
-        expect(theme.tokens[`bg.${tone}.muted.default`]).toBe(scale?.['300']);
-        expect(theme.tokens[`bg.${tone}.default.default`]).toBe(scale?.['600']);
-        expect(theme.tokens[`bg.${tone}.strong.default`]).toBe(scale?.['900']);
-      }
+      expect(darkTheme.tokens[`bg.${tone}.subtle.default`]).toBe(
+        scale?.['950']
+      );
+      expect(darkTheme.tokens[`bg.${tone}.muted.default`]).toBe(scale?.['600']);
+      expect(darkTheme.tokens[`bg.${tone}.default.default`]).toBe(
+        scale?.['300']
+      );
+      expect(darkTheme.tokens[`bg.${tone}.strong.default`]).toBe(scale?.['50']);
     }
   });
 

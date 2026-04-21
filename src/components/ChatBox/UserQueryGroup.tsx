@@ -25,11 +25,12 @@ import React, {
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
+import { SplittingProgressRow } from './MessageItem/SplittingProgressRow';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
+import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
-import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
 const AgentResultCard: React.FC<{
@@ -368,6 +369,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
+      {taskCardVisible && activeTaskId && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.05 }}
+          className="px-sm"
+        >
+          <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
+        </motion.div>
+      )}
+
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
         if (message.content.length > 0) {
@@ -378,7 +390,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="gap-4 px-sm flex flex-col"
+                className="gap-4 flex flex-col"
               >
                 <AgentMessageCard
                   typewriter={
@@ -391,7 +403,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   onMarkdownRenderComplete={onTaskCompletionMarkdownReady}
                   deferredFooter={
                     message.fileList?.length ? (
-                      <div className="gap-2 flex flex-wrap">
+                      <div className="gap-2 my-2 flex flex-wrap">
                         {message.fileList.map(
                           (file: any, fileIndex: number) => (
                             <motion.div
@@ -409,13 +421,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                                   'documentWorkSpace'
                                 );
                               }}
-                              className="gap-2 rounded-sm px-2 py-1 flex w-[140px] cursor-pointer items-center bg-[var(--ds-bg-neutral-default-default)] transition-colors hover:bg-[var(--ds-bg-neutral-default-hover)]"
+                              className="gap-2 rounded-lg py-2 px-3 bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover flex w-[140px] cursor-pointer items-center transition-colors"
                             >
                               <div className="flex flex-col">
-                                <div className="text-body text-sm font-bold max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
+                                <div className="text-body-sm font-bold text-ds-text-neutral-default-default max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap">
                                   {file.name.split('.')[0]}
                                 </div>
-                                <div className="text-xs font-medium leading-29 text-[color:var(--ds-text-neutral-default-default)]">
+                                <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
                                   {file.type}
                                 </div>
                               </div>
@@ -435,7 +447,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="gap-4 px-sm flex flex-col"
+                className="gap-4 flex flex-col"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -470,7 +482,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="gap-4 px-sm flex flex-col"
+                className="gap-4 flex flex-col"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -493,7 +505,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="gap-4 px-sm flex flex-col"
+              className="gap-4 flex flex-col"
             >
               {message.fileList && (
                 <div className="gap-2 flex flex-wrap">
@@ -575,14 +587,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         <StreamingTaskList streamingText={streamingDecomposeText} />
       )}
 
-      {/* Skeleton for loading state */}
-      {isSkeletonPhase && (
+      {isSkeletonPhase && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.15 }}
+          className="px-sm"
         >
-          <TypeCardSkeleton isTakeControl={task?.isTakeControl || false} />
+          <SplittingProgressRow chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
     </motion.div>

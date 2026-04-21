@@ -41,11 +41,11 @@ import {
   Download,
   House,
   Minus,
-  Plus,
   Settings,
   Share,
   Sparkles,
   Square,
+  SquarePen,
   TagIcon,
   X,
 } from 'lucide-react';
@@ -126,8 +126,12 @@ function HeaderWin() {
   const location = useLocation();
   const { canGoBack, canGoForward } = useStackNavigationBounds();
   //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { chatStore } = useChatStoreAdapter();
   const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
@@ -182,10 +186,18 @@ function HeaderWin() {
     return path === '/history' || path.endsWith('/history');
   }, [location.pathname]);
 
-  const createNewProject = () => {
-    projectStore.createProject('new project');
-    navigate('/');
-  };
+  const openWorkspaceNewTask = useCallback(() => {
+    if (location.pathname !== '/') {
+      navigate('/');
+    }
+    setActiveWorkspaceTab('workforce');
+    requestWorkspaceChatFocus();
+  }, [
+    location.pathname,
+    navigate,
+    requestWorkspaceChatFocus,
+    setActiveWorkspaceTab,
+  ]);
 
   const summaryTask =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
@@ -354,42 +366,48 @@ function HeaderWin() {
               </TooltipSimple>
             </div>
             {location.pathname === '/' && (
-              <div className="no-drag ease-out animate-in fade-in-0 inline-flex items-stretch overflow-hidden rounded-full duration-200">
+              <div className="no-drag gap-1 inline-flex items-center">
+                <div className="ease-out animate-in fade-in-0 inline-flex items-stretch overflow-hidden rounded-full duration-200">
+                  <TooltipSimple
+                    content={
+                      activeTaskTitle === t('layout.new-project')
+                        ? t('layout.new-project')
+                        : activeTaskTitle
+                    }
+                    side="bottom"
+                    align="center"
+                  >
+                    <button
+                      id="active-task-title-btn"
+                      type="button"
+                      className="no-drag min-w-0 px-2 text-label-sm font-bold focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
+                      onClick={toggleHistorySidebar}
+                      aria-expanded={historySidebarOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {activeTaskTitle}
+                      </span>
+                    </button>
+                  </TooltipSimple>
+                </div>
                 <TooltipSimple
-                  content={
-                    activeTaskTitle === t('layout.new-project')
-                      ? t('layout.new-project')
-                      : activeTaskTitle
-                  }
+                  content={t('layout.add-new-task')}
                   side="bottom"
                   align="center"
                 >
-                  <button
-                    id="active-task-title-btn"
-                    type="button"
-                    className="no-drag min-w-0 px-2 text-label-sm font-bold focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
-                    onClick={toggleHistorySidebar}
-                    aria-expanded={historySidebarOpen}
-                    aria-haspopup="dialog"
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="no-drag rounded-full"
+                    onClick={openWorkspaceNewTask}
+                    aria-label={t('layout.add-new-task')}
                   >
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {activeTaskTitle}
-                    </span>
-                  </button>
-                </TooltipSimple>
-                <TooltipSimple
-                  content={t('layout.new-project')}
-                  side="bottom"
-                  align="center"
-                >
-                  <button
-                    type="button"
-                    className="no-drag w-8 focus-visible:ring-ds-ring-brand-default-focus/50 !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active box-border flex min-h-[28px] shrink-0 items-center justify-center outline-none focus-visible:ring-[3px]"
-                    onClick={createNewProject}
-                    aria-label={t('layout.new-project')}
-                  >
-                    <Plus className="h-4 w-4 shrink-0" aria-hidden />
-                  </button>
+                    <SquarePen
+                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                      aria-hidden
+                    />
+                  </Button>
                 </TooltipSimple>
               </div>
             )}
