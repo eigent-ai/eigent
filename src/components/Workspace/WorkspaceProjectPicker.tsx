@@ -61,8 +61,8 @@ export function WorkspaceProjectPicker() {
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
 
   const activeTaskTitle = useMemo(() => {
-    const defaultLabel = t('layout.workspace-work-in-project', {
-      defaultValue: 'Work in a project',
+    const defaultLabel = t('layout.workspace-select-project', {
+      defaultValue: 'Select a project',
     });
     if (!chatStore) return defaultLabel;
     if (chatStore.activeTaskId && summaryTask) {

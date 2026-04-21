@@ -31,7 +31,7 @@ import {
   Clock,
   Ellipsis,
   Hash,
-  Pin,
+  ListChecks,
   Share,
   Trash2,
 } from 'lucide-react';
@@ -106,7 +106,7 @@ export default function TaskItem({
     >
       <div className="min-w-0 gap-2 flex flex-1 items-center">
         <TooltipSimple content={t('layout.tasks')}>
-          <Pin className="h-4 w-4 text-ds-icon-neutral-default-default" />
+          <ListChecks className="h-4 w-4 text-ds-icon-neutral-default-default" />
         </TooltipSimple>
 
         <div className="min-w-0 gap-1 flex flex-1 flex-col">

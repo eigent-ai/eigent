@@ -32,6 +32,7 @@ import {
   type Mode,
   type ThemeCatalogV2,
 } from '@/lib/themeTokens/types';
+import baseColorTokens from '@/style/tokens/base.color.json';
 
 function isHex(value: string): boolean {
   return /^#[0-9a-f]{6}$/i.test(value);
@@ -57,6 +58,45 @@ function randomHex(): `#${string}` {
   const num = Math.floor(Math.random() * 0xffffff);
   return `#${num.toString(16).padStart(6, '0')}` as `#${string}`;
 }
+
+type FixedShade =
+  | '50'
+  | '100'
+  | '200'
+  | '300'
+  | '400'
+  | '500'
+  | '600'
+  | '700'
+  | '800'
+  | '900'
+  | '950';
+
+type BaseColorTokensShape = {
+  fixedShadeScales?: Partial<
+    Record<string, Partial<Record<FixedShade, string>>>
+  >;
+};
+
+const SYSTEM_STATUS_TONES = [
+  'status-running',
+  'status-splitting',
+  'status-pending',
+  'status-error',
+  'status-reassigning',
+  'status-completed',
+  'status-blocked',
+  'status-paused',
+  'status-skipped',
+  'status-cancelled',
+  'success',
+  'error',
+  'warning',
+  'information',
+] as const;
+
+const FIXED_SHADE_SCALES = (baseColorTokens as BaseColorTokensShape)
+  .fixedShadeScales!;
 
 describe('themeTokens v2 engine', () => {
   it('is deterministic for a fixed contract and catalog', () => {
@@ -272,6 +312,52 @@ describe('themeTokens v2 engine', () => {
     ] as string;
     expect(contrastRatio(successInverse, successBg)).toBeGreaterThanOrEqual(3);
     expect(successInverse).toBe('#ffffff');
+  });
+
+  it('maps system status background emphases to 50/300/600/900 shades', () => {
+    for (const mode of ['light', 'dark'] as const) {
+      const theme = buildThemeV2(
+        createDefaultThemeContractV2(mode, {
+          themeId: 'eigent',
+          contrast: 50,
+        }),
+        DEFAULT_THEME_CATALOG
+      );
+
+      for (const tone of SYSTEM_STATUS_TONES) {
+        const scale = FIXED_SHADE_SCALES[tone];
+        expect(scale).toBeDefined();
+        expect(theme.tokens[`bg.${tone}.subtle.default`]).toBe(scale?.['50']);
+        expect(theme.tokens[`bg.${tone}.muted.default`]).toBe(scale?.['300']);
+        expect(theme.tokens[`bg.${tone}.default.default`]).toBe(scale?.['600']);
+        expect(theme.tokens[`bg.${tone}.strong.default`]).toBe(scale?.['900']);
+      }
+    }
+  });
+
+  it('uses 600-shade transparent status fills with the new alpha schedule', () => {
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const scale = FIXED_SHADE_SCALES.information!;
+
+    expect(theme.tokens['bg.information.transparent.default']).toBe(
+      'rgba(37, 99, 235, 0.300)'
+    );
+    expect(theme.tokens['bg.information.transparent.hover']).toBe(
+      'rgba(37, 99, 235, 0.500)'
+    );
+    expect(theme.tokens['bg.information.transparent.selected']).toBe(
+      'rgba(37, 99, 235, 0.700)'
+    );
+    expect(theme.tokens['bg.information.transparent.disabled']).toBe(
+      'rgba(37, 99, 235, 0.100)'
+    );
+    expect(scale['600']).toBe('#2563eb');
   });
 
   it('remains stable under randomized theme seeds', () => {

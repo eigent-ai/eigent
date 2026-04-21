@@ -22,8 +22,26 @@ import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type SelectSize = 'default' | 'sm';
+/** Primary: default surface. Secondary: subtle surface for nested or lower-emphasis fields. */
+export type SelectVariant = 'primary' | 'secondary';
 // Only keep controllable states; hover/focus/default are automatic
 export type SelectState = 'error' | 'success';
+
+const variantTriggerBase: Record<SelectVariant, string> = {
+  primary: 'bg-ds-bg-neutral-default-default',
+  secondary: 'bg-ds-bg-neutral-subtle-default',
+};
+
+const variantTriggerInteractive: Record<SelectVariant, [string, string]> = {
+  primary: [
+    'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
+    'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+  ],
+  secondary: [
+    'hover:bg-ds-bg-neutral-subtle-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
+    'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-default-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+  ],
+};
 
 const Select = SelectPrimitive.Root;
 
@@ -52,15 +70,15 @@ function resolveStateClasses(
     return {
       wrapper: '',
       trigger:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
-      note: 'text-ds-text-status-error-strong-default',
+        'border-ds-border-error-default-default bg-ds-bg-error-default-default',
+      note: 'text-ds-text-error-strong-default',
     };
   }
   if (state === 'success') {
     return {
       wrapper: '',
       trigger:
-        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
+        'border-ds-border-success-default-default bg-ds-bg-success-subtle-default',
       note: 'text-ds-text-status-completed-strong-default',
     };
   }
@@ -73,6 +91,7 @@ function resolveStateClasses(
 
 type SelectTriggerExtraProps = {
   size?: SelectSize;
+  variant?: SelectVariant;
   state?: SelectState;
   title?: string;
   note?: string;
@@ -90,6 +109,7 @@ const SelectTrigger = React.forwardRef<
       className,
       children,
       size = 'default',
+      variant = 'primary',
       state,
       title,
       note,
@@ -128,14 +148,12 @@ const SelectTrigger = React.forwardRef<
             'gap-2 rounded-xl px-3 text-ds-text-neutral-default-default relative flex w-full items-center justify-between border border-solid transition-all outline-none',
             sizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
-            // Default state (when no error/success)
-            !state && 'bg-ds-bg-neutral-default-default',
+            // Default surface (when no error/success)
+            !state && variantTriggerBase[variant],
             // Interactive states (only when no error/success state)
             state !== 'error' &&
-              state !== 'success' && [
-                'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
-                'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
-              ],
+              state !== 'success' &&
+              variantTriggerInteractive[variant],
             // Validation states (override defaults)
             stateCls.trigger,
             // Placeholder styling
@@ -202,7 +220,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'text-ds-text-neutral-default-default rounded-xl bg-ds-bg-neutral-default-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-x-hidden overflow-y-auto border border-solid border-transparent',
+        'text-ds-text-neutral-default-default rounded-xl bg-ds-bg-neutral-subtle-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-x-hidden overflow-y-auto border border-solid border-transparent',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
         className
@@ -246,7 +264,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default rounded-xl py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}

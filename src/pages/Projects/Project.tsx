@@ -14,123 +14,40 @@
 
 import { fetchPut, proxyFetchDelete } from '@/api/http';
 import GroupedHistoryView from '@/components/Dashboard/GroupedHistoryView';
+import VerticalNavigation, {
+  type VerticalNavItem,
+} from '@/components/Dashboard/VerticalNav';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
-import { fetchHistoryTasks } from '@/service/historyApi';
 import { ChatTaskStatus } from '@/types/constants';
-import { Bird, CodeXml, FileText, Globe, Image } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { FolderKanban, ListChecks, MessageCircle } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+
+const PROJECT_PAGE_TABS = ['project', 'sessions', 'tasks'] as const;
+type ProjectPageTab = (typeof PROJECT_PAGE_TABS)[number];
 
 export default function Project() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
   const { chatStore, projectStore } = useChatStoreAdapter();
-  // const { history_type, setHistoryType } = useGlobalStore();
-  const [_historyTasks, setHistoryTasks] = useState<any[]>([]);
+  const [projectPageTab, setProjectPageTab] =
+    useState<ProjectPageTab>('project');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [curHistoryId, setCurHistoryId] = useState('');
   const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
   const [curProjectId, setCurProjectId] = useState('');
-  const [refreshTrigger, _setRefreshTrigger] = useState(0);
   const [projectDeleteCallback, setProjectDeleteCallback] = useState<
     (() => Promise<void>) | null
   >(null);
 
-  useEffect(() => {
-    if (!chatStore || !projectStore) return;
-    fetchHistoryTasks(setHistoryTasks);
-  }, [chatStore, projectStore]);
-
   if (!chatStore || !projectStore) {
     return <div>Loading...</div>;
   }
-  const agentMap = {
-    developer_agent: {
-      name: t('dashboard.developer-agent'),
-      textColor: 'text-ds-text-terminal-default-default',
-      bgColor: 'bg-bg-fill-coding-active',
-      shapeColor: 'bg-bg-fill-coding-default',
-      borderColor: 'border-bg-fill-coding-active',
-      bgColorLight: 'bg-emerald-200',
-    },
-    browser_agent: {
-      name: t('dashboard.browser-agent'),
-
-      textColor: 'text-blue-700',
-      bgColor: 'bg-bg-fill-browser-active',
-      shapeColor: 'bg-bg-fill-browser-default',
-      borderColor: 'border-bg-fill-browser-active',
-      bgColorLight: 'bg-blue-200',
-    },
-    document_agent: {
-      name: t('dashboard.document-agent'),
-
-      textColor: 'text-yellow-700',
-      bgColor: 'bg-bg-fill-writing-active',
-      shapeColor: 'bg-bg-fill-writing-default',
-      borderColor: 'border-bg-fill-writing-active',
-      bgColorLight: 'bg-yellow-200',
-    },
-    multi_modal_agent: {
-      name: t('dashboard.multi-modal-agent'),
-
-      textColor: 'text-fuchsia-700',
-      bgColor: 'bg-bg-fill-multimodal-active',
-      shapeColor: 'bg-bg-fill-multimodal-default',
-      borderColor: 'border-bg-fill-multimodal-active',
-      bgColorLight: 'bg-fuchsia-200',
-    },
-    social_media_agent: {
-      name: t('dashboard.social-media-agent'),
-
-      textColor: 'text-purple-700',
-      bgColor: 'bg-violet-700',
-      shapeColor: 'bg-violet-300',
-      borderColor: 'border-violet-700',
-      bgColorLight: 'bg-purple-50',
-    },
-  };
-
-  const _agentIconMap = {
-    developer_agent: (
-      <CodeXml
-        className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`}
-      />
-    ),
-    browser_agent: (
-      <Globe
-        className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`}
-      />
-    ),
-    document_agent: (
-      <FileText
-        className={`!h-[10px] !w-[10px] ${agentMap.document_agent.textColor}`}
-      />
-    ),
-    multi_modal_agent: (
-      <Image
-        className={`!h-[10px] !w-[10px] ${agentMap.multi_modal_agent.textColor}`}
-      />
-    ),
-    social_media_agent: (
-      <Bird
-        className={`!h-[10px] !w-[10px] ${agentMap.social_media_agent.textColor}`}
-      />
-    ),
-  };
-
-  const _handleClickAgent = (taskId: string, agent_id: string) => {
-    chatStore.setActiveTaskId(taskId);
-    chatStore.setActiveWorkspace(taskId, 'workflow');
-    chatStore.setActiveAgent(taskId, agent_id);
-    navigate(`/`);
-  };
-
   const handleDelete = (id: string, callback?: () => void) => {
     setCurHistoryId(id);
     setDeleteModalOpen(true);
@@ -142,7 +59,6 @@ export default function Project() {
     if (!id) return;
     try {
       await proxyFetchDelete(`/api/v1/chat/history/${id}`);
-      setHistoryTasks((list) => list.filter((item) => item.id !== id));
       if (chatStore.tasks[id]) {
         chatStore.removeTask(id);
       }
@@ -182,11 +98,6 @@ export default function Project() {
 
   const handleShare = async (taskId: string) => {
     share(taskId);
-  };
-
-  const handleReplay = async (taskId: string, question: string) => {
-    chatStore.replay(taskId, question, 0);
-    navigate({ pathname: '/' });
   };
 
   const handleSetActive = async (
@@ -237,11 +148,26 @@ export default function Project() {
     }
   };
 
-  // Feature flag to hide table view without deleting code
-  const _TABLE_VIEW_ENABLED = false;
+  const sidebarNavItems = [
+    {
+      id: 'project' as const,
+      name: t('layout.projects-heading'),
+      icon: <FolderKanban className="h-4 w-4 shrink-0" />,
+    },
+    {
+      id: 'sessions' as const,
+      name: t('layout.sessions-heading'),
+      icon: <MessageCircle className="h-4 w-4 shrink-0" />,
+    },
+    {
+      id: 'tasks' as const,
+      name: t('layout.tasks-heading'),
+      icon: <ListChecks className="h-4 w-4 shrink-0" />,
+    },
+  ];
 
   return (
-    <div className="m-auto h-auto flex-1">
+    <div className="flex w-full flex-1 flex-col">
       {/* alert dialog for task deletion */}
       <AlertDialog
         isOpen={deleteModalOpen}
@@ -267,39 +193,81 @@ export default function Project() {
         cancelText={t('layout.cancel')}
       />
 
-      {/* Header Section */}
-      <div className="flex w-full border-x-0">
-        <div className="px-6 pb-4 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
-          <div className="gap-4 flex w-full flex-row items-center justify-between">
-            <div className="flex flex-col">
-              <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-                {t('layout.projects-hub')}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex w-full">
-        <div className="px-6 py-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
-          <GroupedHistoryView
-            onTaskSelect={handleSetActive}
-            onTaskDelete={handleDelete}
-            onTaskShare={handleShare}
-            activeTaskId={chatStore.activeTaskId || undefined}
-            ongoingTasks={chatStore.tasks}
-            onOngoingTaskClick={(taskId) => {
-              chatStore.setActiveTaskId(taskId);
-              navigate(`/`);
-            }}
-            onOngoingTaskPause={(taskId) => handleTakeControl('pause', taskId)}
-            onOngoingTaskResume={(taskId) =>
-              handleTakeControl('resume', taskId)
+      <div className="flex h-auto min-h-[calc(100vh-86px)] w-full">
+        <div className="top-20 w-40 pr-6 pt-8 min-h-0 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col self-start">
+          <VerticalNavigation
+            items={
+              sidebarNavItems.map((item) => ({
+                value: item.id,
+                icon: item.icon,
+                label: (
+                  <span className="text-body-sm font-bold">{item.name}</span>
+                ),
+              })) as VerticalNavItem[]
             }
-            onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
-            onProjectDelete={handleProjectDelete}
-            refreshTrigger={refreshTrigger}
+            value={projectPageTab}
+            onValueChange={(v) => {
+              if (PROJECT_PAGE_TABS.includes(v as ProjectPageTab)) {
+                setProjectPageTab(v as ProjectPageTab);
+              }
+            }}
+            className="min-h-0 gap-0 h-full w-full flex-1"
+            listClassName="w-full h-full overflow-y-auto"
+            contentClassName="hidden"
           />
+        </div>
+
+        <div className="min-h-0 min-w-0 flex w-full flex-1 flex-col">
+          {projectPageTab === 'project' && (
+            <>
+              {/* Header Section */}
+              <div className="top-0 px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+                <div className="gap-4 flex w-full flex-col items-start justify-between">
+                  <div className="flex flex-col">
+                    <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
+                      {t('layout.projects-hub')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex w-full">
+                <div className="pb-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
+                  <GroupedHistoryView
+                    onTaskSelect={handleSetActive}
+                    onTaskDelete={handleDelete}
+                    onTaskShare={handleShare}
+                    activeTaskId={chatStore.activeTaskId || undefined}
+                    ongoingTasks={chatStore.tasks}
+                    onOngoingTaskClick={(taskId) => {
+                      chatStore.setActiveTaskId(taskId);
+                      navigate(`/`);
+                    }}
+                    onOngoingTaskPause={(taskId) =>
+                      handleTakeControl('pause', taskId)
+                    }
+                    onOngoingTaskResume={(taskId) =>
+                      handleTakeControl('resume', taskId)
+                    }
+                    onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
+                    onProjectDelete={handleProjectDelete}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {projectPageTab === 'sessions' && (
+            <div className="min-h-0 py-8 flex flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden" />
+            </div>
+          )}
+
+          {projectPageTab === 'tasks' && (
+            <div className="min-h-0 py-8 flex flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden" />
+            </div>
+          )}
         </div>
       </div>
     </div>

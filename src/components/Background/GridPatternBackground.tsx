@@ -37,7 +37,7 @@ export default function GridPatternBackground() {
             fill="none"
             stroke="var(--ds-border-neutral-default-default)"
             strokeWidth={1}
-            opacity={0.5}
+            opacity={0.3}
           />
         </pattern>
       </defs>

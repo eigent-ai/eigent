@@ -314,13 +314,34 @@ export default function Workspace() {
       </div>
       <div className="min-h-0 relative z-0 flex w-full flex-1 flex-col items-center justify-center">
         <div className="min-h-0 flex w-full flex-1 flex-col items-stretch justify-center">
-          <div className="mx-auto flex w-full max-w-[600px] flex-col">
-            <div className="mb-12 flex w-full flex-col">
-              <span className="text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
-                {t('layout.workspace-get-things-done-with-eigent')}
-              </span>
-              <div className="mt-4 flex w-full justify-center">
+          <div className="mx-auto flex min-h-[50vh] w-full max-w-[600px] flex-col">
+            <div className="mb-10 flex w-full flex-col">
+              <div className="mb-6 flex w-full justify-center">
                 <WorkspaceProjectPicker />
+              </div>
+              <span className="mb-6 text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
+                {sessionSidePanelMode === SessionMode.SINGLE_AGENT
+                  ? t('layout.workspace-cowork-single-agent', {
+                      defaultValue: 'Cowork with Single Agent',
+                    })
+                  : t('layout.workspace-cowork-workforce', {
+                      defaultValue: 'Cowork with Workforce',
+                    })}
+              </span>
+              <div className="px-5 flex w-full justify-center">
+                {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
+                  <SingleAgentList />
+                ) : (
+                  <WorkforceAgentList
+                    sortedAgents={sortedAgents}
+                    activeAgentId={activeAgentId}
+                    onSelectAgent={onSelectAgent}
+                    onAgentDetailFromMenu={onAgentDetailFromMenu}
+                    onDuplicateUserAgent={onDuplicateUserAgent}
+                    onDeleteUserAgent={onDeleteUserAgent}
+                    onAddWorker={() => setAddWorkerDialogOpen(true)}
+                  />
+                )}
               </div>
             </div>
 
@@ -360,21 +381,6 @@ export default function Workspace() {
                   sessionModeSelectInteractive: true,
                 }}
               />
-              <div className="mt-3 px-5 flex w-full justify-center">
-                {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
-                  <SingleAgentList />
-                ) : (
-                  <WorkforceAgentList
-                    sortedAgents={sortedAgents}
-                    activeAgentId={activeAgentId}
-                    onSelectAgent={onSelectAgent}
-                    onAgentDetailFromMenu={onAgentDetailFromMenu}
-                    onDuplicateUserAgent={onDuplicateUserAgent}
-                    onDeleteUserAgent={onDeleteUserAgent}
-                    onAddWorker={() => setAddWorkerDialogOpen(true)}
-                  />
-                )}
-              </div>
             </div>
             <AddWorker
               isOpen={addWorkerDialogOpen}

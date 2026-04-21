@@ -258,7 +258,7 @@ export default function SettingGeneral() {
             </div>
           </div>
           <Select value={language} onValueChange={switchLanguage}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger variant="secondary" className="w-48">
               <SelectValue placeholder={t('setting.select-language')} />
             </SelectTrigger>
             <SelectContent className="bg-input-bg-default border">

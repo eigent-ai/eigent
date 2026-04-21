@@ -92,7 +92,7 @@ export default function BottomBox({
     backgroundClass = 'bg-ds-bg-pending-subtle-default';
 
   return (
-    <div className="backdrop-blur-md rounded-t-2xl relative z-50 flex w-full flex-col bg-transparent">
+    <div className="backdrop-blur-xl rounded-t-2xl bg-ds-bg-neutral-subtle-default relative z-50 flex w-full flex-col">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
         <div className="px-2 pointer-events-auto z-50">
@@ -147,7 +147,7 @@ export default function BottomBox({
 
         {noModelOverlay && onSelectModel ? (
           <div
-            className="inset-0 rounded-3xl gap-3 backdrop-blur-md px-4 py-5 bg-ds-bg-warning-subtle-default absolute z-[15] flex flex-row items-center justify-center"
+            className="inset-0 rounded-3xl gap-3 backdrop-blur-lg px-4 py-5 bg-ds-bg-warning-subtle-default absolute z-[15] flex flex-row items-center justify-center"
             role="alert"
           >
             <TriangleAlert

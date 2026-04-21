@@ -871,7 +871,7 @@ const ToolSelect = forwardRef<
   );
   return (
     <div className="relative w-full" ref={containerRef}>
-      <div className="bg-white gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
+      <div className="gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
         <div className="gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default flex items-center">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>

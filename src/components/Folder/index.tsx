@@ -1064,7 +1064,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         ) : null}
 
         {/* content */}
-        <div className="min-w-0 bg-ds-bg-neutral-muted-default flex flex-1 flex-col overflow-hidden">
+        <div className="min-w-0 bg-ds-bg-neutral-subtle-default flex flex-1 flex-col overflow-hidden">
           {/* head */}
           {selectedFile && (
             <div className="pl-3 pr-2 h-8 gap-2 flex flex-shrink-0 items-center justify-between">

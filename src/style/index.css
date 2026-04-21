@@ -148,14 +148,9 @@ body {
 }
 
 /* Perfect Shadow */
-.perfect-shadow {
-  box-shadow:
-    0 8px 20px -2px rgba(29, 33, 41, 0.1),
-    0 32px 48px -12px rgba(29, 33, 41, 0.12),
-    0 96px 120px -12px rgba(65, 74, 92, 0.06),
-    0 108px 72px -16px rgba(65, 74, 92, 0.08),
-    0 32px 64px -8px rgba(113, 153, 189, 0.12),
-    0 8px 10px 0 rgba(113, 153, 189, 0.12);
+.perfect-shadow,
+.soft-shadow {
+  box-shadow: var(--shadow-soft);
 }
 
 .blur-effect {

@@ -337,17 +337,6 @@ export const Inputbox = ({
           </div>
         </div>
       )}
-      {/* Layer 1: Session mode (workspace: full toggle; session: current mode only) */}
-      {sessionMode !== undefined && (
-        <div className="pb-3 flex w-full justify-start">
-          <WorkspaceSessionModeToggle
-            value={sessionMode}
-            onValueChange={onSessionModeChange ?? (() => {})}
-            readOnly={!sessionModeSelectInteractive}
-            className="shrink-0"
-          />
-        </div>
-      )}
       {/* Layer 2: File attachments (only show if has files) */}
       {files.length > 0 && (
         <div className="gap-1 pb-2 relative box-border flex w-full flex-wrap items-start">
@@ -424,7 +413,7 @@ export const Inputbox = ({
                 align="end"
                 side="right"
                 sideOffset={4}
-                className="max-w-40 rounded-lg p-1 shadow-perfect border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-default !w-auto border-solid"
+                className="max-w-40 rounded-lg p-1 shadow-perfect border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default !w-auto border-solid"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
@@ -639,8 +628,16 @@ export const Inputbox = ({
           <ChatInputModelDropdown disabled={disabled} />
         </div>
 
-        {/* Right: Send Button */}
-        <div className="gap-1 flex items-center">
+        {/* Right: Session mode (workspace: full toggle; session: current mode only) + send */}
+        <div className="gap-2 flex items-center">
+          {sessionMode !== undefined && (
+            <WorkspaceSessionModeToggle
+              value={sessionMode}
+              onValueChange={onSessionModeChange ?? (() => {})}
+              readOnly={!sessionModeSelectInteractive}
+              className="shrink-0"
+            />
+          )}
           <Button
             size="xs"
             buttonContent="icon-only"

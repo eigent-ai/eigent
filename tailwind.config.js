@@ -744,6 +744,7 @@ module.exports = {
       boxShadow: {
         'history-item': '0px 3px 4px -1px rgba(0, 0, 0, 0.10)',
         perfect: 'var(--shadow-perfect)',
+        soft: 'var(--shadow-soft)',
         'blur-effect': 'var(--shadow-blur-effect)',
         'button-shadow': 'var(--shadow-button)',
       },

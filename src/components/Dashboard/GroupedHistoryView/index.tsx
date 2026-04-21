@@ -21,12 +21,14 @@ import { useGlobalStore } from '@/store/globalStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FolderOpen, LayoutGrid, List, Pin, Sparkle } from 'lucide-react';
+import { FolderOpen, LayoutGrid, List, ListChecks } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ProjectGroup from './ProjectGroup';
 
 interface GroupedHistoryViewProps {
+  /** When true, grid/list tabs are hidden (e.g. controlled from a parent sidebar). */
+  hideViewSwitcher?: boolean;
   searchValue?: string;
   onTaskSelect: (
     projectId: string,
@@ -48,6 +50,7 @@ interface GroupedHistoryViewProps {
 }
 
 export default function GroupedHistoryView({
+  hideViewSwitcher = false,
   searchValue = '',
   onTaskSelect,
   onTaskDelete,
@@ -395,18 +398,20 @@ export default function GroupedHistoryView({
   return (
     <div className="gap-4 pb-40 flex w-full flex-col">
       {/* Summary */}
-      <div className="pb-4 flex items-center justify-between">
+      <div
+        className={`pb-4 flex items-center ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
+      >
         <div className="gap-2 flex items-center">
-          <Tag variant="secondary" tone="neutral" size="sm" className="gap-2">
-            <Sparkle />
+          <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
+            <FolderOpen />
             <span className="text-body-sm"> {t('layout.projects')}</span>
 
             {allProjects.length}
           </Tag>
 
-          <Tag variant="secondary" tone="neutral" size="sm" className="gap-2">
-            <Pin />
-            {t('layout.total-tasks')}
+          <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
+            <ListChecks />
+            <span className="text-body-sm"> {t('layout.total-tasks')}</span>
             {allProjects.reduce(
               (total, project) => total + project.task_count,
               0
@@ -414,25 +419,29 @@ export default function GroupedHistoryView({
           </Tag>
         </div>
         <div className="gap-md flex items-center">
-          <Tabs
-            value={viewType}
-            onValueChange={(value) => setHistoryType(value as 'grid' | 'list')}
-          >
-            <TabsList>
-              <TabsTrigger value="grid">
-                <div className="gap-1 flex items-center">
-                  <LayoutGrid size={16} />
-                  <span>{t('dashboard.grid')}</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger value="list">
-                <div className="gap-1 flex items-center">
-                  <List size={16} />
-                  <span>{t('dashboard.list')}</span>
-                </div>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {!hideViewSwitcher && (
+            <Tabs
+              value={viewType}
+              onValueChange={(value) =>
+                setHistoryType(value as 'grid' | 'list')
+              }
+            >
+              <TabsList>
+                <TabsTrigger value="grid">
+                  <div className="gap-1 text-label-sm flex items-center">
+                    <LayoutGrid size={16} />
+                    <span>{t('dashboard.grid')}</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger value="list">
+                  <div className="gap-1 text-label-sm flex items-center">
+                    <List size={16} />
+                    <span>{t('dashboard.list')}</span>
+                  </div>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
       </div>
 

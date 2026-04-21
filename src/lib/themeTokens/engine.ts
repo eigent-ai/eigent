@@ -87,6 +87,27 @@ type SemanticShape = {
 
 type BaseShape = {
   fixedAnchors: Record<Mode, Partial<Record<Tone, `#${string}`>>>;
+  fixedShadeScales?: Partial<
+    Record<
+      Tone,
+      Partial<
+        Record<
+          | '50'
+          | '100'
+          | '200'
+          | '300'
+          | '400'
+          | '500'
+          | '600'
+          | '700'
+          | '800'
+          | '900'
+          | '950',
+          `#${string}`
+        >
+      >
+    >
+  >;
 };
 
 const BASE = baseColorTokens as BaseShape;
@@ -109,6 +130,74 @@ const LEGACY_UI_STATES: State[] = [
 
 type NeutralStateMatrix = Record<Emphasis, Record<State, string>>;
 
+const SYSTEM_STATUS_TONES = new Set<Tone>([
+  'status-running',
+  'status-splitting',
+  'status-pending',
+  'status-error',
+  'status-reassigning',
+  'status-completed',
+  'status-blocked',
+  'status-paused',
+  'status-skipped',
+  'status-cancelled',
+  'success',
+  'error',
+  'warning',
+  'information',
+]);
+
+type FixedShade =
+  | '50'
+  | '100'
+  | '200'
+  | '300'
+  | '400'
+  | '500'
+  | '600'
+  | '700'
+  | '800'
+  | '900'
+  | '950';
+
+const SYSTEM_STATUS_SHADE_BY_EMPHASIS: Record<
+  Extract<Emphasis, 'subtle' | 'muted' | 'default' | 'strong'>,
+  Record<State, FixedShade>
+> = {
+  subtle: {
+    default: '50',
+    hover: '100',
+    active: '200',
+    selected: '200',
+    focus: '100',
+    disabled: '50',
+  },
+  muted: {
+    default: '300',
+    hover: '400',
+    active: '500',
+    selected: '500',
+    focus: '400',
+    disabled: '300',
+  },
+  default: {
+    default: '600',
+    hover: '700',
+    active: '800',
+    selected: '800',
+    focus: '700',
+    disabled: '600',
+  },
+  strong: {
+    default: '900',
+    hover: '950',
+    active: '950',
+    selected: '950',
+    focus: '950',
+    disabled: '900',
+  },
+};
+
 // Per-state opacity used for the `transparent` emphasis. The surface color is
 // the tone's base hue shown at these alphas so status chips read as "main
 // color, faded" rather than a washed-out rendered hue.
@@ -119,6 +208,15 @@ const TRANSPARENT_OPACITY_BY_STATE: Record<State, number> = {
   selected: 0.7,
   focus: 0.3,
   disabled: 0.5,
+};
+
+const SYSTEM_STATUS_TRANSPARENT_OPACITY_BY_STATE: Record<State, number> = {
+  default: 0.3,
+  hover: 0.5,
+  active: 0.5,
+  selected: 0.7,
+  focus: 0.5,
+  disabled: 0.1,
 };
 
 function mergeAdjustment(...values: Array<Adjustment | undefined>): Adjustment {
@@ -149,6 +247,19 @@ function setTokenIfMissing(
   if (!(tokenKey in tokens)) {
     tokens[tokenKey] = value;
   }
+}
+
+function getFixedShade(tone: Tone, shade: FixedShade): `#${string}` | null {
+  return BASE.fixedShadeScales?.[tone]?.[shade] ?? null;
+}
+
+function getSystemStatusShade(
+  tone: Tone,
+  emphasis: Extract<Emphasis, 'subtle' | 'muted' | 'default' | 'strong'>,
+  state: State
+): `#${string}` | null {
+  const shade = SYSTEM_STATUS_SHADE_BY_EMPHASIS[emphasis][state];
+  return getFixedShade(tone, shade);
 }
 
 function ensureNeutralMatrix(
@@ -622,6 +733,45 @@ function buildSemanticTokens(
 
         for (const element of elements) {
           const tokenKey = `${element}.${tokenSuffix}` as TokenKey;
+          const alphaOnlyAdjustment = mergeAdjustment(
+            baseAdjustment,
+            SEMANTIC.transforms.element[element],
+            axisOverride
+          );
+
+          if (SYSTEM_STATUS_TONES.has(tone) && emph !== 'inverse') {
+            if (emph === 'transparent') {
+              const baseHex =
+                getFixedShade(tone, '600') ??
+                oklchToHex(toneBaseColor(tone, contract.mode, seed, element));
+              const stateAlpha =
+                SYSTEM_STATUS_TRANSPARENT_OPACITY_BY_STATE[state as State] ??
+                0.3;
+              const resolvedAlpha =
+                typeof axisOverride.alpha === 'number'
+                  ? axisOverride.alpha
+                  : stateAlpha;
+              tokens[tokenKey] = alpha(baseHex, resolvedAlpha);
+              continue;
+            }
+
+            const statusShade = getSystemStatusShade(
+              tone,
+              emph as Extract<
+                Emphasis,
+                'subtle' | 'muted' | 'default' | 'strong'
+              >,
+              state
+            );
+            if (statusShade) {
+              tokens[tokenKey] =
+                typeof alphaOnlyAdjustment.alpha === 'number' &&
+                alphaOnlyAdjustment.alpha < 1
+                  ? alpha(statusShade, alphaOnlyAdjustment.alpha)
+                  : statusShade;
+              continue;
+            }
+          }
 
           if (emph === 'transparent') {
             const toneBase = toneBaseColor(tone, contract.mode, seed, element);
@@ -655,10 +805,8 @@ function buildSemanticTokens(
 
           const toneBase = toneBaseColor(tone, contract.mode, seed, element);
           const adjustment = mergeAdjustment(
-            baseAdjustment,
-            SEMANTIC.transforms.element[element],
-            contrastBias(element, contract.mode, contract.contrast),
-            axisOverride
+            alphaOnlyAdjustment,
+            contrastBias(element, contract.mode, contract.contrast)
           );
 
           const colorHex = oklchToHex(applyAdjustment(toneBase, adjustment));

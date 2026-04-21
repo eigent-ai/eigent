@@ -12,15 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  HistoryTabsNav,
+  isHistoryTabId,
+  type HistoryTabId,
+} from '@/components/Dashboard/HistoryTabsNav';
 import AlertDialog from '@/components/ui/alertDialog';
-import { Bot } from '@/components/ui/animate-ui/icons/bot';
-import { Compass } from '@/components/ui/animate-ui/icons/compass';
-import { Hammer } from '@/components/ui/animate-ui/icons/hammer';
-import { Radio } from '@/components/ui/animate-ui/icons/radio';
-import { Settings } from '@/components/ui/animate-ui/icons/settings';
-import { Sparkle } from '@/components/ui/animate-ui/icons/sparkle';
 import { Button } from '@/components/ui/button';
-import { MenuToggleGroup, MenuToggleItem } from '@/components/ui/menu-button';
 import WordCarousel from '@/components/ui/WordCarousel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import Project from '@/pages/Projects/Project';
@@ -35,18 +33,7 @@ import Browser from './Browser';
 import Channels from './Channels';
 import Connectors from './Connectors';
 
-const VALID_TABS = [
-  'projects',
-  'agents',
-  'channels',
-  'connectors',
-  'browser',
-  'settings',
-] as const;
-
-type TabType = (typeof VALID_TABS)[number];
-
-const TAB_ALIASES: Record<string, TabType> = {
+const TAB_ALIASES: Record<string, HistoryTabId> = {
   mcp_tools: 'connectors',
 };
 
@@ -65,11 +52,11 @@ export default function Home() {
     const tabFromUrl = searchParams.get('tab');
     if (tabFromUrl) {
       const normalizedTab = TAB_ALIASES[tabFromUrl] ?? tabFromUrl;
-      if (VALID_TABS.includes(normalizedTab as TabType)) {
-        return normalizedTab as TabType;
+      if (isHistoryTabId(normalizedTab)) {
+        return normalizedTab;
       }
     }
-    return 'projects' as TabType;
+    return 'projects' as HistoryTabId;
   }, [searchParams]);
 
   const handleTabChange = (value: string) => {
@@ -132,89 +119,44 @@ export default function Home() {
           sweepDurationMs={2000}
           sweepOnce
           gradient={`linear-gradient(in oklch 90deg,
-							#f9f8f6 0%, var(--colors-blue-300) 30%,
-							var(--colors-emerald-default) 50%,
-							var(--colors-green-500) 70%,
-							var(--colors-orange-300) 100%)`}
+            var(--ds-bg-neutral-default-default) 0%,
+            var(--ds-bg-brand-muted-disabled) 50%,
+            var(--ds-bg-brand-subtle-disabled) 100%)`}
           ariaLabel="rotating headline"
         />
       </div>
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
-        className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default px-20 pb-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid`}
+        className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default pl-20 pr-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid`}
       >
         <div className="mx-auto flex w-full flex-row items-center justify-between">
           <div className="gap-2 flex items-center">
-            <MenuToggleGroup
-              type="single"
-              value={activeTab}
-              orientation="horizontal"
-              onValueChange={handleTabChange}
-              className="gap-3"
-            >
-              <MenuToggleItem
-                size="xs"
-                value="projects"
-                iconAnimateOnHover="wiggle"
-                icon={<Sparkle />}
-              >
-                {t('layout.projects')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="agents"
-                iconAnimateOnHover="default"
-                icon={<Bot className="h-4 w-4" />}
-              >
-                {t('layout.agents')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="channels"
-                iconAnimateOnHover="default"
-                icon={<Radio className="h-4 w-4" />}
-              >
-                {t('layout.channels')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="connectors"
-                iconAnimateOnHover="default"
-                icon={<Hammer />}
-              >
-                {t('layout.connectors')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="browser"
-                iconAnimateOnHover="default"
-                icon={<Compass className="h-4 w-4" />}
-              >
-                {t('layout.browser')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="settings"
-                iconAnimateOnHover="default"
-                icon={<Settings />}
-              >
-                {t('layout.settings')}
-              </MenuToggleItem>
-            </MenuToggleGroup>
+            <HistoryTabsNav activeTab={activeTab} onChange={handleTabChange} />
           </div>
-          <Button variant="primary" size="sm" onClick={createChat}>
-            <Plus />
+          <Button
+            variant="primary"
+            tone="default"
+            buttonRadius="full"
+            size="sm"
+            onClick={createChat}
+            className="mb-2"
+          >
+            <Plus className="h-4 w-4 shrink-0" />
             {t('layout.new-project')}
           </Button>
         </div>
       </div>
-      {activeTab === 'projects' && <Project />}
-      {activeTab === 'agents' && <Agents />}
-      {activeTab === 'channels' && <Channels />}
-      {activeTab === 'connectors' && <Connectors />}
-      {activeTab === 'browser' && <Browser />}
-      {activeTab === 'settings' && <Setting />}
+      <div className="m-auto flex h-auto w-full max-w-[980px] flex-1 flex-col">
+        <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
+          {activeTab === 'projects' && <Project />}
+          {activeTab === 'agents' && <Agents />}
+          {activeTab === 'channels' && <Channels />}
+          {activeTab === 'connectors' && <Connectors />}
+          {activeTab === 'browser' && <Browser />}
+          {activeTab === 'settings' && <Setting />}
+        </div>
+      </div>
     </div>
   );
 }

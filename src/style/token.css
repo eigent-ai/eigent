@@ -188,10 +188,14 @@
 
     --camel-color: var(--colors-neon-default);
 
-    --shadow-perfect:
-      0 8px 20px -2px #1d21291a, 0 32px 48px -12px #1d21291f,
-      0 96px 120px -12px #414a5c0f, 0 108px 72px -16px #414a5c14,
-      0 32px 64px -8px #7199bd1f, 0 8px 10px 0 #7199bd1f;
+    --shadow-soft:
+      0 8px 20px -2px rgba(29, 33, 41, 0.1),
+      0 32px 48px -12px rgba(29, 33, 41, 0.12),
+      0 96px 120px -12px rgba(65, 74, 92, 0.06),
+      0 108px 72px -16px rgba(65, 74, 92, 0.08),
+      0 32px 64px -8px rgba(113, 153, 189, 0.12),
+      0 8px 10px 0 rgba(113, 153, 189, 0.12);
+    --shadow-perfect: var(--shadow-soft);
     --shadow-button:
       inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
   }

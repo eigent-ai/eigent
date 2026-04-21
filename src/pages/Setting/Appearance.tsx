@@ -26,7 +26,6 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DEFAULT_COLOR_THEME_ID,
   DEFAULT_THEME_CATALOG,
-  getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type {
   ColorThemeDefinitionV2,
@@ -35,15 +34,16 @@ import type {
   ThemeSeed,
 } from '@/lib/themeTokens/types';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
+import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const DEFAULT_EDITABLE_THEME_IDS = [
   'eigent',
+  'camel',
   'claude',
   'codex',
-  'camel',
 ] as const;
 const CUSTOM_THEME_IDS = ['custom-1', 'custom-2'] as const;
 
@@ -76,7 +76,9 @@ function buildMergedCatalog(customThemeCatalog: ThemeCatalog): ThemeCatalog {
 function formatThemeLabel(id: string): string {
   if (id === 'custom-1') return 'Custom 1';
   if (id === 'custom-2') return 'Custom 2';
-  return id;
+  if (id === 'camel') return 'CAMEL';
+  if (!id) return id;
+  return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
 function ColorSeedEditor({
@@ -91,19 +93,22 @@ function ColorSeedEditor({
   const normalizedPreview = normalizeHexColor(value) ?? '#000000';
 
   return (
-    <div className="gap-2 grid grid-cols-[96px_minmax(0,1fr)_40px] items-center">
-      <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+    <div className="gap-2 border-ds-border-neutral-subtle-disabled py-4 px-6 flex flex-row items-center justify-between border-x-0 border-t-0 border-b border-solid">
+      <div className="text-body-md font-semibold text-ds-text-neutral-default-default w-24">
         {label}
       </div>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        note={normalizeHexColor(value) ? '' : 'Hex format: #1a2b3c'}
-      />
-      <div
-        className="h-9 w-9 rounded-md border-ds-border-neutral-default-default border"
-        style={{ backgroundColor: normalizedPreview }}
-      />
+      <div className="w-56 gap-2 flex flex-row items-center">
+        <Input
+          size="sm"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          note={normalizeHexColor(value) ? '' : 'Hex format: #1a2b3c'}
+        />
+        <div
+          className="h-8 w-10 rounded-md border-ds-border-neutral-default-default border-solid"
+          style={{ backgroundColor: normalizedPreview }}
+        />
+      </div>
     </div>
   );
 }
@@ -115,77 +120,27 @@ function ContrastSlider({
   value: number;
   onChange: (v: number) => void;
 }) {
-  const recommended = getRecommendedContrast();
-  const isRecommended = Math.round(value) === recommended;
   return (
-    <div className="gap-2 flex flex-col">
-      <div className="flex items-center justify-between">
-        <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-          Contract (Contrast)
-        </div>
-        <div className="gap-2 flex items-center">
-          <div className="text-body-sm font-semibold text-ds-text-neutral-muted-default">
-            {value}
-          </div>
-          {!isRecommended ? (
-            <button
-              type="button"
-              onClick={() => onChange(recommended)}
-              className="text-body-xs font-medium text-ds-text-brand-default-default hover:text-ds-text-brand-default-hover transition-colors"
-              aria-label={`Reset to recommended contrast (${recommended})`}
-            >
-              Use recommended ({recommended})
-            </button>
-          ) : (
-            <span className="text-body-xs text-ds-text-neutral-muted-default">
-              Recommended
-            </span>
-          )}
+    <div className="gap-2 py-4 px-6 flex w-full flex-row items-center justify-between">
+      <div className="text-body-md font-semibold text-ds-text-neutral-default-default w-24">
+        Contrast
+      </div>
+      <div className="gap-2 w-80 flex flex-row items-center">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="h-2 bg-ds-bg-neutral-subtle-disabled my-auto w-full cursor-pointer appearance-none rounded-full accent-[var(--ds-bg-brand-default-default)]"
+          aria-label="Theme contrast"
+        />
+        <div className="w-10 text-body-sm font-semibold text-ds-text-neutral-muted-default text-center">
+          {value}
         </div>
       </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-2 bg-ds-bg-neutral-strong-default w-full cursor-pointer appearance-none rounded-full accent-[var(--ds-bg-brand-default-default)]"
-        aria-label="Theme contrast"
-      />
     </div>
-  );
-}
-
-function ModePanel({
-  title,
-  description,
-  active,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        'rounded-xl px-4 py-4 border text-left transition-colors',
-        active
-          ? 'border-ds-border-brand-default-focus bg-ds-bg-brand-subtle-default'
-          : 'border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-hover',
-      ].join(' ')}
-    >
-      <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-        {title}
-      </div>
-      <div className="mt-1 text-label-sm text-ds-text-neutral-muted-default">
-        {description}
-      </div>
-    </button>
   );
 }
 
@@ -387,64 +342,82 @@ export default function AppearanceSettings() {
       </div>
 
       <div className="mb-xl gap-6 flex flex-col">
-        <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col">
+        <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 h-18 flex flex-row items-center justify-between">
           <div className="text-body-base font-bold text-ds-text-neutral-default-default">
             Mode
           </div>
 
-          <div className="gap-3 grid grid-cols-2">
-            <ModePanel
-              title={t('setting.light')}
-              description="Use light mode as the active UI mode."
-              active={appearanceMode === 'light'}
-              onClick={() => setAppearanceMode('light')}
-            />
-            <ModePanel
-              title={t('setting.dark')}
-              description="Use dark mode as the active UI mode."
-              active={appearanceMode === 'dark'}
-              onClick={() => setAppearanceMode('dark')}
-            />
-          </div>
-
-          <ModePanel
-            title={t('setting.system-default')}
-            description={`Follow system. Current system mode: ${appearance}.`}
-            active={appearanceMode === 'system'}
-            onClick={() => setAppearanceMode('system')}
-          />
+          <Tabs
+            value={appearanceMode}
+            onValueChange={(value) =>
+              setAppearanceMode(value as 'light' | 'dark' | 'system')
+            }
+          >
+            <TabsList variant="default">
+              <TabsTrigger value="light">
+                <div className="gap-1 text-label-sm flex items-center">
+                  <Sun size={16} />
+                  <span>{t('setting.light')}</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger value="dark">
+                <div className="gap-1 text-label-sm flex items-center">
+                  <Moon size={16} />
+                  <span>{t('setting.dark')}</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger value="system">
+                <div className="gap-1 text-label-sm flex items-center">
+                  <Monitor size={16} />
+                  <span>{t('setting.system-default')}</span>
+                </div>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col">
           <div className="gap-1 flex flex-col">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
-              Schema Customization
-            </div>
-            <div className="text-body-sm text-ds-text-neutral-muted-default">
-              4 default themes + 2 custom slots. Changes are auto-saved and
-              applied live.
+              Theme Customization
             </div>
           </div>
 
           <div className="gap-3 flex w-full items-center justify-between">
             <div className="min-w-0 flex-1 overflow-x-auto">
               <Tabs value={activeThemeId} onValueChange={handleThemeChange}>
-                <TabsList className="min-w-max">
+                <TabsList variant="default" className="min-w-max">
                   {themeOptions.map((option) => (
-                    <TabsTrigger key={option.id} value={option.id}>
-                      {option.label}
+                    <TabsTrigger
+                      key={option.id}
+                      value={option.id}
+                      variant="default"
+                    >
+                      <div className="gap-1 text-label-sm flex items-center">
+                        {option.label}
+                      </div>
                     </TabsTrigger>
                   ))}
                 </TabsList>
               </Tabs>
             </div>
 
-            <Button variant="secondary" onClick={resetActiveTheme}>
-              Reset
+            <Button
+              variant="outline"
+              size="sm"
+              buttonContent="text"
+              buttonRadius="full"
+              textWeight="semibold"
+              onClick={resetActiveTheme}
+            >
+              <div className="gap-1 text-label-sm flex items-center">
+                <RotateCcw />
+                <span>Reset</span>
+              </div>
             </Button>
           </div>
 
-          <div className="gap-3 flex flex-col">
+          <div className="bg-ds-bg-neutral-subtle-default rounded-2xl flex flex-col">
             <ColorSeedEditor
               label="Accent"
               value={accent}
@@ -460,12 +433,11 @@ export default function AppearanceSettings() {
               value={ink}
               onChange={handleInkChange}
             />
+            <ContrastSlider value={themeContrast} onChange={setThemeContrast} />
           </div>
-
-          <ContrastSlider value={themeContrast} onChange={setThemeContrast} />
         </div>
 
-        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
+        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 h-18 flex flex-row items-center justify-between">
           <div className="gap-1 flex max-w-[55%] flex-col">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.workspace-main-background')}
@@ -480,10 +452,10 @@ export default function AppearanceSettings() {
               setWorkspaceMainBackground(v as WorkspaceMainBackground)
             }
           >
-            <SelectTrigger className="w-56">
+            <SelectTrigger variant="secondary" className="w-56">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-input-bg-default border">
+            <SelectContent>
               <SelectGroup>
                 <SelectItem value="none">
                   {t('setting.workspace-main-background-none')}

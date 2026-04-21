@@ -73,32 +73,16 @@
       "dLDark": -0.08
     },
     "brand": { "source": "accent", "dC": 0.03 },
-    "status-running": { "source": "accent", "dH": 0, "dC": 0.02 },
-    "status-splitting": { "source": "accent", "dH": 25, "dC": 0.015 },
-    "status-pending": { "source": "accent", "dH": 72, "dC": 0.02 },
-    "status-error": {
-      "source": "accent",
-      "dH": 18,
-      "dC": 0.03,
-      "dLLight": -0.03,
-      "dLDark": 0.03
-    },
-    "status-reassigning": { "source": "accent", "dH": 58, "dC": 0.015 },
-    "status-completed": { "source": "accent", "dH": 140, "dC": 0.02 },
-    "status-blocked": { "source": "accent", "dH": 62, "dC": 0.015 },
-    "status-paused": { "source": "accent", "dH": 50, "dC": 0.01 },
-    "status-skipped": {
-      "source": "ink",
-      "dC": -0.06,
-      "dLLight": 0.12,
-      "dLDark": -0.12
-    },
-    "status-cancelled": {
-      "source": "ink",
-      "dC": -0.05,
-      "dLLight": 0.09,
-      "dLDark": -0.09
-    },
+    "status-running": { "source": "fixed" },
+    "status-splitting": { "source": "fixed" },
+    "status-pending": { "source": "fixed" },
+    "status-error": { "source": "fixed" },
+    "status-reassigning": { "source": "fixed" },
+    "status-completed": { "source": "fixed" },
+    "status-blocked": { "source": "fixed" },
+    "status-paused": { "source": "fixed" },
+    "status-skipped": { "source": "fixed" },
+    "status-cancelled": { "source": "fixed" },
     "single-agent": { "source": "fixed" },
     "workforce": { "source": "fixed" },
     "browser": { "source": "fixed" },

@@ -544,7 +544,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md"
+                className="!rounded-b-xl p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}
@@ -569,7 +569,7 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="gap-3 bg-ds-bg-neutral-inverse-default p-md flex flex-col">
+              <DialogContentSection className="gap-3 p-md flex flex-col">
                 <div className="gap-4 flex flex-col">
                   <div className="gap-sm flex items-center">
                     <div className="h-16 w-16 flex items-center justify-center">
@@ -627,7 +627,7 @@ export function AddWorker({
                   </button>
 
                   {showModelConfig && (
-                    <div className="gap-3 rounded-lg bg-ds-bg-neutral-subtle-default p-3 flex flex-col">
+                    <div className="gap-3 rounded-lg p-3 flex flex-col">
                       <label className="gap-2 text-sm flex items-center">
                         <input
                           type="checkbox"
@@ -688,7 +688,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md"
+                className="!rounded-b-xl p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}
