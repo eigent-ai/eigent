@@ -61,6 +61,8 @@
   "new-project": "新項目",
   "no-reply-received-task-continue": "沒有收到回复，任務繼續",
   "splitting-tasks": "拆分任務",
+  "working-on-tasks-for": "正在處理任務 · {{time}}",
+  "worked-for": "已工作 {{time}}",
   "start-task": "開始任務",
   "message-cannot-be-empty": "訊息不能為空",
   "remove-file": "移除文件",

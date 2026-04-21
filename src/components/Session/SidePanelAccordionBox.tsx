@@ -17,25 +17,41 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 
+const CONTENT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
+const LAYOUT_TRANSITION = {
+  layout: { duration: 0.28, ease: CONTENT_EASE },
+} as const;
+
+export type SidePanelAccordionRenderArgs = { open: boolean };
+
+export type SidePanelAccordionChildren =
+  | ReactNode
+  | ((state: SidePanelAccordionRenderArgs) => ReactNode);
+
 export function SidePanelAccordionBox({
   title,
   titleSuffix,
-  collapsedPreview,
   children,
   defaultOpen = true,
 }: {
   title: string;
   /** Small adornment rendered right after the title (e.g. count pill). */
   titleSuffix?: ReactNode;
-  /** Compact content rendered below the header when the accordion is collapsed. */
-  collapsedPreview?: ReactNode;
-  children: ReactNode;
+  /**
+   * Static: classic accordion — body hidden when closed.
+   * Render prop: body stays in one region; switch layout by `open` (e.g. summary vs full list).
+   */
+  children: SidePanelAccordionChildren;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const isRenderProp = typeof children === 'function';
+  const dynamicBody = isRenderProp
+    ? (children as (s: SidePanelAccordionRenderArgs) => ReactNode)({ open })
+    : null;
 
   return (
-    <div className="rounded-xl bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-disabled ease-in-out min-w-0 z-10 flex shrink-0 flex-col overflow-hidden border border-solid transition-all duration-200">
+    <div className="rounded-xl bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-disabled min-w-0 z-10 flex shrink-0 flex-col overflow-hidden border border-solid">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -52,31 +68,42 @@ export function SidePanelAccordionBox({
         </div>
         <ChevronDown
           className={cn(
-            'text-ds-text-neutral-muted-default h-4 w-4 shrink-0 transition-transform duration-200',
+            'text-ds-text-neutral-muted-default h-4 w-4 ease-out shrink-0 transition-transform duration-200',
             open ? 'rotate-0' : '-rotate-90'
           )}
           aria-hidden
         />
       </button>
 
-      {!open && collapsedPreview ? (
-        <div className="px-3 pb-3 w-full">{collapsedPreview}</div>
-      ) : null}
-
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            key="content"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="overflow-hidden"
-          >
-            <div className="px-3 pb-3 w-full">{children}</div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {isRenderProp ? (
+        <motion.div
+          layout
+          transition={LAYOUT_TRANSITION}
+          className="min-h-0 w-full overflow-hidden"
+        >
+          {dynamicBody != null ? (
+            <div className="px-2 pb-3 w-full">{dynamicBody}</div>
+          ) : null}
+        </motion.div>
+      ) : (
+        <AnimatePresence initial={false}>
+          {open ? (
+            <motion.div
+              key="static-content"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{
+                height: { duration: 0.22, ease: CONTENT_EASE },
+                opacity: { duration: 0.16, ease: CONTENT_EASE },
+              }}
+              className="overflow-hidden"
+            >
+              <div className="px-2 pb-3 w-full">{children as ReactNode}</div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      )}
     </div>
   );
 }

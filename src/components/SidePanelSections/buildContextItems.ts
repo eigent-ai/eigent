@@ -15,16 +15,105 @@
 import { getToolkitIcon } from '@/lib/toolkitIcons';
 import type { ContextItem } from './ContextSection';
 
+function addHint(set: Set<string>, raw: string) {
+  const t = raw.trim().toLowerCase();
+  if (!t) return;
+  set.add(t);
+  const noToolkit = t.replace(/\s+toolkit\s*$/i, '').trim();
+  if (noToolkit && noToolkit !== t) set.add(noToolkit);
+}
+
+function collectWorkerHintSets(agents: Agent[]) {
+  const skillHints = new Set<string>();
+  const connectorHints = new Set<string>();
+
+  for (const agent of agents) {
+    const info = agent.workerInfo;
+    if (!info) continue;
+
+    const mcp: unknown = info.mcp_tools;
+    if (mcp && typeof mcp === 'object') {
+      const servers = (mcp as { mcpServers?: Record<string, unknown> })
+        .mcpServers;
+      if (servers && typeof servers === 'object') {
+        for (const name of Object.keys(servers)) {
+          addHint(connectorHints, name);
+        }
+      }
+    }
+
+    const selected: unknown = info.selectedTools;
+    if (!Array.isArray(selected)) continue;
+    for (const raw of selected) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as {
+        name?: string;
+        key?: string;
+        toolkit?: string;
+        category?: { name?: string };
+      };
+      const label = item.name ?? item.key ?? item.toolkit;
+      if (!label) continue;
+      const categoryName = item.category?.name?.toLowerCase() ?? '';
+      const hints = categoryName === 'skill' ? skillHints : connectorHints;
+      addHint(hints, label);
+      if (item.toolkit) addHint(hints, item.toolkit);
+    }
+  }
+
+  return { skillHints, connectorHints };
+}
+
+function runtimeCategoryForToolkit(
+  toolkitName: string,
+  skillHints: Set<string>,
+  connectorHints: Set<string>
+): ContextItem['category'] {
+  const tn = toolkitName.trim().toLowerCase();
+  if (tn.includes('mcp')) return 'connector';
+  if (skillHints.has(tn)) return 'skill';
+  const noTk = tn.replace(/\s+toolkit\s*$/i, '').trim();
+  if (skillHints.has(noTk)) return 'skill';
+  if (connectorHints.has(tn)) return 'connector';
+  if (connectorHints.has(noTk)) return 'connector';
+  return 'tool';
+}
+
+function forEachRuntimeToolkit(
+  agents: Agent[],
+  taskRunning: TaskInfo[] | undefined,
+  fn: (toolkitName: string) => void
+) {
+  for (const agent of agents) {
+    for (const task of agent.tasks ?? []) {
+      for (const tk of task.toolkits ?? []) {
+        const name = tk.toolkitName;
+        if (!name || name === 'notice') continue;
+        fn(name);
+      }
+    }
+  }
+  for (const task of taskRunning ?? []) {
+    for (const tk of task.toolkits ?? []) {
+      const name = tk.toolkitName;
+      if (!name || name === 'notice') continue;
+      fn(name);
+    }
+  }
+}
+
 /**
  * Derive a flat, deduplicated list of context items (skills / connectors /
- * tools) from a set of agents' workerInfo.
+ * tools) from agents' workerInfo **and** runtime toolkit usage on subtasks.
  *
- * - `workerInfo.tools: string[]` → category "tool"
- * - `workerInfo.mcp_tools.mcpServers: { [name]: config }` → category "connector"
- * - `workerInfo.selectedTools: McpItem[]` with `category.name` → category "skill"
- *   (fallback to connector if category is not "skill")
+ * - `workerInfo` → configured tools, connectors, skills (as before)
+ * - `task.toolkits` / `taskRunning[].toolkits` from ACTIVATE_TOOLKIT → records
+ *   actual tool/skill/connector usage during the run (merged in, deduped)
  */
-export function buildContextItems(agents: Agent[]): ContextItem[] {
+export function buildContextItems(
+  agents: Agent[],
+  taskRunning?: TaskInfo[]
+): ContextItem[] {
   const seen = new Set<string>();
   const out: ContextItem[] = [];
 
@@ -34,6 +123,8 @@ export function buildContextItems(agents: Agent[]): ContextItem[] {
     seen.add(key);
     out.push(item);
   };
+
+  const { skillHints, connectorHints } = collectWorkerHintSets(agents);
 
   for (const agent of agents) {
     const info = agent.workerInfo;
@@ -92,6 +183,20 @@ export function buildContextItems(agents: Agent[]): ContextItem[] {
       }
     }
   }
+
+  forEachRuntimeToolkit(agents, taskRunning, (toolkitName) => {
+    const category = runtimeCategoryForToolkit(
+      toolkitName,
+      skillHints,
+      connectorHints
+    );
+    push({
+      id: toolkitName,
+      label: toolkitName,
+      category,
+      icon: getToolkitIcon(toolkitName, 16),
+    });
+  });
 
   return out;
 }

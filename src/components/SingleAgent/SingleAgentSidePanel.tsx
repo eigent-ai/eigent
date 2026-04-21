@@ -16,9 +16,11 @@ import { AgentFolderSection } from '@/components/SidePanelSections/AgentFolderSe
 import { ContextSection } from '@/components/SidePanelSections/ContextSection';
 import { ProgressSection } from '@/components/SidePanelSections/ProgressSection';
 import { buildContextItems } from '@/components/SidePanelSections/buildContextItems';
+import { collectSidePanelOutputFiles } from '@/components/SidePanelSections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
-import { useMemo } from 'react';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface SingleAgentSidePanelProps {
@@ -31,16 +33,44 @@ export function SingleAgentSidePanel({
   onToggleSidePanel: _onToggleSidePanel,
 }: SingleAgentSidePanelProps) {
   const { t } = useTranslation();
-  const { chatStore } = useChatStoreAdapter();
+  const { chatStore, projectStore } = useChatStoreAdapter();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
 
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
 
   const agents = activeTask?.taskAssigning ?? [];
-  const subtasks = agents[0]?.tasks ?? activeTask?.taskInfo ?? [];
-  const files = activeTask?.fileList ?? [];
-  const contextItems = useMemo(() => buildContextItems(agents), [agents]);
+  /** Prefer live `taskRunning` status (updated on TASK_STATE), keep plan order/text from agent tasks or taskInfo. */
+  const subtasks = useMemo(() => {
+    const base = agents[0]?.tasks ?? activeTask?.taskInfo ?? [];
+    const taskRunning = activeTask?.taskRunning ?? [];
+    if (taskRunning.length === 0) return base;
+    return base.map((t) => {
+      const live = taskRunning.find((r) => r.id === t.id);
+      if (!live) return t;
+      return { ...t, ...live, content: t.content || live.content };
+    });
+  }, [agents, activeTask?.taskInfo, activeTask?.taskRunning]);
+  const files = useMemo(
+    () => collectSidePanelOutputFiles(activeTask),
+    [activeTask]
+  );
+  const contextItems = useMemo(
+    () => buildContextItems(agents, activeTask?.taskRunning),
+    [agents, activeTask?.taskRunning]
+  );
+
+  const handleOpenAgentFile = useCallback(
+    (file: FileInfo) => {
+      if (!chatStore?.activeTaskId) return;
+      chatStore.setSelectedFile(chatStore.activeTaskId, file);
+      setActiveWorkspaceTab('inbox', {
+        clearInboxForProjectId: projectStore.activeProjectId ?? null,
+      });
+    },
+    [chatStore, projectStore.activeProjectId, setActiveWorkspaceTab]
+  );
 
   if (!isSidePanelVisible) {
     return null;
@@ -73,6 +103,7 @@ export function SingleAgentSidePanel({
             defaultValue: 'Agent Folder',
           })}
           files={files}
+          onOpenFile={handleOpenAgentFile}
         />
       </div>
     </div>

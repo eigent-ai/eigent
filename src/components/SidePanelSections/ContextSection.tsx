@@ -17,6 +17,7 @@ import {
   CategoryLabel,
   SidePanelListRow,
 } from '@/components/SidePanelSections/primitives';
+import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
@@ -66,7 +67,11 @@ export function ContextSection({ title, items }: ContextSectionProps) {
         <div className="flex flex-col">
           {grouped.map(({ category, items: groupItems }) => (
             <div key={category} className="flex flex-col">
-              <CategoryLabel>{CATEGORY_LABEL[category]}</CategoryLabel>
+              <CategoryLabel
+                className={cn(category === 'tool' && 'text-label-xs')}
+              >
+                {CATEGORY_LABEL[category]}
+              </CategoryLabel>
               <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
                 <AnimatePresence initial={false}>
                   {groupItems.map((item) => (
@@ -81,6 +86,7 @@ export function ContextSection({ title, items }: ContextSectionProps) {
                       <SidePanelListRow
                         leading={item.icon}
                         onClick={item.onClick}
+                        interactiveHover
                       >
                         {item.label}
                       </SidePanelListRow>

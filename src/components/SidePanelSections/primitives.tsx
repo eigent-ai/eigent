@@ -30,9 +30,20 @@ export function CountPill({ count }: { count: number }) {
 /**
  * Small muted category label for grouping list items.
  */
-export function CategoryLabel({ children }: { children: ReactNode }) {
+export function CategoryLabel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="text-ds-text-neutral-muted-default text-body-sm px-1 pb-1 pt-2 first:pt-0">
+    <div
+      className={cn(
+        'text-ds-text-neutral-muted-default text-body-sm px-1 pb-1 pt-2 first:pt-0',
+        className
+      )}
+    >
       {children}
     </div>
   );
@@ -44,6 +55,11 @@ type SidePanelListRowProps = {
   trailing?: ReactNode;
   disabled?: boolean;
   onClick?: () => void;
+  /**
+   * Pointer + subtle hover/active backgrounds without an action (e.g. read-only list rows).
+   * When `onClick` is set, focus ring is included; for hover-only rows it is omitted.
+   */
+  interactiveHover?: boolean;
   className?: string;
 };
 
@@ -52,15 +68,31 @@ type SidePanelListRowProps = {
  * Rendered as a button when `onClick` is provided, otherwise a div.
  */
 export const SidePanelListRow = forwardRef<HTMLElement, SidePanelListRowProps>(
-  ({ leading, children, trailing, disabled, onClick, className }, ref) => {
+  (
+    {
+      leading,
+      children,
+      trailing,
+      disabled,
+      onClick,
+      interactiveHover,
+      className,
+    },
+    ref
+  ) => {
+    const showAffordance = Boolean(onClick || interactiveHover);
     const base = cn(
       'group gap-2 px-1.5 py-1.5 rounded-md min-w-0 w-full flex items-center',
       'text-ds-text-neutral-default-default text-body-sm text-left',
       'transition-colors',
       disabled
         ? 'opacity-50 pointer-events-none'
-        : onClick
-          ? 'hover:bg-ds-bg-neutral-default-hover cursor-pointer'
+        : showAffordance
+          ? cn(
+              'cursor-pointer hover:bg-ds-bg-neutral-subtle-default active:bg-ds-bg-neutral-subtle-hover',
+              onClick &&
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus/40'
+            )
           : '',
       className
     );
@@ -101,9 +133,8 @@ export const SidePanelListRow = forwardRef<HTMLElement, SidePanelListRowProps>(
 SidePanelListRow.displayName = 'SidePanelListRow';
 
 /**
- * Progress circle. `done` shows a filled circle with a check icon; otherwise
- * renders an empty outlined circle (all non-done states share the empty look,
- * per design spec).
+ * Progress circle. Incomplete: neutral subtle fill so the ring reads on any
+ * panel background. Complete: success subtle fill, strong border and check.
  */
 export function ProgressCircle({
   done,
@@ -115,15 +146,15 @@ export function ProgressCircle({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full border',
+        'inline-flex shrink-0 items-center justify-center rounded-full border border-solid',
         done
-          ? 'bg-ds-bg-status-completed-default-default border-ds-border-status-completed-default-default text-ds-text-brand-inverse-default'
-          : 'border-ds-border-neutral-default-default bg-transparent text-transparent'
+          ? 'bg-ds-bg-success-subtle-default border-ds-border-success-strong-default text-ds-text-success-strong-default'
+          : 'border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default'
       )}
       style={{ width: size, height: size }}
       aria-hidden
     >
-      {done ? <Check size={Math.max(8, size - 6)} strokeWidth={3} /> : null}
+      {done ? <Check size={Math.max(8, size - 6)} strokeWidth={4} /> : null}
     </span>
   );
 }

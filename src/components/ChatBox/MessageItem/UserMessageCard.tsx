@@ -128,7 +128,7 @@ export function UserMessageCard({
 
   return (
     <div key={id} className={cn('group/msg relative w-full', className)}>
-      <div className="rounded-xl p-sm bg-ds-bg-neutral-default-default w-full overflow-visible">
+      <div className="rounded-xl py-2 px-4 bg-ds-bg-neutral-default-default w-full overflow-visible">
         {attaches && attaches.length > 0 && (
           <div className="mb-2 gap-1 relative box-border flex w-full flex-wrap items-start">
             {(() => {

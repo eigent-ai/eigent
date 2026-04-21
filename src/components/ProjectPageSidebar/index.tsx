@@ -23,7 +23,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -411,35 +411,36 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <AnimatePresence initial={false}>
-              {!projectSidebarFolded ? (
-                <motion.div
-                  key="nav-list"
-                  className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden"
-                  initial={false}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={PROJECT_SIDEBAR_FOLD_SPRING}
-                >
-                  <NavList
-                    className="min-h-0 mt-6 flex flex-1 flex-col"
-                    sessions={navSessions}
-                    activeSessionId={
-                      activeWorkspaceTab === 'session'
-                        ? chatStore.activeTaskId
-                        : null
-                    }
-                    onSessionClick={(id) => {
-                      chatStore.setActiveTaskId(id);
-                      setActiveWorkspaceTab('session');
-                    }}
-                    onDeleteSession={handleDeleteSession}
-                    onShowAll={handleShowAllSessions}
-                    showAllActive={activeWorkspaceTab === 'sessions'}
-                  />
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+            <motion.div
+              className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden"
+              initial={false}
+              animate={{
+                opacity: projectSidebarFolded ? 0 : 1,
+                y: projectSidebarFolded ? -6 : 0,
+              }}
+              transition={PROJECT_SIDEBAR_FOLD_SPRING}
+              aria-hidden={projectSidebarFolded}
+              style={{
+                pointerEvents: projectSidebarFolded ? 'none' : undefined,
+              }}
+            >
+              <NavList
+                className="min-h-0 mt-6 flex flex-1 flex-col"
+                sessions={navSessions}
+                activeSessionId={
+                  activeWorkspaceTab === 'session'
+                    ? chatStore.activeTaskId
+                    : null
+                }
+                onSessionClick={(id) => {
+                  chatStore.setActiveTaskId(id);
+                  setActiveWorkspaceTab('session');
+                }}
+                onDeleteSession={handleDeleteSession}
+                onShowAll={handleShowAllSessions}
+                showAllActive={activeWorkspaceTab === 'sessions'}
+              />
+            </motion.div>
           </div>
 
           <BottomAction

@@ -15,6 +15,7 @@
 import { AgentFolderSection } from '@/components/SidePanelSections/AgentFolderSection';
 import { AgentPoolSection } from '@/components/SidePanelSections/AgentPoolSection';
 import { buildContextItems } from '@/components/SidePanelSections/buildContextItems';
+import { collectSidePanelOutputFiles } from '@/components/SidePanelSections/collectSidePanelOutputFiles';
 import { ContextSection } from '@/components/SidePanelSections/ContextSection';
 import { ProgressSection } from '@/components/SidePanelSections/ProgressSection';
 import { Button } from '@/components/ui/button';
@@ -22,8 +23,9 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import ExpandedOverlay from '@/components/Workforce/ExpandedOverlay';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Maximize2, X } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const WORKFORCE_MAIN_SURFACE_CLASS =
@@ -50,15 +52,43 @@ export function WorkforceSidePanel({
   onCloseExpandedOverlay,
 }: WorkforceSidePanelProps) {
   const { t } = useTranslation();
-  const { chatStore } = useChatStoreAdapter();
+  const { chatStore, projectStore } = useChatStoreAdapter();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
 
   const agents = activeTask?.taskAssigning ?? [];
-  const subtasks = activeTask?.taskInfo ?? [];
-  const files = activeTask?.fileList ?? [];
-  const contextItems = useMemo(() => buildContextItems(agents), [agents]);
+  /** Subtask status is updated in `taskRunning` (e.g. TASK_STATE); `taskInfo` keeps plan text/order. */
+  const subtasks = useMemo(() => {
+    const taskInfo = activeTask?.taskInfo ?? [];
+    const taskRunning = activeTask?.taskRunning ?? [];
+    if (taskRunning.length === 0) return taskInfo;
+    return taskInfo.map((t) => {
+      const live = taskRunning.find((r) => r.id === t.id);
+      if (!live) return t;
+      return { ...t, ...live, content: t.content || live.content };
+    });
+  }, [activeTask?.taskInfo, activeTask?.taskRunning]);
+  const files = useMemo(
+    () => collectSidePanelOutputFiles(activeTask),
+    [activeTask]
+  );
+  const contextItems = useMemo(
+    () => buildContextItems(agents, activeTask?.taskRunning),
+    [agents, activeTask?.taskRunning]
+  );
+
+  const handleOpenAgentFile = useCallback(
+    (file: FileInfo) => {
+      if (!chatStore?.activeTaskId) return;
+      chatStore.setSelectedFile(chatStore.activeTaskId, file);
+      setActiveWorkspaceTab('inbox', {
+        clearInboxForProjectId: projectStore.activeProjectId ?? null,
+      });
+    },
+    [chatStore, projectStore.activeProjectId, setActiveWorkspaceTab]
+  );
 
   return (
     <>
@@ -130,6 +160,7 @@ export function WorkforceSidePanel({
                 defaultValue: 'Agent Folder',
               })}
               files={files}
+              onOpenFile={handleOpenAgentFile}
             />
           </div>
         </div>

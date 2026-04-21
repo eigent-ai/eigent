@@ -79,7 +79,8 @@ function iconFor(file: FileInfo): LucideIcon {
 interface AgentFolderSectionProps {
   title: string;
   files: FileInfo[];
-  onOpenFile?: (file: FileInfo) => void;
+  /** Opens the Folder workspace tab and selects this file (parent supplies navigation). */
+  onOpenFile: (file: FileInfo) => void;
 }
 
 export function AgentFolderSection({
@@ -126,7 +127,7 @@ export function AgentFolderSection({
                         className={cn('text-ds-icon-neutral-default-default')}
                       />
                     }
-                    onClick={onOpenFile ? () => onOpenFile(file) : undefined}
+                    onClick={() => onOpenFile(file)}
                   >
                     {file.name || file.path}
                   </SidePanelListRow>

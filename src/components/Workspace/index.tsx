@@ -149,6 +149,9 @@ export default function Workspace() {
     const attachesToSend =
       JSON.parse(JSON.stringify(chatStore.tasks[taskId]?.attaches)) || [];
 
+    // Enter the live session immediately; task startup continues in the background.
+    setActiveWorkspaceTab('session');
+
     try {
       await chatStore.startTask(
         taskId,
@@ -162,8 +165,8 @@ export default function Workspace() {
       chatStore.setHasWaitComfirm(taskId, true);
       chatStore.setAttaches(taskId, []);
       setMessage('');
-      setActiveWorkspaceTab('session');
     } catch (err: unknown) {
+      setActiveWorkspaceTab('workforce');
       console.error('Failed to start task:', err);
       toast.error(
         err instanceof Error

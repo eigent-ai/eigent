@@ -480,13 +480,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             }}
             className="rounded-2xl bg-ds-bg-neutral-muted-disabled w-full"
           >
-            <TabsList
-              variant="outline"
-              className="rounded-t-2xl border-ds-border-neutral-default-default px-4 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid"
-            >
+            <TabsList variant="default" className="w-full">
               <TabsTrigger
                 value="schedule"
-                className="flex-1"
+                className="text-body-sm gap-2 flex-1"
                 disabled={!!selectedTrigger}
               >
                 <AlarmClockIcon className="h-4 w-4" />
@@ -494,7 +491,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               </TabsTrigger>
               <TabsTrigger
                 value="app"
-                className="flex-1"
+                className="text-body-sm gap-2 flex-1"
                 disabled={!!selectedTrigger}
               >
                 <CableIcon className="h-4 w-4" />

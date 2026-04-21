@@ -60,11 +60,15 @@ export function BottomAction({
             <button
               type="button"
               onClick={onEndProjectClick}
-              className={cn(workspaceTabButtonClass(false), folded && 'gap-0')}
+              className={cn(
+                workspaceTabButtonClass(false),
+                'bg-ds-bg-error-subtle-default hover:bg-ds-bg-status-error-subtle-hover active:bg-ds-bg-status-error-subtle-active',
+                folded && 'gap-0'
+              )}
               aria-label={endProjectAriaLabel}
             >
               <Power
-                className="h-4 w-4 text-ds-icon-error-default-default shrink-0"
+                className="h-4 w-4 !text-ds-icon-error-default-default shrink-0"
                 aria-hidden
               />
               <motion.span

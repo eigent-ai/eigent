@@ -128,6 +128,8 @@ export default function Home() {
   const shellPanelGroupImperativeRef = useRef<ImperativePanelGroupHandle>(null);
   const projectSidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const applyingSidebarLayoutRef = useRef(false);
+  const sidebarLayoutAnimationFrameRef = useRef<number | null>(null);
+  const hasInitializedSidebarLayoutRef = useRef(false);
   /** Expanded sidebar width in px; only user drag (or stored value) changes this — window resize adjusts % to keep this width. */
   const sidebarWidthPxRef = useRef(readStoredSidebarWidthPx());
   const persistSidebarWidthTimeoutRef = useRef<ReturnType<
@@ -171,28 +173,83 @@ export default function Home() {
     }, 250);
   }, []);
 
+  const setShellPanelLayout = useCallback(
+    (layout: number[], animate: boolean) => {
+      const group = shellPanelGroupImperativeRef.current;
+      if (!group) return;
+
+      const target = layout.map(clampPct);
+
+      if (sidebarLayoutAnimationFrameRef.current != null) {
+        cancelAnimationFrame(sidebarLayoutAnimationFrameRef.current);
+        sidebarLayoutAnimationFrameRef.current = null;
+      }
+
+      const applyFinalLayout = () => {
+        group.setLayout(target);
+        requestAnimationFrame(() => {
+          applyingSidebarLayoutRef.current = false;
+        });
+      };
+
+      const current = group.getLayout();
+      const shouldAnimate =
+        animate &&
+        current.length === target.length &&
+        current.some((value, index) => Math.abs(value - target[index]) > 0.1);
+
+      applyingSidebarLayoutRef.current = true;
+
+      if (!shouldAnimate) {
+        applyFinalLayout();
+        return;
+      }
+
+      const from = [...current];
+      const durationMs = 260;
+      const start = performance.now();
+
+      const tick = (now: number) => {
+        const progress = Math.min(1, (now - start) / durationMs);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        group.setLayout(
+          from.map((value, index) => value + (target[index] - value) * eased)
+        );
+
+        if (progress < 1) {
+          sidebarLayoutAnimationFrameRef.current = requestAnimationFrame(tick);
+          return;
+        }
+
+        sidebarLayoutAnimationFrameRef.current = null;
+        applyFinalLayout();
+      };
+
+      sidebarLayoutAnimationFrameRef.current = requestAnimationFrame(tick);
+    },
+    []
+  );
+
   /** Recompute sidebar % from fixed px so the rail does not grow/shrink when the window resizes. */
-  const applyExpandedSidebarLayout = useCallback(() => {
-    const shell = shellPanelGroupRef.current;
-    const group = shellPanelGroupImperativeRef.current;
-    if (!shell || !group) return;
-    if (usePageTabStore.getState().projectSidebarFolded) return;
-    const w = shell.getBoundingClientRect().width;
-    if (w <= 0) return;
-    const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
-    const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
-    const px = Math.min(
-      SIDEBAR_MAX_PX,
-      Math.max(SIDEBAR_MIN_PX, sidebarWidthPxRef.current)
-    );
-    let pct = (px / w) * 100;
-    pct = Math.min(maxPct, Math.max(minPct, pct));
-    applyingSidebarLayoutRef.current = true;
-    group.setLayout([pct, 100 - pct]);
-    requestAnimationFrame(() => {
-      applyingSidebarLayoutRef.current = false;
-    });
-  }, []);
+  const applyExpandedSidebarLayout = useCallback(
+    (animate: boolean = false) => {
+      const shell = shellPanelGroupRef.current;
+      if (!shell) return;
+      if (usePageTabStore.getState().projectSidebarFolded) return;
+      const w = shell.getBoundingClientRect().width;
+      if (w <= 0) return;
+      const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
+      const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
+      const px = Math.min(
+        SIDEBAR_MAX_PX,
+        Math.max(SIDEBAR_MIN_PX, sidebarWidthPxRef.current)
+      );
+      let pct = (px / w) * 100;
+      pct = Math.min(maxPct, Math.max(minPct, pct));
+      setShellPanelLayout([pct, 100 - pct], animate);
+    },
+    [setShellPanelLayout]
+  );
 
   const handleShellPanelLayout = useCallback(
     (sizes: number[]) => {
@@ -240,26 +297,21 @@ export default function Home() {
   /** Expanded: apply stored px width when leaving folded or on first paint. */
   useLayoutEffect(() => {
     if (projectSidebarFolded) return;
-    applyExpandedSidebarLayout();
+    applyExpandedSidebarLayout(hasInitializedSidebarLayoutRef.current);
+    hasInitializedSidebarLayoutRef.current = true;
   }, [projectSidebarFolded, applyExpandedSidebarLayout]);
 
   /** Folded: exact rail + main split (`setLayout`); update when shell width changes rail %. */
   useLayoutEffect(() => {
     if (!projectSidebarFolded) return;
-    const shell = shellPanelGroupRef.current;
-    const group = shellPanelGroupImperativeRef.current;
-    if (!shell || !group) return;
-    const w = shell.getBoundingClientRect().width;
-    if (w <= 0) return;
-
-    applyingSidebarLayoutRef.current = true;
     const rail = sidebarPct.rail;
     const main = Math.min(99, Math.max(0, 100 - rail));
-    group.setLayout([rail, main]);
-    requestAnimationFrame(() => {
-      applyingSidebarLayoutRef.current = false;
-    });
-  }, [projectSidebarFolded, sidebarPct.rail]);
+    setShellPanelLayout(
+      [rail, main],
+      hasInitializedSidebarLayoutRef.current && sidebarWidthPxRef.current > 0
+    );
+    hasInitializedSidebarLayoutRef.current = true;
+  }, [projectSidebarFolded, sidebarPct.rail, setShellPanelLayout]);
 
   useEffect(() => {
     const el = shellPanelGroupRef.current;
@@ -296,6 +348,9 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
+      if (sidebarLayoutAnimationFrameRef.current != null) {
+        cancelAnimationFrame(sidebarLayoutAnimationFrameRef.current);
+      }
       if (persistSidebarWidthTimeoutRef.current) {
         clearTimeout(persistSidebarWidthTimeoutRef.current);
       }

@@ -61,6 +61,8 @@
   "new-project": "Новый проект",
   "no-reply-received-task-continue": "Ответ не получен, задача продолжается",
   "splitting-tasks": "Разделение задач",
+  "working-on-tasks-for": "Работа над задачами · {{time}}",
+  "worked-for": "Работал {{time}}",
   "start-task": "Начать задачу",
   "message-cannot-be-empty": "Сообщение не может быть пустым",
   "remove-file": "Удалить файл",

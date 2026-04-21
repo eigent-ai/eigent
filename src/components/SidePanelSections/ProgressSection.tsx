@@ -34,9 +34,9 @@ interface ProgressSectionProps {
 export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
   const count = subtasks.length;
 
-  const collapsedPreview =
+  const collapsedStrip =
     count > 0 ? (
-      <div className="gap-1 min-w-0 flex items-center overflow-hidden">
+      <div className="gap-1 min-w-0 mx-1 flex items-center overflow-hidden">
         <AnimatePresence initial={false}>
           {subtasks.map((task, idx) => (
             <motion.span
@@ -60,34 +60,42 @@ export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
     <SidePanelAccordionBox
       title={title}
       titleSuffix={count > 0 ? <CountPill count={count} /> : null}
-      collapsedPreview={collapsedPreview}
     >
-      {count === 0 ? (
-        <div className="text-ds-text-neutral-muted-default text-body-sm px-1 py-1">
-          No subtasks yet
-        </div>
-      ) : (
-        <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
-          <AnimatePresence initial={false}>
-            {subtasks.map((task) => (
-              <motion.li
-                key={task.id}
-                layout
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-              >
-                <SidePanelListRow
-                  leading={<ProgressCircle done={isDone(task)} />}
+      {({ open }) => {
+        if (!open) {
+          return collapsedStrip;
+        }
+        if (count === 0) {
+          return (
+            <div className="text-ds-text-neutral-muted-default text-body-sm px-1 py-1">
+              No subtasks yet
+            </div>
+          );
+        }
+        return (
+          <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
+            <AnimatePresence initial={false}>
+              {subtasks.map((task) => (
+                <motion.li
+                  key={task.id}
+                  layout
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
                 >
-                  {task.content}
-                </SidePanelListRow>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </motion.ul>
-      )}
+                  <SidePanelListRow
+                    className="hover:bg-ds-bg-neutral-subtle-default cursor-pointer"
+                    leading={<ProgressCircle done={isDone(task)} />}
+                  >
+                    {task.content}
+                  </SidePanelListRow>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </motion.ul>
+        );
+      }}
     </SidePanelAccordionBox>
   );
 }

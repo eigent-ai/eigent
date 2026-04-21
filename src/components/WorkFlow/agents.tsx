@@ -32,6 +32,21 @@ export interface AgentDisplayInfo {
   bgColorLight: string;
 }
 
+/**
+ * Classes for the small top-right role badge on agent tiles. Must be full literal
+ * strings (including `!`) so Tailwind emits them, and `!text-*` beats
+ * `button .lucide` in `src/style/index.css`.
+ */
+export const WORKFLOW_AGENT_SUB_ICON_CLASS: Record<WorkflowAgentType, string> =
+  {
+    developer_agent:
+      '!h-[10px] !w-[10px] shrink-0 !text-ds-text-terminal-default-default',
+    browser_agent: '!h-[10px] !w-[10px] shrink-0 !text-blue-700',
+    document_agent: '!h-[10px] !w-[10px] shrink-0 !text-yellow-700',
+    multi_modal_agent: '!h-[10px] !w-[10px] shrink-0 !text-fuchsia-700',
+    social_media_agent: '!h-[10px] !w-[10px] shrink-0 !text-purple-700',
+  };
+
 export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   developer_agent: {
     name: 'Developer Agent',

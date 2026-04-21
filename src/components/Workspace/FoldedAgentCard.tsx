@@ -28,7 +28,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
+import {
+  agentMap,
+  WORKFLOW_AGENT_SUB_ICON_CLASS,
+  type WorkflowAgentType,
+} from '@/components/WorkFlow/agents';
 import { getAgentToolkitLabels } from '@/components/WorkFlow/agentToolkitLabels';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { cn } from '@/lib/utils';
@@ -50,9 +54,8 @@ import { useTranslation } from 'react-i18next';
 /** Sub icons aligned with `WorkforceMenu` / `ui/menu-button` → `MenuToggleItem` (top-right badge, 10px). */
 function getWorkforceMenuStyleSubIcon(agentType: string): ReactNode {
   const key = agentType as WorkflowAgentType;
-  if (!agentMap[key]) return null;
-  const textColor = agentMap[key].textColor;
-  const iconClass = cn('!h-[10px] !w-[10px] shrink-0', textColor);
+  const iconClass = WORKFLOW_AGENT_SUB_ICON_CLASS[key];
+  if (!iconClass) return null;
   switch (key) {
     case 'developer_agent':
       return <CodeXml className={iconClass} />;

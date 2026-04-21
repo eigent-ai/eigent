@@ -67,8 +67,8 @@ function getAgentSubIcon(agentType: string): ReactNode {
 function AgentLeadingIcon({ agentType }: { agentType: string }) {
   const subIcon = getAgentSubIcon(agentType);
   return (
-    <div className="h-6 w-6 text-ds-text-neutral-muted-default relative inline-flex shrink-0 items-center justify-center self-center">
-      <Bot className="h-6 w-6" strokeWidth={2} aria-hidden />
+    <div className="h-6 w-6 text-ds-text-neutral-muted-default bg-ds-bg-neutral-subtle-default relative inline-flex shrink-0 items-center justify-center self-center">
+      <Bot className="h-4 w-4" strokeWidth={2} aria-hidden />
       {subIcon != null && (
         <span className="-right-1 -top-1 absolute inline-flex items-center justify-center [&_svg]:shrink-0">
           {subIcon}
@@ -85,11 +85,33 @@ function AgentRow({ agent }: { agent: Agent }) {
 
   return (
     <SidePanelListRow
+      className="rounded-lg bg-ds-bg-neutral-subtle-default"
       leading={<AgentLeadingIcon agentType={agent.type} />}
       disabled={!active}
     >
       {name}
     </SidePanelListRow>
+  );
+}
+
+function AgentList({ agents }: { agents: Agent[] }) {
+  return (
+    <motion.ul layout className="gap-2 p-0 m-0 flex list-none flex-col">
+      <AnimatePresence initial={false} mode="popLayout">
+        {agents.map((agent) => (
+          <motion.li
+            key={agent.agent_id}
+            layout
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            <AgentRow agent={agent} />
+          </motion.li>
+        ))}
+      </AnimatePresence>
+    </motion.ul>
   );
 }
 
@@ -108,46 +130,19 @@ export function AgentPoolSection({ title, agents }: AgentPoolSectionProps) {
     </div>
   );
 
-  const collapsedPreview =
-    activeAgents.length > 0 ? (
-      <ul className="p-0 m-0 space-y-0.5 list-none">
-        <AnimatePresence initial={false}>
-          {activeAgents.map((agent) => (
-            <motion.li
-              key={agent.agent_id}
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              <AgentRow agent={agent} />
-            </motion.li>
-          ))}
-        </AnimatePresence>
-      </ul>
-    ) : null;
-
   return (
-    <SidePanelAccordionBox title={title} collapsedPreview={collapsedPreview}>
-      {ordered.length === 0 ? (
-        emptyState
-      ) : (
-        <ul className="p-0 m-0 space-y-0.5 list-none">
-          <AnimatePresence initial={false}>
-            {ordered.map((agent) => (
-              <motion.li
-                key={agent.agent_id}
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-              >
-                <AgentRow agent={agent} />
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
+    <SidePanelAccordionBox title={title} defaultOpen={false}>
+      {({ open }) => {
+        if (ordered.length === 0) {
+          return open ? emptyState : null;
+        }
+        if (!open) {
+          return activeAgents.length > 0 ? (
+            <AgentList agents={activeAgents} />
+          ) : null;
+        }
+        return <AgentList agents={ordered} />;
+      }}
     </SidePanelAccordionBox>
   );
 }

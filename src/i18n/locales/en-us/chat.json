@@ -61,6 +61,8 @@
   "new-project": "Untitled Project",
   "no-reply-received-task-continue": "No reply received, task continue",
   "splitting-tasks": "Splitting Tasks",
+  "working-on-tasks-for": "Working on tasks for {{time}}",
+  "worked-for": "Worked for {{time}}",
   "start-task": "Start Task",
   "message-cannot-be-empty": "Message cannot be empty",
   "remove-file": "Remove file",

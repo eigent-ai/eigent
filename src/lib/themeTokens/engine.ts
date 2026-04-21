@@ -160,7 +160,8 @@ type FixedShade =
   | '900'
   | '950';
 
-const SYSTEM_STATUS_SHADE_BY_EMPHASIS: Record<
+/** Light: pale surfaces → saturated accents (50 / 300 / 600 / 900). */
+const SYSTEM_STATUS_SHADE_BY_EMPHASIS_LIGHT: Record<
   Extract<Emphasis, 'subtle' | 'muted' | 'default' | 'strong'>,
   Record<State, FixedShade>
 > = {
@@ -195,6 +196,49 @@ const SYSTEM_STATUS_SHADE_BY_EMPHASIS: Record<
     selected: '950',
     focus: '950',
     disabled: '900',
+  },
+};
+
+/**
+ * Dark: reverse the ramp so “subtle” reads as a deep tint and “strong” as a
+ * light accent — subtle→950, muted→600, default→300, strong→50 (mirrored
+ * hover/active steps vs. light).
+ */
+const SYSTEM_STATUS_SHADE_BY_EMPHASIS_DARK: Record<
+  Extract<Emphasis, 'subtle' | 'muted' | 'default' | 'strong'>,
+  Record<State, FixedShade>
+> = {
+  subtle: {
+    default: '950',
+    hover: '900',
+    active: '800',
+    selected: '800',
+    focus: '900',
+    disabled: '950',
+  },
+  muted: {
+    default: '600',
+    hover: '500',
+    active: '400',
+    selected: '400',
+    focus: '500',
+    disabled: '600',
+  },
+  default: {
+    default: '300',
+    hover: '400',
+    active: '500',
+    selected: '500',
+    focus: '400',
+    disabled: '300',
+  },
+  strong: {
+    default: '50',
+    hover: '100',
+    active: '100',
+    selected: '100',
+    focus: '100',
+    disabled: '50',
   },
 };
 
@@ -256,9 +300,14 @@ function getFixedShade(tone: Tone, shade: FixedShade): `#${string}` | null {
 function getSystemStatusShade(
   tone: Tone,
   emphasis: Extract<Emphasis, 'subtle' | 'muted' | 'default' | 'strong'>,
-  state: State
+  state: State,
+  mode: Mode
 ): `#${string}` | null {
-  const shade = SYSTEM_STATUS_SHADE_BY_EMPHASIS[emphasis][state];
+  const table =
+    mode === 'dark'
+      ? SYSTEM_STATUS_SHADE_BY_EMPHASIS_DARK
+      : SYSTEM_STATUS_SHADE_BY_EMPHASIS_LIGHT;
+  const shade = table[emphasis][state];
   return getFixedShade(tone, shade);
 }
 
@@ -741,8 +790,10 @@ function buildSemanticTokens(
 
           if (SYSTEM_STATUS_TONES.has(tone) && emph !== 'inverse') {
             if (emph === 'transparent') {
+              const transparentShade: FixedShade =
+                contract.mode === 'dark' ? '300' : '600';
               const baseHex =
-                getFixedShade(tone, '600') ??
+                getFixedShade(tone, transparentShade) ??
                 oklchToHex(toneBaseColor(tone, contract.mode, seed, element));
               const stateAlpha =
                 SYSTEM_STATUS_TRANSPARENT_OPACITY_BY_STATE[state as State] ??
@@ -761,7 +812,8 @@ function buildSemanticTokens(
                 Emphasis,
                 'subtle' | 'muted' | 'default' | 'strong'
               >,
-              state
+              state,
+              contract.mode
             );
             if (statusShade) {
               tokens[tokenKey] =
