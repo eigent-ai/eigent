@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ShinyText from '@/components/ui/ShinyText/ShinyText';
+import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
@@ -20,8 +22,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -54,9 +58,23 @@ function getTaskElapsedMs(task: { taskTime: number; elapsed: number }): number {
   return Math.max(0, task.elapsed);
 }
 
-function mergeAgentLogs(taskAssigning: Agent[] | undefined): AgentMessage[] {
+type TaggedLog = {
+  entry: AgentMessage;
+  agentId: string;
+  agentType: string;
+  agentName: string;
+};
+
+function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
   if (!taskAssigning?.length) return [];
-  return taskAssigning.flatMap((a) => a.log ?? []);
+  return taskAssigning.flatMap((a) =>
+    (a.log ?? []).map((entry) => ({
+      entry,
+      agentId: a.agent_id,
+      agentType: a.type,
+      agentName: agentMap[a.type as WorkflowAgentType]?.name ?? a.name,
+    }))
+  );
 }
 
 function titleCaseMethod(method: string): string {
@@ -85,8 +103,6 @@ function toolRowTitle(toolkitName: string, method: string): string {
 }
 
 type ToolSegment = {
-  type: 'tool';
-  /** Stable for list keys (index in merged agent log at activation). */
   id: string;
   rowTitle: string;
   toolkitName: string;
@@ -96,18 +112,154 @@ type ToolSegment = {
   status: 'running' | 'done';
 };
 
-type AgentSegment = { type: 'agent'; id: string; text: string };
+/**
+ * One "action" — a bounded unit of agent work delimited by either an
+ * `ACTIVATE_AGENT` message (reasoning for the next tool burst) or an
+ * agent-id change in the chronological log.
+ */
+export type ActionGroup = {
+  id: string;
+  agentId: string;
+  agentType: string;
+  agentName: string;
+  /** The reasoning text from ACTIVATE_AGENT, if one bounded this group. */
+  reasoning: string | null;
+  /** `NOTICE` messages collected while this group was active. */
+  notices: string[];
+  /** Tool invocations that fired while this group was active. */
+  tools: ToolSegment[];
+  /**
+   * `running` until either a newer group starts, the agent emits
+   * `DEACTIVATE_AGENT`, or the overall task leaves RUNNING. The component
+   * re-derives final status with the task-level context.
+   */
+  status: 'running' | 'done';
+  /**
+   * `preparation` is the synthetic group that collapses the workforce's
+   * leading `register agent` toolkit calls into one "Preparing agents" row.
+   * Everything else is `action`.
+   */
+  kind: 'preparation' | 'action';
+};
 
-type LogSegment = AgentSegment | ToolSegment;
+const PREPARATION_GROUP_ID = 'g-prep';
+const PREPARATION_GROUP_LABEL = 'Preparing agents';
 
-function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
-  const segments: LogSegment[] = [];
+function isRegisterAgentEvent(entry: AgentMessage): boolean {
+  if (
+    entry.step !== AgentStep.ACTIVATE_TOOLKIT &&
+    entry.step !== AgentStep.DEACTIVATE_TOOLKIT
+  ) {
+    return false;
+  }
+  return (
+    (entry.data?.method_name ?? '').trim().toLowerCase() === 'register agent'
+  );
+}
 
-  for (let entryIndex = 0; entryIndex < merged.length; entryIndex++) {
-    const entry = merged[entryIndex]!;
+/**
+ * Exported for unit tests. Folds a tagged, chronological log into
+ * `ActionGroup[]`, pairing DEACTIVATE_TOOLKIT with the most recent matching
+ * running tool inside the active group.
+ */
+export function buildActionGroups(tagged: TaggedLog[]): ActionGroup[] {
+  const groups: ActionGroup[] = [];
+  const cursor: { current: ActionGroup | null } = { current: null };
+
+  const startNew = (tag: TaggedLog, reasoning: string | null): ActionGroup => {
+    const g: ActionGroup = {
+      id: `g-${groups.length}-${tag.agentId}`,
+      agentId: tag.agentId,
+      agentType: tag.agentType,
+      agentName: tag.agentName,
+      reasoning,
+      notices: [],
+      tools: [],
+      status: 'running',
+      kind: 'action',
+    };
+    groups.push(g);
+    cursor.current = g;
+    return g;
+  };
+
+  const ensureGroupForAgent = (tag: TaggedLog): ActionGroup => {
+    const c = cursor.current;
+    if (!c || c.kind === 'preparation' || c.agentId !== tag.agentId) {
+      return startNew(tag, null);
+    }
+    return c;
+  };
+
+  // Collapse the leading run of `register agent` toolkit events — emitted by
+  // the workforce factory as it wires up each agent — into a single synthetic
+  // "Preparing agents" group. This runs only over the contiguous prefix so a
+  // late register event (shouldn't happen, but) would still appear as a normal
+  // tool under its own agent.
+  let cursorIdx = 0;
+  let prep: ActionGroup | null = null;
+  while (cursorIdx < tagged.length) {
+    const tag = tagged[cursorIdx]!;
+    if (!isRegisterAgentEvent(tag.entry)) break;
+
+    if (!prep) {
+      prep = {
+        id: PREPARATION_GROUP_ID,
+        agentId: '__prep__',
+        agentType: '__prep__',
+        agentName: PREPARATION_GROUP_LABEL,
+        reasoning: null,
+        notices: [],
+        tools: [],
+        status: 'running',
+        kind: 'preparation',
+      };
+      groups.push(prep);
+      cursor.current = prep;
+    }
+
+    const entry = tag.entry;
+    const name = (entry.data?.toolkit_name ?? '').trim() || 'Tool';
+    const method = (entry.data?.method_name ?? '').trim();
+    const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
+
+    if (entry.step === AgentStep.ACTIVATE_TOOLKIT) {
+      prep.tools.push({
+        id: `t-prep-${cursorIdx}`,
+        rowTitle: `${tag.agentName} · ${name}`,
+        toolkitName: name,
+        method,
+        summary: formatToolSummary(name, method, rawMsg),
+        detail: rawMsg,
+        status: 'running',
+      });
+    } else {
+      for (let j = prep.tools.length - 1; j >= 0; j--) {
+        const s = prep.tools[j]!;
+        if (s.status !== 'running') continue;
+        if (s.toolkitName !== name || s.method !== method) continue;
+        s.status = 'done';
+        s.detail = [s.detail, rawMsg].filter(Boolean).join('\n\n').trim();
+        s.summary = formatToolSummary(name, method, s.detail);
+        break;
+      }
+    }
+    cursorIdx++;
+  }
+
+  for (let i = cursorIdx; i < tagged.length; i++) {
+    const tag = tagged[i]!;
+    const { entry } = tag;
+
     if (entry.step === AgentStep.ACTIVATE_AGENT) {
       const text = normalizeToolkitMessage(entry.data?.message).trim();
-      if (text) segments.push({ type: 'agent', id: `a-${entryIndex}`, text });
+      startNew(tag, text || null);
+      continue;
+    }
+
+    if (entry.step === AgentStep.DEACTIVATE_AGENT) {
+      const cur = cursor.current;
+      if (cur && cur.agentId === tag.agentId) cur.status = 'done';
       continue;
     }
 
@@ -117,16 +269,15 @@ function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
       const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
 
       if (name.toLowerCase() === 'notice') {
-        if (rawMsg)
-          segments.push({ type: 'agent', id: `a-${entryIndex}`, text: rawMsg });
+        if (rawMsg) ensureGroupForAgent(tag).notices.push(rawMsg);
         continue;
       }
 
       if (!method && !rawMsg) continue;
 
-      segments.push({
-        type: 'tool',
-        id: `t-${entryIndex}`,
+      const g = ensureGroupForAgent(tag);
+      g.tools.push({
+        id: `t-${i}`,
         rowTitle: toolRowTitle(name, method),
         toolkitName: name,
         method,
@@ -138,29 +289,40 @@ function buildLogSegments(merged: AgentMessage[]): LogSegment[] {
     }
 
     if (entry.step === AgentStep.DEACTIVATE_TOOLKIT) {
+      const cur = cursor.current;
+      if (!cur) continue;
       const name = (entry.data?.toolkit_name ?? '').trim();
       const method = (entry.data?.method_name ?? '').trim();
       const msg = normalizeToolkitMessage(entry.data?.message).trim();
 
-      // Pairs the most recent *running* segment with the same toolkit+method. If the backend
-      // ever interleaves two concurrent invocations of the same tool, this could attach
-      // completion to the wrong segment; a stable per-invocation id in the log would be needed.
-      for (let i = segments.length - 1; i >= 0; i--) {
-        const s = segments[i];
-        if (s.type !== 'tool') continue;
+      for (let j = cur.tools.length - 1; j >= 0; j--) {
+        const s = cur.tools[j]!;
         if (s.status !== 'running') continue;
         if (s.toolkitName !== name || s.method !== method) continue;
-
         s.status = 'done';
         s.detail = [s.detail, msg].filter(Boolean).join('\n\n').trim();
         s.summary = formatToolSummary(name, method, s.detail);
-        s.rowTitle = toolRowTitle(name, method);
         break;
       }
     }
   }
 
-  return segments;
+  // A non-last group is always done (a newer group started). The last group
+  // inherits the most recent explicit transition; component-level logic may
+  // still force all groups to 'done' when the task leaves RUNNING.
+  for (let i = 0; i < groups.length - 1; i++) {
+    groups[i]!.status = 'done';
+  }
+
+  return groups;
+}
+
+/** Title shown on a group header. Prefers reasoning; falls back to the latest tool. */
+export function getGroupTitle(group: ActionGroup): string {
+  if (group.reasoning) return group.reasoning;
+  const last = group.tools[group.tools.length - 1];
+  if (last) return last.rowTitle;
+  return 'Thinking…';
 }
 
 /**
@@ -202,15 +364,14 @@ function useTaskWorkLogData(
   taskId: string | null,
   _snapshot: string
 ) {
-  return useMemo(() => {
-    if (!taskId) {
-      return { task: undefined, segments: [] as LogSegment[] };
-    }
-    const t = chatStore.getState().tasks[taskId];
-    const merged = mergeAgentLogs(t?.taskAssigning);
-    const segments = buildLogSegments(merged);
-    return { task: t, segments };
-  }, [chatStore, taskId, _snapshot]);
+  void _snapshot;
+  if (!taskId) {
+    return { task: undefined, groups: [] as ActionGroup[] };
+  }
+  const t = chatStore.getState().tasks[taskId];
+  const tagged = mergeTaggedAgentLogs(t?.taskAssigning);
+  const groups = buildActionGroups(tagged);
+  return { task: t, groups };
 }
 
 function useWorkLogElapsedMs(
@@ -227,20 +388,21 @@ function useWorkLogElapsedMs(
     return () => window.clearInterval(id);
   }, [chatStore, taskId, snapshot]);
 
-  return useMemo(() => {
-    if (!taskId) return 0;
-    const t = chatStore.getState().tasks[taskId];
-    if (!t) return 0;
-    return getTaskElapsedMs(t);
-  }, [chatStore, taskId, snapshot, now]);
+  void now;
+  if (!taskId) return 0;
+  const t = chatStore.getState().tasks[taskId];
+  if (!t) return 0;
+  return getTaskElapsedMs(t);
 }
 
 const ToolDetailRow = memo(function ToolDetailRow({
   rowTitle,
   detail,
+  status,
 }: {
   rowTitle: string;
   detail: string;
+  status: 'running' | 'done';
 }) {
   const [open, setOpen] = useState(false);
   const [renderMarkdown, setRenderMarkdown] = useState(false);
@@ -269,19 +431,26 @@ const ToolDetailRow = memo(function ToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="min-w-0 gap-1 py-2 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
+        className="min-w-0 gap-1 py-1 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
       >
-        <span className="text-body-sm font-medium min-w-0 text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
-          {rowTitle}
-        </span>
         <ChevronRight
-          size={16}
+          size={14}
           aria-hidden
           className={cn(
             'text-ds-icon-neutral-subtle-default shrink-0 transition-transform duration-200',
             open && 'rotate-90'
           )}
         />
+        <span
+          className={cn(
+            'text-body-sm font-medium min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap',
+            status === 'running'
+              ? 'text-ds-text-status-running-strong-default'
+              : 'text-ds-text-neutral-subtle-default'
+          )}
+        >
+          {rowTitle}
+        </span>
       </button>
       <AnimatePresence initial={false}>
         {open ? (
@@ -291,7 +460,7 @@ const ToolDetailRow = memo(function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="min-w-0 w-full overflow-hidden"
+            className="min-w-0 pl-5 w-full overflow-hidden"
           >
             {detail ? (
               <div className="py-2 px-3 bg-ds-bg-neutral-muted-default rounded-xl w-full">
@@ -314,8 +483,207 @@ const ToolDetailRow = memo(function ToolDetailRow({
     </div>
   );
 });
-
 ToolDetailRow.displayName = 'ToolDetailRow';
+
+const ActionGroupRow = memo(function ActionGroupRow({
+  group,
+  isLastRunning,
+  open,
+  onToggle,
+}: {
+  group: ActionGroup;
+  isLastRunning: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const running = group.status === 'running' || isLastRunning;
+  const lastTool = group.tools[group.tools.length - 1];
+  const isPrep = group.kind === 'preparation';
+
+  return (
+    <div className="min-w-0 flex w-full flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="min-w-0 gap-1 py-1 flex w-full items-center text-left transition-opacity hover:opacity-80"
+      >
+        <span className="text-label-xs font-normal min-w-0 flex-1 truncate">
+          {running ? (
+            <ShinyText
+              text={group.agentName}
+              speed={2.5}
+              className="text-label-xs font-normal text-ds-text-neutral-muted-default"
+            />
+          ) : (
+            <span className="text-ds-text-neutral-muted-default">
+              {group.agentName}
+            </span>
+          )}
+          {isPrep ? (
+            group.tools.length > 0 ? (
+              <span className="text-ds-text-neutral-subtle-default">
+                {' · '}
+                {group.tools.length}
+                {' registered'}
+              </span>
+            ) : null
+          ) : lastTool ? (
+            <>
+              <span className="text-ds-text-neutral-subtle-default">
+                {' · '}
+                {lastTool.toolkitName}
+              </span>
+              {lastTool.method ? (
+                <span className="text-ds-text-neutral-subtle-default">
+                  {' · '}
+                  {titleCaseMethod(lastTool.method)}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-ds-text-neutral-subtle-default">
+              {' · Thinking…'}
+            </span>
+          )}
+        </span>
+        {open ? (
+          <ChevronDown
+            size={14}
+            aria-hidden
+            className="text-ds-icon-neutral-subtle-default shrink-0"
+          />
+        ) : (
+          <ChevronRight
+            size={14}
+            aria-hidden
+            className="text-ds-icon-neutral-subtle-default shrink-0"
+          />
+        )}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="group-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={HEIGHT_MOTION}
+            className="min-w-0 overflow-hidden"
+          >
+            <div className="pl-5 border-ds-border-neutral-default-default ml-2 gap-1 flex flex-col border-l">
+              {group.reasoning ? (
+                <p className="text-label-xs m-0 text-ds-text-neutral-subtle-default break-words whitespace-pre-wrap">
+                  {group.reasoning}
+                </p>
+              ) : null}
+              {group.notices.map((notice, i) => (
+                <p
+                  key={`n-${i}`}
+                  className="text-label-xs m-0 text-ds-text-neutral-subtle-default break-words whitespace-pre-wrap"
+                >
+                  {notice}
+                </p>
+              ))}
+              {group.tools.map((tool) => (
+                <ToolDetailRow
+                  key={tool.id}
+                  rowTitle={tool.rowTitle}
+                  detail={tool.detail}
+                  status={tool.status}
+                />
+              ))}
+              {group.tools.length === 0 && running && !group.reasoning && (
+                <p className="text-label-xs m-0 text-ds-text-neutral-subtle-default italic">
+                  Waiting for tool calls…
+                </p>
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+});
+ActionGroupRow.displayName = 'ActionGroupRow';
+
+/**
+ * Per-group open state with user override.
+ * - Default: a running group is open; a done group is closed.
+ * - User clicks set an override for the current phase only. When a group
+ *   transitions running → done, its override is cleared so auto-fold wins
+ *   unless the user toggles again after the transition.
+ */
+function useGroupOpenState(
+  groups: ActionGroup[],
+  taskRunning: boolean
+): { isOpen: (group: ActionGroup) => boolean; toggle: (id: string) => void } {
+  // key → open flag. Key is `${id}:${phase}` so each phase owns its override.
+  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
+  const prevStatusRef = useRef<Map<string, 'running' | 'done'>>(new Map());
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const next = new Map<string, 'running' | 'done'>();
+    for (const g of groups) next.set(g.id, g.status);
+    prevStatusRef.current = next;
+
+    // Drop overrides whose group disappeared, plus running-phase overrides
+    // for any group that just flipped to done.
+    setOverrides((current) => {
+      if (current.size === 0) return current;
+      const live = new Set(groups.map((g) => g.id));
+      let changed = false;
+      const updated = new Map(current);
+      for (const key of current.keys()) {
+        const [id, phase] = key.split(':') as [string, 'running' | 'done'];
+        if (!live.has(id)) {
+          updated.delete(key);
+          changed = true;
+          continue;
+        }
+        if (phase === 'running' && next.get(id) === 'done') {
+          updated.delete(key);
+          changed = true;
+        }
+      }
+      // No-op branch: also track that prev tracked running transitioning away.
+      void prev;
+      return changed ? updated : current;
+    });
+  }, [groups]);
+
+  const phaseKey = (group: ActionGroup) => `${group.id}:${group.status}`;
+
+  const isOpen = useCallback(
+    (group: ActionGroup) => {
+      const override = overrides.get(phaseKey(group));
+      if (override !== undefined) return override;
+      return group.status === 'running' && taskRunning;
+    },
+    [overrides, taskRunning]
+  );
+
+  const toggle = useCallback(
+    (id: string) => {
+      setOverrides((prev) => {
+        const group = groups.find((g) => g.id === id);
+        if (!group) return prev;
+        const key = `${group.id}:${group.status}`;
+        const currentlyOpen = prev.has(key)
+          ? (prev.get(key) as boolean)
+          : group.status === 'running' && taskRunning;
+        const next = new Map(prev);
+        next.set(key, !currentlyOpen);
+        return next;
+      });
+    },
+    [groups, taskRunning]
+  );
+
+  return { isOpen, toggle };
+}
 
 export interface TaskWorkLogAccordionProps {
   chatStore: VanillaChatStore;
@@ -330,13 +698,23 @@ export function TaskWorkLogAccordion({
 }: TaskWorkLogAccordionProps) {
   const { t: _t } = useTranslation();
   const snapshot = useTaskWorkStoreSnapshot(chatStore, taskId);
-  const { task, segments } = useTaskWorkLogData(chatStore, taskId, snapshot);
+  const { task, groups } = useTaskWorkLogData(chatStore, taskId, snapshot);
   const status = task?.status;
   const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
+  const taskRunning = status === ChatTaskStatus.RUNNING;
 
-  const [outerOpen, setOuterOpen] = useState(
-    () => status === ChatTaskStatus.RUNNING
-  );
+  // Normalize group status with task-level context — once the task stops,
+  // every group is done regardless of whether DEACTIVATE_AGENT arrived.
+  const effectiveGroups = useMemo(() => {
+    if (taskRunning) return groups;
+    return groups.map((g) =>
+      g.status === 'done' ? g : { ...g, status: 'done' as const }
+    );
+  }, [groups, taskRunning]);
+
+  const { isOpen, toggle } = useGroupOpenState(effectiveGroups, taskRunning);
+
+  const [outerOpen, setOuterOpen] = useState(() => taskRunning);
 
   useEffect(() => {
     if (status === ChatTaskStatus.FINISHED) {
@@ -354,16 +732,9 @@ export function TaskWorkLogAccordion({
     status === ChatTaskStatus.PAUSE;
 
   if (!allowed) return null;
-
-  if (status !== ChatTaskStatus.RUNNING && segments.length === 0) {
-    return null;
-  }
+  if (!taskRunning && effectiveGroups.length === 0) return null;
 
   const timeLabel = formatSplittingElapsed(elapsedMs);
-
-  const useTypewriterForAgent =
-    outerOpen &&
-    (status === ChatTaskStatus.FINISHED || status === ChatTaskStatus.PAUSE);
 
   return (
     <div className={cn('min-w-0 my-2 flex w-full flex-col', className)}>
@@ -424,33 +795,19 @@ export function TaskWorkLogAccordion({
             transition={HEIGHT_MOTION}
             className="overflow-hidden"
           >
-            <div className="gap-3 pb-1 min-w-0 flex flex-col">
-              {segments.map((seg) => {
-                if (seg.type === 'agent') {
-                  return (
-                    <div key={seg.id} className="min-w-0">
-                      {useTypewriterForAgent ? (
-                        <MarkDown
-                          key={`tw-${seg.id}-${outerOpen}`}
-                          content={seg.text}
-                          enableTypewriter
-                          speed={12}
-                          pTextSize="text-sm"
-                        />
-                      ) : (
-                        <p className="text-body-sm font-medium m-0 leading-snug text-ds-text-neutral-default-default break-words whitespace-pre-wrap">
-                          {seg.text}
-                        </p>
-                      )}
-                    </div>
-                  );
-                }
-
+            <div className="gap-1 pb-1 min-w-0 flex flex-col">
+              {effectiveGroups.map((group, i) => {
+                const isLastRunning =
+                  taskRunning &&
+                  i === effectiveGroups.length - 1 &&
+                  group.status === 'running';
                 return (
-                  <ToolDetailRow
-                    key={seg.id}
-                    rowTitle={seg.rowTitle}
-                    detail={seg.detail}
+                  <ActionGroupRow
+                    key={group.id}
+                    group={group}
+                    isLastRunning={isLastRunning}
+                    open={isOpen(group)}
+                    onToggle={() => toggle(group.id)}
                   />
                 );
               })}
