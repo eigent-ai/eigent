@@ -625,7 +625,13 @@ export const Inputbox = ({
               </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
-          <ChatInputModelDropdown disabled={disabled} />
+          <ChatInputModelDropdown
+            disabled={disabled}
+            readOnly={
+              sessionMode !== undefined &&
+              sessionModeSelectInteractive === false
+            }
+          />
         </div>
 
         {/* Right: Session mode (workspace: full toggle; session: current mode only) + send */}

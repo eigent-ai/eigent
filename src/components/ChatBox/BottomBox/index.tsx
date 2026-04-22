@@ -20,8 +20,6 @@ import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
 
-export type StarterSuggestion = { label: string; message: string };
-
 export type BottomBoxState =
   | 'input'
   | 'splitting'
@@ -61,10 +59,6 @@ interface BottomBoxProps {
   /** Full-area warning overlay on the input card when no model is configured. */
   noModelOverlay?: boolean;
   onSelectModel?: () => void;
-
-  /** Optional starter prompts below the input (empty chat); hidden when `noModelOverlay` is true. */
-  starterSuggestions?: StarterSuggestion[];
-  onStarterSuggestion?: (message: string) => void;
 }
 
 export default function BottomBox({
@@ -78,8 +72,6 @@ export default function BottomBox({
   loading = false,
   noModelOverlay = false,
   onSelectModel,
-  starterSuggestions,
-  onStarterSuggestion,
 }: BottomBoxProps) {
   const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
@@ -119,31 +111,6 @@ export default function BottomBox({
 
         {/* Inputbox (always visible) */}
         <Inputbox {...inputProps} />
-
-        {!noModelOverlay &&
-          starterSuggestions &&
-          starterSuggestions.length > 0 &&
-          onStarterSuggestion && (
-            <div className="gap-2 px-2 pb-3 pt-1 flex flex-col items-center">
-              {starterSuggestions.map(({ label, message }) => (
-                <div
-                  key={label}
-                  className="rounded-md px-sm py-xs text-xs font-medium bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default cursor-pointer leading-none opacity-70 transition-all duration-300 hover:opacity-100"
-                  onClick={() => onStarterSuggestion(message)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onStarterSuggestion(message);
-                    }
-                  }}
-                >
-                  <span>{label}</span>
-                </div>
-              ))}
-            </div>
-          )}
 
         {noModelOverlay && onSelectModel ? (
           <div

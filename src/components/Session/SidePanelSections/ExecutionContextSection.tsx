@@ -17,12 +17,11 @@ import {
   CategoryLabel,
   SidePanelListRow,
 } from '@/components/Session/SidePanelSections/primitives';
-import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 
-export type ContextCategory = 'skill' | 'connector' | 'tool';
+export type ContextCategory = 'skill' | 'connector' | 'file';
 
 export interface ContextItem {
   id: string;
@@ -32,19 +31,22 @@ export interface ContextItem {
   onClick?: () => void;
 }
 
-const CATEGORY_ORDER: ContextCategory[] = ['skill', 'connector', 'tool'];
+const CATEGORY_ORDER: ContextCategory[] = ['skill', 'connector', 'file'];
 const CATEGORY_LABEL: Record<ContextCategory, string> = {
   skill: 'Skills',
-  connector: 'Connectors',
-  tool: 'Tools',
+  connector: 'MCP Tools',
+  file: 'Referenced Files',
 };
 
-interface ContextSectionProps {
+interface ExecutionContextSectionProps {
   title: string;
   items: ContextItem[];
 }
 
-export function ContextSection({ title, items }: ContextSectionProps) {
+export function ExecutionContextSection({
+  title,
+  items,
+}: ExecutionContextSectionProps) {
   const grouped = useMemo(() => {
     const map = new Map<ContextCategory, ContextItem[]>();
     for (const item of items) {
@@ -61,17 +63,13 @@ export function ContextSection({ title, items }: ContextSectionProps) {
     <SidePanelAccordionBox title={title}>
       {items.length === 0 ? (
         <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
-          No context yet
+          Track skills, MCPs and referenced files used in this task.
         </div>
       ) : (
         <div className="flex flex-col">
           {grouped.map(({ category, items: groupItems }) => (
             <div key={category} className="flex flex-col">
-              <CategoryLabel
-                className={cn(category === 'tool' && 'text-label-xs')}
-              >
-                {CATEGORY_LABEL[category]}
-              </CategoryLabel>
+              <CategoryLabel>{CATEGORY_LABEL[category]}</CategoryLabel>
               <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
                 <AnimatePresence initial={false}>
                   {groupItems.map((item) => (

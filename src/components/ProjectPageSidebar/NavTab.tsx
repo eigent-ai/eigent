@@ -25,14 +25,17 @@ import { motion } from 'framer-motion';
 import { RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
+import {
+  PROJECT_SIDEBAR_FOLD_SPRING,
+  SIDEBAR_TOOLTIP_CONTENT_CLASS,
+} from './constants';
 
 /** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
 export function workspaceTabButtonClass(active: boolean): string {
   return cn(
     'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
     'text-ds-text-neutral-muted-default',
-    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
+    'hover:bg-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
     active && 'bg-ds-bg-neutral-subtle-default'
   );
 }
@@ -250,6 +253,7 @@ export function NavTab({
         side="right"
         align="center"
         enabled={tooltipEnabled}
+        className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
       >
         <div
           className={cn(
@@ -309,6 +313,7 @@ export function NavTab({
       side="right"
       align="center"
       enabled={tooltipEnabled}
+      className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
     >
       <button
         type="button"

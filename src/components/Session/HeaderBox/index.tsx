@@ -16,136 +16,50 @@ import tokenDarkIcon from '@/assets/token-dark.svg';
 import tokenLightIcon from '@/assets/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import type { SessionModeType } from '@/types/constants';
-import * as PopoverPrimitive from '@radix-ui/react-popover';
-import { Menu, PanelRight, PanelRightClose } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
-  /** When true, the chat timeline rail is folded closed */
-  chatTimelineCollapsed?: boolean;
-  /** Toggles the chat timeline rail open / folded (wide layout only) */
-  onToggleChatTimeline?: () => void;
-  /** When true, timeline is shown in a popover instead of the left rail */
-  narrowTimelineLayout?: boolean;
-  /** Controlled open state for the timeline popover (narrow layout) */
-  timelineDropdownOpen?: boolean;
-  onTimelineDropdownOpenChange?: (open: boolean) => void;
-  /** Timeline content rendered inside the popover when `narrowTimelineLayout` */
-  timelineDropdownContent?: ReactNode;
-  /** When false, the session right rail (workforce / side panel) is folded closed */
-  isSessionSidePanelVisible?: boolean;
-  /** Toggle the session right panel rail open / folded */
-  onToggleSessionSidePanel?: () => void;
-  /** Which session right rail is active (affects panel toggle copy in the chat header). */
-  sessionSidePanelMode?: SessionModeType;
   /** Optional extra class names for the outer container */
   className?: string;
 }
 
-export function HeaderBox({
-  totalTokens = 0,
-  chatTimelineCollapsed = false,
-  onToggleChatTimeline,
-  narrowTimelineLayout = false,
-  timelineDropdownOpen,
-  onTimelineDropdownOpenChange,
-  timelineDropdownContent,
-  isSessionSidePanelVisible = true,
-  onToggleSessionSidePanel,
-  sessionSidePanelMode = 'workforce',
-  className,
-}: HeaderBoxProps) {
+export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
-  const chatHistoryTooltip = t('layout.chat-history-tooltip', {
-    defaultValue: 'Chat history',
+  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
+    defaultValue: 'Back to workspace',
   });
-  const sessionSidePanelTooltip =
-    sessionSidePanelMode === 'single-agent'
-      ? isSessionSidePanelVisible
-        ? t('layout.hide-side-panel', {
-            defaultValue: 'Hide side panel',
-          })
-        : t('layout.show-side-panel', {
-            defaultValue: 'Show side panel',
-          })
-      : isSessionSidePanelVisible
-        ? t('layout.hide-workforce-panel', {
-            defaultValue: 'Hide workforce panel',
-          })
-        : t('layout.show-workforce-panel');
 
   return (
     <div
       className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
     >
-      {/* Left: timeline menu */}
+      {/* Left: return to project workspace */}
       <div className="gap-2 flex items-center">
-        {narrowTimelineLayout && timelineDropdownContent ? (
-          <Popover
-            open={timelineDropdownOpen}
-            onOpenChange={onTimelineDropdownOpenChange}
+        <TooltipSimple content={backToWorkspaceTooltip}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            onClick={() => setActiveWorkspaceTab('workforce')}
+            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            aria-label={backToWorkspaceTooltip}
           >
-            <TooltipSimple content={chatHistoryTooltip}>
-              <PopoverPrimitive.Trigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  aria-expanded={Boolean(timelineDropdownOpen)}
-                  aria-haspopup="dialog"
-                  aria-controls="chat-timeline-popover-panel"
-                  className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
-                  aria-label={chatHistoryTooltip}
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
-              </PopoverPrimitive.Trigger>
-            </TooltipSimple>
-            <PopoverContent
-              id="chat-timeline-popover-panel"
-              align="start"
-              sideOffset={4}
-              className={cn(
-                'min-w-0 p-0 max-h-[min(320px,50vh)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto',
-                'w-max'
-              )}
-            >
-              {timelineDropdownContent}
-            </PopoverContent>
-          </Popover>
-        ) : (
-          onToggleChatTimeline && (
-            <TooltipSimple content={chatHistoryTooltip}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                onClick={onToggleChatTimeline}
-                aria-expanded={!chatTimelineCollapsed}
-                aria-controls="chat-timeline-panel"
-                className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
-                aria-label={chatHistoryTooltip}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          )
-        )}
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Button>
+        </TooltipSimple>
       </div>
 
-      {/* Right: project total token count + session side panel fold (far right) */}
+      {/* Right: project total token count */}
       <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
         <div className="gap-1 flex items-center">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
@@ -154,27 +68,6 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        {onToggleSessionSidePanel && (
-          <TooltipSimple content={sessionSidePanelTooltip}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              onClick={onToggleSessionSidePanel}
-              aria-expanded={isSessionSidePanelVisible}
-              aria-controls="session-side-panel"
-              className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
-              aria-label={sessionSidePanelTooltip}
-            >
-              {isSessionSidePanelVisible ? (
-                <PanelRightClose className="h-4 w-4" aria-hidden />
-              ) : (
-                <PanelRight className="h-4 w-4" aria-hidden />
-              )}
-            </Button>
-          </TooltipSimple>
-        )}
       </div>
     </div>
   );

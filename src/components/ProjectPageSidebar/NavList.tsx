@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,9 +22,10 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
-import { ChevronDown, MessageCircle, MoreHorizontal } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { LayoutGrid, MessageCircle, MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
+import { NavTab, workspaceTabButtonClass } from './NavTab';
 
 export interface NavListSession {
   id: string;
@@ -37,64 +39,39 @@ export interface NavListProps {
   activeSessionId?: string | null;
   onSessionClick?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
-  onShowAll?: () => void;
-  /** When true, “Show all” is styled as the active tab (persistent underline). */
-  showAllActive?: boolean;
-  /**
-   * Uncontrolled initial expanded state. If omitted, expanded when `sessions.length > 0`,
-   * folded when the project has not started (no sessions yet).
-   */
-  defaultExpanded?: boolean;
+  /** Top row: workspace tab — switches to workforce view. */
+  workspaceActive: boolean;
+  onWorkspaceClick: () => void;
+  /** Trailing + control (e.g. create task + focus session). */
+  onNewSession: () => void;
+  /** Icon-only rail: match other sidebar `NavTab`s. */
+  folded: boolean;
   className?: string;
 }
 
-/** Sessions list: collapsible header (Sessions + chevron, Show all) and rows with overflow title + actions menu. */
+/** Workspace row (split: tab + new session) and a flat scrollable session list. */
 export function NavList({
   sessions,
   activeSessionId,
   onSessionClick,
   onDeleteSession,
-  onShowAll,
-  showAllActive = false,
-  defaultExpanded,
+  workspaceActive,
+  onWorkspaceClick,
+  onNewSession,
+  folded,
   className,
 }: NavListProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(
-    () => defaultExpanded ?? sessions.length > 0
-  );
-  const prevSessionCountRef = useRef(sessions.length);
+  const workspaceLabel = t('triggers.workspace');
 
-  useEffect(() => {
-    const prev = prevSessionCountRef.current;
-    if (sessions.length === 0) {
-      setExpanded(false);
-    } else if (prev === 0 && sessions.length > 0) {
-      setExpanded(true);
-    }
-    prevSessionCountRef.current = sessions.length;
-  }, [sessions.length]);
-
-  const headingLabel = t('layout.sessions-heading', {
-    defaultValue: 'Sessions',
-  });
-  const showAllLabel = t('layout.sessions-show-all', {
-    defaultValue: 'Show all',
-  });
   const deleteLabel = t('layout.sessions-delete-session', {
     defaultValue: 'Delete session',
-  });
-  const expandAria = t('layout.sessions-expand-list', {
-    defaultValue: 'Expand sessions list',
-  });
-  const collapseAria = t('layout.sessions-collapse-list', {
-    defaultValue: 'Collapse sessions list',
   });
   const sessionMenuAria = t('layout.sessions-session-menu', {
     defaultValue: 'Session options',
   });
-  const emptySessionsHint = t('layout.sessions-create-task-hint', {
-    defaultValue: 'Create a task to start a session',
+  const newSessionLabel = t('layout.sessions-start-new', {
+    defaultValue: 'Start new session',
   });
 
   const sessionLeadIconClass = (taskStatus: ChatTaskStatusType | undefined) => {
@@ -108,83 +85,98 @@ export function NavList({
   return (
     <div
       className={cn(
-        'group min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
+        'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
         className
       )}
     >
-      <div className="min-w-0 gap-2 px-1 mb-2 flex w-full items-center justify-between">
-        <TooltipSimple
-          content={expanded ? collapseAria : expandAria}
-          side="top"
-          align="start"
-        >
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className={cn(
-              'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-bold text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default inline-flex w-fit max-w-[calc(100%-5rem)] shrink items-center text-left outline-none',
-              'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
-            )}
-            aria-expanded={expanded}
-            aria-label={expanded ? collapseAria : expandAria}
-          >
-            <span className="min-w-0 text-ds-text-neutral-muted-default text-body-xs font-bold truncate">
-              {headingLabel}
-            </span>
-            <ChevronDown
+      <div className="min-w-0 gap-2 flex w-full flex-col">
+        <NavTab
+          layout="split"
+          active={workspaceActive}
+          onClick={onWorkspaceClick}
+          leading={<LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />}
+          label={workspaceLabel}
+          endAction={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
               className={cn(
-                'h-4 w-4 text-ds-icon-neutral-muted-default shrink-0 transition-[transform,opacity] duration-200',
-                'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
-                expanded ? 'rotate-0' : '-rotate-90'
+                'no-drag mr-1 rounded-xl shrink-0 hover:bg-[var(--ds-bg-neutral-strong-default)]',
+                'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
               )}
-              aria-hidden
-            />
-          </button>
-        </TooltipSimple>
+              aria-label={newSessionLabel}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onNewSession();
+              }}
+            >
+              <Plus
+                className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]"
+                aria-hidden
+              />
+            </Button>
+          }
+          tooltip={workspaceLabel}
+          tooltipEnabledWhenCollapsed={!folded}
+          folded={folded}
+          ariaLabel={workspaceLabel}
+          ariaCurrentPage={workspaceActive}
+        />
 
-        <button
-          type="button"
-          onClick={onShowAll}
-          aria-current={showAllActive ? 'page' : undefined}
-          className={cn(
-            'no-drag gap-1 rounded-xl py-1 px-2 text-body-xs font-semibold !text-ds-text-neutral-muted-default inline-flex w-fit shrink-0 items-center text-left outline-none',
-            showAllActive ? 'underline underline-offset-2' : 'hover:underline',
-            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
-          )}
-        >
-          {showAllLabel}
-        </button>
+        {folded ? (
+          <TooltipSimple
+            content={newSessionLabel}
+            side="right"
+            align="center"
+            enabled
+            className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
+          >
+            <button
+              type="button"
+              onClick={onNewSession}
+              className={cn(workspaceTabButtonClass(false), 'gap-0 w-full')}
+              aria-label={newSessionLabel}
+            >
+              <Plus
+                className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-muted-default)]"
+                aria-hidden
+              />
+            </button>
+          </TooltipSimple>
+        ) : null}
       </div>
 
-      {expanded ? (
-        <ul
-          className="m-0 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex list-none flex-col overflow-y-auto"
-          role="list"
-        >
-          {sessions.length === 0 ? (
-            <li className="px-3 py-1.5 text-body-sm leading-snug text-ds-text-neutral-muted-default">
-              {emptySessionsHint}
-            </li>
-          ) : null}
-          {sessions.map((session) => {
-            const active = activeSessionId === session.id;
+      <ul
+        className={cn(
+          'm-0 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 list-none flex-col overflow-y-auto',
+          folded ? 'mt-0.5' : 'mt-1'
+        )}
+        role="list"
+      >
+        {sessions.map((session) => {
+          const active = activeSessionId === session.id;
+          if (folded) {
             return (
               <li key={session.id} className="min-w-0">
-                <div
-                  className={cn(
-                    'group/session-item min-w-0 h-8 gap-1 rounded-xl px-3 relative flex w-full items-center overflow-hidden',
-                    active
-                      ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
-                      : 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
-                  )}
+                <TooltipSimple
+                  content={session.title}
+                  side="right"
+                  align="center"
+                  enabled
+                  className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
                 >
                   <button
                     type="button"
                     onClick={() => onSessionClick?.(session.id)}
                     className={cn(
-                      'no-drag min-h-0 min-w-0 gap-3 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                      'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                      workspaceTabButtonClass(active),
+                      'gap-0 min-w-0 w-full'
                     )}
+                    aria-label={session.title}
+                    aria-current={active ? 'true' : undefined}
                   >
                     <MessageCircle
                       className={cn(
@@ -193,63 +185,92 @@ export function NavList({
                       )}
                       aria-hidden
                     />
-                    <span
-                      className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 overflow-visible whitespace-nowrap"
-                      title={session.title}
-                    >
-                      {session.title}
-                    </span>
                   </button>
-
-                  <span
+                </TooltipSimple>
+              </li>
+            );
+          }
+          return (
+            <li key={session.id} className="min-w-0">
+              <div
+                className={cn(
+                  'group/session-item min-w-0 h-8 gap-1 rounded-xl px-3 relative flex w-full items-center overflow-hidden',
+                  active
+                    ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                    : 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSessionClick?.(session.id)}
+                  className={cn(
+                    'no-drag min-h-0 min-w-0 gap-3 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
+                    'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                  )}
+                >
+                  <MessageCircle
                     className={cn(
-                      'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
-                      active
-                        ? 'from-ds-bg-neutral-subtle-default'
-                        : 'group-hover/session-item:from-ds-bg-neutral-subtle-default from-transparent'
+                      'h-4 w-4 shrink-0',
+                      sessionLeadIconClass(session.taskStatus)
                     )}
                     aria-hidden
                   />
+                  <span
+                    className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 overflow-visible whitespace-nowrap"
+                    title={session.title}
+                  >
+                    {session.title}
+                  </span>
+                </button>
 
-                  <div className="relative z-[2] shrink-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
-                            active
-                              ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
-                              : [
-                                  'md:opacity-0 bg-transparent opacity-100',
-                                  'md:group-hover/session-item:opacity-100',
-                                  'md:group-focus-within/session-item:opacity-100',
-                                  'data-[state=open]:opacity-100',
-                                ],
-                            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
-                          )}
-                          aria-label={sessionMenuAria}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreHorizontal className="h-4 w-4" aria-hidden />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[9rem]">
-                        <DropdownMenuItem
-                          className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
-                          onClick={() => onDeleteSession?.(session.id)}
-                        >
-                          {deleteLabel}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                <span
+                  className={cn(
+                    'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
+                    active
+                      ? 'from-ds-bg-neutral-subtle-default'
+                      : 'group-hover/session-item:from-ds-bg-neutral-subtle-default from-transparent'
+                  )}
+                  aria-hidden
+                />
+
+                <div className="relative z-[2] shrink-0">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className={cn(
+                          'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
+                          active
+                            ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
+                            : [
+                                'md:opacity-0 bg-transparent opacity-100',
+                                'md:group-hover/session-item:opacity-100',
+                                'md:group-focus-within/session-item:opacity-100',
+                                'data-[state=open]:opacity-100',
+                              ],
+                          'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                        )}
+                        aria-label={sessionMenuAria}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-4 w-4" aria-hidden />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[9rem]">
+                      <DropdownMenuItem
+                        className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
+                        onClick={() => onDeleteSession?.(session.id)}
+                      >
+                        {deleteLabel}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

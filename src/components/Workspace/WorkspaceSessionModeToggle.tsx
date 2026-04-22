@@ -62,7 +62,10 @@ export interface WorkspaceSessionModeToggleProps {
   value: SessionModeType;
   onValueChange: (mode: SessionModeType) => void;
   className?: string;
-  /** When true, only the current mode is shown (no switching). Used in session chat input. */
+  /**
+   * When true, only the current mode is shown (no switching). Used in session chat input.
+   * Uses a transparent background to match the session input bar (see model read-only chip).
+   */
   readOnly?: boolean;
 }
 
@@ -124,7 +127,7 @@ export function WorkspaceSessionModeToggle({
       <div
         role="status"
         aria-label={modeAriaLabel}
-        className={cn(shellClass, 'pointer-events-none')}
+        className={cn(shellClass, 'pointer-events-none bg-transparent')}
       >
         <span className="gap-1.5 inline-flex min-h-[1.25rem] items-center overflow-hidden">
           <LeadingIcon

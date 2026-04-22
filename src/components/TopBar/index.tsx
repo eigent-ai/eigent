@@ -15,6 +15,8 @@
 import { proxyFetchGet } from '@/api/http';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
+import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
+import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
 import NotificationPanel from '@/components/Notification';
@@ -46,7 +48,6 @@ import {
   Share,
   Sparkles,
   Square,
-  SquarePen,
   TagIcon,
   X,
 } from 'lucide-react';
@@ -129,10 +130,6 @@ function HeaderWin() {
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
   const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (s) => s.requestWorkspaceChatFocus
-  );
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
@@ -187,19 +184,6 @@ function HeaderWin() {
     const path = location.pathname.replace(/\/$/, '') || '/';
     return path === '/history' || path.endsWith('/history');
   }, [location.pathname]);
-
-  const openWorkspaceNewTask = useCallback(() => {
-    if (location.pathname !== '/') {
-      navigate('/');
-    }
-    setActiveWorkspaceTab('workforce');
-    requestWorkspaceChatFocus();
-  }, [
-    location.pathname,
-    navigate,
-    requestWorkspaceChatFocus,
-    setActiveWorkspaceTab,
-  ]);
 
   const summaryTask =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
@@ -277,16 +261,25 @@ function HeaderWin() {
   return (
     <div
       className={`drag left-0 right-0 top-0 !h-9 py-1 absolute z-50 flex items-center justify-between ${
-        platform === 'darwin' ? 'pl-16' : 'pl-2'
+        platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
     >
-      {/* center */}
-      <div className="drag pr-2 flex h-full flex-1 items-center justify-between">
+      <div className="no-drag flex h-[28px] w-[28px] shrink-0 items-center justify-center">
+        <img
+          src={appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack}
+          alt="Eigent"
+          className="h-6 w-6 mt-[2px] select-none"
+          width={12}
+          height={12}
+          draggable={false}
+        />
+      </div>
+      <div className="drag min-w-0 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
           <div className="no-drag gap-2 flex items-center">
-            <div className="pl-2 flex items-center">
+            <div className="flex items-center">
               {isHistoryRoute ? (
                 <TooltipSimple
                   content={t('layout.home')}
@@ -393,24 +386,6 @@ function HeaderWin() {
                     </button>
                   </TooltipSimple>
                 </div>
-                <TooltipSimple
-                  content={t('layout.add-new-task')}
-                  side="bottom"
-                  align="center"
-                >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="no-drag rounded-full"
-                    onClick={openWorkspaceNewTask}
-                    aria-label={t('layout.add-new-task')}
-                  >
-                    <SquarePen
-                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
-                      aria-hidden
-                    />
-                  </Button>
-                </TooltipSimple>
               </div>
             )}
           </div>

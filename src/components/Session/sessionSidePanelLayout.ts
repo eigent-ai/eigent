@@ -12,22 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Transition } from 'framer-motion';
+/** Full logical width of the session side panel content (clipped by the outer when folded to 40px). */
+export const SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS =
+  'w-[min(360px,40vw)] max-w-[400px]';
 
-/** Keep in sync with `HOME_MAIN_LAYOUT_SPRING` in `pages/Home.tsx`. */
-export const PROJECT_SIDEBAR_FOLD_SPRING: Transition = {
-  type: 'spring',
-  stiffness: 380,
-  damping: 38,
-  mass: 0.85,
-};
+/** Outer `#session-side-panel` when expanded (same as content width; no extra clip). */
+export const SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS =
+  SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS;
 
-/**
- * Icon rail width: `px-3` horizontal padding (12+12) + 16px icon = 40px.
- * Matches workspace tab leading column (`NavTab` / `workspaceTabButtonClass`).
- */
-export const PROJECT_SIDEBAR_RAIL_WIDTH_PX = 40;
-
-/** Radix tooltip content: cap width so long labels (e.g. session titles) wrap. */
-export const SIDEBAR_TOOLTIP_CONTENT_CLASS =
-  'max-w-[400px] break-words whitespace-normal';
+/** Outer shell when folded: fixed 40px; content layer keeps `SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS`. */
+export const SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS = 'w-[40px]';

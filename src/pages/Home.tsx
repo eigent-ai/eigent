@@ -632,7 +632,7 @@ export default function Home() {
 
   return (
     <ReactFlowProvider>
-      <div className="min-h-0 px-2 pb-2 pt-10 flex h-full flex-row overflow-hidden">
+      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
           className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
@@ -649,15 +649,15 @@ export default function Home() {
               defaultSize={24}
               minSize={sidebarPct.rail}
               maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0"
+              className="min-h-0 min-w-0 pl-1"
             >
               <ProjectPageSidebar chatStore={chatStore} />
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-1.5 shrink-0 bg-transparent after:bg-[var(--ds-border-neutral-subtle-default)] after:transition-colors',
-                'transition-colors hover:after:bg-[var(--ds-border-brand-default-focus)]',
-                'data-[resize-handle-state=drag]:after:bg-[var(--ds-border-brand-default-focus)]'
+                'w-1 after:bg-ds-bg-neutral-default-default shrink-0 bg-transparent after:transition-colors',
+                'hover:after:bg-ds-bg-brand-default-focus transition-colors',
+                'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />
             <ResizablePanel

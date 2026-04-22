@@ -90,6 +90,7 @@
   "tasks": "TASKS",
   "chat-history-title": "Chat history",
   "chat-history-tooltip": "Chat history",
+  "back-to-workspace-tooltip": "Back to workspace",
   "task-list-add-hint": "Open workspace and focus chat",
   "ongoing": "Ongoing",
   "token": "# Token",
@@ -309,5 +310,6 @@
   "workspace-get-things-done-with-eigent": "Get things done with Eigent",
   "workspace-cowork-single-agent": "Cowork with Single Agent",
   "workspace-cowork-workforce": "Cowork with Workforce",
+  "execution-context": "Execution Context",
   "project-task-placeholder": "Describe what you want to accomplish..."
 }

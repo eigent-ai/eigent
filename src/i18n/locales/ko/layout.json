@@ -90,6 +90,7 @@
   "tasks": "작업",
   "chat-history-title": "채팅 기록",
   "chat-history-tooltip": "채팅 기록",
+  "back-to-workspace-tooltip": "작업 공간으로 돌아가기",
   "task-list-add-hint": "워크스페이스를 열고 채팅 입력에 포커스",
   "ongoing": "진행 중",
   "token": "# 토큰",

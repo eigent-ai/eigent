@@ -90,6 +90,7 @@
   "tasks": "任務",
   "chat-history-title": "聊天紀錄",
   "chat-history-tooltip": "聊天紀錄",
+  "back-to-workspace-tooltip": "返回工作區",
   "task-list-add-hint": "開啟工作區並聚焦聊天輸入框",
   "ongoing": "進行中",
   "token": "# 令牌",

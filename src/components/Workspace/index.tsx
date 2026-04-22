@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import larkIcon from '@/assets/icon/lark.png';
+import telegramIcon from '@/assets/icon/telegram.svg';
+import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox from '@/components/ChatBox/BottomBox';
 import { Button } from '@/components/ui/button';
@@ -29,7 +32,7 @@ import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { SessionMode } from '@/types/constants';
-import { Cast, MonitorSmartphone, Puzzle } from 'lucide-react';
+import { Cast, MonitorSmartphone } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -467,13 +470,60 @@ export default function Workspace() {
                     size="sm"
                     buttonContent="text"
                     className="no-drag gap-2 justify-start"
+                    aria-label={t('layout.channels-telegram', {
+                      defaultValue: 'Telegram',
+                    })}
                   >
-                    <Puzzle
-                      className="text-ds-text-neutral-muted-default h-4 w-4 shrink-0"
+                    <img
+                      src={telegramIcon}
+                      alt=""
+                      className="h-4 w-4 shrink-0 object-contain"
                       aria-hidden
                     />
-                    {t('layout.workspace-work-with-browser-extension', {
-                      defaultValue: 'Browser extension',
+                    {t('layout.channels-telegram', {
+                      defaultValue: 'Telegram',
+                    })}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    tone="default"
+                    emphasis="default"
+                    size="sm"
+                    buttonContent="text"
+                    className="no-drag gap-2 justify-start"
+                    aria-label={t('layout.channels-lark', {
+                      defaultValue: 'Lark',
+                    })}
+                  >
+                    <img
+                      src={larkIcon}
+                      alt=""
+                      className="h-4 w-4 rounded-lg shrink-0 object-contain"
+                      aria-hidden
+                    />
+                    {t('layout.channels-lark', { defaultValue: 'Lark' })}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    tone="default"
+                    emphasis="default"
+                    size="sm"
+                    buttonContent="text"
+                    className="no-drag gap-2 justify-start"
+                    aria-label={t('layout.channels-whatsapp', {
+                      defaultValue: 'WhatsApp',
+                    })}
+                  >
+                    <img
+                      src={whatsappIcon}
+                      alt=""
+                      className="h-4 w-4 shrink-0 object-contain"
+                      aria-hidden
+                    />
+                    {t('layout.channels-whatsapp', {
+                      defaultValue: 'WhatsApp',
                     })}
                   </Button>
                 </div>

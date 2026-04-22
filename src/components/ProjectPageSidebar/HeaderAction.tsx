@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import folderIcon from '@/assets/Folder.svg';
 import {
   Accordion,
   AccordionContent,
@@ -33,7 +32,10 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
+import {
+  PROJECT_SIDEBAR_FOLD_SPRING,
+  SIDEBAR_TOOLTIP_CONTENT_CLASS,
+} from './constants';
 import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
 
 const MEMORY_STORAGE_KEY = 'eigent-sidebar-instructions-memory-on';
@@ -187,6 +189,7 @@ export function HeaderAction() {
                 enabled
                 side="right"
                 align="center"
+                className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
               >
                 <button
                   type="button"
@@ -218,12 +221,6 @@ export function HeaderAction() {
               transition={PROJECT_SIDEBAR_FOLD_SPRING}
               aria-hidden={projectSidebarFolded}
             >
-              <img
-                src={folderIcon}
-                alt=""
-                className="h-6 w-6 mt-1 -ml-0.5 shrink-0"
-                aria-hidden
-              />
               <span className="min-w-0 flex-1 truncate">{coworkLabel}</span>
             </motion.span>
             <motion.div

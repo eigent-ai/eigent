@@ -90,6 +90,7 @@
   "tasks": "AUFGABEN",
   "chat-history-title": "Chat-Verlauf",
   "chat-history-tooltip": "Chat-Verlauf",
+  "back-to-workspace-tooltip": "Zurück zum Arbeitsbereich",
   "task-list-add-hint": "Workspace öffnen und Chat fokussieren",
   "ongoing": "Laufend",
   "token": "# Token",

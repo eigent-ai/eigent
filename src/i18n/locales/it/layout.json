@@ -90,6 +90,7 @@
   "tasks": "ATTIVITÀ",
   "chat-history-title": "Cronologia chat",
   "chat-history-tooltip": "Cronologia chat",
+  "back-to-workspace-tooltip": "Torna all’area di lavoro",
   "task-list-add-hint": "Apri workspace e metti a fuoco la chat",
   "ongoing": "In corso",
   "token": "# Token",

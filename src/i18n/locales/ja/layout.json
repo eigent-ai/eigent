@@ -90,6 +90,7 @@
   "tasks": "タスク",
   "chat-history-title": "チャット履歴",
   "chat-history-tooltip": "チャット履歴",
+  "back-to-workspace-tooltip": "ワークスペースに戻る",
   "task-list-add-hint": "ワークスペースを開きチャット入力にフォーカス",
   "ongoing": "進行中",
   "token": "# トークン",

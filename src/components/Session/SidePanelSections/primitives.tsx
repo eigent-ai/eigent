@@ -64,7 +64,7 @@ type SidePanelListRowProps = {
 };
 
 /**
- * Row primitive used across Agent Pool / Context / Agent Folder sections.
+ * Row primitive used across Agent Pool / Execution Context / Agent Folder sections.
  * Rendered as a button when `onClick` is provided, otherwise a div.
  */
 export const SidePanelListRow = forwardRef<HTMLElement, SidePanelListRowProps>(

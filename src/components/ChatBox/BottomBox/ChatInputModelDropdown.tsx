@@ -13,9 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * Default model picker for the chat input bar — same structure as Agents → Models
- * default model dropdown. Selection actions navigate to Agents → Models until
- * inline default switching is wired here.
+ * Default model picker for the chat input bar — same structure as Agents → Models.
+ * Configured models switch inline; unconfigured options open Agents → Models.
  */
 
 import { proxyFetchGet } from '@/api/http';
@@ -29,7 +28,14 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  applyDefaultModelSelection,
+  DEFAULT_MODEL_CONFIGURE_PATH,
+  isDefaultModelConfigured,
+  type DefaultModelCategory,
+} from '@/lib/applyDefaultModelSelection';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { cn } from '@/lib/utils';
 import {
   getLocalPlatformName,
   LOCAL_MODEL_OPTIONS,
@@ -50,6 +56,7 @@ import {
   Server,
   Sparkles,
 } from 'lucide-react';
+import type { Dispatch, SetStateAction } from 'react';
 import {
   useCallback,
   useEffect,
@@ -81,14 +88,33 @@ const cloudModelOptions = [
 
 export interface ChatInputModelDropdownProps {
   disabled?: boolean;
+  /**
+   * When true, shows the current default model in the same shell as
+   * `WorkspaceSessionModeToggle` (readOnly) — no chevron, not interactive,
+   * no filled background (session input bar).
+   * Used for session chat input where the model is fixed for the session.
+   */
+  readOnly?: boolean;
 }
+
+const modelTriggerShellClass = cn(
+  'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
+  'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default [&_svg.lucide]:stroke-2'
+);
 
 export function ChatInputModelDropdown({
   disabled,
+  readOnly = false,
 }: ChatInputModelDropdownProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { modelType, cloud_model_type, appearance } = useAuthStore();
+  const {
+    modelType,
+    cloud_model_type,
+    appearance,
+    setModelType,
+    setCloudModelType,
+  } = useAuthStore();
 
   const [items] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
@@ -248,9 +274,47 @@ export function ChatInputModelDropdown({
   const needsInvert = (modelId: string | null): boolean =>
     needsInvertModelImage(modelId, appearance);
 
-  const goToModelsSettings = () => {
-    navigate('/history?tab=agents');
-  };
+  const handleDefaultModelSelect = useCallback(
+    async (category: DefaultModelCategory, modelId: string) => {
+      if (
+        !isDefaultModelConfigured(category, modelId, {
+          items,
+          form,
+          localProviderIds,
+        })
+      ) {
+        navigate(DEFAULT_MODEL_CONFIGURE_PATH);
+        return;
+      }
+      await applyDefaultModelSelection({
+        category,
+        modelId,
+        items,
+        form,
+        setForm: setForm as Dispatch<SetStateAction<unknown[]>>,
+        setCloudPrefer,
+        setLocalPrefer,
+        setLocalPlatform,
+        localProviderIds,
+        localPlatform,
+        setModelType,
+        setCloudModelType: (id: string) => {
+          setCloudModelType(id as never);
+        },
+        t,
+      });
+    },
+    [
+      items,
+      form,
+      localProviderIds,
+      localPlatform,
+      navigate,
+      setModelType,
+      setCloudModelType,
+      t,
+    ]
+  );
 
   /** Radix submenu forces align=start (tops align); use alignOffset so sub bottom aligns with the SubTrigger row bottom. */
   const activeSubTriggerRef = useRef<HTMLElement | null>(null);
@@ -303,6 +367,30 @@ export function ChatInputModelDropdown({
     };
   }, [subAlignSyncEpoch, syncSubMenuAlignOffset]);
 
+  if (readOnly) {
+    return (
+      <div
+        role="status"
+        title={triggerModelName}
+        aria-label={triggerModelName}
+        className={cn(
+          modelTriggerShellClass,
+          'pointer-events-none bg-transparent',
+          {
+            'opacity-50': disabled,
+          }
+        )}
+      >
+        <span className="gap-1.5 min-w-0 inline-flex min-h-[1.25rem] items-center overflow-hidden">
+          <Sparkles className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+          <span className="!text-label-xs min-w-0 font-semibold truncate">
+            {triggerModelName}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
   return (
     <DropdownMenu
       onOpenChange={(open) => {
@@ -315,18 +403,30 @@ export function ChatInputModelDropdown({
           disabled={disabled}
           title={triggerModelName}
           aria-label={triggerModelName}
-          className="gap-1.5 rounded-xl px-2 py-1 font-semibold hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-default-default flex max-w-[min(100%,320px)] shrink-0 items-center justify-between bg-transparent transition-colors disabled:pointer-events-none disabled:opacity-50"
+          aria-haspopup="menu"
+          className={cn(
+            modelTriggerShellClass,
+            'min-w-0 cursor-pointer border-0 text-left',
+            'font-semibold justify-between transition-colors',
+            'hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-subtle-default',
+            'focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+            'disabled:pointer-events-none disabled:opacity-50'
+          )}
         >
-          <Sparkles
-            className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
-            aria-hidden
-          />
-          <span className="text-body-xs min-w-0 font-semibold text-ds-text-neutral-default-default flex-1 truncate text-left">
-            {triggerModelName}
+          <span className="gap-1.5 min-w-0 flex flex-1 items-center overflow-hidden">
+            <Sparkles
+              className="size-3.5 shrink-0"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <span className="!text-label-xs min-w-0 text-ds-text-neutral-default-default flex-1 truncate text-left">
+              {triggerModelName}
+            </span>
           </span>
           <ChevronDown
-            className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
+            className="h-3.5 w-3.5 shrink-0 opacity-80"
             aria-hidden
+            strokeWidth={2}
           />
         </button>
       </DropdownMenuTrigger>
@@ -371,8 +471,8 @@ export function ChatInputModelDropdown({
               {cloudModelOptions.map((model) => (
                 <DropdownMenuItem
                   key={model.id}
-                  onClick={() => {
-                    void goToModelsSettings();
+                  onSelect={() => {
+                    void handleDefaultModelSelect('cloud', model.id);
                   }}
                   className="flex items-center justify-between"
                 >
@@ -420,8 +520,8 @@ export function ChatInputModelDropdown({
               return (
                 <DropdownMenuItem
                   key={item.id}
-                  onClick={() => {
-                    void goToModelsSettings();
+                  onSelect={() => {
+                    void handleDefaultModelSelect('custom', item.id);
                   }}
                   className="flex items-center justify-between"
                 >
@@ -497,8 +597,8 @@ export function ChatInputModelDropdown({
               return (
                 <DropdownMenuItem
                   key={model.id}
-                  onClick={() => {
-                    void goToModelsSettings();
+                  onSelect={() => {
+                    void handleDefaultModelSelect('local', model.id);
                   }}
                   className="flex items-center justify-between"
                 >

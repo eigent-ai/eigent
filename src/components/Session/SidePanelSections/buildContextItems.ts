@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { getToolkitIcon } from '@/lib/toolkitIcons';
-import type { ContextItem } from './ContextSection';
+import { FileText } from 'lucide-react';
+import { createElement } from 'react';
+import type { ContextItem } from './ExecutionContextSection';
 
 function addHint(set: Set<string>, raw: string) {
   const t = raw.trim().toLowerCase();
@@ -68,15 +70,16 @@ function runtimeCategoryForToolkit(
   toolkitName: string,
   skillHints: Set<string>,
   connectorHints: Set<string>
-): ContextItem['category'] {
+): ContextItem['category'] | null {
   const tn = toolkitName.trim().toLowerCase();
+  if (/\bskill\b/i.test(tn)) return 'skill';
   if (/\bmcp\b/i.test(tn)) return 'connector';
   if (skillHints.has(tn)) return 'skill';
   const noTk = tn.replace(/\s+toolkit\s*$/i, '').trim();
   if (skillHints.has(noTk)) return 'skill';
   if (connectorHints.has(tn)) return 'connector';
   if (connectorHints.has(noTk)) return 'connector';
-  return 'tool';
+  return null;
 }
 
 function forEachRuntimeToolkit(
@@ -103,16 +106,18 @@ function forEachRuntimeToolkit(
 }
 
 /**
- * Derive a flat, deduplicated list of context items (skills / connectors /
- * tools) from agents' workerInfo **and** runtime toolkit usage on subtasks.
+ * Derive a flat, deduplicated list of context items (skills / MCP tools)
+ * from runtime toolkit usage on subtasks of the active task.
  *
- * - `workerInfo` → configured tools, connectors, skills (as before)
- * - `task.toolkits` / `taskRunning[].toolkits` from ACTIVATE_TOOLKIT → records
- *   actual tool/skill/connector usage during the run (merged in, deduped)
+ * - `task.toolkits` / `taskRunning[].toolkits` from ACTIVATE_TOOLKIT are
+ *   treated as the source of truth for "currently used" context.
+ * - `workerInfo` is used only as a hint to classify runtime toolkit names as
+ *   skill vs connector.
  */
 export function buildContextItems(
   agents: Agent[],
-  taskRunning?: TaskInfo[]
+  taskRunning?: TaskInfo[],
+  uploadedFiles: File[] = []
 ): ContextItem[] {
   const seen = new Set<string>();
   const out: ContextItem[] = [];
@@ -126,70 +131,13 @@ export function buildContextItems(
 
   const { skillHints, connectorHints } = collectWorkerHintSets(agents);
 
-  for (const agent of agents) {
-    const info = agent.workerInfo;
-    if (!info) continue;
-
-    const tools: unknown = info.tools;
-    if (Array.isArray(tools)) {
-      for (const name of tools) {
-        if (typeof name !== 'string' || !name) continue;
-        push({
-          id: name,
-          label: name,
-          category: 'tool',
-          icon: getToolkitIcon(name, 16),
-        });
-      }
-    }
-
-    const mcp: unknown = info.mcp_tools;
-    if (mcp && typeof mcp === 'object') {
-      const servers = (mcp as { mcpServers?: Record<string, unknown> })
-        .mcpServers;
-      if (servers && typeof servers === 'object') {
-        for (const name of Object.keys(servers)) {
-          push({
-            id: name,
-            label: name,
-            category: 'connector',
-            icon: getToolkitIcon(name, 16),
-          });
-        }
-      }
-    }
-
-    const selected: unknown = info.selectedTools;
-    if (Array.isArray(selected)) {
-      for (const raw of selected) {
-        if (!raw || typeof raw !== 'object') continue;
-        const item = raw as {
-          name?: string;
-          key?: string;
-          toolkit?: string;
-          category?: { name?: string };
-        };
-        const label = item.name ?? item.key ?? item.toolkit;
-        if (!label) continue;
-        const categoryName = item.category?.name?.toLowerCase() ?? '';
-        const category: ContextItem['category'] =
-          categoryName === 'skill' ? 'skill' : 'connector';
-        push({
-          id: label,
-          label,
-          category,
-          icon: getToolkitIcon(item.toolkit ?? label, 16),
-        });
-      }
-    }
-  }
-
   forEachRuntimeToolkit(agents, taskRunning, (toolkitName) => {
     const category = runtimeCategoryForToolkit(
       toolkitName,
       skillHints,
       connectorHints
     );
+    if (!category) return;
     push({
       id: toolkitName,
       label: toolkitName,
@@ -197,6 +145,19 @@ export function buildContextItems(
       icon: getToolkitIcon(toolkitName, 16),
     });
   });
+
+  for (const file of uploadedFiles) {
+    const filePath = file.filePath?.trim();
+    if (!filePath) continue;
+    const fallbackName = filePath.split('/').pop() || filePath;
+    const label = file.fileName?.trim() || fallbackName;
+    push({
+      id: filePath,
+      label,
+      category: 'file',
+      icon: createElement(FileText, { size: 16 }),
+    });
+  }
 
   return out;
 }

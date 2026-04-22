@@ -21,7 +21,6 @@ import {
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { generateUniqueId } from '@/lib';
-import { cn } from '@/lib/utils';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -38,10 +37,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  type ChatTimelineEntry,
-  ChatTimeline,
-} from '../Session/HeaderBox/ChatTimeline';
 import BottomBox from './BottomBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
 
@@ -49,20 +44,7 @@ import { ProjectChatContainer } from './ProjectChatContainer';
 const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
 /** Small gap between last message and BottomBox top. */
 const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
-export type ChatBoxProps = {
-  /** When true, chat history is shown in the header popover instead of the left rail. */
-  isNarrowTimelineLayout: boolean;
-  chatTimelineCollapsed: boolean;
-  onToggleChatTimeline: () => void;
-  taskTimelineEntries: ChatTimelineEntry[];
-};
-
-export default function ChatBox({
-  isNarrowTimelineLayout,
-  chatTimelineCollapsed,
-  onToggleChatTimeline,
-  taskTimelineEntries,
-}: ChatBoxProps): JSX.Element {
+export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
 
   //Get Chatstore for the active project's task
@@ -73,7 +55,6 @@ export default function ChatBox({
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
   const sessionSidePanelMode = usePageTabStore(
     (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
   );
@@ -165,24 +146,6 @@ export default function ChatBox({
   >(null);
 
   const navigate = useNavigate();
-
-  const starterSuggestions = useMemo(
-    () => [
-      {
-        label: t('layout.it-ticket-creation'),
-        message: t('layout.it-ticket-creation-message'),
-      },
-      {
-        label: t('layout.bank-transfer-csv-analysis'),
-        message: t('layout.bank-transfer-csv-analysis-message'),
-      },
-      {
-        label: t('layout.find-duplicate-files'),
-        message: t('layout.find-duplicate-files-message'),
-      },
-    ],
-    [t]
-  );
 
   const handleSelectModel = useCallback(() => {
     navigate('/history?tab=agents');
@@ -973,161 +936,125 @@ export default function ChatBox({
 
   const chatColumn = (
     <>
-      {/* Main: chat timeline rail + scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="min-h-0 relative flex flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex flex-1 flex-row overflow-hidden">
-          {!isNarrowTimelineLayout && (
-            <div
-              id="chat-timeline-panel"
-              className={cn(
-                'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
-                chatTimelineCollapsed ? 'w-0' : 'w-[200px]'
+      {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
+      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
+        <div
+          ref={scrollContainerRef}
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
+        >
+          {hasAnyMessages ? (
+            <ProjectChatContainer
+              scrollContainerRef={scrollContainerRef}
+              scrollBottomInsetPx={scrollBottomInsetPx}
+              onSkip={handleSkip}
+              isPauseResumeLoading={isPauseResumeLoading}
+            />
+          ) : (
+            <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
+
+              {chatStore.activeTaskId && (
+                <BottomBox
+                  state="input"
+                  queuedMessages={queuedMessages}
+                  onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  noModelOverlay={!hasModel}
+                  onSelectModel={handleSelectModel}
+                  inputProps={{
+                    value: message,
+                    onChange: setMessage,
+                    onSend: handleSend,
+                    files:
+                      chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                        (f) => ({
+                          fileName: f.fileName,
+                          filePath: f.filePath,
+                        })
+                      ) || [],
+                    onFilesChange: (files) =>
+                      chatStore.setAttaches(
+                        chatStore.activeTaskId as string,
+                        files as any
+                      ),
+                    onAddFile: handleFileSelect,
+                    disabled: isInputDisabled,
+                    textareaRef: textareaRef,
+                    allowDragDrop: true,
+                    useCloudModelInDev: useCloudModelInDev,
+                    sessionMode: sessionSidePanelMode,
+                    sessionModeSelectInteractive: false,
+                  }}
+                />
               )}
-              aria-hidden={chatTimelineCollapsed}
-            >
-              <ChatTimeline
-                collapsed={chatTimelineCollapsed}
-                entries={taskTimelineEntries}
-                activeTaskId={chatStore.activeTaskId}
-                setScrollToQueryId={setScrollToQueryId}
-                title={t('layout.chat-history-title', {
-                  defaultValue: 'Chat history',
-                })}
-                emptyLabel={t('layout.no-tasks', {
-                  defaultValue: 'No tasks',
-                })}
-              />
             </div>
           )}
-          <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
-            <div
-              ref={scrollContainerRef}
-              className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
-            >
-              {hasAnyMessages ? (
-                <ProjectChatContainer
-                  scrollContainerRef={scrollContainerRef}
-                  scrollBottomInsetPx={scrollBottomInsetPx}
-                  onSkip={handleSkip}
-                  isPauseResumeLoading={isPauseResumeLoading}
-                />
-              ) : (
-                <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-                  <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end">
-                    <div className="text-heading-base font-bold text-center text-[color:var(--ds-text-neutral-default-default)]">
-                      {t('layout.welcome-to-eigent')}
-                    </div>
-                  </div>
-
-                  {chatStore.activeTaskId && (
-                    <BottomBox
-                      state="input"
-                      queuedMessages={queuedMessages}
-                      onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                      noModelOverlay={!hasModel}
-                      onSelectModel={handleSelectModel}
-                      starterSuggestions={
-                        hasModel ? starterSuggestions : undefined
-                      }
-                      onStarterSuggestion={setMessage}
-                      inputProps={{
-                        value: message,
-                        onChange: setMessage,
-                        onSend: handleSend,
-                        files:
-                          chatStore.tasks[
-                            chatStore.activeTaskId
-                          ]?.attaches?.map((f) => ({
-                            fileName: f.fileName,
-                            filePath: f.filePath,
-                          })) || [],
-                        onFilesChange: (files) =>
-                          chatStore.setAttaches(
-                            chatStore.activeTaskId as string,
-                            files as any
-                          ),
-                        onAddFile: handleFileSelect,
-                        disabled: isInputDisabled,
-                        textareaRef: textareaRef,
-                        allowDragDrop: true,
-                        useCloudModelInDev: useCloudModelInDev,
-                        sessionMode: sessionSidePanelMode,
-                        sessionModeSelectInteractive: false,
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {chatStore.activeTaskId && hasAnyMessages && (
-              <div
-                ref={bottomBoxOverlayRef}
-                className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
-              >
-                <div className="px-sm pointer-events-auto w-full max-w-[600px]">
-                  <BottomBox
-                    state={getBottomBoxState()}
-                    queuedMessages={queuedMessages}
-                    onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                    noModelOverlay={!hasModel}
-                    onSelectModel={handleSelectModel}
-                    subtitle={
-                      getBottomBoxState() === 'confirm'
-                        ? (() => {
-                            const messages =
-                              chatStore.tasks[chatStore.activeTaskId]
-                                ?.messages || [];
-                            const lastUserMessage = messages
-                              .slice()
-                              .reverse()
-                              .find((msg) => msg.role === 'user');
-                            return (
-                              lastUserMessage?.content ||
-                              chatStore.tasks[chatStore.activeTaskId]
-                                ?.summaryTask
-                            );
-                          })()
-                        : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
-                    }
-                    onStartTask={() => handleConfirmTask()}
-                    onEdit={handleEditQuery}
-                    taskTime={taskTime}
-                    taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-                    onPauseResume={handlePauseResume}
-                    pauseResumeLoading={isPauseResumeLoading}
-                    loading={loading}
-                    inputProps={{
-                      value: message,
-                      onChange: setMessage,
-                      onSend: handleSend,
-                      files:
-                        chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                          (f) => ({
-                            fileName: f.fileName,
-                            filePath: f.filePath,
-                          })
-                        ) || [],
-                      onFilesChange: (files) =>
-                        chatStore.setAttaches(
-                          chatStore.activeTaskId as string,
-                          files as any
-                        ),
-                      onAddFile: handleFileSelect,
-                      placeholder: t('chat.follow-up-placeholder'),
-                      disabled: isInputDisabled,
-                      textareaRef: textareaRef,
-                      allowDragDrop: true,
-                      useCloudModelInDev: useCloudModelInDev,
-                      sessionMode: sessionSidePanelMode,
-                      sessionModeSelectInteractive: false,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
         </div>
+
+        {chatStore.activeTaskId && hasAnyMessages && (
+          <div
+            ref={bottomBoxOverlayRef}
+            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+          >
+            <div className="px-sm pointer-events-auto w-full max-w-[600px]">
+              <BottomBox
+                state={getBottomBoxState()}
+                queuedMessages={queuedMessages}
+                onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                noModelOverlay={!hasModel}
+                onSelectModel={handleSelectModel}
+                subtitle={
+                  getBottomBoxState() === 'confirm'
+                    ? (() => {
+                        const messages =
+                          chatStore.tasks[chatStore.activeTaskId]?.messages ||
+                          [];
+                        const lastUserMessage = messages
+                          .slice()
+                          .reverse()
+                          .find((msg) => msg.role === 'user');
+                        return (
+                          lastUserMessage?.content ||
+                          chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                        );
+                      })()
+                    : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                }
+                onStartTask={() => handleConfirmTask()}
+                onEdit={handleEditQuery}
+                taskTime={taskTime}
+                taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
+                onPauseResume={handlePauseResume}
+                pauseResumeLoading={isPauseResumeLoading}
+                loading={loading}
+                inputProps={{
+                  value: message,
+                  onChange: setMessage,
+                  onSend: handleSend,
+                  files:
+                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                      (f) => ({
+                        fileName: f.fileName,
+                        filePath: f.filePath,
+                      })
+                    ) || [],
+                  onFilesChange: (files) =>
+                    chatStore.setAttaches(
+                      chatStore.activeTaskId as string,
+                      files as any
+                    ),
+                  onAddFile: handleFileSelect,
+                  placeholder: t('chat.follow-up-placeholder'),
+                  disabled: isInputDisabled,
+                  textareaRef: textareaRef,
+                  allowDragDrop: true,
+                  useCloudModelInDev: useCloudModelInDev,
+                  sessionMode: sessionSidePanelMode,
+                  sessionModeSelectInteractive: false,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

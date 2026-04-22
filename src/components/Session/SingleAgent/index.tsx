@@ -13,4 +13,3 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 export { SingleAgentSidePanel } from './SingleAgentSidePanel';
-export type { SingleAgentSidePanelProps } from './SingleAgentSidePanel';

@@ -14,29 +14,16 @@
 
 import ChatBox from '@/components/ChatBox';
 import { HeaderBox } from '@/components/Session/HeaderBox';
-import {
-  CHAT_TIMELINE_BREAKPOINT_PX,
-  CHAT_TIMELINE_DEFAULT_COLLAPSED,
-  ChatTimeline,
-} from '@/components/Session/HeaderBox/ChatTimeline';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { useProjectTaskTimelineEntries } from '@/hooks/useProjectTaskTimelineEntries';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus, SessionMode } from '@/types/constants';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SessionSidePanel } from './SessionSidePanel';
-
-/** Matches prior workforce rail width; keeps chat + header from collapsing in the row. */
-const SESSION_SIDE_PANEL_WIDTH_CLASS = 'w-[min(360px,40vw)] max-w-[400px]';
+import {
+  SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
+  SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
+} from './sessionSidePanelLayout';
 
 /**
  * Active session: header + chat (left) and a mode-dependent side panel (right).
@@ -44,63 +31,15 @@ const SESSION_SIDE_PANEL_WIDTH_CLASS = 'w-[min(360px,40vw)] max-w-[400px]';
  * (Workspace toggle: Single Agent vs Workforce).
  */
 export default function Session() {
-  const { t } = useTranslation();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
   const sessionMode = usePageTabStore(
     (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
   );
 
-  const sessionChatColumnRef = useRef<HTMLDivElement>(null);
-  const [chatColumnWidth, setChatColumnWidth] = useState<number | null>(null);
-  const [chatTimelineCollapsed, setChatTimelineCollapsed] = useState(
-    CHAT_TIMELINE_DEFAULT_COLLAPSED
-  );
-  const [timelineDropdownOpen, setTimelineDropdownOpen] = useState(false);
-
   const [isSidePanelVisible, setIsSidePanelVisible] = useState(true);
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
-
-  const taskTimelineEntries = useProjectTaskTimelineEntries(
-    projectStore,
-    chatStore
-  );
-
-  const isNarrowTimelineLayout = useMemo(
-    () =>
-      chatColumnWidth !== null && chatColumnWidth < CHAT_TIMELINE_BREAKPOINT_PX,
-    [chatColumnWidth]
-  );
-
-  useLayoutEffect(() => {
-    const el = sessionChatColumnRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (typeof w === 'number' && Number.isFinite(w)) setChatColumnWidth(w);
-    });
-    ro.observe(el);
-    setChatColumnWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!isNarrowTimelineLayout) setTimelineDropdownOpen(false);
-  }, [isNarrowTimelineLayout]);
-
-  const handleScrollToQueryForTimeline = useCallback(
-    (id: string) => {
-      setScrollToQueryId(id);
-      if (isNarrowTimelineLayout) setTimelineDropdownOpen(false);
-    },
-    [setScrollToQueryId, isNarrowTimelineLayout]
-  );
-
-  const toggleChatTimeline = useCallback(() => {
-    setChatTimelineCollapsed((c) => !c);
-  }, []);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -176,45 +115,13 @@ export default function Session() {
 
   return (
     <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-      <div
-        ref={sessionChatColumnRef}
-        className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden"
-      >
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
-            sessionSidePanelMode={sessionMode}
-            narrowTimelineLayout={isNarrowTimelineLayout}
-            timelineDropdownOpen={timelineDropdownOpen}
-            onTimelineDropdownOpenChange={setTimelineDropdownOpen}
-            timelineDropdownContent={
-              isNarrowTimelineLayout ? (
-                <ChatTimeline
-                  collapsed={false}
-                  entries={taskTimelineEntries}
-                  activeTaskId={chatStore.activeTaskId}
-                  setScrollToQueryId={handleScrollToQueryForTimeline}
-                  title={t('layout.chat-history-title', {
-                    defaultValue: 'Chat history',
-                  })}
-                  emptyLabel={t('layout.no-tasks', {
-                    defaultValue: 'No tasks',
-                  })}
-                />
-              ) : null
-            }
-            chatTimelineCollapsed={chatTimelineCollapsed}
-            onToggleChatTimeline={toggleChatTimeline}
-            isSessionSidePanelVisible={isSidePanelVisible}
-            onToggleSessionSidePanel={toggleSidePanel}
           />
         )}
-        <ChatBox
-          isNarrowTimelineLayout={isNarrowTimelineLayout}
-          chatTimelineCollapsed={chatTimelineCollapsed}
-          onToggleChatTimeline={toggleChatTimeline}
-          taskTimelineEntries={taskTimelineEntries}
-        />
+        <ChatBox />
       </div>
 
       <div
@@ -222,8 +129,8 @@ export default function Session() {
         className={cn(
           'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
           isSidePanelVisible
-            ? SESSION_SIDE_PANEL_WIDTH_CLASS
-            : 'w-0 max-w-0 border-l-0'
+            ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
+            : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
         <SessionSidePanel

@@ -154,8 +154,11 @@ export function WorkspaceProjectPicker() {
         <Button
           id="workspace-project-picker-trigger"
           type="button"
-          variant="outline"
-          className="no-drag gap-2 rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-1 font-semibold shadow-sm hover:bg-ds-bg-neutral-default-default/80 inline-flex h-auto w-fit max-w-[300px] justify-between text-left"
+          variant="ghost"
+          size="md"
+          buttonContent="text"
+          buttonRadius="full"
+          className="no-drag bg-ds-bg-neutral-subtle-default px-3 py-1 font-semibold shadow-soft hover:bg-ds-bg-neutral-default-hover inline-flex h-auto w-fit max-w-[300px] justify-between"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
@@ -163,13 +166,13 @@ export function WorkspaceProjectPicker() {
             {activeTaskTitle}
           </span>
           <ChevronDown
-            className="text-ds-icon-neutral-muted-default h-3 w-3 shrink-0"
+            className="text-ds-icon-neutral-muted-default h-2.5 w-2.5 shrink-0 opacity-80"
             aria-hidden
           />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="w-[min(100vw-2rem,200px)]"
+        className="w-[min(100vw-2rem,180px)]"
         align="end"
         sideOffset={6}
       >

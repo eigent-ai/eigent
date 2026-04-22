@@ -90,6 +90,7 @@
   "tasks": "ЗАДАЧИ",
   "chat-history-title": "История чата",
   "chat-history-tooltip": "История чата",
+  "back-to-workspace-tooltip": "Назад к рабочему пространству",
   "task-list-add-hint": "Открыть рабочее пространство и фокус на чате",
   "ongoing": "В процессе",
   "token": "# Токен",

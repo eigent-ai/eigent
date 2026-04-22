@@ -23,14 +23,12 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { motion } from 'framer-motion';
-import { Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
+import { Inbox, Plus, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { BottomAction } from './BottomAction';
-import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
 import { HeaderAction } from './HeaderAction';
 import { NavList } from './NavList';
 import {
@@ -88,10 +86,10 @@ export default function ProjectPageSidebar({
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
 
-  const triggersTabTooltip = t('layout.triggers');
+  const triggersTabTooltip = 'Scheduled';
 
   const triggersTabAriaLabel = useMemo(() => {
-    const base = t('layout.triggers');
+    const base = 'Scheduled';
     if (triggersListenerConnected) return base;
     if (wsConnectionStatus === 'connecting') {
       return `${base}, ${t('layout.triggers-connecting')}`;
@@ -256,9 +254,10 @@ export default function ProjectPageSidebar({
     [chatStore, t]
   );
 
-  const handleShowAllSessions = useCallback(() => {
-    setActiveWorkspaceTab('sessions');
-  }, [setActiveWorkspaceTab]);
+  const handleNewSession = useCallback(() => {
+    chatStore.create();
+    setActiveWorkspaceTab('session');
+  }, [chatStore, setActiveWorkspaceTab]);
 
   return (
     <>
@@ -280,19 +279,6 @@ export default function ProjectPageSidebar({
 
               <div className="gap-2 min-w-0 flex w-full flex-col">
                 <NavTab
-                  active={activeWorkspaceTab === 'workforce'}
-                  onClick={() => setActiveWorkspaceTab('workforce')}
-                  leading={
-                    <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
-                  }
-                  label={t('triggers.workspace')}
-                  tooltip={t('triggers.workspace')}
-                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
-                  folded={projectSidebarFolded}
-                  ariaLabel={t('triggers.workspace')}
-                  ariaCurrentPage={activeWorkspaceTab === 'workforce'}
-                />
-                <NavTab
                   active={activeWorkspaceTab === 'inbox'}
                   onClick={() => {
                     if (chatStore.activeTaskId) {
@@ -313,7 +299,7 @@ export default function ProjectPageSidebar({
                       ) : null}
                     </span>
                   }
-                  label={t('layout.folder')}
+                  label="Context"
                   trailing={
                     <span
                       className="rounded-md px-1.5 font-medium leading-tight bg-ds-bg-neutral-default-default text-ds-text-neutral-subtle-default text-body-xs py-0.5 max-w-[5.5rem] shrink-0 truncate"
@@ -327,10 +313,10 @@ export default function ProjectPageSidebar({
                       {folderSettingTagLabel}
                     </span>
                   }
-                  tooltip={t('layout.folder')}
+                  tooltip="Context"
                   tooltipEnabledWhenCollapsed={!projectSidebarFolded}
                   folded={projectSidebarFolded}
-                  ariaLabel={`${t('layout.folder')}, ${folderSettingTagLabel}`}
+                  ariaLabel={`Context, ${folderSettingTagLabel}`}
                   ariaCurrentPage={activeWorkspaceTab === 'inbox'}
                 />
                 <NavTab
@@ -356,7 +342,7 @@ export default function ProjectPageSidebar({
                       />
                     )
                   }
-                  label={t('layout.triggers')}
+                  label="Scheduled"
                   trailing={
                     showTriggersDisconnectedTag ? (
                       <span className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-[var(--ds-bg-neutral-default-default)] py-px text-[10px] text-[color:var(--ds-text-status-error-strong-default)]">
@@ -411,21 +397,12 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <motion.div
-              className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden"
-              initial={false}
-              animate={{
-                opacity: projectSidebarFolded ? 0 : 1,
-                y: projectSidebarFolded ? -6 : 0,
-              }}
-              transition={PROJECT_SIDEBAR_FOLD_SPRING}
-              aria-hidden={projectSidebarFolded}
-              style={{
-                pointerEvents: projectSidebarFolded ? 'none' : undefined,
-              }}
-            >
+            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
               <NavList
-                className="min-h-0 mt-6 flex flex-1 flex-col"
+                className={cn(
+                  'min-h-0 flex flex-1 flex-col',
+                  projectSidebarFolded ? 'mt-2' : 'mt-6'
+                )}
                 sessions={navSessions}
                 activeSessionId={
                   activeWorkspaceTab === 'session'
@@ -437,10 +414,12 @@ export default function ProjectPageSidebar({
                   setActiveWorkspaceTab('session');
                 }}
                 onDeleteSession={handleDeleteSession}
-                onShowAll={handleShowAllSessions}
-                showAllActive={activeWorkspaceTab === 'sessions'}
+                workspaceActive={activeWorkspaceTab === 'workforce'}
+                onWorkspaceClick={() => setActiveWorkspaceTab('workforce')}
+                onNewSession={handleNewSession}
+                folded={projectSidebarFolded}
               />
-            </motion.div>
+            </div>
           </div>
 
           <BottomAction

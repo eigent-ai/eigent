@@ -17,7 +17,10 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { Power } from 'lucide-react';
 
-import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
+import {
+  PROJECT_SIDEBAR_FOLD_SPRING,
+  SIDEBAR_TOOLTIP_CONTENT_CLASS,
+} from './constants';
 import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
 
 export interface BottomActionProps {
@@ -56,6 +59,7 @@ export function BottomAction({
             side="right"
             align="center"
             enabled={folded}
+            className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
           >
             <button
               type="button"

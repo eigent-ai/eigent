@@ -16,20 +16,18 @@ import { AgentFolderSection } from '@/components/Session/SidePanelSections/Agent
 import { AgentPoolSection } from '@/components/Session/SidePanelSections/AgentPoolSection';
 import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
 import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
-import { ContextSection } from '@/components/Session/SidePanelSections/ContextSection';
+import { ExecutionContextSection } from '@/components/Session/SidePanelSections/ExecutionContextSection';
 import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
 import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
-import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { Maximize2, X } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+/** Main column under `SessionSidePanel` header: fills remaining height in flex parent */
 export const WORKFORCE_MAIN_SURFACE_CLASS =
-  'min-w-0 flex h-full w-full flex-col overflow-hidden';
+  'min-w-0 flex w-full min-h-0 flex-1 flex-col overflow-hidden';
 
 export interface WorkforceSidePanelProps {
   workforcePanelKey: string;
@@ -77,9 +75,25 @@ export function WorkforceSidePanel({
     () => collectSidePanelOutputFiles(activeTask),
     [activeTask]
   );
+  const uploadedFiles = useMemo(() => {
+    if (!activeTask) return [];
+    const all = [
+      ...(activeTask.messages ?? [])
+        .filter((m) => m.role === 'user')
+        .flatMap((m) => m.attaches ?? []),
+      ...(activeTask.attaches ?? []),
+    ];
+    const seen = new Set<string>();
+    return all.filter((file) => {
+      const key = file.filePath;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [activeTask]);
   const contextItems = useMemo(
-    () => buildContextItems(agents, activeTask?.taskRunning),
-    [agents, activeTask?.taskRunning]
+    () => buildContextItems(agents, activeTask?.taskRunning, uploadedFiles),
+    [agents, activeTask?.taskRunning, uploadedFiles]
   );
 
   const handleOpenAgentFile = useCallback(
@@ -95,79 +109,35 @@ export function WorkforceSidePanel({
 
   return (
     <>
-      {isSidePanelVisible && (
-        <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
-          <div className="gap-2 py-2 pl-2 pr-4 relative z-50 flex w-full shrink-0 items-center justify-between">
-            <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold truncate">
-              {t('layout.aiWorkforce')}
-            </span>
-            <div className="gap-1 flex shrink-0 items-center">
-              <TooltipSimple
-                content={
-                  isExpandedOverlayOpen
-                    ? t('layout.close')
-                    : t('layout.expand-workforce', {
-                        defaultValue: 'Expand workforce',
-                      })
-                }
-                delayDuration={300}
-                side="bottom"
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  buttonRadius="lg"
-                  className="shrink-0"
-                  onClick={onToggleExpandedOverlay}
-                  aria-pressed={isExpandedOverlayOpen}
-                  aria-label={
-                    isExpandedOverlayOpen
-                      ? t('layout.close')
-                      : t('layout.expand-workforce', {
-                          defaultValue: 'Expand workforce',
-                        })
-                  }
-                >
-                  {isExpandedOverlayOpen ? (
-                    <X className="h-4 w-4" />
-                  ) : (
-                    <Maximize2 className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipSimple>
-            </div>
-          </div>
-
-          <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-            <AgentPoolSection
-              title={t('layout.workforce-active-agent-pool', {
-                defaultValue: 'Active Agent Pool',
-              })}
-              agents={agents}
-            />
-            <ProgressSection
-              title={t('layout.workforce-progress', {
-                defaultValue: 'Progress',
-              })}
-              subtasks={subtasks}
-            />
-            <ContextSection
-              title={t('layout.workforce-context', {
-                defaultValue: 'Context',
-              })}
-              items={contextItems}
-            />
-            <AgentFolderSection
-              title={t('layout.workforce-agent-folder', {
-                defaultValue: 'Agent Folder',
-              })}
-              files={files}
-              onOpenFile={handleOpenAgentFile}
-            />
-          </div>
+      <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
+        <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+          <AgentPoolSection
+            title={t('layout.workforce-active-agent-pool', {
+              defaultValue: 'Active Agent Pool',
+            })}
+            agents={agents}
+          />
+          <ProgressSection
+            title={t('layout.workforce-progress', {
+              defaultValue: 'Progress',
+            })}
+            subtasks={subtasks}
+          />
+          <ExecutionContextSection
+            title={t('layout.execution-context', {
+              defaultValue: 'Execution Context',
+            })}
+            items={contextItems}
+          />
+          <AgentFolderSection
+            title={t('layout.workforce-agent-folder', {
+              defaultValue: 'Agent Folder',
+            })}
+            files={files}
+            onOpenFile={handleOpenAgentFile}
+          />
         </div>
-      )}
+      </div>
 
       <ExpandedOverlay
         open={isExpandedOverlayOpen}

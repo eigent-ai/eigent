@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AgentFolderSection } from '@/components/Session/SidePanelSections/AgentFolderSection';
-import { ContextSection } from '@/components/Session/SidePanelSections/ContextSection';
+import { ExecutionContextSection } from '@/components/Session/SidePanelSections/ExecutionContextSection';
 import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
 import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
 import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
@@ -23,15 +23,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-export interface SingleAgentSidePanelProps {
-  isSidePanelVisible: boolean;
-  onToggleSidePanel: () => void;
-}
-
-export function SingleAgentSidePanel({
-  isSidePanelVisible,
-  onToggleSidePanel: _onToggleSidePanel,
-}: SingleAgentSidePanelProps) {
+export function SingleAgentSidePanel() {
   const { t } = useTranslation();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -56,9 +48,25 @@ export function SingleAgentSidePanel({
     () => collectSidePanelOutputFiles(activeTask),
     [activeTask]
   );
+  const uploadedFiles = useMemo(() => {
+    if (!activeTask) return [];
+    const all = [
+      ...(activeTask.messages ?? [])
+        .filter((m) => m.role === 'user')
+        .flatMap((m) => m.attaches ?? []),
+      ...(activeTask.attaches ?? []),
+    ];
+    const seen = new Set<string>();
+    return all.filter((file) => {
+      const key = file.filePath;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [activeTask]);
   const contextItems = useMemo(
-    () => buildContextItems(agents, activeTask?.taskRunning),
-    [agents, activeTask?.taskRunning]
+    () => buildContextItems(agents, activeTask?.taskRunning, uploadedFiles),
+    [agents, activeTask?.taskRunning, uploadedFiles]
   );
 
   const handleOpenAgentFile = useCallback(
@@ -72,30 +80,22 @@ export function SingleAgentSidePanel({
     [chatStore, projectStore.activeProjectId, setActiveWorkspaceTab]
   );
 
-  if (!isSidePanelVisible) {
-    return null;
-  }
-
   return (
     <div
       className={cn(
-        'min-w-0 flex h-full w-full flex-col overflow-hidden',
+        'min-w-0 min-h-0 flex w-full flex-1 flex-col overflow-hidden',
         'relative'
       )}
     >
-      <div className="gap-2 py-2 pl-2 pr-4 relative z-50 flex w-full shrink-0 items-center justify-between">
-        <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold truncate">
-          {t('layout.workspace-session-single-agent')}
-        </span>
-      </div>
-
       <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
         <ProgressSection
           title={t('layout.workforce-progress', { defaultValue: 'Progress' })}
           subtasks={subtasks}
         />
-        <ContextSection
-          title={t('layout.workforce-context', { defaultValue: 'Context' })}
+        <ExecutionContextSection
+          title={t('layout.execution-context', {
+            defaultValue: 'Execution Context',
+          })}
           items={contextItems}
         />
         <AgentFolderSection

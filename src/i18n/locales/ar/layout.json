@@ -90,6 +90,7 @@
   "tasks": "المهام",
   "chat-history-title": "سجل الدردشة",
   "chat-history-tooltip": "سجل الدردشة",
+  "back-to-workspace-tooltip": "العودة إلى مساحة العمل",
   "task-list-add-hint": "فتح مساحة العمل والتركيز على الدردشة",
   "ongoing": "قيد التقدم",
   "token": "# الرمز",

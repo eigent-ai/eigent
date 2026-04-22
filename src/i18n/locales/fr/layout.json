@@ -90,6 +90,7 @@
   "tasks": "TÂCHES",
   "chat-history-title": "Historique du chat",
   "chat-history-tooltip": "Historique du chat",
+  "back-to-workspace-tooltip": "Retour à l’espace de travail",
   "task-list-add-hint": "Ouvrir l’espace de travail et focus sur le chat",
   "ongoing": "En cours",
   "token": "# Token",

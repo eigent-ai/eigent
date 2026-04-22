@@ -15,7 +15,7 @@
 import { useTranslation } from 'react-i18next';
 
 /**
- * First three entries from `starterSuggestions` in ChatBox/index.tsx — keep keys in sync.
+ * Example workspace prompts; `titleKey` / `messageKey` use `layout.*` i18n keys.
  */
 const WORKSPACE_EXAMPLE_PROMPTS: readonly {
   id: string;
