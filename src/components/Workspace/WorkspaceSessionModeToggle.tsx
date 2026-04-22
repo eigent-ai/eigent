@@ -16,7 +16,12 @@ import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
 import { SessionMode } from '@/types/constants';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
-import { Bot, ChevronDown, ChevronUp, LayoutGrid } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  GamepadDirectional,
+  Joystick,
+} from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -94,11 +99,11 @@ export function WorkspaceSessionModeToggle({
     })();
   }, [chevronScale]);
 
-  const LeadingIcon = isSingle ? Bot : LayoutGrid;
+  const LeadingIcon = isSingle ? Joystick : GamepadDirectional;
 
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
-    'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+    'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default [&_svg.lucide]:stroke-2',
     className
   );
 
@@ -109,8 +114,8 @@ export function WorkspaceSessionModeToggle({
       className="gap-0 inline-flex shrink-0 flex-col items-center justify-center leading-none"
       aria-hidden
     >
-      <ChevronUp className={cn(chevronClass, '-mb-1')} strokeWidth={2.25} />
-      <ChevronDown className={chevronClass} strokeWidth={2.25} />
+      <ChevronUp className={cn(chevronClass, '-mb-1')} strokeWidth={2} />
+      <ChevronDown className={chevronClass} strokeWidth={2} />
     </span>
   );
 

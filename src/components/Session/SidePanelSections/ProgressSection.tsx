@@ -67,7 +67,7 @@ export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
         }
         if (count === 0) {
           return (
-            <div className="text-ds-text-neutral-muted-default text-body-sm px-1 py-1">
+            <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
               No subtasks yet
             </div>
           );

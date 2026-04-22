@@ -15,11 +15,12 @@
 /** Shared by `RichChatInput` and `UserMessageRichContent` (URLs, #skills). */
 export type RichSegment = { type: 'text' | 'url' | 'skill'; text: string };
 
+/** Hash-stable palette: semantic “other” tones (not default body text). Shared by input + message body. */
 export const RICH_SKILL_STYLE_CLASSES = [
-  'text-text-information bg-surface-information/35',
-  'text-text-success bg-surface-success/25',
-  'text-text-warning bg-surface-warning/35',
-  'text-icon-information bg-surface-action/20',
+  'text-ds-text-success-default-default bg-ds-bg-neutral-subtle-disabled',
+  'text-ds-text-warning-default-default bg-ds-bg-neutral-subtle-disabled',
+  'text-ds-text-terminal-default-default bg-ds-bg-neutral-subtle-disabled',
+  'text-ds-text-document-default-default bg-ds-bg-neutral-subtle-disabled',
 ] as const;
 
 export function hashSkillLabel(label: string): number {
@@ -121,7 +122,7 @@ export function segmentsToHtml(segments: RichSegment[]): string {
       const safe = escapeHtml(seg.text);
       if (href) {
         parts.push(
-          `<a href="${escapeHtml(href)}" data-rich-url="1" class="text-text-information underline decoration-text-information/80 underline-offset-2">${safe}</a>`
+          `<a href="${escapeHtml(href)}" data-rich-url="1" class="text-ds-text-information-default-default underline underline-offset-2 decoration-ds-border-information-default-default">${safe}</a>`
         );
       } else {
         parts.push(safe);

@@ -67,10 +67,10 @@ export function TaskItem({
     <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group min-h-2 gap-0 rounded-lg p-sm relative flex w-full items-start border border-solid hover:bg-[var(--ds-bg-neutral-default-hover)] ${
+        className={`group min-h-2 gap-0 rounded-lg p-sm hover:bg-ds-bg-neutral-default-hover mb-2 relative flex w-full items-start border border-solid ${
           isFocus
-            ? 'border-[color:var(--ds-border-brand-default-focus)] bg-[var(--ds-bg-neutral-default-default)]'
-            : 'border-[color:var(--ds-border-neutral-subtle-default)] group-hover:border-transparent'
+            ? 'border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default'
+            : 'border-ds-border-neutral-subtle-default group-hover:border-transparent'
         }`}
       >
         <div className="h-4 w-7 pr-sm pt-0.5 flex flex-shrink-0 cursor-pointer items-center justify-center">

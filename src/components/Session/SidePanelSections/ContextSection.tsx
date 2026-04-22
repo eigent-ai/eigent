@@ -60,7 +60,7 @@ export function ContextSection({ title, items }: ContextSectionProps) {
   return (
     <SidePanelAccordionBox title={title}>
       {items.length === 0 ? (
-        <div className="text-ds-text-neutral-muted-default text-body-sm px-1 py-1">
+        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
           No context yet
         </div>
       ) : (

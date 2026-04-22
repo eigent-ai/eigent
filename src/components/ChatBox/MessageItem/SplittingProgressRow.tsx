@@ -127,7 +127,7 @@ export function SplittingProgressRow({
   return (
     <div
       className={cn(
-        'gap-x-2 gap-y-1 min-w-0 m-2 flex w-full flex-wrap items-center justify-start',
+        'gap-x-2 gap-y-1 min-w-0 py-2 mx-3 flex w-full flex-wrap items-center justify-start',
         className
       )}
     >
@@ -136,21 +136,21 @@ export function SplittingProgressRow({
           animate
           loop
           size={16}
-          className="text-[color:var(--ds-icon-information-default-default)]"
+          className="text-ds-icon-information-default-default"
         />
       </div>
-      <span className="text-sm font-bold shrink-0 text-[color:var(--ds-text-information-default-default)]">
+      <span className="text-body-sm font-medium text-ds-text-information-default-default shrink-0">
         {t('chat.splitting-tasks')}
       </span>
-      <span className="text-xs font-medium shrink-0 text-[color:var(--ds-text-neutral-muted-default)] tabular-nums">
+      <span className="text-body-sm font-normal text-ds-text-neutral-subtle-default shrink-0 tabular-nums">
         {formatSplittingElapsed(elapsedMs)}
       </span>
-      <span className="text-xs font-medium shrink-0 text-[color:var(--ds-text-neutral-muted-default)] tabular-nums">
+      <span className="text-body-sm font-normal text-ds-text-neutral-subtle-default shrink-0 tabular-nums">
         {' '}
         •{' '}
       </span>
       <span
-        className="gap-1 text-xs font-medium flex shrink-0 items-center text-[color:var(--ds-text-neutral-muted-default)]"
+        className="gap-1 text-body-sm font-normal text-ds-text-neutral-subtle-default flex shrink-0 items-center"
         aria-label={`${t('chat.token')}: ${tokens}`}
       >
         <AnimatedTokenNumber value={tokens} />

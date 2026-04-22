@@ -17,6 +17,7 @@ import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
+import NotificationPanel from '@/components/Notification';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -140,6 +141,7 @@ function HeaderWin() {
   const [packageNewVersion, setPackageNewVersion] = useState<string | null>(
     null
   );
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
@@ -507,6 +509,9 @@ function HeaderWin() {
                   size="icon"
                   className="no-drag rounded-full"
                   aria-label={t('layout.notifications')}
+                  aria-expanded={notificationPanelOpen}
+                  aria-controls="notification-panel"
+                  onClick={() => setNotificationPanelOpen((open) => !open)}
                 >
                   <Bell className="h-4 w-4" aria-hidden />
                 </Button>
@@ -610,6 +615,10 @@ function HeaderWin() {
           </div>
         </div>
       )}
+      <NotificationPanel
+        open={notificationPanelOpen}
+        onOpenChange={setNotificationPanelOpen}
+      />
     </div>
   );
 }

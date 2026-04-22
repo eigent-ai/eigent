@@ -21,7 +21,14 @@ import { useGlobalStore } from '@/store/globalStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FolderOpen, LayoutGrid, List, ListChecks } from 'lucide-react';
+import {
+  Folder,
+  FolderOpen,
+  LayoutGrid,
+  List,
+  ListChecks,
+  Zap,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ProjectGroup from './ProjectGroup';
@@ -403,7 +410,7 @@ export default function GroupedHistoryView({
       >
         <div className="gap-2 flex items-center">
           <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
-            <FolderOpen />
+            <Folder />
             <span className="text-body-sm"> {t('layout.projects')}</span>
 
             {allProjects.length}
@@ -414,6 +421,18 @@ export default function GroupedHistoryView({
             <span className="text-body-sm"> {t('layout.total-tasks')}</span>
             {allProjects.reduce(
               (total, project) => total + project.task_count,
+              0
+            )}
+          </Tag>
+
+          <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
+            <Zap />
+            <span className="text-body-sm">
+              {' '}
+              {t('layout.triggers') || 'Triggers'}
+            </span>
+            {allProjects.reduce(
+              (total, project) => total + (project.total_triggers || 0),
               0
             )}
           </Tag>

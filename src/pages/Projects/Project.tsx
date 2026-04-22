@@ -22,7 +22,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { ChatTaskStatus } from '@/types/constants';
-import { FolderKanban, ListChecks, MessageCircle } from 'lucide-react';
+import { Folder, ListChecks, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -152,7 +152,7 @@ export default function Project() {
     {
       id: 'project' as const,
       name: t('layout.projects-heading'),
-      icon: <FolderKanban className="h-4 w-4 shrink-0" />,
+      icon: <Folder className="h-4 w-4 shrink-0" />,
     },
     {
       id: 'sessions' as const,

@@ -23,6 +23,7 @@ import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExamplePrompts';
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
+import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -315,10 +316,10 @@ export default function Workspace() {
           </Button>
         </TooltipSimple>
       </div>
-      <div className="min-h-0 relative z-0 flex w-full flex-1 flex-col items-center justify-center">
-        <div className="min-h-0 flex w-full flex-1 flex-col items-stretch justify-center">
-          <div className="mx-auto flex min-h-[50vh] w-full max-w-[600px] flex-col">
-            <div className="mb-10 flex w-full flex-col">
+      <div className="min-h-0 relative z-0 flex w-full flex-1 flex-col items-stretch overflow-hidden">
+        <div className="min-h-0 px-3 flex w-full flex-1 flex-col">
+          <div className="mx-auto flex w-full max-w-[600px] shrink-0 flex-col">
+            <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
               <div className="mb-6 flex w-full justify-center">
                 <WorkspaceProjectPicker />
               </div>
@@ -331,7 +332,7 @@ export default function Workspace() {
                       defaultValue: 'Cowork with Workforce',
                     })}
               </span>
-              <div className="px-5 flex w-full justify-center">
+              <div className="px-5 mb-6 flex w-full justify-center">
                 {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
                   <SingleAgentList />
                 ) : (
@@ -346,57 +347,70 @@ export default function Workspace() {
                   />
                 )}
               </div>
-            </div>
-
-            <div className="w-full">
-              <BottomBox
-                state="input"
-                queuedMessages={[]}
-                onRemoveQueuedMessage={() => {}}
-                noModelOverlay={!hasModel}
-                onSelectModel={() => navigate('/history?tab=agents')}
-                inputProps={{
-                  value: message,
-                  onChange: setMessage,
-                  onSend: handleSend,
-                  files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
-                  onAddFile: handleFileSelect,
-                  disabled: !hasModel,
-                  textareaRef,
-                  allowDragDrop: true,
-                  useCloudModelInDev,
-                  placeholder: t('layout.project-task-placeholder', {
-                    defaultValue: 'Describe what you want to accomplish...',
-                  }),
-                  sessionMode: sessionSidePanelMode,
-                  onSessionModeChange: setSessionSidePanelMode,
-                  sessionModeSelectInteractive: true,
-                }}
+              <div className="w-full">
+                <BottomBox
+                  state="input"
+                  queuedMessages={[]}
+                  onRemoveQueuedMessage={() => {}}
+                  noModelOverlay={!hasModel}
+                  onSelectModel={() => navigate('/history?tab=agents')}
+                  inputProps={{
+                    value: message,
+                    onChange: setMessage,
+                    onSend: handleSend,
+                    files:
+                      chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
+                        (f) => ({
+                          fileName: f.fileName,
+                          filePath: f.filePath,
+                        })
+                      ) || [],
+                    onFilesChange: (files) =>
+                      chatStore.setAttaches(
+                        chatStore.activeTaskId as string,
+                        files as any
+                      ),
+                    onAddFile: handleFileSelect,
+                    disabled: !hasModel,
+                    textareaRef,
+                    allowDragDrop: true,
+                    useCloudModelInDev,
+                    placeholder: t('layout.project-task-placeholder', {
+                      defaultValue: 'Describe what you want to accomplish...',
+                    }),
+                    sessionMode: sessionSidePanelMode,
+                    onSessionModeChange: setSessionSidePanelMode,
+                    sessionModeSelectInteractive: true,
+                  }}
+                />
+              </div>
+              <AddWorker
+                isOpen={addWorkerDialogOpen}
+                onOpenChange={setAddWorkerDialogOpen}
               />
             </div>
-            <AddWorker
-              isOpen={addWorkerDialogOpen}
-              onOpenChange={setAddWorkerDialogOpen}
-            />
           </div>
 
-          {showWorkspaceExamplePrompts ? (
-            <WorkspaceExamplePrompts
-              onSelectPrompt={setMessage}
-              disabled={!hasModel}
-            />
-          ) : null}
+          <div
+            className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+            id="workspace-bottom-group"
+          >
+            {showWorkspaceExamplePrompts ? (
+              <WorkspaceExamplePrompts
+                onSelectPrompt={setMessage}
+                disabled={!hasModel}
+              />
+            ) : (
+              <WorkspaceRecentSessions
+                tasks={chatStore.tasks}
+                activeTaskId={chatStore.activeTaskId}
+                onSelectSession={(id) => {
+                  chatStore.setActiveTaskId(id);
+                  setActiveWorkspaceTab('session');
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
 
