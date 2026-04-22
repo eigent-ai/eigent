@@ -62,7 +62,7 @@ export function ExecutionContextSection({
   return (
     <SidePanelAccordionBox title={title}>
       {items.length === 0 ? (
-        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
+        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1 opacity-60">
           Track skills, MCPs and referenced files used in this task.
         </div>
       ) : (

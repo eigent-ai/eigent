@@ -92,18 +92,19 @@ export const MarkDown = memo(
 
     // Typewriter effect
     useEffect(() => {
-      if (lastContentRef.current === content) {
-        return;
-      }
-      lastContentRef.current = content;
-
       if (!enableTypewriter) {
+        lastContentRef.current = content;
         setDisplayedContent(content);
         if (typingCallbackRef.current) {
           typingCallbackRef.current();
         }
         return;
       }
+
+      if (lastContentRef.current === content) {
+        return;
+      }
+      lastContentRef.current = content;
 
       setDisplayedContent('');
       let index = 0;

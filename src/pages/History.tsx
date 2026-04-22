@@ -82,6 +82,15 @@ export default function Home() {
 
   const welcomeName = formatWelcomeName(displayName);
 
+  /** User's local time: morning 5–12, afternoon 12–17, evening/night otherwise */
+  const hour = new Date().getHours();
+  const timeGreetingKey =
+    hour >= 5 && hour < 12
+      ? 'layout.greeting-morning'
+      : hour >= 12 && hour < 17
+        ? 'layout.greeting-afternoon'
+        : 'layout.greeting-evening';
+
   const confirmDelete = () => {
     setDeleteModalOpen(false);
   };
@@ -115,18 +124,19 @@ export default function Home() {
       />
       {/* welcome text */}
       <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
-        <WordCarousel
-          words={[`${t('layout.welcome')}, ${welcomeName} !`]}
-          className="text-heading-xl font-bold tracking-tight"
-          rotateIntervalMs={100}
-          sweepDurationMs={2000}
-          sweepOnce
-          gradient={`linear-gradient(in oklch 90deg,
-            var(--ds-bg-neutral-default-default) 0%,
-            var(--ds-bg-brand-muted-disabled) 50%,
-            var(--ds-bg-brand-subtle-disabled) 100%)`}
-          ariaLabel="rotating headline"
-        />
+        <p className="m-0 gap-2 inline-flex flex-wrap items-baseline">
+          <WordCarousel
+            words={[t(timeGreetingKey)]}
+            className="history-welcome-headline text-heading-xl font-bold tracking-tight not-italic"
+            rotateIntervalMs={100}
+            sweepDurationMs={2000}
+            sweepOnce
+            gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
+          />
+          <span className="history-welcome-headline text-heading-xl font-bold tracking-tight text-ds-text-brand-default-default italic">
+            {`, ${welcomeName} !`}
+          </span>
+        </p>
       </div>
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}

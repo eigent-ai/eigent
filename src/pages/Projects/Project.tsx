@@ -14,29 +14,20 @@
 
 import { fetchPut, proxyFetchDelete } from '@/api/http';
 import GroupedHistoryView from '@/components/Dashboard/GroupedHistoryView';
-import VerticalNavigation, {
-  type VerticalNavItem,
-} from '@/components/Dashboard/VerticalNav';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { ChatTaskStatus } from '@/types/constants';
-import { Folder, ListChecks, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-
-const PROJECT_PAGE_TABS = ['project', 'sessions', 'tasks'] as const;
-type ProjectPageTab = (typeof PROJECT_PAGE_TABS)[number];
 
 export default function Project() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
   const { chatStore, projectStore } = useChatStoreAdapter();
-  const [projectPageTab, setProjectPageTab] =
-    useState<ProjectPageTab>('project');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [curHistoryId, setCurHistoryId] = useState('');
   const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
@@ -148,24 +139,6 @@ export default function Project() {
     }
   };
 
-  const sidebarNavItems = [
-    {
-      id: 'project' as const,
-      name: t('layout.projects-heading'),
-      icon: <Folder className="h-4 w-4 shrink-0" />,
-    },
-    {
-      id: 'sessions' as const,
-      name: t('layout.sessions-heading'),
-      icon: <MessageCircle className="h-4 w-4 shrink-0" />,
-    },
-    {
-      id: 'tasks' as const,
-      name: t('layout.tasks-heading'),
-      icon: <ListChecks className="h-4 w-4 shrink-0" />,
-    },
-  ];
-
   return (
     <div className="flex w-full flex-1 flex-col">
       {/* alert dialog for task deletion */}
@@ -193,81 +166,40 @@ export default function Project() {
         cancelText={t('layout.cancel')}
       />
 
-      <div className="flex h-auto min-h-[calc(100vh-86px)] w-full">
-        <div className="top-20 w-40 pr-6 pt-8 min-h-0 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col self-start">
-          <VerticalNavigation
-            items={
-              sidebarNavItems.map((item) => ({
-                value: item.id,
-                icon: item.icon,
-                label: (
-                  <span className="text-body-sm font-bold">{item.name}</span>
-                ),
-              })) as VerticalNavItem[]
-            }
-            value={projectPageTab}
-            onValueChange={(v) => {
-              if (PROJECT_PAGE_TABS.includes(v as ProjectPageTab)) {
-                setProjectPageTab(v as ProjectPageTab);
-              }
-            }}
-            className="min-h-0 gap-0 h-full w-full flex-1"
-            listClassName="w-full h-full overflow-y-auto"
-            contentClassName="hidden"
-          />
+      <div className="min-w-0 flex h-auto min-h-[calc(100vh-86px)] w-full flex-col">
+        {/* Header Section */}
+        <div className="top-0 px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+          <div className="gap-4 flex w-full flex-col items-start justify-between">
+            <div className="flex flex-col">
+              <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
+                {t('layout.projects-hub')}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="min-h-0 min-w-0 flex w-full flex-1 flex-col">
-          {projectPageTab === 'project' && (
-            <>
-              {/* Header Section */}
-              <div className="top-0 px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
-                <div className="gap-4 flex w-full flex-col items-start justify-between">
-                  <div className="flex flex-col">
-                    <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-                      {t('layout.projects-hub')}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex w-full">
-                <div className="pb-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
-                  <GroupedHistoryView
-                    onTaskSelect={handleSetActive}
-                    onTaskDelete={handleDelete}
-                    onTaskShare={handleShare}
-                    activeTaskId={chatStore.activeTaskId || undefined}
-                    ongoingTasks={chatStore.tasks}
-                    onOngoingTaskClick={(taskId) => {
-                      chatStore.setActiveTaskId(taskId);
-                      navigate(`/`);
-                    }}
-                    onOngoingTaskPause={(taskId) =>
-                      handleTakeControl('pause', taskId)
-                    }
-                    onOngoingTaskResume={(taskId) =>
-                      handleTakeControl('resume', taskId)
-                    }
-                    onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
-                    onProjectDelete={handleProjectDelete}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          {projectPageTab === 'sessions' && (
-            <div className="min-h-0 py-8 flex flex-1 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 overflow-hidden" />
-            </div>
-          )}
-
-          {projectPageTab === 'tasks' && (
-            <div className="min-h-0 py-8 flex flex-1 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 overflow-hidden" />
-            </div>
-          )}
+        <div className="flex w-full">
+          <div className="pb-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
+            <GroupedHistoryView
+              onTaskSelect={handleSetActive}
+              onTaskDelete={handleDelete}
+              onTaskShare={handleShare}
+              activeTaskId={chatStore.activeTaskId || undefined}
+              ongoingTasks={chatStore.tasks}
+              onOngoingTaskClick={(taskId) => {
+                chatStore.setActiveTaskId(taskId);
+                navigate(`/`);
+              }}
+              onOngoingTaskPause={(taskId) =>
+                handleTakeControl('pause', taskId)
+              }
+              onOngoingTaskResume={(taskId) =>
+                handleTakeControl('resume', taskId)
+              }
+              onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
+              onProjectDelete={handleProjectDelete}
+            />
+          </div>
         </div>
       </div>
     </div>

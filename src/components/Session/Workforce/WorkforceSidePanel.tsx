@@ -112,8 +112,8 @@ export function WorkforceSidePanel({
       <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
         <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
           <AgentPoolSection
-            title={t('layout.workforce-active-agent-pool', {
-              defaultValue: 'Active Agent Pool',
+            title={t('layout.workforce-agent-pool', {
+              defaultValue: 'Agent Pool',
             })}
             agents={agents}
           />

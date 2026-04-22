@@ -76,7 +76,7 @@ export function VerticalNavigation({
               'bg-transparent data-[state=inactive]:bg-transparent',
               'data-[state=inactive]:text-ds-text-neutral-muted-default data-[state=inactive]:opacity-70',
               'data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100',
-              'data-[state=active]:bg-ds-bg-neutral-subtle-selected data-[state=active]:text-ds-text-neutral-default-default',
+              'data-[state=active]:bg-ds-bg-neutral-default-default data-[state=active]:text-ds-text-neutral-default-default',
               triggerClassName
             )}
           >

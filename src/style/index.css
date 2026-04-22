@@ -1,4 +1,83 @@
 @import './token.css';
+
+/* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-light-italic.ttf') format('truetype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-roman.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-medium-italic.ttf')
+    format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-bold-italic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-black-italic.ttf') format('truetype');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+.history-welcome-headline {
+  font-family:
+    'Palatino LT', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
