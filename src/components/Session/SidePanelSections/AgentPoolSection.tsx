@@ -81,9 +81,9 @@ function AgentLeadingIcon({ agentType }: { agentType: string }) {
   const subIcon = getAgentSubIcon(agentType);
   return (
     <div className="h-6 w-6 text-ds-text-neutral-muted-default bg-ds-bg-neutral-subtle-default rounded-md relative inline-flex shrink-0 items-center justify-center self-center">
-      <Bot className="h-4 w-4" strokeWidth={2} aria-hidden />
+      <Bot className="h-5 w-5" strokeWidth={2} aria-hidden />
       {subIcon != null && (
-        <span className="-right-1 -top-1 absolute inline-flex items-center justify-center [&_svg]:shrink-0">
+        <span className="-right-0.5 -top-0.5 absolute inline-flex items-center justify-center [&_svg]:shrink-0">
           {subIcon}
         </span>
       )}
@@ -274,18 +274,18 @@ function AgentToolkitTag({ names }: { names: string[] }) {
             exit={{ y: 18, opacity: 0 }}
             transition={{ duration: 0.28, ease: [0.2, 0, 0.2, 1] }}
             className={cn(
-              'gap-1 px-1.5 py-0.5 inline-flex max-w-full items-center rounded-full',
+              'gap-1 px-1.5 py-0.5 rounded-md inline-flex max-w-full items-center opacity-80',
               'bg-ds-bg-neutral-muted-default'
             )}
             data-testid="agent-toolkit-tag"
           >
-            <span className="text-ds-text-neutral-default-default inline-flex shrink-0 items-center [&_svg]:h-[10px] [&_svg]:w-[10px]">
-              {getToolkitIcon(focused, 10, '')}
+            <span className="text-ds-text-neutral-default-default [&_svg]:h-4 [&_svg]:w-4 inline-flex shrink-0 items-center">
+              {getToolkitIcon(focused, 16, '')}
             </span>
             <ShinyText
               text={focused}
               speed={2.5}
-              className="text-label-sm font-medium max-w-[140px] truncate"
+              className="text-label-xs font-medium max-w-[140px] truncate"
             />
           </motion.div>
         )}
@@ -311,7 +311,7 @@ function AgentRow({ agent }: { agent: Agent }) {
       <AgentLeadingIcon agentType={agent.type} />
       <span
         className={cn(
-          'min-w-0 text-body-sm text-ds-text-neutral-default-default flex-1 truncate',
+          'min-w-0 !text-body-sm font-medium text-ds-text-neutral-default-default flex-1 truncate',
           display?.textColor
         )}
       >

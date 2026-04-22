@@ -33,20 +33,24 @@ export function SessionSidePanelHeader({
   end,
 }: SessionSidePanelHeaderProps) {
   return (
-    <div className="gap-2 py-2 pl-2 pr-4 relative z-50 flex w-full shrink-0 items-center justify-between">
-      <div className="gap-1.5 min-w-0 flex flex-1 items-center">
+    <div className="py-2 pl-2 pr-4 min-w-0 relative z-50 flex w-full shrink-0 items-center">
+      <div className="min-w-0 flex flex-1 items-center justify-start">
         <SessionSidePanelFoldButton
           sessionSidePanelMode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggle}
         />
-        <span className="text-ds-text-neutral-default-default min-w-0 px-1 text-body-md font-semibold flex-1 truncate">
+      </div>
+      <div className="min-w-0 px-1 flex flex-1 items-center justify-center">
+        <span className="text-ds-text-neutral-default-default min-w-0 text-body-md font-semibold max-w-full truncate text-center">
           {title}
         </span>
       </div>
-      {end != null ? (
-        <div className="gap-1 flex shrink-0 items-center">{end}</div>
-      ) : null}
+      <div className="min-w-0 flex flex-1 items-center justify-end">
+        {end != null ? (
+          <div className="gap-1 flex items-center">{end}</div>
+        ) : null}
+      </div>
     </div>
   );
 }

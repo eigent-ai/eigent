@@ -154,7 +154,7 @@ export function SplittingProgressRow({
         aria-label={`${t('chat.token')}: ${tokens}`}
       >
         <AnimatedTokenNumber value={tokens} />
-        Token
+        tokens
       </span>
     </div>
   );

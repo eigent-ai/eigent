@@ -13,13 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
@@ -39,8 +33,8 @@ interface AgentMessageCardProps {
   onMarkdownRenderComplete?: () => void;
 }
 
-// global Map to track completed typewriter effect content hash
-const completedTypewriterHashes = new Map<string, boolean>();
+// Tracks agent messages that have already played the typewriter (by stable message id).
+const completedTypewriterByMessageId = new Map<string, boolean>();
 
 export function AgentMessageCard({
   id,
@@ -52,31 +46,23 @@ export function AgentMessageCard({
   attaches,
   deferredFooter,
 }: AgentMessageCardProps) {
-  // use content hash to track if typewriter effect is completed
-  const contentHash = useMemo(() => {
-    return `${id}-${content}`;
-  }, [id, content]);
-
-  const [markdownAndTypingComplete, setMarkdownAndTypingComplete] =
-    useState(false);
+  const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
+    () => completedTypewriterByMessageId.has(id)
+  );
 
   useEffect(() => {
-    setMarkdownAndTypingComplete(false);
-  }, [contentHash]);
+    setMarkdownAndTypingComplete(completedTypewriterByMessageId.has(id));
+  }, [id]);
 
-  // check if typewriter effect is completed
-  const isCompleted = completedTypewriterHashes.has(contentHash);
-
-  // if completed, disable typewriter effect
+  const isCompleted = completedTypewriterByMessageId.has(id);
   const enableTypewriter = !isCompleted;
 
   const [copied, setCopied] = useState(false);
   const { t } = useTranslation();
 
-  // when typewriter effect is completed, record to global Map
   const handleTypingComplete = () => {
-    if (!isCompleted) {
-      completedTypewriterHashes.set(contentHash, true);
+    if (!completedTypewriterByMessageId.has(id)) {
+      completedTypewriterByMessageId.set(id, true);
     }
     if (onTyping) {
       onTyping();
@@ -143,39 +129,41 @@ export function AgentMessageCard({
       {showDeferredFileUi && deferredFooter != null && (
         <div className="mt-[10px] w-full">{deferredFooter}</div>
       )}
-      <div className="mt-3 gap-1 flex shrink-0 justify-start">
-        <Button
-          onClick={handleCopy}
-          variant="ghost"
-          size="xs"
-          buttonContent="icon-only"
-          aria-label={t('setting.copy')}
-        >
-          {copied ? (
-            <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </Button>
-        <Button
-          onClick={() => {}}
-          variant="ghost"
-          size="xs"
-          buttonContent="icon-only"
-          aria-label="Thumb up"
-        >
-          <ThumbsUp className="h-4 w-4" />
-        </Button>
-        <Button
-          onClick={() => {}}
-          variant="ghost"
-          size="xs"
-          buttonContent="icon-only"
-          aria-label="Thumb down"
-        >
-          <ThumbsDown className="h-4 w-4" />
-        </Button>
-      </div>
+      {markdownAndTypingComplete && (
+        <div className="mt-3 gap-1 flex shrink-0 justify-start">
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label={t('setting.copy')}
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            onClick={() => {}}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label="Thumb up"
+          >
+            <ThumbsUp className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => {}}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label="Thumb down"
+          >
+            <ThumbsDown className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

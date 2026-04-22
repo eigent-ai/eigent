@@ -284,7 +284,74 @@ describe('buildActionGroups — preparation phase', () => {
     expect(groups[1]?.tools[0]?.rowTitle).toBe('Browser Toolkit · Open');
   });
 
-  it('skips preparation grouping entirely when the first event is not a register', () => {
+  it('routes mid-run register events to the Preparing group without interrupting the active agent', () => {
+    const logs = [
+      tag(
+        'a-dev',
+        'developer_agent',
+        'Developer Agent',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'Terminal Toolkit',
+          method_name: 'register agent',
+          message: 'ChatAgent(Developer Agent)',
+        })
+      ),
+      tag(
+        'a-browser',
+        'browser_agent',
+        'Browser Agent',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'Browser Toolkit',
+          method_name: 'register agent',
+          message: 'ChatAgent(Browser Agent)',
+        })
+      ),
+      tag(
+        'a-browser',
+        'browser_agent',
+        'Browser Agent',
+        mk(AgentStep.ACTIVATE_AGENT, { message: 'let me open the page' })
+      ),
+      tag(
+        'a-browser',
+        'browser_agent',
+        'Browser Agent',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'Browser Toolkit',
+          method_name: 'open',
+          message: 'https://example.com',
+        })
+      ),
+      // A specialist registered lazily after the browser agent already
+      // started acting. It must still land in the Preparing group, not
+      // inside the browser agent's action group.
+      tag(
+        'a-mm',
+        'multi_modal_agent',
+        'Multi Modal Agent',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'Open Ai Image Toolkit',
+          method_name: 'register agent',
+          message: 'ChatAgent(Multi Modal Agent)',
+        })
+      ),
+    ];
+    const groups = buildActionGroups(logs);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.kind).toBe('preparation');
+    expect(groups[0]?.tools).toHaveLength(3);
+    expect(groups[0]?.tools.map((t) => t.rowTitle)).toEqual([
+      'Developer Agent · Terminal Toolkit',
+      'Browser Agent · Browser Toolkit',
+      'Multi Modal Agent · Open Ai Image Toolkit',
+    ]);
+    expect(groups[1]?.kind).toBe('action');
+    expect(groups[1]?.agentId).toBe('a-browser');
+    expect(groups[1]?.tools).toHaveLength(1);
+    expect(groups[1]?.tools[0]?.rowTitle).toBe('Browser Toolkit · Open');
+  });
+
+  it('creates a Preparing group even when the first event is an action (for late registrations)', () => {
     const logs = [
       tag(
         'a1',
@@ -304,9 +371,11 @@ describe('buildActionGroups — preparation phase', () => {
       ),
     ];
     const groups = buildActionGroups(logs);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.kind).toBe('action');
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.kind).toBe('preparation');
     expect(groups[0]?.tools).toHaveLength(1);
+    expect(groups[1]?.kind).toBe('action');
+    expect(groups[1]?.tools).toHaveLength(0);
   });
 });
 

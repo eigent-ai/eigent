@@ -165,6 +165,63 @@ function isRegisterAgentEvent(entry: AgentMessage): boolean {
 export function buildActionGroups(tagged: TaggedLog[]): ActionGroup[] {
   const groups: ActionGroup[] = [];
   const cursor: { current: ActionGroup | null } = { current: null };
+  let prep: ActionGroup | null = null;
+
+  // The workforce factory wires up agents via `register agent` toolkit calls.
+  // Those calls can appear as a leading burst *and* sprinkled in mid-run
+  // whenever a new specialist (e.g. a multi-modal agent) is lazily registered
+  // after another agent has already started acting. We always route them to
+  // a single synthetic "Preparing agents" group pinned at the top so the
+  // currently-active agent's action group is not interrupted by registration
+  // noise.
+  const ensurePrep = (): ActionGroup => {
+    if (!prep) {
+      prep = {
+        id: PREPARATION_GROUP_ID,
+        agentId: '__prep__',
+        agentType: '__prep__',
+        agentName: PREPARATION_GROUP_LABEL,
+        reasoning: null,
+        notices: [],
+        tools: [],
+        status: 'running',
+        kind: 'preparation',
+      };
+      groups.unshift(prep);
+    }
+    return prep;
+  };
+
+  const appendRegisterEvent = (tag: TaggedLog, idx: number) => {
+    const p = ensurePrep();
+    const entry = tag.entry;
+    const name = (entry.data?.toolkit_name ?? '').trim() || 'Tool';
+    const method = (entry.data?.method_name ?? '').trim();
+    const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
+
+    if (entry.step === AgentStep.ACTIVATE_TOOLKIT) {
+      p.tools.push({
+        id: `t-prep-${idx}`,
+        rowTitle: `${tag.agentName} · ${name}`,
+        toolkitName: name,
+        method,
+        summary: formatToolSummary(name, method, rawMsg),
+        detail: rawMsg,
+        status: 'running',
+      });
+      return;
+    }
+
+    for (let j = p.tools.length - 1; j >= 0; j--) {
+      const s = p.tools[j]!;
+      if (s.status !== 'running') continue;
+      if (s.toolkitName !== name || s.method !== method) continue;
+      s.status = 'done';
+      s.detail = [s.detail, rawMsg].filter(Boolean).join('\n\n').trim();
+      s.summary = formatToolSummary(name, method, s.detail);
+      break;
+    }
+  };
 
   const startNew = (tag: TaggedLog, reasoning: string | null): ActionGroup => {
     const g: ActionGroup = {
@@ -191,65 +248,14 @@ export function buildActionGroups(tagged: TaggedLog[]): ActionGroup[] {
     return c;
   };
 
-  // Collapse the leading run of `register agent` toolkit events — emitted by
-  // the workforce factory as it wires up each agent — into a single synthetic
-  // "Preparing agents" group. This runs only over the contiguous prefix so a
-  // late register event (shouldn't happen, but) would still appear as a normal
-  // tool under its own agent.
-  let cursorIdx = 0;
-  let prep: ActionGroup | null = null;
-  while (cursorIdx < tagged.length) {
-    const tag = tagged[cursorIdx]!;
-    if (!isRegisterAgentEvent(tag.entry)) break;
-
-    if (!prep) {
-      prep = {
-        id: PREPARATION_GROUP_ID,
-        agentId: '__prep__',
-        agentType: '__prep__',
-        agentName: PREPARATION_GROUP_LABEL,
-        reasoning: null,
-        notices: [],
-        tools: [],
-        status: 'running',
-        kind: 'preparation',
-      };
-      groups.push(prep);
-      cursor.current = prep;
-    }
-
-    const entry = tag.entry;
-    const name = (entry.data?.toolkit_name ?? '').trim() || 'Tool';
-    const method = (entry.data?.method_name ?? '').trim();
-    const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
-
-    if (entry.step === AgentStep.ACTIVATE_TOOLKIT) {
-      prep.tools.push({
-        id: `t-prep-${cursorIdx}`,
-        rowTitle: `${tag.agentName} · ${name}`,
-        toolkitName: name,
-        method,
-        summary: formatToolSummary(name, method, rawMsg),
-        detail: rawMsg,
-        status: 'running',
-      });
-    } else {
-      for (let j = prep.tools.length - 1; j >= 0; j--) {
-        const s = prep.tools[j]!;
-        if (s.status !== 'running') continue;
-        if (s.toolkitName !== name || s.method !== method) continue;
-        s.status = 'done';
-        s.detail = [s.detail, rawMsg].filter(Boolean).join('\n\n').trim();
-        s.summary = formatToolSummary(name, method, s.detail);
-        break;
-      }
-    }
-    cursorIdx++;
-  }
-
-  for (let i = cursorIdx; i < tagged.length; i++) {
+  for (let i = 0; i < tagged.length; i++) {
     const tag = tagged[i]!;
     const { entry } = tag;
+
+    if (isRegisterAgentEvent(entry)) {
+      appendRegisterEvent(tag, i);
+      continue;
+    }
 
     if (entry.step === AgentStep.ACTIVATE_AGENT) {
       const text = normalizeToolkitMessage(entry.data?.message).trim();
@@ -431,26 +437,29 @@ const ToolDetailRow = memo(function ToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="min-w-0 gap-1 py-1 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
+        className="group min-w-0 gap-1 py-0.5 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
       >
+        {status === 'running' ? (
+          <ShinyText
+            text={rowTitle}
+            speed={2.5}
+            className="!text-label-xs font-medium min-w-0 text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap"
+          />
+        ) : (
+          <span className="!text-label-xs font-medium min-w-0 text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
+            {rowTitle}
+          </span>
+        )}
         <ChevronRight
-          size={14}
+          size={16}
           aria-hidden
           className={cn(
-            'text-ds-icon-neutral-subtle-default shrink-0 transition-transform duration-200',
-            open && 'rotate-90'
+            'text-ds-icon-neutral-subtle-default shrink-0 transition-[opacity,transform] duration-200',
+            open
+              ? 'rotate-90 opacity-100'
+              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
           )}
         />
-        <span
-          className={cn(
-            'text-body-sm font-medium min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap',
-            status === 'running'
-              ? 'text-ds-text-status-running-strong-default'
-              : 'text-ds-text-neutral-subtle-default'
-          )}
-        >
-          {rowTitle}
-        </span>
       </button>
       <AnimatePresence initial={false}>
         {open ? (
@@ -460,18 +469,18 @@ const ToolDetailRow = memo(function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="min-w-0 pl-5 w-full overflow-hidden"
+            className="min-w-0 mt-1 w-full overflow-hidden"
           >
             {detail ? (
-              <div className="py-2 px-3 bg-ds-bg-neutral-muted-default rounded-xl w-full">
+              <div className="p-2 bg-ds-bg-neutral-muted-default rounded-md w-full opacity-60">
                 {renderMarkdown ? (
                   <MarkDown
                     content={detail}
                     enableTypewriter={false}
-                    pTextSize="text-xs"
+                    pTextSize="text-label-xs text-ds-text-neutral-default-default"
                   />
                 ) : (
-                  <p className="text-label-xs text-ds-text-neutral-subtle-default m-0">
+                  <p className="text-label-xs text-ds-text-neutral-default-default m-0">
                     Rendering details...
                   </p>
                 )}
@@ -488,11 +497,13 @@ ToolDetailRow.displayName = 'ToolDetailRow';
 const ActionGroupRow = memo(function ActionGroupRow({
   group,
   isLastRunning,
+  taskRunning,
   open,
   onToggle,
 }: {
   group: ActionGroup;
   isLastRunning: boolean;
+  taskRunning: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -506,14 +517,14 @@ const ActionGroupRow = memo(function ActionGroupRow({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="min-w-0 gap-1 py-1 flex w-full items-center text-left transition-opacity hover:opacity-80"
+        className="min-w-0 gap-2 py-1 my-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
       >
-        <span className="text-label-xs font-normal min-w-0 flex-1 truncate">
+        <span className="text-label-sm font-normal min-w-0 max-w-full truncate">
           {running ? (
             <ShinyText
               text={group.agentName}
               speed={2.5}
-              className="text-label-xs font-normal text-ds-text-neutral-muted-default"
+              className="text-label-sm font-normal text-ds-text-neutral-muted-default"
             />
           ) : (
             <span className="text-ds-text-neutral-muted-default">
@@ -525,7 +536,7 @@ const ActionGroupRow = memo(function ActionGroupRow({
               <span className="text-ds-text-neutral-subtle-default">
                 {' · '}
                 {group.tools.length}
-                {' registered'}
+                {' Registered'}
               </span>
             ) : null
           ) : lastTool ? (
@@ -549,13 +560,13 @@ const ActionGroupRow = memo(function ActionGroupRow({
         </span>
         {open ? (
           <ChevronDown
-            size={14}
+            size={16}
             aria-hidden
             className="text-ds-icon-neutral-subtle-default shrink-0"
           />
         ) : (
           <ChevronRight
-            size={14}
+            size={16}
             aria-hidden
             className="text-ds-icon-neutral-subtle-default shrink-0"
           />
@@ -572,16 +583,16 @@ const ActionGroupRow = memo(function ActionGroupRow({
             transition={HEIGHT_MOTION}
             className="min-w-0 overflow-hidden"
           >
-            <div className="pl-5 border-ds-border-neutral-default-default ml-2 gap-1 flex flex-col border-l">
+            <div className="py-1 gap-2 flex flex-col">
               {group.reasoning ? (
-                <p className="text-label-xs m-0 text-ds-text-neutral-subtle-default break-words whitespace-pre-wrap">
+                <p className="text-label-sm text-ds-text-neutral-subtle-default break-words whitespace-pre-wrap">
                   {group.reasoning}
                 </p>
               ) : null}
               {group.notices.map((notice, i) => (
                 <p
                   key={`n-${i}`}
-                  className="text-label-xs m-0 text-ds-text-neutral-subtle-default break-words whitespace-pre-wrap"
+                  className="text-label-sm text-ds-text-neutral-subtle-default break-words whitespace-pre-wrap"
                 >
                   {notice}
                 </p>
@@ -591,11 +602,17 @@ const ActionGroupRow = memo(function ActionGroupRow({
                   key={tool.id}
                   rowTitle={tool.rowTitle}
                   detail={tool.detail}
-                  status={tool.status}
+                  status={
+                    taskRunning &&
+                    group.status === 'running' &&
+                    tool.status === 'running'
+                      ? 'running'
+                      : 'done'
+                  }
                 />
               ))}
               {group.tools.length === 0 && running && !group.reasoning && (
-                <p className="text-label-xs m-0 text-ds-text-neutral-subtle-default italic">
+                <p className="text-label-sm text-ds-text-neutral-subtle-default italic">
                   Waiting for tool calls…
                 </p>
               )}
@@ -806,6 +823,7 @@ export function TaskWorkLogAccordion({
                     key={group.id}
                     group={group}
                     isLastRunning={isLastRunning}
+                    taskRunning={taskRunning}
                     open={isOpen(group)}
                     onToggle={() => toggle(group.id)}
                   />

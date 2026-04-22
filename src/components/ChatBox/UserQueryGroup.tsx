@@ -25,6 +25,7 @@ import React, {
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
+import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
 import { SplittingProgressRow } from './MessageItem/SplittingProgressRow';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
@@ -76,6 +77,27 @@ const AgentResultCard: React.FC<{
     </div>
   );
 };
+
+/** Typewriter only for the agent message currently being produced (latest agent row while task is running). */
+function shouldUseLiveAgentTypewriter(
+  task: {
+    type?: string;
+    delayTime?: number;
+    status: string;
+    messages: any[];
+  } | null,
+  messageId: string
+): boolean {
+  const replayAllows =
+    task?.type !== 'replay' ||
+    (task?.type === 'replay' && task?.delayTime !== 0);
+  if (!replayAllows) return false;
+  if (!task || task.status !== ChatTaskStatus.RUNNING) return false;
+  const msgs = task.messages;
+  if (!msgs.length) return false;
+  const last = msgs[msgs.length - 1];
+  return last.role === 'agent' && last.id === messageId;
+}
 
 interface QueryGroup {
   queryId: string;
@@ -267,6 +289,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   /** Task card visible (user message is sticky alone in this mode). */
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
 
+  const hasConfirmedSubTasks = Boolean(
+    task?.messages.some(
+      (m: any) => m.step === AgentStep.TO_SUB_TASKS && m.isConfirm
+    )
+  );
+  const showPreparingExecute =
+    taskCardVisible &&
+    Boolean(activeTaskId && task) &&
+    hasConfirmedSubTasks &&
+    task!.status === ChatTaskStatus.PENDING;
+
   return (
     <motion.div
       ref={groupRef}
@@ -376,6 +409,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           transition={{ duration: 0.25, delay: 0.05 }}
           className="px-sm"
         >
+          {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
@@ -393,10 +427,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 className="gap-4 flex flex-col"
               >
                 <AgentMessageCard
-                  typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
-                  }
+                  typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
@@ -486,10 +517,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               >
                 <AgentMessageCard
                   key={message.id}
-                  typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
-                  }
+                  typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}

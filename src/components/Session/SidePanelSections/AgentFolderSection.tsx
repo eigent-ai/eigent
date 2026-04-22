@@ -103,8 +103,9 @@ export function AgentFolderSection({
   return (
     <SidePanelAccordionBox title={title}>
       {unique.length === 0 ? (
-        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
-          No files yet
+        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1 opacity-60">
+          Files the agent writes or updates during this task appear here so you
+          can open them.
         </div>
       ) : (
         <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
