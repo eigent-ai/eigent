@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { Check, Copy, FileText, Image } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -53,6 +54,8 @@ export function UserMessageCard({
   className,
   attaches,
 }: UserMessageCardProps) {
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   const [_hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -157,7 +160,7 @@ export function UserMessageCard({
                         }
                         onClick={(e) => {
                           e.stopPropagation();
-                          window.ipcRenderer.invoke(
+                          ipcRenderer?.invoke(
                             'reveal-in-folder',
                             file.filePath
                           );
@@ -224,7 +227,7 @@ export function UserMessageCard({
                                 }
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.ipcRenderer.invoke(
+                                  ipcRenderer?.invoke(
                                     'reveal-in-folder',
                                     file.filePath
                                   );

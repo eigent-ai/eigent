@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useHost } from '@/host';
 import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
@@ -88,6 +89,8 @@ export function TaskCard({
   clickable = true,
   chatId,
 }: TaskCardProps) {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | 'auto'>('auto');
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
@@ -426,7 +429,7 @@ export function TaskCard({
                               chatStore.activeTaskId as string,
                               task.agent?.agent_id
                             );
-                            window.electronAPI.hideAllWebview();
+                            electronAPI?.hideAllWebview();
                           }
                         }}
                         key={`taskList-${task.id}`}

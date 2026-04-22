@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpInstall, mcpRemove } from '@/api/brain';
 import { proxyFetchDelete, proxyFetchGet, proxyFetchPost } from '@/api/http';
 import githubIcon from '@/assets/github.svg';
 import AnthropicIcon from '@/assets/mcp/Anthropic.svg?url';
@@ -218,13 +219,8 @@ export default function MCPMarket({
       }
       setInstalled((prev) => ({ ...prev, [id]: true }));
       setInstalledIds((prev) => [...prev, id]);
-      // notify main process
-      if (window.ipcRenderer && mcpItem) {
-        await window.ipcRenderer.invoke(
-          'mcp-install',
-          mcpItem.key,
-          mcpItem.install_command
-        );
+      if (mcpItem?.install_command) {
+        await mcpInstall(mcpItem.key, mcpItem.install_command);
       }
     } catch (e) {
       console.error('Error installing MCP:', e);
@@ -256,10 +252,7 @@ export default function MCPMarket({
       }
       console.log('deleteTarget', deleteTarget);
       await proxyFetchDelete(`/api/v1/mcp/users/${id}`);
-      // notify main process
-      if (window.ipcRenderer) {
-        await window.ipcRenderer.invoke('mcp-remove', deleteTarget.key);
-      }
+      await mcpRemove(deleteTarget.key);
       setInstalledIds((prev) =>
         prev.filter((item) => item !== deleteTarget.id)
       );

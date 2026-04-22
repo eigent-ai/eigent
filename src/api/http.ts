@@ -16,19 +16,91 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
 import { getAuthStore } from '@/store/authStore';
+import {
+  getConnectionConfig,
+  setConnectionConfig,
+} from '@/store/connectionStore';
+import {
+  EventSourceMessage,
+  fetchEventSource,
+} from '@microsoft/fetch-event-source';
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
 };
 
-let baseUrl = '';
-export async function getBaseURL() {
-  if (baseUrl) {
-    return baseUrl;
+export function getDefaultBrainEndpoint(): string {
+  const envEndpoint = import.meta.env.VITE_BRAIN_ENDPOINT;
+  if (envEndpoint && typeof envEndpoint === 'string') {
+    return envEndpoint.replace(/\/$/, '');
   }
-  const port = await window.ipcRenderer.invoke('get-backend-port');
-  baseUrl = `http://localhost:${port}`;
-  return baseUrl;
+  if (import.meta.env.DEV) {
+    return 'http://localhost:5001';
+  }
+  return '';
+}
+
+function persistSessionIdFromResponse(response: Response): void {
+  const sessionId = response.headers.get('x-session-id');
+  if (!sessionId) {
+    return;
+  }
+  const current = getConnectionConfig().sessionId;
+  if (current !== sessionId) {
+    setConnectionConfig({ sessionId });
+  }
+}
+
+function shouldAttachAuthHeader(url: string): boolean {
+  return !url.includes('http://') && !url.includes('https://');
+}
+
+function buildBrainHeaders(
+  url: string,
+  customHeaders: Record<string, string> = {},
+  includeContentType = true
+): Record<string, string> {
+  const { token } = getAuthStore();
+  const conn = getConnectionConfig();
+  const headers: Record<string, string> = {
+    ...(includeContentType ? defaultHeaders : {}),
+    'X-Channel': conn.channel,
+    ...customHeaders,
+  };
+  if (conn.sessionId) {
+    headers['X-Session-ID'] = conn.sessionId;
+  }
+  if (token && shouldAttachAuthHeader(url)) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+/** Reset cached baseUrl (e.g. when backend restarts). */
+export function resetBaseURL(): void {
+  setConnectionConfig({ brainEndpoint: '' });
+}
+
+export async function getBaseURL() {
+  const cfg = getConnectionConfig();
+  if (cfg.brainEndpoint) {
+    return cfg.brainEndpoint.replace(/\/$/, '');
+  }
+  // Electron: get port from IPC
+  const port = await (window as any).ipcRenderer?.invoke('get-backend-port');
+  if (port && port > 0) {
+    const resolved = `http://localhost:${port}`;
+    setConnectionConfig({ brainEndpoint: resolved });
+    return resolved;
+  }
+  // Pure Web: use VITE_BRAIN_ENDPOINT (dev default http://localhost:5001)
+  const envEndpoint = getDefaultBrainEndpoint();
+  if (envEndpoint && typeof envEndpoint === 'string') {
+    const resolved = envEndpoint.replace(/\/$/, ''); // trim trailing slash
+    setConnectionConfig({ brainEndpoint: resolved });
+    return resolved;
+  }
+  return '';
 }
 
 async function fetchRequest(
@@ -39,17 +111,7 @@ async function fetchRequest(
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
-  const { token } = getAuthStore();
-
-  const headers: Record<string, string> = {
-    ...defaultHeaders,
-    ...customHeaders,
-  };
-
-  // Cases without token: url is a complete http:// path
-  if (!url.includes('http://') && token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  const headers = buildBrainHeaders(url, customHeaders);
 
   const options: RequestInit = {
     method,
@@ -82,23 +144,34 @@ async function handleResponse(
 ): Promise<any> {
   try {
     const res = await responsePromise;
+    persistSessionIdFromResponse(res);
     if (res.status === 204) {
       return { code: 0, text: '' };
     }
 
     const contentType = res.headers.get('content-type') || '';
-    if (res.body && !contentType.includes('application/json')) {
-      return {
-        isStream: true,
-        body: res.body,
-        reader: res.body.getReader(),
-      };
+    if (!contentType.includes('application/json')) {
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        const msg = detail?.trim() || `HTTP ${res.status}`;
+        const err = new Error(msg);
+        (err as any).status = res.status;
+        (err as any).response = res;
+        throw err;
+      }
+      if (res.body) {
+        return {
+          isStream: true,
+          body: res.body,
+          reader: res.body.getReader(),
+        };
+      }
+      return null;
     }
     const resData = await res.json();
     if (!resData) {
       return null;
     }
-
     const { code, text } = resData;
     // showCreditsToast()
     if (code === 1 || code === 300) {
@@ -123,9 +196,13 @@ async function handleResponse(
     }
 
     if (!res.ok) {
-      const err: any = new Error(
-        resData?.detail || resData?.message || `HTTP error ${res.status}`
-      );
+      const detail = resData?.detail;
+      const msg =
+        (Array.isArray(detail) ? detail[0] : detail) ||
+        resData?.message ||
+        `HTTP ${res.status}`;
+      const err: any = new Error(typeof msg === 'string' ? msg : String(msg));
+      err.status = res.status;
       err.response = { data: resData, status: res.status };
       throw err;
     }
@@ -163,6 +240,78 @@ export const fetchPut = (url: string, data?: any, headers?: any) =>
 export const fetchDelete = (url: string, data?: any, headers?: any) =>
   fetchRequest('DELETE', url, data, headers);
 
+/** POST FormData to Brain base URL (for file uploads). */
+export async function fetchPostForm(
+  url: string,
+  formData: FormData,
+  customHeaders: Record<string, string> = {}
+): Promise<any> {
+  const baseURL = await getBaseURL();
+  const fullUrl = `${baseURL}${url}`;
+  const headers = buildBrainHeaders(url, customHeaders, false);
+  return handleResponse(
+    fetch(fullUrl, { method: 'POST', headers, body: formData })
+  );
+}
+
+export async function uploadFileToBrain(file: globalThis.File): Promise<{
+  file_id: string;
+  filename: string;
+  size: number;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return fetchPostForm('/files', formData);
+}
+
+export interface SSETransportOptions {
+  url: string;
+  method?: 'GET' | 'POST';
+  body?: Record<string, any> | string;
+  signal?: AbortSignal;
+  extraHeaders?: Record<string, string>;
+  openWhenHidden?: boolean;
+  onmessage: (event: EventSourceMessage) => void | Promise<void>;
+  onopen?: (response: Response) => void | Promise<void>;
+  onerror?: (err: any) => number | null | undefined | void;
+  onclose?: () => void;
+}
+
+export async function sseTransport(
+  options: SSETransportOptions
+): Promise<void> {
+  const baseURL = await getBaseURL();
+  const fullUrl =
+    options.url.startsWith('http://') || options.url.startsWith('https://')
+      ? options.url
+      : `${baseURL}${options.url}`;
+
+  const headers = buildBrainHeaders(options.url, options.extraHeaders);
+  const body =
+    typeof options.body === 'string'
+      ? options.body
+      : options.body
+        ? JSON.stringify(options.body)
+        : undefined;
+
+  await fetchEventSource(fullUrl, {
+    method: options.method || 'POST',
+    openWhenHidden: options.openWhenHidden ?? true,
+    signal: options.signal,
+    headers,
+    body,
+    onmessage: options.onmessage,
+    async onopen(response) {
+      persistSessionIdFromResponse(response);
+      if (options.onopen) {
+        await options.onopen(response);
+      }
+    },
+    onerror: options.onerror,
+    onclose: options.onclose,
+  });
+}
+
 // =============== porxy ===============
 
 // get proxy base URL
@@ -170,11 +319,9 @@ async function getProxyBaseURL() {
   const isDev = import.meta.env.DEV;
 
   if (isDev) {
-    const proxyUrl = import.meta.env.VITE_PROXY_URL;
-    if (!proxyUrl) {
-      return 'http://localhost:3001';
-    }
-    return proxyUrl;
+    // Use empty base so request goes to same origin; Vite proxy forwards /api to VITE_PROXY_URL
+    // This avoids CORS when running dev:web (browser at 5173, server at 3001)
+    return '';
   } else {
     const baseUrl = import.meta.env.VITE_BASE_URL;
     if (!baseUrl) {

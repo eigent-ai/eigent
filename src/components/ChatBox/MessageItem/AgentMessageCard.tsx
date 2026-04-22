@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +47,8 @@ export function AgentMessageCard({
   attaches,
   deferredFooter,
 }: AgentMessageCardProps) {
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
     () => completedTypewriterByMessageId.has(id)
   );
@@ -107,7 +110,7 @@ export function AgentMessageCard({
               <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.ipcRenderer.invoke('reveal-in-folder', file.filePath);
+                  ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
                 className="gap-2 rounded-2xl py-1 pl-2 flex w-full cursor-pointer items-center border border-solid border-[color:var(--ds-border-neutral-subtle-default)] bg-[var(--ds-bg-neutral-default-default)]"

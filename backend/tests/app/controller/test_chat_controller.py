@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -111,7 +112,137 @@ class TestChatController:
             assert os.environ.get("CAMEL_MODEL_LOG_ENABLED") == "true"
             assert os.environ.get("browser_port") == "8080"
 
-    def test_improve_chat_success(self, mock_task_lock):
+    @pytest.mark.asyncio
+    async def test_post_chat_sets_cdp_url_when_browser_ready(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        """Web mode should set EIGENT_CDP_URL after successful browser ensure."""
+        chat_data = Chat(**sample_chat_data)
+        mock_request.state = SimpleNamespace()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_or_create_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve"
+            ) as mock_step_solve,
+            patch(
+                "app.controller.chat_controller.is_cdp_url_available",
+                return_value=False,
+            ),
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_available",
+                return_value=True,
+            ),
+            patch("app.controller.chat_controller.load_dotenv"),
+            patch("app.controller.chat_controller.set_current_task_id"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.home", return_value=MagicMock()),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+
+            async def mock_generator():
+                yield "data: test_response\n\n"
+
+            mock_step_solve.return_value = mock_generator()
+
+            await post(chat_data, mock_request)
+
+            assert os.environ.get("EIGENT_CDP_URL") == "http://127.0.0.1:8080"
+            assert mock_request.state.browser_available is True
+
+    @pytest.mark.asyncio
+    async def test_post_chat_clears_cdp_url_when_browser_unavailable(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        """Web mode should mark browser unavailable and clear EIGENT_CDP_URL."""
+        chat_data = Chat(**sample_chat_data)
+        mock_request.state = SimpleNamespace()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_or_create_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve"
+            ) as mock_step_solve,
+            patch(
+                "app.controller.chat_controller.is_cdp_url_available",
+                return_value=False,
+            ),
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_available",
+                return_value=False,
+            ),
+            patch("app.controller.chat_controller.load_dotenv"),
+            patch("app.controller.chat_controller.set_current_task_id"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.home", return_value=MagicMock()),
+            patch.dict(
+                os.environ,
+                {"EIGENT_CDP_URL": "http://127.0.0.1:9222"},
+                clear=True,
+            ),
+        ):
+
+            async def mock_generator():
+                yield "data: test_response\n\n"
+
+            mock_step_solve.return_value = mock_generator()
+
+            await post(chat_data, mock_request)
+
+            assert "EIGENT_CDP_URL" not in os.environ
+            assert mock_request.state.browser_available is False
+
+    @pytest.mark.asyncio
+    async def test_post_chat_preserves_existing_cdp_url(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        chat_data = Chat(**sample_chat_data)
+        mock_request.state = SimpleNamespace()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_or_create_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve"
+            ) as mock_step_solve,
+            patch(
+                "app.controller.chat_controller.is_cdp_url_available",
+                return_value=True,
+            ),
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_available",
+            ) as mock_ensure_browser,
+            patch("app.controller.chat_controller.load_dotenv"),
+            patch("app.controller.chat_controller.set_current_task_id"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.home", return_value=MagicMock()),
+            patch.dict(
+                os.environ,
+                {"EIGENT_CDP_URL": "http://worker-17:9222"},
+                clear=True,
+            ),
+        ):
+
+            async def mock_generator():
+                yield "data: test_response\n\n"
+
+            mock_step_solve.return_value = mock_generator()
+
+            await post(chat_data, mock_request)
+
+            assert os.environ.get("EIGENT_CDP_URL") == "http://worker-17:9222"
+            assert mock_request.state.browser_available is True
+            mock_ensure_browser.assert_not_called()
+
+    def test_improve_chat_success(self, mock_task_lock, mock_request):
         """Test successful chat improvement."""
         task_id = "test_task_123"
         supplement_data = SupplementChat(question="Improve this code")
@@ -124,15 +255,18 @@ class TestChatController:
             ),
             patch("asyncio.run") as mock_run,
         ):
-            response = improve(task_id, supplement_data)
+            mock_run.side_effect = lambda coro: coro.close()
+            response = improve(task_id, supplement_data, mock_request)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            assert mock_run.call_count == 2
             # put_queue is invoked when creating the coroutine passed to asyncio.run
             mock_task_lock.put_queue.assert_called_once()
 
-    def test_improve_chat_task_done_resets_to_confirming(self, mock_task_lock):
+    def test_improve_chat_task_done_resets_to_confirming(
+        self, mock_task_lock, mock_request
+    ):
         """Test improvement when task is done resets status to confirming."""
         task_id = "test_task_123"
         supplement_data = SupplementChat(question="Improve this code")
@@ -145,7 +279,8 @@ class TestChatController:
             ),
             patch("asyncio.run") as mock_run,
         ):
-            response = improve(task_id, supplement_data)
+            mock_run.side_effect = lambda coro: coro.close()
+            response = improve(task_id, supplement_data, mock_request)
 
             assert mock_task_lock.status == Status.confirming
             assert isinstance(response, Response)
@@ -189,11 +324,12 @@ class TestChatController:
 
         with (
             patch(
-                "app.controller.chat_controller.get_task_lock",
+                "app.controller.chat_controller.get_task_lock_if_exists",
                 return_value=mock_task_lock,
             ),
             patch("asyncio.run") as mock_run,
         ):
+            mock_run.side_effect = lambda coro: coro.close()
             response = stop(task_id)
 
             assert isinstance(response, Response)
@@ -428,13 +564,14 @@ class TestChatControllerErrorCases:
         """Test improve endpoint with nonexistent task."""
         task_id = "nonexistent_task"
         supplement_data = SupplementChat(question="Improve this code")
+        request = SimpleNamespace()
 
         with patch(
             "app.controller.chat_controller.get_task_lock",
             side_effect=KeyError("Task not found"),
         ):
             with pytest.raises(KeyError):
-                improve(task_id, supplement_data)
+                improve(task_id, supplement_data, request)
 
     def test_supplement_with_empty_question(self, mock_task_lock):
         """Test supplement endpoint with empty question."""

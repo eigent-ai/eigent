@@ -28,6 +28,7 @@ import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 import WindowControls from '@/components/WindowControls';
+import { useHost } from '@/host';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
 
@@ -35,6 +36,7 @@ const HAS_STACK_KEYS = hasStackKeys();
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
 export default function SignUp() {
+  const host = useHost();
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
@@ -279,21 +281,24 @@ export default function SignUp() {
   );
 
   useEffect(() => {
-    window.ipcRenderer?.on('auth-code-received', handleAuthCode);
-
+    if (!host?.ipcRenderer) return;
+    host.ipcRenderer.on('auth-code-received', handleAuthCode);
     return () => {
-      window.ipcRenderer?.off('auth-code-received', handleAuthCode);
+      host.ipcRenderer?.off('auth-code-received', handleAuthCode);
     };
-  }, [handleAuthCode]);
+  }, [handleAuthCode, host]);
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) {
+      setPlatform('web');
+      return;
+    }
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
-
-    if (platform === 'darwin') {
+    if (p === 'darwin') {
       titlebarRef.current?.classList.add('mac');
     }
-  }, [platform]);
+  }, []);
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">

@@ -56,6 +56,7 @@ import FolderComponent from './FolderComponent';
 import { proxyFetchGet } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { createHost, useHost } from '@/host';
 import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
@@ -486,7 +487,9 @@ type DownloadFileResult =
   | { success: false; error: string };
 
 function downloadByBrowser(url: string) {
-  window.ipcRenderer
+  const { ipcRenderer: ipc } = createHost();
+  if (!ipc) return;
+  ipc
     .invoke('download-file', url)
     .then((result: DownloadFileResult) => {
       if (result.success) {
@@ -504,6 +507,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const authStore = useAuthStore();
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -576,7 +582,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         downloadByBrowser(file.path);
         return;
       }
-      window.ipcRenderer.invoke('reveal-in-folder', file.path);
+      ipcRenderer?.invoke('reveal-in-folder', file.path);
       return;
     }
     // Don't open folders in preview - they are handled by expand/collapse
@@ -589,17 +595,21 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
     // For PDF files, use data URL instead of custom protocol
     if (file.type === 'pdf') {
-      window.ipcRenderer
-        .invoke('read-file-dataurl', file.path)
-        .then((dataUrl: string) => {
-          setSelectedFile({ ...file, content: dataUrl });
-          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
-          setLoading(false);
-        })
-        .catch((error: unknown) => {
-          console.error('read-file-dataurl error:', error);
-          setLoading(false);
-        });
+      if (ipcRenderer) {
+        ipcRenderer
+          .invoke('read-file-dataurl', file.path)
+          .then((dataUrl: string) => {
+            setSelectedFile({ ...file, content: dataUrl });
+            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+            setLoading(false);
+          })
+          .catch((error: unknown) => {
+            console.error('read-file-dataurl error:', error);
+            setLoading(false);
+          });
+      } else {
+        setLoading(false);
+      }
       return;
     }
 
@@ -612,17 +622,21 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     }
 
     // all other files call open-file interface, the backend handles download and parsing
-    window.ipcRenderer
-      .invoke('open-file', file.type, file.path, isShowSourceCode)
-      .then((res: string) => {
-        setSelectedFile({ ...file, content: res });
-        chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
-        setLoading(false);
-      })
-      .catch((error: unknown) => {
-        console.error('open-file error:', error);
-        setLoading(false);
-      });
+    if (ipcRenderer) {
+      ipcRenderer
+        .invoke('open-file', file.type, file.path, isShowSourceCode)
+        .then((res: string) => {
+          setSelectedFile({ ...file, content: res });
+          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+          setLoading(false);
+        })
+        .catch((error: unknown) => {
+          console.error('open-file error:', error);
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
   };
 
   const isShowSourceCodeChange = () => {
@@ -715,12 +729,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         setWorkingFolderPath(null);
         return;
       }
-      if (typeof window.electronAPI?.getProjectFolderPath !== 'function') {
+      if (typeof electronAPI?.getProjectFolderPath !== 'function') {
         setWorkingFolderPath(null);
         return;
       }
       try {
-        const folderPath = await window.electronAPI.getProjectFolderPath(
+        const folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
           projectStore.activeProjectId as string
         );
@@ -733,13 +747,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     return () => {
       cancelled = true;
     };
-  }, [authStore.email, projectStore.activeProjectId]);
+  }, [authStore.email, projectStore.activeProjectId, electronAPI]);
 
   useEffect(() => {
     if (!chatStore) return;
     const setFileList = async () => {
       let res = null;
-      res = await window.ipcRenderer.invoke(
+      if (!ipcRenderer) return;
+      res = await ipcRenderer.invoke(
         'get-project-file-list',
         authStore.email,
         projectStore.activeProjectId as string
@@ -856,18 +871,19 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     return <div>Loading...</div>;
   }
 
-  const handleBack = () => {
+  const _handleBack = () => {
     chatStore.setActiveWorkspace(chatStore.activeTaskId as string, 'workflow');
   };
 
   const handleOpenInIDE = async (ide: 'vscode' | 'cursor' | 'system') => {
     try {
       if (!authStore.email || !projectStore.activeProjectId) return;
-      const folderPath = await window.electronAPI.getProjectFolderPath(
+      if (!electronAPI) return;
+      const folderPath = await electronAPI.getProjectFolderPath(
         authStore.email,
         projectStore.activeProjectId
       );
-      const result = await window.electronAPI.openInIDE(folderPath, ide);
+      const result = await electronAPI.openInIDE(folderPath, ide);
       if (!result.success) {
         toast.error(result.error || t('chat.failed-to-open-folder'));
       } else {
@@ -883,7 +899,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     ? workingFolderBasename(workingFolderPath)
     : t('chat.agent-folder');
   const canOpenInExternalEditor =
-    window.electronAPI?.getProjectFolderPath && window.electronAPI?.openInIDE;
+    electronAPI?.getProjectFolderPath && electronAPI?.openInIDE;
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -1077,10 +1093,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     downloadByBrowser(selectedFile.path);
                     return;
                   }
-                  window.ipcRenderer.invoke(
-                    'reveal-in-folder',
-                    selectedFile.path
-                  );
+                  ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
                 }}
                 className="min-w-0 flex flex-1 cursor-pointer items-center overflow-hidden"
               >
@@ -1406,6 +1419,9 @@ function HtmlRenderer({
 }) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
+  const electronAPI = host?.electronAPI;
 
   useEffect(() => {
     const processHtml = async () => {
@@ -1512,9 +1528,11 @@ function HtmlRenderer({
           const imagePath = joinPath(htmlDir, src);
 
           try {
+            if (!electronAPI?.readFileAsDataUrl) {
+              return { original: imgTag, processed: imgTag };
+            }
             // Read image as data URL
-            const dataUrl =
-              await window.electronAPI.readFileAsDataUrl(imagePath);
+            const dataUrl = await electronAPI.readFileAsDataUrl(imagePath);
 
             // Replace src with data URL
             const newAttributes = attributes.replace(
@@ -1548,12 +1566,9 @@ function HtmlRenderer({
       // Load and inject CSS files, replacing external link tags
       for (const cssFile of cssFiles) {
         try {
-          const cssContent = await window.ipcRenderer.invoke(
-            'open-file',
-            'css',
-            cssFile.path,
-            false
-          );
+          const cssContent = ipcRenderer
+            ? await ipcRenderer.invoke('open-file', 'css', cssFile.path, false)
+            : null;
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
 
@@ -1588,12 +1603,9 @@ function HtmlRenderer({
       // Load JS files content and replace external script tags
       for (const jsFile of jsFiles) {
         try {
-          const jsContent = await window.ipcRenderer.invoke(
-            'open-file',
-            'js',
-            jsFile.path,
-            false
-          );
+          const jsContent = ipcRenderer
+            ? await ipcRenderer.invoke('open-file', 'js', jsFile.path, false)
+            : null;
           if (jsContent) {
             // Replace external script tag with inline script
             const scriptRegex = new RegExp(
@@ -1626,7 +1638,7 @@ function HtmlRenderer({
     };
 
     processHtml();
-  }, [selectedFile, projectFiles]);
+  }, [selectedFile, projectFiles, ipcRenderer, electronAPI]);
 
   // Zoom state and controls
   const [zoom, setZoom] = useState(100);

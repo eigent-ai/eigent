@@ -58,6 +58,8 @@ import { RichChatInput } from './RichChatInput';
 export interface FileAttachment {
   fileName: string;
   filePath: string;
+  fileId?: string;
+  source?: 'local' | 'upload';
 }
 
 /**

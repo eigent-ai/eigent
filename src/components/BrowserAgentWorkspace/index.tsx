@@ -14,6 +14,7 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
   ArrowDown,
@@ -34,6 +35,7 @@ import { Button } from '../ui/button';
 export default function BrowserAgentWorkspace() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const host = useHost();
 
   const [isSingleMode, setIsSingleMode] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -112,14 +114,14 @@ export default function BrowserAgentWorkspace() {
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      window.electronAPI.setSize({
+      host?.electronAPI?.setSize?.({
         x: rect.left,
         y: rect.top,
         width: rect.width,
         height: rect.height,
       });
     }
-  }, []);
+  }, [host]);
 
   const handleTakeControl = (id: string) => {
     console.log('handleTakeControl', id);
@@ -131,7 +133,7 @@ export default function BrowserAgentWorkspace() {
     setTimeout(() => {
       getSize();
       // show corresponding webview
-      window.electronAPI.showWebview(id);
+      host?.electronAPI?.showWebview?.(id);
     }, 400);
   };
 
@@ -160,15 +162,15 @@ export default function BrowserAgentWorkspace() {
   const [_url, setUrl] = useState('');
 
   useEffect(() => {
-    window.ipcRenderer?.on('url-updated', (_event: any, newUrl: any) => {
+    host?.ipcRenderer?.on('url-updated', (_event: any, newUrl: any) => {
       setUrl(newUrl);
     });
 
     // optional: clear listener when uninstall
     return () => {
-      window.ipcRenderer.removeAllListeners('url-updated');
+      host?.ipcRenderer?.removeAllListeners?.('url-updated');
     };
-  }, []);
+  }, [host]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -184,7 +186,7 @@ export default function BrowserAgentWorkspace() {
                 action: 'resume',
               });
               setIsTakeControl(false);
-              window.electronAPI.hideAllWebview();
+              host?.electronAPI?.hideAllWebview?.();
             }}
             size="sm"
             variant="success"

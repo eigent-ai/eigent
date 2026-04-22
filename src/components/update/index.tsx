@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Progress } from '@/components/ui/progress';
+import { useHost } from '@/host';
 import type { ProgressInfo } from 'electron-updater';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,10 +23,12 @@ const Update = () => {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const { t } = useTranslation();
+  const host = useHost();
+  const ipc = host?.ipcRenderer;
 
-  const checkUpdate = () => {
-    window.ipcRenderer.invoke('check-update');
-  };
+  const checkUpdate = useCallback(() => {
+    void ipc?.invoke('check-update');
+  }, [ipc]);
 
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
@@ -79,12 +82,12 @@ const Update = () => {
         description: t('update.click-to-install-update'),
         action: {
           label: t('update.install'),
-          onClick: () => window.ipcRenderer.invoke('quit-and-install'),
+          onClick: () => void ipc?.invoke('quit-and-install'),
         },
         duration: Infinity,
       });
     },
-    [t]
+    [t, ipc]
   );
 
   useEffect(() => {
@@ -93,17 +96,17 @@ const Update = () => {
     }
     sessionStorage.setItem('updateElectronShown', '1');
 
-    window.ipcRenderer?.on('update-error', onUpdateError);
-    window.ipcRenderer?.on('download-progress', onDownloadProgress);
-    window.ipcRenderer?.on('update-downloaded', onUpdateDownloaded);
+    ipc?.on('update-error', onUpdateError);
+    ipc?.on('download-progress', onDownloadProgress);
+    ipc?.on('update-downloaded', onUpdateDownloaded);
     checkUpdate();
 
     return () => {
-      window.ipcRenderer?.off('update-error', onUpdateError);
-      window.ipcRenderer?.off('download-progress', onDownloadProgress);
-      window.ipcRenderer?.off('update-downloaded', onUpdateDownloaded);
+      ipc?.off('update-error', onUpdateError);
+      ipc?.off('download-progress', onDownloadProgress);
+      ipc?.off('update-downloaded', onUpdateDownloaded);
     };
-  }, [onUpdateError, onDownloadProgress, onUpdateDownloaded]);
+  }, [ipc, onUpdateError, onDownloadProgress, onUpdateDownloaded, checkUpdate]);
 
   return null;
 };

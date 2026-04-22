@@ -112,13 +112,13 @@ type BaseShape = {
 
 const BASE = baseColorTokens as BaseShape;
 const SEMANTIC = semanticTokens as SemanticShape;
-const LEGACY_NEUTRAL_EMPHASIS: Emphasis[] = [
+const LEGACY_NEUTRAL_EMPHASIS = [
   'subtle',
   'muted',
   'default',
   'strong',
   'inverse',
-];
+] as const;
 const LEGACY_UI_STATES: State[] = [
   'default',
   'hover',
@@ -128,7 +128,8 @@ const LEGACY_UI_STATES: State[] = [
   'disabled',
 ];
 
-type NeutralStateMatrix = Record<Emphasis, Record<State, string>>;
+type LegacyNeutralEmphasis = (typeof LEGACY_NEUTRAL_EMPHASIS)[number];
+type NeutralStateMatrix = Record<LegacyNeutralEmphasis, Record<State, string>>;
 
 const SYSTEM_STATUS_TONES = new Set<Tone>([
   'status-running',

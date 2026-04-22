@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { MenuToggleGroup, MenuToggleItem } from '@/components/ui/menu-button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { useWorkerList } from '@/store/authStore';
 import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -41,6 +42,7 @@ export default function WorkforceMenu({
   isChatBoxVisible: _isChatBoxVisible = true,
 }: WorkforceMenuProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
 
@@ -109,8 +111,8 @@ export default function WorkforceMenu({
   }, [chatStore, baseWorker, workerList, taskAssigning]);
 
   useEffect(() => {
-    if (!chatStore) return;
-    const cleanup = window.electronAPI.onWebviewNavigated(
+    if (!chatStore || !host?.electronAPI?.onWebviewNavigated) return;
+    const cleanup = host.electronAPI.onWebviewNavigated(
       (id: string, url: string) => {
         if (!chatStore.activeTaskId) return;
         const currentTask = getCurrentTask();
@@ -202,8 +204,9 @@ export default function WorkforceMenu({
 
         // capture webview
         const captureWebview = () => {
+          if (!host?.ipcRenderer) return;
           webviews.map((webview) => {
-            window.ipcRenderer
+            host.ipcRenderer
               .invoke('capture-webview', webview.id)
               .then((base64: string) => {
                 const currentTask = getCurrentTask();
@@ -240,9 +243,8 @@ export default function WorkforceMenu({
       }
     );
 
-    // Cleanup function to remove listener when component unmounts or dependencies change
     return cleanup;
-  }, [chatStore, activeTaskId, webViewUrls, taskAssigning]);
+  }, [chatStore, activeTaskId, webViewUrls, taskAssigning, host]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -342,7 +344,7 @@ export default function WorkforceMenu({
     }
     chatStore.setActiveWorkspace(chatStore.activeTaskId, val);
 
-    window.electronAPI.hideAllWebview();
+    host?.electronAPI?.hideAllWebview?.();
   };
 
   return (

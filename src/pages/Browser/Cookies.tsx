@@ -15,6 +15,7 @@
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { useHost } from '@/host';
 import { Cookie, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +34,8 @@ interface GroupedDomain {
 }
 
 export default function Cookies() {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const [loginLoading, setLoginLoading] = useState(false);
   const [cookiesLoading, setCookiesLoading] = useState(false);
@@ -195,8 +198,8 @@ export default function Cookies() {
   };
 
   const handleRestartApp = () => {
-    if (window.electronAPI && window.electronAPI.restartApp) {
-      window.electronAPI.restartApp();
+    if (electronAPI?.restartApp) {
+      electronAPI.restartApp();
     } else {
       toast.error('Restart function not available');
     }

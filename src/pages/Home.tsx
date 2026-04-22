@@ -28,6 +28,7 @@ import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -89,6 +90,9 @@ function readStoredSidebarWidthPx(): number {
 
 export default function Home() {
   const { t } = useTranslation();
+  const host = useHost();
+  const ipc = host?.ipcRenderer;
+  const electronAPI = host?.electronAPI;
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
@@ -382,7 +386,7 @@ export default function Home() {
     const detectAgentFiles = async () => {
       if (!projectStore.activeProjectId || !email) return;
       try {
-        const files = await window.ipcRenderer?.invoke(
+        const files = await ipc?.invoke(
           'get-project-file-list',
           email,
           projectStore.activeProjectId
@@ -394,7 +398,7 @@ export default function Home() {
     };
 
     detectAgentFiles();
-  }, [projectStore.activeProjectId, email, setHasAgentFiles]);
+  }, [projectStore.activeProjectId, email, setHasAgentFiles, ipc]);
 
   // Add webview-show listener in useEffect with cleanup
   useEffect(() => {
@@ -402,13 +406,13 @@ export default function Home() {
       setActiveWebviewId(id);
     };
 
-    window.ipcRenderer?.on('webview-show', handleWebviewShow);
+    ipc?.on('webview-show', handleWebviewShow);
 
     // Cleanup: remove listener on unmount
     return () => {
-      window.ipcRenderer?.off('webview-show', handleWebviewShow);
+      ipc?.off('webview-show', handleWebviewShow);
     };
-  }, []); // Empty dependency array means this only runs once
+  }, [ipc]);
 
   // Extract complex dependency to a variable
   const taskAssigning =
@@ -457,9 +461,9 @@ export default function Home() {
         return;
       }
       webviews.map((webview) => {
-        window.ipcRenderer
-          .invoke('capture-webview', webview.id)
-          .then((base64: string) => {
+        void ipc
+          ?.invoke('capture-webview', webview.id)
+          ?.then((base64: string) => {
             const currentTask =
               chatStore.tasks[chatStore.activeTaskId as string];
             if (!currentTask || currentTask.type) return;
@@ -511,20 +515,20 @@ export default function Home() {
         clearInterval(intervalTimer);
       }
     };
-  }, [chatStore, taskAssigning]);
+  }, [chatStore, taskAssigning, ipc]);
 
   const getSize = useCallback(() => {
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      window.electronAPI.setSize({
+      electronAPI?.setSize({
         x: rect.left,
         y: rect.top,
         width: rect.width,
         height: rect.height,
       });
     }
-  }, []);
+  }, [electronAPI]);
 
   useEffect(() => {
     if (!chatStore) return;

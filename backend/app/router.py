@@ -23,8 +23,12 @@ from fastapi import FastAPI
 
 from app.controller import (
     chat_controller,
+    file_controller,
     health_controller,
+    mcp_controller,
+    message_controller,
     model_controller,
+    skill_controller,
     task_controller,
     tool_controller,
 )
@@ -52,9 +56,29 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "description": "Health check endpoint for service readiness",
         },
         {
+            "router": file_controller.router,
+            "tags": ["Files"],
+            "description": "File upload for Web/Channel clients",
+        },
+        {
+            "router": mcp_controller.router,
+            "tags": ["MCP"],
+            "description": "MCP config (list, install, remove, update)",
+        },
+        {
+            "router": skill_controller.router,
+            "tags": ["Skills"],
+            "description": "Skills scan, write, read, delete",
+        },
+        {
             "router": chat_controller.router,
             "tags": ["chat"],
             "description": "Chat session management, improvements, and human interactions",
+        },
+        {
+            "router": message_controller.router,
+            "tags": ["Message Router"],
+            "description": "Phase 2 Message Router - /messages endpoint (prefix-aware)",
         },
         {
             "router": model_controller.router,

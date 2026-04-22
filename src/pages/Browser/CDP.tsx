@@ -12,8 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { useHost } from '@/host';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +31,8 @@ interface CdpBrowser {
 }
 
 export default function CDP() {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [cdpBrowsers, setCdpBrowsers] = useState<CdpBrowser[]>([]);
@@ -40,41 +44,54 @@ export default function CDP() {
   const [connectPort, setConnectPort] = useState('');
   const [connectChecking, setConnectChecking] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const isDesktopMode = !!electronAPI?.getCdpBrowsers;
 
   const loadCdpBrowsers = async () => {
-    if (window.electronAPI?.getCdpBrowsers) {
-      try {
-        const browsers = await window.electronAPI.getCdpBrowsers();
+    try {
+      if (electronAPI?.getCdpBrowsers) {
+        const browsers = await electronAPI.getCdpBrowsers();
         setCdpBrowsers(browsers);
-      } catch (error) {
-        console.error('Failed to load CDP browsers:', error);
+        return;
       }
+
+      const browsers = await fetchGet('/browser/cdp/list');
+      setCdpBrowsers(Array.isArray(browsers) ? browsers : []);
+    } catch (error) {
+      console.error('Failed to load CDP browsers:', error);
     }
   };
 
   useEffect(() => {
     loadCdpBrowsers();
-  }, []);
+  }, [electronAPI]);
 
   useEffect(() => {
-    if (!window.electronAPI?.onCdpPoolChanged) return;
-    const cleanup = window.electronAPI.onCdpPoolChanged(
-      (browsers: CdpBrowser[]) => {
-        setCdpBrowsers(browsers);
-      }
-    );
+    if (!electronAPI?.onCdpPoolChanged) return;
+    const cleanup = electronAPI.onCdpPoolChanged((browsers: CdpBrowser[]) => {
+      setCdpBrowsers(browsers);
+    });
     return cleanup;
-  }, []);
+  }, [electronAPI]);
 
   const handleRemoveBrowser = async (browserId: string) => {
     setDeletingBrowser(browserId);
     try {
-      if (window.electronAPI?.removeCdpBrowser) {
-        const result = await window.electronAPI.removeCdpBrowser(browserId);
+      if (electronAPI?.removeCdpBrowser && isDesktopMode) {
+        const result = await electronAPI.removeCdpBrowser(browserId);
         if (result.success) {
           toast.success(t('layout.browser-removed'));
         } else {
           toast.error(result.error || t('layout.failed-to-remove-browser'));
+        }
+      } else if (browserToRemove) {
+        const result = await fetchDelete(
+          `/browser/cdp/${browserToRemove.port}`
+        );
+        if (result?.success) {
+          toast.success(t('layout.browser-removed'));
+          await loadCdpBrowsers();
+        } else {
+          toast.error(result?.error || t('layout.failed-to-remove-browser'));
         }
       }
     } catch (error: any) {
@@ -90,8 +107,13 @@ export default function CDP() {
       toast.loading(t('layout.launching-browser', { port: '...' }), {
         id: 'launch-browser',
       });
-      const result = await window.electronAPI?.launchCdpBrowser();
+      const result = isDesktopMode
+        ? await electronAPI?.launchCdpBrowser()
+        : await fetchPost('/browser/cdp/launch');
       if (result?.success) {
+        if (!isDesktopMode) {
+          await loadCdpBrowsers();
+        }
         toast.success(t('layout.browser-launched', { port: result.port }), {
           id: 'launch-browser',
         });
@@ -136,23 +158,24 @@ export default function CDP() {
     setConnectChecking(true);
     setConnectError('');
 
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 3000);
-      const response = await fetch(`http://localhost:${portNum}/json/version`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      timeoutId = null;
+      if (electronAPI?.addCdpBrowser && isDesktopMode) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch(
+          `http://localhost:${portNum}/json/version`,
+          {
+            signal: controller.signal,
+          }
+        );
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        setConnectError(t('layout.no-browser-on-port', { port: portNum }));
-        return;
-      }
+        if (!response.ok) {
+          setConnectError(t('layout.no-browser-on-port', { port: portNum }));
+          return;
+        }
 
-      if (window.electronAPI?.addCdpBrowser) {
-        const addResult = await window.electronAPI.addCdpBrowser(
+        const addResult = await electronAPI.addCdpBrowser(
           portNum,
           true,
           `External Browser (${portNum})`
@@ -164,8 +187,17 @@ export default function CDP() {
           return;
         }
       } else {
-        setConnectError(t('layout.failed-to-add-browser'));
-        return;
+        const connectResult = await fetchPost('/browser/cdp/connect', {
+          port: portNum,
+          name: `External Browser (${portNum})`,
+        });
+        if (!connectResult?.success) {
+          setConnectError(
+            connectResult?.error || t('layout.failed-to-add-browser')
+          );
+          return;
+        }
+        await loadCdpBrowsers();
       }
 
       toast.success(t('layout.connected-browser', { port: portNum }));
@@ -173,7 +205,6 @@ export default function CDP() {
     } catch {
       setConnectError(t('layout.no-browser-on-port', { port: portNum }));
     } finally {
-      if (timeoutId) clearTimeout(timeoutId);
       setConnectChecking(false);
     }
   };

@@ -30,12 +30,24 @@ from app.service.task import (
     ActionTakeControl,
     ActionUpdateTaskData,
     get_task_lock,
+    get_task_lock_if_exists,
     task_locks,
 )
 
 logger = logging.getLogger("task_controller")
 
 router = APIRouter()
+
+
+@router.post("/v1/tasks", name="dispatch task placeholder")
+def create_dispatch_task():
+    return Response(status_code=501, content="Not implemented yet")
+
+
+@router.get("/v1/tasks/{task_id}", name="dispatch task status placeholder")
+def get_dispatch_task(task_id: str):
+    _ = task_id
+    return Response(status_code=501, content="Not implemented yet")
 
 
 @router.post("/task/{id}/start", name="start task")
@@ -68,16 +80,27 @@ def put(id: str, data: UpdateData):
 
 
 class TakeControl(BaseModel):
-    action: Literal[Action.pause, Action.resume]
+    action: Literal[Action.pause, Action.resume, Action.stop]
 
 
-@router.put("/task/{id}/take-control", name="take control pause or resume")
+@router.put(
+    "/task/{id}/take-control", name="take control pause, resume or stop"
+)
 def take_control(id: str, data: TakeControl):
     logger.info(
         "Task control action", extra={"task_id": id, "action": data.action}
     )
-    task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_queue(ActionTakeControl(action=data.action)))
+    task_lock = get_task_lock_if_exists(id)
+    if task_lock is None:
+        logger.warning(
+            "Task lock not found for take-control, may already be stopped",
+            extra={"task_id": id},
+        )
+        return Response(status_code=204)
+    if data.action == Action.stop:
+        asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
+    else:
+        asyncio.run(task_lock.put_queue(ActionTakeControl(action=data.action)))
     logger.info(
         "Task control action completed",
         extra={"task_id": id, "action": data.action},
