@@ -2110,8 +2110,8 @@ async function createWindow() {
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
-    width: 1366,
-    height: 860,
+    width: 1280,
+    height: 960,
     minWidth: 1100,
     minHeight: 700,
     // Use native frame on Windows for better native integration
