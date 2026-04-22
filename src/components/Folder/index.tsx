@@ -1139,7 +1139,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             }`}
           >
             <div
-              className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'pl-4 py-2'} file-viewer-content`}
+              className={`flex min-h-full flex-col ${selectedFile?.type === 'html' && !isShowSourceCode ? '' : 'pl-4 pr-2 py-2'} file-viewer-content`}
             >
               {selectedFile ? (
                 !loading ? (
