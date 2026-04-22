@@ -18,8 +18,14 @@ import type { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { useTranslation } from 'react-i18next';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { formatSplittingElapsed } from './TokenUtils';
 
 const CONTENT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
@@ -27,6 +33,8 @@ const HEIGHT_MOTION = {
   height: { duration: 0.22, ease: CONTENT_EASE },
   opacity: { duration: 0.16, ease: CONTENT_EASE },
 } as const;
+const MARKDOWN_DEFER_THRESHOLD = 1200;
+const MARKDOWN_DEFER_MS = 180;
 
 function normalizeToolkitMessage(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -227,7 +235,7 @@ function useWorkLogElapsedMs(
   }, [chatStore, taskId, snapshot, now]);
 }
 
-function ToolDetailRow({
+const ToolDetailRow = memo(function ToolDetailRow({
   rowTitle,
   detail,
 }: {
@@ -235,6 +243,25 @@ function ToolDetailRow({
   detail: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [renderMarkdown, setRenderMarkdown] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setRenderMarkdown(false);
+      return;
+    }
+
+    if (detail.length <= MARKDOWN_DEFER_THRESHOLD) {
+      setRenderMarkdown(true);
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setRenderMarkdown(true),
+      MARKDOWN_DEFER_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [open, detail]);
 
   return (
     <div className="min-w-0 flex w-full flex-col items-start">
@@ -242,16 +269,16 @@ function ToolDetailRow({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="min-w-0 gap-1 py-2 px-2 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
+        className="min-w-0 gap-1 py-2 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
       >
-        <span className="text-body-sm font-medium min-w-0 text-ds-text-neutral-muted-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
+        <span className="text-body-sm font-medium min-w-0 text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
           {rowTitle}
         </span>
         <ChevronRight
           size={16}
           aria-hidden
           className={cn(
-            'text-ds-icon-neutral-muted-default shrink-0 transition-transform duration-200',
+            'text-ds-icon-neutral-subtle-default shrink-0 transition-transform duration-200',
             open && 'rotate-90'
           )}
         />
@@ -264,15 +291,21 @@ function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="min-w-0 mx-2 w-full overflow-hidden"
+            className="min-w-0 w-full overflow-hidden"
           >
             {detail ? (
-              <div className="pb-2 pl-0 pr-0 pt-0">
-                <MarkDown
-                  content={detail}
-                  enableTypewriter={false}
-                  pTextSize="text-xs"
-                />
+              <div className="py-2 px-3 bg-ds-bg-neutral-muted-default rounded-xl w-full">
+                {renderMarkdown ? (
+                  <MarkDown
+                    content={detail}
+                    enableTypewriter={false}
+                    pTextSize="text-xs"
+                  />
+                ) : (
+                  <p className="text-label-xs text-ds-text-neutral-subtle-default m-0">
+                    Rendering details...
+                  </p>
+                )}
               </div>
             ) : null}
           </motion.div>
@@ -280,7 +313,9 @@ function ToolDetailRow({
       </AnimatePresence>
     </div>
   );
-}
+});
+
+ToolDetailRow.displayName = 'ToolDetailRow';
 
 export interface TaskWorkLogAccordionProps {
   chatStore: VanillaChatStore;
@@ -293,7 +328,7 @@ export function TaskWorkLogAccordion({
   taskId,
   className,
 }: TaskWorkLogAccordionProps) {
-  const { t } = useTranslation();
+  const { t: _t } = useTranslation();
   const snapshot = useTaskWorkStoreSnapshot(chatStore, taskId);
   const { task, segments } = useTaskWorkLogData(chatStore, taskId, snapshot);
   const status = task?.status;
@@ -325,12 +360,6 @@ export function TaskWorkLogAccordion({
   }
 
   const timeLabel = formatSplittingElapsed(elapsedMs);
-  const headerRunning = t('chat.working-on-tasks-for', { time: timeLabel });
-  const headerDone = t('chat.worked-for', { time: timeLabel });
-  const headerText =
-    status === ChatTaskStatus.RUNNING || status === ChatTaskStatus.PAUSE
-      ? headerRunning
-      : headerDone;
 
   const useTypewriterForAgent =
     outerOpen &&
@@ -342,10 +371,31 @@ export function TaskWorkLogAccordion({
         type="button"
         aria-expanded={outerOpen}
         onClick={() => setOuterOpen((v) => !v)}
-        className="gap-1 py-2 px-2 min-w-0 flex w-full items-center justify-start text-left"
+        className="gap-1 py-2 min-w-0 flex w-full items-center justify-start text-left"
       >
-        <span className="text-body-sm font-medium text-ds-text-neutral-muted-default tabular-nums">
-          {headerText}
+        <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+          {status === ChatTaskStatus.RUNNING ||
+          status === ChatTaskStatus.PAUSE ? (
+            <Trans
+              i18nKey="chat.working-on-tasks-for"
+              values={{ time: timeLabel }}
+              components={{
+                elapsed: (
+                  <span className="text-ds-text-neutral-subtle-default tabular-nums" />
+                ),
+              }}
+            />
+          ) : (
+            <Trans
+              i18nKey="chat.worked-for"
+              values={{ time: timeLabel }}
+              components={{
+                elapsed: (
+                  <span className="text-ds-text-neutral-subtle-default tabular-nums" />
+                ),
+              }}
+            />
+          )}
         </span>
         {outerOpen ? (
           <ChevronDown

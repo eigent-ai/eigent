@@ -948,7 +948,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 <Button
                   variant="primary"
                   size="sm"
-                  className="h-7 gap-1 rounded-lg px-2 py-0 [&_svg]:size-3.5 shrink-0 items-center justify-center"
+                  buttonContent="text"
+                  textWeight="semibold"
+                  tone="neutral"
                 >
                   <SquareTerminal className="shrink-0" />
                   {t('chat.open-in-ide')}

@@ -125,7 +125,7 @@ export function AgentPoolSection({ title, agents }: AgentPoolSectionProps) {
   const activeAgents = useMemo(() => ordered.filter(hasWork), [ordered]);
 
   const emptyState = (
-    <div className="text-ds-text-neutral-muted-default text-body-sm px-1 py-1">
+    <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
       No agents yet
     </div>
   );

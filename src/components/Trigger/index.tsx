@@ -92,13 +92,13 @@ export default function TriggerPanel({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="secondary"
+                variant="ghost"
                 buttonContent="text"
                 size="sm"
                 className="rounded-lg"
               >
                 {triggerSortLabel}
-                <ArrowUpDown className="h-4 w-4" />
+                <ArrowUpDown />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

@@ -103,7 +103,7 @@ export function AgentFolderSection({
   return (
     <SidePanelAccordionBox title={title}>
       {unique.length === 0 ? (
-        <div className="text-ds-text-neutral-muted-default text-body-sm px-1 py-1">
+        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
           No files yet
         </div>
       ) : (

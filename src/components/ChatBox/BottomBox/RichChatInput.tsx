@@ -312,6 +312,7 @@ export const RichChatInput = React.forwardRef<
     const caret = getCaretOffset(el);
     internalUpdate.current = true;
     onChange(plain, caret);
+    applyHtml(plain, caret);
     resizeHeight();
   };
 
@@ -441,7 +442,7 @@ export const RichChatInput = React.forwardRef<
 
 RichChatInput.displayName = 'RichChatInput';
 
-/** Selection offsets for @mention / backspace logic (same semantics as textarea). */
+/** Selection offsets for caret / backspace logic (same semantics as textarea). */
 export function getRichInputSelection(el: HTMLElement | null): {
   start: number;
   end: number;

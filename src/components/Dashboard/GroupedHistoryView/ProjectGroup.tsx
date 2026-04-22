@@ -28,7 +28,6 @@ import { ChatTaskStatus } from '@/types/constants';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { motion } from 'framer-motion';
 import {
-  Edit,
   FolderCheck,
   FolderClock,
   Hash,
@@ -82,7 +81,7 @@ export default function ProjectGroup({
   isOngoing = false,
   onOngoingTaskPause: _onOngoingTaskPause,
   onOngoingTaskResume: _onOngoingTaskResume,
-  onProjectEdit,
+  onProjectEdit: _onProjectEdit,
   onProjectDelete,
   onProjectRename,
   viewMode = 'grid',
@@ -200,18 +199,6 @@ export default function ProjectGroup({
   // Trigger count is 0 for now (disabled)
   // const _triggerCount = 0;
 
-  // Handle project edit - open dialog
-  const handleProjectEdit = (e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    setIsDialogOpen(true);
-    // Also call the parent callback if provided
-    if (onProjectEdit) {
-      onProjectEdit(project.project_id);
-    }
-  };
-
   // Handle project rename
   const handleProjectRename = (projectId: string, newName: string) => {
     if (onProjectRename) {
@@ -302,24 +289,15 @@ export default function ProjectGroup({
                 align="end"
                 className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
               >
-                {onProjectEdit && (
-                  <DropdownMenuItem
-                    onClick={handleProjectEdit}
-                    className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
-                  >
-                    <Edit className="mr-2 h-4 w-4" />
-                    {t('layout.edit') || 'Edit'}
-                  </DropdownMenuItem>
-                )}
                 {onProjectDelete && (
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
                       onProjectDelete(project.project_id);
                     }}
-                    className="bg-dropdown-item-bg-default text-ds-text-status-error-strong-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                    className="bg-ds-bg-neutral-subtle-default text-ds-text-error-default-default hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-text-error-default-default focus:text-ds-text-error-default-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default hover:[&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default cursor-pointer"
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
+                    <Trash2 className="mr-2 h-4 w-4 text-ds-icon-error-default-default" />
                     {t('layout.delete')}
                   </DropdownMenuItem>
                 )}
@@ -510,21 +488,12 @@ export default function ProjectGroup({
               align="end"
               className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
             >
-              {onProjectEdit && (
-                <DropdownMenuItem
-                  onClick={handleProjectEdit}
-                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  {t('layout.edit') || 'Edit'}
-                </DropdownMenuItem>
-              )}
               {onProjectDelete && (
                 <DropdownMenuItem
                   onClick={() => onProjectDelete(project.project_id)}
-                  className="bg-dropdown-item-bg-default text-ds-text-status-error-strong-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                  className="bg-ds-bg-neutral-subtle-default text-ds-text-error-default-default hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-text-error-default-default focus:text-ds-text-error-default-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default hover:[&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default cursor-pointer"
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />
                   {t('layout.delete')}
                 </DropdownMenuItem>
               )}

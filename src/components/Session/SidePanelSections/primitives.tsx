@@ -21,7 +21,7 @@ import { type ReactNode, forwardRef } from 'react';
  */
 export function CountPill({ count }: { count: number }) {
   return (
-    <span className="bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default text-label-sm font-semibold px-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full">
+    <span className="bg-ds-bg-neutral-subtle-default text-ds-text-neutral-subtle-default text-label-xs font-bold px-1.5 inline-flex items-center justify-center rounded-full">
       {count}
     </span>
   );
@@ -146,7 +146,7 @@ export function ProgressCircle({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full border border-solid',
+        'inline-flex shrink-0 items-center justify-center rounded-full border-[0.5px] border-solid',
         done
           ? 'bg-ds-bg-success-subtle-default border-ds-border-success-strong-default text-ds-text-success-strong-default'
           : 'border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default'

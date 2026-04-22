@@ -18,21 +18,21 @@ export const TaskType = ({ type }: { type: 1 | 2 | 3 }) => {
   const typeMap = {
     1: {
       label: t('layout.task-splitting'),
-      textColor: 'text-[color:var(--ds-text-status-splitting-strong-default)]',
-      bgColor: 'bg-[var(--ds-bg-status-splitting-subtle-default)]',
-      dotColor: 'bg-[var(--ds-bg-status-splitting-subtle-default)]-foreground',
+      textColor: 'text-ds-text-status-splitting-strong-default',
+      bgColor: 'bg-ds-bg-status-splitting-subtle-default',
+      dotColor: 'bg-ds-text-status-splitting-strong-default',
     },
     2: {
       label: t('layout.task-running'),
-      textColor: 'text-[color:var(--ds-text-status-running-muted-default)]',
-      bgColor: 'bg-[var(--ds-bg-status-running-subtle-default)]',
-      dotColor: 'bg-[var(--ds-icon-status-running-default-default)]',
+      textColor: 'text-ds-text-status-running-default-default',
+      bgColor: 'bg-ds-bg-status-running-subtle-default',
+      dotColor: 'bg-ds-text-status-running-default-default',
     },
     3: {
       label: t('layout.task-completed'),
-      textColor: 'text-[color:var(--ds-text-neutral-default-default)]',
+      textColor: 'text-ds-text-neutral-default-default',
       bgColor: 'bg-transparent',
-      dotColor: 'bg-[var(--ds-icon-neutral-default-default)]',
+      dotColor: 'bg-ds-text-neutral-default-default',
     },
   };
   return (

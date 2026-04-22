@@ -89,7 +89,7 @@ export default function BottomBox({
   if (state === 'splitting')
     backgroundClass = 'bg-ds-bg-splitting-subtle-default';
   else if (state === 'confirm')
-    backgroundClass = 'bg-ds-bg-running-subtle-default';
+    backgroundClass = 'bg-ds-bg-completed-subtle-default';
 
   return (
     <div className="backdrop-blur-xl rounded-t-2xl bg-ds-bg-neutral-subtle-default relative z-50 flex w-full flex-col">

@@ -24,6 +24,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import Project from '@/pages/Projects/Project';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Plus } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -42,6 +43,7 @@ export default function Home() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const { username, email } = useAuthStore();
@@ -88,6 +90,7 @@ export default function Home() {
   const createChat = () => {
     //Handles refocusing id & non duplicate logic internally
     projectStore?.createProject('new project');
+    setActiveWorkspaceTab('workforce');
     navigate('/');
   };
 

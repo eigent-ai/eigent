@@ -45,17 +45,14 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
           <AnimateIcon
             animate
             loop
-            className="h-4 w-4 items-center justify-center"
+            className="h-4 w-4 !text-ds-text-information-default-default items-center justify-center"
           >
-            <Orbit
-              size={16}
-              className="text-[color:var(--ds-icon-information-default-default)]"
-            />
+            <Orbit size={16} />
           </AnimateIcon>
         </Button>
 
         <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
-          <span className="text-sm font-bold whitespace-nowrap text-[color:var(--ds-text-information-default-default)]">
+          <span className="text-body-sm font-bold text-ds-text-information-default-default whitespace-nowrap">
             {t('chat.splitting-tasks')}
           </span>
         </div>
@@ -94,13 +91,13 @@ export const BoxHeaderConfirm = ({
         <Button
           variant="ghost"
           size="sm"
-          className="px-1 focus:ring-0 focus-visible:outline-none"
+          buttonContent="icon-only"
+          tone="neutral"
+          buttonRadius="full"
+          className="focus:ring-0 focus-visible:outline-none"
           onClick={onEdit}
         >
-          <ChevronLeft
-            size={16}
-            className="text-[color:var(--ds-icon-neutral-default-default)]"
-          />
+          <ChevronLeft />
         </Button>
 
         <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">

@@ -32,8 +32,7 @@ const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
 type ContentNode =
   | { type: 'text'; value: string }
-  | { type: 'skill'; name: string }
-  | { type: 'mention'; id: string };
+  | { type: 'skill'; name: string };
 
 function parseContentWithTags(content: string): ContentNode[] {
   const nodes: ContentNode[] = [];
@@ -46,7 +45,7 @@ function parseContentWithTags(content: string): ContentNode[] {
     }
     const inner = m[1].trim();
     if (inner.startsWith('@')) {
-      nodes.push({ type: 'mention', id: inner.slice(1) });
+      nodes.push({ type: 'text', value: m[0] });
     } else {
       nodes.push({ type: 'skill', name: inner });
     }
@@ -57,22 +56,6 @@ function parseContentWithTags(content: string): ContentNode[] {
   }
   return nodes.length > 0 ? nodes : [{ type: 'text', value: content }];
 }
-
-const MENTION_LABELS: Record<string, string> = {
-  workforce: 'Workforce',
-  browser: 'Browser Agent',
-  dev: 'Developer Agent',
-  doc: 'Document Agent',
-  media: 'Multi Modal Agent',
-};
-
-const MENTION_TEXT_CLASS: Record<string, string> = {
-  workforce: 'text-[color:var(--ds-text-workforce-default-default)]',
-  browser: 'text-[color:var(--ds-text-browser-default-default)]',
-  dev: 'text-[color:var(--ds-text-terminal-default-default)]',
-  doc: 'text-[color:var(--ds-text-document-default-default)]',
-  media: 'text-[color:var(--ds-text-neutral-muted-default)]',
-};
 
 function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
   return tokenizeRichPlainText(text).map((seg, i) => {
@@ -89,7 +72,7 @@ function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[color:var(--ds-text-information-default-default)] underline underline-offset-2"
+            className="text-ds-text-information-default-default decoration-ds-border-information-default-default underline underline-offset-2"
             onClick={(e) => e.stopPropagation()}
           >
             {seg.text}
@@ -122,7 +105,8 @@ export interface UserMessageRichContentProps {
 }
 
 /**
- * Read-only rich body: `{{@agent}}`, `{{skill}}`, `#skill`, URLs — matches `UserMessageCard`.
+ * Read-only rich body: `{{skill}}`, `#skill`, URLs — matches `UserMessageCard`.
+ * `{{@…}}` is shown as plain text until a dedicated mention renderer exists.
  */
 export function UserMessageRichContent({
   content,
@@ -150,21 +134,6 @@ export function UserMessageRichContent({
               <Fragment key={i}>
                 {renderMessageRichSegments(node.value, `n${i}`)}
               </Fragment>
-            );
-          }
-          if (node.type === 'mention') {
-            const label = MENTION_LABELS[node.id] ?? node.id;
-            return (
-              <span
-                key={i}
-                className={cn(
-                  'font-normal inline align-baseline',
-                  MENTION_TEXT_CLASS[node.id] ??
-                    'text-[color:var(--ds-text-neutral-default-default)]'
-                )}
-              >
-                @{label}
-              </span>
             );
           }
           const skillToken = `#${node.name}`;
