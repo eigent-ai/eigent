@@ -24,6 +24,7 @@ from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
+from app.model.model_platform import patch_bedrock_cloud_config
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -80,6 +81,14 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
+    # Cloud mode: inject default Bedrock region and adjust URL for proxy.
+    if (
+        effective_config.get("model_platform") == "aws-bedrock-converse"
+        and options.is_cloud()
+    ):
+        effective_config["api_url"], extra_params = patch_bedrock_cloud_config(
+            effective_config["api_url"], extra_params
+        )
     init_param_keys = {
         "api_version",
         "azure_ad_token",
@@ -89,6 +98,10 @@ def agent_model(
         "client",
         "async_client",
         "azure_deployment_name",
+        "region_name",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
     }
 
     init_params = {}
@@ -112,6 +125,26 @@ def agent_model(
         else:
             model_config[k] = v
 
+    # Auto-inject prompt caching based on model platform
+    try:
+        model_platform_enum = ModelPlatformType(
+            effective_config["model_platform"].lower()
+        )
+        if model_platform_enum in {
+            ModelPlatformType.ANTHROPIC,
+            ModelPlatformType.AWS_BEDROCK_CONVERSE,
+        }:
+            model_config.setdefault("cache_control", "5m")
+        elif model_platform_enum == ModelPlatformType.OPENAI:
+            model_config.setdefault(
+                "prompt_cache_key", str(options.project_id)
+            )
+    except (ValueError, AttributeError):
+        logging.error(
+            f"Invalid model platform: {effective_config['model_platform']}",
+            exc_info=True,
+        )
+
     if agent_name == Agents.task_agent:
         model_config["stream"] = True
     if agent_name == Agents.browser_agent:
@@ -134,6 +167,10 @@ def agent_model(
                 exc_info=True,
             )
             model_platform_enum = None
+
+    if effective_config["model_platform"].lower() == "anthropic":
+        if model_config.get("max_tokens") is None:
+            model_config["max_tokens"] = 128000
 
     model = ModelFactory.create(
         model_platform=effective_config["model_platform"],

@@ -16,6 +16,7 @@ import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
+import { SITE_URL } from '@/lib';
 import { Cookie, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -336,7 +337,7 @@ export default function Cookies() {
         <div className="text-label-xs text-ds-text-neutral-muted-default w-full text-center">
           For more information, check out our
           <a
-            href="https://www.eigent.ai/privacy-policy"
+            href={`${SITE_URL}/privacy-policy`}
             target="_blank"
             className="ml-1 text-ds-text-status-splitting-strong-default underline"
             rel="noreferrer"

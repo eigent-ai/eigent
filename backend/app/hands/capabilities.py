@@ -114,7 +114,9 @@ class BrainCapabilities:
     mcp_allowlist: list[str] = field(default_factory=list)
     """used when mcp_mode=allowlist"""
 
-    workspace_root: str = "~/.eigent/workspace"
+    workspace_root: Path = field(
+        default_factory=lambda: Path("~/.eigent/workspace").expanduser()
+    )
     """workspace root path"""
 
     deployment_type: str = "local"
@@ -153,7 +155,9 @@ def detect_capabilities(config: dict | None = None) -> BrainCapabilities:
                 has_browser=False,
                 filesystem_scope="workspace_only",
                 mcp_mode="all",  # MCP available in all deployment modes
-                workspace_root=env("EIGENT_WORKSPACE", "~/.eigent/workspace"),
+                workspace_root=Path(
+                    env("EIGENT_WORKSPACE", "~/.eigent/workspace")
+                ).expanduser(),
                 deployment_type="docker",
             )
         else:
@@ -174,7 +178,9 @@ def detect_capabilities(config: dict | None = None) -> BrainCapabilities:
                 has_browser=has_browser,
                 filesystem_scope="full",
                 mcp_mode="all",
-                workspace_root=env("EIGENT_WORKSPACE", "~/.eigent/workspace"),
+                workspace_root=Path(
+                    env("EIGENT_WORKSPACE", "~/.eigent/workspace")
+                ).expanduser(),
                 deployment_type="cloud_vm"
                 if deployment == "cloud_vm"
                 else "local",
@@ -186,7 +192,9 @@ def detect_capabilities(config: dict | None = None) -> BrainCapabilities:
             has_browser=False,
             filesystem_scope="workspace_only",
             mcp_mode="all",  # MCP available in all deployment modes
-            workspace_root=env("EIGENT_WORKSPACE", "~/.eigent/workspace"),
+            workspace_root=Path(
+                env("EIGENT_WORKSPACE", "~/.eigent/workspace")
+            ).expanduser(),
             deployment_type=deployment or "sandbox",
         )
 

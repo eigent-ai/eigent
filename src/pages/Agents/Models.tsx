@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
@@ -102,12 +103,15 @@ export default function SettingModels() {
   } = useAuthStore();
   const _navigate = useNavigate();
   const { t } = useTranslation();
-  const getValidateMessage = (res: any) =>
-    res?.message ??
-    res?.detail?.message ??
-    res?.detail?.error?.message ??
-    res?.error?.message ??
-    t('setting.validate-failed');
+  const getValidateMessage = (res: any): string => {
+    const msg =
+      res?.message ??
+      res?.detail?.message ??
+      res?.detail?.error?.message ??
+      res?.error?.message ??
+      t('setting.validate-failed');
+    return typeof msg === 'string' ? msg : JSON.stringify(msg);
+  };
   const [items, _setItems] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
   );
@@ -127,6 +131,7 @@ export default function SettingModels() {
   const [showApiKey, setShowApiKey] = useState(() =>
     INIT_PROVODERS.filter((p) => p.id !== 'local').map(() => false)
   );
+  const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<number | null>(null);
   const [errors, setErrors] = useState<
     {
@@ -490,7 +495,7 @@ export default function SettingModels() {
       form[idx];
     let hasError = false;
     const newErrors = [...errors];
-    if (items[idx].id !== 'local') {
+    if (items[idx].id !== 'local' && items[idx].id !== 'aws-bedrock-converse') {
       if (!apiKey || apiKey.trim() === '') {
         newErrors[idx].apiKey = t('setting.api-key-can-not-be-empty');
         hasError = true;
@@ -527,7 +532,7 @@ export default function SettingModels() {
       const res = await fetchPost('/model/validate', {
         model_platform: item.id,
         model_type: form[idx].model_type,
-        api_key: form[idx].apiKey,
+        api_key: form[idx].apiKey || null,
         url: form[idx].apiHost,
         extra_params: external,
       });
@@ -1139,7 +1144,7 @@ export default function SettingModels() {
               </span>
               <span
                 onClick={() => {
-                  window.location.href = `https://www.eigent.ai/pricing`;
+                  window.location.href = `${SITE_URL}/pricing`;
                 }}
                 className="text-body-sm text-ds-text-neutral-muted-default cursor-pointer underline"
               >
@@ -1162,7 +1167,7 @@ export default function SettingModels() {
             </div>
             <Button
               onClick={() => {
-                window.location.href = `https://www.eigent.ai/dashboard`;
+                window.location.href = `${SITE_URL}/dashboard`;
               }}
               variant="primary"
               size="sm"
@@ -1430,8 +1435,32 @@ export default function SettingModels() {
                     <Input
                       size="default"
                       title={ec.name}
+                      type={
+                        ec.secret && !showSecret[`${idx}-${ecIdx}`]
+                          ? 'password'
+                          : 'text'
+                      }
+                      placeholder={ec.placeholder ?? `Enter your ${ec.name}`}
                       state={errors[idx]?.externalConfig ? 'error' : undefined}
                       note={errors[idx]?.externalConfig ?? undefined}
+                      backIcon={
+                        ec.secret ? (
+                          showSecret[`${idx}-${ecIdx}`] ? (
+                            <Eye className="h-5 w-5" />
+                          ) : (
+                            <EyeOff className="h-5 w-5" />
+                          )
+                        ) : undefined
+                      }
+                      onBackIconClick={
+                        ec.secret
+                          ? () =>
+                              setShowSecret((prev) => ({
+                                ...prev,
+                                [`${idx}-${ecIdx}`]: !prev[`${idx}-${ecIdx}`],
+                              }))
+                          : undefined
+                      }
                       value={ec.value}
                       onChange={(e) => {
                         const v = e.target.value;
