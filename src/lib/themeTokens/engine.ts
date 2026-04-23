@@ -243,6 +243,93 @@ const SYSTEM_STATUS_SHADE_BY_EMPHASIS_DARK: Record<
   },
 };
 
+type SystemStatusShadeOverrides = Partial<
+  Record<
+    Tone,
+    Partial<
+      Record<
+        Extract<Emphasis, 'subtle' | 'muted' | 'default' | 'strong'>,
+        Partial<Record<State, FixedShade>>
+      >
+    >
+  >
+>;
+
+// Keep most dark system tones on the mirrored ramp, with specific subtle/default
+// tones pinned to 900 for current UI usage.
+const SYSTEM_STATUS_SHADE_OVERRIDES_DARK: SystemStatusShadeOverrides = {
+  'status-running': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-splitting': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-pending': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-error': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-reassigning': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-completed': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-blocked': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-paused': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-skipped': {
+    subtle: {
+      default: '900',
+    },
+  },
+  'status-cancelled': {
+    subtle: {
+      default: '900',
+    },
+  },
+  success: {
+    subtle: {
+      default: '900',
+    },
+  },
+  error: {
+    subtle: {
+      default: '900',
+    },
+  },
+  warning: {
+    subtle: {
+      default: '900',
+    },
+  },
+  information: {
+    subtle: {
+      default: '900',
+    },
+  },
+};
+
 // Per-state opacity used for the `transparent` emphasis. The surface color is
 // the tone's base hue shown at these alphas so status chips read as "main
 // color, faded" rather than a washed-out rendered hue.
@@ -304,6 +391,13 @@ function getSystemStatusShade(
   state: State,
   mode: Mode
 ): `#${string}` | null {
+  const modeOverrides =
+    mode === 'dark' ? SYSTEM_STATUS_SHADE_OVERRIDES_DARK : undefined;
+  const overriddenShade = modeOverrides?.[tone]?.[emphasis]?.[state];
+  if (overriddenShade) {
+    return getFixedShade(tone, overriddenShade);
+  }
+
   const table =
     mode === 'dark'
       ? SYSTEM_STATUS_SHADE_BY_EMPHASIS_DARK

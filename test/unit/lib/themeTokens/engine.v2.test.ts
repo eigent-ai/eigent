@@ -95,6 +95,23 @@ const SYSTEM_STATUS_TONES = [
   'information',
 ] as const;
 
+const DARK_SUBTLE_900_OVERRIDE_TONES = new Set<string>([
+  'status-running',
+  'status-splitting',
+  'status-pending',
+  'status-error',
+  'status-reassigning',
+  'status-completed',
+  'status-blocked',
+  'status-paused',
+  'status-skipped',
+  'status-cancelled',
+  'success',
+  'error',
+  'warning',
+  'information',
+]);
+
 const FIXED_SHADE_SCALES = (baseColorTokens as BaseColorTokensShape)
   .fixedShadeScales!;
 
@@ -346,8 +363,11 @@ describe('themeTokens v2 engine', () => {
         scale?.['900']
       );
 
+      const expectedDarkSubtleDefault = DARK_SUBTLE_900_OVERRIDE_TONES.has(tone)
+        ? scale?.['900']
+        : scale?.['950'];
       expect(darkTheme.tokens[`bg.${tone}.subtle.default`]).toBe(
-        scale?.['950']
+        expectedDarkSubtleDefault
       );
       expect(darkTheme.tokens[`bg.${tone}.muted.default`]).toBe(scale?.['600']);
       expect(darkTheme.tokens[`bg.${tone}.default.default`]).toBe(
