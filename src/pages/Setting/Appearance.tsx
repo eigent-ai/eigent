@@ -133,7 +133,7 @@ function ContrastSlider({
           step={1}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="h-2 bg-ds-bg-neutral-subtle-disabled my-auto w-full cursor-pointer appearance-none rounded-full accent-[var(--ds-bg-brand-default-default)]"
+          className="h-2 bg-ds-bg-neutral-subtle-disabled accent-ds-bg-brand-default-default my-auto w-full cursor-pointer appearance-none rounded-full"
           aria-label="Theme contrast"
         />
         <div className="w-10 text-body-sm font-semibold text-ds-text-neutral-muted-default text-center">
