@@ -435,31 +435,31 @@ export function TaskCard({
                         key={`taskList-${task.id}`}
                         className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'bg-[var(--ds-bg-status-completed-subtle-default)]'
+                            ? 'bg-ds-bg-completed-subtle-default'
                             : task.status === TaskStatus.FAILED
-                              ? 'bg-[var(--ds-bg-status-error-subtle-default)]'
+                              ? 'bg-ds-bg-error-subtle-default'
                               : task.status === TaskStatus.RUNNING
-                                ? 'bg-[var(--ds-bg-status-running-subtle-default)]'
+                                ? 'bg-ds-bg-running-subtle-default'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'bg-[var(--ds-bg-status-blocked-subtle-default)]'
+                                  ? 'bg-ds-bg-blocked-subtle-default'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
-                                    ? 'bg-[var(--ds-bg-status-pending-subtle-default)]'
-                                    : 'bg-[var(--ds-bg-status-running-subtle-default)]'
+                                    ? 'bg-ds-bg-pending-subtle-default'
+                                    : 'bg-ds-bg-running-subtle-default'
                         } cursor-pointer border border-solid border-transparent ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'hover:border-[color:var(--ds-border-status-completed-default-focus)]'
+                            ? 'hover:border-ds-border-status-completed-default-focus'
                             : task.status === TaskStatus.FAILED
-                              ? 'hover:border-[color:var(--ds-border-status-error-default-focus)]'
+                              ? 'hover:border-ds-border-status-error-default-focus'
                               : task.status === TaskStatus.RUNNING
-                                ? 'hover:border-[color:var(--ds-border-status-running-default-focus)]'
+                                ? 'hover:border-ds-border-status-running-default-focus'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'hover:border-[color:var(--ds-border-status-blocked-default-focus)]'
+                                  ? 'hover:border-ds-border-status-blocked-default-focus'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
-                                    ? 'hover:border-[color:var(--ds-border-status-pending-default-hover)]'
+                                    ? 'hover:border-ds-border-status-pending-default-hover'
                                     : 'border-transparent'
                         } `}
                       >
@@ -467,7 +467,7 @@ export function TaskCard({
                           {task.status === TaskStatus.RUNNING && (
                             <LoaderCircle
                               size={16}
-                              className={`text-[color:var(--ds-icon-information-default-default)] ${
+                              className={`text-ds-icon-information-default-default ${
                                 activeTaskStatus === ChatTaskStatus.RUNNING &&
                                 'animate-spin'
                               } `}
@@ -476,32 +476,32 @@ export function TaskCard({
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className="text-[color:var(--ds-icon-status-pending-default-default)]"
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
                             <CircleCheckBig
                               size={16}
-                              className="text-[color:var(--ds-icon-success-default-default)]"
+                              className="text-ds-icon-success-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
                             <CircleSlash
                               size={16}
-                              className="text-[color:var(--ds-icon-caution-default-default)]"
+                              className="text-ds-icon-caution-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
                             <TriangleAlert
                               size={16}
-                              className="text-[color:var(--ds-icon-warning-default-default)]"
+                              className="text-ds-icon-warning-default-default"
                             />
                           )}
                           {(task.status === TaskStatus.EMPTY ||
                             task.status === TaskStatus.WAITING) && (
                             <Circle
                               size={16}
-                              className="text-[color:var(--ds-icon-status-pending-default-default)]"
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                         </div>
@@ -509,14 +509,14 @@ export function TaskCard({
                           <div
                             className={`min-w-0 w-full [overflow-wrap:anywhere] break-words whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
-                                ? 'text-[color:var(--ds-text-caution-default-default)]'
+                                ? 'text-ds-text-caution-default-default'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'text-[color:var(--ds-text-warning-default-default)]'
+                                  ? 'text-ds-text-warning-default-default'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
-                                    ? 'text-[color:var(--ds-text-status-pending-default-default)]'
-                                    : 'text-[color:var(--ds-text-neutral-default-default)]'
+                                    ? 'text-ds-text-status-pending-default-default'
+                                    : 'text-ds-text-neutral-default-default'
                             } text-sm font-medium leading-13`}
                           >
                             {task.content}

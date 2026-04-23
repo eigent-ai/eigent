@@ -77,10 +77,10 @@ export function TaskItem({
           {taskInfo.id === '' ? (
             <CircleDashed
               size={13}
-              className="text-[color:var(--ds-icon-neutral-muted-default)]"
+              className="text-ds-icon-neutral-muted-default"
             />
           ) : (
-            <div className="h-2 w-2 rounded-full bg-[var(--ds-icon-information-default-default)]"></div>
+            <div className="h-2 w-2 bg-ds-icon-information-default-default rounded-full"></div>
           )}
         </div>
         <div className="min-h-4 min-w-0 py-0.5 relative flex flex-1 items-center self-stretch overflow-hidden transition-all duration-300">
@@ -140,10 +140,7 @@ export function TaskItem({
             size="xs"
             buttonContent="icon-only"
           >
-            <Trash2
-              size={16}
-              className="text-[color:var(--ds-icon-neutral-muted-default)]"
-            />
+            <Trash2 size={16} className="text-ds-icon-neutral-muted-default" />
           </Button>
         </div>
       </div>
