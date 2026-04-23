@@ -174,4 +174,5 @@ declare global {
     | null;
 }
 
-export {};
+// Export types for use in handlers
+export type { Agent, AgentMessage, AgentNameType, FileInfo, Message, TaskInfo };
