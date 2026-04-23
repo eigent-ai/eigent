@@ -212,6 +212,15 @@
         "$type": "color",
         "$value": "{bg.neutral.inverse.default}",
         "$extensions": { "cssVar": "--mask-dark" }
+      },
+      "dialog-overlay-scrim": {
+        "$type": "color",
+        "$description": "Modal backdrop: pure black @ ~30% in light app mode, pure white @ ~30% in dark mode. Resolved per ThemeProvider mode (single var on :root, no Tailwind dark:).",
+        "$value": {
+          "light": "#0000004d",
+          "dark": "#ffffff4d"
+        },
+        "$extensions": { "cssVar": "--dialog-overlay-scrim" }
       }
     },
     "terminal": {

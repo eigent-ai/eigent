@@ -581,6 +581,7 @@ module.exports = {
           default: 'var(--mask-default)',
           dark: 'var(--mask-dark)',
         },
+        'dialog-overlay-scrim': 'var(--dialog-overlay-scrim)',
         code: {
           bg: 'var(--code-bg)',
           foreground: 'var(--code-foreground)',

@@ -903,20 +903,38 @@ function applyFilledAccentInverseTextHeuristic(
   return out;
 }
 
+function isModeSplitComponentColor(
+  v: unknown
+): v is { light: string; dark: string } {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.light === 'string' && typeof o.dark === 'string';
+}
+
 function buildComponentAliasVariables(
-  tokens: ThemeTokens
+  tokens: ThemeTokens,
+  mode: ThemeContractV2['mode']
 ): Record<string, string> {
   const resolved = resolveExtends(componentTokens as Record<string, unknown>);
   const leaves = flattenDtcgTokens(resolved);
   const out: Record<string, string> = {};
   for (const leaf of leaves) {
-    if (typeof leaf.value !== 'string') continue;
-    const resolvedValue = resolveAliasReferences(leaf.value, (path) => {
-      const key = path as TokenKey;
-      return tokens[key];
-    });
     const cssVar = (leaf.extensions?.cssVar as string | undefined) ?? null;
-    if (!cssVar || !resolvedValue) continue;
+    if (!cssVar) continue;
+
+    let resolvedValue: string | null = null;
+    if (typeof leaf.value === 'string') {
+      resolvedValue = resolveAliasReferences(leaf.value, (path) => {
+        const key = path as TokenKey;
+        return tokens[key];
+      });
+    } else if (isModeSplitComponentColor(leaf.value)) {
+      resolvedValue = mode === 'light' ? leaf.value.light : leaf.value.dark;
+    } else {
+      continue;
+    }
+
+    if (!resolvedValue) continue;
     out[cssVar] = resolvedValue;
   }
   return out;
@@ -961,7 +979,10 @@ function computeThemeV2(
   const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic(semantic);
   const enforced = enforceContrastPairs(accentInverseAdjusted);
   const semanticCssVars = toCssVariables(enforced.tokens);
-  const componentVars = buildComponentAliasVariables(enforced.tokens);
+  const componentVars = buildComponentAliasVariables(
+    enforced.tokens,
+    normalized.mode
+  );
   const cssVariables = {
     ...semanticCssVars,
     ...componentVars,
