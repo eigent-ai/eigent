@@ -302,7 +302,7 @@ export default function GroupedHistoryView({
   // Shimmer animation styles
   const shimmerStyle = {
     background:
-      'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
+      'linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--ds-text-neutral-default-default) 40%, transparent) 50%, transparent 100%)',
     backgroundSize: '200% 100%',
     animation: 'shimmer 1.5s infinite',
   };

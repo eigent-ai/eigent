@@ -1342,8 +1342,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const ttft =
                 performance.now() - ttftTracking[currentId].confirmedAt;
               console.log(
-                `%c[TTFT] 🚀 Time to First Token: ${ttft.toFixed(2)}ms - First streaming token received for task ${currentId}`,
-                'color: #4CAF50; font-weight: bold'
+                `[TTFT] Time to First Token: ${ttft.toFixed(2)}ms - first streaming token for task ${currentId}`
               );
             }
 

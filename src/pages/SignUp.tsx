@@ -364,7 +364,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('google')}
-                  className="mb-4 font-inter font-bold ease-in-out w-full justify-center rounded-[24px] text-center text-[15px] leading-[22px] text-[#F5F5F5] transition-all duration-300"
+                  className="mb-4 font-inter font-bold ease-in-out rounded-2xl text-body-md text-ds-text-brand-inverse-default w-full justify-center text-center transition-all duration-300"
                   disabled={isLoading}
                 >
                   <img src={google} className="h-5 w-5" />
@@ -376,7 +376,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('github')}
-                  className="mb-4 font-inter font-bold ease-in-out w-full justify-center rounded-[24px] text-center text-[15px] leading-[22px] text-[#F5F5F5] transition-all duration-300"
+                  className="mb-4 font-inter font-bold ease-in-out rounded-2xl text-body-md text-ds-text-brand-inverse-default w-full justify-center text-center transition-all duration-300"
                   disabled={isLoading}
                 >
                   <img src={github2} className="h-5 w-5" />
@@ -387,7 +387,7 @@ export default function SignUp() {
               </div>
             )}
             {HAS_STACK_KEYS && (
-              <div className="mb-6 mt-2 font-inter font-medium w-full text-center text-[15px] leading-[22px] text-[#222]">
+              <div className="mb-6 mt-2 font-inter font-medium text-ds-text-neutral-default-default text-body-md w-full text-center">
                 {t('layout.or')}
               </div>
             )}

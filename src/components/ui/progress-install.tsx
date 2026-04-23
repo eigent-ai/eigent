@@ -39,7 +39,7 @@ const ProgressInstall = React.forwardRef<
       style={{
         transform: `translateX(-${100 - (value || 0)}%)`,
         background:
-          'linear-gradient(90deg, var(--colors-blue-300, #8EC5FF) 0%, var(--colors-emerald-300, #5EE9B5) 17.79%, var(--colors-fuchsia-300, #F4A8FF) 36.06%, var(--colors-orange-300, #FFB86A) 53.37%, var(--colors-red-300, #FFA2A2) 68.27%, var(--colors-yellow-300, #FFDF20) 80.29%, var(--colors-amber-300, #FFD230) 89.42%, var(--colors-indigo-300, #A3B3FF) 98.44%)',
+          'linear-gradient(90deg, var(--colors-blue-300) 0%, var(--colors-emerald-300) 17.79%, var(--colors-fuchsia-300) 36.06%, var(--colors-orange-300) 53.37%, var(--colors-red-300) 68.27%, var(--colors-yellow-300) 80.29%, var(--colors-amber-300) 89.42%, var(--colors-indigo-300) 98.44%)',
       }}
     />
   </ProgressPrimitive.Root>

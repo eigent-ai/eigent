@@ -168,7 +168,7 @@ export function HistoryTabsNav({
     >
       <motion.div
         aria-hidden
-        className="rounded-lg bg-ds-bg-neutral-subtle-default ring-ds-border-neutral-default-default pointer-events-none absolute z-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1"
+        className="rounded-lg bg-ds-bg-neutral-subtle-default ring-ds-border-neutral-default-default shadow-sm pointer-events-none absolute z-0 ring-1"
         initial={false}
         animate={{
           left: hoverRect.left,

@@ -90,7 +90,8 @@ function ColorSeedEditor({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const normalizedPreview = normalizeHexColor(value) ?? '#000000';
+  const normalizedPreview =
+    normalizeHexColor(value) ?? 'var(--colors-black-100)';
 
   return (
     <div className="gap-2 border-ds-border-neutral-subtle-disabled py-4 px-6 flex flex-row items-center justify-between border-x-0 border-t-0 border-b border-solid">
@@ -102,7 +103,11 @@ function ColorSeedEditor({
           size="sm"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          note={normalizeHexColor(value) ? '' : 'Hex format: #1a2b3c'}
+          note={
+            normalizeHexColor(value)
+              ? ''
+              : 'Hex format: six digits (e.g. 1a2b3c)'
+          }
         />
         <div
           className="h-8 w-10 rounded-md border-ds-border-neutral-default-default border-solid"

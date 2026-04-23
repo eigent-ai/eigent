@@ -107,10 +107,10 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             /* Firefox */
             [data-scrollbar="ui-textarea"] { scrollbar-width: thin; }
             /* Ensure 4px track in Firefox (thin is ~6px, so tighten via colors) */
-            [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)) transparent; }
+            [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, var(--colors-black-30)) transparent; }
             /* WebKit */
             [data-scrollbar="ui-textarea"]::-webkit-scrollbar { width: 4px; height: 4px; }
-            [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)); border-radius: 9999px; }
+            [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, var(--colors-black-30)); border-radius: 9999px; }
             [data-scrollbar="ui-textarea"]::-webkit-scrollbar-track { background: transparent; }
           `}</style>
         </>
@@ -244,10 +244,10 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           /* Firefox */
           [data-scrollbar="ui-textarea"] { scrollbar-width: thin; }
           /* Ensure 4px track in Firefox (thin is ~6px, so tighten via colors) */
-          [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)) transparent; }
+          [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, var(--colors-black-30)) transparent; }
           /* WebKit */
           [data-scrollbar="ui-textarea"]::-webkit-scrollbar { width: 4px; height: 4px; }
-          [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)); border-radius: 9999px; }
+          [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, var(--colors-black-30)); border-radius: 9999px; }
           [data-scrollbar="ui-textarea"]::-webkit-scrollbar-track { background: transparent; }
         `}</style>
       </>
