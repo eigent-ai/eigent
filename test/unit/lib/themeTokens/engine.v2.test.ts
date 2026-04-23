@@ -129,7 +129,7 @@ describe('themeTokens v2 engine', () => {
 
   it('enforces override precedence with cell override as final authority', () => {
     const baseContract = createDefaultThemeContractV2('light', {
-      themeId: 'codex',
+      themeId: 'starfish',
       contrast: 50,
     });
     const base = buildThemeV2(baseContract, DEFAULT_THEME_CATALOG);
@@ -167,7 +167,7 @@ describe('themeTokens v2 engine', () => {
   it('ensures all generated tokens are valid CSS colors', () => {
     const theme = buildThemeV2(
       createDefaultThemeContractV2('light', {
-        themeId: 'claude',
+        themeId: 'claw',
         contrast: 40,
       }),
       DEFAULT_THEME_CATALOG

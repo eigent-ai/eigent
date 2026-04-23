@@ -7,12 +7,12 @@
         "background": "#faf7f6",
         "ink": "#1d1d1d"
       },
-      "claude": {
+      "claw": {
         "accent": "#cc7d5e",
         "background": "#f9f9f7",
         "ink": "#2d2d2b"
       },
-      "codex": {
+      "starfish": {
         "accent": "#0169cc",
         "background": "#ffffff",
         "ink": "#0d0d0d"
@@ -21,6 +21,16 @@
         "accent": "#4c19e8",
         "background": "#ffffff",
         "ink": "#1d1d1d"
+      },
+      "whale": {
+        "accent": "#4460f6",
+        "background": "#ffffff",
+        "ink": "#000000"
+      },
+      "custom": {
+        "accent": "#429f2d",
+        "background": "#ffffff",
+        "ink": "#0d0d0d"
       }
     },
     "dark": {
@@ -29,12 +39,12 @@
         "background": "#1f1f1f",
         "ink": "#ffffff"
       },
-      "claude": {
+      "claw": {
         "accent": "#cc7d5e",
         "background": "#2d2d2b",
         "ink": "#f9f9f7"
       },
-      "codex": {
+      "starfish": {
         "accent": "#0169cc",
         "background": "#111111",
         "ink": "#fcfcfc"
@@ -43,6 +53,16 @@
         "accent": "#b5afff",
         "background": "#1f1f1f",
         "ink": "#fafafa"
+      },
+      "whale": {
+        "accent": "#4460f6",
+        "background": "#ffffff",
+        "ink": "#000000"
+      },
+      "custom": {
+        "accent": "#429f2d",
+        "background": "#111111",
+        "ink": "#fcfcfc"
       }
     }
   },
