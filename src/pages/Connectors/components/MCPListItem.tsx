@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { capitalizeFirstLetter } from '@/lib';
 import { CircleAlert, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -38,10 +39,10 @@ export default function MCPListItem({
   const { t } = useTranslation();
   return (
     <div className="mb-4 gap-4 rounded-2xl bg-ds-bg-neutral-strong-default p-4 flex items-center justify-between">
-      <div className="gap-xs flex items-center">
+      <div className="gap-4 flex items-center">
         <div className="mx-xs h-3 w-3 bg-green-500 rounded-full"></div>
         <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
-          {item.mcp_name}
+          {capitalizeFirstLetter(item.mcp_name)}
         </div>
         <div className="flex items-center">
           <TooltipSimple content={item.mcp_desc}>
@@ -58,6 +59,9 @@ export default function MCPListItem({
         <Button
           variant="ghost"
           size="sm"
+          textWeight="medium"
+          buttonRadius="lg"
+          tone="error"
           className="w-full"
           onClick={() => {
             onDelete(item);

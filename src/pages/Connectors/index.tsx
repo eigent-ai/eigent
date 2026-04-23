@@ -12,59 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import VerticalNavigation, {
-  type VerticalNavItem,
-} from '@/components/Dashboard/VerticalNav';
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import MCP from './MCP';
-import Search from './Search';
 
 export default function Connectors() {
-  const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('mcp');
-
-  const menuItems: Array<{ id: string; name: string }> = [
-    {
-      id: 'search',
-      name: t('layout.search'),
-    },
-    {
-      id: 'mcp',
-      name: t('setting.mcp'),
-    },
-  ];
-
-  const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
-  };
-
   return (
-    <div className="flex h-auto w-full">
-      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
-        <VerticalNavigation
-          items={
-            menuItems.map((menu) => ({
-              value: menu.id,
-              label: (
-                <span className="text-body-sm font-bold">{menu.name}</span>
-              ),
-            })) as VerticalNavItem[]
-          }
-          value={activeTab}
-          onValueChange={handleTabChange}
-          className="min-h-0 gap-0 h-full w-full flex-1"
-          listClassName="w-full h-full overflow-y-auto"
-          contentClassName="hidden"
-        />
-      </div>
-
-      <div className="flex h-auto w-full flex-1 flex-col">
-        <div className="gap-4 flex flex-col">
-          {activeTab === 'search' && <Search />}
-          {activeTab === 'mcp' && <MCP />}
-        </div>
-      </div>
+    <div className="flex h-auto w-full flex-1 flex-col">
+      <MCP />
     </div>
   );
 }

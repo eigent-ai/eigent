@@ -295,7 +295,7 @@ export default function IntegrationList({
 
   const itemClassName = isSelectMode
     ? 'cursor-pointer hover:bg-ds-bg-neutral-default-hover px-3 py-2 flex justify-between'
-    : 'w-full px-6 py-4 bg-ds-bg-neutral-strong-default rounded-2xl';
+    : 'w-full px-6 py-4 bg-ds-bg-neutral-subtle-default rounded-2xl';
 
   const titleClassName = isSelectMode
     ? 'text-base leading-snug font-bold text-ds-text-brand-default-default'
