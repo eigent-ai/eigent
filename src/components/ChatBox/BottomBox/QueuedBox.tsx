@@ -44,7 +44,7 @@ export function QueuedBox({
   return (
     <div
       className={cn(
-        'border-solid-80 gap-1 rounded-t-2xl py-1 flex w-full flex-col items-start justify-center border border-b-0 border-[color:var(--ds-border-neutral-default-default)] bg-[var(--ds-bg-neutral-default-default)]',
+        'border-solid-80 gap-1 rounded-t-2xl py-1 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default flex w-full flex-col items-start justify-center border border-b-0',
         className
       )}
     >
@@ -60,12 +60,12 @@ export function QueuedBox({
           {isExpanded ? (
             <ChevronUp
               size={16}
-              className="text-[color:var(--ds-icon-neutral-default-default)]"
+              className="text-ds-icon-neutral-default-default"
             />
           ) : (
             <ChevronDown
               size={16}
-              className="text-[color:var(--ds-icon-neutral-default-default)]"
+              className="text-ds-icon-neutral-default-default"
             />
           )}
         </Button>
@@ -73,12 +73,12 @@ export function QueuedBox({
         {/* Middle - Queued Title */}
         <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
           <div className="mr-1 relative flex shrink-0 flex-col justify-center">
-            <span className="text-xs font-bold text-[color:var(--ds-text-neutral-default-default)]">
+            <span className="text-xs font-bold text-ds-text-neutral-default-default">
               {queuedMessages.length}
             </span>
           </div>
           <div className="relative flex shrink-0 flex-col justify-center">
-            <span className="text-xs font-bold text-[color:var(--ds-text-neutral-default-default)]">
+            <span className="text-xs font-bold text-ds-text-neutral-default-default">
               {t('chat.queued-tasks')}
             </span>
           </div>
@@ -117,15 +117,12 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
 
   return (
     <div
-      className="gap-2 rounded-md px-1 py-1 relative box-border flex w-full cursor-pointer items-center bg-[var(--ds-bg-neutral-strong-default)] transition-all duration-200 hover:bg-[var(--ds-bg-neutral-default-default)]"
+      className="gap-2 rounded-md px-1 py-1 bg-ds-bg-neutral-strong-default hover:bg-ds-bg-neutral-default-default relative box-border flex w-full cursor-pointer items-center transition-all duration-200"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="h-5 w-5 rounded-md p-0.5 flex shrink-0 items-center justify-center bg-transparent">
-        <Circle
-          size={16}
-          className="text-[color:var(--ds-icon-neutral-muted-default)]"
-        />
+        <Circle size={16} className="text-ds-icon-neutral-muted-default" />
       </div>
 
       <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
@@ -141,7 +138,7 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
         className={cn(
           'h-5 w-5 rounded-md p-0.5 shrink-0 transition-all duration-200',
           isHovered
-            ? 'translate-x-0 opacity-100 hover:bg-[var(--ds-bg-neutral-default-hover)]'
+            ? 'translate-x-0 hover:bg-ds-bg-neutral-default-hover opacity-100'
             : 'translate-x-2 pointer-events-none opacity-0'
         )}
         onClick={(e) => {
@@ -150,10 +147,7 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
         }}
         aria-label={t('chat.remove-queued-message')}
       >
-        <X
-          size={16}
-          className="text-[color:var(--ds-icon-neutral-muted-default)]"
-        />
+        <X size={16} className="text-ds-icon-neutral-muted-default" />
       </Button>
     </div>
   );

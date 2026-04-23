@@ -49,14 +49,14 @@ const AgentResultCard: React.FC<{
       {/* Header (always visible) */}
       <button
         type="button"
-        className="gap-2 rounded-xl px-3 py-2 text-sm font-semibold flex w-full items-center text-left text-[color:var(--ds-text-neutral-default-default)] transition-colors hover:bg-[var(--ds-bg-neutral-default-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ds-border-brand-default-focus)]/40 focus-visible:outline-none active:bg-[var(--ds-bg-neutral-default-active)]"
+        className="gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover focus-visible:ring-ds-border-brand-default-focus/40 active:bg-ds-bg-neutral-default-active flex w-full items-center text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
         onClick={() => setIsOpen((v) => !v)}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <ChevronDown
           size={14}
           aria-hidden
-          className={`shrink-0 text-[color:var(--ds-icon-neutral-default-default)] transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+          className={`text-ds-icon-neutral-default-default shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
 
@@ -64,7 +64,7 @@ const AgentResultCard: React.FC<{
       <div
         className={`ease-in-out overflow-hidden transition-all duration-200 ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
-        <div className="px-1 py-1 border-t border-[color:var(--ds-border-neutral-default-default)]">
+        <div className="px-1 py-1 border-ds-border-neutral-default-default border-t">
           <AgentMessageCard
             id={id}
             content={content}
@@ -550,17 +550,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                           'documentWorkSpace'
                         );
                       }}
-                      className="gap-2 rounded-2xl px-2 py-1 flex w-[120px] cursor-pointer items-center bg-[var(--ds-bg-neutral-default-default)] transition-colors hover:bg-[var(--ds-bg-neutral-default-hover)]"
+                      className="gap-2 rounded-2xl px-2 py-1 bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover flex w-[120px] cursor-pointer items-center transition-colors"
                     >
                       <FileText
                         size={16}
-                        className="flex-shrink-0 text-[color:var(--ds-icon-neutral-default-default)]"
+                        className="text-ds-icon-neutral-default-default flex-shrink-0"
                       />
                       <div className="flex flex-col">
-                        <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
+                        <div className="text-body max-w-48 text-sm font-bold text-ds-text-neutral-default-default overflow-hidden text-ellipsis whitespace-nowrap">
                           {file.name.split('.')[0]}
                         </div>
-                        <div className="text-xs font-medium leading-29 text-[color:var(--ds-text-neutral-default-default)]">
+                        <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
                           {file.type}
                         </div>
                       </div>

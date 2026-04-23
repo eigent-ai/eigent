@@ -240,11 +240,11 @@ export const Inputbox = ({
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
       return (
-        <Image className="size-3.5 text-[color:var(--ds-icon-neutral-default-default)]" />
+        <Image className="size-3.5 text-ds-icon-neutral-default-default" />
       );
     }
     return (
-      <FileText className="size-3.5 text-[color:var(--ds-icon-neutral-default-default)]" />
+      <FileText className="size-3.5 text-ds-icon-neutral-default-default" />
     );
   };
 
@@ -371,7 +371,7 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-3.5 text-[color:var(--ds-icon-neutral-muted-default)]" />
+                    <X className="size-3.5 text-ds-icon-neutral-muted-default" />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -380,7 +380,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <p
                   className={cn(
-                    "my-0 text-xs font-bold leading-tight relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]"
+                    "my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
                   )}
                   title={file.fileName}
                 >
