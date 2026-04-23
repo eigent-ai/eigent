@@ -206,7 +206,7 @@ function HeaderWin() {
             <div className="flex items-center">
               {isHistoryRoute ? (
                 <TooltipSimple
-                  content={t('layout.home')}
+                  content={t('layout.projects')}
                   side="bottom"
                   align="center"
                 >
@@ -215,7 +215,7 @@ function HeaderWin() {
                     size="icon"
                     className="no-drag rounded-full"
                     onClick={() => navigate('/')}
-                    aria-label={t('layout.home')}
+                    aria-label={t('layout.projects')}
                     aria-current="page"
                   >
                     <FolderOpen

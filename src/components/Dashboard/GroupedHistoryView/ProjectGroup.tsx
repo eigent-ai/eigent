@@ -12,6 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import tokenDarkIcon from '@/assets/token-dark.svg';
+import tokenLightIcon from '@/assets/token-light.svg';
+import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,6 +26,7 @@ import { Tag } from '@/components/ui/tag';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib/replay';
+import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
@@ -30,7 +34,6 @@ import { motion } from 'framer-motion';
 import {
   FolderCheck,
   FolderClock,
-  Hash,
   ListChecks,
   Loader2,
   MoreHorizontal,
@@ -49,6 +52,31 @@ const compactCountFormatter = new Intl.NumberFormat('en', {
 
 const formatCompactCount = (value?: number) =>
   compactCountFormatter.format(value || 0).replace('.0', '');
+
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const resolveProjectTokenCount = (project: ProjectGroupType): number => {
+  const direct = toFiniteNumber(project.total_tokens as unknown);
+  if (direct !== null) {
+    return direct;
+  }
+
+  // Fallback for inconsistent payloads where project-level total is missing/invalid.
+  return (project.tasks || []).reduce(
+    (sum, task) =>
+      sum + (toFiniteNumber((task as { tokens?: unknown }).tokens) ?? 0),
+    0
+  );
+};
 
 interface ProjectGroupProps {
   project: ProjectGroupType;
@@ -87,9 +115,12 @@ export default function ProjectGroup({
   viewMode = 'grid',
 }: ProjectGroupProps) {
   const { t } = useTranslation();
+  const { appearance } = useAuthStore();
   const navigate = useNavigate();
   const projectStore = useProjectStore();
   const { chatStore } = useChatStoreAdapter();
+  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
+  const totalTokenCount = resolveProjectTokenCount(project);
   const [_isExpanded, _setIsExpanded] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
@@ -324,7 +355,7 @@ export default function ProjectGroup({
             transition={{ delay: 0.1, duration: 0.3 }}
             className="border-ds-border-neutral-muted-disabled px-6 py-4 flex items-center justify-between border-x-0 border-b-0 border-solid"
           >
-            <div className="gap-4 flex w-full flex-row items-center justify-between">
+            <div className="gap-4 flex w-full flex-row items-center justify-end">
               <TooltipSimple content={t('chat.token')}>
                 <Tag
                   variant="primary"
@@ -333,44 +364,41 @@ export default function ProjectGroup({
                   size="xs"
                   className="gap-1.5"
                 >
-                  <Hash className="h-3 w-3" />
+                  <img src={tokenIcon} alt="" className="h-4 w-4" />
                   <span className="text-label-xs">
-                    {formatCompactCount(project.total_tokens)}
+                    {formatTokenCount(totalTokenCount)}
+                  </span>
+                </Tag>
+              </TooltipSimple>
+              <TooltipSimple content={t('layout.tasks')}>
+                <Tag
+                  variant="primary"
+                  tone="success"
+                  emphasis="default"
+                  size="xs"
+                  className="gap-1.5 min-w-10"
+                >
+                  <ListChecks className="h-3 w-3" />
+                  <span className="text-label-xs">
+                    {formatCompactCount(project.task_count)}
                   </span>
                 </Tag>
               </TooltipSimple>
 
-              <div className="gap-2 flex flex-row items-center justify-end">
-                <TooltipSimple content={t('layout.tasks')}>
-                  <Tag
-                    variant="primary"
-                    tone="default"
-                    emphasis="default"
-                    size="xs"
-                    className="gap-1.5 min-w-10"
-                  >
-                    <ListChecks className="h-3 w-3" />
-                    <span className="text-label-xs">
-                      {formatCompactCount(project.task_count)}
-                    </span>
-                  </Tag>
-                </TooltipSimple>
-
-                <TooltipSimple content="Triggers">
-                  <Tag
-                    variant="primary"
-                    tone="warning"
-                    emphasis="default"
-                    size="xs"
-                    className="gap-1.5 min-w-10"
-                  >
-                    <Zap className="h-3 w-3" />
-                    <span className="text-label-xs">
-                      {formatCompactCount(project.total_triggers)}
-                    </span>
-                  </Tag>
-                </TooltipSimple>
-              </div>
+              <TooltipSimple content="Triggers">
+                <Tag
+                  variant="primary"
+                  tone="warning"
+                  emphasis="default"
+                  size="xs"
+                  className="gap-1.5 min-w-10"
+                >
+                  <Zap className="h-3 w-3" />
+                  <span className="text-label-xs">
+                    {formatCompactCount(project.total_triggers)}
+                  </span>
+                </Tag>
+              </TooltipSimple>
             </div>
           </motion.div>
         </div>
@@ -419,16 +447,16 @@ export default function ProjectGroup({
             size="xs"
             className="gap-1.5"
           >
-            <Hash className="h-3 w-3" />
+            <img src={tokenIcon} alt="" className="h-4 w-4" />
             <span className="text-label-xs">
-              {formatCompactCount(project.total_tokens)}
+              {formatTokenCount(totalTokenCount)}
             </span>
           </Tag>
 
           <TooltipSimple content={t('layout.tasks')}>
             <Tag
               variant="primary"
-              tone="default"
+              tone="success"
               emphasis="default"
               size="xs"
               className="gap-1.5 min-w-10"

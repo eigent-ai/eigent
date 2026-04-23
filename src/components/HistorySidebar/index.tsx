@@ -13,12 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete } from '@/api/http';
+import tokenDarkIcon from '@/assets/token-dark.svg';
+import tokenLightIcon from '@/assets/token-light.svg';
+import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
-import { getAuthStore } from '@/store/authStore';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
@@ -27,7 +30,6 @@ import {
   Ellipsis,
   FolderCheck,
   FolderClock,
-  Hash,
   ListChecks,
   Plus,
   Share,
@@ -57,8 +59,36 @@ const compactCountFormatter = new Intl.NumberFormat('en', {
 const formatCompactCount = (value?: number) =>
   compactCountFormatter.format(value || 0);
 
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const resolveProjectTokenCount = (
+  project: Pick<ProjectGroup, 'total_tokens' | 'tasks'>
+): number => {
+  const direct = toFiniteNumber(project.total_tokens as unknown);
+  if (direct !== null) {
+    return direct;
+  }
+
+  return (project.tasks || []).reduce(
+    (sum, task) =>
+      sum + (toFiniteNumber((task as { tokens?: unknown }).tokens) ?? 0),
+    0
+  );
+};
+
 export default function HistorySidebar() {
   const { t } = useTranslation();
+  const { appearance } = useAuthStore();
+  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const { isOpen, close } = useSidebarStore();
   const navigate = useNavigate();
   //Get Chatstore for the active project's task
@@ -460,9 +490,11 @@ export default function HistorySidebar() {
                             size="xs"
                             className="gap-1.5"
                           >
-                            <Hash className="h-3 w-3" />
+                            <img src={tokenIcon} alt="" className="h-3 w-3" />
                             <span className="text-label-xs">
-                              {formatCompactCount(project.total_tokens)}
+                              {formatTokenCount(
+                                resolveProjectTokenCount(project)
+                              )}
                             </span>
                           </Tag>
                         </TooltipSimple>
@@ -606,9 +638,11 @@ export default function HistorySidebar() {
                             size="xs"
                             className="gap-1.5"
                           >
-                            <Hash className="h-3 w-3" />
+                            <img src={tokenIcon} alt="" className="h-3 w-3" />
                             <span className="text-label-xs">
-                              {formatCompactCount(project.total_tokens)}
+                              {formatTokenCount(
+                                resolveProjectTokenCount(project)
+                              )}
                             </span>
                           </Tag>
                         </TooltipSimple>
