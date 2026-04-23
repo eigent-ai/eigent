@@ -31,9 +31,12 @@
 
   "workspace-main-background": "Arrière-plan de l’espace de travail",
   "workspace-main-background-description": "Motif appliqué uniquement aux panneaux principaux Workforce et Session.",
-  "workspace-main-background-none": "Par défaut",
+  "workspace-main-background-empty": "Vide",
   "workspace-main-background-dots": "Points",
   "workspace-main-background-blocks": "Grille",
+  "workspace-main-background-ruled": "Lignes pleines",
+  "workspace-main-background-dotted": "Lignes pointillées",
+  "workspace-main-background-dashed": "Lignes en tirets",
 
   "appearance-tab": "Apparence",
   "color-mode": "Mode couleur",
@@ -105,9 +108,12 @@
 
   "workspace-main-background": "Arrière-plan de l’espace de travail",
   "workspace-main-background-description": "Motif appliqué uniquement aux panneaux principaux Workforce et Session.",
-  "workspace-main-background-none": "Par défaut",
+  "workspace-main-background-empty": "Vide",
   "workspace-main-background-dots": "Points",
   "workspace-main-background-blocks": "Grille",
+  "workspace-main-background-ruled": "Lignes pleines",
+  "workspace-main-background-dotted": "Lignes pointillées",
+  "workspace-main-background-dashed": "Lignes en tirets",
 
   "appearance-tab": "Apparence",
   "color-mode": "Mode couleur",

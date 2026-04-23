@@ -31,9 +31,12 @@
 
   "workspace-main-background": "작업 영역 배경",
   "workspace-main-background-description": "Workforce 및 Session 메인 패널에만 적용됩니다.",
-  "workspace-main-background-none": "기본",
+  "workspace-main-background-empty": "빈 화면",
   "workspace-main-background-dots": "도트",
   "workspace-main-background-blocks": "격자",
+  "workspace-main-background-ruled": "줄 눈금",
+  "workspace-main-background-dotted": "점선",
+  "workspace-main-background-dashed": "대시선",
 
   "appearance-tab": "모양",
   "color-mode": "색상 모드",
@@ -105,9 +108,12 @@
 
   "workspace-main-background": "작업 영역 배경",
   "workspace-main-background-description": "Workforce 및 Session 메인 패널에만 적용됩니다.",
-  "workspace-main-background-none": "기본",
+  "workspace-main-background-empty": "빈 화면",
   "workspace-main-background-dots": "도트",
   "workspace-main-background-blocks": "격자",
+  "workspace-main-background-ruled": "줄 눈금",
+  "workspace-main-background-dotted": "점선",
+  "workspace-main-background-dashed": "대시선",
 
   "appearance-tab": "모양",
   "color-mode": "색상 모드",

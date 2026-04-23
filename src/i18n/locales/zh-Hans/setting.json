@@ -32,9 +32,12 @@
 
   "workspace-main-background": "工作区背景",
   "workspace-main-background-description": "仅应用于 Workforce 与 Session 主内容区。",
-  "workspace-main-background-none": "默认",
+  "workspace-main-background-empty": "无图案",
   "workspace-main-background-dots": "点状图案",
   "workspace-main-background-blocks": "网格图案",
+  "workspace-main-background-ruled": "横格线",
+  "workspace-main-background-dotted": "虚线格",
+  "workspace-main-background-dashed": "长虚线",
 
   "appearance-tab": "外观",
   "color-mode": "颜色模式",

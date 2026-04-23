@@ -31,9 +31,12 @@
 
   "workspace-main-background": "Фон рабочей области",
   "workspace-main-background-description": "Только для основных панелей Workforce и Session.",
-  "workspace-main-background-none": "По умолчанию",
+  "workspace-main-background-empty": "Пусто",
   "workspace-main-background-dots": "Точки",
   "workspace-main-background-blocks": "Сетка",
+  "workspace-main-background-ruled": "Линейка",
+  "workspace-main-background-dotted": "Пунктирные линии",
+  "workspace-main-background-dashed": "Штриховые линии",
 
   "appearance-tab": "Оформление",
   "color-mode": "Цветовой режим",
@@ -105,9 +108,12 @@
 
   "workspace-main-background": "Фон рабочей области",
   "workspace-main-background-description": "Только для основных панелей Workforce и Session.",
-  "workspace-main-background-none": "По умолчанию",
+  "workspace-main-background-empty": "Пусто",
   "workspace-main-background-dots": "Точки",
   "workspace-main-background-blocks": "Сетка",
+  "workspace-main-background-ruled": "Линейка",
+  "workspace-main-background-dotted": "Пунктирные линии",
+  "workspace-main-background-dashed": "Штриховые линии",
 
   "appearance-tab": "Оформление",
   "color-mode": "Цветовой режим",

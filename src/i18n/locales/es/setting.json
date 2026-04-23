@@ -31,9 +31,12 @@
 
   "workspace-main-background": "Fondo del espacio de trabajo",
   "workspace-main-background-description": "Solo para los paneles principales de Workforce y Session.",
-  "workspace-main-background-none": "Predeterminado",
+  "workspace-main-background-empty": "Vacío",
   "workspace-main-background-dots": "Puntos",
   "workspace-main-background-blocks": "Cuadrícula",
+  "workspace-main-background-ruled": "Líneas continuas",
+  "workspace-main-background-dotted": "Líneas punteadas",
+  "workspace-main-background-dashed": "Líneas a trazos",
 
   "appearance-tab": "Apariencia",
   "color-mode": "Modo de color",
@@ -105,9 +108,12 @@
 
   "workspace-main-background": "Fondo del espacio de trabajo",
   "workspace-main-background-description": "Solo para los paneles principales de Workforce y Session.",
-  "workspace-main-background-none": "Predeterminado",
+  "workspace-main-background-empty": "Vacío",
   "workspace-main-background-dots": "Puntos",
   "workspace-main-background-blocks": "Cuadrícula",
+  "workspace-main-background-ruled": "Líneas continuas",
+  "workspace-main-background-dotted": "Líneas punteadas",
+  "workspace-main-background-dashed": "Líneas a trazos",
 
   "appearance-tab": "Apariencia",
   "color-mode": "Modo de color",

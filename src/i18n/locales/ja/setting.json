@@ -31,9 +31,12 @@
 
   "workspace-main-background": "ワークスペースの背景",
   "workspace-main-background-description": "Workforce と Session のメインパネルにのみ適用されます。",
-  "workspace-main-background-none": "デフォルト",
+  "workspace-main-background-empty": "なし",
   "workspace-main-background-dots": "ドット",
   "workspace-main-background-blocks": "グリッド",
+  "workspace-main-background-ruled": "罫線",
+  "workspace-main-background-dotted": "点線",
+  "workspace-main-background-dashed": "破線",
 
   "appearance-tab": "外観",
   "color-mode": "カラーモード",
@@ -105,9 +108,12 @@
 
   "workspace-main-background": "ワークスペースの背景",
   "workspace-main-background-description": "Workforce と Session のメインパネルにのみ適用されます。",
-  "workspace-main-background-none": "デフォルト",
+  "workspace-main-background-empty": "なし",
   "workspace-main-background-dots": "ドット",
   "workspace-main-background-blocks": "グリッド",
+  "workspace-main-background-ruled": "罫線",
+  "workspace-main-background-dotted": "点線",
+  "workspace-main-background-dashed": "破線",
 
   "appearance-tab": "外観",
   "color-mode": "カラーモード",

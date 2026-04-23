@@ -14,8 +14,11 @@
 
 import { checkLocalServerStale } from '@/api/http';
 import {
+  DashedLinesBackground,
   DotPatternBackground,
+  DottedLinesBackground,
   GridPatternBackground,
+  RuledLinesBackground,
 } from '@/components/Background';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
@@ -557,25 +560,32 @@ export default function Home() {
 
   const useWorkspacePatternBg =
     activeWorkspaceTab === 'workforce' || activeWorkspaceTab === 'session';
-  const workspacePatternMode = useMemo((): 'dots' | 'blocks' | null => {
-    if (!useWorkspacePatternBg) return null;
-    const mode = (workspaceMainBackground ?? 'none') as WorkspaceMainBackground;
-    if (mode === 'none') return null;
-    if (mode === 'dots') return 'dots';
-    return 'blocks';
+  const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
+    if (!useWorkspacePatternBg) return 'empty';
+    return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
   }, [useWorkspacePatternBg, workspaceMainBackground]);
 
   const workspaceMainContentClass = cn(
     mainPanelContentClass,
-    workspacePatternMode != null && 'relative'
+    workspacePatternKey !== 'empty' && 'relative'
   );
 
-  const workspacePatternOverlayEl =
-    workspacePatternMode === 'dots' ? (
-      <DotPatternBackground />
-    ) : workspacePatternMode === 'blocks' ? (
-      <GridPatternBackground />
-    ) : null;
+  const workspacePatternOverlayEl = useMemo(() => {
+    switch (workspacePatternKey) {
+      case 'dots':
+        return <DotPatternBackground />;
+      case 'blocks':
+        return <GridPatternBackground />;
+      case 'ruled':
+        return <RuledLinesBackground />;
+      case 'dotted':
+        return <DottedLinesBackground />;
+      case 'dashed':
+        return <DashedLinesBackground />;
+      default:
+        return null;
+    }
+  }, [workspacePatternKey]);
 
   const handleSessionGroupDeleteSession = useCallback(
     (sessionId: string) => {

@@ -42,10 +42,10 @@ const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const DEFAULT_EDITABLE_THEME_IDS = [
   'eigent',
   'camel',
-  'claude',
-  'codex',
+  'claw',
+  'starfish',
 ] as const;
-const CUSTOM_THEME_IDS = ['custom-1', 'custom-2'] as const;
+const CUSTOM_THEME_IDS = ['whale', 'custom'] as const;
 
 type ThemeOption = {
   id: string;
@@ -74,9 +74,11 @@ function buildMergedCatalog(customThemeCatalog: ThemeCatalog): ThemeCatalog {
 }
 
 function formatThemeLabel(id: string): string {
-  if (id === 'custom-1') return 'Custom 1';
-  if (id === 'custom-2') return 'Custom 2';
+  if (id === 'whale') return 'Whale';
+  if (id === 'custom') return 'Custom';
   if (id === 'camel') return 'CAMEL';
+  if (id === 'claw') return 'Claw';
+  if (id === 'starfish') return 'Starfish';
   if (!id) return id;
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
@@ -286,6 +288,25 @@ export default function AppearanceSettings() {
       return;
     }
 
+    const catalogDefault =
+      DEFAULT_THEME_CATALOG[activeMode][activeThemeId]?.seed;
+    if (catalogDefault) {
+      const ca = normalizeHexColor(catalogDefault.accent);
+      const cb = normalizeHexColor(catalogDefault.background);
+      const ci = normalizeHexColor(catalogDefault.ink);
+      if (
+        ca &&
+        cb &&
+        ci &&
+        nextSeed.accent === ca &&
+        nextSeed.background === cb &&
+        nextSeed.ink === ci
+      ) {
+        removeCustomThemeTemplate(activeMode, activeThemeId);
+        return;
+      }
+    }
+
     upsertCustomThemeTemplate(activeMode, activeThemeId, nextSeed);
   };
 
@@ -310,24 +331,18 @@ export default function AppearanceSettings() {
   };
 
   const resetActiveTheme = () => {
-    if (!activeTheme || !fallbackSeed) return;
+    if (!activeTheme) return;
 
-    const isDefaultTheme = DEFAULT_EDITABLE_THEME_IDS.includes(
-      activeThemeId as (typeof DEFAULT_EDITABLE_THEME_IDS)[number]
-    );
-
-    if (isDefaultTheme) {
-      const defaultSeed =
-        DEFAULT_THEME_CATALOG[activeMode][activeThemeId]?.seed;
-      if (defaultSeed) {
-        removeCustomThemeTemplate(activeMode, activeThemeId);
-        setAccent(defaultSeed.accent);
-        setBackground(defaultSeed.background);
-        setInk(defaultSeed.ink);
-      }
+    const defaultSeed = DEFAULT_THEME_CATALOG[activeMode][activeThemeId]?.seed;
+    if (defaultSeed) {
+      removeCustomThemeTemplate(activeMode, activeThemeId);
+      setAccent(defaultSeed.accent);
+      setBackground(defaultSeed.background);
+      setInk(defaultSeed.ink);
       return;
     }
 
+    if (!fallbackSeed) return;
     upsertCustomThemeTemplate(activeMode, activeThemeId, fallbackSeed);
     setAccent(fallbackSeed.accent);
     setBackground(fallbackSeed.background);
@@ -452,7 +467,7 @@ export default function AppearanceSettings() {
             </div>
           </div>
           <Select
-            value={workspaceMainBackground ?? 'none'}
+            value={workspaceMainBackground ?? 'empty'}
             onValueChange={(v) =>
               setWorkspaceMainBackground(v as WorkspaceMainBackground)
             }
@@ -462,11 +477,20 @@ export default function AppearanceSettings() {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="none">
-                  {t('setting.workspace-main-background-none')}
+                <SelectItem value="empty">
+                  {t('setting.workspace-main-background-empty')}
                 </SelectItem>
                 <SelectItem value="dots">
                   {t('setting.workspace-main-background-dots')}
+                </SelectItem>
+                <SelectItem value="ruled">
+                  {t('setting.workspace-main-background-ruled')}
+                </SelectItem>
+                <SelectItem value="dotted">
+                  {t('setting.workspace-main-background-dotted')}
+                </SelectItem>
+                <SelectItem value="dashed">
+                  {t('setting.workspace-main-background-dashed')}
                 </SelectItem>
                 <SelectItem value="blocks">
                   {t('setting.workspace-main-background-blocks')}

@@ -27,7 +27,13 @@ type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type AppearanceMode = Mode | 'system';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
-export type WorkspaceMainBackground = 'none' | 'dots' | 'blocks';
+export type WorkspaceMainBackground =
+  | 'empty'
+  | 'dots'
+  | 'blocks'
+  | 'ruled'
+  | 'dotted'
+  | 'dashed';
 type CloudModelType =
   | 'gemini-3.1-pro-preview'
   | 'gemini-3-pro-preview'
@@ -148,7 +154,7 @@ const authStore = create<AuthState>()(
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       preferredIDE: 'system',
-      workspaceMainBackground: 'none',
+      workspaceMainBackground: 'empty',
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
@@ -291,16 +297,33 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 1,
+      version: 6,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
               appearance?: string;
               appearanceMode?: AppearanceMode;
               customThemeCatalog?: Partial<ThemeCatalog>;
+              workspaceMainBackground?: string;
             }
           | undefined;
         if (!s) return persistedState as typeof persistedState;
+
+        const rawWmb = s.workspaceMainBackground;
+        let workspaceMainBackground: WorkspaceMainBackground = 'empty';
+        if (
+          rawWmb === 'dots' ||
+          rawWmb === 'blocks' ||
+          rawWmb === 'ruled' ||
+          rawWmb === 'dotted' ||
+          rawWmb === 'dashed'
+        ) {
+          workspaceMainBackground = rawWmb;
+        } else if (rawWmb === 'margin-ruled') {
+          workspaceMainBackground = 'ruled';
+        } else if (rawWmb === 'empty' || rawWmb === 'none') {
+          workspaceMainBackground = 'empty';
+        }
 
         const normalizedAppearance: Mode =
           s.appearance === 'dark' ? 'dark' : 'light';
@@ -319,6 +342,7 @@ const authStore = create<AuthState>()(
             appearance: 'light',
             appearanceMode: 'light',
             customThemeCatalog: normalizedCustomCatalog,
+            workspaceMainBackground,
           };
         }
         return {
@@ -326,6 +350,7 @@ const authStore = create<AuthState>()(
           appearance: normalizedAppearance,
           appearanceMode: normalizedAppearanceMode,
           customThemeCatalog: normalizedCustomCatalog,
+          workspaceMainBackground,
         } as typeof persistedState;
       },
       partialize: (state) => ({

@@ -31,9 +31,12 @@
 
   "workspace-main-background": "خلفية مساحة العمل",
   "workspace-main-background-description": "تُطبَّق على لوحتي Workforce وSession الرئيسيتين فقط.",
-  "workspace-main-background-none": "افتراضي",
+  "workspace-main-background-empty": "فارغ",
   "workspace-main-background-dots": "نقاط",
   "workspace-main-background-blocks": "شبكة",
+  "workspace-main-background-ruled": "أسطر كاملة",
+  "workspace-main-background-dotted": "أسطر منقطة",
+  "workspace-main-background-dashed": "أسطر مُقطّعة",
 
   "appearance-tab": "المظهر",
   "color-mode": "وضع الألوان",
@@ -223,9 +226,12 @@
 
   "workspace-main-background": "خلفية مساحة العمل",
   "workspace-main-background-description": "تُطبَّق على لوحتي Workforce وSession الرئيسيتين فقط.",
-  "workspace-main-background-none": "افتراضي",
+  "workspace-main-background-empty": "فارغ",
   "workspace-main-background-dots": "نقاط",
   "workspace-main-background-blocks": "شبكة",
+  "workspace-main-background-ruled": "أسطر كاملة",
+  "workspace-main-background-dotted": "أسطر منقطة",
+  "workspace-main-background-dashed": "أسطر مُقطّعة",
 
   "appearance-tab": "المظهر",
   "color-mode": "وضع الألوان",

@@ -31,9 +31,12 @@
 
   "workspace-main-background": "Workspace background",
   "workspace-main-background-description": "Pattern for the Workforce and Session main panels only.",
-  "workspace-main-background-none": "Default",
+  "workspace-main-background-empty": "Empty",
   "workspace-main-background-dots": "Dot pattern",
   "workspace-main-background-blocks": "Grid pattern",
+  "workspace-main-background-ruled": "Ruled lines",
+  "workspace-main-background-dotted": "Dotted lines",
+  "workspace-main-background-dashed": "Dashed lines",
 
   "appearance-tab": "Appearance",
   "color-mode": "Color mode",
@@ -251,9 +254,12 @@
 
   "workspace-main-background": "Workspace background",
   "workspace-main-background-description": "Pattern for the Workforce and Session main panels only.",
-  "workspace-main-background-none": "Default",
+  "workspace-main-background-empty": "Empty",
   "workspace-main-background-dots": "Dot pattern",
   "workspace-main-background-blocks": "Grid pattern",
+  "workspace-main-background-ruled": "Ruled lines",
+  "workspace-main-background-dotted": "Dotted lines",
+  "workspace-main-background-dashed": "Dashed lines",
 
   "appearance-tab": "Appearance",
   "color-mode": "Color mode",
