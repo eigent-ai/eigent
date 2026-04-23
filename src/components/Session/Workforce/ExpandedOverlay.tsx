@@ -20,6 +20,7 @@ import WorkforceMenu from '@/components/WorkforceMenu';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
@@ -130,6 +131,7 @@ export default function ExpandedOverlay({
   isSidePanelVisible,
 }: ExpandedOverlayProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const workflowResetForOpenRef = useRef(false);
 
@@ -145,8 +147,8 @@ export default function ExpandedOverlay({
     workflowResetForOpenRef.current = true;
     chatStore.setActiveWorkspace(taskId, 'workflow');
     chatStore.setActiveAgent(taskId, '');
-    window.electronAPI?.hideAllWebview?.();
-  }, [open, chatStore]);
+    host?.electronAPI?.hideAllWebview?.();
+  }, [open, chatStore, host]);
 
   useEffect(() => {
     if (!open) return;
@@ -167,7 +169,7 @@ export default function ExpandedOverlay({
       {open && (
         <motion.div
           key="workforce-expanded-overlay"
-          className="inset-0 backdrop-blur-sm fixed z-[200] flex items-stretch justify-stretch bg-dialog-overlay-scrim"
+          className="inset-0 backdrop-blur-sm bg-dialog-overlay-scrim fixed z-[200] flex items-stretch justify-stretch"
           style={{ padding: EDGE_PADDING_PX }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

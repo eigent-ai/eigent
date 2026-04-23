@@ -22,6 +22,7 @@ import { HoverScrollText } from '@/components/ui/HoverScrollText';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
 import { cn } from '@/lib/utils';
 import {
@@ -90,6 +91,7 @@ export function AgentDetailPane({
   /** Fires when user clicks task filter tabs (take control from auto-follow in folded workforce). */
   onTakeManualFollowControl?: () => void;
 }) {
+  const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
   const [filterTasks, setFilterTasks] = useState<NonNullable<Agent['tasks']>>(
@@ -180,8 +182,8 @@ export function AgentDetailPane({
   const focusAgent = useCallback(() => {
     if (!chatStore?.activeTaskId) return;
     chatStore.setActiveWorkspace(chatStore.activeTaskId, agent.agent_id);
-    window.electronAPI?.hideAllWebview?.();
-  }, [chatStore, agent.agent_id]);
+    host?.electronAPI?.hideAllWebview?.();
+  }, [chatStore, host, agent.agent_id]);
 
   if (!chatStore) {
     return null;

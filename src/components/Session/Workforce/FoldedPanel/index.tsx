@@ -21,6 +21,7 @@ import {
   isBaseWorkflowAgent,
 } from '@/components/Workspace/FoldedAgentCard';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { AgentStep, ChatTaskStatus, TaskStatus } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -103,6 +104,7 @@ export default function FoldedPanel({
   pauseAgentWorkspaceSync = false,
 }: FoldedPanelProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
   const { setWorkerList } = useAuthStore();
@@ -356,7 +358,7 @@ export default function FoldedPanel({
     }
     chatStore.setActiveWorkspace(taskId, resolved);
     chatStore.setActiveAgent(taskId, resolved);
-    window.electronAPI?.hideAllWebview?.();
+    host?.electronAPI?.hideAllWebview?.();
   }, [
     isTaskLiveLayout,
     manualFollowPaused,
@@ -366,6 +368,7 @@ export default function FoldedPanel({
     chatStore,
     activeTaskId,
     pauseAgentWorkspaceSync,
+    host,
   ]);
 
   const onSelectAgent = useCallback(
@@ -373,9 +376,9 @@ export default function FoldedPanel({
       if (!chatStore?.activeTaskId) return;
       chatStore.setActiveWorkspace(chatStore.activeTaskId, agentId);
       chatStore.setActiveAgent(chatStore.activeTaskId, agentId);
-      window.electronAPI?.hideAllWebview?.();
+      host?.electronAPI?.hideAllWebview?.();
     },
-    [chatStore]
+    [chatStore, host]
   );
 
   if (!chatStore) {
