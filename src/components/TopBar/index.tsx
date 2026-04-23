@@ -28,8 +28,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import useAppVersion from '@/hooks/use-app-version';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { SITE_URL } from '@/lib';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
@@ -42,17 +42,15 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
-  Download,
+  FolderOpen,
   House,
   Minus,
   Settings,
   Share,
-  Sparkles,
   Square,
-  TagIcon,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   NavigationType,
@@ -122,6 +120,7 @@ function useStackNavigationBounds() {
 
 function HeaderWin() {
   const { t } = useTranslation();
+  const host = useHost();
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
@@ -134,11 +133,6 @@ function HeaderWin() {
   const historySidebarOpen = useSidebarStore((s) => s.isOpen);
   const toggleHistorySidebar = useSidebarStore((s) => s.toggle);
   const appearance = useAuthStore((state) => state.appearance);
-  const version = useAppVersion();
-  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
-  const [packageNewVersion, setPackageNewVersion] = useState<string | null>(
-    null
-  );
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
   const { isInstalling, installationState } = useInstallationUI();
@@ -146,40 +140,10 @@ function HeaderWin() {
     isInstalling || installationState === 'waiting-backend';
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) return;
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
-  }, []);
-
-  useEffect(() => {
-    const ipc = window.ipcRenderer;
-    if (!ipc) return;
-
-    const onUpdateCanAvailable = (
-      _event: Electron.IpcRendererEvent,
-      info: VersionInfo
-    ) => {
-      setPackageUpdateAvailable(Boolean(info.update));
-      setPackageNewVersion(info.newVersion ?? null);
-    };
-
-    const onUpdateDownloaded = () => {
-      setPackageUpdateAvailable(false);
-      setPackageNewVersion(null);
-    };
-
-    ipc.on('update-can-available', onUpdateCanAvailable);
-    ipc.on('update-downloaded', onUpdateDownloaded);
-    void ipc.invoke('check-update');
-
-    return () => {
-      ipc.off('update-can-available', onUpdateCanAvailable);
-      ipc.off('update-downloaded', onUpdateDownloaded);
-    };
-  }, []);
-
-  const handleStartPackageDownload = useCallback(() => {
-    void window.ipcRenderer?.invoke('start-download');
-  }, []);
+  }, [host]);
 
   const isHistoryRoute = useMemo(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
@@ -222,7 +186,7 @@ function HeaderWin() {
 
   const handleDownloadLog = async () => {
     try {
-      const exportLog = window.electronAPI?.exportLog;
+      const exportLog = host?.electronAPI?.exportLog;
       if (!exportLog) {
         toast.error(t('layout.general-error'));
         return;
@@ -279,7 +243,7 @@ function HeaderWin() {
       </div>
       <div className="drag min-w-0 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
-          <div className="no-drag gap-2 flex items-center">
+          <div className="no-drag gap-2 pl-2 flex items-center">
             <div className="flex items-center">
               {isHistoryRoute ? (
                 <TooltipSimple
@@ -295,7 +259,7 @@ function HeaderWin() {
                     aria-label={t('layout.home')}
                     aria-current="page"
                   >
-                    <Sparkles
+                    <FolderOpen
                       className="h-4 w-4 text-ds-icon-neutral-default-default"
                       aria-hidden
                     />
@@ -398,59 +362,6 @@ function HeaderWin() {
             platform === 'darwin' && 'pr-2'
           } no-drag gap-1 relative z-50 flex h-full items-center`}
         >
-          {isHistoryRoute && (
-            <div className="no-drag gap-2 flex h-full items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  if (packageUpdateAvailable) {
-                    handleStartPackageDownload();
-                    return;
-                  }
-                  window.open(
-                    'https://github.com/eigent-ai/eigent',
-                    '_blank',
-                    'noopener,noreferrer'
-                  );
-                }}
-                className={
-                  packageUpdateAvailable
-                    ? 'no-drag gap-1.5 bg-ds-bg-neutral-subtle-default px-3 py-1 flex cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90'
-                    : 'no-drag gap-1.5 bg-ds-bg-neutral-subtle-default px-3 py-1 flex cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-60'
-                }
-                aria-label={
-                  packageUpdateAvailable
-                    ? t('update.new-version-available')
-                    : version
-                }
-              >
-                {packageUpdateAvailable ? (
-                  <Download
-                    className="h-4 w-4 text-ds-text-neutral-default-default shrink-0 stroke-2"
-                    aria-hidden
-                  />
-                ) : (
-                  <TagIcon
-                    className="h-4 w-4 text-ds-text-success-default-default shrink-0 stroke-2"
-                    aria-hidden
-                  />
-                )}
-                <span
-                  className={
-                    packageUpdateAvailable
-                      ? 'text-label-sm font-semibold text-ds-text-neutral-default-default'
-                      : 'text-label-sm font-semibold text-ds-text-neutral-default-default'
-                  }
-                >
-                  {packageUpdateAvailable
-                    ? [t('update.new-version-available'), packageNewVersion]
-                        .filter(Boolean)
-                        .join(' ')
-                    : version}
-                </span>
-              </button>
-            </div>
-          )}
           {location.pathname !== '/history' && (
             <>
               {chatStore.activeTaskId &&
@@ -573,19 +484,19 @@ function HeaderWin() {
         >
           <div
             className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
-            onClick={() => window.electronAPI.minimizeWindow()}
+            onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
             className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
-            onClick={() => window.electronAPI.toggleMaximizeWindow()}
+            onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
             className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
-            onClick={() => window.electronAPI.closeWindow()}
+            onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />
           </div>
