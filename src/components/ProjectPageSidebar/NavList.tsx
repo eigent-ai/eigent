@@ -13,26 +13,19 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
-import { LayoutGrid, MoreHorizontal, Plus } from 'lucide-react';
+import { LayoutGrid, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
+import { NavListSessionRows, type NavListSession } from './NavListSessionRows';
 import { NavTab, workspaceTabButtonClass } from './NavTab';
 
-export interface NavListSession {
-  id: string;
-  title: string;
-  /** Leading icon + color from `getSessionNavLeadPresentation`. */
-  sessionLead: SessionNavLeadPresentation;
-}
+export {
+  NAV_LIST_SESSIONS_RECENT_MAX,
+  NavListSessionRows,
+  type NavListSession,
+} from './NavListSessionRows';
 
 export interface NavListProps {
   sessions: NavListSession[];
@@ -64,12 +57,6 @@ export function NavList({
   const { t } = useTranslation();
   const workspaceLabel = t('triggers.workspace');
 
-  const deleteLabel = t('layout.sessions-delete-session', {
-    defaultValue: 'Delete session',
-  });
-  const sessionMenuAria = t('layout.sessions-session-menu', {
-    defaultValue: 'Session options',
-  });
   const newSessionLabel = t('layout.sessions-start-new', {
     defaultValue: 'Start new session',
   });
@@ -147,114 +134,13 @@ export function NavList({
           folded ? 'mt-0.5' : 'mt-1'
         )}
       >
-        {sessions.map((session) => {
-          const active = activeSessionId === session.id;
-          const LeadIcon = session.sessionLead.Icon;
-          const leadClassName = cn(
-            'h-4 w-4 shrink-0',
-            session.sessionLead.iconClassName,
-            session.sessionLead.spin && 'animate-spin'
-          );
-          if (folded) {
-            return (
-              <div key={session.id} className="min-w-0">
-                <TooltipSimple
-                  content={session.title}
-                  side="right"
-                  align="center"
-                  enabled
-                  className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSessionClick?.(session.id)}
-                    className={cn(
-                      workspaceTabButtonClass(active),
-                      'gap-0 min-w-0 w-full'
-                    )}
-                    aria-label={session.title}
-                    aria-current={active ? 'true' : undefined}
-                  >
-                    <LeadIcon className={leadClassName} aria-hidden />
-                  </button>
-                </TooltipSimple>
-              </div>
-            );
-          }
-          return (
-            <div key={session.id} className="min-w-0">
-              <div
-                className={cn(
-                  'group/session-item min-w-0 h-8 gap-1 rounded-xl pl-3 pr-1 relative flex w-full items-center overflow-hidden',
-                  active
-                    ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
-                    : 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSessionClick?.(session.id)}
-                  className={cn(
-                    'no-drag min-h-0 min-w-0 gap-3 py-1 px-0 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                    'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
-                  )}
-                >
-                  <LeadIcon className={leadClassName} aria-hidden />
-                  <span
-                    className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 overflow-visible whitespace-nowrap"
-                    title={session.title}
-                  >
-                    {session.title}
-                  </span>
-                </button>
-
-                <span
-                  className={cn(
-                    'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
-                    active
-                      ? 'from-ds-bg-neutral-subtle-default'
-                      : 'group-hover/session-item:from-ds-bg-neutral-subtle-default from-transparent'
-                  )}
-                  aria-hidden
-                />
-
-                <div className="relative z-[2] shrink-0">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className={cn(
-                          'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
-                          active
-                            ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
-                            : [
-                                'md:opacity-0 bg-transparent opacity-100',
-                                'md:group-hover/session-item:opacity-100',
-                                'md:group-focus-within/session-item:opacity-100',
-                                'data-[state=open]:opacity-100',
-                              ],
-                          'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
-                        )}
-                        aria-label={sessionMenuAria}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-4 w-4" aria-hidden />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-[9rem]">
-                      <DropdownMenuItem
-                        className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
-                        onClick={() => onDeleteSession?.(session.id)}
-                      >
-                        {deleteLabel}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        <NavListSessionRows
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSessionClick={onSessionClick}
+          onDeleteSession={onDeleteSession}
+          folded={folded}
+        />
       </div>
     </div>
   );

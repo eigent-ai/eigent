@@ -12,17 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { cn } from '@/lib/utils';
+import {
+  NAV_LIST_SESSIONS_RECENT_MAX,
+  NavListSessionRows,
+  type NavListSession,
+} from '@/components/ProjectPageSidebar/NavList';
+import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
+import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import type { ChatStore } from '@/store/chatStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { MessageCircle } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-
-function taskIdToCreatedMs(id: string): number {
-  const n = parseInt(id.split('-')[0] ?? '', 10);
-  return Number.isFinite(n) ? n : 0;
-}
 
 function formatSessionStartedAgo(
   startedAtMs: number,
@@ -60,22 +61,24 @@ export interface WorkspaceRecentSessionsProps {
   tasks: ChatStore['tasks'];
   activeTaskId: string | null;
   onSelectSession: (sessionId: string) => void;
+  onOpenAllSessions: () => void;
+  onDeleteSession: (sessionId: string) => void;
 }
 
-const MAX_SESSIONS = 3;
-
 /**
- * When example prompts are hidden, show the three most recent started sessions
- * (same “started” filter as the sidebar session list).
+ * When example prompts are hidden, show the five most recent started sessions
+ * (same row UI as the project sidebar, capped by {@link NAV_LIST_SESSIONS_RECENT_MAX}).
  */
 export function WorkspaceRecentSessions({
   tasks,
   activeTaskId,
   onSelectSession,
+  onOpenAllSessions,
+  onDeleteSession,
 }: WorkspaceRecentSessionsProps) {
   const { t } = useTranslation();
 
-  const sessions = useMemo(() => {
+  const sessions: NavListSession[] = useMemo(() => {
     const entries = Object.entries(tasks)
       .filter(([, task]) => {
         const hasStarted =
@@ -84,16 +87,19 @@ export function WorkspaceRecentSessions({
           task.status !== ChatTaskStatus.PENDING;
         return hasStarted;
       })
-      .map(([id, task]) => ({
-        id,
-        title:
-          task.summaryTask?.trim() ||
-          t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
-        sortKey: taskIdToCreatedMs(id),
-      }));
-
-    entries.sort((a, b) => b.sortKey - a.sortKey);
-    return entries.slice(0, MAX_SESSIONS);
+      .map(([id, task]) => {
+        const startedMs = taskIdToCreatedMs(id);
+        return {
+          id,
+          title:
+            task.summaryTask?.trim() ||
+            t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
+          sessionLead: getSessionNavLeadPresentation(task),
+          trailing: formatSessionStartedAgo(startedMs, t) || undefined,
+        };
+      });
+    entries.sort((a, b) => taskIdToCreatedMs(b.id) - taskIdToCreatedMs(a.id));
+    return entries;
   }, [tasks, t]);
 
   if (sessions.length === 0) {
@@ -102,49 +108,39 @@ export function WorkspaceRecentSessions({
 
   return (
     <div className="pb-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-      <h2 className="text-ds-text-neutral-muted-default mb-3 px-3 text-body-sm font-semibold text-left">
-        {t('layout.workspace-recent-sessions-heading', {
-          defaultValue: 'Recent',
-        })}
-      </h2>
-      <ul
-        className="m-0 gap-0.5 p-0 flex w-full list-none flex-col"
-        role="list"
-      >
-        {sessions.map((session) => {
-          const active = activeTaskId === session.id;
-          const timeLabel = formatSessionStartedAgo(session.sortKey, t);
-
-          return (
-            <li key={session.id} className="min-w-0">
-              <button
-                type="button"
-                onClick={() => onSelectSession(session.id)}
-                className={cn(
-                  'no-drag min-w-0 h-10 gap-3 rounded-xl px-3 ease-out flex w-full items-center overflow-hidden text-left transition-opacity duration-200 outline-none',
-                  active
-                    ? 'bg-ds-bg-neutral-strong-default hover:opacity-80'
-                    : 'hover:opacity-80',
-                  'focus-visible:ring-ds-ring-neutral-default-focus focus-visible:ring-2 focus-visible:outline-none'
-                )}
-              >
-                <MessageCircle
-                  className="text-ds-icon-neutral-default-default h-4 w-4 shrink-0"
-                  aria-hidden
-                />
-                <span className="text-ds-text-neutral-default-default min-w-0 text-body-sm font-medium flex-1 truncate">
-                  {session.title}
-                </span>
-                {timeLabel ? (
-                  <span className="text-ds-text-neutral-muted-default text-body-xs shrink-0 tabular-nums">
-                    {timeLabel}
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="text-ds-text-neutral-muted-default mb-3 gap-2 px-3 min-w-0 flex w-full items-center justify-between">
+        <h2 className="min-w-0 text-body-sm font-semibold text-left">
+          {t('layout.workspace-recent-sessions-heading', {
+            defaultValue: 'Recent',
+          })}
+        </h2>
+        <button
+          type="button"
+          onClick={onOpenAllSessions}
+          className="text-ds-text-neutral-muted-default group text-body-sm font-medium gap-0.5 focus-visible:ring-ds-ring-neutral-default-focus focus-visible:rounded inline-flex shrink-0 items-center transition-colors outline-none hover:underline focus-visible:ring-2"
+        >
+          {t('layout.sessions-full-title', {
+            defaultValue: 'All sessions',
+          })}
+          <span
+            className="max-w-0 ease-out group-hover:max-w-4 inline-flex overflow-hidden transition-[max-width] duration-200"
+            aria-hidden
+          >
+            <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+          </span>
+        </button>
+      </div>
+      <div className="m-0 min-h-0 gap-0.5 p-0 flex w-full flex-col">
+        <NavListSessionRows
+          sessions={sessions}
+          activeSessionId={activeTaskId}
+          onSessionClick={onSelectSession}
+          onDeleteSession={onDeleteSession}
+          folded={false}
+          maxItems={NAV_LIST_SESSIONS_RECENT_MAX}
+          panelListHover
+        />
+      </div>
     </div>
   );
 }

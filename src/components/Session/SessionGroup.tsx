@@ -12,10 +12,19 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  NavListSessionRows,
+  type NavListSession,
+} from '@/components/ProjectPageSidebar/NavList';
+import { Button } from '@/components/ui/button';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
+import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
 import type { ChatStore } from '@/store/chatStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { MessageCircle } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -26,6 +35,7 @@ type SessionsProps = {
   tasks: ChatStore['tasks'];
   activeSessionId?: string | null;
   onSelectSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
 };
 
 export default function Sessions({
@@ -33,27 +43,33 @@ export default function Sessions({
   tasks,
   activeSessionId,
   onSelectSession,
+  onDeleteSession,
 }: SessionsProps) {
   const { t } = useTranslation();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
+    defaultValue: 'Back to workspace',
+  });
 
-  const sessions = useMemo(
-    () =>
-      Object.entries(tasks)
-        .filter(([, task]) => {
-          const hasStarted =
-            (task.messages?.length || 0) > 0 ||
-            task.hasMessages ||
-            task.status !== ChatTaskStatus.PENDING;
-          return hasStarted;
-        })
-        .map(([id, task]) => ({
-          id,
-          title:
-            task.summaryTask?.trim() ||
-            t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
-        })),
-    [tasks, t]
-  );
+  const sessions: NavListSession[] = useMemo(() => {
+    const entries = Object.entries(tasks)
+      .filter(([, task]) => {
+        const hasStarted =
+          (task.messages?.length || 0) > 0 ||
+          task.hasMessages ||
+          task.status !== ChatTaskStatus.PENDING;
+        return hasStarted;
+      })
+      .map(([id, task]) => ({
+        id,
+        title:
+          task.summaryTask?.trim() ||
+          t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
+        sessionLead: getSessionNavLeadPresentation(task),
+      }));
+    entries.sort((a, b) => taskIdToCreatedMs(b.id) - taskIdToCreatedMs(a.id));
+    return entries;
+  }, [tasks, t]);
 
   return (
     <div
@@ -62,7 +78,20 @@ export default function Sessions({
         className
       )}
     >
-      <div className="h-11 gap-2 px-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center justify-between border-x-0 border-t-0 border-b-1 border-solid">
+      <div className="gap-2 px-2 py-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
+        <TooltipSimple content={backToWorkspaceTooltip}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            onClick={() => setActiveWorkspaceTab('workforce')}
+            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            aria-label={backToWorkspaceTooltip}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Button>
+        </TooltipSimple>
         <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
           <span className="truncate">
             {t('layout.sessions-full-title', {
@@ -71,46 +100,24 @@ export default function Sessions({
           </span>
         </div>
       </div>
-      <ul
-        className="m-0 min-h-0 gap-0.5 p-2 pb-3 mx-auto flex w-full max-w-[800px] flex-1 list-none flex-col overflow-y-auto"
-        role="list"
-      >
+      <div className="m-0 min-h-0 gap-0.5 p-2 mx-auto flex w-full max-w-[800px] flex-1 flex-col overflow-y-auto">
         {sessions.length === 0 ? (
-          <li className="text-ds-text-neutral-muted-default px-3 py-6 text-body-sm text-center">
+          <p className="text-ds-text-neutral-muted-default m-0 px-3 py-6 text-body-sm text-center">
             {t('layout.sessions-create-task-hint', {
               defaultValue: 'Create a task to start a session',
             })}
-          </li>
+          </p>
         ) : (
-          sessions.map((session) => {
-            const active = activeSessionId === session.id;
-
-            return (
-              <li key={session.id} className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => onSelectSession(session.id)}
-                  className={cn(
-                    'no-drag min-w-0 h-10 gap-3 rounded-xl px-3 flex w-full items-center overflow-hidden text-left transition-colors outline-none',
-                    active
-                      ? 'bg-ds-bg-neutral-strong-default'
-                      : 'hover:bg-ds-bg-neutral-strong-default/80',
-                    'focus-visible:ring-ds-ring-neutral-default-focus focus-visible:ring-2 focus-visible:outline-none'
-                  )}
-                >
-                  <MessageCircle
-                    className="text-ds-icon-neutral-default-default h-4 w-4 shrink-0"
-                    aria-hidden
-                  />
-                  <span className="text-ds-text-neutral-muted-default min-w-0 text-body-sm font-medium flex-1 truncate">
-                    {session.title}
-                  </span>
-                </button>
-              </li>
-            );
-          })
+          <NavListSessionRows
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSessionClick={onSelectSession}
+            onDeleteSession={onDeleteSession}
+            folded={false}
+            panelListHover
+          />
         )}
-      </ul>
+      </div>
     </div>
   );
 }

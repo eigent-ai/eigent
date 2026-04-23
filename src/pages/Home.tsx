@@ -577,6 +577,19 @@ export default function Home() {
       <GridPatternBackground />
     ) : null;
 
+  const handleSessionGroupDeleteSession = useCallback(
+    (sessionId: string) => {
+      if (!chatStore) return;
+      if (!window.confirm(t('layout.delete-task-confirmation'))) return;
+      const wasActive = chatStore.activeTaskId === sessionId;
+      chatStore.removeTask(sessionId);
+      if (wasActive) {
+        setActiveWorkspaceTab('workforce');
+      }
+    },
+    [chatStore, setActiveWorkspaceTab, t]
+  );
+
   const renderActiveWorkspaceTab = () => {
     switch (activeWorkspaceTab) {
       case 'workforce':
@@ -623,6 +636,7 @@ export default function Home() {
               chatStore.setActiveTaskId(sessionId);
               setActiveWorkspaceTab('session');
             }}
+            onDeleteSession={handleSessionGroupDeleteSession}
           />
         );
       default:

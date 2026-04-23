@@ -87,6 +87,19 @@ export default function Workspace() {
     useState(false);
   const textareaRef = useRef<HTMLDivElement>(null);
 
+  const handleWorkspaceRecentDeleteSession = useCallback(
+    (sessionId: string) => {
+      if (!chatStore) return;
+      if (!window.confirm(t('layout.delete-task-confirmation'))) return;
+      const wasActive = chatStore.activeTaskId === sessionId;
+      chatStore.removeTask(sessionId);
+      if (wasActive) {
+        setActiveWorkspaceTab('workforce');
+      }
+    },
+    [chatStore, setActiveWorkspaceTab, t]
+  );
+
   useEffect(() => {
     if (!workspaceWorkWithPanelOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -413,6 +426,8 @@ export default function Workspace() {
                   chatStore.setActiveTaskId(id);
                   setActiveWorkspaceTab('session');
                 }}
+                onOpenAllSessions={() => setActiveWorkspaceTab('sessions')}
+                onDeleteSession={handleWorkspaceRecentDeleteSession}
               />
             )}
           </div>
