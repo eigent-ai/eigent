@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkSpace';
+import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
 import Folder from '@/components/Folder';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import Workflow from '@/components/WorkFlow';
