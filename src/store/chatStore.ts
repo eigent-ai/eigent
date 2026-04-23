@@ -41,6 +41,13 @@ import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
+import {
+  ConnectionManager,
+  addMessages as handlerAddMessages,
+  deleteMessage as handlerDeleteMessage,
+  setMessages as handlerSetMessages,
+  updateMessage as handlerUpdateMessage,
+} from './handlers';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 
@@ -352,7 +359,18 @@ export type VanillaChatStore = {
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // Track active SSE connections for proper cleanup
+// Usando ConnectionManager para gerenciar conexões
 const activeSSEControllers: Record<string, AbortController> = {};
+
+// Funções de compatibilidade para manter a interface existente
+// TODO: Migrar completamente para ConnectionManager
+const compatHasConnection = (taskId: string) =>
+  ConnectionManager.hasConnection(taskId);
+const compatGetActiveConnections = () =>
+  ConnectionManager.getActiveConnections();
+const compatCloseConnection = (taskId: string) =>
+  ConnectionManager.closeConnection(taskId);
+const compatCloseAllConnections = () => ConnectionManager.closeAllConnections();
 
 const normalizeToolkitMessage = (value: unknown) => {
   if (typeof value === 'string') return value;
@@ -579,45 +597,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
     },
     updateMessage(taskId: string, messageId: string, message: Message) {
-      set((state) => {
-        const task = state.tasks[taskId];
-        if (!task) return state;
-        const messages = task.messages.map((m) => {
-          if (m.id === messageId) {
-            return message;
-          }
-          return m;
-        });
-        return {
-          tasks: {
-            ...state.tasks,
-            [taskId]: {
-              ...task,
-              messages,
-            },
-          },
-        };
-      });
+      // Usando MessageHandler refatorado
+      const state = get();
+      const task = state.tasks[taskId];
+      if (!task) return;
+
+      handlerUpdateMessage(set, taskId, messageId, message);
     },
     stopTask(taskId: string) {
-      // Abort the SSE connection for this task
+      // Abort the SSE connection for this task usando ConnectionManager
       try {
-        if (activeSSEControllers[taskId]) {
-          console.log(`Stopping SSE connection for task ${taskId}`);
-          activeSSEControllers[taskId].abort();
-          delete activeSSEControllers[taskId];
-        }
+        ConnectionManager.closeConnection(taskId);
+        console.log(`Stopping SSE connection for task ${taskId}`);
       } catch (error) {
         console.warn('Error aborting SSE connection in stopTask:', error);
-        // Even if abort fails, still clean up the reference
-        try {
-          delete activeSSEControllers[taskId];
-        } catch (cleanupError) {
-          console.warn(
-            'Error cleaning up SSE controller reference:',
-            cleanupError
-          );
-        }
       }
 
       // Clean up any pending auto-confirm timers
@@ -2798,16 +2791,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
     },
     addMessages(taskId, message) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            messages: [...state.tasks[taskId].messages, message],
-          },
-        },
-      }));
+      // Usando MessageHandler refatorado
+      handlerAddMessages(set, taskId, message);
     },
     setAttaches(taskId, attaches) {
       set((state) => ({
@@ -2822,35 +2807,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
     },
     setMessages(taskId, messages) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            messages: [...messages],
-          },
-        },
-      }));
+      // Usando MessageHandler refatorado
+      handlerSetMessages(set, taskId, messages);
     },
     removeMessage(taskId, messageId) {
-      set((state) => {
-        if (!state.tasks[taskId]) {
-          return state;
-        }
-        return {
-          ...state,
-          tasks: {
-            ...state.tasks,
-            [taskId]: {
-              ...state.tasks[taskId],
-              messages: state.tasks[taskId].messages.filter(
-                (message) => message.id !== messageId
-              ),
-            },
-          },
-        };
-      });
+      // Usando MessageHandler refatorado
+      handlerDeleteMessage(set, taskId, messageId);
     },
     setCotList(taskId, cotList) {
       set((state) => ({

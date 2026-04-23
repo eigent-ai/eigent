@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /// <reference types="vite/client" />
+/// <reference path="./types/chatbox.d.ts" />
 
 interface Window {
   // expose in the `electron/preload/index.ts`
