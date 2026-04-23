@@ -43,8 +43,7 @@ export function AnimationJson({
   return (
     <div
       id="lottie-container"
-      className="inset-0 fixed z-[9999] h-full w-full"
-      style={{ backgroundColor: 'var(--ds-bg-neutral-subtle-default)' }}
+      className="inset-0 bg-ds-bg-neutral-subtle-default fixed z-[9999] h-full w-full"
     ></div>
   );
 }

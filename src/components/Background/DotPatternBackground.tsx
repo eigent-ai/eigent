@@ -33,10 +33,10 @@ export default function DotPatternBackground() {
           patternUnits="userSpaceOnUse"
         >
           <circle
+            className="fill-ds-bg-neutral-muted-default"
             cx={PATTERN_STEP / 2}
             cy={PATTERN_STEP / 2}
             r={1.25}
-            fill="var(--ds-bg-neutral-muted-default)"
             opacity={0.6}
           />
         </pattern>

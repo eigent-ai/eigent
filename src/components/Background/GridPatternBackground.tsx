@@ -33,9 +33,9 @@ export default function GridPatternBackground() {
           patternUnits="userSpaceOnUse"
         >
           <path
+            className="stroke-ds-border-neutral-default-default"
             d={`M ${PATTERN_STEP} 0 L 0 0 0 ${PATTERN_STEP}`}
             fill="none"
-            stroke="var(--ds-border-neutral-default-default)"
             strokeWidth={1}
             opacity={0.3}
           />
