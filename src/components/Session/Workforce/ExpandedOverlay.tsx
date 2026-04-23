@@ -167,7 +167,7 @@ export default function ExpandedOverlay({
       {open && (
         <motion.div
           key="workforce-expanded-overlay"
-          className="inset-0 backdrop-blur-sm fixed z-[200] flex items-stretch justify-stretch bg-[rgba(0,0,0,0.5)]"
+          className="inset-0 backdrop-blur-sm fixed z-[200] flex items-stretch justify-stretch bg-dialog-overlay-scrim"
           style={{ padding: EDGE_PADDING_PX }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

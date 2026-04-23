@@ -296,7 +296,7 @@ export default function BrowserAgentWorkspace() {
                   alt=""
                   className="rounded-b-2xl h-full w-full object-contain"
                 />
-                <div className="bg-black/20 inset-0 rounded-b-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-100">
+                <div className="bg-dialog-overlay-dark inset-0 rounded-b-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-[0.67]">
                   <Button
                     size="sm"
                     variant="primary"
@@ -344,7 +344,7 @@ export default function BrowserAgentWorkspace() {
                           activeAgent?.activeWebviewIds?.[0]?.id || ''
                         )
                       }
-                      className="bg-black/20 inset-0 rounded-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-100"
+                      className="bg-dialog-overlay-dark inset-0 rounded-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-[0.67]"
                     >
                       <Button
                         size="sm"

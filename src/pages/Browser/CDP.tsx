@@ -323,7 +323,7 @@ export default function CDP() {
       </div>
 
       {showConnectDialog && (
-        <div className="bg-black/50 inset-0 fixed z-50 flex items-center justify-center">
+        <div className="bg-dialog-overlay-scrim inset-0 fixed z-50 flex items-center justify-center">
           <div className="max-w-md rounded-xl bg-ds-bg-neutral-subtle-default p-6 shadow-lg w-full">
             <div className="text-body-base mb-2 font-bold text-ds-text-neutral-default-default">
               {t('layout.connect-existing-browser')}

@@ -224,7 +224,7 @@ export default function TerminalAgentWorkspace() {
                     )[0].terminal
                   }
                 />
-                {/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-b-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none">
+                {/* <div className=" flex justify-center items-center opacity-0  transition-all group-hover:opacity-[0.67] rounded-b-lg absolute inset-0 w-full h-full bg-dialog-overlay-dark pointer-events-none">
 									<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-bg-brand-default-default">
 										<Hand size={24} className="text-ds-icon-neutral-inverse-default" />
 										<span className="text-base leading-9 font-medium text-ds-text-neutral-inverse-default">
@@ -260,7 +260,7 @@ export default function TerminalAgentWorkspace() {
                       <Terminal instanceId={task.id} content={task.terminal} />
                       {/* <div
 												onClick={() => handleTakeControl(task.id)}
-												className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-100 rounded-lg absolute inset-0 w-full h-full bg-black/20 pointer-events-none"
+												className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-[0.67] rounded-lg absolute inset-0 w-full h-full bg-dialog-overlay-dark pointer-events-none"
 											>
 												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-bg-brand-default-default">
 													<Hand
