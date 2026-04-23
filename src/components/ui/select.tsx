@@ -61,6 +61,8 @@ type SelectTriggerExtraProps = {
   note?: string;
   tooltip?: string;
   required?: boolean;
+  /** Outer wrapper width; default `w-fit` keeps intrinsic width for inline selects. */
+  wrapperClassName?: string;
 };
 
 const SelectTrigger = React.forwardRef<
@@ -80,6 +82,7 @@ const SelectTrigger = React.forwardRef<
       disabled,
       tooltip,
       required = false,
+      wrapperClassName,
       style,
       ...props
     },
@@ -87,7 +90,7 @@ const SelectTrigger = React.forwardRef<
   ) => {
     const stateCls = formFieldSelectTriggerState(state, Boolean(disabled));
     return (
-      <div className={cn('w-fit', stateCls.wrapper)}>
+      <div className={cn(wrapperClassName ?? 'w-fit', stateCls.wrapper)}>
         {title ? (
           <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
             <span>{title}</span>

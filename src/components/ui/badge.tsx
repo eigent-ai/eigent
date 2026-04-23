@@ -26,7 +26,19 @@ import {
 } from './semanticProps';
 
 const badgeBase = cva(
-  'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ds-ring-brand-default-focus focus:ring-offset-2 focus:ring-offset-ds-bg-neutral-subtle-default'
+  'inline-flex items-center rounded-md border font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ds-ring-brand-default-focus focus:ring-offset-2 focus:ring-offset-ds-bg-neutral-subtle-default',
+  {
+    variants: {
+      size: {
+        xs: 'gap-0.5 px-1 py-0 !text-label-xs',
+        default: 'px-2 py-1 !text-label-sm',
+        sm: 'gap-1 px-2 py-1 !text-label-sm',
+      },
+    },
+    defaultVariants: {
+      size: 'default',
+    },
+  }
 );
 
 type BadgeLegacyVariant = 'default' | 'secondary' | 'destructive' | 'outline';
@@ -160,21 +172,32 @@ function badgeToneClasses(
   return BADGE_GHOST[tone];
 }
 
+export type BadgeSize = 'xs' | 'default' | 'sm';
+
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: UiVariant | BadgeLegacyVariant;
   emphasis?: UiEmphasis;
   tone?: UiToneInput;
+  size?: BadgeSize;
 }
 
-function Badge({ className, variant, emphasis, tone, ...props }: BadgeProps) {
+function Badge({
+  className,
+  variant,
+  emphasis,
+  tone,
+  size = 'default',
+  ...props
+}: BadgeProps) {
   const resolved = resolveBadgeVisual(variant, tone, emphasis);
   return (
     <div
       data-variant={resolved.publicVariant}
       data-tone={resolved.tone}
       data-emphasis={resolved.emphasis}
+      data-size={size === 'default' ? undefined : size}
       className={cn(
-        badgeBase(),
+        badgeBase({ size }),
         badgeToneClasses(resolved.styleVariant, resolved.tone),
         className
       )}

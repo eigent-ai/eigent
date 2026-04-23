@@ -109,7 +109,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
         <div
           className={cn(
-            'rounded-lg shadow-sm relative flex items-center border border-solid transition-colors',
+            'rounded-xl shadow-sm relative flex items-center border border-solid transition-colors',
             stateCls.field,
             formFieldSizeClasses[size],
             // After field base so hover / focus background wins; subtle surface on interaction

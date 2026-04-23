@@ -80,6 +80,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
       return (
         <>
           <textarea
+            {...textareaProps}
             data-scrollbar="ui-textarea"
             className={cn(
               'border-ds-border-neutral-default-default placeholder:text-ds-text-neutral-muted-default/20 focus-visible:ring-ds-ring-brand-default-focus rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
@@ -101,7 +102,6 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
               }
               onKeyDown?.(e);
             }}
-            {...textareaProps}
           />
           <style>{`
             /* Firefox */
@@ -168,6 +168,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             ) : null}
 
             <textarea
+              {...textareaProps}
               data-scrollbar="ui-textarea"
               ref={ref}
               disabled={disabled}
@@ -190,7 +191,6 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                 }
                 onKeyDown?.(e);
               }}
-              {...textareaProps}
             />
 
             {backIcon ? (
