@@ -28,6 +28,7 @@ import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExample
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
 import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -48,6 +49,7 @@ export default function Workspace() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const host = useHost();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProject = useProjectStore((s) =>
@@ -186,7 +188,7 @@ export default function Workspace() {
   const handleFileSelect = useCallback(async () => {
     if (!chatStore?.activeTaskId) return;
     try {
-      const result = await window.electronAPI.selectFile({
+      const result = await host?.electronAPI?.selectFile({
         title: t('chat.select-file'),
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
@@ -207,7 +209,7 @@ export default function Workspace() {
     } catch (error) {
       console.error('Select File Error:', error);
     }
-  }, [chatStore, t]);
+  }, [chatStore, host, t]);
 
   const taskAssigning =
     chatStore?.activeTaskId != null
@@ -234,9 +236,9 @@ export default function Workspace() {
       if (!chatStore?.activeTaskId) return;
       chatStore.setActiveWorkspace(chatStore.activeTaskId, agentId);
       chatStore.setActiveAgent(chatStore.activeTaskId, agentId);
-      window.electronAPI?.hideAllWebview?.();
+      host?.electronAPI?.hideAllWebview?.();
     },
-    [chatStore]
+    [chatStore, host]
   );
 
   const onAgentDetailFromMenu = useCallback(
@@ -335,7 +337,7 @@ export default function Workspace() {
                       defaultValue: 'Cowork with Workforce',
                     })}
               </span>
-              <div className="px-5 mb-6 flex w-full justify-center">
+              <div className="px-5 mb-8 flex w-full justify-center">
                 {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
                   <SingleAgentList />
                 ) : (
