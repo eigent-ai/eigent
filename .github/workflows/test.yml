@@ -67,6 +67,9 @@ jobs:
       - name: Check Electron Access Guard
         run: bash scripts/check-electron-access.sh
 
+      - name: Design tokens (engine + no hard-coded colors in UI)
+        run: npm run check:design-tokens
+
   pytest:
     name: Run Python Tests
     runs-on: ubuntu-latest

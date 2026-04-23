@@ -1,0 +1,11 @@
+# Whole-file skips for scripts/check-design-token-usage.mjs (run: npm run check:design-token-usage).
+# Prefer design tokens or a line-level // ds:allow-hardcoded-color comment.
+# List a path only when the file must contain raw colors by design (whole module is the exception).
+#
+# WordCarousel — default marketing gradient uses fixed brand hex; pass `gradient` for token-based styling.
+src/components/ui/WordCarousel/WordCarousel.tsx
+#
+# Terminal — @xterm/xterm ITheme requires hex strings for theme colors.
+src/components/Terminal/index.tsx
+#
+# Install progress bar (src/components/ui/progress-install.tsx) and similar: use CSS vars only — no entry needed.

@@ -131,9 +131,9 @@ export default function TerminalComponent({
     const terminal = new Terminal({
       theme: {
         background: 'transparent', // transparent background
-        foreground: '#ffffff', // white foreground
-        cursor: '#00ff00', // green cursor
-        cursorAccent: '#00ff00', // cursor accent
+        foreground: '#ffffff',
+        cursor: '#00ff00',
+        cursorAccent: '#00ff00',
       },
       fontFamily: '"Courier New", Courier, monospace', // monospace font
       fontSize: 12, // font size
