@@ -17,12 +17,20 @@ import logoWhite from '@/assets/logo/logo_white.png';
 import VerticalNavigation, {
   type VerticalNavItem,
 } from '@/components/Dashboard/VerticalNav';
+import useAppVersion from '@/hooks/use-app-version';
+import { useHost } from '@/host';
 import Appearance from '@/pages/Setting/Appearance';
 import General from '@/pages/Setting/General';
 import Privacy from '@/pages/Setting/Privacy';
 import { useAuthStore } from '@/store/authStore';
-import { Fingerprint, Palette, Settings } from 'lucide-react';
-import { useState } from 'react';
+import {
+  Download,
+  Fingerprint,
+  Palette,
+  Settings,
+  TagIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -32,6 +40,44 @@ export default function Setting() {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
   const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
+  const version = useAppVersion();
+  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
+  const [packageNewVersion, setPackageNewVersion] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    const ipc = ipcRenderer;
+    if (!ipc) return;
+
+    const onUpdateCanAvailable = (
+      _event: Electron.IpcRendererEvent,
+      info: VersionInfo
+    ) => {
+      setPackageUpdateAvailable(Boolean(info.update));
+      setPackageNewVersion(info.newVersion ?? null);
+    };
+
+    const onUpdateDownloaded = () => {
+      setPackageUpdateAvailable(false);
+      setPackageNewVersion(null);
+    };
+
+    ipc.on('update-can-available', onUpdateCanAvailable);
+    ipc.on('update-downloaded', onUpdateDownloaded);
+    void ipc.invoke('check-update');
+
+    return () => {
+      ipc.off('update-can-available', onUpdateCanAvailable);
+      ipc.off('update-downloaded', onUpdateDownloaded);
+    };
+  }, [ipcRenderer]);
+
+  const handleStartPackageDownload = useCallback(() => {
+    void ipcRenderer?.invoke('start-download');
+  }, [ipcRenderer]);
   // Setting menu configuration
   const settingMenus = [
     {
@@ -74,7 +120,7 @@ export default function Setting() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col self-start">
+      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-auto flex-shrink-0 flex-grow-0 flex-col self-start">
         <VerticalNavigation
           items={
             settingMenus.map((menu) => {
@@ -88,8 +134,8 @@ export default function Setting() {
           }
           value={activeTab}
           onValueChange={handleTabChange}
-          className="min-h-0 gap-0 h-full w-full flex-1"
-          listClassName="w-full h-full overflow-y-auto"
+          className="min-h-0 gap-0 h-fit w-full flex-none"
+          listClassName="h-auto w-full"
           contentClassName="hidden"
         />
         <button
@@ -103,7 +149,57 @@ export default function Setting() {
           }
           className="no-drag mt-4 flex cursor-pointer items-center bg-transparent transition-opacity duration-200 hover:opacity-60"
         >
-          <img src={logoSrc} alt="Eigent" className="h-6 w-auto" />
+          <img src={logoSrc} alt="Eigent" className="h-6 ml-3 w-auto" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (packageUpdateAvailable) {
+              handleStartPackageDownload();
+              return;
+            }
+            window.open(
+              'https://github.com/eigent-ai/eigent',
+              '_blank',
+              'noopener,noreferrer'
+            );
+          }}
+          className={
+            packageUpdateAvailable
+              ? 'no-drag mt-4 min-w-0 gap-1.5 bg-ds-bg-neutral-subtle-default px-5 py-1 flex w-full cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90'
+              : 'no-drag mt-4 min-w-0 gap-1.5 bg-ds-bg-neutral-subtle-default px-5 py-1 flex w-full cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-60'
+          }
+          aria-label={
+            packageUpdateAvailable
+              ? t('update.new-version-available')
+              : version || t('setting.version', { defaultValue: 'Version' })
+          }
+          title={
+            packageUpdateAvailable
+              ? [t('update.new-version-available'), packageNewVersion]
+                  .filter(Boolean)
+                  .join(' ')
+              : version
+          }
+        >
+          {packageUpdateAvailable ? (
+            <Download
+              className="h-4 w-4 text-ds-text-neutral-default-default shrink-0 stroke-2"
+              aria-hidden
+            />
+          ) : (
+            <TagIcon
+              className="h-4 w-4 text-ds-text-success-default-default shrink-0 stroke-2"
+              aria-hidden
+            />
+          )}
+          <span className="min-w-0 text-label-sm font-semibold text-ds-text-neutral-default-default flex-1 truncate text-left">
+            {packageUpdateAvailable
+              ? [t('update.new-version-available'), packageNewVersion]
+                  .filter(Boolean)
+                  .join(' ')
+              : version}
+          </span>
         </button>
       </div>
 
