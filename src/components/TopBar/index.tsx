@@ -184,7 +184,7 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-9 py-1 absolute z-50 flex items-center justify-between ${
+      className={`drag left-0 right-0 top-0 !h-10 py-1 absolute z-50 flex items-center justify-between ${
         platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
       }`}
       id="titlebar"
@@ -195,14 +195,14 @@ function HeaderWin() {
           src={appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack}
           alt="Eigent"
           className="h-6 w-6 mt-[2px] select-none"
-          width={12}
-          height={12}
+          width={16}
+          height={16}
           draggable={false}
         />
       </div>
       <div className="drag min-w-0 flex h-full flex-1 items-center justify-between">
         <div className="relative z-50 flex h-full items-center">
-          <div className="no-drag gap-2 pl-2 flex items-center">
+          <div className="no-drag gap-2 pl-1 flex items-center">
             <div className="flex items-center">
               {isHistoryRoute ? (
                 <TooltipSimple
@@ -212,16 +212,14 @@ function HeaderWin() {
                 >
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
+                    buttonContent="icon-only"
                     className="no-drag rounded-full"
                     onClick={() => navigate('/')}
                     aria-label={t('layout.projects')}
                     aria-current="page"
                   >
-                    <FolderOpen
-                      className="h-4 w-4 text-ds-icon-neutral-default-default"
-                      aria-hidden
-                    />
+                    <FolderOpen aria-hidden />
                   </Button>
                 </TooltipSimple>
               ) : (
@@ -232,16 +230,14 @@ function HeaderWin() {
                 >
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
+                    buttonContent="icon-only"
                     className="no-drag rounded-full"
                     onClick={() => navigate('/history')}
                     aria-label={t('layout.dashboard')}
                     aria-current="page"
                   >
-                    <House
-                      className="h-4 w-4 text-ds-icon-neutral-default-default"
-                      aria-hidden
-                    />
+                    <House aria-hidden />
                   </Button>
                 </TooltipSimple>
               )}
@@ -252,16 +248,14 @@ function HeaderWin() {
               >
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="sm"
+                  buttonContent="icon-only"
                   className="no-drag rounded-full"
                   disabled={!canGoBack}
                   onClick={() => navigate(-1)}
                   aria-label={t('layout.back')}
                 >
-                  <ChevronLeft
-                    className="h-4 w-4 text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
+                  <ChevronLeft aria-hidden />
                 </Button>
               </TooltipSimple>
               <TooltipSimple
@@ -271,16 +265,14 @@ function HeaderWin() {
               >
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="sm"
+                  buttonContent="icon-only"
                   className="no-drag rounded-full"
                   disabled={!canGoForward}
                   onClick={() => navigate(1)}
                   aria-label={t('layout.forward')}
                 >
-                  <ChevronRight
-                    className="h-4 w-4 text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
+                  <ChevronRight aria-hidden />
                 </Button>
               </TooltipSimple>
             </div>
@@ -335,9 +327,11 @@ function HeaderWin() {
                       onClick={() =>
                         handleShare(chatStore.activeTaskId as string)
                       }
-                      variant="ghost"
-                      size="icon"
-                      className="no-drag bg-ds-bg-information-subtle-default !text-ds-text-information-strong-default rounded-full"
+                      variant="secondary"
+                      size="sm"
+                      buttonContent="icon-only"
+                      buttonRadius="full"
+                      tone="information"
                       aria-label={t('layout.share')}
                     >
                       <Share aria-hidden />
@@ -352,14 +346,15 @@ function HeaderWin() {
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="sm"
                   className="no-drag rounded-full"
                   aria-label={t('layout.notifications')}
                   aria-expanded={notificationPanelOpen}
                   aria-controls="notification-panel"
                   onClick={() => setNotificationPanelOpen((open) => !open)}
+                  buttonContent="icon-only"
                 >
-                  <Bell className="h-4 w-4" aria-hidden />
+                  <Bell aria-hidden />
                 </Button>
               </TooltipSimple>
               <TooltipSimple
@@ -370,12 +365,13 @@ function HeaderWin() {
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="sm"
                   className="no-drag rounded-full"
                   aria-label={t('layout.support')}
                   onClick={() => setReportBugOpen(true)}
+                  buttonContent="icon-only"
                 >
-                  <CircleHelp className="h-4 w-4" aria-hidden />
+                  <CircleHelp aria-hidden />
                 </Button>
               </TooltipSimple>
               <TooltipSimple
@@ -386,13 +382,15 @@ function HeaderWin() {
                 <Button
                   onClick={getReferFriendsLink}
                   variant="ghost"
-                  size="icon"
+                  size="sm"
                   className="no-drag rounded-full"
+                  buttonContent="icon-only"
                 >
                   <img
                     src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
                     alt="gift-icon"
-                    className="h-4 w-4"
+                    width={16}
+                    height={16}
                   />
                 </Button>
               </TooltipSimple>
@@ -404,10 +402,11 @@ function HeaderWin() {
                 <Button
                   onClick={() => navigate('/history?tab=settings')}
                   variant="ghost"
-                  size="icon"
+                  buttonContent="icon-only"
+                  size="sm"
                   className="no-drag rounded-full"
                 >
-                  <Settings className="h-4 w-4" />
+                  <Settings aria-hidden />
                 </Button>
               </TooltipSimple>
             </>

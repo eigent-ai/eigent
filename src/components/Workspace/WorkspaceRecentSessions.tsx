@@ -62,7 +62,6 @@ export interface WorkspaceRecentSessionsProps {
   activeTaskId: string | null;
   onSelectSession: (sessionId: string) => void;
   onOpenAllSessions: () => void;
-  onDeleteSession: (sessionId: string) => void;
 }
 
 /**
@@ -74,7 +73,6 @@ export function WorkspaceRecentSessions({
   activeTaskId,
   onSelectSession,
   onOpenAllSessions,
-  onDeleteSession,
 }: WorkspaceRecentSessionsProps) {
   const { t } = useTranslation();
 
@@ -135,10 +133,10 @@ export function WorkspaceRecentSessions({
           sessions={sessions}
           activeSessionId={activeTaskId}
           onSessionClick={onSelectSession}
-          onDeleteSession={onDeleteSession}
           folded={false}
           maxItems={NAV_LIST_SESSIONS_RECENT_MAX}
           panelListHover
+          showRowMenu={false}
         />
       </div>
     </div>

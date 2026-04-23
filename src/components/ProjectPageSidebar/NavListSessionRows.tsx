@@ -49,6 +49,8 @@ export interface NavListSessionRowsProps {
    * neutral hover fill; sidebar keeps the subtle fill.
    */
   panelListHover?: boolean;
+  /** When false, hide the trailing ⋯ row menu (workspace recent: time only). */
+  showRowMenu?: boolean;
 }
 
 /**
@@ -65,6 +67,7 @@ export function NavListSessionRows({
   folded,
   maxItems,
   panelListHover = false,
+  showRowMenu = true,
 }: NavListSessionRowsProps) {
   const { t } = useTranslation();
   const deleteLabel = t('layout.sessions-delete-session', {
@@ -115,7 +118,8 @@ export function NavListSessionRows({
           <div key={session.id} className="min-w-0">
             <div
               className={cn(
-                'group/session-item min-w-0 h-8 gap-1 rounded-xl pl-3 pr-1 relative flex w-full items-center overflow-hidden',
+                'group/session-item min-w-0 h-8 gap-1 rounded-xl pl-3 relative flex w-full items-center overflow-hidden',
+                showRowMenu ? 'pr-1' : 'pr-3',
                 'transition-colors duration-150',
                 active
                   ? panelListHover
@@ -148,58 +152,62 @@ export function NavListSessionRows({
                 ) : null}
               </button>
 
-              <span
-                className={cn(
-                  'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
-                  active
-                    ? panelListHover
-                      ? 'from-ds-bg-neutral-muted-default group-hover/session-item:from-ds-bg-neutral-default-default'
-                      : 'from-ds-bg-neutral-subtle-default'
-                    : [
-                        'from-transparent',
-                        panelListHover
-                          ? 'group-hover/session-item:from-ds-bg-neutral-default-default'
-                          : 'group-hover/session-item:from-ds-bg-neutral-subtle-default',
-                      ]
-                )}
-                aria-hidden
-              />
+              {showRowMenu ? (
+                <>
+                  <span
+                    className={cn(
+                      'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
+                      active
+                        ? panelListHover
+                          ? 'from-ds-bg-neutral-muted-default group-hover/session-item:from-ds-bg-neutral-default-default'
+                          : 'from-ds-bg-neutral-subtle-default'
+                        : [
+                            'from-transparent',
+                            panelListHover
+                              ? 'group-hover/session-item:from-ds-bg-neutral-default-default'
+                              : 'group-hover/session-item:from-ds-bg-neutral-subtle-default',
+                          ]
+                    )}
+                    aria-hidden
+                  />
 
-              <div className="relative z-[2] shrink-0">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
-                        active
-                          ? panelListHover
-                            ? 'bg-transparent opacity-100'
-                            : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
-                          : [
-                              'md:opacity-0 bg-transparent opacity-100',
-                              'md:group-hover/session-item:opacity-100',
-                              'md:group-focus-within/session-item:opacity-100',
-                              'data-[state=open]:opacity-100',
-                            ],
-                        'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
-                      )}
-                      aria-label={sessionMenuAria}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="h-4 w-4" aria-hidden />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-[9rem]">
-                    <DropdownMenuItem
-                      className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
-                      onClick={() => onDeleteSession?.(session.id)}
-                    >
-                      {deleteLabel}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+                  <div className="relative z-[2] shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
+                            active
+                              ? panelListHover
+                                ? 'bg-transparent opacity-100'
+                                : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
+                              : [
+                                  'md:opacity-0 bg-transparent opacity-100',
+                                  'md:group-hover/session-item:opacity-100',
+                                  'md:group-focus-within/session-item:opacity-100',
+                                  'data-[state=open]:opacity-100',
+                                ],
+                            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                          )}
+                          aria-label={sessionMenuAria}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreHorizontal className="h-4 w-4" aria-hidden />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[9rem]">
+                        <DropdownMenuItem
+                          className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
+                          onClick={() => onDeleteSession?.(session.id)}
+                        >
+                          {deleteLabel}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         );

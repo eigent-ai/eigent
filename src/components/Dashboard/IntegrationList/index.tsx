@@ -14,10 +14,10 @@
 
 import { fetchGet, fetchPost } from '@/api/http';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Tooltip,
   TooltipContent,
-  TooltipSimple,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { CircleAlert, Settings2 } from 'lucide-react';
@@ -36,6 +36,7 @@ import {
 } from '@/hooks/useIntegrationManagement';
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
+import { cn } from '@/lib/utils';
 import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -65,6 +66,11 @@ interface IntegrationListProps {
   installedKeys?: string[];
   oauth?: OAuth | null;
   translationNamespace?: 'layout' | 'setting'; // For translation keys
+  className?: string;
+  /** Select mode: show a leading checkbox; use isIntegrationSelected + onToggleIntegration */
+  selectWithCheckbox?: boolean;
+  isIntegrationSelected?: (item: IntegrationItem) => boolean;
+  onToggleIntegration?: (item: IntegrationItem, selected: boolean) => void;
 }
 
 export default function IntegrationList({
@@ -84,6 +90,10 @@ export default function IntegrationList({
   installedKeys: _installedKeys = [],
   oauth: _oauth,
   translationNamespace = variant === 'select' ? 'layout' : 'setting',
+  className: rootClassName,
+  selectWithCheckbox = false,
+  isIntegrationSelected,
+  onToggleIntegration,
 }: IntegrationListProps) {
   const { t } = useTranslation();
   const [showEnvConfig, setShowEnvConfig] = useState(false);
@@ -294,15 +304,15 @@ export default function IntegrationList({
     : 'flex flex-col w-full items-start justify-start gap-4';
 
   const itemClassName = isSelectMode
-    ? 'cursor-pointer hover:bg-ds-bg-neutral-default-hover px-3 py-2 flex justify-between'
+    ? 'cursor-pointer gap-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 min-h-0 flex w-full items-center justify-between hover:bg-ds-bg-neutral-default-hover'
     : 'w-full px-6 py-4 bg-ds-bg-neutral-subtle-default rounded-2xl';
 
   const titleClassName = isSelectMode
-    ? 'text-base leading-snug font-bold text-ds-text-brand-default-default'
+    ? 'min-w-0 flex-1 text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base line-clamp-2 break-words'
     : 'text-label-lg font-bold text-ds-text-neutral-default-default';
 
   return (
-    <div className={containerClassName}>
+    <div className={cn(containerClassName, rootClassName)}>
       <MCPEnvDialog
         showEnvConfig={showEnvConfig}
         onClose={onClose}
@@ -312,6 +322,12 @@ export default function IntegrationList({
       {sortedItems.map((item) => {
         const isInstalled = !!installed[item.key];
         const isComingSoon = COMING_SOON_ITEMS.includes(item.name);
+        const envCount = item.env_vars?.length ?? 0;
+        const selectedForTool =
+          selectWithCheckbox && isIntegrationSelected
+            ? isIntegrationSelected(item)
+            : false;
+        const checkboxDisabled = isComingSoon || (!isInstalled && envCount > 0);
 
         return (
           <div key={item.key} className="w-full">
@@ -320,45 +336,48 @@ export default function IntegrationList({
               onClick={
                 isSelectMode
                   ? () => {
-                      if (!isComingSoon) {
-                        if (item.env_vars.length === 0 || isInstalled) {
-                          // Ensure toolkit field is passed and normalized for known cases
-                          const normalizedToolkit =
-                            item.name === 'Notion'
-                              ? 'notion_mcp_toolkit'
-                              : item.toolkit;
-                          addOption?.(
-                            { ...item, toolkit: normalizedToolkit },
-                            true
-                          );
+                      if (isComingSoon) return;
+                      if (selectWithCheckbox && onToggleIntegration) {
+                        if (isInstalled) {
+                          onToggleIntegration(item, !selectedForTool);
+                        } else if (envCount === 0) {
+                          onToggleIntegration(item, !selectedForTool);
                         } else {
                           handleInstall(item);
                         }
+                        return;
+                      }
+                      if (envCount === 0 || isInstalled) {
+                        const normalizedToolkit =
+                          item.name === 'Notion'
+                            ? 'notion_mcp_toolkit'
+                            : item.toolkit;
+                        addOption?.(
+                          { ...item, toolkit: normalizedToolkit },
+                          true
+                        );
+                      } else {
+                        handleInstall(item);
                       }
                     }
                   : undefined
               }
             >
               {isSelectMode ? (
-                <div className="gap-xs flex items-center">
-                  {(isSelectMode || showStatusDot) && (
-                    <img
-                      src={ellipseIcon}
-                      alt="icon"
-                      className="mr-2 h-3 w-3"
-                      style={{
-                        filter: isInstalled
-                          ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
-                          : 'none',
+                <div className="gap-2 min-w-0 min-h-0 flex flex-1 items-center">
+                  {selectWithCheckbox && (
+                    <Checkbox
+                      disabled={checkboxDisabled}
+                      checked={selectedForTool}
+                      onCheckedChange={(c) => {
+                        if (c === 'indeterminate') return;
+                        onToggleIntegration?.(item, c === true);
                       }}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={item.name}
                     />
                   )}
-                  <div className={titleClassName}>{item.name}</div>
-                  <div className="flex items-center">
-                    <TooltipSimple content={item.desc}>
-                      <CircleAlert className="h-4 w-4 text-ds-icon-neutral-muted-default" />
-                    </TooltipSimple>
-                  </div>
+                  <span className={titleClassName}>{item.name}</span>
                 </div>
               ) : (
                 <div className="gap-xs flex w-full flex-row items-center justify-between">
@@ -433,7 +452,7 @@ export default function IntegrationList({
                   </div>
                 </div>
               )}
-              {isSelectMode && item.env_vars.length !== 0 && (
+              {isSelectMode && envCount !== 0 && (
                 <Button
                   disabled={isComingSoon}
                   variant={isInstalled ? 'secondary' : 'primary'}
