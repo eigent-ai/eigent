@@ -296,7 +296,7 @@ function HeaderWin() {
                     aria-current="page"
                   >
                     <Sparkles
-                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                      className="h-4 w-4 text-ds-icon-neutral-default-default"
                       aria-hidden
                     />
                   </Button>
@@ -316,7 +316,7 @@ function HeaderWin() {
                     aria-current="page"
                   >
                     <House
-                      className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                      className="h-4 w-4 text-ds-icon-neutral-default-default"
                       aria-hidden
                     />
                   </Button>
@@ -336,7 +336,7 @@ function HeaderWin() {
                   aria-label={t('layout.back')}
                 >
                   <ChevronLeft
-                    className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                    className="h-4 w-4 text-ds-icon-neutral-default-default"
                     aria-hidden
                   />
                 </Button>
@@ -355,7 +355,7 @@ function HeaderWin() {
                   aria-label={t('layout.forward')}
                 >
                   <ChevronRight
-                    className="h-4 w-4 text-[color:var(--ds-icon-neutral-default-default)]"
+                    className="h-4 w-4 text-ds-icon-neutral-default-default"
                     aria-hidden
                   />
                 </Button>

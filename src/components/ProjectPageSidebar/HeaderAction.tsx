@@ -303,8 +303,8 @@ export function HeaderAction() {
               </AccordionTrigger>
               <AccordionContent className="px-3 py-3">
                 <div className="gap-3 pl-7 -mr-1 flex flex-col">
-                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-[var(--ds-bg-neutral-subtle-default)] hover:ring-2 hover:ring-[var(--ds-bg-neutral-subtle-default)] hover:ring-offset-2 hover:ring-offset-[var(--ds-bg-neutral-subtle-default)]">
-                    <span className="min-w-0 text-body-sm font-medium flex-1 text-[color:var(--ds-text-neutral-muted-default)]">
+                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
+                    <span className="min-w-0 text-body-sm font-medium flex-1 text-ds-text-neutral-muted-default">
                       {instructionsHint}
                     </span>
                     <Button
@@ -319,8 +319,8 @@ export function HeaderAction() {
                       <PenLine className="h-4 w-4 shrink-0" aria-hidden />
                     </Button>
                   </div>
-                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-[var(--ds-bg-neutral-subtle-default)] hover:ring-2 hover:ring-[var(--ds-bg-neutral-subtle-default)] hover:ring-offset-2 hover:ring-offset-[var(--ds-bg-neutral-subtle-default)]">
-                    <span className="min-w-0 text-body-sm font-medium text-[color:var(--ds-text-neutral-muted-default)]">
+                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
+                    <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
                       {memoryLabel}
                     </span>
                     <Button
@@ -335,8 +335,8 @@ export function HeaderAction() {
                       {memoryOn ? memoryOnLabel : memoryOffLabel}
                     </Button>
                   </div>
-                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-[var(--ds-bg-neutral-subtle-default)] hover:ring-2 hover:ring-[var(--ds-bg-neutral-subtle-default)] hover:ring-offset-2 hover:ring-offset-[var(--ds-bg-neutral-subtle-default)]">
-                    <span className="min-w-0 text-body-sm font-medium text-[color:var(--ds-text-neutral-muted-default)]">
+                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
+                    <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
                       {workforceSettingLabel}
                     </span>
                     <Button

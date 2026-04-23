@@ -345,7 +345,7 @@ export default function ProjectPageSidebar({
                   label="Scheduled"
                   trailing={
                     showTriggersDisconnectedTag ? (
-                      <span className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-[var(--ds-bg-neutral-default-default)] py-px text-[10px] text-[color:var(--ds-text-status-error-strong-default)]">
+                      <span className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-ds-bg-neutral-default-default py-px text-[10px] text-ds-text-status-error-strong-default">
                         {t('layout.triggers-disconnected')}
                       </span>
                     ) : undefined
@@ -372,8 +372,8 @@ export default function ProjectPageSidebar({
                       size="sm"
                       buttonContent="icon-only"
                       className={cn(
-                        'no-drag mr-1 rounded-xl shrink-0 hover:bg-[var(--ds-bg-neutral-strong-default)]',
-                        'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+                        'no-drag mr-1 rounded-xl shrink-0 hover:bg-ds-bg-neutral-strong-default',
+                        'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default focus-visible:outline-none'
                       )}
                       aria-label={t('triggers.add-trigger')}
                       onClick={(e) => {
@@ -383,7 +383,7 @@ export default function ProjectPageSidebar({
                       }}
                     >
                       <Plus
-                        className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]"
+                        className="h-4 w-4 text-ds-icon-neutral-muted-default"
                         aria-hidden
                       />
                     </Button>

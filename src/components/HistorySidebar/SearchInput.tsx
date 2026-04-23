@@ -45,7 +45,7 @@ export default function SearchInput({
         placeholder={placeholder ?? t('layout.search')}
         leadingIcon={
           leadingIcon ?? (
-            <Search className="h-5 w-5 text-[color:var(--ds-icon-neutral-muted-default)]" />
+            <Search className="h-5 w-5 text-ds-icon-neutral-muted-default" />
           )
         }
       />

@@ -76,10 +76,10 @@ export function NavList({
 
   const sessionLeadIconClass = (taskStatus: ChatTaskStatusType | undefined) => {
     if (taskStatus === ChatTaskStatus.RUNNING)
-      return 'text-[color:var(--ds-icon-status-splitting-default-default)]';
+      return 'text-ds-icon-status-splitting-default-default';
     if (taskStatus === ChatTaskStatus.FINISHED)
-      return 'text-[color:var(--ds-icon-status-completed-default-default)]';
-    return 'text-[color:var(--ds-icon-neutral-default-default)]';
+      return 'text-ds-icon-status-completed-default-default';
+    return 'text-ds-icon-neutral-default-default';
   };
 
   return (
@@ -103,8 +103,8 @@ export function NavList({
               size="sm"
               buttonContent="icon-only"
               className={cn(
-                'no-drag mr-1 rounded-xl shrink-0 hover:bg-[var(--ds-bg-neutral-strong-default)]',
-                'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-[var(--ds-border-neutral-default-default)] focus-visible:outline-none'
+                'no-drag mr-1 rounded-xl shrink-0 hover:bg-ds-bg-neutral-strong-default',
+                'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default focus-visible:outline-none'
               )}
               aria-label={newSessionLabel}
               onClick={(e) => {
@@ -114,7 +114,7 @@ export function NavList({
               }}
             >
               <Plus
-                className="h-4 w-4 text-[color:var(--ds-icon-neutral-muted-default)]"
+                className="h-4 w-4 text-ds-icon-neutral-muted-default"
                 aria-hidden
               />
             </Button>
@@ -141,7 +141,7 @@ export function NavList({
               aria-label={newSessionLabel}
             >
               <Plus
-                className="h-4 w-4 shrink-0 text-[color:var(--ds-icon-neutral-muted-default)]"
+                className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
                 aria-hidden
               />
             </button>
