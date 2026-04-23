@@ -64,6 +64,23 @@ interface ElectronAPI {
   getShowWebview: () => Promise<any>;
   webviewDestroy: (webviewId: string) => Promise<any>;
   exportLog: () => Promise<any>;
+  getDiagnosticsInfo: () => Promise<{
+    version: string;
+    platform: string;
+    arch: string;
+  }>;
+  exportDiagnosticsZip: (payload: {
+    description: string;
+    steps?: string;
+  }) => Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }>;
+  openMailto: (url: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
   mcpInstall: (name: string, mcp: any) => Promise<any>;
   mcpRemove: (name: string) => Promise<any>;
   mcpUpdate: (name: string, mcp: any) => Promise<any>;

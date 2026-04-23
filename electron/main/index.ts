@@ -59,7 +59,7 @@ import {
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
-import { zipFolder } from './utils/log';
+import { createDiagnosticsZip, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
   checkVenvExistsForPreCheck,
@@ -1106,6 +1106,100 @@ function registerIpcHandlers() {
 
       await fsp.writeFile(filePath, logContent, 'utf-8');
       return { success: true, savedPath: filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-diagnostics-info', async () => {
+    return {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+    };
+  });
+
+  ipcMain.handle(
+    'export-diagnostics-zip',
+    async (
+      _event,
+      payload: { description: string; steps?: string } | undefined
+    ) => {
+      try {
+        const description =
+          typeof payload?.description === 'string'
+            ? payload.description.trim()
+            : '';
+        if (!description) {
+          return { success: false, error: 'Description is required' };
+        }
+        const steps =
+          typeof payload?.steps === 'string' ? payload.steps.trim() : '';
+
+        const logFiles: { src: string; destName: string }[] = [];
+        if (fs.existsSync(logPath)) {
+          logFiles.push({ src: logPath, destName: 'electron-main.log' });
+        }
+        const backupResolved = getBackupLogPath();
+        if (
+          fs.existsSync(backupResolved) &&
+          path.resolve(backupResolved) !== path.resolve(logPath)
+        ) {
+          logFiles.push({
+            src: backupResolved,
+            destName: 'electron-userdata-logs.log',
+          });
+        }
+        if (logFiles.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const platform = process.platform;
+        const arch = process.arch;
+        const bugReportText = [
+          'Eigent bug report',
+          '=================',
+          '',
+          `App version: ${appVersion}`,
+          `OS: ${platform} (${arch})`,
+          '',
+          'Description',
+          '-----------',
+          description,
+          '',
+          ...(steps
+            ? ['Steps to reproduce', '-------------------', steps, '']
+            : []),
+        ].join('\n');
+
+        const defaultFileName = `eigent-diagnostics-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save diagnostics',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await createDiagnosticsZip(filePath, bugReportText, logFiles);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-diagnostics-zip failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle('open-mailto', async (_event, url: string) => {
+    try {
+      if (typeof url !== 'string' || !url.startsWith('mailto:')) {
+        return { success: false, error: 'Invalid mailto URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

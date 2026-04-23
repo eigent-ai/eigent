@@ -9,3 +9,7 @@ src/components/ui/WordCarousel/WordCarousel.tsx
 src/components/Terminal/index.tsx
 #
 # Install progress bar (src/components/ui/progress-install.tsx) and similar: use CSS vars only — no entry needed.
+#
+# Electron shell surfaces use fixed native colors in preload HTML and BrowserWindow options.
+electron/main/index.ts
+electron/preload/index.ts

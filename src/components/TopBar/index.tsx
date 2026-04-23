@@ -19,14 +19,9 @@ import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
+import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import NotificationPanel from '@/components/Notification';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -59,8 +54,6 @@ import {
   useNavigationType,
 } from 'react-router-dom';
 import { toast } from 'sonner';
-
-const SUPPORT_EMAIL = 'support@eigent.ai';
 
 /** Tracks linear in-app history so back/forward buttons can enable/disable like a browser. */
 function useStackNavigationBounds() {
@@ -127,6 +120,7 @@ function HeaderWin() {
   const navigate = useNavigate();
   const location = useLocation();
   const { canGoBack, canGoForward } = useStackNavigationBounds();
+  const [reportBugOpen, setReportBugOpen] = useState(false);
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
   const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
@@ -182,41 +176,6 @@ function HeaderWin() {
 
   const handleShare = async (taskId: string) => {
     share(taskId);
-  };
-
-  const handleDownloadLog = async () => {
-    try {
-      const exportLog = host?.electronAPI?.exportLog;
-      if (!exportLog) {
-        toast.error(t('layout.general-error'));
-        return;
-      }
-      const response = await exportLog();
-      if (!response?.success) {
-        if (response?.error) {
-          toast.error(response.error);
-        }
-        return;
-      }
-      if (response.savedPath) {
-        toast.success(`${t('layout.log-saved')} ${response.savedPath}`);
-        return;
-      }
-      if (response.data === 'log file is empty') {
-        toast.info(t('layout.log-file-empty'));
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('layout.general-error'));
-    }
-  };
-
-  const handleCopySupportEmail = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPPORT_EMAIL);
-      toast.success(t('layout.email-copied'));
-    } catch {
-      toast.error(t('layout.copy-failed'));
-    }
   };
 
   if (!chatStore) {
@@ -403,42 +362,22 @@ function HeaderWin() {
                   <Bell className="h-4 w-4" aria-hidden />
                 </Button>
               </TooltipSimple>
-              <DropdownMenu>
-                <TooltipSimple
-                  content={t('layout.support')}
-                  side="bottom"
-                  align="end"
+              <TooltipSimple
+                content={t('layout.support')}
+                side="bottom"
+                align="end"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="no-drag rounded-full"
+                  aria-label={t('layout.support')}
+                  onClick={() => setReportBugOpen(true)}
                 >
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="no-drag rounded-full"
-                      aria-label={t('layout.support')}
-                      aria-haspopup="menu"
-                    >
-                      <CircleHelp className="h-4 w-4" aria-hidden />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipSimple>
-                <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      void handleDownloadLog();
-                    }}
-                  >
-                    {t('layout.download-logs')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      void handleCopySupportEmail();
-                    }}
-                  >
-                    {t('layout.copy-email')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <CircleHelp className="h-4 w-4" aria-hidden />
+                </Button>
+              </TooltipSimple>
               <TooltipSimple
                 content={t('layout.refer-friends')}
                 side="bottom"
@@ -506,6 +445,7 @@ function HeaderWin() {
         open={notificationPanelOpen}
         onOpenChange={setNotificationPanelOpen}
       />
+      <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
     </div>
   );
 }
