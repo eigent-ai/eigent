@@ -12,5 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+export { default as DashedLinesBackground } from './DashedLinesBackground';
 export { default as DotPatternBackground } from './DotPatternBackground';
+export { default as DottedLinesBackground } from './DottedLinesBackground';
 export { default as GridPatternBackground } from './GridPatternBackground';
+export { default as RuledLinesBackground } from './RuledLinesBackground';
