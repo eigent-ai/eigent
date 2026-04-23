@@ -22,8 +22,8 @@ export const InstallDependencies: React.FC = () => {
     useInstallationUI();
 
   return (
-    <div className="inset-0 px-2 pb-2 pt-10 fixed !z-[100] flex h-full w-full items-center justify-center overflow-hidden">
-      <div className="gap-lg rounded-2xl bg-ds-bg-neutral-subtle-default p-md flex h-full w-full flex-row justify-center">
+    <div className="inset-0 px-1 pb-1 pt-10 fixed !z-[100] flex h-full w-full items-center justify-center overflow-hidden">
+      <div className="gap-lg rounded-2xl bg-ds-bg-neutral-subtle-default p-4 flex h-full w-full flex-row justify-center">
         <div className="pt-6 flex h-full w-1/3">
           {/* {isInstalling.toString()} */}
           <div className="flex w-full flex-col">

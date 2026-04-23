@@ -331,10 +331,10 @@ export default function SignUp() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`gap-2 px-2 pb-2 pt-10 flex h-full items-center justify-center`}
+        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
       >
         <div
-          className="min-h-0 rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden border-solid"
+          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',
