@@ -113,14 +113,14 @@ export function AgentMessageCard({
                   ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
-                className="gap-2 rounded-2xl py-1 pl-2 flex w-full cursor-pointer items-center border border-solid border-[color:var(--ds-border-neutral-subtle-default)] bg-[var(--ds-bg-neutral-default-default)]"
+                className="gap-2 rounded-2xl py-1 pl-2 flex w-full cursor-pointer items-center border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
+                  <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
                     {file?.fileName?.split('.')[0]}
                   </div>
-                  <div className="text-xs font-medium leading-29 text-[color:var(--ds-text-neutral-default-default)]">
+                  <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
                     {file?.fileName?.split('.')[1]}
                   </div>
                 </div>
@@ -142,7 +142,7 @@ export function AgentMessageCard({
             aria-label={t('setting.copy')}
           >
             {copied ? (
-              <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+              <Check className="h-4 w-4 text-ds-text-success-default-default" />
             ) : (
               <Copy className="h-4 w-4" />
             )}

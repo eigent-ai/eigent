@@ -83,7 +83,7 @@ export function FeedbackCard({
           buttonContent="icon-only"
         >
           {copied ? (
-            <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+            <Check className="h-4 w-4 text-ds-text-success-default-default" />
           ) : (
             <Copy className="h-4 w-4" />
           )}
@@ -91,12 +91,12 @@ export function FeedbackCard({
       </div>
 
       {/* Title */}
-      <p className="font-inter text-sm font-bold leading-normal w-full text-[color:var(--ds-text-neutral-default-default)]">
+      <p className="font-inter text-sm font-bold leading-normal w-full text-ds-text-neutral-default-default">
         {title}
       </p>
 
       {/* Content */}
-      <p className="font-inter text-sm font-medium leading-normal w-full text-[color:var(--ds-text-neutral-default-default)]">
+      <p className="font-inter text-sm font-medium leading-normal w-full text-ds-text-neutral-default-default">
         {content}
       </p>
 

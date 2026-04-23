@@ -122,8 +122,8 @@ export function UserMessageRichContent({
 
   const bodyClass =
     variant === 'card'
-      ? 'text-[color:var(--ds-text-neutral-default-default)] font-sans relative z-0 break-words whitespace-pre-wrap'
-      : 'text-[color:var(--ds-text-neutral-muted-default)] font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
+      ? 'text-ds-text-neutral-default-default font-sans relative z-0 break-words whitespace-pre-wrap'
+      : 'text-ds-text-neutral-muted-default font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
 
   return (
     <div className={cn('min-w-0', className)}>

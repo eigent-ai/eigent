@@ -174,7 +174,7 @@ export function UserMessageCard({
                         {/* File Name */}
                         <p
                           className={cn(
-                            "my-0 text-xs font-bold leading-tight relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]"
+                            "my-0 text-xs font-bold leading-tight relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap text-ds-text-neutral-default-default"
                           )}
                           title={file.fileName}
                         >
@@ -195,14 +195,14 @@ export function UserMessageCard({
                           size="xs"
                           buttonContent="text"
                           variant="ghost"
-                          className="rounded-lg relative flex items-center bg-[var(--ds-bg-neutral-strong-default)]"
+                          className="rounded-lg relative flex items-center bg-ds-bg-neutral-strong-default"
                           onMouseEnter={openRemainingPopover}
                           onMouseLeave={scheduleCloseRemainingPopover}
                           onClick={(e) => {
                             e.stopPropagation();
                           }}
                         >
-                          <span className="text-label-xs font-bold leading-tight font-['Inter'] whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
+                          <span className="text-label-xs font-bold leading-tight font-['Inter'] whitespace-nowrap text-ds-text-neutral-default-default">
                             {remainingCount}+
                           </span>
                         </Button>
@@ -210,7 +210,7 @@ export function UserMessageCard({
                       <PopoverContent
                         align="end"
                         sideOffset={4}
-                        className="max-w-40 rounded-md p-1 shadow-perfect !w-auto border border-[color:var(--ds-border-neutral-subtle-default)] bg-[var(--ds-bg-neutral-default-default)]"
+                        className="max-w-40 rounded-md p-1 shadow-perfect !w-auto border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
                         onMouseEnter={openRemainingPopover}
                         onMouseLeave={scheduleCloseRemainingPopover}
                       >
@@ -219,7 +219,7 @@ export function UserMessageCard({
                             return (
                               <div
                                 key={file.filePath}
-                                className="gap-1 rounded-lg py-0.5 flex cursor-pointer items-center bg-[var(--ds-bg-neutral-strong-default)] transition-colors duration-300 hover:bg-[var(--ds-bg-neutral-default-hover)]"
+                                className="gap-1 rounded-lg py-0.5 flex cursor-pointer items-center bg-ds-bg-neutral-strong-default transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
                                 onMouseLeave={() =>
                                   setHoveredFilePath((prev) =>
                                     prev === file.filePath ? null : prev
@@ -237,7 +237,7 @@ export function UserMessageCard({
                                 <div className="h-6 w-6 rounded-md flex items-center justify-center">
                                   {getFileIcon(file.fileName)}
                                 </div>
-                                <p className="my-0 text-xs font-bold leading-tight flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap text-[color:var(--ds-text-neutral-default-default)]">
+                                <p className="my-0 text-xs font-bold leading-tight flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
                                   {file.fileName}
                                 </p>
                               </div>
@@ -308,7 +308,7 @@ export function UserMessageCard({
             buttonContent="icon-only"
           >
             {copied ? (
-              <Check className="h-4 w-4 text-[color:var(--ds-text-success-default-default)]" />
+              <Check className="h-4 w-4 text-ds-text-success-default-default" />
             ) : (
               <Copy />
             )}
