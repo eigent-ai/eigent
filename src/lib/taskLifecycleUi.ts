@@ -88,9 +88,11 @@ export function getTaskListShelfTone(
   return 'default';
 }
 
-/** Sidebar row: failures (model error, subtask failed, context limit, etc.). */
-export function isTaskListRowFailureState(task: TaskLifecycleFields): boolean {
-  if (task.isContextExceeded) return true;
+/**
+ * Agent-reported failures and error-shaped content — excludes `isContextExceeded`
+ * (use for splitting **error** vs **warning** in session chrome).
+ */
+export function isTaskListRowHardFailure(task: TaskLifecycleFields): boolean {
   return task.messages.some((m) => {
     if (m.role !== 'agent') return false;
     if (m.step === AgentStep.FAILED) return true;
@@ -98,6 +100,12 @@ export function isTaskListRowFailureState(task: TaskLifecycleFields): boolean {
     if (c.startsWith('❌ **Error**')) return true;
     return false;
   });
+}
+
+/** Sidebar row: failures (model error, subtask failed, context limit, etc.). */
+export function isTaskListRowFailureState(task: TaskLifecycleFields): boolean {
+  if (task.isContextExceeded) return true;
+  return isTaskListRowHardFailure(task);
 }
 
 export function isWorkforceTask(task: TaskLifecycleFields): boolean {

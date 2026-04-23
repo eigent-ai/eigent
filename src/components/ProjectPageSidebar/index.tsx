@@ -16,6 +16,8 @@ import { fetchDelete, fetchPut, proxyFetchDelete } from '@/api/http';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { Button } from '@/components/ui/button';
+import { useHost } from '@/host';
+import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
@@ -98,6 +100,8 @@ export default function ProjectPageSidebar({
   }, [t, triggersListenerConnected, wsConnectionStatus]);
 
   const email = useAuthStore((s) => s.email);
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
 
   const [resolvedDefaultFolderPath, setResolvedDefaultFolderPath] = useState<
     string | null
@@ -120,11 +124,11 @@ export default function ProjectPageSidebar({
       setResolvedDefaultFolderPath(null);
       return;
     }
-    if (typeof window.electronAPI?.getProjectFolderPath !== 'function') {
+    if (typeof electronAPI?.getProjectFolderPath !== 'function') {
       setResolvedDefaultFolderPath(null);
       return;
     }
-    void window.electronAPI
+    void electronAPI
       .getProjectFolderPath(email, activeProjectId)
       .then((p: string) => {
         if (!cancelled) setResolvedDefaultFolderPath(p || null);
@@ -135,7 +139,7 @@ export default function ProjectPageSidebar({
     return () => {
       cancelled = true;
     };
-  }, [email, activeProjectId]);
+  }, [email, activeProjectId, electronAPI]);
 
   const folderSettingTagLabel = useMemo(() => {
     const custom = customFolderPath?.trim();
@@ -230,7 +234,7 @@ export default function ProjectPageSidebar({
           title:
             task.summaryTask?.trim() ||
             t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
-          taskStatus: task.status,
+          sessionLead: getSessionNavLeadPresentation(task),
         })),
     [chatStore.tasks, t]
   );
@@ -345,7 +349,7 @@ export default function ProjectPageSidebar({
                   label="Scheduled"
                   trailing={
                     showTriggersDisconnectedTag ? (
-                      <span className="rounded-md px-1.5 font-medium leading-tight max-w-[5.5rem] shrink-0 truncate bg-ds-bg-neutral-default-default py-px text-[10px] text-ds-text-status-error-strong-default">
+                      <span className="rounded-md px-1.5 font-medium leading-tight bg-ds-bg-neutral-default-default text-ds-text-status-error-strong-default max-w-[5.5rem] shrink-0 truncate py-px text-[10px]">
                         {t('layout.triggers-disconnected')}
                       </span>
                     ) : undefined
@@ -372,8 +376,8 @@ export default function ProjectPageSidebar({
                       size="sm"
                       buttonContent="icon-only"
                       className={cn(
-                        'no-drag mr-1 rounded-xl shrink-0 hover:bg-ds-bg-neutral-strong-default',
-                        'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default focus-visible:outline-none'
+                        'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
+                        'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
                       )}
                       aria-label={t('triggers.add-trigger')}
                       onClick={(e) => {

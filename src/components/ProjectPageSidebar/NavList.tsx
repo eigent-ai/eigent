@@ -20,9 +20,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
-import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
-import { LayoutGrid, MessageCircle, MoreHorizontal, Plus } from 'lucide-react';
+import { LayoutGrid, MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
 import { NavTab, workspaceTabButtonClass } from './NavTab';
@@ -30,8 +30,8 @@ import { NavTab, workspaceTabButtonClass } from './NavTab';
 export interface NavListSession {
   id: string;
   title: string;
-  /** Drives the leading icon color (running / finished / default). */
-  taskStatus?: ChatTaskStatusType;
+  /** Leading icon + color from `getSessionNavLeadPresentation`. */
+  sessionLead: SessionNavLeadPresentation;
 }
 
 export interface NavListProps {
@@ -49,7 +49,7 @@ export interface NavListProps {
   className?: string;
 }
 
-/** Workspace row (split: tab + new session) and a flat scrollable session list. */
+/** Workspace row (split: tab + new session) and a flat scrollable session column. */
 export function NavList({
   sessions,
   activeSessionId,
@@ -74,14 +74,6 @@ export function NavList({
     defaultValue: 'Start new session',
   });
 
-  const sessionLeadIconClass = (taskStatus: ChatTaskStatusType | undefined) => {
-    if (taskStatus === ChatTaskStatus.RUNNING)
-      return 'text-ds-icon-status-splitting-default-default';
-    if (taskStatus === ChatTaskStatus.FINISHED)
-      return 'text-ds-icon-status-completed-default-default';
-    return 'text-ds-icon-neutral-default-default';
-  };
-
   return (
     <div
       className={cn(
@@ -103,8 +95,8 @@ export function NavList({
               size="sm"
               buttonContent="icon-only"
               className={cn(
-                'no-drag mr-1 rounded-xl shrink-0 hover:bg-ds-bg-neutral-strong-default',
-                'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default focus-visible:outline-none'
+                'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
+                'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
               )}
               aria-label={newSessionLabel}
               onClick={(e) => {
@@ -141,7 +133,7 @@ export function NavList({
               aria-label={newSessionLabel}
             >
               <Plus
-                className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                 aria-hidden
               />
             </button>
@@ -149,18 +141,23 @@ export function NavList({
         ) : null}
       </div>
 
-      <ul
+      <div
         className={cn(
-          'm-0 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 list-none flex-col overflow-y-auto',
+          'm-0 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 flex-col overflow-y-auto',
           folded ? 'mt-0.5' : 'mt-1'
         )}
-        role="list"
       >
         {sessions.map((session) => {
           const active = activeSessionId === session.id;
+          const LeadIcon = session.sessionLead.Icon;
+          const leadClassName = cn(
+            'h-4 w-4 shrink-0',
+            session.sessionLead.iconClassName,
+            session.sessionLead.spin && 'animate-spin'
+          );
           if (folded) {
             return (
-              <li key={session.id} className="min-w-0">
+              <div key={session.id} className="min-w-0">
                 <TooltipSimple
                   content={session.title}
                   side="right"
@@ -178,23 +175,17 @@ export function NavList({
                     aria-label={session.title}
                     aria-current={active ? 'true' : undefined}
                   >
-                    <MessageCircle
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        sessionLeadIconClass(session.taskStatus)
-                      )}
-                      aria-hidden
-                    />
+                    <LeadIcon className={leadClassName} aria-hidden />
                   </button>
                 </TooltipSimple>
-              </li>
+              </div>
             );
           }
           return (
-            <li key={session.id} className="min-w-0">
+            <div key={session.id} className="min-w-0">
               <div
                 className={cn(
-                  'group/session-item min-w-0 h-8 gap-1 rounded-xl px-3 relative flex w-full items-center overflow-hidden',
+                  'group/session-item min-w-0 h-8 gap-1 rounded-xl pl-3 pr-1 relative flex w-full items-center overflow-hidden',
                   active
                     ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
                     : 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
@@ -204,17 +195,11 @@ export function NavList({
                   type="button"
                   onClick={() => onSessionClick?.(session.id)}
                   className={cn(
-                    'no-drag min-h-0 min-w-0 gap-3 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
+                    'no-drag min-h-0 min-w-0 gap-3 py-1 px-0 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
                     'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
                   )}
                 >
-                  <MessageCircle
-                    className={cn(
-                      'h-4 w-4 shrink-0',
-                      sessionLeadIconClass(session.taskStatus)
-                    )}
-                    aria-hidden
-                  />
+                  <LeadIcon className={leadClassName} aria-hidden />
                   <span
                     className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 overflow-visible whitespace-nowrap"
                     title={session.title}
@@ -267,10 +252,10 @@ export function NavList({
                   </DropdownMenu>
                 </div>
               </div>
-            </li>
+            </div>
           );
         })}
-      </ul>
+      </div>
     </div>
   );
 }
