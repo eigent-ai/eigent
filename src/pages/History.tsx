@@ -160,7 +160,7 @@ export default function Home() {
           </Button>
         </div>
       </div>
-      <div className="m-auto flex h-auto w-full max-w-[980px] flex-1 flex-col">
+      <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
         <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
           {activeTab === 'projects' && <Project />}
           {activeTab === 'agents' && <Agents />}

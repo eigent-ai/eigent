@@ -181,7 +181,7 @@ export default function SkillListItem(props: SkillListItemProps) {
 
   return (
     <div
-      className={`rounded-2xl bg-ds-bg-neutral-strong-default p-4 w-full flex-1 flex-col justify-between transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
+      className={`rounded-2xl bg-ds-bg-neutral-subtle-default p-4 w-full flex-1 flex-col justify-between transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
     >
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
