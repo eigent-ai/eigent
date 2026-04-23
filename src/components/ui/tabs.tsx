@@ -173,7 +173,7 @@ const TabsList = React.forwardRef<
               appearance === 'outline' &&
                 'rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5 relative border border-solid',
               appearance === 'default' &&
-                'rounded-xl bg-ds-bg-neutral-strong-default p-0.5 border border-solid border-[color:var(--ds-bg-neutral-strong-default)]',
+                'rounded-xl bg-ds-bg-neutral-strong-default p-0.5 border-ds-bg-neutral-strong-default border border-solid',
               'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
               className
             )}

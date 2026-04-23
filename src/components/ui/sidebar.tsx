@@ -545,7 +545,7 @@ const sidebarMenuButtonVariants = cva(
         default:
           'hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default',
         outline:
-          'bg-ds-bg-neutral-subtle-default shadow-[0_0_0_1px_var(--ds-border-neutral-default-default)] hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default hover:shadow-[0_0_0_1px_var(--ds-bg-neutral-default-hover)]',
+          'bg-ds-bg-neutral-subtle-default shadow-[0_0_0_1px_theme(colors.ds-border-neutral-default-default)] hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default hover:shadow-[0_0_0_1px_theme(colors.ds-bg-neutral-default-hover)]',
       },
       size: {
         default: 'h-8 text-sm',
