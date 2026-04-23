@@ -18,11 +18,18 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-export type TabsVariant = 'default' | 'outline' | 'border';
+/** Visual style of the tab strip (not `UiVariant` / `Button` chrome). */
+export type TabsAppearance = 'default' | 'outline' | 'border';
 
-// Context for variant
-const TabsContext = React.createContext<{ variant?: TabsVariant }>({
-  variant: 'default',
+/**
+ * @deprecated Use {@link TabsAppearance} and the `appearance` prop instead of
+ * `variant` on `TabsList` / `TabsTrigger` to avoid confusion with `UiVariant`.
+ */
+export type TabsVariant = TabsAppearance;
+
+// Context for tab strip appearance
+const TabsContext = React.createContext<{ appearance?: TabsAppearance }>({
+  appearance: 'default',
 });
 
 /** Shared trigger styles — default and outline use the same dimensions. */
@@ -44,192 +51,210 @@ const Tabs = TabsPrimitive.Root;
 type TabsListProps = React.ComponentPropsWithoutRef<
   typeof TabsPrimitive.List
 > & {
-  variant?: TabsVariant;
+  appearance?: TabsAppearance;
+  /** @deprecated Use `appearance`. */
+  variant?: TabsAppearance;
 };
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsListProps
->(({ className, variant = 'default', ...props }, ref) => {
-  const wrapperRef = React.useRef<HTMLDivElement>(null);
-  const tabsListRef = React.useRef<React.ElementRef<
-    typeof TabsPrimitive.List
-  > | null>(null) as React.MutableRefObject<React.ElementRef<
-    typeof TabsPrimitive.List
-  > | null>;
-  const [sliderStyle, setSliderStyle] = React.useState({ left: 0, width: 0 });
-  const [borderBarStyle, setBorderBarStyle] = React.useState({
-    left: 0,
-    top: 0,
-    width: 0,
-  });
+>(
+  (
+    { className, appearance: appearanceProp, variant: variantProp, ...props },
+    ref
+  ) => {
+    const appearance = appearanceProp ?? variantProp ?? 'default';
+    const wrapperRef = React.useRef<HTMLDivElement>(null);
+    const tabsListRef = React.useRef<React.ElementRef<
+      typeof TabsPrimitive.List
+    > | null>(null) as React.MutableRefObject<React.ElementRef<
+      typeof TabsPrimitive.List
+    > | null>;
+    const [sliderStyle, setSliderStyle] = React.useState({ left: 0, width: 0 });
+    const [borderBarStyle, setBorderBarStyle] = React.useState({
+      left: 0,
+      top: 0,
+      width: 0,
+    });
 
-  // Update underline position when active tab changes (outline: inside list; border: below row, HistoryTabsNav-style)
-  React.useLayoutEffect(() => {
-    if (
-      !tabsListRef.current ||
-      (variant !== 'outline' && variant !== 'border')
-    ) {
-      return;
-    }
+    // Update underline position when active tab changes (outline: inside list; border: below row, HistoryTabsNav-style)
+    React.useLayoutEffect(() => {
+      if (
+        !tabsListRef.current ||
+        (appearance !== 'outline' && appearance !== 'border')
+      ) {
+        return;
+      }
 
-    const updateSlider = () => {
-      requestAnimationFrame(() => {
-        const list = tabsListRef.current;
-        const wrap = wrapperRef.current;
-        if (!list) return;
+      const updateSlider = () => {
+        requestAnimationFrame(() => {
+          const list = tabsListRef.current;
+          const wrap = wrapperRef.current;
+          if (!list) return;
 
-        if (variant === 'outline') {
+          if (appearance === 'outline') {
+            const activeTab = list.querySelector(
+              '[data-state="active"][data-tabs-appearance="outline"]'
+            ) as HTMLElement | null;
+            if (activeTab) {
+              const containerRect = list.getBoundingClientRect();
+              const tabRect = activeTab.getBoundingClientRect();
+              setSliderStyle({
+                left: tabRect.left - containerRect.left,
+                width: tabRect.width,
+              });
+            }
+            return;
+          }
+
           const activeTab = list.querySelector(
-            '[data-state="active"][data-variant="outline"]'
+            '[data-state="active"][data-tabs-appearance="border"]'
           ) as HTMLElement | null;
-          if (activeTab) {
-            const containerRect = list.getBoundingClientRect();
+          if (activeTab && wrap) {
+            const wr = wrap.getBoundingClientRect();
             const tabRect = activeTab.getBoundingClientRect();
-            setSliderStyle({
-              left: tabRect.left - containerRect.left,
+            setBorderBarStyle({
+              left: tabRect.left - wr.left,
+              top: tabRect.bottom - wr.top + BORDER_TAB_UNDERLINE_GAP_PX,
               width: tabRect.width,
             });
           }
-          return;
-        }
+        });
+      };
 
-        const activeTab = list.querySelector(
-          '[data-state="active"][data-variant="border"]'
-        ) as HTMLElement | null;
-        if (activeTab && wrap) {
-          const wr = wrap.getBoundingClientRect();
-          const tabRect = activeTab.getBoundingClientRect();
-          setBorderBarStyle({
-            left: tabRect.left - wr.left,
-            top: tabRect.bottom - wr.top + BORDER_TAB_UNDERLINE_GAP_PX,
-            width: tabRect.width,
-          });
-        }
-      });
-    };
+      updateSlider();
 
-    updateSlider();
-
-    const observer = new MutationObserver(updateSlider);
-    if (tabsListRef.current) {
-      observer.observe(tabsListRef.current, {
-        attributes: true,
-        attributeFilter: ['data-state'],
-        subtree: true,
-      });
-    }
-
-    window.addEventListener('resize', updateSlider);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateSlider);
-    };
-  }, [variant]);
-
-  const combinedRef = React.useCallback(
-    (node: React.ElementRef<typeof TabsPrimitive.List> | null) => {
-      if (typeof ref === 'function') {
-        ref(node);
-      } else if (ref && 'current' in ref) {
-        (
-          ref as React.MutableRefObject<React.ElementRef<
-            typeof TabsPrimitive.List
-          > | null>
-        ).current = node;
+      const observer = new MutationObserver(updateSlider);
+      if (tabsListRef.current) {
+        observer.observe(tabsListRef.current, {
+          attributes: true,
+          attributeFilter: ['data-state'],
+          subtree: true,
+        });
       }
-      tabsListRef.current = node;
-    },
-    [ref]
-  );
 
-  return (
-    <TabsContext.Provider value={{ variant }}>
-      <div
-        ref={wrapperRef}
-        className={cn('relative', variant === 'border' && 'pb-2')}
-      >
-        <TabsPrimitive.List
-          ref={combinedRef}
-          className={cn(
-            'inline-flex items-center justify-center',
-            variant === 'border' &&
-              'gap-2 p-0 rounded-none border-0 border-solid bg-transparent shadow-none',
-            variant === 'outline' &&
-              'rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5 relative border border-solid',
-            variant === 'default' &&
-              'rounded-xl bg-ds-bg-neutral-strong-default p-0.5 border border-solid border-[color:var(--ds-bg-neutral-strong-default)]',
-            'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
-            className
+      window.addEventListener('resize', updateSlider);
+
+      return () => {
+        observer.disconnect();
+        window.removeEventListener('resize', updateSlider);
+      };
+    }, [appearance]);
+
+    const combinedRef = React.useCallback(
+      (node: React.ElementRef<typeof TabsPrimitive.List> | null) => {
+        if (typeof ref === 'function') {
+          ref(node);
+        } else if (ref && 'current' in ref) {
+          (
+            ref as React.MutableRefObject<React.ElementRef<
+              typeof TabsPrimitive.List
+            > | null>
+          ).current = node;
+        }
+        tabsListRef.current = node;
+      },
+      [ref]
+    );
+
+    return (
+      <TabsContext.Provider value={{ appearance }}>
+        <div
+          ref={wrapperRef}
+          className={cn('relative', appearance === 'border' && 'pb-2')}
+        >
+          <TabsPrimitive.List
+            ref={combinedRef}
+            className={cn(
+              'inline-flex items-center justify-center',
+              appearance === 'border' &&
+                'gap-2 p-0 rounded-none border-0 border-solid bg-transparent shadow-none',
+              appearance === 'outline' &&
+                'rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5 relative border border-solid',
+              appearance === 'default' &&
+                'rounded-xl bg-ds-bg-neutral-strong-default p-0.5 border border-solid border-[color:var(--ds-bg-neutral-strong-default)]',
+              'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
+              className
+            )}
+            data-tabs-appearance={appearance}
+            {...props}
+          />
+          {appearance === 'outline' && sliderStyle.width > 0 && (
+            <motion.div
+              className="bottom-0 bg-text-heading absolute z-10 h-[1.5px]"
+              initial={false}
+              animate={{
+                left: sliderStyle.left,
+                width: sliderStyle.width,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 300,
+                damping: 30,
+              }}
+            />
           )}
-          data-variant={variant}
-          {...props}
-        />
-        {variant === 'outline' && sliderStyle.width > 0 && (
-          <motion.div
-            className="bottom-0 bg-text-heading absolute z-10 h-[1.5px]"
-            initial={false}
-            animate={{
-              left: sliderStyle.left,
-              width: sliderStyle.width,
-            }}
-            transition={{
-              type: 'spring',
-              stiffness: 300,
-              damping: 30,
-            }}
-          />
-        )}
-        {variant === 'border' && borderBarStyle.width > 0 && (
-          <motion.div
-            aria-hidden
-            className="bg-ds-bg-brand-default-default h-0.5 pointer-events-none absolute z-10 rounded-full"
-            initial={false}
-            animate={{
-              left: borderBarStyle.left,
-              top: borderBarStyle.top,
-              width: borderBarStyle.width,
-            }}
-            transition={{
-              type: 'spring',
-              stiffness: 420,
-              damping: 34,
-              mass: 0.55,
-            }}
-          />
-        )}
-      </div>
-    </TabsContext.Provider>
-  );
-});
+          {appearance === 'border' && borderBarStyle.width > 0 && (
+            <motion.div
+              aria-hidden
+              className="bg-ds-bg-brand-default-default h-0.5 pointer-events-none absolute z-10 rounded-full"
+              initial={false}
+              animate={{
+                left: borderBarStyle.left,
+                top: borderBarStyle.top,
+                width: borderBarStyle.width,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 420,
+                damping: 34,
+                mass: 0.55,
+              }}
+            />
+          )}
+        </div>
+      </TabsContext.Provider>
+    );
+  }
+);
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 type TabsTriggerProps = React.ComponentPropsWithoutRef<
   typeof TabsPrimitive.Trigger
 > & {
-  variant?: TabsVariant;
+  appearance?: TabsAppearance;
+  /** @deprecated Use `appearance`. */
+  variant?: TabsAppearance;
 };
 
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   TabsTriggerProps
->(({ className, variant: propVariant, ...props }, ref) => {
-  const { variant: contextVariant } = React.useContext(TabsContext);
-  const variant = propVariant || contextVariant || 'default';
-  const triggerBase =
-    variant === 'border' ? tabsTriggerBorderClassName : tabsTriggerClassName;
+>(
+  (
+    { className, appearance: appearanceProp, variant: variantProp, ...props },
+    ref
+  ) => {
+    const { appearance: contextAppearance } = React.useContext(TabsContext);
+    const appearance =
+      appearanceProp ?? variantProp ?? contextAppearance ?? 'default';
+    const triggerBase =
+      appearance === 'border'
+        ? tabsTriggerBorderClassName
+        : tabsTriggerClassName;
 
-  return (
-    <TabsPrimitive.Trigger
-      ref={ref}
-      className={cn(triggerBase, className)}
-      data-variant={variant}
-      data-value={props.value}
-      {...props}
-    />
-  );
-});
+    return (
+      <TabsPrimitive.Trigger
+        ref={ref}
+        className={cn(triggerBase, className)}
+        data-tabs-appearance={appearance}
+        data-value={props.value}
+        {...props}
+      />
+    );
+  }
+);
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
 const TabsContent = React.forwardRef<

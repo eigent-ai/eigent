@@ -480,7 +480,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             }}
             className="rounded-2xl bg-ds-bg-neutral-muted-disabled w-full"
           >
-            <TabsList variant="default" className="w-full">
+            <TabsList appearance="default" className="w-full">
               <TabsTrigger
                 value="schedule"
                 className="text-body-sm gap-2 flex-1"

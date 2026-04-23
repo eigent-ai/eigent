@@ -353,7 +353,7 @@ export default function AppearanceSettings() {
               setAppearanceMode(value as 'light' | 'dark' | 'system')
             }
           >
-            <TabsList variant="default">
+            <TabsList appearance="default">
               <TabsTrigger value="light">
                 <div className="gap-1 text-label-sm flex items-center">
                   <Sun size={16} />
@@ -386,12 +386,12 @@ export default function AppearanceSettings() {
           <div className="gap-3 flex w-full items-center justify-between">
             <div className="min-w-0 flex-1 overflow-x-auto">
               <Tabs value={activeThemeId} onValueChange={handleThemeChange}>
-                <TabsList variant="default" className="min-w-max">
+                <TabsList appearance="default" className="min-w-max">
                   {themeOptions.map((option) => (
                     <TabsTrigger
                       key={option.id}
                       value={option.id}
-                      variant="default"
+                      appearance="default"
                     >
                       <div className="gap-1 text-label-sm flex items-center">
                         {option.label}

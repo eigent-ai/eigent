@@ -102,7 +102,7 @@ export default function Skills() {
           <Tabs defaultValue="your-skills" className="w-full">
             <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
-                variant="border"
+                appearance="border"
                 className="h-auto flex-1 justify-start"
               >
                 <TabsTrigger value="your-skills">
