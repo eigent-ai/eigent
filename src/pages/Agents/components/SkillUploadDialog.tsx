@@ -476,7 +476,7 @@ export default function SkillUploadDialog({
           size={mode === 'create' ? 'md' : 'sm'}
           showCloseButton
           onClose={handleClose}
-          overlayVariant="dark"
+          overlayVariant="dimmed"
         >
           <DialogHeader
             title={

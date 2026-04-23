@@ -46,7 +46,13 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-export type DialogOverlayVariant = 'default' | 'dark';
+/**
+ * - `default` — transparent overlay (backdrop blur only).
+ * - `light` — pure white @ 30% opacity scrim.
+ * - `dark` — pure black @ 30% opacity scrim.
+ * - `dimmed` — `--dialog-overlay-scrim` from the token engine (black ~30% when app mode is light, white ~30% when dark; ThemeProvider reapplies vars — no Tailwind `dark:`).
+ */
+export type DialogOverlayVariant = 'default' | 'light' | 'dark' | 'dimmed';
 
 // Size variants for dialog content
 const dialogContentVariants = cva(
@@ -74,7 +80,7 @@ interface DialogContentProps
   closeButtonClassName?: string;
   closeButtonIcon?: React.ReactNode;
   onClose?: () => void;
-  /** Overlay behind the dialog: 'default' (transparent) or 'dark' (black overlay) */
+  /** Overlay scrim: see {@link DialogOverlayVariant}. */
   overlayVariant?: DialogOverlayVariant;
   /** Merged onto the overlay (e.g. `backdrop-blur-none` to disable default blur) */
   overlayClassName?: string;
@@ -102,20 +108,17 @@ const DialogContent = React.forwardRef<
     <DialogPortal>
       <DialogOverlay
         className={cn(
-          overlayVariant === 'dark' ? 'bg-black/40' : undefined,
+          overlayVariant === 'light' && 'bg-dialog-overlay-light',
+          overlayVariant === 'dark' && 'bg-dialog-overlay-dark',
+          overlayVariant === 'dimmed' && 'bg-dialog-overlay-scrim',
           overlayClassName
         )}
-        style={
-          overlayVariant === 'dark'
-            ? { backgroundColor: 'rgba(0, 0, 0, 0.4)' }
-            : undefined
-        }
       />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
           dialogContentVariants({ size }),
-          overlayVariant === 'dark' && 'z-[51]',
+          overlayVariant !== 'default' && 'z-[51]',
           className
         )}
         {...props}

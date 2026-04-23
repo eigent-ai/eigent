@@ -51,8 +51,7 @@ export default function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="alert-dialog bg-black/20 inset-0 fixed z-[99]"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
+            className="alert-dialog bg-dialog-overlay-scrim inset-0 fixed z-[99]"
             onClick={onClose}
           />
 
