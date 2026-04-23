@@ -1052,7 +1052,7 @@ export default function SettingModels() {
         onClick={() => setSelectedTab(tabId)}
         className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
-            ? 'bg-fill-fill-transparent-active'
+            ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
@@ -1082,7 +1082,7 @@ export default function SettingModels() {
           </span>
         </div>
         {isConfigured && (
-          <div className="m-1 h-2 w-2 bg-text-success rounded-full" />
+          <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
         )}
       </button>
     );
@@ -1100,7 +1100,7 @@ export default function SettingModels() {
         );
       }
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-strong-default flex w-full flex-col">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
           <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="gap-2 inline-flex items-center justify-start self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default flex-1 justify-center">
@@ -1259,7 +1259,7 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-strong-default flex w-full flex-col">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
           <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="gap-2 inline-flex items-center justify-between self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
@@ -1302,9 +1302,9 @@ export default function SettingModels() {
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 bg-text-success shrink-0 rounded-full" />
+                  <div className="h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
                 ) : (
-                  <div className="h-2 w-2 bg-text-label shrink-0 rounded-full opacity-10" />
+                  <div className="h-2 w-2 bg-ds-text-neutral-default-default shrink-0 rounded-full opacity-10" />
                 )}
               </div>
             </div>
@@ -1488,7 +1488,9 @@ export default function SettingModels() {
             <Button
               variant="ghost"
               size="sm"
-              className="!text-ds-text-neutral-muted-default"
+              textWeight="medium"
+              buttonRadius="lg"
+              tone="neutral"
               onClick={() => handleDelete(idx)}
             >
               {t('setting.reset')}
@@ -1496,12 +1498,13 @@ export default function SettingModels() {
             <Button
               variant="primary"
               size="sm"
+              textWeight="bold"
+              buttonRadius="lg"
+              tone="neutral"
               onClick={() => handleVerify(idx)}
               disabled={loading === idx}
             >
-              <span className="text-ds-text-neutral-inverse-default">
-                {loading === idx ? t('setting.configuring') : t('setting.save')}
-              </span>
+              {loading === idx ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
         </div>
@@ -1524,7 +1527,7 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-strong-default flex w-full flex-col">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
           <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="gap-2 inline-flex items-center justify-between self-stretch">
               <div className="gap-2 flex items-center">
@@ -1759,11 +1762,11 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="gap-2 rounded-lg border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default px-3 py-1 font-semibold text-ds-text-status-completed-strong-default flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
+              <button className="gap-2 rounded-lg border-ds-border-success-default-default bg-ds-bg-success-subtle-default px-3 py-1 font-semibold text-ds-text-success-default-default flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
                 <span className="text-body-sm whitespace-nowrap">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 text-ds-text-status-completed-strong-default flex-shrink-0" />
+                <ChevronDown className="h-4 w-4 !text-ds-text-success-default-default flex-shrink-0" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1920,8 +1923,8 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-3 py-4 flex w-full flex-col items-start justify-between">
-          <div className="px-3 text-body-base mb-2 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-4 font-bold text-ds-text-neutral-default-default sticky top-[86px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
+          <div className="px-3 py-2 text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-2 font-bold text-ds-text-neutral-default-default sticky top-[80px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
