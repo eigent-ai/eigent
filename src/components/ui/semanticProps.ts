@@ -19,6 +19,18 @@
  * - `variant`: component chrome pattern
  * - `emphasis`: visual intensity
  * - `tone`: semantic meaning
+ *
+ * ## Glossary: what `variant` means in this codebase
+ *
+ * - **`UiVariant` (this file)** — Filled / outline / ghost *chrome* for buttons, badges,
+ *   tags, and similar. Combine with `tone` and `emphasis` for the full look.
+ * - **Layout / placement (not `UiVariant`)** — Some primitives use different prop names
+ *   for placement: e.g. `dialog.tsx` uses `size` for max-width, `sheet.tsx` uses `side`,
+ *   `tabs.tsx` uses `appearance` for tab strip style (avoids clashing with
+ *   `UiVariant.outline`). Read those as *layout* or *chrome role*, not as `UiVariant`.
+ * - **shadcn legacy `variant` strings** — e.g. `default`, `destructive`, or one-word
+ *   “semantic” button variants. Prefer mapping to `UiVariant` + `tone` + `emphasis`
+ *   (see `button.tsx` deprecations and resolvers) when touching call sites.
  */
 export type UiVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
 

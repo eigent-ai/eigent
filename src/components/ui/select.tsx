@@ -18,6 +18,10 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+  formFieldSelectSizeClasses,
+  formFieldSelectTriggerState,
+} from './formFieldSurface';
 import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
@@ -48,46 +52,6 @@ const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;
 
 const SelectValue = SelectPrimitive.Value;
-
-// Local copies to mirror Input behavior for size/state without importing internal helpers
-const sizeClasses: Record<SelectSize, string> = {
-  default: 'h-10 text-body-sm',
-  sm: 'h-8 text-body-sm',
-};
-
-function resolveStateClasses(
-  state: SelectState | undefined,
-  disabled: boolean
-) {
-  if (disabled) {
-    return {
-      wrapper: 'opacity-50 cursor-not-allowed',
-      trigger: 'border-transparent',
-      note: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  if (state === 'error') {
-    return {
-      wrapper: '',
-      trigger:
-        'border-ds-border-error-default-default bg-ds-bg-error-default-default',
-      note: 'text-ds-text-error-strong-default',
-    };
-  }
-  if (state === 'success') {
-    return {
-      wrapper: '',
-      trigger:
-        'border-ds-border-success-default-default bg-ds-bg-success-subtle-default',
-      note: 'text-ds-text-status-completed-strong-default',
-    };
-  }
-  return {
-    wrapper: '',
-    trigger: 'border-transparent',
-    note: 'text-ds-text-neutral-muted-default',
-  };
-}
 
 type SelectTriggerExtraProps = {
   size?: SelectSize;
@@ -121,7 +85,7 @@ const SelectTrigger = React.forwardRef<
     },
     ref
   ) => {
-    const stateCls = resolveStateClasses(state, Boolean(disabled));
+    const stateCls = formFieldSelectTriggerState(state, Boolean(disabled));
     return (
       <div className={cn('w-fit', stateCls.wrapper)}>
         {title ? (
@@ -146,7 +110,7 @@ const SelectTrigger = React.forwardRef<
           className={cn(
             // Base styles
             'gap-2 rounded-xl px-3 text-ds-text-neutral-default-default relative flex w-full items-center justify-between border border-solid transition-all outline-none',
-            sizeClasses[size],
+            formFieldSelectSizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default surface (when no error/success)
             !state && variantTriggerBase[variant],

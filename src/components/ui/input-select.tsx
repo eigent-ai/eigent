@@ -16,6 +16,10 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, CircleAlert } from 'lucide-react';
 import * as React from 'react';
+import {
+  formFieldInputSelectSizeClasses,
+  formFieldInputSelectState,
+} from './formFieldSurface';
 import { formControlTokenAliases } from './tokenAliases';
 
 export type InputSelectSize = 'default' | 'sm';
@@ -60,45 +64,6 @@ type InputSelectProps = {
    */
   onInputCommit?: (value: string) => string | false | void;
 };
-
-const sizeClasses: Record<InputSelectSize, string> = {
-  default: 'h-10 text-body-sm',
-  sm: 'h-8 text-body-sm',
-};
-
-function resolveStateClasses(
-  state: InputSelectState | undefined,
-  disabled: boolean
-) {
-  if (disabled) {
-    return {
-      wrapper: 'opacity-50 cursor-not-allowed',
-      container: 'border-transparent bg-ds-bg-neutral-default-default',
-      note: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  if (state === 'error') {
-    return {
-      wrapper: '',
-      container:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
-      note: 'text-ds-text-status-error-strong-default',
-    };
-  }
-  if (state === 'success') {
-    return {
-      wrapper: '',
-      container:
-        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
-      note: 'text-ds-text-status-completed-strong-default',
-    };
-  }
-  return {
-    wrapper: '',
-    container: 'border-transparent bg-ds-bg-neutral-default-default',
-    note: 'text-ds-text-neutral-muted-default',
-  };
-}
 
 const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
   (
@@ -318,7 +283,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
     // Use internal error state if no external state is provided
     const effectiveState = hasError ? 'error' : state;
-    const stateCls = resolveStateClasses(effectiveState, disabled);
+    const stateCls = formFieldInputSelectState(effectiveState, disabled);
 
     // Determine which note to show
     const displayNote =
@@ -355,7 +320,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
           onClick={handleContainerClick}
           className={cn(
             'rounded-lg shadow-sm px-3 gap-2 text-ds-text-neutral-default-default relative flex w-full cursor-text items-center border border-solid transition-all outline-none',
-            sizeClasses[size],
+            formFieldInputSelectSizeClasses[size],
             stateCls.container,
             !disabled &&
               state !== 'error' &&

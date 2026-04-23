@@ -17,6 +17,12 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
+import {
+  type FormFieldInputState,
+  formFieldInputStateClasses,
+  formFieldNoteTextClassName,
+  formFieldSizeClasses,
+} from './formFieldSurface';
 import { formControlTokenAliases } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
@@ -44,66 +50,6 @@ type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   onEnter?: () => void;
 };
 
-const sizeClasses: Record<InputSize, string> = {
-  default: 'h-10 text-body-sm md:text-sm',
-  sm: 'h-8 text-body-sm',
-};
-
-function resolveStateClasses(state: InputState | undefined) {
-  if (state === 'disabled') {
-    return {
-      container: 'opacity-50 cursor-not-allowed',
-      field:
-        'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
-    };
-  }
-  if (state === 'hover') {
-    return {
-      container: '',
-      field:
-        'border-ds-border-neutral-strong-default bg-ds-bg-neutral-default-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
-    };
-  }
-  if (state === 'input') {
-    return {
-      container: '',
-      field:
-        'border-ds-border-brand-default-focus bg-ds-bg-neutral-strong-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
-    };
-  }
-  if (state === 'error') {
-    return {
-      container: '',
-      field:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
-    };
-  }
-  if (state === 'success') {
-    return {
-      container: '',
-      field:
-        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
-    };
-  }
-  return {
-    container: '',
-    field:
-      'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default',
-    input: 'text-ds-text-neutral-default-default',
-    placeholder: 'placeholder-input-label-default/10',
-  };
-}
-
 const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
   (
     {
@@ -128,7 +74,9 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     ref
   ) => {
     const { onKeyDown, ...inputProps } = props;
-    const stateCls = resolveStateClasses(disabled ? 'disabled' : state);
+    const stateCls = formFieldInputStateClasses(
+      disabled ? 'disabled' : (state as FormFieldInputState)
+    );
     const hasLeft = Boolean(leadingIcon);
     const hasRight = Boolean(backIcon) || Boolean(trailingButton);
 
@@ -162,12 +110,16 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
         <div
           className={cn(
             'rounded-lg shadow-sm relative flex items-center border border-solid transition-colors',
-            // Only apply hover/focus visuals when not in error state
-            state !== 'error' &&
-              state !== 'success' &&
-              'focus-within:bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-brand-default-focus hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
             stateCls.field,
-            sizeClasses[size]
+            formFieldSizeClasses[size],
+            // After field base so hover / focus background wins; subtle surface on interaction
+            state !== 'error' &&
+              state !== 'success' && [
+                'hover:bg-ds-bg-neutral-subtle-default',
+                'focus-within:bg-ds-bg-neutral-subtle-default',
+                'focus-within:ring-ds-ring-brand-default-focus hover:ring-ds-ring-neutral-strong-default',
+                'focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
+              ]
           )}
         >
           {leadingIcon ? (
@@ -224,11 +176,13 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           <div
             className={cn(
               'mt-1.5 !text-body-xs',
-              state === 'error'
-                ? 'text-ds-text-status-error-strong-default'
-                : state === 'success'
-                  ? 'text-ds-text-status-completed-strong-default'
-                  : 'text-ds-text-neutral-muted-default'
+              formFieldNoteTextClassName(
+                state === 'error'
+                  ? 'error'
+                  : state === 'success'
+                    ? 'success'
+                    : 'default'
+              )
             )}
             dangerouslySetInnerHTML={{
               __html: note.replace(

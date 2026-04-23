@@ -17,6 +17,12 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
+import {
+  formFieldNoteTextClassName,
+  formFieldTextareaSizeClasses,
+  formFieldTextareaStateClasses,
+  type TextareaFormFieldState,
+} from './formFieldSurface';
 import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
@@ -44,60 +50,6 @@ type BaseTextareaProps = Omit<React.ComponentProps<'textarea'>, 'size'> & {
   trailingButton?: React.ReactNode;
   onEnter?: () => void;
 };
-
-const sizeClasses: Record<TextareaSize, string> = {
-  default: 'min-h-[60px] text-body-sm md:text-sm',
-  sm: 'min-h-[40px] text-body-sm',
-};
-
-function resolveStateClasses(state: TextareaState | undefined) {
-  if (state === 'disabled') {
-    return {
-      container: 'opacity-50 cursor-not-allowed',
-      field:
-        'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  if (state === 'hover') {
-    return {
-      container: '',
-      field:
-        'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  if (state === 'input') {
-    return {
-      container: '',
-      field:
-        'border-transparent bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  if (state === 'error') {
-    return {
-      container: '',
-      field:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  if (state === 'success') {
-    return {
-      container: '',
-      field:
-        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
-    };
-  }
-  return {
-    container: '',
-    field:
-      'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-    placeholder: 'text-ds-text-neutral-muted-default/10',
-  };
-}
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
   (
@@ -166,7 +118,9 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
     }
 
     // Enhanced variant with input-like functionality
-    const stateCls = resolveStateClasses(disabled ? 'disabled' : state);
+    const stateCls = formFieldTextareaStateClasses(
+      disabled ? 'disabled' : (state as TextareaFormFieldState)
+    );
     const hasLeft = Boolean(leadingIcon);
     const hasRight = Boolean(backIcon) || Boolean(trailingButton);
 
@@ -196,12 +150,15 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <div
             className={cn(
               'rounded-lg shadow-sm relative flex items-start border border-solid transition-all',
-              // Only apply hover/focus visuals when not in error or success state
-              state !== 'error' &&
-                state !== 'success' &&
-                'focus-within:bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-brand-default-focus hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
               stateCls.field,
-              sizeClasses[size]
+              formFieldTextareaSizeClasses[size],
+              state !== 'error' &&
+                state !== 'success' && [
+                  'hover:bg-ds-bg-neutral-subtle-default',
+                  'focus-within:bg-ds-bg-neutral-subtle-default',
+                  'focus-within:ring-ds-ring-brand-default-focus hover:ring-ds-ring-neutral-strong-default',
+                  'focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
+                ]
             )}
           >
             {leadingIcon ? (
@@ -266,11 +223,13 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             <div
               className={cn(
                 'mt-1.5 !text-body-xs',
-                state === 'error'
-                  ? 'text-ds-text-status-error-strong-default'
-                  : state === 'success'
-                    ? 'text-ds-text-status-completed-strong-default'
-                    : 'text-ds-text-neutral-muted-default'
+                formFieldNoteTextClassName(
+                  state === 'error'
+                    ? 'error'
+                    : state === 'success'
+                      ? 'success'
+                      : 'default'
+                )
               )}
               dangerouslySetInnerHTML={{
                 __html: note.replace(
