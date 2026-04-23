@@ -162,10 +162,8 @@ export const MarkDown = ({
           table: ({ children }) => (
             <div className="w-full max-w-full overflow-x-auto">
               <table
-                className="mb-4 min-w-0 !table w-full"
+                className="mb-4 min-w-0 border-ds-border-neutral-default-default !table w-full border-collapse border"
                 style={{
-                  borderCollapse: 'collapse',
-                  border: '1px solid var(--ds-border-neutral-default-default)',
                   borderSpacing: 0,
                 }}
               >
@@ -183,26 +181,12 @@ export const MarkDown = ({
           ),
           tr: ({ children }) => <tr className="!table-row">{children}</tr>,
           th: ({ children }) => (
-            <th
-              className="text-ds-text-neutral-default-default font-semibold !table-cell text-left text-[10px]"
-              style={{
-                border: '1px solid var(--ds-border-neutral-default-default)',
-                padding: '2px 5px',
-                borderCollapse: 'collapse',
-              }}
-            >
+            <th className="text-ds-text-neutral-default-default border-ds-border-neutral-default-default font-semibold py-0.5 !table-cell border px-[5px] text-left text-[10px]">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td
-              className="text-ds-text-neutral-default-default !table-cell text-[10px]"
-              style={{
-                border: '1px solid var(--ds-border-neutral-default-default)',
-                padding: '2px 5px',
-                borderCollapse: 'collapse',
-              }}
-            >
+            <td className="text-ds-text-neutral-default-default border-ds-border-neutral-default-default py-0.5 !table-cell border px-[5px] text-[10px]">
               {children}
             </td>
           ),
