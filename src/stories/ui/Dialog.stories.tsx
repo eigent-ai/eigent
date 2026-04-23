@@ -12,10 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { useState } from 'react';
-import { expect, userEvent, within } from 'storybook/test';
-import { Button } from './button';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -23,8 +20,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTrigger,
-} from './dialog';
-import { Input } from './input';
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
+import { expect, userEvent, within } from 'storybook/test';
 
 const meta: Meta<typeof Dialog> = {
   title: 'UI/Dialog',

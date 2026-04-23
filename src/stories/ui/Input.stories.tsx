@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Input } from '@/components/ui/input';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Eye, EyeOff, Search } from 'lucide-react';
 import { useState } from 'react';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { Input } from './input';
 
 const meta: Meta<typeof Input> = {
   title: 'UI/Input',

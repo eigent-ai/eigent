@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Download, Plus, Trash2 } from 'lucide-react';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { Button } from './button';
 
 const meta: Meta<typeof Button> = {
   title: 'UI/Button',
