@@ -18,16 +18,25 @@ import * as ToggleGroupPrimitive from '@radix-ui/react-toggle-group';
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
+/**
+ * Bordered or soft chrome for a menu item (not the full `UiVariant` set).
+ * @deprecated `info` — use `variant="default"` (or `clear`) with `tone="information"`.
+ */
+export type MenuButtonVariant = 'default' | 'clear' | 'info';
+export type MenuButtonTone = 'default' | 'information';
+
 const menuButtonVariants = cva(
   'relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default focus:text-ds-text-neutral-default-default data-[state=on]:bg-ds-bg-neutral-default-default data-[state=on]:text-ds-text-neutral-default-default text-ds-text-neutral-muted-default disabled:text-ds-text-neutral-muted-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg',
   {
     variants: {
-      variant: {
+      look: {
         default:
           'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-brand-default-focus data-[state=on]:border-ds-border-brand-default-focus data-[state=on]:shadow-button-shadow',
         clear:
           'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-neutral-default-default data-[state=on]:shadow-button-shadow',
         info: 'text-ds-text-neutral-default-default !font-medium hover:bg-ds-bg-neutral-default-default focus:bg-ds-bg-neutral-default-default data-[state=on]:text-ds-text-neutral-default-default data-[state=on]:!font-bold',
+        clearInfo:
+          'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-neutral-default-default data-[state=on]:shadow-button-shadow !font-medium data-[state=on]:!font-bold',
       },
       size: {
         xs: 'px-2 py-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg',
@@ -37,62 +46,132 @@ const menuButtonVariants = cva(
       },
     },
     defaultVariants: {
-      variant: 'default',
+      look: 'default',
       size: 'md',
     },
   }
 );
 
-type MenuToggleContextValue = VariantProps<typeof menuButtonVariants>;
+type MenuButtonLook = NonNullable<
+  VariantProps<typeof menuButtonVariants>['look']
+>;
+type MenuButtonSize = NonNullable<
+  VariantProps<typeof menuButtonVariants>['size']
+>;
 
-const MenuToggleGroupContext = React.createContext<MenuToggleContextValue>({
+type MenuContextChrome = {
+  /** `default` | `clear` — never `info`; use `tone` for emphasis. */
+  variant: 'default' | 'clear';
+  tone: MenuButtonTone;
+  size: MenuButtonSize;
+};
+
+const MenuToggleGroupContext = React.createContext<MenuContextChrome>({
   variant: 'default',
+  tone: 'default',
   size: 'md',
 });
 
+function normalizeGroupVariantTone(
+  variant: MenuButtonVariant | undefined,
+  tone: MenuButtonTone | undefined
+): Pick<MenuContextChrome, 'variant' | 'tone'> {
+  if (variant === 'info') {
+    return { variant: 'default', tone: 'information' };
+  }
+  return {
+    variant: variant === 'clear' ? 'clear' : 'default',
+    tone: tone === 'information' ? 'information' : 'default',
+  };
+}
+
+/**
+ * Resolves to internal `look` for CVA. `info` (legacy) always maps to the former
+ * `variant="info"` style.
+ */
+function resolveMenuItemLook(
+  itemVariant: MenuButtonVariant | undefined,
+  itemTone: MenuButtonTone | undefined,
+  context: MenuContextChrome
+): MenuButtonLook {
+  if (itemVariant === 'info') {
+    return 'info';
+  }
+  const mergedV: 'default' | 'clear' =
+    itemVariant !== undefined
+      ? itemVariant === 'clear'
+        ? 'clear'
+        : 'default'
+      : context.variant;
+  const mergedT: MenuButtonTone =
+    itemTone !== undefined ? itemTone : context.tone;
+  if (mergedT === 'information') {
+    return mergedV === 'clear' ? 'clearInfo' : 'info';
+  }
+  return mergedV;
+}
+
 type MenuToggleGroupProps = React.ComponentPropsWithoutRef<
   typeof ToggleGroupPrimitive.Root
-> &
-  VariantProps<typeof menuButtonVariants>;
+> & {
+  variant?: MenuButtonVariant;
+  tone?: MenuButtonTone;
+  size?: MenuButtonSize;
+};
 
 export const MenuToggleGroup = React.forwardRef<
   React.ElementRef<typeof ToggleGroupPrimitive.Root>,
   MenuToggleGroupProps
 >(
   (
-    { className, variant, size, children, orientation = 'vertical', ...props },
+    {
+      className,
+      variant: variantProp,
+      tone: toneProp,
+      size: sizeProp = 'md',
+      children,
+      orientation = 'vertical',
+      ...props
+    },
     ref
-  ) => (
-    <ToggleGroupPrimitive.Root
-      ref={ref}
-      orientation={orientation}
-      className={cn(
-        'flex items-center justify-center',
-        orientation === 'vertical' ? 'flex-col' : 'flex-row',
-        className
-      )}
-      {...props}
-    >
-      <MenuToggleGroupContext.Provider value={{ variant, size }}>
-        {children}
-      </MenuToggleGroupContext.Provider>
-    </ToggleGroupPrimitive.Root>
-  )
+  ) => {
+    const { variant, tone } = normalizeGroupVariantTone(variantProp, toneProp);
+    return (
+      <ToggleGroupPrimitive.Root
+        ref={ref}
+        orientation={orientation}
+        className={cn(
+          'flex items-center justify-center',
+          orientation === 'vertical' ? 'flex-col' : 'flex-row',
+          className
+        )}
+        {...props}
+      >
+        <MenuToggleGroupContext.Provider
+          value={{ variant, tone, size: sizeProp }}
+        >
+          {children}
+        </MenuToggleGroupContext.Provider>
+      </ToggleGroupPrimitive.Root>
+    );
+  }
 );
 
 MenuToggleGroup.displayName = ToggleGroupPrimitive.Root.displayName;
 
 type MenuToggleItemProps = React.ComponentPropsWithoutRef<
   typeof ToggleGroupPrimitive.Item
-> &
-  VariantProps<typeof menuButtonVariants> & {
-    icon?: React.ReactNode;
-    subIcon?: React.ReactNode;
-    showSubIcon?: boolean;
-    disableIconAnimation?: boolean;
-    iconAnimateOnHover?: boolean | string;
-    rightElement?: React.ReactNode;
-  };
+> & {
+  variant?: MenuButtonVariant;
+  tone?: MenuButtonTone;
+  size?: MenuButtonSize;
+  icon?: React.ReactNode;
+  subIcon?: React.ReactNode;
+  showSubIcon?: boolean;
+  disableIconAnimation?: boolean;
+  iconAnimateOnHover?: boolean | string;
+  rightElement?: React.ReactNode;
+};
 
 export const MenuToggleItem = React.forwardRef<
   React.ElementRef<typeof ToggleGroupPrimitive.Item>,
@@ -104,7 +183,8 @@ export const MenuToggleItem = React.forwardRef<
       children,
       size,
       icon,
-      variant,
+      variant: itemVariant,
+      tone: itemTone,
       subIcon,
       showSubIcon = false,
       disableIconAnimation = false,
@@ -118,13 +198,16 @@ export const MenuToggleItem = React.forwardRef<
     const [isSelected, setIsSelected] = React.useState(false);
     const itemRef = React.useRef<HTMLButtonElement | null>(null);
 
+    const look = resolveMenuItemLook(itemVariant, itemTone, context);
+    const isInformationLook = look === 'info' || look === 'clearInfo';
+    const resolvedSize = (size ?? context.size) as MenuButtonSize;
+
     const combinedRef = React.useCallback(
       (node: HTMLButtonElement | null) => {
         itemRef.current = node;
         if (typeof ref === 'function') {
           ref(node);
         } else if (ref) {
-          // Use Object.defineProperty to bypass readonly restriction
           Object.defineProperty(ref, 'current', {
             writable: true,
             value: node,
@@ -154,12 +237,9 @@ export const MenuToggleItem = React.forwardRef<
       return () => observer.disconnect();
     }, []);
 
-    const currentVariant = context.variant || variant;
-    const isInfoVariant = currentVariant === 'info';
-
     const iconNode =
-      React.isValidElement(icon) && isInfoVariant
-        ? React.cloneElement(icon as React.ReactElement<any>, {
+      React.isValidElement(icon) && isInformationLook
+        ? React.cloneElement(icon as React.ReactElement, {
             strokeWidth: isSelected ? 2.5 : 2,
           })
         : icon;
@@ -178,11 +258,13 @@ export const MenuToggleItem = React.forwardRef<
           className={cn(
             'group',
             menuButtonVariants({
-              variant: currentVariant,
-              size: context.size || size,
+              look,
+              size: resolvedSize,
             }),
             className
           )}
+          data-look={look}
+          data-menu-tone={isInformationLook ? 'information' : 'default'}
           {...props}
         >
           <span
