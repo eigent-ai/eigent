@@ -123,7 +123,7 @@ export default function Home() {
         cancelText={t('layout.cancel')}
       />
       {/* welcome text */}
-      <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-20 pt-16 flex w-full flex-row bg-gradient-to-b">
+      <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-16 pt-16 flex w-full flex-row bg-gradient-to-b">
         <p className="m-0 gap-2 inline-flex flex-wrap items-baseline">
           <WordCarousel
             words={[t(timeGreetingKey)]}
@@ -141,7 +141,7 @@ export default function Home() {
       {/* Navbar */}
       {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
       <div
-        className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default pl-20 pr-4 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid`}
+        className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default px-16 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid`}
       >
         <div className="mx-auto flex w-full flex-row items-center justify-between">
           <div className="gap-2 flex items-center">

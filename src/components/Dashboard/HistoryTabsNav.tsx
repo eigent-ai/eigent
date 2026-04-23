@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Blocks } from '@/components/ui/animate-ui/icons/blocks';
 import { Bot } from '@/components/ui/animate-ui/icons/bot';
 import { Compass } from '@/components/ui/animate-ui/icons/compass';
 import { Hammer } from '@/components/ui/animate-ui/icons/hammer';
 import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
 import { Radio } from '@/components/ui/animate-ui/icons/radio';
 import { Settings } from '@/components/ui/animate-ui/icons/settings';
-import { Sparkle } from '@/components/ui/animate-ui/icons/sparkle';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
@@ -47,7 +47,7 @@ type TabConfig = {
 };
 
 const HISTORY_TABS: TabConfig[] = [
-  { id: 'projects', icon: <Sparkle />, iconAnimateOnHover: 'wiggle' },
+  { id: 'projects', icon: <Blocks />, iconAnimateOnHover: 'default' },
   { id: 'agents', icon: <Bot />, iconAnimateOnHover: 'default' },
   { id: 'channels', icon: <Radio />, iconAnimateOnHover: 'default' },
   { id: 'connectors', icon: <Hammer />, iconAnimateOnHover: 'default' },

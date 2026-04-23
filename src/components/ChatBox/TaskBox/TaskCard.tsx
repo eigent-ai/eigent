@@ -507,7 +507,7 @@ export function TaskCard({
                         </div>
                         <div className="min-w-0 flex flex-1 flex-col items-start justify-center">
                           <div
-                            className={`min-w-0 w-full [overflow-wrap:anywhere] break-words whitespace-pre-line ${
+                            className={`min-w-0 w-full [overflow-wrap:anywhere] whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
                                 ? 'text-ds-text-caution-default-default'
                                 : task.status === TaskStatus.BLOCKED
