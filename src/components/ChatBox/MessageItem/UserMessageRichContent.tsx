@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import {
   RICH_SKILL_STYLE_CLASSES,
   hashSkillLabel,
@@ -113,11 +114,12 @@ export function UserMessageRichContent({
   variant = 'card',
   className,
 }: UserMessageRichContentProps) {
+  const host = useHost();
   const contentNodes = parseContentWithTags(content);
 
   const handleOpenSkillFolder = (skillName: string) => {
     if (!isSafeSkillFolderName(skillName)) return;
-    window.electronAPI?.openSkillFolder?.(skillName);
+    host?.electronAPI?.openSkillFolder?.(skillName);
   };
 
   const bodyClass =

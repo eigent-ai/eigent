@@ -20,6 +20,7 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -46,6 +47,7 @@ const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
 const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
+  const host = useHost();
 
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -675,7 +677,7 @@ export default function ChatBox(): JSX.Element {
   // File selection handler
   const handleFileSelect = async () => {
     try {
-      const result = await window.electronAPI.selectFile({
+      const result = await host?.electronAPI?.selectFile({
         title: t('chat.select-file'),
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
