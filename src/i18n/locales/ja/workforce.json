@@ -8,6 +8,7 @@
   "save-changes": "変更を保存",
   "description-optional": "説明（任意）",
   "agent-tool": "エージェントツール",
+  "agent-tool-tooltip": "エージェントのツールと統合を選択",
   "share": "共有",
   "advanced-model-config": "高度なモデル設定",
   "use-custom-model": "カスタムモデル設定を使用",

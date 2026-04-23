@@ -20,30 +20,31 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import githubIcon from '@/assets/github.svg';
 import IntegrationList from '@/components/Dashboard/IntegrationList';
 import { Badge } from '@/components/ui/badge';
+import {
+  useIntegrationManagement,
+  type IntegrationItem,
+} from '@/hooks/useIntegrationManagement';
 import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { CircleAlert, Store, X } from 'lucide-react';
+import { CircleAlert, X } from 'lucide-react';
 import {
   forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '../ui/button';
+import { Checkbox } from '../ui/checkbox';
 import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
 
-import AnthropicIcon from '@/assets/mcp/Anthropic.svg?url';
-import CamelIcon from '@/assets/mcp/Camel.svg?url';
-import CommunityIcon from '@/assets/mcp/Community.svg?url';
-import OfficialIcon from '@/assets/mcp/Official.svg?url';
 interface McpItem {
   id: number;
   name: string;
@@ -73,22 +74,22 @@ const ToolSelect = forwardRef<
   const { t } = useTranslation();
   // state management - remove internal selected state, use parent passed initialSelectedTools
   const [keyword, setKeyword] = useState<string>('');
-  const [mcpList, setMcpList] = useState<McpItem[]>([]);
-  const [allMcpList, setAllMcpList] = useState<McpItem[]>([]);
-  const [customMcpList, setCustomMcpList] = useState<any[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
-  const [installed, setInstalled] = useState<{ [id: number]: boolean }>({});
-  const [installing, setInstalling] = useState<{ [id: number]: boolean }>({});
-  const [installedIds, setInstalledIds] = useState<number[]>([]);
   const { email } = useAuthStore();
-  // add: integration service list
   const [integrations, setIntegrations] = useState<any[]>([]);
+  const [userMcpList, setUserMcpList] = useState<any[]>([]);
+
+  const integrationItems = integrations as IntegrationItem[];
+  const { installed: webInstalled } =
+    useIntegrationManagement(integrationItems);
+
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // select management
   const addOption = useCallback(
     (item: McpItem, isLocal?: boolean) => {
-      setKeyword('');
       const currentSelected = initialSelectedTools || [];
-      console.log(currentSelected.find((i) => i.id === item.id));
       if (isLocal) {
         if (!currentSelected.find((i) => i.key === item.key)) {
           const newSelected = [...currentSelected, { ...item, isLocal }];
@@ -298,85 +299,22 @@ const ToolSelect = forwardRef<
     [addOption, t]
   );
 
-  // Refs
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // constants
-  const categoryIconMap: Record<string, string> = {
-    anthropic: 'Anthropic',
-    community: 'Community',
-    official: 'Official',
-    camel: 'Camel',
-  };
-
-  const svgIcons: Record<string, string> = {
-    Anthropic: AnthropicIcon,
-    Community: CommunityIcon,
-    Official: OfficialIcon,
-    Camel: CamelIcon,
-  };
-
-  // data fetching
-  const fetchData = useCallback((keyword?: string) => {
-    proxyFetchGet('/api/v1/mcps', {
-      keyword: keyword || '',
-      page: 1,
-      size: 100,
-    })
-      .then((res) => {
-        // Add defensive check for API errors
-        if (res && res.items && Array.isArray(res.items)) {
-          setAllMcpList(res.items);
-        } else {
-          console.error('Failed to fetch MCPs:', res);
-          setAllMcpList([]);
-        }
-      })
-      .catch((error) => {
-        console.error('Error fetching MCPs:', error);
-        setAllMcpList([]);
-      });
-  }, []);
-
   const fetchInstalledMcps = useCallback(() => {
     proxyFetchGet('/api/v1/mcp/users')
       .then((res) => {
-        let dataList = [];
-        let ids: number[] = [];
+        let dataList: any[] = [];
         if (Array.isArray(res)) {
-          ids = res.map((item: any) => item.mcp_id);
           dataList = res;
         } else if (res && Array.isArray(res.items)) {
-          ids = res.items.map((item: any) => item.mcp_id);
           dataList = res.items;
         }
-        setInstalledIds(ids);
-
-        const customMcpList = dataList.filter((item: any) => item.mcp_id === 0);
-        setCustomMcpList(customMcpList);
+        setUserMcpList(dataList);
       })
       .catch((error) => {
         console.error('Error fetching installed MCPs:', error);
-        setInstalledIds([]);
-        setCustomMcpList([]);
+        setUserMcpList([]);
       });
   }, []);
-
-  // only surface installed MCPs from the market list
-  useEffect(() => {
-    // Add defensive check and fix logic: should filter when installedIds has items
-    if (Array.isArray(allMcpList) && installedIds.length > 0) {
-      const filtered = allMcpList.filter((item) =>
-        installedIds.includes(item.id)
-      );
-      setMcpList(filtered);
-    } else if (Array.isArray(allMcpList)) {
-      // If no installed IDs, show empty list instead of all
-      setMcpList([]);
-    }
-  }, [allMcpList, installedIds]);
 
   // public save env/config logic
   const saveEnvAndConfig = async (
@@ -634,11 +572,16 @@ const ToolSelect = forwardRef<
       }
       return;
     }
-    setInstalling((prev) => ({ ...prev, [id]: true }));
     try {
       await proxyFetchPost('/api/v1/mcp/install?mcp_id=' + id);
-      setInstalled((prev) => ({ ...prev, [id]: true }));
-      const installedMcp = mcpList.find((mcp) => mcp.id === id);
+      const listRes = await proxyFetchGet('/api/v1/mcps', {
+        page: 1,
+        size: 200,
+        keyword: '',
+      });
+      const items =
+        listRes?.items && Array.isArray(listRes.items) ? listRes.items : [];
+      const installedMcp = items.find((mcp: McpItem) => mcp.id === id);
       if (installedMcp?.install_command) {
         const installCmd = { ...installedMcp.install_command };
         if (envValue) {
@@ -650,14 +593,11 @@ const ToolSelect = forwardRef<
         }
         await mcpInstall(installedMcp.key, installCmd);
       }
-      // after install successfully, automatically add to selected list
       if (installedMcp) {
         addOption(installedMcp);
       }
     } catch (e) {
       console.error('Failed to install MCP:', e);
-    } finally {
-      setInstalling((prev) => ({ ...prev, [id]: false }));
     }
   };
 
@@ -666,58 +606,81 @@ const ToolSelect = forwardRef<
     installMcp,
   }));
 
-  const checkEnv = (id: number) => {
-    const mcp = mcpList.find((mcp) => mcp.id === id);
-    if (mcp && Object.keys(mcp?.install_command?.env || {}).length > 0) {
-      if (onShowEnvConfig) {
-        onShowEnvConfig(mcp);
+  const removeOption = useCallback(
+    (item: McpItem) => {
+      const currentSelected = initialSelectedTools || [];
+      const newSelected = currentSelected.filter((i) => i.id !== item.id);
+      onSelectedToolsChange?.(newSelected);
+    },
+    [initialSelectedTools, onSelectedToolsChange]
+  );
+
+  const buildLocalToolFromIntegration = useCallback(
+    (item: IntegrationItem): McpItem => {
+      const normalizedToolkit =
+        item.name === 'Notion' ? 'notion_mcp_toolkit' : item.toolkit;
+      return {
+        id: 0,
+        key: item.key,
+        name: item.name,
+        description: typeof item.desc === 'string' ? item.desc : '',
+        toolkit: normalizedToolkit,
+        isLocal: true,
+      };
+    },
+    []
+  );
+
+  const isIntegrationInAgentSelection = useCallback(
+    (item: IntegrationItem) =>
+      !!(initialSelectedTools || []).find(
+        (s) => s.isLocal && s.key === item.key
+      ),
+    [initialSelectedTools]
+  );
+
+  const handleToggleIntegrationForAgent = useCallback(
+    (item: IntegrationItem, selected: boolean) => {
+      if (selected) {
+        addOption(buildLocalToolFromIntegration(item), true);
+      } else {
+        const found = (initialSelectedTools || []).find(
+          (s) => s.isLocal && s.key === item.key
+        );
+        if (found) removeOption(found);
       }
-    } else {
-      installMcp(id);
-    }
-  };
+    },
+    [
+      addOption,
+      buildLocalToolFromIntegration,
+      initialSelectedTools,
+      removeOption,
+    ]
+  );
 
-  const removeOption = (item: McpItem) => {
-    const currentSelected = initialSelectedTools || [];
-    const newSelected = currentSelected.filter((i) => i.id !== item.id);
-    onSelectedToolsChange?.(newSelected);
-  };
-
-  // tool functions
-  const getCategoryIcon = (categoryName?: string) => {
-    if (!categoryName)
-      return <Store className="h-4 w-4 text-ds-icon-neutral-default-default" />;
-
-    const normalizedName = categoryName.toLowerCase();
-    const iconKey = categoryIconMap[normalizedName];
-    const iconUrl = iconKey ? svgIcons[iconKey] : undefined;
-
-    return iconUrl ? (
-      <img src={iconUrl} alt={categoryName} className="h-4 w-4" />
-    ) : (
-      <Store className="h-4 w-4 text-ds-icon-neutral-default-default" />
-    );
-  };
-
-  const getGithubRepoName = (homePage?: string) => {
-    if (!homePage || !homePage.startsWith('https://github.com/')) return null;
-    const parts = homePage.split('/');
-    return parts.length > 4 ? parts[4] : homePage;
-  };
-
-  const getInstallButtonText = (itemId: number) => {
-    if (installedIds.includes(itemId)) return t('layout.installed');
-    if (installing[itemId]) return t('layout.installing');
-    if (installed[itemId]) return t('layout.installed');
-    return t('layout.install');
-  };
+  const handleToggleUserMcp = useCallback(
+    (row: any, selected: boolean) => {
+      if (selected) {
+        addOption({
+          id: row.id,
+          key: row.mcp_key || String(row.id),
+          name: row.mcp_name || row.mcp_key,
+          description: String(row.mcp_desc || ''),
+          mcp_name: row.mcp_name,
+        } as McpItem);
+      } else {
+        const found = (initialSelectedTools || []).find((i) => i.id === row.id);
+        if (found) removeOption(found);
+      }
+    },
+    [addOption, initialSelectedTools, removeOption]
+  );
 
   // Effects
   useEffect(() => {
-    fetchData();
     fetchIntegrationsData();
     fetchInstalledMcps();
-  }, [fetchData, fetchIntegrationsData, fetchInstalledMcps]);
+  }, [fetchIntegrationsData, fetchInstalledMcps]);
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -725,7 +688,6 @@ const ToolSelect = forwardRef<
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      fetchData(keyword);
       fetchIntegrationsData(keyword);
     }, 500);
 
@@ -734,23 +696,56 @@ const ToolSelect = forwardRef<
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [keyword, fetchData, fetchIntegrationsData]);
+  }, [keyword, fetchIntegrationsData]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
+  const webConnectedItems = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return integrations
+      .filter((i: IntegrationItem) => webInstalled[i.key])
+      .filter((i: IntegrationItem) => {
+        if (!kw) return true;
+        const descStr = typeof i.desc === 'string' ? i.desc.toLowerCase() : '';
+        return (
+          (i.key || '').toLowerCase().includes(kw) ||
+          (i.name || '').toLowerCase().includes(kw) ||
+          descStr.includes(kw)
+        );
+      });
+  }, [integrations, webInstalled, keyword]);
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+  const webNotConnectedItems = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return integrations
+      .filter((i: IntegrationItem) => !webInstalled[i.key])
+      .filter((i: IntegrationItem) => {
+        if (!kw) return true;
+        const descStr = typeof i.desc === 'string' ? i.desc.toLowerCase() : '';
+        return (
+          (i.key || '').toLowerCase().includes(kw) ||
+          (i.name || '').toLowerCase().includes(kw) ||
+          descStr.includes(kw)
+        );
+      });
+  }, [integrations, webInstalled, keyword]);
+
+  const ownPicks = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return userMcpList.filter((opt) => {
+      if (!kw) return true;
+      const name = String(opt.mcp_name || '').toLowerCase();
+      const desc = String(opt.mcp_desc || '').toLowerCase();
+      const key = String(opt.mcp_key || '').toLowerCase();
+      return name.includes(kw) || desc.includes(kw) || key.includes(kw);
+    });
+  }, [userMcpList, keyword]);
+
+  const listHasItems =
+    webConnectedItems.length > 0 ||
+    webNotConnectedItems.length > 0 ||
+    ownPicks.length > 0;
+
+  const showSearchPlaceholder =
+    keyword.length === 0 && (initialSelectedTools?.length ?? 0) === 0;
 
   // render functions
   const renderSelectedItems = () => (
@@ -758,12 +753,14 @@ const ToolSelect = forwardRef<
       {(initialSelectedTools || []).map((item: any) => (
         <Badge
           key={item.id + item.key + (item.isLocal + '')}
-          className="h-5 gap-1 bg-ds-bg-neutral-subtle-default px-xs flex w-auto flex-shrink-0 items-center"
+          variant="secondary"
+          size="sm"
+          className="flex w-auto flex-shrink-0"
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
-          <div className="rounded-sm bg-ds-bg-neutral-muted-disabled flex items-center justify-center">
+          <div className="rounded-sm flex items-center justify-center bg-transparent">
             <X
-              className="h-4 w-4 text-ds-text-neutral-muted-disabled hover:text-ds-text-neutral-default-default cursor-pointer"
+              className="h-4 w-4 text-ds-text-neutral-default-disabled hover:text-ds-text-neutral-default-default shrink-0 cursor-pointer"
               onClick={() => removeOption(item)}
             />
           </div>
@@ -772,160 +769,132 @@ const ToolSelect = forwardRef<
     </>
   );
 
-  const renderMcpItem = (item: McpItem) => (
-    <div
-      key={item.id}
-      onClick={() => {
-        // check if already installed
-        const isAlreadyInstalled =
-          installedIds.includes(item.id) || installed[item.id];
-
-        if (isAlreadyInstalled) {
-          // if already installed, add to selected list directly
-          addOption(item);
-          setKeyword('');
-        } else {
-          // if not installed, first check environment configuration, then install and add to selected list
-          checkEnv(item.id);
-        }
-      }}
-      className="px-3 py-2 hover:bg-ds-bg-neutral-default-hover flex cursor-pointer justify-between"
-    >
-      <div className="gap-1 flex items-center">
-        {getCategoryIcon(item.category?.name)}
-        <div className="text-sm font-bold leading-17 text-ds-text-brand-default-default line-clamp-1 overflow-hidden break-words text-ellipsis">
-          {item.name}
-        </div>
-        <TooltipSimple content={item.description}>
-          <CircleAlert
-            className="h-4 w-4 text-ds-icon-neutral-default-default cursor-pointer"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </TooltipSimple>
-      </div>
-      <div className="gap-1 flex items-center">
-        {getGithubRepoName(item.home_page) && (
-          <div className="flex items-center">
-            <img
-              src={githubIcon}
-              alt="github"
-              style={{
-                width: 14.7,
-                height: 14.7,
-                marginRight: 4,
-                display: 'inline-block',
-                verticalAlign: 'middle',
-              }}
-            />
-            <span className="text-xs font-medium leading-3 line-clamp-1 items-center justify-center self-stretch overflow-hidden break-words text-ellipsis">
-              {getGithubRepoName(item.home_page)}
-            </span>
-          </div>
-        )}
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={
-            installed[item.id] ||
-            installing[item.id] ||
-            installedIds.includes(item.id)
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            checkEnv(item.id);
+  const renderCustomMcpItem = (item: any) => {
+    const checked = !!(initialSelectedTools || []).find(
+      (i) => i.id === item.id
+    );
+    return (
+      <div
+        key={item.id}
+        className="gap-2 rounded-lg bg-ds-bg-neutral-subtle-default py-2 px-3 last:mb-1 min-h-0 flex w-auto items-center"
+      >
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(c) => {
+            if (c === 'indeterminate') return;
+            handleToggleUserMcp(item, c === true);
           }}
-        >
-          {getInstallButtonText(item.id)}
-        </Button>
+          onClick={(e) => e.stopPropagation()}
+          aria-label={String(item.mcp_name || item.mcp_key || '')}
+        />
+        <span className="min-w-0 text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base line-clamp-2 flex-1 break-words">
+          {capitalizeFirstLetter(item.mcp_name || '')}
+        </span>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const renderCustomMcpItem = (item: any) => (
-    <div
-      key={item.id}
-      onClick={() => {
-        addOption(item);
-        setKeyword('');
-      }}
-      className="px-3 py-2 hover:bg-ds-bg-neutral-default-hover flex cursor-pointer justify-between"
-    >
-      <div className="gap-1 flex items-center">
-        {/* {getCategoryIcon(item.category?.name)} */}
-        <div className="text-body-md font-bold text-ds-text-brand-default-default line-clamp-1 overflow-hidden break-words text-ellipsis">
-          {item.mcp_name}
-        </div>
-        <TooltipSimple content={item.mcp_desc}>
-          <CircleAlert
-            className="h-4 w-4 text-ds-icon-neutral-default-default cursor-pointer"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </TooltipSimple>
-      </div>
-      <div className="gap-1 flex items-center">
-        <Button variant="secondary" size="sm" textWeight="bold" disabled>
-          {t('layout.installed')}
-        </Button>
-      </div>
-    </div>
-  );
   return (
-    <div className="relative w-full" ref={containerRef}>
-      <div className="gap-1.5 rounded-lg flex min-h-[40px] flex-wrap border">
-        <div className="gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default flex items-center">
+    <div className="min-w-0 w-full" ref={containerRef}>
+      <div className="gap-1.5 min-w-0 flex w-full flex-col">
+        <div className="gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default min-h-5 flex shrink-0 items-center">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
             <CircleAlert
               size={16}
-              className="text-ds-icon-neutral-default-default"
+              className="text-ds-icon-neutral-default-default shrink-0"
             />
           </TooltipSimple>
         </div>
         <div
-          onClick={() => {
-            inputRef.current?.focus();
-            setIsOpen(true);
-          }}
-          className="gap-1 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default py-1 flex max-h-[120px] min-h-[60px] w-full flex-wrap justify-start overflow-y-auto border border-solid px-[6px]"
+          onMouseDown={() => inputRef.current?.focus()}
+          className={cn(
+            'focus-within:ring-ds-border-brand-default-default/35 gap-1.5 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default min-w-0 px-2 py-1.5 flex max-h-[120px] min-h-[40px] w-full flex-wrap content-center items-center justify-start border border-solid focus-within:ring-2'
+          )}
         >
           {renderSelectedItems()}
           <Textarea
             variant="none"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onFocus={() => setIsOpen(true)}
             ref={inputRef}
-            className="p-0 text-sm leading-normal !h-[20px] w-auto resize-none border-none bg-transparent !shadow-none !ring-0 !ring-offset-0"
+            placeholder={
+              showSearchPlaceholder ? t('setting.search-mcp') : undefined
+            }
+            aria-label={t('workforce.agent-tool')}
+            aria-controls="agent-tool-picker-panel"
+            className="p-0 text-sm leading-5 text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-muted-default !min-h-[20px] min-w-[8ch] flex-1 resize-none border-none !shadow-none !ring-0 !ring-offset-0 focus-visible:ring-0"
+            rows={1}
           />
         </div>
-      </div>
 
-      {/* floating dropdown */}
-      {isOpen && (
-        <div className="left-0 right-0 mt-1 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default absolute top-full z-50 overflow-y-auto border border-solid">
-          <div className="max-h-[192px] overflow-y-auto">
-            <IntegrationList
-              variant="select"
-              onShowEnvConfig={onShowEnvConfig}
-              addOption={addOption}
-              items={integrations}
-              translationNamespace="layout"
-            />
-            {mcpList
-              .filter(
-                (opt) =>
-                  !(initialSelectedTools || []).find((i) => i.id === opt.id)
-              )
-              .map(renderMcpItem)}
-            {customMcpList
-              .filter(
-                (opt) =>
-                  !(initialSelectedTools || []).find((i) => i.id === opt.id)
-              )
-              .map(renderCustomMcpItem)}
+        <div
+          id="agent-tool-picker-panel"
+          role="region"
+          aria-label={t('workforce.agent-tool')}
+          className="min-w-0 rounded-lg border-ds-border-neutral-muted-default bg-ds-bg-neutral-default-default w-full overflow-hidden border border-solid"
+        >
+          <div className="scrollbar-always-visible gap-1.5 px-2 py-2 min-h-0 flex h-[260px] flex-col overflow-x-hidden overflow-y-auto">
+            {listHasItems ? (
+              <div
+                className="text-ds-text-neutral-default-default min-w-0 gap-3 flex flex-col"
+                data-mcp-list="unified"
+              >
+                {webConnectedItems.length > 0 && (
+                  <div>
+                    <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1">
+                      {t('setting.mcp-sidebar-web')}
+                    </div>
+                    <IntegrationList
+                      className="!space-y-1.5"
+                      variant="select"
+                      onShowEnvConfig={onShowEnvConfig}
+                      addOption={addOption}
+                      items={webConnectedItems}
+                      translationNamespace="layout"
+                      selectWithCheckbox
+                      isIntegrationSelected={isIntegrationInAgentSelection}
+                      onToggleIntegration={handleToggleIntegrationForAgent}
+                    />
+                  </div>
+                )}
+                {ownPicks.length > 0 && (
+                  <div>
+                    <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1 mb-1">
+                      {t('setting.your-own-mcps')}
+                    </div>
+                    <div className="min-w-0 gap-2 flex flex-col">
+                      {ownPicks.map(renderCustomMcpItem)}
+                    </div>
+                  </div>
+                )}
+                {webNotConnectedItems.length > 0 && (
+                  <div>
+                    <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1">
+                      {t('setting.mcp-sidebar-not-connected')}
+                    </div>
+                    <IntegrationList
+                      className="!space-y-1.5"
+                      variant="select"
+                      onShowEnvConfig={onShowEnvConfig}
+                      addOption={addOption}
+                      items={webNotConnectedItems}
+                      translationNamespace="layout"
+                      selectWithCheckbox
+                      isIntegrationSelected={isIntegrationInAgentSelection}
+                      onToggleIntegration={handleToggleIntegrationForAgent}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-body-md text-ds-text-neutral-muted-default px-2 py-2 text-center break-words">
+                {t('dashboard.no-results')}
+              </p>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 });

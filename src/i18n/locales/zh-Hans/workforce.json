@@ -8,6 +8,7 @@
   "save-changes": "保存更改",
   "description-optional": "描述（可选）",
   "agent-tool": "Agent 工具",
+  "agent-tool-tooltip": "为您的智能体选择工具和集成",
   "share": "分享",
   "advanced-model-config": "高级模型配置",
   "use-custom-model": "使用自定义模型配置",

@@ -8,6 +8,7 @@
   "save-changes": "Änderungen speichern",
   "description-optional": "Beschreibung (Optional)",
   "agent-tool": "Agent-Tool",
+  "agent-tool-tooltip": "Wählen Sie Tools und Integrationen für Ihren Agenten",
   "share": "Teilen",
   "advanced-model-config": "Erweiterte Modellkonfiguration",
   "use-custom-model": "Benutzerdefinierte Modellkonfiguration verwenden",

@@ -8,6 +8,7 @@
   "save-changes": "حفظ التغييرات",
   "description-optional": "الوصف (اختياري)",
   "agent-tool": "أداة الوكيل",
+  "agent-tool-tooltip": "اختر الأدوات والتكاملات لوكيلك",
   "share": "مشاركة",
   "advanced-model-config": "إعدادات النموذج المتقدمة",
   "use-custom-model": "استخدام إعدادات نموذج مخصصة",
