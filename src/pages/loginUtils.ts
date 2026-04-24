@@ -13,13 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 export const DESKTOP_LOGIN_CALLBACK_URL = 'eigent://auth/callback';
+const DEFAULT_SITE_URL = 'https://www.eigent.ai';
+const SITE_URL = import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL;
 
 export function getWebLoginCallbackUrl(origin: string): string {
   return new URL('/login', origin).toString();
 }
 
 export function getExternalLoginUrl(callbackUrl: string): string {
-  const loginUrl = new URL('https://www.eigent.ai/signin');
+  const loginUrl = new URL('/signin', SITE_URL);
   loginUrl.searchParams.set('callbackUrl', callbackUrl);
   return loginUrl.toString();
 }
