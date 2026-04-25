@@ -27,8 +27,8 @@ Note: All the above data is stored in the local PostgreSQL volume in Docker (see
 #### Prerequisites
 
 - **Docker Desktop**: Installed and running
-- **Python**: 3.10.\* (3.10.15 recommended)
-- **Node.js**: >=18.0.0 <23.0.0
+- **Python**: 3.12.* (3.12.9 recommended)
+- **Node.js**: >=22.12.0 <23.0.0
 
 #### Hosting Configuration for Triggers
 
