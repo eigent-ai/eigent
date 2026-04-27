@@ -12,56 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
-import { AlertCircle, Bell, Sparkles, type LucideIcon } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export type NotificationPanelProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
-
-type NotificationItemCardProps = {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  /** Optional action row (e.g. buttons) */
-  actions?: ReactNode;
-};
-
-function NotificationItemCard({
-  icon: Icon,
-  title,
-  description,
-  actions,
-}: NotificationItemCardProps) {
-  return (
-    <div className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-3 border border-solid">
-      <div className="gap-3 min-w-0 flex items-start">
-        <div
-          className="text-ds-icon-neutral-default-default h-4 w-4 rounded-lg flex shrink-0 items-center justify-center"
-          aria-hidden
-        >
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 gap-1.5 flex flex-1 flex-col">
-          <span className="text-ds-text-neutral-default-default text-body-sm font-semibold leading-tight">
-            {title}
-          </span>
-          <span className="text-ds-text-neutral-muted-default text-body-xs leading-tight mt-1">
-            {description}
-          </span>
-          {actions != null ? (
-            <div className="gap-2 mt-1 flex flex-wrap items-center">
-              {actions}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function NotificationPanel({
   open,
@@ -106,86 +63,9 @@ export default function NotificationPanel({
           >
             {t('layout.notifications')}
           </span>
-          <div className="mt-3 min-h-0 gap-2.5 flex flex-col">
-            <NotificationItemCard
-              icon={Sparkles}
-              title={t('layout.notification-placeholder-feature-title', {
-                defaultValue: 'New: workspace shortcuts',
-              })}
-              description={t(
-                'layout.notification-placeholder-feature-description',
-                {
-                  defaultValue:
-                    'You can now jump between session and workforce from the command palette.',
-                }
-              )}
-              actions={
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    tone="neutral"
-                    size="xs"
-                    buttonContent="text"
-                  >
-                    {t('layout.notification-placeholder-learn-more', {
-                      defaultValue: 'Learn more',
-                    })}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    tone="neutral"
-                    size="xs"
-                    buttonContent="text"
-                  >
-                    {t('layout.notification-placeholder-dismiss', {
-                      defaultValue: 'Dismiss',
-                    })}
-                  </Button>
-                </>
-              }
-            />
-            <NotificationItemCard
-              icon={AlertCircle}
-              title={t('layout.notification-placeholder-sync-title', {
-                defaultValue: 'Connection paused',
-              })}
-              description={t(
-                'layout.notification-placeholder-sync-description',
-                {
-                  defaultValue:
-                    'We will retry in the background. You can still work locally.',
-                }
-              )}
-              actions={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  tone="neutral"
-                  size="xs"
-                  buttonContent="text"
-                >
-                  {t('layout.notification-placeholder-retry', {
-                    defaultValue: 'Retry',
-                  })}
-                </Button>
-              }
-            />
-            <NotificationItemCard
-              icon={Bell}
-              title={t('layout.notification-placeholder-silent-title', {
-                defaultValue: 'All caught up',
-              })}
-              description={t(
-                'layout.notification-placeholder-silent-description',
-                {
-                  defaultValue:
-                    'This item has no action row, only title and message.',
-                }
-              )}
-            />
-          </div>
+          <p className="text-ds-text-neutral-muted-default text-body-sm mt-3">
+            {t('layout.notifications-empty')}
+          </p>
         </div>
       </div>
     </>

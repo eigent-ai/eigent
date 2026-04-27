@@ -75,6 +75,7 @@
   "copy-failed": "Не удалось скопировать email",
   "download-logs": "Скачать журналы",
   "notifications": "Уведомления",
+  "notifications-empty": "Пока нет уведомлений.",
   "support": "Поддержка",
   "log-file-empty": "Файл журнала пуст",
   "new-project": "Новый проект",

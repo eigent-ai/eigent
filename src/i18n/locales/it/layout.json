@@ -75,6 +75,7 @@
   "copy-failed": "Impossibile copiare l'email",
   "download-logs": "Scarica i log",
   "notifications": "Notifiche",
+  "notifications-empty": "Nessuna notifica.",
   "support": "Supporto",
   "log-file-empty": "Il file di log è vuoto",
   "new-project": "Nuovo Progetto",

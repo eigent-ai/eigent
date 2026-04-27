@@ -75,6 +75,7 @@
   "copy-failed": "تعذر نسخ البريد الإلكتروني",
   "download-logs": "تنزيل السجلات",
   "notifications": "الإشعارات",
+  "notifications-empty": "لا توجد إشعارات بعد.",
   "support": "الدعم",
   "log-file-empty": "ملف السجل فارغ",
   "new-project": "مشروع جديد",

@@ -92,6 +92,7 @@
   "copy-failed": "Could not copy email",
   "download-logs": "Download logs",
   "notifications": "Notifications",
+  "notifications-empty": "No notifications yet.",
   "support": "Support",
   "log-file-empty": "Log file is empty",
   "new-project": "New Project",

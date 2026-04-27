@@ -75,6 +75,7 @@
   "copy-failed": "メールをコピーできませんでした",
   "download-logs": "ログをダウンロード",
   "notifications": "通知",
+  "notifications-empty": "通知はありません。",
   "support": "サポート",
   "log-file-empty": "ログファイルが空です",
   "new-project": "新規プロジェクト",

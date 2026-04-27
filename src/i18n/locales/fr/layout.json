@@ -75,6 +75,7 @@
   "copy-failed": "Impossible de copier l'e-mail",
   "download-logs": "Télécharger les journaux",
   "notifications": "Notifications",
+  "notifications-empty": "Aucune notification pour le moment.",
   "support": "Assistance",
   "log-file-empty": "Le fichier journal est vide",
   "new-project": "Nouveau Projet",

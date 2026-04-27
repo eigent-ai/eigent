@@ -75,6 +75,7 @@
   "copy-failed": "E-Mail konnte nicht kopiert werden",
   "download-logs": "Protokolle herunterladen",
   "notifications": "Benachrichtigungen",
+  "notifications-empty": "Noch keine Benachrichtigungen.",
   "support": "Support",
   "log-file-empty": "Protokolldatei ist leer",
   "new-project": "Neues Projekt",

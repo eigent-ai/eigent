@@ -92,6 +92,7 @@
   "copy-failed": "无法复制邮箱",
   "download-logs": "下载日志",
   "notifications": "通知",
+  "notifications-empty": "暂无通知。",
   "support": "支持",
   "log-file-empty": "日志文件为空",
   "new-project": "新项目",

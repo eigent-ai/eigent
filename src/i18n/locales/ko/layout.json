@@ -75,6 +75,7 @@
   "copy-failed": "이메일을 복사할 수 없습니다",
   "download-logs": "로그 다운로드",
   "notifications": "알림",
+  "notifications-empty": "알림이 없습니다.",
   "support": "지원",
   "log-file-empty": "로그 파일이 비어 있습니다",
   "new-project": "새 프로젝트",
