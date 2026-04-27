@@ -18,14 +18,11 @@ import {
   type HistoryTabId,
 } from '@/components/Dashboard/HistoryTabsNav';
 import AlertDialog from '@/components/ui/alertDialog';
-import { Button } from '@/components/ui/button';
 import WordCarousel from '@/components/ui/WordCarousel';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import Project from '@/pages/Projects/Project';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { Plus } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -43,7 +40,6 @@ export default function Home() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { chatStore, projectStore } = useChatStoreAdapter();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const { username, email } = useAuthStore();
@@ -95,79 +91,60 @@ export default function Home() {
     setDeleteModalOpen(false);
   };
 
-  // create task
-  const createChat = () => {
-    //Handles refocusing id & non duplicate logic internally
-    projectStore?.createProject('new project');
-    setActiveWorkspaceTab('workforce');
-    navigate('/');
-  };
-
   if (!chatStore || !projectStore) {
     return <div>Loading...</div>;
   }
 
   return (
-    <div
-      ref={scrollContainerRef}
-      className="scrollbar-hide bg-ds-bg-neutral-subtle-default mx-auto h-full overflow-y-auto"
-    >
-      {/* alert dialog */}
-      <AlertDialog
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        onConfirm={confirmDelete}
-        title={t('layout.delete-task')}
-        message={t('layout.delete-task-confirmation')}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-      />
-      {/* welcome text */}
-      <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-16 pt-16 flex w-full flex-row bg-gradient-to-b">
-        <p className="m-0 gap-2 inline-flex flex-wrap items-baseline">
-          <WordCarousel
-            words={[t(timeGreetingKey)]}
-            className="history-welcome-headline text-heading-xl font-bold tracking-tight not-italic"
-            rotateIntervalMs={100}
-            sweepDurationMs={2000}
-            sweepOnce
-            gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
-          />
-          <span className="history-welcome-headline text-heading-xl font-bold tracking-tight text-ds-text-brand-default-default italic">
-            {`, ${welcomeName} !`}
-          </span>
-        </p>
-      </div>
-      {/* Navbar */}
-      {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
+    <div className="px-1 pb-1 pt-10 flex h-full w-full flex-1 flex-col">
       <div
-        className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default px-16 pt-10 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid`}
+        ref={scrollContainerRef}
+        className="scrollbar-hide bg-ds-bg-neutral-subtle-default rounded-2xl h-full overflow-y-auto"
       >
-        <div className="mx-auto flex w-full flex-row items-center justify-between">
-          <div className="gap-2 flex items-center">
+        {/* alert dialog */}
+        <AlertDialog
+          isOpen={deleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          onConfirm={confirmDelete}
+          title={t('layout.delete-task')}
+          message={t('layout.delete-task-confirmation')}
+          confirmText={t('layout.delete')}
+          cancelText={t('layout.cancel')}
+        />
+        {/* welcome text */}
+        <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default py-8 flex w-full flex-row bg-gradient-to-b px-[74px]">
+          <p className="m-0 gap-2 inline-flex flex-wrap items-baseline">
+            <WordCarousel
+              words={[t(timeGreetingKey)]}
+              className="history-welcome-headline text-heading-xl font-bold tracking-tight not-italic"
+              rotateIntervalMs={100}
+              sweepDurationMs={2000}
+              sweepOnce
+              gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
+            />
+            <span className="history-welcome-headline text-heading-xl font-bold tracking-tight text-ds-text-brand-default-default italic">
+              {`, ${welcomeName} !`}
+            </span>
+          </p>
+        </div>
+        {/* Navbar */}
+        {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
+        <div
+          className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default pt-2 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid px-[70px]`}
+        >
+          <div className="mx-auto flex w-full flex-row items-center">
             <HistoryTabsNav activeTab={activeTab} onChange={handleTabChange} />
           </div>
-          <Button
-            variant="primary"
-            tone="default"
-            buttonRadius="full"
-            size="sm"
-            onClick={createChat}
-            className="mb-2"
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-            {t('layout.new-project')}
-          </Button>
         </div>
-      </div>
-      <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
-        <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
-          {activeTab === 'projects' && <Project />}
-          {activeTab === 'agents' && <Agents />}
-          {activeTab === 'channels' && <Channels />}
-          {activeTab === 'connectors' && <Connectors />}
-          {activeTab === 'browser' && <Browser />}
-          {activeTab === 'settings' && <Setting />}
+        <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
+          <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
+            {activeTab === 'projects' && <Project />}
+            {activeTab === 'agents' && <Agents />}
+            {activeTab === 'channels' && <Channels />}
+            {activeTab === 'connectors' && <Connectors />}
+            {activeTab === 'browser' && <Browser />}
+            {activeTab === 'settings' && <Setting />}
+          </div>
         </div>
       </div>
     </div>
