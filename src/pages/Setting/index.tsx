@@ -120,7 +120,7 @@ export default function Setting() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-auto flex-shrink-0 flex-grow-0 flex-col self-start">
+      <div className="w-40 pr-6 pt-8 flex h-auto flex-shrink-0 flex-grow-0 flex-col self-start">
         <VerticalNavigation
           items={
             settingMenus.map((menu) => {

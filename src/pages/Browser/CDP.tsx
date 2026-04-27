@@ -230,7 +230,7 @@ export default function CDP() {
       />
 
       {/* Header Section */}
-      <div className="top-0 px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
         <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">

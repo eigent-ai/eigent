@@ -36,7 +36,7 @@ export default function Channels() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
+      <div className="w-40 pr-6 pt-8 flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
         <VerticalNavigation
           items={
             menuItems.map((menu) => ({

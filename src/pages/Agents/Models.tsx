@@ -1739,7 +1739,7 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="top-0 px-6 pb-6 pt-8 sticky z-10 flex w-full items-center justify-between">
+      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
         <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
@@ -1924,7 +1924,7 @@ export default function SettingModels() {
 
         {/* Content Section with Sidebar */}
         <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="px-3 py-2 text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-2 font-bold text-ds-text-neutral-default-default sticky top-[80px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+          <div className="px-3 py-2 text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-2 font-bold text-ds-text-neutral-default-default sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
