@@ -325,10 +325,10 @@ export default function Workspace() {
         <div className="min-h-0 px-3 flex w-full flex-1 flex-col">
           <div className="mx-auto flex w-full max-w-[600px] shrink-0 flex-col">
             <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
-              <div className="mb-6 flex w-full justify-center">
+              <div className="mb-8 flex w-full justify-center">
                 <WorkspaceProjectPicker />
               </div>
-              <span className="mb-6 text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
+              <span className="mb-8 text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
                 {sessionSidePanelMode === SessionMode.SINGLE_AGENT
                   ? t('layout.workspace-cowork-single-agent', {
                       defaultValue: 'Cowork with Single Agent',
