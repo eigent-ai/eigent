@@ -13,36 +13,45 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * Output files from agent runs are stored on each plan subtask under
- * `taskAssigning[].tasks[].fileList` (see `addFileList` on WRITE_FILE).
- * The chat task's top-level `fileList` is not kept in sync, so the side
- * panel must aggregate from assigning agents.
+ * Output files from agent runs can arrive from multiple places:
+ * `taskAssigning[].tasks[].fileList` for WRITE_FILE events, `messages[].fileList`
+ * for final-summary extraction, and occasionally task-level mirrors.
+ * The chat task's top-level `fileList` is not kept in sync, so the side panel
+ * must aggregate every known source.
  */
 function fileInfoDedupKey(f: FileInfo): string {
+  const rel = (f.relativePath ?? '').trim();
+  if (rel) return rel;
   const p = (f.path ?? '').trim();
   if (p) return p;
-  return (f.name ?? '').trim() || 'unknown';
+  return (f.name ?? '').trim();
 }
 
 export function collectSidePanelOutputFiles(
   task:
     | {
         taskAssigning?: Agent[];
+        taskInfo?: TaskInfo[];
+        taskRunning?: TaskInfo[];
         fileList?: FileInfo[];
+        messages?: Pick<Message, 'fileList'>[];
       }
     | null
     | undefined
 ): FileInfo[] {
   if (!task) return [];
-  const nested = (task.taskAssigning ?? []).flatMap((agent) =>
-    agent.tasks.flatMap((t) => t.fileList ?? [])
+  const assigned = (task.taskAssigning ?? []).flatMap((agent) =>
+    (agent.tasks ?? []).flatMap((t) => t.fileList ?? [])
   );
+  const planned = (task.taskInfo ?? []).flatMap((t) => t.fileList ?? []);
+  const running = (task.taskRunning ?? []).flatMap((t) => t.fileList ?? []);
+  const messages = (task.messages ?? []).flatMap((m) => m.fileList ?? []);
   const top = task.fileList ?? [];
   const seen = new Set<string>();
   const out: FileInfo[] = [];
-  for (const f of [...top, ...nested]) {
+  for (const f of [...top, ...assigned, ...planned, ...running, ...messages]) {
     const k = fileInfoDedupKey(f);
-    if (seen.has(k)) continue;
+    if (!k || seen.has(k)) continue;
     seen.add(k);
     out.push(f);
   }
