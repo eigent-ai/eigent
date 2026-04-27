@@ -127,6 +127,7 @@
   "task-running": "작업 실행",
   "task-completed": "작업 완료",
   "add-new-task": "새 작업 추가",
+  "achieve-project": "프로젝트 달성",
   "end-project": "프로젝트 종료",
   "ending-this-project-will-stop": "이 프로젝트를 종료하면 실행 중인 모든 작업이 중지되고, 기록에서 제거되며, 새로운 빈 프로젝트가 생성됩니다. 계속하시겠습니까?",
   "yes-end-project": "예, 프로젝트 종료",

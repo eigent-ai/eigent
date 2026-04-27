@@ -144,6 +144,7 @@
   "task-running": "Task Running",
   "task-completed": "Task Completed",
   "add-new-task": "Add new task",
+  "achieve-project": "Achieve Project",
   "end-project": "End project",
   "ending-this-project-will-stop": "Ending this project will stop any running tasks, remove it from history, and create a new empty project. Are you sure you want to proceed?",
   "yes-end-project": "Yes, end project",

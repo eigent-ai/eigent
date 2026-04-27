@@ -30,7 +30,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BottomAction } from './BottomAction';
 import { HeaderAction } from './HeaderAction';
 import { NavList } from './NavList';
 import {
@@ -272,7 +271,7 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 py-2 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
           className
         )}
       >
@@ -425,14 +424,6 @@ export default function ProjectPageSidebar({
               />
             </div>
           </div>
-
-          <BottomAction
-            showEndProject={showEndProject}
-            endProjectLabel={t('layout.end-project')}
-            endProjectAriaLabel={t('layout.end-project')}
-            onEndProjectClick={() => setEndDialogOpen(true)}
-            folded={projectSidebarFolded}
-          />
         </div>
       </aside>
 

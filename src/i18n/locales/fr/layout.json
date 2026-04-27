@@ -127,6 +127,7 @@
   "task-running": "Exécution des Tâches",
   "task-completed": "Tâche Terminée",
   "add-new-task": "Ajouter une nouvelle tâche",
+  "achieve-project": "Finaliser le projet",
   "end-project": "Terminer le projet",
   "ending-this-project-will-stop": "Terminer ce projet arrêtera toutes les tâches en cours, le supprimera de l'historique et créera un nouveau projet vide. Êtes-vous sûr de vouloir continuer ?",
   "yes-end-project": "Oui, terminer le projet",

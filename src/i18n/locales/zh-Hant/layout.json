@@ -127,6 +127,7 @@
   "task-running": "任務執行",
   "task-completed": "任務完成",
   "add-new-task": "新增任務",
+  "achieve-project": "達成專案",
   "end-project": "結束專案",
   "ending-this-project-will-stop": "結束此專案將停止任何正在執行的任務，從歷史記錄中刪除它，並建立一個新的空專案。您確定要繼續嗎？",
   "yes-end-project": "是的，結束專案",

@@ -127,6 +127,7 @@
   "task-running": "Esecuzione Attività",
   "task-completed": "Attività Completata",
   "add-new-task": "Aggiungi nuova attività",
+  "achieve-project": "Completa progetto",
   "end-project": "Termina progetto",
   "ending-this-project-will-stop": "Terminare questo progetto fermerà tutte le attività in esecuzione, lo rimuoverà dalla cronologia e creerà un nuovo progetto vuoto. Sei sicuro di voler continuare?",
   "yes-end-project": "Sì, termina progetto",

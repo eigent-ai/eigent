@@ -127,6 +127,7 @@
   "task-running": "Aufgabe wird ausgeführt",
   "task-completed": "Aufgabe abgeschlossen",
   "add-new-task": "Neue Aufgabe hinzufügen",
+  "achieve-project": "Projekt abschließen",
   "end-project": "Projekt beenden",
   "ending-this-project-will-stop": "Das Beenden dieses Projekts wird alle laufenden Aufgaben stoppen, es aus dem Verlauf entfernen und ein neues leeres Projekt erstellen. Sind Sie sicher, dass Sie fortfahren möchten?",
   "yes-end-project": "Ja, Projekt beenden",

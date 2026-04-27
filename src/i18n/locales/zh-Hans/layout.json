@@ -144,6 +144,7 @@
   "task-running": "任务运行",
   "task-completed": "任务完成",
   "add-new-task": "添加新任务",
+  "achieve-project": "达成项目",
   "end-project": "结束项目",
   "ending-this-project-will-stop": "结束此项目将停止任何正在运行的任务，从历史记录中删除它，并创建一个新的空项目。您确定要继续吗？",
   "yes-end-project": "是的，结束项目",
