@@ -103,7 +103,9 @@ def _is_supported_cdp_version(data: dict, endpoint: str) -> bool:
     combined = f"{browser} {user_agent}"
 
     if not websocket_url:
-        logger.debug("[BROWSER LAUNCHER] CDP endpoint has no browser websocket")
+        logger.debug(
+            "[BROWSER LAUNCHER] CDP endpoint has no browser websocket"
+        )
         return False
 
     if "Electron" in combined:
