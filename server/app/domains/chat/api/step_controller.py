@@ -83,6 +83,7 @@ async def share_playback(
                 "task_id": s.task_id,
                 "step": s.step,
                 "data": s.data,
+                "timestamp": s.timestamp,
                 "created_at": s.created_at.isoformat() if s.created_at else None,
             }
             yield f"data: {json.dumps(step_data)}\n\n"
