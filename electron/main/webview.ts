@@ -37,15 +37,17 @@ export class WebViewManager {
   private maxInactiveWebviews = 5;
   private lastCleanupTime = Date.now();
 
-  private getHiddenBounds(id: string) {
+  private getHiddenBounds(id: string, width = 100, height = 100) {
     const numericId = Number(id);
-    const idOffset = Number.isFinite(numericId) ? numericId * 100 : 0;
+    const idOffset = Number.isFinite(numericId) ? (numericId % 20) * 20 : 0;
+    const safeWidth = Math.max(width, 100);
+    const safeHeight = Math.max(height, 100);
 
     return {
-      x: -9999 + idOffset,
-      y: -9999 + idOffset,
-      width: 100,
-      height: 100,
+      x: -10000 - safeWidth - idOffset,
+      y: -10000 - safeHeight - idOffset,
+      width: safeWidth,
+      height: safeHeight,
     };
   }
 
@@ -304,7 +306,7 @@ export class WebViewManager {
           this.win?.webContents.send('url-updated', navigationUrl);
           return;
         }
-        webViewInfo.view.setBounds(this.getHiddenBounds(id));
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, 1920, 1080));
         const activeSize = this.getActiveWebview().length;
         const allSize = Array.from(this.webViews.values()).length;
         const inactiveSize = allSize - activeSize;
@@ -375,7 +377,7 @@ export class WebViewManager {
           height: Math.max(height, 100),
         });
       } else {
-        webViewInfo.view.setBounds(this.getHiddenBounds(id));
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, width, height));
       }
 
       return { success: true };

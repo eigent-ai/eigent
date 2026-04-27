@@ -169,6 +169,7 @@ class TestToolController:
         assert response["browser"]["managedBy"] == "remote"
         assert response["browser"]["host"] == "worker-17"
         assert os.environ["EIGENT_CDP_URL"] == "http://worker-17:9222"
+        assert os.environ["browser_port"] == "9222"
 
         tool_controller._clear_connected_cdp_browser()
 
@@ -202,6 +203,28 @@ class TestToolController:
 
         assert response == {"is_open": True, "cdp_port": 9323}
         is_port_in_use.assert_called_once_with(9323)
+
+    def test_remote_browser_hands_rejects_async_manifest(self):
+        class _AsyncManifestHands:
+            async def get_capability_manifest(self):
+                return {"deployment": "remote_cluster"}
+
+        assert not tool_controller._is_remote_browser_hands(
+            _AsyncManifestHands()
+        )
+
+    def test_remote_cdp_endpoint_uses_shared_validation(self):
+        with patch(
+            "app.controller.tool_controller.is_cdp_url_available",
+            return_value=True,
+        ) as is_cdp_url_available:
+            assert tool_controller._is_cdp_endpoint_available(
+                "http://worker-17:9222"
+            )
+
+        is_cdp_url_available.assert_called_once_with(
+            "http://worker-17:9222"
+        )
 
 
 @pytest.mark.integration

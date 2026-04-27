@@ -99,6 +99,11 @@ async def _prepare_browser_for_request(
             is_cdp_url_available, existing_cdp_url
         )
         if is_available:
+            normalized_endpoint, _, selected_port = normalize_cdp_url(
+                existing_cdp_url
+            )
+            os.environ["EIGENT_CDP_URL"] = normalized_endpoint
+            os.environ["browser_port"] = str(selected_port)
             if request is not None:
                 request.state.browser_available = True
             return True

@@ -244,6 +244,7 @@ class TestChatController:
             await post(chat_data, mock_request)
 
             assert os.environ.get("EIGENT_CDP_URL") == "http://worker-17:9222"
+            assert os.environ.get("browser_port") == "9222"
             assert mock_request.state.browser_available is True
             mock_ensure_browser.assert_not_called()
 

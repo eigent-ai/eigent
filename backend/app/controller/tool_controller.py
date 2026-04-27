@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import os
 import shutil
@@ -31,6 +32,7 @@ from app.utils.browser_launcher import (
     _is_cdp_available,
     _is_port_in_use,
     ensure_cdp_browser_endpoint,
+    is_cdp_url_available,
     is_local_cdp_host,
     normalize_cdp_url,
 )
@@ -155,8 +157,9 @@ def _set_connected_cdp_browser(
     managed_by: str = "local",
 ) -> dict:
     global _web_cdp_browser_meta
-    normalized_endpoint, _, _ = normalize_cdp_url(endpoint)
+    normalized_endpoint, _, port = normalize_cdp_url(endpoint)
     os.environ["EIGENT_CDP_URL"] = normalized_endpoint
+    os.environ["browser_port"] = str(port)
     _web_cdp_browser_meta = _build_web_cdp_browser(
         normalized_endpoint,
         is_external=is_external,
@@ -195,28 +198,28 @@ def _list_connected_cdp_browsers() -> list[dict]:
 
 
 def _is_cdp_endpoint_available(endpoint: str) -> bool:
-    normalized_endpoint, host, port = normalize_cdp_url(endpoint)
+    _, host, port = normalize_cdp_url(endpoint)
     if is_local_cdp_host(host):
         return _is_cdp_available(port)
 
-    try:
-        import httpx
-
-        response = httpx.get(
-            f"{normalized_endpoint}/json/version",
-            timeout=2.0,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
+    return is_cdp_url_available(endpoint)
 
 
 def _is_remote_browser_hands(hands) -> bool:
     if hands is None:
         return False
+    get_manifest = getattr(hands, "get_capability_manifest", None)
+    if get_manifest is None or inspect.iscoroutinefunction(get_manifest):
+        return False
     try:
-        manifest = hands.get_capability_manifest()
+        manifest = get_manifest()
     except Exception:
+        return False
+    if inspect.isawaitable(manifest):
+        if hasattr(manifest, "close"):
+            manifest.close()
+        return False
+    if not isinstance(manifest, dict):
         return False
     return manifest.get("deployment") == "remote_cluster"
 

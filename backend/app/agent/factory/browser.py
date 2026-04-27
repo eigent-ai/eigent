@@ -37,12 +37,32 @@ from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
+from app.utils.browser_launcher import normalize_cdp_url
 from app.utils.file_utils import get_working_directory
 
 
 def _get_browser_port(browser: dict) -> int:
     """Extract port from a browser config dict, with fallback to env default."""
-    return int(browser.get("port", env("browser_port", "9222")))
+    raw_port = browser.get("port")
+    if raw_port is not None:
+        return int(raw_port)
+
+    raw_endpoint = browser.get("endpoint") or browser.get("cdp_url")
+    if raw_endpoint:
+        _, _, port = normalize_cdp_url(str(raw_endpoint))
+        return port
+
+    return int(env("browser_port", "9222"))
+
+
+def _get_browser_endpoint(browser: dict) -> str:
+    """Extract a normalized CDP endpoint from a browser config dict."""
+    raw_endpoint = browser.get("endpoint") or browser.get("cdp_url")
+    if raw_endpoint:
+        endpoint, _, _ = normalize_cdp_url(str(raw_endpoint))
+        return endpoint
+
+    return f"http://localhost:{_get_browser_port(browser)}"
 
 
 class CdpBrowserPoolManager:
@@ -181,6 +201,7 @@ def browser_agent(
         )
         if selected_browser:
             selected_port = _get_browser_port(selected_browser)
+            cdp_url = _get_browser_endpoint(selected_browser)
             selected_is_external = selected_browser.get("isExternal", False)
             logger.info(
                 f"Acquired CDP browser from pool (initial): "
@@ -188,15 +209,16 @@ def browser_agent(
                 f"session_id={toolkit_session_id}"
             )
         else:
-            selected_port = _get_browser_port(options.cdp_browsers[0])
-            selected_is_external = options.cdp_browsers[0].get(
+            fallback_browser = options.cdp_browsers[0]
+            selected_port = _get_browser_port(fallback_browser)
+            cdp_url = _get_browser_endpoint(fallback_browser)
+            selected_is_external = fallback_browser.get(
                 "isExternal", False
             )
             logger.warning(
                 f"No available browsers in pool (initial), using first: "
                 f"port={selected_port}, session_id={toolkit_session_id}"
             )
-        cdp_url = f"http://localhost:{selected_port}"
     elif use_browser:
         existing_cdp_url = env("EIGENT_CDP_URL", "").strip()
         selected_port = env("browser_port", "9222")

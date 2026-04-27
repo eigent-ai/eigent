@@ -16,7 +16,10 @@ import json
 
 import pytest
 
-from app.utils.browser_launcher import _is_supported_cdp_version
+from app.utils.browser_launcher import (
+    _is_supported_cdp_version,
+    normalize_cdp_url,
+)
 
 
 class _FakeWebSocket:
@@ -36,6 +39,24 @@ class _FakeWebSocket:
     def recv(self, timeout: int):
         assert timeout == 2
         return json.dumps(self.response)
+
+
+@pytest.mark.unit
+def test_normalize_cdp_url_accepts_host_port_without_scheme():
+    assert normalize_cdp_url("worker-17:9333") == (
+        "http://worker-17:9333",
+        "worker-17",
+        9333,
+    )
+
+
+@pytest.mark.unit
+def test_normalize_cdp_url_accepts_bare_port():
+    assert normalize_cdp_url("9333") == (
+        "http://127.0.0.1:9333",
+        "127.0.0.1",
+        9333,
+    )
 
 
 @pytest.mark.unit

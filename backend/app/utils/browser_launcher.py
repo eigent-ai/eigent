@@ -52,7 +52,12 @@ def normalize_cdp_url(
     default_port: int = DEFAULT_CDP_PORT,
 ) -> tuple[str, str, int]:
     """Normalize a CDP endpoint into ``scheme://host:port`` form."""
-    parsed = urlparse(cdp_url)
+    raw_url = cdp_url.strip()
+    if raw_url.isdigit():
+        port = int(raw_url)
+        return f"http://{default_host}:{port}", default_host, port
+
+    parsed = urlparse(raw_url if "://" in raw_url else f"http://{raw_url}")
     scheme = parsed.scheme or "http"
     host = parsed.hostname or default_host
     port = parsed.port or default_port

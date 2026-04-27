@@ -144,3 +144,65 @@ def test_browser_agent_prefers_preconnected_cdp_url(sample_chat_data):
         assert mock_browser_toolkit.call_args.kwargs["cdp_url"] == (
             "http://worker-17:9222"
         )
+
+
+def test_browser_agent_uses_cdp_browser_endpoint(sample_chat_data):
+    """Browser pool entries may point at remote Hands endpoints."""
+    sample_chat_data["cdp_browsers"] = [
+        {
+            "id": "remote-browser",
+            "port": 9222,
+            "endpoint": "http://worker-17:9222",
+            "isExternal": False,
+            "name": "Remote Browser",
+        }
+    ]
+    options = Chat(**sample_chat_data)
+
+    from app.agent.factory import browser as browser_factory
+    from app.service.task import task_locks
+
+    mock_task_lock = MagicMock()
+    task_locks[options.task_id] = mock_task_lock
+
+    _mod = "app.agent.factory.browser"
+    try:
+        with (
+            patch(f"{_mod}.agent_model") as mock_agent_model,
+            patch(
+                f"{_mod}.get_working_directory",
+                return_value="/tmp/test_workdir",
+            ),
+            patch("asyncio.create_task"),
+            patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
+            patch(f"{_mod}.HybridBrowserToolkit") as mock_browser_toolkit,
+            patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
+            patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
+            patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
+            patch(f"{_mod}.SearchToolkit") as mock_search_toolkit,
+            patch(f"{_mod}.ToolkitMessageIntegration"),
+            patch("uuid.uuid4") as mock_uuid,
+        ):
+            mock_human_toolkit.get_can_use_tools.return_value = []
+            mock_browser_toolkit.return_value.get_tools.return_value = []
+            mock_terminal_instance = MagicMock()
+            mock_terminal_instance.shell_exec = MagicMock()
+            mock_terminal_toolkit.return_value = mock_terminal_instance
+            mock_note_toolkit.return_value.get_tools.return_value = []
+            mock_screenshot_toolkit.return_value.get_tools.return_value = []
+            mock_search_toolkit.return_value = MagicMock()
+            mock_uuid.return_value.__getitem__ = (
+                lambda self, key: "test_session"
+            )
+
+            mock_agent = MagicMock()
+            mock_agent_model.return_value = mock_agent
+
+            browser_agent(options)
+
+            assert mock_browser_toolkit.call_args.kwargs["cdp_url"] == (
+                "http://worker-17:9222"
+            )
+    finally:
+        browser_factory._cdp_pool_manager.release_by_task(options.task_id)
+        task_locks.pop(options.task_id, None)
