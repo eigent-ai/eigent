@@ -21,31 +21,45 @@ import {
 
 /** Minimal task shape for bottom-box / sidebar lifecycle (matches chatStore Task fields used). */
 export interface TaskLifecycleFields {
-  messages: Message[];
-  type: string;
-  status: ChatTaskStatusType;
-  hasWaitComfirm: boolean;
-  isTakeControl: boolean;
-  taskInfo: { id: string; content: string }[];
+  messages?: Message[];
+  type?: string;
+  status?: ChatTaskStatusType;
+  hasWaitComfirm?: boolean;
+  isTakeControl?: boolean;
+  taskInfo?: { id: string; content: string }[];
   isContextExceeded?: boolean;
+}
+
+function getTaskMessages(task: TaskLifecycleFields): Message[] {
+  return Array.isArray(task.messages) ? task.messages : [];
+}
+
+function getTaskInfoRows(
+  task: TaskLifecycleFields
+): { id: string; content: string }[] {
+  return Array.isArray(task.taskInfo) ? task.taskInfo : [];
 }
 
 export function getBottomBoxStateForTask(
   task: TaskLifecycleFields
 ): BottomBoxState {
-  const anyToSubTasksMessage = task.messages.find(
-    (m) => m.step === 'to_sub_tasks'
-  );
-  const toSubTasksMessage = task.messages.find(
+  const messages = getTaskMessages(task);
+  const status = task.status ?? ChatTaskStatus.PENDING;
+  const type = task.type ?? '';
+  const hasWaitComfirm = Boolean(task.hasWaitComfirm);
+  const isTakeControl = Boolean(task.isTakeControl);
+
+  const anyToSubTasksMessage = messages.find((m) => m.step === 'to_sub_tasks');
+  const toSubTasksMessage = messages.find(
     (m) => m.step === 'to_sub_tasks' && !m.isConfirm
   );
 
   const isSkeletonPhase =
-    (task.status !== 'finished' &&
+    (status !== 'finished' &&
       !anyToSubTasksMessage &&
-      !task.hasWaitComfirm &&
-      task.messages.length > 0) ||
-    (task.isTakeControl && !anyToSubTasksMessage);
+      !hasWaitComfirm &&
+      messages.length > 0) ||
+    (isTakeControl && !anyToSubTasksMessage);
   if (isSkeletonPhase) {
     return 'splitting';
   }
@@ -53,7 +67,7 @@ export function getBottomBoxStateForTask(
   if (
     toSubTasksMessage &&
     !toSubTasksMessage.isConfirm &&
-    task.status === 'pending'
+    status === 'pending'
   ) {
     return 'confirm';
   }
@@ -62,14 +76,11 @@ export function getBottomBoxStateForTask(
     return 'splitting';
   }
 
-  if (
-    task.status === ChatTaskStatus.RUNNING ||
-    task.status === ChatTaskStatus.PAUSE
-  ) {
+  if (status === ChatTaskStatus.RUNNING || status === ChatTaskStatus.PAUSE) {
     return 'running';
   }
 
-  if (task.status === 'finished' && task.type !== '') {
+  if (status === 'finished' && type !== '') {
     return 'finished';
   }
 
@@ -93,7 +104,7 @@ export function getTaskListShelfTone(
  * (use for splitting **error** vs **warning** in session chrome).
  */
 export function isTaskListRowHardFailure(task: TaskLifecycleFields): boolean {
-  return task.messages.some((m) => {
+  return getTaskMessages(task).some((m) => {
     if (m.role !== 'agent') return false;
     if (m.step === AgentStep.FAILED) return true;
     const c = m.content?.trim() ?? '';
@@ -109,9 +120,11 @@ export function isTaskListRowFailureState(task: TaskLifecycleFields): boolean {
 }
 
 export function isWorkforceTask(task: TaskLifecycleFields): boolean {
-  const toSubTasks = task.messages.filter((m) => m.step === 'to_sub_tasks');
+  const messages = getTaskMessages(task);
+  const taskInfo = getTaskInfoRows(task);
+  const toSubTasks = messages.filter((m) => m.step === 'to_sub_tasks');
   const latest = toSubTasks[toSubTasks.length - 1];
   if (latest?.taskType === 2) return true;
-  if (task.taskInfo.length > 1) return true;
+  if (taskInfo.length > 1) return true;
   return false;
 }

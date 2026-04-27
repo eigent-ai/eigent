@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Client platform detection. See docs/design/04-client.md.
 
+import { createHost } from '@/host/createHost';
+
 export type ClientType =
   | 'desktop'
   | 'web'
@@ -26,11 +28,8 @@ export type ClientType =
 
 /** True when running inside Electron (desktop app). */
 export function isElectron(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    !!(window as any).electronAPI &&
-    !!(window as any).ipcRenderer
-  );
+  const host = createHost();
+  return !!host.electronAPI && !!host.ipcRenderer;
 }
 
 /** Current client type. Web build = 'web'; Electron = 'desktop'. */

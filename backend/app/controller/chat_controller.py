@@ -55,8 +55,9 @@ from app.service.task import (
     task_locks,
 )
 from app.utils.browser_launcher import (
-    ensure_cdp_browser_available,
+    ensure_cdp_browser_endpoint,
     is_cdp_url_available,
+    normalize_cdp_url,
 )
 
 router = APIRouter()
@@ -109,7 +110,7 @@ async def _prepare_browser_for_request(
         return True
 
     try:
-        launched = await asyncio.to_thread(ensure_cdp_browser_available, port)
+        endpoint = await asyncio.to_thread(ensure_cdp_browser_endpoint, port)
     except Exception as e:
         os.environ.pop("EIGENT_CDP_URL", None)
         chat_logger.warning(
@@ -120,8 +121,10 @@ async def _prepare_browser_for_request(
             request.state.browser_available = False
         return False
 
-    if launched:
-        os.environ["EIGENT_CDP_URL"] = f"http://127.0.0.1:{port}"
+    if endpoint:
+        os.environ["EIGENT_CDP_URL"] = endpoint
+        _, _, selected_port = normalize_cdp_url(endpoint)
+        os.environ["browser_port"] = str(selected_port)
         if request is not None:
             request.state.browser_available = True
         return True

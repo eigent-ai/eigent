@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { motion } from 'framer-motion';
@@ -78,6 +79,7 @@ const coworkRowClass = cn(
 /** Project sidebar top: Cowork row + Instructions accordion (NavTab-aligned). */
 export function HeaderAction() {
   const { t } = useTranslation();
+  const host = useHost();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const requestWorkspaceChatFocus = usePageTabStore(
     (s) => s.requestWorkspaceChatFocus
@@ -95,6 +97,7 @@ export function HeaderAction() {
   const [instructionsOpen, setInstructionsOpen] = useState<string | undefined>(
     readInstructionsAccordionPreference
   );
+  const ipcRenderer = host?.ipcRenderer;
 
   useLayoutEffect(() => {
     if (projectSidebarFolded) {
@@ -120,7 +123,7 @@ export function HeaderAction() {
   }, [instructionsOpen, projectSidebarFolded]);
 
   useEffect(() => {
-    const ipc = window.ipcRenderer;
+    const ipc = ipcRenderer;
     if (!ipc) return;
 
     const onUpdateCanAvailable = (
@@ -142,11 +145,11 @@ export function HeaderAction() {
       ipc.off('update-can-available', onUpdateCanAvailable);
       ipc.off('update-downloaded', onUpdateDownloaded);
     };
-  }, []);
+  }, [ipcRenderer]);
 
   const handleStartDownload = useCallback(() => {
-    void window.ipcRenderer?.invoke('start-download');
-  }, []);
+    void ipcRenderer?.invoke('start-download');
+  }, [ipcRenderer]);
 
   const handleImportWorkforceTemplate = useCallback(() => {
     setActiveWorkspaceTab('workforce');
@@ -179,11 +182,11 @@ export function HeaderAction() {
   });
 
   return (
-    <div className="min-w-0 flex items-stretch">
-      <div className="no-drag min-w-0 w-full overflow-hidden">
-        <div className="gap-2 flex w-full flex-col">
+    <div className="flex min-w-0 items-stretch">
+      <div className="no-drag w-full min-w-0 overflow-hidden">
+        <div className="flex w-full flex-col gap-2">
           <div className={coworkRowClass}>
-            <div className="h-8 flex shrink-0 items-center justify-center">
+            <div className="flex h-8 shrink-0 items-center justify-center">
               <TooltipSimple
                 content={foldTooltip}
                 enabled
@@ -194,8 +197,8 @@ export function HeaderAction() {
                 <button
                   type="button"
                   className={cn(
-                    'no-drag h-8 px-3 rounded-lg text-ds-icon-neutral-muted-default ease-in-out flex shrink-0 items-center justify-center transition-colors duration-200',
-                    'hover:bg-ds-bg-neutral-subtle-hover focus-visible:ring-ds-ring-neutral-subtle-default hover:text-ds-icon-neutral-muted-hover focus-visible:ring-2 focus-visible:outline-none'
+                    'no-drag flex h-8 shrink-0 items-center justify-center rounded-lg px-3 text-ds-icon-neutral-muted-default transition-colors duration-200 ease-in-out',
+                    'hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-icon-neutral-muted-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
                   )}
                   aria-label={foldTooltip}
                   onClick={() => toggleProjectSidebarFolded()}
@@ -211,7 +214,7 @@ export function HeaderAction() {
             <motion.span
               className={cn(
                 WORKSPACE_TAB_LABEL_CLASS,
-                'min-w-0 text-body-sm font-bold gap-2 flex flex-1 items-center overflow-hidden text-left'
+                'flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left text-body-sm font-bold'
               )}
               initial={false}
               animate={{
@@ -224,7 +227,7 @@ export function HeaderAction() {
               <span className="min-w-0 flex-1 truncate">{coworkLabel}</span>
             </motion.span>
             <motion.div
-              className="mr-3 min-h-8 min-w-0 flex shrink-0 items-center justify-end overflow-hidden"
+              className="mr-3 flex min-h-8 min-w-0 shrink-0 items-center justify-end overflow-hidden"
               initial={false}
               animate={{
                 opacity: projectSidebarFolded ? 0 : 1,
@@ -279,12 +282,12 @@ export function HeaderAction() {
               >
                 <span
                   className={cn(
-                    'min-w-0 flex flex-1 items-center overflow-hidden',
+                    'flex min-w-0 flex-1 items-center overflow-hidden',
                     projectSidebarFolded ? 'gap-0' : 'gap-3'
                   )}
                 >
                   <ScrollText
-                    className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
+                    className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
                     aria-hidden
                   />
                   <motion.span
@@ -302,9 +305,9 @@ export function HeaderAction() {
                 </span>
               </AccordionTrigger>
               <AccordionContent className="px-3 py-3">
-                <div className="gap-3 pl-7 -mr-1 flex flex-col">
-                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
-                    <span className="min-w-0 text-body-sm font-medium flex-1 text-ds-text-neutral-muted-default">
+                <div className="-mr-1 flex flex-col gap-3 pl-7">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
+                    <span className="min-w-0 flex-1 text-body-sm font-medium text-ds-text-neutral-muted-default">
                       {instructionsHint}
                     </span>
                     <Button
@@ -319,7 +322,7 @@ export function HeaderAction() {
                       <PenLine className="h-4 w-4 shrink-0" aria-hidden />
                     </Button>
                   </div>
-                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
                     <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
                       {memoryLabel}
                     </span>
@@ -335,7 +338,7 @@ export function HeaderAction() {
                       {memoryOn ? memoryOnLabel : memoryOffLabel}
                     </Button>
                   </div>
-                  <div className="gap-2 min-w-0 rounded-lg flex items-center justify-between hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg hover:bg-ds-bg-neutral-subtle-default hover:ring-2 hover:ring-ds-bg-neutral-subtle-default hover:ring-offset-2 hover:ring-offset-ds-bg-neutral-subtle-default">
                     <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
                       {workforceSettingLabel}
                     </span>

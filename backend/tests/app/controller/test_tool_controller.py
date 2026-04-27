@@ -172,6 +172,37 @@ class TestToolController:
 
         tool_controller._clear_connected_cdp_browser()
 
+    @pytest.mark.asyncio
+    async def test_open_browser_login_uses_dedicated_cookie_port_when_existing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("EIGENT_LOGIN_BROWSER_CDP_PORT", raising=False)
+
+        with patch(
+            "app.controller.tool_controller._is_port_in_use",
+            return_value=True,
+        ):
+            response = await tool_controller.open_browser_login()
+
+        assert response["success"] is True
+        assert response["cdp_port"] == 9323
+        assert response["session_id"] == "user_login"
+
+    @pytest.mark.asyncio
+    async def test_browser_status_uses_dedicated_cookie_port(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("EIGENT_LOGIN_BROWSER_CDP_PORT", raising=False)
+
+        with patch(
+            "app.controller.tool_controller._is_port_in_use",
+            return_value=True,
+        ) as is_port_in_use:
+            response = await tool_controller.browser_status()
+
+        assert response == {"is_open": True, "cdp_port": 9323}
+        is_port_in_use.assert_called_once_with(9323)
+
 
 @pytest.mark.integration
 class TestToolControllerIntegration:
@@ -238,8 +269,8 @@ class TestToolControllerIntegration:
         tool_controller._web_cdp_browser_meta = None
 
         with patch(
-            "app.controller.tool_controller.ensure_cdp_browser_available",
-            return_value=True,
+            "app.controller.tool_controller.ensure_cdp_browser_endpoint",
+            return_value="http://127.0.0.1:9222",
         ):
             response = client.post("/browser/cdp/launch")
 
