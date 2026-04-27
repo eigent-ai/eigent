@@ -115,7 +115,7 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
             return (
               <div
                 key={`streaming-task-${index}`}
-                className="group min-h-2 rounded-lg p-sm animate-in fade-in-0 slide-in-from-left-2 relative flex items-start duration-300"
+                className="group min-h-2 rounded-lg p-sm animate-in fade-in-0 slide-in-from-left-2 bg-ds-bg-neutral-subtle-default relative flex items-start duration-300"
               >
                 {/* Task indicator */}
                 <div className="h-4 w-7 pr-sm pt-1 flex flex-shrink-0 items-center justify-center">
@@ -133,8 +133,8 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
                 </div>
 
                 {/* Task content */}
-                <div className="min-h-4 pb-2 border-ds-border-neutral-subtle-default relative flex w-full items-start border-[0px] border-b border-solid">
-                  <span className="text-xs text-ds-text-neutral-default-default leading-[20px]">
+                <div className="min-h-4 pb-2 relative flex w-full items-start">
+                  <span className="text-label-xs text-ds-text-neutral-default-default">
                     {task}
                     {isCurrentlyStreaming && (
                       <span className="ml-0.5 h-4 w-1 animate-pulse bg-ds-icon-information-default-default inline-block" />
