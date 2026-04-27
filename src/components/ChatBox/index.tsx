@@ -18,7 +18,9 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
+  uploadFileToBrain,
 } from '@/api/http';
+import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
@@ -114,7 +116,7 @@ export default function ChatBox(): JSX.Element {
 
   // Check model config on mount and when modelType changes
   useEffect(() => {
-    proxyFetchGet('/api/configs').catch((err) =>
+    proxyFetchGet('/api/v1/configs').catch((err) =>
       console.error('Failed to fetch configs:', err)
     );
 
@@ -315,7 +317,7 @@ export default function ChatBox(): JSX.Element {
       let taskId: string = token.split('__')[1];
       chatStore.create(taskId, 'share');
       chatStore.setHasMessages(taskId, true);
-      const res = await proxyFetchGet(`/api/chat/share/info/${_token}`);
+      const res = await proxyFetchGet(`/api/v1/chat/share/info/${_token}`);
       if (res?.question) {
         chatStore.addMessages(taskId, {
           id: generateUniqueId(),
@@ -655,10 +657,10 @@ export default function ChatBox(): JSX.Element {
   }, [projectStore]);
 
   useEffect(() => {
-    if (share_token) {
+    if (share_token && isConfigLoaded) {
       handleSendShare(share_token);
     }
-  }, [share_token, handleSendShare]);
+  }, [share_token, isConfigLoaded, handleSendShare]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -677,20 +679,64 @@ export default function ChatBox(): JSX.Element {
   // File selection handler
   const handleFileSelect = async () => {
     try {
+      const taskId = chatStore.activeTaskId as string;
+      const existingFiles = chatStore.tasks[taskId].attaches || [];
+
+      if (isWeb()) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = async () => {
+          if (!input.files?.length) {
+            return;
+          }
+
+          const uploadedFiles: File[] = [];
+          for (const selectedFile of Array.from(input.files)) {
+            try {
+              const result = await uploadFileToBrain(selectedFile);
+              uploadedFiles.push({
+                fileName: result.filename,
+                filePath: result.file_id,
+                fileId: result.file_id,
+                source: 'upload',
+              } as File);
+            } catch (error) {
+              console.error('Select File Upload Error:', error);
+              toast.error(`Failed to upload ${selectedFile.name}`);
+            }
+          }
+
+          if (uploadedFiles.length === 0) {
+            return;
+          }
+
+          const files = [
+            ...existingFiles,
+            ...uploadedFiles.filter(
+              (uploaded) =>
+                !existingFiles.some(
+                  (existing) => existing.filePath === uploaded.filePath
+                )
+            ),
+          ];
+          chatStore.setAttaches(taskId, files);
+        };
+        input.click();
+        return;
+      }
+
       const result = await host?.electronAPI?.selectFile({
         title: t('chat.select-file'),
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
 
-      if (result.success && result.files && result.files.length > 0) {
-        const taskId = chatStore.activeTaskId as string;
+      if (result?.success && result.files && result.files.length > 0) {
         const files = [
-          ...(chatStore.tasks[taskId].attaches || []),
+          ...existingFiles,
           ...result.files.filter(
             (r: File) =>
-              !chatStore.tasks[taskId].attaches?.some(
-                (f: File) => f.filePath === r.filePath
-              )
+              !existingFiles.some((f: File) => f.filePath === r.filePath)
           ),
         ];
         chatStore.setAttaches(taskId, files);
@@ -810,7 +856,7 @@ export default function ChatBox(): JSX.Element {
     const history_id = projectStore.getHistoryId(projectId);
     if (history_id) {
       try {
-        await proxyFetchDelete(`/api/chat/history/${history_id}`);
+        await proxyFetchDelete(`/api/v1/chat/history/${history_id}`);
       } catch (error) {
         console.error(
           `Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`,
@@ -939,10 +985,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -952,8 +998,8 @@ export default function ChatBox(): JSX.Element {
               isPauseResumeLoading={isPauseResumeLoading}
             />
           ) : (
-            <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
+            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col pl-4 pr-2">
+              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -995,9 +1041,9 @@ export default function ChatBox(): JSX.Element {
         {chatStore.activeTaskId && hasAnyMessages && (
           <div
             ref={bottomBoxOverlayRef}
-            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
-            <div className="px-sm pointer-events-auto w-full max-w-[600px]">
+            <div className="pointer-events-auto w-full max-w-[600px] px-sm">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
@@ -1062,7 +1108,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

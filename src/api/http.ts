@@ -15,6 +15,7 @@
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
+import { createHost } from '@/host/createHost';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -87,7 +88,7 @@ export async function getBaseURL() {
     return cfg.brainEndpoint.replace(/\/$/, '');
   }
   // Electron: get port from IPC
-  const port = await (window as any).ipcRenderer?.invoke('get-backend-port');
+  const port = await createHost().ipcRenderer?.invoke('get-backend-port');
   if (port && port > 0) {
     const resolved = `http://localhost:${port}`;
     setConnectionConfig({ brainEndpoint: resolved });

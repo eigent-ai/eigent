@@ -20,6 +20,7 @@ Previously, Electron provided the CDP browser via remote-debugging-port.
 In web mode, Brain launches Chrome/Chromium directly.
 """
 
+import json
 import logging
 import os
 import platform
@@ -32,6 +33,8 @@ logger = logging.getLogger("browser_launcher")
 
 # Default CDP port (must match browser_port in Chat model)
 DEFAULT_CDP_PORT = 9222
+FALLBACK_CDP_PORT_START = 9223
+FALLBACK_CDP_PORT_END = 9299
 LOCAL_CDP_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
@@ -66,7 +69,9 @@ def is_cdp_url_available(cdp_url: str) -> bool:
         import httpx
 
         r = httpx.get(f"{normalized}/json/version", timeout=2.0)
-        return r.status_code == 200
+        if r.status_code != 200:
+            return False
+        return _is_supported_cdp_version(r.json(), normalized)
     except Exception:
         return False
 
@@ -78,14 +83,99 @@ def _is_port_in_use(port: int) -> bool:
 
 
 def _is_cdp_available(port: int) -> bool:
-    """Check if a CDP-capable browser is listening on the port."""
+    """Check if a Playwright-compatible CDP browser is listening."""
     try:
         import httpx
 
         r = httpx.get(f"http://127.0.0.1:{port}/json/version", timeout=2.0)
-        return r.status_code == 200
+        if r.status_code != 200:
+            return False
+        return _is_supported_cdp_version(r.json(), f"http://127.0.0.1:{port}")
     except Exception:
         return False
+
+
+def _is_supported_cdp_version(data: dict, endpoint: str) -> bool:
+    """Reject CDP endpoints that Playwright cannot manage."""
+    browser = str(data.get("Browser") or "")
+    user_agent = str(data.get("User-Agent") or "")
+    websocket_url = data.get("webSocketDebuggerUrl")
+    combined = f"{browser} {user_agent}"
+
+    if not websocket_url:
+        logger.debug(
+            "[BROWSER LAUNCHER] CDP endpoint has no browser websocket"
+        )
+        return False
+
+    if "Electron" in combined:
+        logger.warning(
+            "[BROWSER LAUNCHER] Ignoring Electron DevTools endpoint at %s; "
+            "Browser Agent requires a managed Chrome/Chromium CDP browser.",
+            endpoint,
+        )
+        return False
+
+    if not any(
+        token in combined
+        for token in ("Chrome/", "Chromium", "HeadlessChrome/")
+    ):
+        logger.warning(
+            "[BROWSER LAUNCHER] Ignoring unsupported CDP endpoint at %s: %s",
+            endpoint,
+            browser or user_agent or "unknown browser",
+        )
+        return False
+
+    if not _supports_browser_context_management(str(websocket_url), endpoint):
+        return False
+
+    return True
+
+
+def _supports_browser_context_management(
+    websocket_url: str,
+    endpoint: str,
+) -> bool:
+    """Probe the browser-level CDP socket for Playwright compatibility."""
+    try:
+        from websockets.sync.client import connect
+
+        command = {
+            "id": 1,
+            "method": "Browser.setDownloadBehavior",
+            "params": {"behavior": "default"},
+        }
+        with connect(websocket_url, open_timeout=2, close_timeout=1) as ws:
+            ws.send(json.dumps(command))
+            response = json.loads(ws.recv(timeout=2))
+    except Exception as exc:
+        logger.warning(
+            "[BROWSER LAUNCHER] Could not validate CDP capabilities at %s: %s",
+            endpoint,
+            exc,
+        )
+        return False
+
+    error = response.get("error")
+    if error:
+        message = error.get("message") if isinstance(error, dict) else error
+        logger.warning(
+            "[BROWSER LAUNCHER] Ignoring CDP endpoint at %s; "
+            "it does not support browser context management: %s",
+            endpoint,
+            message,
+        )
+        return False
+
+    return True
+
+
+def _candidate_ports(preferred_port: int):
+    yield preferred_port
+    for port in range(FALLBACK_CDP_PORT_START, FALLBACK_CDP_PORT_END + 1):
+        if port != preferred_port:
+            yield port
 
 
 def _find_chrome_executable() -> str | None:
@@ -252,3 +342,36 @@ def ensure_cdp_browser_available(port: int = DEFAULT_CDP_PORT) -> bool:
         "[BROWSER LAUNCHER] Browser launched but CDP not ready after 10s"
     )
     return False
+
+
+def ensure_cdp_browser_endpoint(
+    preferred_port: int = DEFAULT_CDP_PORT,
+) -> str | None:
+    """
+    Ensure a managed CDP browser exists and return its endpoint.
+
+    If the preferred port is occupied by Electron's own DevTools endpoint, use
+    the next available local port instead of handing that endpoint to
+    Playwright.
+    """
+    for port in _candidate_ports(preferred_port):
+        if _is_cdp_available(port):
+            return f"http://127.0.0.1:{port}"
+
+        if _is_port_in_use(port):
+            logger.warning(
+                "[BROWSER LAUNCHER] Port %s is occupied by a non-managed "
+                "or unsupported CDP endpoint; trying another port.",
+                port,
+            )
+            continue
+
+        if ensure_cdp_browser_available(port):
+            return f"http://127.0.0.1:{port}"
+
+    logger.error(
+        "[BROWSER LAUNCHER] No available CDP browser port in %s-%s",
+        preferred_port,
+        FALLBACK_CDP_PORT_END,
+    )
+    return None

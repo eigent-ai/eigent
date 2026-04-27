@@ -18,6 +18,7 @@ import tokenLightIcon from '@/assets/token-light.svg';
 import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
@@ -87,6 +88,8 @@ const resolveProjectTokenCount = (
 
 export default function HistorySidebar() {
   const { t } = useTranslation();
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   const { appearance } = useAuthStore();
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const { isOpen, close } = useSidebarStore();
@@ -240,11 +243,11 @@ export default function HistorySidebar() {
       const history = project.tasks.find(
         (item: HistoryTask) => String(item.id) === historyId
       );
-      if (history?.task_id && (window as any).ipcRenderer) {
+      if (history?.task_id && ipcRenderer) {
         try {
           //TODO(file): rename endpoint to use project_id
           //TODO(history): make sure to sync to projectId when updating endpoint
-          await (window as any).ipcRenderer.invoke(
+          await ipcRenderer.invoke(
             'delete-task-files',
             email,
             history.task_id,
@@ -288,9 +291,9 @@ export default function HistorySidebar() {
 
             // Also delete local files for this task if available (via Electron IPC)
             const { email } = getAuthStore();
-            if (history.task_id && (window as any).ipcRenderer) {
+            if (history.task_id && ipcRenderer) {
               try {
-                await (window as any).ipcRenderer.invoke(
+                await ipcRenderer.invoke(
                   'delete-task-files',
                   email,
                   history.task_id,
@@ -416,7 +419,7 @@ export default function HistorySidebar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="inset-0 fixed z-40 bg-transparent"
+            className="fixed inset-0 z-40 bg-transparent"
             onClick={close}
           />
           {/* History panel below project title (sidebar when expanded, else TopBar) */}
@@ -427,21 +430,21 @@ export default function HistorySidebar() {
             transition={{ type: 'spring', damping: 22, stiffness: 220 }}
             onMouseLeave={close}
             ref={panelRef}
-            className="rounded-xl p-2 shadow-perfect bg-ds-bg-neutral-subtle-default fixed z-50 flex max-h-[80vh] w-[360px] flex-col overflow-hidden"
+            className="fixed z-50 flex max-h-[80vh] w-[360px] flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default p-2 shadow-perfect"
             style={{
               left: anchorStyle.left,
               top: anchorStyle.top,
             }}
           >
-            <div className="py-2 pl-2 flex items-center justify-between">
+            <div className="flex items-center justify-between py-2 pl-2">
               {/* Search */}
               <SearchInput value={searchValue} onChange={handleSearch} />
               <Button variant="ghost" size="md" onClick={createChat}>
-                <Plus className="h-8 w-8 text-ds-icon-neutral-muted-default group-hover:text-ds-icon-neutral-default-default transition-all duration-300" />
+                <Plus className="h-8 w-8 text-ds-icon-neutral-muted-default transition-all duration-300 group-hover:text-ds-icon-neutral-default-default" />
               </Button>
             </div>
             <div className="scrollbar-hide mt-2 min-h-0 flex-1 overflow-y-auto">
-              <div className="gap-3 px-sm flex flex-col">
+              <div className="flex flex-col gap-3 px-sm">
                 {/* Ongoing Projects */}
                 {ongoingProjects
                   .filter(
@@ -461,27 +464,27 @@ export default function HistorySidebar() {
                         navigate(`/`);
                         close();
                       }}
-                      className="gap-sm rounded-xl px-4 py-3 shadow-history-item border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
+                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-ds-bg-neutral-default-hover"
                     >
-                      <FolderClock className="h-5 w-5 text-ds-icon-status-running-default-default flex-shrink-0" />
+                      <FolderClock className="h-5 w-5 flex-shrink-0 text-ds-icon-status-running-default-default" />
 
-                      <div className="min-w-0 gap-1 flex flex-1 flex-col">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <TooltipSimple
                           align="start"
-                          className="p-2 text-label-xs shadow-perfect bg-ds-bg-neutral-default-default pointer-events-auto w-[300px] text-wrap break-words select-text"
+                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-ds-bg-neutral-default-default p-2 text-label-xs shadow-perfect"
                           content={
                             <div>
                               {project.project_name || t('layout.new-project')}
                             </div>
                           }
                         >
-                          <span className="text-body-sm font-semibold text-ds-text-neutral-default-default block overflow-hidden text-ellipsis whitespace-nowrap">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-ds-text-neutral-default-default">
                             {project.project_name || t('layout.new-project')}
                           </span>
                         </TooltipSimple>
                       </div>
 
-                      <div className="gap-2 flex flex-shrink-0 items-center">
+                      <div className="flex flex-shrink-0 items-center gap-2">
                         <TooltipSimple content={t('chat.token')}>
                           <Tag
                             variant="primary"
@@ -544,7 +547,7 @@ export default function HistorySidebar() {
                             />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="p-sm border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default w-[98px] rounded-[12px] border border-solid">
+                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-sm">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button
@@ -605,14 +608,14 @@ export default function HistorySidebar() {
                         );
                       }}
                       key={project.project_id}
-                      className="gap-sm rounded-xl px-4 py-3 shadow-history-item border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover relative flex w-full max-w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300"
+                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-ds-bg-neutral-default-hover"
                     >
-                      <FolderCheck className="h-5 w-5 text-ds-icon-neutral-subtle-default flex-shrink-0" />
+                      <FolderCheck className="h-5 w-5 flex-shrink-0 text-ds-icon-neutral-subtle-default" />
 
                       <div className="min-w-0 flex-1">
                         <TooltipSimple
                           align="start"
-                          className="p-2 text-label-xs shadow-perfect bg-ds-bg-neutral-default-default pointer-events-auto w-[300px] text-wrap break-words select-text"
+                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-ds-bg-neutral-default-default p-2 text-label-xs shadow-perfect"
                           content={
                             <div>
                               {project.last_prompt ||
@@ -621,7 +624,7 @@ export default function HistorySidebar() {
                             </div>
                           }
                         >
-                          <span className="text-body-sm font-semibold text-ds-text-neutral-default-default block overflow-hidden text-ellipsis whitespace-nowrap">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-ds-text-neutral-default-default">
                             {project.last_prompt ||
                               project.project_name ||
                               t('layout.new-project')}
@@ -629,7 +632,7 @@ export default function HistorySidebar() {
                         </TooltipSimple>
                       </div>
 
-                      <div className="gap-2 flex flex-shrink-0 items-center">
+                      <div className="flex flex-shrink-0 items-center gap-2">
                         <TooltipSimple content={t('chat.token')}>
                           <Tag
                             variant="primary"
@@ -692,7 +695,7 @@ export default function HistorySidebar() {
                             />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="p-sm border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default w-[98px] rounded-[12px] border border-solid">
+                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-sm">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button

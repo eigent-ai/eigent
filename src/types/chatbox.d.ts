@@ -32,6 +32,7 @@ declare global {
     task_id?: string;
     project_id?: string;
     isFolder?: boolean;
+    isRemote?: boolean;
     relativePath?: string;
   }
 

@@ -16,6 +16,7 @@ import {
   fetchDelete,
   fetchPost,
   fetchPut,
+  getBaseURL,
   proxyFetchGet,
   proxyFetchPost,
   proxyFetchPut,
@@ -83,6 +84,54 @@ function getHostElectronAPI() {
 
 function getHostIpcRenderer() {
   return _host?.ipcRenderer ?? null;
+}
+
+function includesBrowserAgent(workerList: Agent[]): boolean {
+  return workerList.some((worker) => {
+    if (worker.type === 'browser_agent' || worker.agent_id === 'browser_agent')
+      return true;
+    const tools = worker.workerInfo?.tools || worker.tools || [];
+    return Array.isArray(tools) && tools.includes('Browser Toolkit');
+  });
+}
+
+async function resolveCdpBrowsersForRequest(
+  shouldEnsureBrowser: boolean
+): Promise<{
+  browser_port?: number;
+  cdp_browsers: any[];
+}> {
+  const ipc = getHostIpcRenderer();
+  if (!ipc?.invoke) {
+    return { cdp_browsers: [] };
+  }
+
+  const browser_port = await ipc.invoke('get-browser-port');
+  let cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
+
+  if (shouldEnsureBrowser && cdp_browsers.length === 0) {
+    const launchResult = await ipc.invoke('launch-cdp-browser');
+    if (launchResult?.success) {
+      cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
+      if (cdp_browsers.length === 0 && launchResult.port) {
+        cdp_browsers = [
+          {
+            id: `launched-${launchResult.port}`,
+            port: launchResult.port,
+            isExternal: false,
+            name: `Launched Browser (${launchResult.port})`,
+          },
+        ];
+      }
+    } else {
+      console.warn(
+        'Failed to launch managed CDP browser:',
+        launchResult?.error || launchResult
+      );
+    }
+  }
+
+  return { browser_port, cdp_browsers };
 }
 
 interface Task {
@@ -404,6 +453,181 @@ const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
+
+const FINAL_OUTPUT_FILE_PATH_REGEX =
+  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
+  'csv',
+  'doc',
+  'docx',
+  'gif',
+  'htm',
+  'html',
+  'jpeg',
+  'jpg',
+  'json',
+  'log',
+  'md',
+  'pdf',
+  'png',
+  'ppt',
+  'pptx',
+  'svg',
+  'tsv',
+  'txt',
+  'webp',
+  'xls',
+  'xlsx',
+  'xml',
+  'zip',
+]);
+
+function normalizeOutputPath(path: string): string {
+  return path.replace(/\\/g, '/').trim();
+}
+
+function getOutputFileNameFromPath(path: string): string {
+  return normalizeOutputPath(path).split('/').pop() || '';
+}
+
+function getFileTypeFromName(name: string): string {
+  const extension = name.split('.').pop()?.toLowerCase() || '';
+  return extension === name.toLowerCase() ? '' : extension;
+}
+
+function getProjectRelativeFilePath(
+  filePath: string,
+  projectId?: string
+): string | undefined {
+  const normalizedPath = normalizeOutputPath(filePath);
+  if (projectId) {
+    const projectMarker = `/project_${projectId}/`;
+    const projectIndex = normalizedPath.indexOf(projectMarker);
+    if (projectIndex !== -1) {
+      return normalizedPath.slice(projectIndex + projectMarker.length);
+    }
+  }
+
+  return normalizedPath.match(/\/project_[^/]+\/(.+)$/)?.[1];
+}
+
+function buildRemoteFileInfoPath({
+  baseURL,
+  email,
+  projectId,
+  relativePath,
+}: {
+  baseURL?: string;
+  email?: string;
+  projectId?: string;
+  relativePath?: string;
+}): string | undefined {
+  if (!baseURL || !email || !projectId || !relativePath) {
+    return undefined;
+  }
+
+  const params = new URLSearchParams({
+    path: relativePath,
+    project_id: projectId,
+    email,
+  });
+
+  return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
+}
+
+function extractFinalOutputFileList(
+  content: string,
+  projectId?: string,
+  email?: string,
+  baseURL?: string
+): FileInfo[] {
+  if (!content) {
+    return [];
+  }
+
+  const fileInfos: FileInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+    const filePath = normalizeOutputPath(match[0]);
+    if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
+      continue;
+    }
+
+    const name = getOutputFileNameFromPath(filePath);
+    const type = getFileTypeFromName(name);
+    if (!name || !FINAL_OUTPUT_FILE_EXTENSIONS.has(type)) {
+      continue;
+    }
+
+    const relativePath = getProjectRelativeFilePath(filePath, projectId);
+    const remotePath = buildRemoteFileInfoPath({
+      baseURL,
+      email,
+      projectId,
+      relativePath,
+    });
+    const identity = normalizeOutputPath(relativePath || filePath);
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    seen.add(identity);
+    fileInfos.push({
+      name,
+      type,
+      path: remotePath || filePath,
+      icon: FileText,
+      relativePath,
+      isRemote: Boolean(remotePath),
+    });
+  }
+
+  return fileInfos;
+}
+
+function getFileInfoIdentities(file: FileInfo): string[] {
+  return [
+    file.relativePath,
+    file.path,
+    file.name,
+    getOutputFileNameFromPath(file.path || ''),
+  ]
+    .filter(Boolean)
+    .map((value) => normalizeOutputPath(value as string).toLowerCase());
+}
+
+function mergeFileInfoLists(
+  existingFileList: FileInfo[],
+  extractedFileList: FileInfo[]
+): FileInfo[] {
+  const merged = [...existingFileList];
+  const mergedIdentities = merged.map(getFileInfoIdentities);
+
+  extractedFileList.forEach((file) => {
+    const identities = getFileInfoIdentities(file);
+    const existingIndex = mergedIdentities.findIndex((existingIdentities) =>
+      identities.some((identity) => existingIdentities.includes(identity))
+    );
+
+    if (existingIndex === -1) {
+      merged.push(file);
+      mergedIdentities.push(identities);
+      return;
+    }
+
+    if (file.isRemote && !merged[existingIndex].isRemote) {
+      merged[existingIndex] = {
+        ...merged[existingIndex],
+        ...file,
+      };
+      mergedIdentities[existingIndex] = identities;
+    }
+  });
+
+  return merged;
+}
 
 const normalizeToolkitMessage = (value: unknown) => {
   if (typeof value === 'string') return value;
@@ -964,9 +1188,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let browser_port: number | undefined;
       let cdp_browsers: any[] = [];
       try {
-        browser_port = await getHostIpcRenderer()?.invoke?.('get-browser-port');
-        cdp_browsers =
-          (await getHostIpcRenderer()?.invoke?.('get-cdp-browsers')) ?? [];
+        ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
+          includesBrowserAgent(workerList)
+        ));
       } catch {
         // Web mode: no CDP
       }
@@ -2630,6 +2854,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               endMessage = agent_summary_end.summary || '';
             }
 
+            const outputProjectId =
+              project_id || projectStore.activeProjectId || undefined;
+            const outputBaseURL = await getBaseURL().catch(() => '');
+            const finalOutputFileList = extractFinalOutputFileList(
+              endMessage,
+              outputProjectId,
+              email || undefined,
+              outputBaseURL || undefined
+            );
+            const mergedFileList = mergeFileInfoLists(
+              fileList,
+              finalOutputFileList
+            );
+
             console.log('endMessage', endMessage);
             newMessage = {
               id: generateUniqueId(),
@@ -2637,7 +2875,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               content: endMessage || '',
               step: agentMessages.step,
               isConfirm: false,
-              fileList: fileList,
+              fileList: mergedFileList,
             };
 
             addMessages(currentTaskId, newMessage);
