@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 
 /** Shown after the user confirms the task plan while the start request is in flight (before the work log appears). */
 export function PreparingToExecuteTasks() {
-  const { t } = useTranslation('chat');
+  const { t } = useTranslation();
 
   return (
     <div
@@ -26,7 +26,7 @@ export function PreparingToExecuteTasks() {
       aria-live="polite"
     >
       <ShinyText
-        text={t('preparing-to-execute-tasks')}
+        text={t('chat.preparing-to-execute-tasks')}
         className="text-body-sm"
         speed={2.5}
       />
