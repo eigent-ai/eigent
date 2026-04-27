@@ -212,9 +212,7 @@ def browser_agent(
             fallback_browser = options.cdp_browsers[0]
             selected_port = _get_browser_port(fallback_browser)
             cdp_url = _get_browser_endpoint(fallback_browser)
-            selected_is_external = fallback_browser.get(
-                "isExternal", False
-            )
+            selected_is_external = fallback_browser.get("isExternal", False)
             logger.warning(
                 f"No available browsers in pool (initial), using first: "
                 f"port={selected_port}, session_id={toolkit_session_id}"

@@ -18,7 +18,6 @@ import pytest
 
 from app.controller import health_controller
 
-
 pytestmark = pytest.mark.unit
 
 

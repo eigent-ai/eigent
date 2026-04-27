@@ -53,9 +53,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         path = request.url.path
-        is_file_preview = path.startswith("/files/preview/") or path.startswith(
-            "/api/v1/files/preview/"
-        )
+        is_file_preview = path.startswith(
+            "/files/preview/"
+        ) or path.startswith("/api/v1/files/preview/")
         if is_file_preview:
             if "X-Frame-Options" in response.headers:
                 del response.headers["X-Frame-Options"]

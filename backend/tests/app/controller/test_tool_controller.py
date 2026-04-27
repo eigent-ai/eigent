@@ -222,9 +222,7 @@ class TestToolController:
                 "http://worker-17:9222"
             )
 
-        is_cdp_url_available.assert_called_once_with(
-            "http://worker-17:9222"
-        )
+        is_cdp_url_available.assert_called_once_with("http://worker-17:9222")
 
 
 @pytest.mark.integration
