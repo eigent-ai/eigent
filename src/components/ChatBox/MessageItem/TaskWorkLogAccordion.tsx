@@ -331,6 +331,21 @@ export function getGroupTitle(group: ActionGroup): string {
   return 'Thinking…';
 }
 
+function getGroupHeaderTitle(group: ActionGroup): string {
+  if (group.kind === 'preparation') {
+    return group.tools.length > 0
+      ? `${group.agentName} · ${group.tools.length} Registered`
+      : group.agentName;
+  }
+
+  const lastTool = group.tools[group.tools.length - 1];
+  if (!lastTool) return `${group.agentName} · Thinking…`;
+
+  const parts = [group.agentName, lastTool.toolkitName];
+  if (lastTool.method) parts.push(titleCaseMethod(lastTool.method));
+  return parts.join(' · ');
+}
+
 /**
  * Cheap digest of the task slice that affects this accordion, so any chat store
  * mutation re-renders without relying on `updateCount` (rarely bumped).
@@ -508,8 +523,7 @@ const ActionGroupRow = memo(function ActionGroupRow({
   onToggle: () => void;
 }) {
   const running = group.status === 'running' || isLastRunning;
-  const lastTool = group.tools[group.tools.length - 1];
-  const isPrep = group.kind === 'preparation';
+  const headerTitle = getGroupHeaderTitle(group);
 
   return (
     <div className="min-w-0 flex w-full flex-col">
@@ -522,39 +536,13 @@ const ActionGroupRow = memo(function ActionGroupRow({
         <span className="text-label-sm font-normal min-w-0 max-w-full truncate">
           {running ? (
             <ShinyText
-              text={group.agentName}
+              text={headerTitle}
               speed={2.5}
-              className="text-label-sm font-normal text-ds-text-neutral-muted-default"
+              className="text-label-sm font-normal text-ds-text-neutral-muted-default truncate"
             />
           ) : (
             <span className="text-ds-text-neutral-muted-default">
-              {group.agentName}
-            </span>
-          )}
-          {isPrep ? (
-            group.tools.length > 0 ? (
-              <span className="text-ds-text-neutral-subtle-default">
-                {' · '}
-                {group.tools.length}
-                {' Registered'}
-              </span>
-            ) : null
-          ) : lastTool ? (
-            <>
-              <span className="text-ds-text-neutral-subtle-default">
-                {' · '}
-                {lastTool.toolkitName}
-              </span>
-              {lastTool.method ? (
-                <span className="text-ds-text-neutral-subtle-default">
-                  {' · '}
-                  {titleCaseMethod(lastTool.method)}
-                </span>
-              ) : null}
-            </>
-          ) : (
-            <span className="text-ds-text-neutral-subtle-default">
-              {' · Thinking…'}
+              {headerTitle}
             </span>
           )}
         </span>
@@ -627,15 +615,15 @@ ActionGroupRow.displayName = 'ActionGroupRow';
 
 /**
  * Per-group open state with user override.
- * - Default: a running group is open; a done group is closed.
+ * - Default: every group is folded.
  * - User clicks set an override for the current phase only. When a group
  *   transitions running → done, its override is cleared so auto-fold wins
  *   unless the user toggles again after the transition.
  */
-function useGroupOpenState(
-  groups: ActionGroup[],
-  taskRunning: boolean
-): { isOpen: (group: ActionGroup) => boolean; toggle: (id: string) => void } {
+function useGroupOpenState(groups: ActionGroup[]): {
+  isOpen: (group: ActionGroup) => boolean;
+  toggle: (id: string) => void;
+} {
   // key → open flag. Key is `${id}:${phase}` so each phase owns its override.
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
   const prevStatusRef = useRef<Map<string, 'running' | 'done'>>(new Map());
@@ -677,9 +665,9 @@ function useGroupOpenState(
     (group: ActionGroup) => {
       const override = overrides.get(phaseKey(group));
       if (override !== undefined) return override;
-      return group.status === 'running' && taskRunning;
+      return false;
     },
-    [overrides, taskRunning]
+    [overrides]
   );
 
   const toggle = useCallback(
@@ -690,13 +678,13 @@ function useGroupOpenState(
         const key = `${group.id}:${group.status}`;
         const currentlyOpen = prev.has(key)
           ? (prev.get(key) as boolean)
-          : group.status === 'running' && taskRunning;
+          : false;
         const next = new Map(prev);
         next.set(key, !currentlyOpen);
         return next;
       });
     },
-    [groups, taskRunning]
+    [groups]
   );
 
   return { isOpen, toggle };
@@ -729,7 +717,7 @@ export function TaskWorkLogAccordion({
     );
   }, [groups, taskRunning]);
 
-  const { isOpen, toggle } = useGroupOpenState(effectiveGroups, taskRunning);
+  const { isOpen, toggle } = useGroupOpenState(effectiveGroups);
 
   const [outerOpen, setOuterOpen] = useState(() => taskRunning);
 
