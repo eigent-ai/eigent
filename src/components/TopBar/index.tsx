@@ -631,7 +631,7 @@ function HeaderWin() {
       {/* Trailing: update + settings (home) or back (history) — always at the end */}
       <div
         className={`${
-          platform === 'darwin' && 'pr-2'
+          platform === 'darwin' && 'px-1'
         } no-drag gap-1 relative z-50 flex h-full shrink-0 items-center`}
       >
         {packageUpdateAvailable && (
