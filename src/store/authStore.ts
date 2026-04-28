@@ -19,7 +19,7 @@ import { persist } from 'zustand/middleware';
 type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
-type CloudModelType =
+export type CloudModelType =
   | 'gemini-3.1-pro-preview'
   | 'gemini-3-pro-preview'
   | 'gemini-3-flash-preview'
@@ -33,7 +33,9 @@ type CloudModelType =
   | 'gpt-5.1'
   | 'gpt-5.2'
   | 'gpt-5.4'
+  | 'gpt-5.5'
   | 'gpt-5-mini'
+  | 'deepseek-v4-pro'
   | 'minimax_m2_5';
 
 // auth info interface

@@ -96,6 +96,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
+  getCloudModelPlatform,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -225,6 +226,14 @@ describe('ChatStore - Core Functionality', () => {
           source: 'user_attachment',
         },
       ]);
+    });
+  });
+
+  describe('Cloud Model Platform Mapping', () => {
+    it('maps cloud model ids to backend platforms', () => {
+      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
+      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
+      expect(getCloudModelPlatform('minimax_m2_5')).toBe('minimax');
     });
   });
 
