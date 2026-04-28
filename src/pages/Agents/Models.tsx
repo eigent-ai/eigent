@@ -492,11 +492,6 @@ export default function SettingModels() {
     { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-    { id: 'gpt-4.1', name: 'GPT-4.1' },
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'gpt-5.1', name: 'GPT-5.1' },
-    { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5.4', name: 'GPT-5.4' },
     { id: 'gpt-5.5', name: 'GPT-5.5' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
@@ -504,6 +499,7 @@ export default function SettingModels() {
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
     { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
     { id: 'minimax_m2_5', name: 'Minimax M2.5' },
   ];
@@ -1265,21 +1261,6 @@ export default function SettingModels() {
                   <SelectItem value="gemini-3-flash-preview">
                     {t('setting.gemini-3-flash-preview-name')}
                   </SelectItem>
-                  <SelectItem value="gpt-4.1-mini">
-                    {t('setting.gpt-4.1-mini-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-4.1">
-                    {t('setting.gpt-4.1-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5">
-                    {t('setting.gpt-5-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.1">
-                    {t('setting.gpt-5.1-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.2">
-                    {t('setting.gpt-5.2-name')}
-                  </SelectItem>
                   <SelectItem value="gpt-5.4">
                     {t('setting.gpt-5.4-name')}
                   </SelectItem>
@@ -1300,6 +1281,9 @@ export default function SettingModels() {
                   </SelectItem>
                   <SelectItem value="claude-opus-4-6">
                     {t('setting.claude-opus-4-6-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-opus-4-7">
+                    {t('setting.claude-opus-4-7-name')}
                   </SelectItem>
                   <SelectItem value="deepseek-v4-pro">
                     {t('setting.deepseek-v4-pro-name')}

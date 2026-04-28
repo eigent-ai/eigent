@@ -201,24 +201,21 @@ type CloudModelPlatform =
   | 'deepseek'
   | 'minimax';
 
+// prettier-ignore
 const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
   'gemini-3.1-pro-preview': 'gemini',
   'gemini-3-pro-preview': 'gemini',
   'gemini-3-flash-preview': 'gemini',
-  'gpt-4.1-mini': 'azure',
-  'gpt-4.1': 'azure',
   'claude-haiku-4-5': 'aws-bedrock-converse',
   'claude-sonnet-4-5': 'aws-bedrock-converse',
   'claude-sonnet-4-6': 'aws-bedrock-converse',
   'claude-opus-4-6': 'aws-bedrock-converse',
-  'gpt-5': 'azure',
-  'gpt-5.1': 'azure',
-  'gpt-5.2': 'azure',
+  'claude-opus-4-7': 'aws-bedrock-converse',
   'gpt-5.4': 'azure',
   'gpt-5.5': 'azure',
   'gpt-5-mini': 'azure',
   'deepseek-v4-pro': 'deepseek',
-  ['minimax_m2_5']: 'minimax',
+  'minimax_m2_5': 'minimax',
 };
 
 export function getCloudModelPlatform(
