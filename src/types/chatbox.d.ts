@@ -120,6 +120,8 @@ declare global {
   }
 
   interface AgentMessage {
+    timestamp?: number | null;
+    created_at?: string | null;
     step: AgentStepType;
     data: {
       project_id?: string;

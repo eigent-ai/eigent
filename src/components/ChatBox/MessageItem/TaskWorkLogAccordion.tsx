@@ -17,7 +17,11 @@ import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  type ChatTaskStatusType,
+} from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -51,8 +55,12 @@ function normalizeToolkitMessage(value: unknown): string {
 }
 
 /** Matches `getFormattedTaskTime` / task timer fields on the chat task. */
-function getTaskElapsedMs(task: { taskTime: number; elapsed: number }): number {
-  if (task.taskTime !== 0) {
+function getTaskElapsedMs(task: {
+  status: ChatTaskStatusType;
+  taskTime: number;
+  elapsed: number;
+}): number {
+  if (task.status === ChatTaskStatus.RUNNING && task.taskTime !== 0) {
     return Math.max(0, Date.now() - task.taskTime + task.elapsed);
   }
   return Math.max(0, task.elapsed);

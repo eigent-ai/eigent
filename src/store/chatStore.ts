@@ -95,6 +95,24 @@ function includesBrowserAgent(workerList: Agent[]): boolean {
   });
 }
 
+function getPersistedStepTimeMs(message: AgentMessage): number | null {
+  if (
+    typeof message.timestamp === 'number' &&
+    Number.isFinite(message.timestamp)
+  ) {
+    return message.timestamp < 1_000_000_000_000
+      ? message.timestamp * 1000
+      : message.timestamp;
+  }
+
+  if (message.created_at) {
+    const parsed = Date.parse(message.created_at);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
 async function resolveCdpBrowsersForRequest(
   shouldEnsureBrowser: boolean
 ): Promise<{
@@ -1036,6 +1054,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let historyId: string | null = projectStore.getHistoryId(project_id);
       let snapshots: any = [];
       let skipFirstConfirm = true;
+      let playbackFirstStepTimeMs: number | null = null;
+      let playbackLastStepTimeMs: number | null = null;
 
       // replay or share request
       if (type) {
@@ -1297,6 +1317,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
             });
             return;
+          }
+
+          if (type) {
+            const stepTimeMs = getPersistedStepTimeMs(agentMessages);
+            if (stepTimeMs !== null) {
+              playbackFirstStepTimeMs ??= stepTimeMs;
+              playbackLastStepTimeMs = stepTimeMs;
+            }
           }
 
           if (
@@ -2823,8 +2851,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const task = tasks[currentTaskId];
             let taskTime = task.taskTime;
             let elapsed = task.elapsed;
-            // if task is running, compute current time
-            if (taskTime !== 0) {
+            const playbackElapsed =
+              type &&
+              playbackFirstStepTimeMs !== null &&
+              playbackLastStepTimeMs !== null
+                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                : null;
+            if (playbackElapsed !== null) {
+              elapsed = playbackElapsed;
+            } else if (taskTime !== 0) {
               const currentTime = Date.now();
               elapsed += currentTime - taskTime;
             }
