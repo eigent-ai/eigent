@@ -735,6 +735,37 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
     });
   }, []);
 
+  const timeRow = (
+    <div className="w-full">
+      <div className="mx-auto flex w-full max-w-xs items-end gap-3 pr-3">
+        <div className="flex-1">
+          <InputSelect
+            value={hour}
+            onChange={(value) => setHour(value)}
+            options={hourOptions}
+            title={t('triggers.schedule-hour')}
+            placeholder="00"
+            required
+            leadingIcon={<Clock className="h-4 w-4" />}
+            state={showErrors && !hour ? 'error' : undefined}
+          />
+        </div>
+        <div className="flex-1">
+          <InputSelect
+            value={minute}
+            onChange={(value) => setMinute(value)}
+            options={minuteOptions}
+            title={t('triggers.schedule-minute')}
+            placeholder="00"
+            required
+            leadingIcon={<Clock className="h-4 w-4" />}
+            state={showErrors && !minute ? 'error' : undefined}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-full w-full flex-col space-y-4">
       <Tabs
@@ -778,61 +809,11 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : undefined
             }
           />
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <InputSelect
-                value={hour}
-                onChange={(value) => setHour(value)}
-                options={hourOptions}
-                title={t('triggers.schedule-hour')}
-                placeholder="00"
-                required
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
-              />
-            </div>
-            <div className="flex-1">
-              <InputSelect
-                value={minute}
-                onChange={(value) => setMinute(value)}
-                options={minuteOptions}
-                title={t('triggers.schedule-minute')}
-                placeholder="00"
-                required
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
-              />
-            </div>
-          </div>
+          {timeRow}
         </TabsContent>
 
         <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <InputSelect
-                value={hour}
-                onChange={(value) => setHour(value)}
-                options={hourOptions}
-                title={t('triggers.schedule-hour')}
-                placeholder="00"
-                required
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
-              />
-            </div>
-            <div className="flex-1">
-              <InputSelect
-                value={minute}
-                onChange={(value) => setMinute(value)}
-                options={minuteOptions}
-                title={t('triggers.schedule-minute')}
-                placeholder="00"
-                required
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
-              />
-            </div>
-          </div>
+          {timeRow}
           <Input
             type="date"
             title={t('triggers.expiration-date')}
@@ -850,32 +831,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-4 space-y-3">
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <InputSelect
-                value={hour}
-                onChange={(value) => setHour(value)}
-                options={hourOptions}
-                title={t('triggers.schedule-hour')}
-                placeholder="00"
-                required
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
-              />
-            </div>
-            <div className="flex-1">
-              <InputSelect
-                value={minute}
-                onChange={(value) => setMinute(value)}
-                options={minuteOptions}
-                title={t('triggers.schedule-minute')}
-                placeholder="00"
-                required
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
-              />
-            </div>
-          </div>
+          {timeRow}
           <div>
             <div className="mb-1.5 text-body-sm font-bold text-text-heading">
               {t('triggers.schedule-weekdays')} *
@@ -977,32 +933,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             required
             state={showErrors && !dayOfMonth ? 'error' : undefined}
           />
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <InputSelect
-                value={hour}
-                onChange={(value) => setHour(value)}
-                options={hourOptions}
-                title={t('triggers.schedule-hour')}
-                required
-                placeholder="00"
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !hour ? 'error' : undefined}
-              />
-            </div>
-            <div className="flex-1">
-              <InputSelect
-                value={minute}
-                onChange={(value) => setMinute(value)}
-                options={minuteOptions}
-                title={t('triggers.schedule-minute')}
-                required
-                placeholder="00"
-                leadingIcon={<Clock className="h-4 w-4" />}
-                state={showErrors && !minute ? 'error' : undefined}
-              />
-            </div>
-          </div>
+          {timeRow}
           <Input
             type="date"
             title={t('triggers.expiration-date')}
