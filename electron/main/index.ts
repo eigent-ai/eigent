@@ -3055,7 +3055,7 @@ async function createWindow() {
                   language: 'system',
                   isFirstLaunch: true,
                   modelType: 'cloud',
-                  cloud_model_type: 'gpt-4.1',
+                  cloud_model_type: 'gpt-5.4',
                   initState: 'carousel',
                   share_token: null,
                   workerListData: {}
