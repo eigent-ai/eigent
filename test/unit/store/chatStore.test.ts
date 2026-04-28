@@ -236,7 +236,7 @@ describe('ChatStore - Core Functionality', () => {
         'aws-bedrock-converse'
       );
       expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
-      expect(getCloudModelPlatform('minimax_m2_5')).toBe('minimax');
+      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
     });
   });
 

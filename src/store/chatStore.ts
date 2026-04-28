@@ -215,7 +215,7 @@ const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
   'gpt-5.5': 'azure',
   'gpt-5-mini': 'azure',
   'deepseek-v4-pro': 'deepseek',
-  'minimax_m2_5': 'minimax',
+  'minimax_m2_7': 'minimax',
 };
 
 export function getCloudModelPlatform(

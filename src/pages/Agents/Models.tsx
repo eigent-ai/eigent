@@ -501,7 +501,7 @@ export default function SettingModels() {
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
     { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
     { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-    { id: 'minimax_m2_5', name: 'Minimax M2.5' },
+    { id: 'minimax_m2_7', name: 'Minimax M2.7' },
   ];
 
   const handleVerify = async (idx: number) => {
@@ -1288,8 +1288,8 @@ export default function SettingModels() {
                   <SelectItem value="deepseek-v4-pro">
                     {t('setting.deepseek-v4-pro-name')}
                   </SelectItem>
-                  <SelectItem value="minimax_m2_5">
-                    {t('setting.minimax-m2-5-name')}
+                  <SelectItem value="minimax_m2_7">
+                    {t('setting.minimax-m2-7-name')}
                   </SelectItem>
                 </SelectContent>
               </Select>
