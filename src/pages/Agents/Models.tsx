@@ -1108,9 +1108,13 @@ export default function SettingModels() {
               </div>
               {cloudPrefer ? (
                 <Button
-                  variant="success"
+                  variant="primary"
+                  tone="success"
                   size="xs"
-                  className="focus-none rounded-full"
+                  buttonContent="text"
+                  textWeight="bold"
+                  buttonRadius="full"
+                  className="focus-none"
                   onClick={() => {
                     setCloudPrefer(false);
                     setModelType('custom');
@@ -1121,8 +1125,12 @@ export default function SettingModels() {
               ) : (
                 <Button
                   variant="ghost"
+                  tone="neutral"
                   size="xs"
-                  className="!text-ds-text-neutral-muted-default rounded-full"
+                  buttonContent="text"
+                  textWeight="bold"
+                  buttonRadius="full"
+                  className="!text-ds-text-neutral-muted-default"
                   onClick={() => {
                     setLocalPrefer(false);
                     setActiveModelIdx(null);
@@ -1170,7 +1178,11 @@ export default function SettingModels() {
                 window.location.href = `${SITE_URL}/dashboard`;
               }}
               variant="primary"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
+              textWeight="bold"
+              buttonRadius="lg"
             >
               {loadingCredits ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1271,6 +1283,7 @@ export default function SettingModels() {
                     variant="primary"
                     tone="success"
                     size="xs"
+                    buttonContent="text"
                     textWeight="bold"
                     disabled
                     buttonRadius="full"
@@ -1282,6 +1295,7 @@ export default function SettingModels() {
                     variant="ghost"
                     tone="neutral"
                     size="xs"
+                    buttonContent="text"
                     textWeight="bold"
                     disabled={loading === idx}
                     buttonRadius="full"
@@ -1294,6 +1308,7 @@ export default function SettingModels() {
                     variant="secondary"
                     tone="neutral"
                     size="xs"
+                    buttonContent="text"
                     textWeight="bold"
                     disabled
                     buttonRadius="full"
@@ -1487,20 +1502,22 @@ export default function SettingModels() {
           <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
               textWeight="medium"
               buttonRadius="lg"
-              tone="neutral"
               onClick={() => handleDelete(idx)}
             >
               {t('setting.reset')}
             </Button>
             <Button
               variant="primary"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
               textWeight="bold"
               buttonRadius="lg"
-              tone="neutral"
               onClick={() => handleVerify(idx)}
               disabled={loading === idx}
             >
@@ -1536,9 +1553,13 @@ export default function SettingModels() {
                 </div>
                 {isPreferred ? (
                   <Button
-                    variant="success"
+                    variant="primary"
+                    tone="success"
                     size="xs"
-                    className="focus-none rounded-full shadow-none"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    className="focus-none shadow-none"
                     disabled={!isConfigured}
                     onClick={() => handleLocalSwitch(false)}
                   >
@@ -1547,12 +1568,16 @@ export default function SettingModels() {
                 ) : (
                   <Button
                     variant="ghost"
+                    tone="neutral"
                     size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
                     disabled={!isConfigured}
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active rounded-full shadow-none'
+                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active shadow-none'
                         : ''
                     }
                   >
@@ -1667,8 +1692,10 @@ export default function SettingModels() {
                   </div>
                   <Button
                     variant="ghost"
+                    tone="neutral"
                     size="xs"
                     buttonContent="icon-only"
+                    textWeight="bold"
                     onClick={() =>
                       void fetchModelsForPlatform(
                         platform,
@@ -1712,8 +1739,11 @@ export default function SettingModels() {
           <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
+              tone="neutral"
               size="sm"
-              className="!text-ds-text-neutral-muted-default"
+              buttonContent="text"
+              textWeight="medium"
+              buttonRadius="lg"
               onClick={handleLocalReset}
             >
               {t('setting.reset')}
@@ -1722,11 +1752,13 @@ export default function SettingModels() {
               onClick={handleLocalVerify}
               disabled={!localEnabled || localVerifying}
               variant="primary"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
+              textWeight="bold"
+              buttonRadius="lg"
             >
-              <span className="text-ds-text-neutral-inverse-default">
-                {localVerifying ? t('setting.configuring') : t('setting.save')}
-              </span>
+              {localVerifying ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
         </div>
