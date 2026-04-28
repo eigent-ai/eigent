@@ -106,7 +106,7 @@ export function WorkspaceSessionModeToggle({
 
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
-    'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default [&_svg.lucide]:stroke-2',
+    'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
     className
   );
 

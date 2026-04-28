@@ -99,7 +99,7 @@ export interface ChatInputModelDropdownProps {
 
 const modelTriggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
-  'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default [&_svg.lucide]:stroke-2'
+  'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
 );
 
 export function ChatInputModelDropdown({

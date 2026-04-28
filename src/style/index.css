@@ -147,7 +147,6 @@ body {
   .lucide {
     color: var(--ds-icon-neutral-muted-default);
     stroke: currentColor;
-    stroke-width: 1.5;
   }
 
   button .lucide,
