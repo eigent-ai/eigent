@@ -74,6 +74,7 @@ ATTR_TASK_QUALITY_SCORE = "eigent.task.quality_score"
 ATTR_TASK_TIMESTAMP = "eigent.task.timestamp"
 ATTR_TASK_DEPENDENCIES = "eigent.task.dependencies"
 ATTR_TASK_SUBTASK_IDS = "eigent.task.subtask_ids"
+ATTR_TASK_FAILURE_COUNT = "eigent.task.failure_count"
 
 # Attribute keys for eigent.worker namespace
 ATTR_WORKER_ID = "eigent.worker.id"
@@ -534,6 +535,10 @@ class WorkforceMetricsCallback(WorkforceMetrics):
                 span.set_attribute(ATTR_TASK_PARENT_ID, event.parent_task_id)
             if event.worker_id:
                 span.set_attribute(ATTR_WORKER_ID, event.worker_id)
+            if event.metadata and isinstance(event.metadata.get("failure_count"),
+                                             int):
+                span.set_attribute(ATTR_TASK_FAILURE_COUNT,
+                                   event.metadata["failure_count"])
 
             span.set_status(Status(StatusCode.ERROR, event.error_message))
             span.end()

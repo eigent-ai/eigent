@@ -14,7 +14,7 @@
 
 import asyncio
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 
 from camel.agents import ChatAgent
 from camel.societies.workforce.base import BaseNode
@@ -22,7 +22,6 @@ from camel.societies.workforce.events import (
     TaskAssignedEvent,
     TaskCompletedEvent,
     TaskCreatedEvent,
-    TaskFailedEvent,
     WorkerCreatedEvent,
 )
 from camel.societies.workforce.prompts import TASK_DECOMPOSE_PROMPT
@@ -795,14 +794,27 @@ class Workforce(BaseWorkforce):
         metrics_callbacks = [
             cb for cb in self._callbacks if isinstance(cb, WorkforceMetrics)
         ]
-        if metrics_callbacks and hasattr(metrics_callbacks[0], "log_entries"):
-            for entry in reversed(metrics_callbacks[0].log_entries):
+        for callback in metrics_callbacks:
+            log_entries = getattr(callback, "log_entries", None)
+            if not isinstance(log_entries, list):
+                continue
+
+            for entry in reversed(log_entries):
+                if not isinstance(entry, Mapping):
+                    continue
                 if (
                     entry.get("event_type") == "task_failed"
                     and entry.get("task_id") == task.id
                 ):
-                    error_message = entry.get("error_message")
+                    error_message = str(entry.get("error_message") or "")
                     break
+
+            if error_message:
+                break
+
+        resolved_error_message = error_message or str(
+            task.result or "Unknown error"
+        )
 
         task_lock = get_task_lock(self.api_task_id)
         await task_lock.put_queue(
@@ -812,25 +824,10 @@ class Workforce(BaseWorkforce):
                     "content": task.content,
                     "state": task.state,
                     "failure_count": task.failure_count,
-                    "result": str(error_message),
+                    "result": resolved_error_message,
                 }
             )
         )
-
-        if metrics_callbacks:
-            error_msg = error_message or str(task.result or "Unknown error")
-            # Pass all values during construction since TaskFailedEvent is frozen
-            worker_id = (
-                task.assigned_worker_id
-                if hasattr(task, "assigned_worker_id")
-                else None
-            )
-            event = TaskFailedEvent(
-                task_id=task.id,
-                error_message=error_msg,
-                worker_id=worker_id,
-            )
-            metrics_callbacks[0].log_task_failed(event)
 
         return result
 
