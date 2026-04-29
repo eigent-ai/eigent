@@ -13,17 +13,33 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut, proxyFetchDelete } from '@/api/http';
-import GroupedHistoryView from '@/components/Dashboard/GroupedHistoryView';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { ChatTaskStatus } from '@/types/constants';
+import type { ProjectGroup } from '@/types/history';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import GroupedHistoryView from './GroupedHistoryView';
+import type { DashboardViewMode } from './useDashboardData';
 
-export default function Project() {
+type Props = {
+  projects: ProjectGroup[];
+  isLoading: boolean;
+  updateProjects: (updater: (prev: ProjectGroup[]) => ProjectGroup[]) => void;
+  invalidate: () => Promise<void>;
+  viewMode: DashboardViewMode;
+};
+
+export default function Project({
+  projects,
+  isLoading,
+  updateProjects,
+  invalidate,
+  viewMode,
+}: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
@@ -167,39 +183,29 @@ export default function Project() {
       />
 
       <div className="min-w-0 flex h-auto min-h-[calc(100vh-86px)] w-full flex-col">
-        {/* Header Section */}
-        <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
-          <div className="gap-4 flex w-full flex-col items-start justify-between">
-            <div className="flex flex-col">
-              <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-                {t('layout.projects-hub')}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex w-full">
-          <div className="pb-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
-            <GroupedHistoryView
-              onTaskSelect={handleSetActive}
-              onTaskDelete={handleDelete}
-              onTaskShare={handleShare}
-              activeTaskId={chatStore.activeTaskId || undefined}
-              ongoingTasks={chatStore.tasks}
-              onOngoingTaskClick={(taskId) => {
-                chatStore.setActiveTaskId(taskId);
-                navigate(`/`);
-              }}
-              onOngoingTaskPause={(taskId) =>
-                handleTakeControl('pause', taskId)
-              }
-              onOngoingTaskResume={(taskId) =>
-                handleTakeControl('resume', taskId)
-              }
-              onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
-              onProjectDelete={handleProjectDelete}
-            />
-          </div>
+        <div className="pb-8 mx-auto flex min-h-[calc(100vh-86px)] w-full flex-col items-start justify-start">
+          <GroupedHistoryView
+            projects={projects}
+            isLoading={isLoading}
+            updateProjects={updateProjects}
+            invalidate={invalidate}
+            viewMode={viewMode}
+            onTaskSelect={handleSetActive}
+            onTaskDelete={handleDelete}
+            onTaskShare={handleShare}
+            activeTaskId={chatStore.activeTaskId || undefined}
+            ongoingTasks={chatStore.tasks}
+            onOngoingTaskClick={(taskId) => {
+              chatStore.setActiveTaskId(taskId);
+              navigate(`/`);
+            }}
+            onOngoingTaskPause={(taskId) => handleTakeControl('pause', taskId)}
+            onOngoingTaskResume={(taskId) =>
+              handleTakeControl('resume', taskId)
+            }
+            onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
+            onProjectDelete={handleProjectDelete}
+          />
         </div>
       </div>
     </div>

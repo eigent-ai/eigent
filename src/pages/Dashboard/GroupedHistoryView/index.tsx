@@ -13,30 +13,25 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete, proxyFetchPut } from '@/api/http';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tag } from '@/components/ui/tag';
 import { useHost } from '@/host';
-import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore } from '@/store/authStore';
-import { useGlobalStore } from '@/store/globalStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  Folder,
-  FolderOpen,
-  LayoutGrid,
-  List,
-  ListChecks,
-  Zap,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { FolderOpen } from 'lucide-react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { DashboardViewMode } from '../useDashboardData';
 import ProjectGroup from './ProjectGroup';
 
 interface GroupedHistoryViewProps {
-  /** When true, grid/list tabs are hidden (e.g. controlled from a parent sidebar). */
-  hideViewSwitcher?: boolean;
+  projects: ProjectGroupType[];
+  isLoading?: boolean;
+  updateProjects: (
+    updater: (prev: ProjectGroupType[]) => ProjectGroupType[]
+  ) => void;
+  invalidate: () => void;
+  viewMode: DashboardViewMode;
   searchValue?: string;
   onTaskSelect: (
     projectId: string,
@@ -58,7 +53,11 @@ interface GroupedHistoryViewProps {
 }
 
 export default function GroupedHistoryView({
-  hideViewSwitcher = false,
+  projects,
+  isLoading = false,
+  updateProjects: setProjects,
+  invalidate,
+  viewMode,
   searchValue = '',
   onTaskSelect,
   onTaskDelete,
@@ -76,24 +75,8 @@ export default function GroupedHistoryView({
   const { t } = useTranslation();
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
-  const [projects, setProjects] = useState<ProjectGroupType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { history_type, setHistoryType } = useGlobalStore();
   const projectStore = useProjectStore();
-
-  // Default to list view if not set
-  const viewType = history_type || 'list';
-
-  const loadProjects = async () => {
-    setLoading(true);
-    try {
-      await fetchGroupedHistoryTasks(setProjects);
-    } catch (error) {
-      console.error('Failed to load grouped projects:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const projectViewType = viewMode === 'board' ? 'grid' : 'list';
 
   const onDelete = (historyId: string) => {
     try {
@@ -251,8 +234,8 @@ export default function GroupedHistoryView({
   };
 
   useEffect(() => {
-    loadProjects();
-  }, [refreshTrigger]);
+    if (refreshTrigger !== undefined) invalidate();
+  }, [invalidate, refreshTrigger]);
 
   // Filter projects based on search value
   const filteredProjects = projects.filter((project) => {
@@ -271,35 +254,7 @@ export default function GroupedHistoryView({
     );
   });
 
-  // Get all projects from projectStore and find empty ones
-  const allProjectsFromStore = projectStore.getAllProjects();
-  const emptyProjects = allProjectsFromStore.filter((project) =>
-    projectStore.isEmptyProject(project)
-  );
-
-  // Get IDs of projects already in filteredProjects to avoid duplicates
-  const filteredProjectIds = new Set(filteredProjects.map((p) => p.project_id));
-
-  // Convert empty projects from projectStore format to ProjectGroup format
-  // Filter out any that already exist in filteredProjects
-  const emptyProjectGroups: ProjectGroupType[] = emptyProjects
-    .filter((project) => !filteredProjectIds.has(project.id))
-    .map((project) => ({
-      project_id: project.id,
-      project_name: project.name,
-      total_tokens: 0,
-      task_count: 0,
-      latest_task_date: new Date(project.updatedAt).toISOString(),
-      last_prompt: '',
-      tasks: [],
-      total_completed_tasks: 0,
-      total_triggers: 0,
-      total_ongoing_tasks: 0,
-      average_tokens_per_task: 0,
-    }));
-
-  // Combine filtered projects with empty projects from store
-  const allProjects = [...emptyProjectGroups, ...filteredProjects];
+  const allProjects = filteredProjects;
 
   // Shimmer animation styles
   // Shimmer animation styles
@@ -312,44 +267,44 @@ export default function GroupedHistoryView({
 
   // Skeleton component for list card loading state
   const ListCardSkeleton = () => (
-    <div className="overflow-hidden rounded-xl bg-ds-bg-neutral-default-default">
-      <div className="flex w-full items-center justify-between px-6 py-4">
+    <div className="rounded-xl bg-ds-bg-neutral-default-default overflow-hidden">
+      <div className="px-6 py-4 flex w-full items-center justify-between">
         {/* Start: Folder icon and project name skeleton */}
-        <div className="flex w-48 flex-shrink-0 items-center gap-3">
-          <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="w-48 gap-3 flex flex-shrink-0 items-center">
+          <div className="h-5 w-5 rounded bg-ds-bg-neutral-subtle-default relative flex-shrink-0 overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-5 w-32 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-5 w-32 rounded bg-ds-bg-neutral-subtle-default relative overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
 
         {/* Middle: Tags skeleton */}
-        <div className="flex flex-1 items-center justify-end gap-4">
-          <div className="relative h-6 w-16 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="gap-4 flex flex-1 items-center justify-end">
+          <div className="h-6 w-16 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
 
         {/* End: Menu skeleton */}
-        <div className="ml-4 flex min-w-32 items-center justify-end gap-2 pl-4">
-          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="ml-4 min-w-32 gap-2 pl-4 flex items-center justify-end">
+          <div className="h-8 w-8 rounded-md bg-ds-bg-neutral-subtle-default relative overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
       </div>
     </div>
   );
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex w-full flex-col gap-4 pb-40">
+      <div className="gap-4 pb-40 flex w-full flex-col">
         {/* Keyframe animation for shimmer effect */}
         <style>
           {`
@@ -361,24 +316,24 @@ export default function GroupedHistoryView({
         </style>
 
         {/* Summary skeleton */}
-        <div className="flex items-center justify-between pb-4">
-          <div className="flex items-center gap-2">
-            <div className="relative h-7 w-28 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="pb-4 flex items-center justify-between">
+          <div className="gap-2 flex items-center">
+            <div className="h-7 w-28 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
-            <div className="relative h-7 w-32 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+            <div className="h-7 w-32 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
           </div>
-          <div className="flex items-center gap-md">
-            <div className="relative h-9 w-40 overflow-hidden rounded-lg bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="gap-md flex items-center">
+            <div className="h-9 w-40 rounded-lg bg-ds-bg-neutral-strong-default relative overflow-hidden">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
           </div>
         </div>
 
         {/* List skeleton cards */}
-        <div className="flex flex-col gap-3">
+        <div className="gap-3 flex flex-col">
           {[1, 2, 3, 4, 5].map((i) => (
             <ListCardSkeleton key={i} />
           ))}
@@ -389,7 +344,7 @@ export default function GroupedHistoryView({
 
   if (filteredProjects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
+      <div className="p-8 flex flex-col items-center justify-center text-center">
         <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
         <div className="text-sm text-ds-text-neutral-muted-default">
           {searchValue
@@ -406,79 +361,19 @@ export default function GroupedHistoryView({
   }
 
   return (
-    <div className="flex w-full flex-col gap-4 pb-40">
-      {/* Summary */}
-      <div
-        className={`flex items-center pb-4 ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
-      >
-        <div className="flex items-center gap-2">
-          <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
-            <Folder />
-            <span className="text-body-sm"> {t('layout.projects')}</span>
-
-            {allProjects.length}
-          </Tag>
-
-          <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
-            <ListChecks />
-            <span className="text-body-sm"> {t('layout.total-tasks')}</span>
-            {allProjects.reduce(
-              (total, project) => total + project.task_count,
-              0
-            )}
-          </Tag>
-
-          <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
-            <Zap />
-            <span className="text-body-sm">
-              {' '}
-              {t('layout.triggers') || 'Triggers'}
-            </span>
-            {allProjects.reduce(
-              (total, project) => total + (project.total_triggers || 0),
-              0
-            )}
-          </Tag>
-        </div>
-        <div className="flex items-center gap-md">
-          {!hideViewSwitcher && (
-            <Tabs
-              value={viewType}
-              onValueChange={(value) =>
-                setHistoryType(value as 'grid' | 'list')
-              }
-            >
-              <TabsList>
-                <TabsTrigger value="grid">
-                  <div className="flex items-center gap-1 text-label-sm">
-                    <LayoutGrid size={16} />
-                    <span>{t('dashboard.grid')}</span>
-                  </div>
-                </TabsTrigger>
-                <TabsTrigger value="list">
-                  <div className="flex items-center gap-1 text-label-sm">
-                    <List size={16} />
-                    <span>{t('dashboard.list')}</span>
-                  </div>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
-        </div>
-      </div>
-
+    <div className="gap-4 pb-40 flex w-full flex-col">
       <AnimatePresence mode="wait">
         <motion.div
-          key={viewType}
+          key={projectViewType}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
         >
-          {viewType === 'grid' ? (
-            // Grid layout for project cards
+          {projectViewType === 'grid' ? (
+            // Grid layout for project cards — equal-width columns; cards fill the cell (w-full)
             <motion.div
-              className="grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2"
+              className="gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 grid auto-rows-fr grid-cols-1"
               initial="hidden"
               animate="visible"
               variants={{
@@ -495,6 +390,7 @@ export default function GroupedHistoryView({
                 {allProjects.map((project, _index) => (
                   <motion.div
                     key={project.project_id}
+                    className="min-w-0 w-full"
                     variants={{
                       hidden: { opacity: 0, y: 20, scale: 0.95 },
                       visible: {
@@ -538,7 +434,7 @@ export default function GroupedHistoryView({
           ) : (
             // List layout for projects
             <motion.div
-              className="flex flex-col gap-3"
+              className="gap-3 flex flex-col"
               initial="hidden"
               animate="visible"
               variants={{
