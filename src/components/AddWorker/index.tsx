@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpList as fetchMcpConfig } from '@/api/brain';
 import { fetchPost } from '@/api/http';
 import githubIcon from '@/assets/github.svg';
 import { Button } from '@/components/ui/button';
@@ -297,9 +298,11 @@ export function AddWorker({
       setNameError(t('workforce.worker-name-already-exists'));
       return;
     }
-    let mcpLocal: any = {};
-    if (window.ipcRenderer) {
-      mcpLocal = await window.ipcRenderer.invoke('mcp-list');
+    let mcpLocal: any = { mcpServers: {} };
+    try {
+      mcpLocal = await fetchMcpConfig();
+    } catch {
+      // Backend may not be ready
     }
     const localTool: string[] = [];
     const mcpList: string[] = [];

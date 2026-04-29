@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpInstall, mcpRemove, mcpUpdate } from '@/api/brain';
 import {
   fetchGet,
   fetchPost,
@@ -413,18 +414,15 @@ export default function SettingMCP() {
       };
       await proxyFetchPut(`/api/v1/mcp/users/${showConfig.id}`, mcpData);
 
-      if (window.ipcRenderer) {
-        //Partial payload to empty env {}
-        const payload: any = {
-          description: configForm.mcp_desc,
-          command: configForm.command,
-          args: arrayToArgsJson(configForm.argsArr),
-        };
-        if (configForm.env && Object.keys(configForm.env).length > 0) {
-          payload.env = configForm.env;
-        }
-        window.ipcRenderer.invoke('mcp-update', mcpData.mcp_name, payload);
+      const payload: Record<string, unknown> = {
+        description: configForm.mcp_desc,
+        command: configForm.command,
+        args: arrayToArgsJson(configForm.argsArr),
+      };
+      if (configForm.env && Object.keys(configForm.env).length > 0) {
+        payload.env = configForm.env;
       }
+      await mcpUpdate(mcpData.mcp_name, payload);
 
       setShowConfig(null);
       fetchList();
@@ -496,10 +494,10 @@ export default function SettingMCP() {
           setInstalling(false);
           return;
         }
-        if (window.ipcRenderer) {
-          const mcpServers = data['mcpServers'];
+        const mcpServers = data['mcpServers'];
+        if (mcpServers && typeof mcpServers === 'object') {
           for (const [key, value] of Object.entries(mcpServers)) {
-            await window.ipcRenderer.invoke('mcp-install', key, value);
+            await mcpInstall(key, value as Record<string, unknown>);
           }
         }
       }
@@ -522,11 +520,7 @@ export default function SettingMCP() {
     try {
       checkAgentTool(deleteTarget.mcp_name);
       await proxyFetchDelete(`/api/v1/mcp/users/${deleteTarget.id}`);
-      // notify main process
-      if (window.ipcRenderer) {
-        console.log('deleteTarget', deleteTarget.mcp_key);
-        await window.ipcRenderer.invoke('mcp-remove', deleteTarget.mcp_key);
-      }
+      await mcpRemove(deleteTarget.mcp_key);
       setDeleteTarget(null);
       fetchList();
     } finally {

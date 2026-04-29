@@ -33,9 +33,10 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import FolderComponent from './FolderComponent';
 
-import { proxyFetchGet } from '@/api/http';
+import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
@@ -49,6 +50,25 @@ import { ZoomControls } from './ZoomControls';
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'];
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
+
+function FileLoadingSpinner({ fileName }: { fileName?: string } = {}) {
+  return (
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-4">
+      <div className="h-10 w-10 animate-spin rounded-full border-2 border-border-subtle border-t-text-link" />
+      <p className="text-sm text-text-secondary">
+        {fileName ? (
+          <>
+            Loading{' '}
+            <span className="font-medium text-text-primary">{fileName}</span>
+            ...
+          </>
+        ) : (
+          'Loading...'
+        )}
+      </p>
+    </div>
+  );
+}
 
 type FileTypeTarget = {
   name?: string;
@@ -110,6 +130,7 @@ function isVideoFile(file: FileTypeTarget) {
 
 // Type definitions
 interface FileTreeNode {
+  id: string;
   name: string;
   path: string;
   type?: string;
@@ -117,6 +138,7 @@ interface FileTreeNode {
   icon?: React.ElementType;
   children?: FileTreeNode[];
   isRemote?: boolean;
+  relativePath?: string;
 }
 
 interface FileInfo {
@@ -128,6 +150,198 @@ interface FileInfo {
   content?: string;
   relativePath?: string;
   isRemote?: boolean;
+}
+
+type FileIdentity = Pick<FileInfo, 'name' | 'path' | 'relativePath'>;
+
+function normalizeTreePath(path: string): string {
+  return path
+    .replace(/\\/g, '/')
+    .replace(/^\.?\//, '')
+    .replace(/\/+/g, '/')
+    .replace(/^\/+/, '');
+}
+
+function getNormalizedTreeRelativePath(file: FileInfo): string {
+  const normalizedRelativePath = normalizeTreePath(file.relativePath || '');
+  if (normalizedRelativePath) {
+    return normalizedRelativePath;
+  }
+
+  const normalizedName = normalizeTreePath(file.name || '');
+  if (normalizedName) {
+    return normalizedName;
+  }
+
+  return '';
+}
+
+function getComparableRelativePath(file?: FileIdentity | null): string | null {
+  if (!file) return null;
+
+  const normalizedRelativePath = normalizeLookupPath(file.relativePath || '');
+  if (normalizedRelativePath) {
+    return normalizedRelativePath;
+  }
+
+  if (!file.path) return null;
+
+  try {
+    const url = new URL(file.path, window.location.origin);
+    const pathParam = url.searchParams.get('path');
+    return pathParam
+      ? normalizeLookupPath(decodeURIComponent(pathParam))
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isSameFileIdentity(
+  left?: FileIdentity | null,
+  right?: FileIdentity | null
+): boolean {
+  if (!left || !right) return false;
+
+  if (left.path && right.path && left.path === right.path) {
+    return true;
+  }
+
+  const leftRelativePath = getComparableRelativePath(left);
+  const rightRelativePath = getComparableRelativePath(right);
+
+  if (leftRelativePath && rightRelativePath) {
+    return leftRelativePath === rightRelativePath;
+  }
+
+  return (
+    !!left.name &&
+    !!right.name &&
+    left.name === right.name &&
+    !leftRelativePath &&
+    !rightRelativePath &&
+    !left.path &&
+    !right.path
+  );
+}
+
+export function findMatchingFile(
+  files: FileInfo[],
+  target?: FileInfo | null
+): FileInfo | undefined {
+  if (!target) return undefined;
+
+  if (target.path) {
+    const exactPathMatch = files.find((file) => file.path === target.path);
+    if (exactPathMatch) {
+      return exactPathMatch;
+    }
+  }
+
+  const targetRelativePath = getComparableRelativePath(target);
+  if (targetRelativePath) {
+    const relativePathMatch = files.find(
+      (file) => getComparableRelativePath(file) === targetRelativePath
+    );
+    if (relativePathMatch) {
+      return relativePathMatch;
+    }
+  }
+
+  if (target.name) {
+    const sameNameMatches = files.filter((file) => file.name === target.name);
+    if (sameNameMatches.length === 1) {
+      return sameNameMatches[0];
+    }
+  }
+
+  return undefined;
+}
+
+export function buildFileTree(files: FileInfo[]): FileTreeNode {
+  const root: FileTreeNode = {
+    id: 'root',
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  };
+
+  const folderMap = new Map<string, FileTreeNode>();
+  folderMap.set('', root);
+
+  const sortedFiles = [...files].sort((left, right) => {
+    const leftRelativePath = getNormalizedTreeRelativePath(left);
+    const rightRelativePath = getNormalizedTreeRelativePath(right);
+    const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
+    const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
+
+    if (leftDepth !== rightDepth) {
+      return leftDepth - rightDepth;
+    }
+
+    return leftRelativePath.localeCompare(rightRelativePath);
+  });
+
+  for (const file of sortedFiles) {
+    const normalizedRelativePath = getNormalizedTreeRelativePath(file);
+    const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
+    const folderSegments = pathSegments.slice(0, -1);
+    const fileName = pathSegments[pathSegments.length - 1] || file.name;
+
+    let parentNode = root;
+    let currentFolderPath = '';
+
+    for (const segment of folderSegments) {
+      currentFolderPath = currentFolderPath
+        ? `${currentFolderPath}/${segment}`
+        : segment;
+
+      let folderNode = folderMap.get(currentFolderPath);
+      if (!folderNode) {
+        folderNode = {
+          id: `folder:${currentFolderPath}`,
+          name: segment,
+          path: currentFolderPath,
+          isFolder: true,
+          children: [],
+          relativePath: currentFolderPath,
+        };
+        parentNode.children!.push(folderNode);
+        folderMap.set(currentFolderPath, folderNode);
+      }
+
+      parentNode = folderNode;
+    }
+
+    parentNode.children!.push({
+      id: `file:${normalizedRelativePath || file.path || file.name}`,
+      name: fileName || file.name,
+      path: file.path,
+      type: file.type,
+      isFolder: file.isFolder,
+      icon: file.icon,
+      children: file.isFolder ? [] : undefined,
+      isRemote: file.isRemote,
+      relativePath: file.relativePath,
+    });
+  }
+
+  const sortTree = (node: FileTreeNode) => {
+    if (!node.children?.length) return;
+
+    node.children.sort((left, right) => {
+      if (!!left.isFolder !== !!right.isFolder) {
+        return left.isFolder ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+
+    node.children.forEach(sortTree);
+  };
+
+  sortTree(root);
+  return root;
 }
 
 // FileTree component to render nested file structure
@@ -155,7 +369,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   return (
     <div className={level > 0 ? 'ml-4' : ''}>
       {node.children.map((child) => {
-        const isExpanded = expandedFolders.has(child.path);
+        const isExpanded = expandedFolders.has(child.id);
         const fileInfo: FileInfo = {
           name: child.name,
           path: child.path,
@@ -163,20 +377,21 @@ export const FileTree: React.FC<FileTreeProps> = ({
           isFolder: child.isFolder,
           icon: child.icon,
           isRemote: child.isRemote,
+          relativePath: child.relativePath,
         };
 
         return (
-          <div key={child.path}>
+          <div key={child.id}>
             <button
               onClick={() => {
                 if (child.isFolder) {
-                  onToggleFolder(child.path);
+                  onToggleFolder(child.id);
                 } else {
                   onSelectFile(fileInfo);
                 }
               }}
               className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
-                selectedFile?.path === child.path
+                isSameFileIdentity(selectedFile, fileInfo)
                   ? 'bg-fill-fill-transparent-active'
                   : ''
               }`}
@@ -231,23 +446,30 @@ export const FileTree: React.FC<FileTreeProps> = ({
   );
 };
 
-function downloadByBrowser(url: string) {
-  window.ipcRenderer
-    .invoke('download-file', url)
-    .then((result) => {
-      if (result.success) {
-        console.log('download-file success:', result.path);
-      } else {
-        console.error('download-file error:', result.error);
-      }
-    })
-    .catch((error) => {
-      console.error('download-file error:', error);
-    });
+function downloadByBrowser(ipcRenderer: any, url: string) {
+  const ipc = ipcRenderer;
+  if (ipc?.invoke) {
+    ipc
+      .invoke('download-file', url)
+      .then((result: { success?: boolean; path?: string; error?: string }) => {
+        if (result?.success) {
+          console.log('download-file success:', result.path);
+        } else {
+          console.error('download-file error:', result?.error);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('download-file error:', error);
+      });
+  } else {
+    // Web mode: open in new tab for download
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 }
 
 export default function Folder({ data: _data }: { data?: Agent }) {
   //Get Chatstore for the active project's task
+  const host = useHost();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const authStore = useAuthStore();
   const { t } = useTranslation();
@@ -256,6 +478,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [fileTree, setFileTree] = useState<FileTreeNode>({
+    id: 'root',
     name: 'root',
     path: '',
     children: [],
@@ -276,42 +499,97 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     },
   ]);
   const hasFetchedRemote = useRef(false);
+  const lastFetchKey = useRef<string>('');
+  const electronAPI = host?.electronAPI;
+  const ipcRenderer = host?.ipcRenderer;
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
+    const ipc = ipcRenderer;
+    const isWebMode = !ipc?.invoke;
+
     if (file.type === 'zip') {
-      // if file is remote, don't call reveal-in-folder
       if (file.isRemote) {
-        downloadByBrowser(file.path);
+        downloadByBrowser(ipcRenderer, file.path);
         return;
       }
-      window.ipcRenderer.invoke('reveal-in-folder', file.path);
+      ipc?.invoke('reveal-in-folder', file.path);
       return;
     }
-    // Don't open folders in preview - they are handled by expand/collapse
-    if (file.isFolder) {
-      return;
-    }
+    if (file.isFolder) return;
+
     setSelectedFile(file);
     setLoading(true);
-    console.log('file', JSON.parse(JSON.stringify(file)));
 
-    // For PDF files, use data URL instead of custom protocol
-    if (file.type === 'pdf') {
-      window.ipcRenderer
-        .invoke('read-file-dataurl', file.path)
-        .then((dataUrl: string) => {
+    // Remote files (path is URL): use URL directly for display where possible
+    if (file.isRemote && file.path?.startsWith('http')) {
+      // Images/audio/video: use path (URL) directly, loaders will use it
+      if (isImageFile(file) || isAudioFile(file) || isVideoFile(file)) {
+        setSelectedFile({ ...file });
+        chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+        setLoading(false);
+        return;
+      }
+      // Other types (text, PDF, etc.): Electron uses IPC; Web fetches
+      if (!isWebMode) {
+        ipc
+          ?.invoke('open-file', file.type, file.path, isShowSourceCode)
+          ?.then((res: string) => {
+            setSelectedFile({ ...file, content: res });
+            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+            setLoading(false);
+          })
+          ?.catch((error: unknown) => {
+            console.error('open-file error:', error);
+            setLoading(false);
+          });
+        return;
+      }
+      const loadRemoteContent = async () => {
+        try {
+          const resp = await fetch(file.path!);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const contentType = resp.headers.get('content-type') || '';
+          let content: string;
+          if (file.type === 'pdf' || contentType.includes('application/pdf')) {
+            const blob = await resp.blob();
+            content = await new Promise<string>((resolve, reject) => {
+              const r = new FileReader();
+              r.onload = () => resolve(r.result as string);
+              r.onerror = reject;
+              r.readAsDataURL(blob);
+            });
+          } else {
+            content = await resp.text();
+          }
+          setSelectedFile({ ...file, content });
+          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+        } catch (e) {
+          console.error('Failed to load remote file:', e);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadRemoteContent();
+      return;
+    }
+
+    // Electron: PDF and images (open-file reads binary as utf-8 and corrupts)
+    if (file.type === 'pdf' || isImageFile(file)) {
+      ipc
+        ?.invoke('read-file-dataurl', file.path)
+        ?.then((dataUrl: string) => {
           setSelectedFile({ ...file, content: dataUrl });
           chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
           setLoading(false);
         })
-        .catch((error) => {
+        ?.catch((error: unknown) => {
           console.error('read-file-dataurl error:', error);
           setLoading(false);
         });
       return;
     }
 
-    // For audio/video files, skip open-file — loaders handle reading themselves
+    // Audio/video: loaders use path or content
     if (isAudioFile(file) || isVideoFile(file)) {
       setSelectedFile({ ...file });
       chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
@@ -319,15 +597,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       return;
     }
 
-    // all other files call open-file interface, the backend handles download and parsing
-    window.ipcRenderer
-      .invoke('open-file', file.type, file.path, isShowSourceCode)
-      .then((res) => {
+    // Electron: open-file
+    ipc
+      ?.invoke('open-file', file.type, file.path, isShowSourceCode)
+      ?.then((res: string) => {
         setSelectedFile({ ...file, content: res });
         chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
         setLoading(false);
       })
-      .catch((error) => {
+      ?.catch((error: unknown) => {
         console.error('open-file error:', error);
         setLoading(false);
       });
@@ -337,59 +615,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // all files can reload content
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
-  };
-
-  const buildFileTree = (files: FileInfo[]): FileTreeNode => {
-    const root: FileTreeNode = {
-      name: 'root',
-      path: '',
-      children: [],
-      isFolder: true,
-    };
-
-    const nodeMap = new Map<string, FileTreeNode>();
-    nodeMap.set('', root);
-
-    const sortedFiles = [...files].sort((a, b) => {
-      // Normalize paths to use forward slashes for cross-platform compatibility
-      const normalizedPathA = (a.relativePath || '').replace(/\\/g, '/');
-      const normalizedPathB = (b.relativePath || '').replace(/\\/g, '/');
-      const depthA = normalizedPathA.split('/').filter(Boolean).length;
-      const depthB = normalizedPathB.split('/').filter(Boolean).length;
-      return depthA - depthB;
-    });
-
-    for (const file of sortedFiles) {
-      // Normalize paths to use forward slashes for cross-platform compatibility
-      const normalizedRelativePath = (file.relativePath || '').replace(
-        /\\/g,
-        '/'
-      );
-      const fullRelativePath = normalizedRelativePath
-        ? `${normalizedRelativePath}/${file.name}`
-        : file.name;
-
-      const parentPath = normalizedRelativePath;
-      const parentNode = nodeMap.get(parentPath) || root;
-
-      const node: FileTreeNode = {
-        name: file.name,
-        path: file.path,
-        type: file.type,
-        isFolder: file.isFolder,
-        icon: file.icon,
-        children: file.isFolder ? [] : undefined,
-        isRemote: file.isRemote,
-      };
-
-      parentNode.children!.push(node);
-
-      if (file.isFolder) {
-        nodeMap.set(fullRelativePath, node);
-      }
-    }
-
-    return root;
   };
 
   const toggleFolder = (folderPath: string) => {
@@ -404,77 +629,123 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
+  const activeTaskId = chatStore?.activeTaskId as string;
+  const activeWorkspace = chatStore?.tasks[activeTaskId]?.activeWorkspace;
+  const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
   // Reset state when activeTaskId changes (e.g., new project created)
   useEffect(() => {
     hasFetchedRemote.current = false;
     setSelectedFile(null);
-    setFileTree({ name: 'root', path: '', children: [], isFolder: true });
+    setFileTree({
+      id: 'root',
+      name: 'root',
+      path: '',
+      children: [],
+      isFolder: true,
+    });
     setFileGroups([{ folder: 'Reports', files: [] }]);
     setExpandedFolders(new Set());
-  }, [chatStore?.activeTaskId]);
+  }, [activeTaskId]);
 
+  // project_id: must match Brain path ~/eigent/{email}/project_{project_id}/task_{task_id}/
+  const projectId = (projectStore.activeProjectId as string) || activeTaskId;
+
+  const fetchKey = `${projectId}|${activeTaskId || ''}`;
+  // Poll when task has agents that are running/pending (files may be generated)
+  const taskRunning =
+    !!taskAssigning?.length &&
+    taskAssigning.some((a) => a.status === 'running' || a.status === 'pending');
+
+  /**
+   * Folder design: Frontend always fetches file list from Brain API.
+   * - GET /files?project_id=&email=&task_id= → returns [{filename, url, relativePath}]
+   * - Re-fetch when project/task changes (switch project) or periodically when task is running
+   */
   useEffect(() => {
-    if (!chatStore) return;
-    const setFileList = async () => {
-      let res = null;
-      res = await window.ipcRenderer.invoke(
-        'get-project-file-list',
-        authStore.email,
-        projectStore.activeProjectId as string
-      );
-      let tree: any = null;
-      if (
-        (res && res.length > 0) ||
-        import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
-      ) {
-        tree = buildFileTree(res || []);
-      } else {
-        if (!hasFetchedRemote.current) {
-          //TODO(file): rename endpoint to use project_id
-          res = await proxyFetchGet('/api/v1/chat/files', {
-            task_id: projectStore.activeProjectId as string,
-          });
-          hasFetchedRemote.current = true;
+    if (!chatStore || !projectId || !authStore.email) return;
+
+    const fetchFileList = async () => {
+      let res: any[] = [];
+      try {
+        const baseURL = await getBaseURL();
+        if (!baseURL) {
+          console.warn('[Folder] Brain not connected, cannot fetch files');
+          return;
         }
-        console.log('res', res);
-        if (res) {
-          res = res.map((item: any) => {
+        // Omit task_id to list all files in project (all tasks); backend uses os.walk recursively
+        const listRes = await fetchGet('/files', {
+          project_id: projectId,
+          email: authStore.email,
+        });
+        if (Array.isArray(listRes)) {
+          res = listRes.map((item: any) => {
+            const url = item.url?.startsWith('http')
+              ? item.url
+              : `${baseURL}${item.url || ''}`;
             return {
               name: item.filename,
-              type: item.filename.split('.')[1],
-              path: item.url,
+              type: (item.filename || '').split('.').pop() || '',
+              path: url,
+              relativePath: item.relativePath || '',
               isRemote: true,
             };
           });
-          tree = buildFileTree(res || []);
         }
+      } catch (e) {
+        console.warn('[Folder] Failed to fetch files from Brain:', e);
       }
+
+      const tree = buildFileTree(res);
       setFileTree(tree);
-      // Keep the old structure for compatibility
       setFileGroups((prev) => {
         const chatStoreSelectedFile =
-          chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+          chatStore.tasks[activeTaskId]?.selectedFile;
         if (chatStoreSelectedFile) {
-          console.log(res, chatStoreSelectedFile);
-          const file = res.find(
-            (item: any) => item.name === chatStoreSelectedFile.name
+          const file = findMatchingFile(
+            res as FileInfo[],
+            chatStoreSelectedFile
           );
-          console.log('file', file);
-          if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-            selectedFileChange(file as FileInfo, isShowSourceCode);
+          if (file && !isSameFileIdentity(selectedFile, file)) {
+            selectedFileChange(file, isShowSourceCode);
           }
         }
-        return [
-          {
-            ...prev[0],
-            files: res || [],
-          },
-        ];
+        return [{ ...prev[0], files: res }];
       });
     };
-    setFileList();
+
+    const shouldFetch =
+      lastFetchKey.current !== fetchKey ||
+      (taskRunning && !hasFetchedRemote.current);
+    if (shouldFetch) {
+      lastFetchKey.current = fetchKey;
+      hasFetchedRemote.current = true;
+      fetchFileList();
+    }
+
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    if (taskRunning) {
+      pollTimer = setInterval(() => {
+        fetchFileList();
+      }, 5000);
+    }
+    return () => {
+      if (pollTimer) clearInterval(pollTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatStore?.tasks[chatStore?.activeTaskId as string]?.taskAssigning]);
+  }, [
+    fetchKey,
+    taskRunning,
+    taskAssigning,
+    activeWorkspace,
+    projectId,
+    activeTaskId,
+    authStore.email,
+  ]);
+
+  // Reset hasFetchedRemote when project/task changes so next effect run will fetch
+  useEffect(() => {
+    hasFetchedRemote.current = false;
+  }, [projectId, activeTaskId]);
 
   const selectedFilePath =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path;
@@ -484,11 +755,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     const chatStoreSelectedFile =
       chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
-      const file = fileGroups[0].files.find(
-        (item: any) => item.path === chatStoreSelectedFile.path
-      );
-      if (file && selectedFile?.path !== chatStoreSelectedFile?.path) {
-        selectedFileChange(file as FileInfo, isShowSourceCode);
+      const file = findMatchingFile(fileGroups[0].files, chatStoreSelectedFile);
+      if (file && !isSameFileIdentity(selectedFile, file)) {
+        selectedFileChange(file, isShowSourceCode);
       }
     } else if (!chatStoreSelectedFile && selectedFile) {
       setSelectedFile(null);
@@ -507,11 +776,19 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const handleOpenInIDE = async (ide: 'vscode' | 'cursor' | 'system') => {
     try {
       if (!authStore.email || !projectStore.activeProjectId) return;
-      const folderPath = await window.electronAPI.getProjectFolderPath(
+      const folderPath = await electronAPI?.getProjectFolderPath(
         authStore.email,
         projectStore.activeProjectId
       );
-      const result = await window.electronAPI.openInIDE(folderPath, ide);
+      if (!folderPath) {
+        toast.error(t('chat.failed-to-open-folder'));
+        return;
+      }
+      const result = await electronAPI?.openInIDE(folderPath, ide);
+      if (!result) {
+        toast.error(t('chat.failed-to-open-folder'));
+        return;
+      }
       if (!result.success) {
         toast.error(result.error || t('chat.failed-to-open-folder'));
       } else {
@@ -547,8 +824,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             )}
             <div className="flex items-center">
               {!isCollapsed &&
-                window.electronAPI?.getProjectFolderPath &&
-                window.electronAPI?.openInIDE && (
+                electronAPI?.getProjectFolderPath &&
+                electronAPI?.openInIDE && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -646,7 +923,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     key={file.path}
                     onClick={() => selectedFileChange(file, isShowSourceCode)}
                     className={`flex w-full items-center justify-center rounded-md p-2 transition-colors hover:bg-fill-fill-primary-hover ${
-                      selectedFile?.name === file.name
+                      isSameFileIdentity(selectedFile, file)
                         ? 'bg-surface-information text-text-information'
                         : 'text-text-secondary'
                     }`}
@@ -675,13 +952,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 onClick={() => {
                   // if file is remote, don't call reveal-in-folder
                   if (selectedFile.isRemote) {
-                    downloadByBrowser(selectedFile.path);
+                    downloadByBrowser(ipcRenderer, selectedFile.path);
                     return;
                   }
-                  window.ipcRenderer.invoke(
-                    'reveal-in-folder',
-                    selectedFile.path
-                  );
+                  ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
                 }}
                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden"
               >
@@ -763,7 +1037,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   </div>
                 ) : isImageFile(selectedFile) ? (
                   <div className="flex h-full items-center justify-center">
-                    <ImageLoader selectedFile={selectedFile} />
+                    <ImageLoader
+                      key={selectedFile.path ?? selectedFile.name}
+                      selectedFile={selectedFile}
+                    />
                   </div>
                 ) : (
                   <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-text-primary">
@@ -771,14 +1048,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   </pre>
                 )
               ) : (
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center">
-                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
-                    <p className="text-sm text-text-secondary">
-                      {t('chat.loading')}
-                    </p>
-                  </div>
-                </div>
+                <FileLoadingSpinner fileName={selectedFile?.name} />
               )
             ) : (
               <div className="flex flex-1 items-center justify-center text-text-secondary">
@@ -839,23 +1109,40 @@ function toFileUrl(filePath: string): string {
 
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     setSrc('');
+    setLoadError(false);
+
     if (selectedFile.isRemote) {
       setSrc((selectedFile.content as string) || selectedFile.path);
       return;
     }
-    // Use file:// source so Chromium can stream/seek large media files.
     setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center gap-2 text-text-secondary">
+        <p className="text-sm">{selectedFile.name}</p>
+        <p className="text-xs text-text-tertiary">
+          Failed to load image. Try selecting again.
+        </p>
+      </div>
+    );
+  }
+
+  if (!src) {
+    return <FileLoadingSpinner fileName={selectedFile.name} />;
+  }
 
   return (
     <img
       src={src}
       alt={selectedFile.name}
       className="max-h-full max-w-full object-contain"
-      onError={(err) => console.error('Image load error:', err)}
+      onError={() => setLoadError(true)}
     />
   );
 }
@@ -866,12 +1153,16 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   useEffect(() => {
     setSrc('');
     if (selectedFile.isRemote) {
-      setSrc(selectedFile.content || selectedFile.path);
+      setSrc(selectedFile.content || selectedFile.path || '');
       return;
     }
     // Use file:// source so Chromium can stream/seek large media files.
     setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
+
+  if (!src) {
+    return <FileLoadingSpinner fileName={selectedFile.name} />;
+  }
 
   return (
     <div className="flex w-full flex-col items-center gap-4 px-8">
@@ -896,12 +1187,16 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
   useEffect(() => {
     setSrc('');
     if (selectedFile.isRemote) {
-      setSrc(selectedFile.content || selectedFile.path);
+      setSrc(selectedFile.content || selectedFile.path || '');
       return;
     }
     // Use file:// source so Chromium can stream/seek large media files.
     setSrc(toFileUrl(selectedFile.path));
   }, [selectedFile]);
+
+  if (!src) {
+    return <FileLoadingSpinner fileName={selectedFile.name} />;
+  }
 
   return (
     <video
@@ -965,6 +1260,179 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   return baseParts.join('/');
 }
 
+function normalizeLookupPath(path: string): string {
+  return path
+    .replace(/\\/g, '/')
+    .replace(/^\.?\//, '')
+    .replace(/\/+/g, '/')
+    .replace(/^\//, '')
+    .toLowerCase();
+}
+
+function getRelativeDirPath(
+  relativePath?: string,
+  fallbackName?: string
+): string {
+  const target = (relativePath || fallbackName || '').replace(/\\/g, '/');
+  const lastSlashIndex = target.lastIndexOf('/');
+  return lastSlashIndex >= 0 ? target.substring(0, lastSlashIndex) : '';
+}
+
+function isSpecialBrowserUrl(url: string): boolean {
+  const normalizedUrl = url.trim().toLowerCase();
+  return (
+    !normalizedUrl ||
+    normalizedUrl.startsWith('http://') ||
+    normalizedUrl.startsWith('https://') ||
+    normalizedUrl.startsWith('//') ||
+    normalizedUrl.startsWith('data:') ||
+    normalizedUrl.startsWith('blob:') ||
+    normalizedUrl.startsWith('mailto:') ||
+    normalizedUrl.startsWith('tel:') ||
+    normalizedUrl.startsWith('javascript:') ||
+    normalizedUrl.startsWith('vbscript:') ||
+    normalizedUrl.startsWith('#')
+  );
+}
+
+function getRemoteRelativePath(file: FileInfo): string | undefined {
+  if (file.relativePath) {
+    return file.relativePath.replace(/\\/g, '/');
+  }
+
+  if (!file.path) return undefined;
+
+  try {
+    const url = new URL(file.path, window.location.origin);
+    const pathParam = url.searchParams.get('path');
+    return pathParam
+      ? decodeURIComponent(pathParam).replace(/\\/g, '/')
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function encodePathSegments(path: string): string {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function getRemotePreviewUrl(file: FileInfo): string | undefined {
+  const relativePath = getRemoteRelativePath(file);
+  if (!relativePath || !file.path) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(file.path, window.location.origin);
+    const email = url.searchParams.get('email');
+    const projectId = url.searchParams.get('project_id');
+    if (!email || !projectId) {
+      return undefined;
+    }
+
+    return `${url.origin}/files/preview/${encodeURIComponent(email)}/${encodeURIComponent(projectId)}/${encodePathSegments(relativePath)}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function getRemotePreviewBaseHref(file: FileInfo): string | undefined {
+  const previewUrl = getRemotePreviewUrl(file);
+  if (!previewUrl) {
+    return undefined;
+  }
+
+  const lastSlashIndex = previewUrl.lastIndexOf('/');
+  return lastSlashIndex >= 0
+    ? `${previewUrl.substring(0, lastSlashIndex + 1)}`
+    : previewUrl;
+}
+
+function injectBaseHref(html: string, baseHref: string): string {
+  if (!baseHref || typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
+  const base = doc.querySelector('base') || doc.createElement('base');
+
+  base.setAttribute('href', baseHref);
+
+  if (!base.parentElement) {
+    const head = doc.head || doc.createElement('head');
+    head.prepend(base);
+    if (!doc.head) {
+      const htmlElement = doc.documentElement || doc.createElement('html');
+      htmlElement.prepend(head);
+      if (!doc.documentElement) {
+        doc.appendChild(htmlElement);
+      }
+    }
+  }
+
+  const serialized = doc.documentElement?.outerHTML || html;
+  return `${doctype}${serialized}`;
+}
+
+function rewriteRemoteHtmlReferences(
+  html: string,
+  selectedFile: FileInfo,
+  projectFiles: FileInfo[]
+): string {
+  const htmlRelativePath = getRemoteRelativePath(selectedFile);
+  if (!htmlRelativePath || typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const baseDir = getRelativeDirPath(htmlRelativePath, selectedFile.name);
+  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
+  const fileMap = new Map<string, FileInfo>();
+
+  projectFiles.forEach((file) => {
+    if (!file.relativePath) return;
+    fileMap.set(normalizeLookupPath(file.relativePath), file);
+  });
+
+  const rewriteAttribute = (element: Element, attributeName: string) => {
+    const originalValue = element.getAttribute(attributeName);
+    if (!originalValue || isSpecialBrowserUrl(originalValue)) return;
+
+    const match = originalValue.match(/^([^?#]*)(.*)$/);
+    const pathPart = match?.[1] || originalValue;
+    const suffix = match?.[2] || '';
+    const resolvedRelativePath = pathPart.startsWith('/')
+      ? pathPart.replace(/^\/+/, '')
+      : resolveRelativePath(baseDir, pathPart);
+    const matchedFile = fileMap.get(normalizeLookupPath(resolvedRelativePath));
+
+    if (matchedFile?.path) {
+      element.setAttribute(attributeName, `${matchedFile.path}${suffix}`);
+    }
+  };
+
+  doc
+    .querySelectorAll('[src], [href], [poster], [data], [action]')
+    .forEach((element) => {
+      ['src', 'href', 'poster', 'data', 'action'].forEach((attributeName) => {
+        if (element.hasAttribute(attributeName)) {
+          rewriteAttribute(element, attributeName);
+        }
+      });
+    });
+
+  const serialized = doc.documentElement?.outerHTML || html;
+  return `${doctype}${serialized}`;
+}
+
 // Component to render HTML with relative image paths resolved
 function HtmlRenderer({
   selectedFile,
@@ -973,6 +1441,9 @@ function HtmlRenderer({
   selectedFile: FileInfo;
   projectFiles: FileInfo[];
 }) {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
+  const ipcRenderer = host?.ipcRenderer;
   const [processedHtml, setProcessedHtml] = useState<string>('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -1043,9 +1514,23 @@ function HtmlRenderer({
         return;
       }
 
-      // Skip image processing if file is remote (we can't resolve relative paths for remote files)
+      // Remote HTML needs URL rewriting so relative assets resolve back to Brain.
       if (selectedFile.isRemote) {
-        setProcessedHtml(injectFontStyles(html));
+        const previewBaseHref = getRemotePreviewBaseHref(selectedFile);
+        const rewrittenHtml = rewriteRemoteHtmlReferences(
+          html,
+          selectedFile,
+          projectFiles
+        );
+        setProcessedHtml(
+          injectFontStyles(
+            deferInlineScriptsUntilLoad(
+              previewBaseHref
+                ? injectBaseHref(rewrittenHtml, previewBaseHref)
+                : rewrittenHtml
+            )
+          )
+        );
         return;
       }
 
@@ -1082,8 +1567,10 @@ function HtmlRenderer({
 
           try {
             // Read image as data URL
-            const dataUrl =
-              await window.electronAPI.readFileAsDataUrl(imagePath);
+            const dataUrl = await electronAPI?.readFileAsDataUrl(imagePath);
+            if (!dataUrl) {
+              return { original: imgTag, processed: imgTag };
+            }
 
             // Replace src with data URL
             const newAttributes = attributes.replace(
@@ -1117,7 +1604,7 @@ function HtmlRenderer({
       // Load and inject CSS files, replacing external link tags
       for (const cssFile of cssFiles) {
         try {
-          const cssContent = await window.ipcRenderer.invoke(
+          const cssContent = await ipcRenderer?.invoke(
             'open-file',
             'css',
             cssFile.path,
@@ -1157,7 +1644,7 @@ function HtmlRenderer({
       // Load JS files content and replace external script tags
       for (const jsFile of jsFiles) {
         try {
-          const jsContent = await window.ipcRenderer.invoke(
+          const jsContent = await ipcRenderer?.invoke(
             'open-file',
             'js',
             jsFile.path,
@@ -1213,6 +1700,10 @@ function HtmlRenderer({
     }
   };
 
+  if (selectedFile.content && !processedHtml) {
+    return <FileLoadingSpinner fileName={selectedFile.name} />;
+  }
+
   return (
     <div className="relative flex h-full w-full flex-col">
       {/* Floating notch-style zoom controls */}
@@ -1241,7 +1732,7 @@ function HtmlRenderer({
             ref={iframeRef}
             srcDoc={processedHtml}
             className="bg-white h-full w-full border-0"
-            sandbox="allow-scripts allow-forms"
+            sandbox="allow-scripts allow-forms allow-downloads"
             title={selectedFile.name}
             tabIndex={0}
             onLoad={() => iframeRef.current?.focus()}

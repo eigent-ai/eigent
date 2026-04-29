@@ -24,10 +24,12 @@ import {
 } from '@/components/ui/resizable';
 import Workflow from '@/components/WorkFlow';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useCallback, useEffect, useState } from 'react';
 
 export default function Tasks() {
+  const host = useHost();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
@@ -75,42 +77,43 @@ export default function Tasks() {
         return;
       }
       webviews.forEach((webview) => {
-        window.ipcRenderer
-          .invoke('capture-webview', webview.id)
-          .then((base64: string) => {
-            const currentTask = chatStore.tasks[activeTaskId as string];
-            if (!currentTask || currentTask.type) return;
-            const currentTaskAssigning = [...currentTask.taskAssigning];
-            const searchAgentIndex = currentTaskAssigning.findIndex(
-              (agent) => agent.agent_id === webview.agent_id
-            );
-
-            if (
-              searchAgentIndex !== -1 &&
-              base64 !== 'data:image/jpeg;base64,'
-            ) {
-              currentTaskAssigning[searchAgentIndex].activeWebviewIds![
-                webview.index
-              ].img = base64;
-              chatStore.setTaskAssigning(
-                activeTaskId as string,
-                currentTaskAssigning
+        host?.ipcRenderer?.invoke &&
+          host.ipcRenderer
+            .invoke('capture-webview', webview.id)
+            .then((base64: string) => {
+              const currentTask = chatStore.tasks[activeTaskId as string];
+              if (!currentTask || currentTask.type) return;
+              const currentTaskAssigning = [...currentTask.taskAssigning];
+              const searchAgentIndex = currentTaskAssigning.findIndex(
+                (agent) => agent.agent_id === webview.agent_id
               );
-              const { processTaskId, url } =
+
+              if (
+                searchAgentIndex !== -1 &&
+                base64 !== 'data:image/jpeg;base64,'
+              ) {
                 currentTaskAssigning[searchAgentIndex].activeWebviewIds![
                   webview.index
-                ];
-              chatStore.setSnapshotsTemp(activeTaskId as string, {
-                api_task_id: activeTaskId,
-                camel_task_id: processTaskId,
-                browser_url: url,
-                image_base64: base64,
-              });
-            }
-          })
-          .catch((error: unknown) => {
-            console.error('capture webview error:', error);
-          });
+                ].img = base64;
+                chatStore.setTaskAssigning(
+                  activeTaskId as string,
+                  currentTaskAssigning
+                );
+                const { processTaskId, url } =
+                  currentTaskAssigning[searchAgentIndex].activeWebviewIds![
+                    webview.index
+                  ];
+                chatStore.setSnapshotsTemp(activeTaskId as string, {
+                  api_task_id: activeTaskId,
+                  camel_task_id: processTaskId,
+                  browser_url: url,
+                  image_base64: base64,
+                });
+              }
+            })
+            .catch((error: unknown) => {
+              console.error('capture webview error:', error);
+            });
       });
     };
 
@@ -128,13 +131,13 @@ export default function Tasks() {
         clearInterval(intervalTimer);
       }
     };
-  }, [chatStore]);
+  }, [chatStore, host]);
 
   const getSize = useCallback(() => {
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      window.electronAPI.setSize({
+      host?.electronAPI?.setSize({
         x: rect.left,
         y: rect.top,
         width: rect.width,
@@ -142,7 +145,7 @@ export default function Tasks() {
       });
       console.log('setSize', rect);
     }
-  }, []);
+  }, [host]);
 
   useEffect(() => {
     if (!chatStore.activeTaskId) {

@@ -15,6 +15,7 @@
 import { fetchPut } from '@/api/http';
 import Terminal from '@/components/Terminal';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import {
   ArrowDown,
   ArrowUp,
@@ -34,6 +35,8 @@ import { Button } from '../ui/button';
 
 export default function TerminalAgentWorkspace() {
   //Get Chatstore for the active project's task
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { chatStore, projectStore } = useChatStoreAdapter();
   const { t } = useTranslation();
   const [isSingleMode, setIsSingleMode] = useState(false);
@@ -124,7 +127,7 @@ export default function TerminalAgentWorkspace() {
                 action: 'resume',
               });
               setIsTakeControl(false);
-              window.electronAPI.hideAllWebview();
+              electronAPI?.hideAllWebview();
             }}
             className="rounded-full"
           >

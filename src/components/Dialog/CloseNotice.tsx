@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
@@ -35,10 +36,12 @@ export default function CloseNoticeDialog({
   onOpenChange,
   trigger,
 }: Props) {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const onSubmit = useCallback(() => {
-    window.electronAPI.closeWindow(true);
-  }, []);
+    electronAPI?.closeWindow(true);
+  }, [electronAPI]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { Check, Copy, FileText, Image, Sparkles } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -59,6 +60,8 @@ export function UserMessageCard({
   className,
   attaches,
 }: UserMessageCardProps) {
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   const [_hoveredFilePath, setHoveredFilePath] = useState<string | null>(null);
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -103,9 +106,16 @@ export function UserMessageCard({
     return <FileText className="h-4 w-4 text-icon-primary" />;
   };
 
-  const handleOpenSkillFolder = (skillName: string) => {
-    window.electronAPI?.openSkillFolder?.(skillName);
-  };
+  const handleOpenSkillFolder = useCallback(
+    async (skillName: string) => {
+      const { skillGetPathByName } = await import('@/api/brain');
+      const res = await skillGetPathByName(skillName);
+      if (res?.path && ipcRenderer?.invoke) {
+        ipcRenderer.invoke('reveal-in-folder', res.path);
+      }
+    },
+    [ipcRenderer]
+  );
 
   const contentNodes = parseContentWithSkillTags(content);
   const hasSkillTags = contentNodes.some((n) => n.type === 'skill');
@@ -175,10 +185,7 @@ export function UserMessageCard({
                       }
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.ipcRenderer.invoke(
-                          'reveal-in-folder',
-                          file.filePath
-                        );
+                        ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                       }}
                     >
                       {/* File icon */}
@@ -241,7 +248,7 @@ export function UserMessageCard({
                               }
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.ipcRenderer.invoke(
+                                ipcRenderer?.invoke(
                                   'reveal-in-folder',
                                   file.filePath
                                 );

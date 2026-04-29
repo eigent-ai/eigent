@@ -15,6 +15,8 @@
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { useHost } from '@/host';
+import { SITE_URL } from '@/lib';
 import { Cookie, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +35,8 @@ interface GroupedDomain {
 }
 
 export default function Cookies() {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const [loginLoading, setLoginLoading] = useState(false);
   const [cookiesLoading, setCookiesLoading] = useState(false);
@@ -195,8 +199,8 @@ export default function Cookies() {
   };
 
   const handleRestartApp = () => {
-    if (window.electronAPI && window.electronAPI.restartApp) {
-      window.electronAPI.restartApp();
+    if (electronAPI?.restartApp) {
+      electronAPI.restartApp();
     } else {
       toast.error('Restart function not available');
     }
@@ -332,7 +336,7 @@ export default function Cookies() {
         <div className="w-full text-center text-label-xs text-text-label">
           For more information, check out our
           <a
-            href="https://www.eigent.ai/privacy-policy"
+            href={`${SITE_URL}/privacy-policy`}
             target="_blank"
             className="ml-1 text-text-information underline"
             rel="noreferrer"

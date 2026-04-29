@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { useHost } from '@/host';
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
@@ -48,6 +49,8 @@ let activeExpandedDialogId: string | null = null;
 export interface FileAttachment {
   fileName: string;
   filePath: string;
+  fileId?: string;
+  source?: 'local' | 'upload';
 }
 
 /**
@@ -142,6 +145,7 @@ export const Inputbox = ({
   onTriggerCreated,
   hideExpandButton = false,
 }: InputboxProps) => {
+  const host = useHost();
   const { t } = useTranslation();
   const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
@@ -155,22 +159,25 @@ export const Inputbox = ({
   const [isExpandedDialogOpen, setIsExpandedDialogOpen] = useState(false);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const instanceIdRef = useRef<string>(
-    `inputbox-${Math.random().toString(36).substr(2, 9)}`
+  const [instanceId] = useState(
+    () => `inputbox-${crypto.randomUUID().slice(0, 9)}`
   );
 
   // Handle dialog open/close with singleton tracking
-  const handleExpandedDialogChange = useCallback((open: boolean) => {
-    if (open) {
-      activeExpandedDialogId = instanceIdRef.current;
-      setIsExpandedDialogOpen(true);
-    } else {
-      if (activeExpandedDialogId === instanceIdRef.current) {
-        activeExpandedDialogId = null;
+  const handleExpandedDialogChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        activeExpandedDialogId = instanceId;
+        setIsExpandedDialogOpen(true);
+      } else {
+        if (activeExpandedDialogId === instanceId) {
+          activeExpandedDialogId = null;
+        }
+        setIsExpandedDialogOpen(false);
       }
-      setIsExpandedDialogOpen(false);
-    }
-  }, []);
+    },
+    [instanceId]
+  );
 
   // Keyboard shortcut handler for Cmd+P / Ctrl+P
   // Opens dialog if none is open, or closes if this instance owns the open dialog
@@ -180,10 +187,7 @@ export const Inputbox = ({
         e.preventDefault();
 
         // If this instance has the dialog open, close it
-        if (
-          isExpandedDialogOpen &&
-          activeExpandedDialogId === instanceIdRef.current
-        ) {
+        if (isExpandedDialogOpen && activeExpandedDialogId === instanceId) {
           handleExpandedDialogChange(false);
         }
         // If no dialog is open, open this one
@@ -196,7 +200,7 @@ export const Inputbox = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isExpandedDialogOpen, handleExpandedDialogChange]);
+  }, [isExpandedDialogOpen, handleExpandedDialogChange, instanceId]);
 
   const openRemainingPopover = () => {
     if (hoverCloseTimerRef.current) {
@@ -308,7 +312,7 @@ export const Inputbox = ({
 
       console.log('[Drag-Drop] Processing dropped files:', dropped.length);
 
-      const result = await processDroppedFiles(dropped, files);
+      const result = await processDroppedFiles(dropped, files, host);
 
       if (result.success) {
         console.log('[Drag-Drop] Setting files:', result.files);

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { skillImportZip } from '@/api/brain';
 import ConfirmModal from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { parseSkillMd } from '@/lib/skillToolkit';
 import { useSkillsStore } from '@/store/skillsStore';
+
 import { AlertCircle, File, Upload, X } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -109,7 +111,7 @@ export default function SkillUploadDialog({
       }
 
       try {
-        const result = await (window as any).electronAPI.skillImportZip(
+        const result = await skillImportZip(
           pendingFileBuffer,
           Array.from(newConfirmed)
         );
@@ -162,7 +164,7 @@ export default function SkillUploadDialog({
       }
 
       try {
-        const result = await (window as any).electronAPI.skillImportZip(
+        const result = await skillImportZip(
           pendingFileBuffer,
           Array.from(confirmedReplacements)
         );
@@ -203,12 +205,8 @@ export default function SkillUploadDialog({
 
       setIsUploading(true);
       try {
-        // Zip import: read file in renderer and send buffer to main (no path in sandbox)
+        // Zip import: Brain REST (Web + Electron) or IPC fallback (Electron only)
         if (isZipToUse) {
-          if (!(window as any).electronAPI?.skillImportZip) {
-            toast.error(t('agents.skill-add-error'));
-            return;
-          }
           let buffer: ArrayBuffer;
           try {
             buffer = await fileToUse.arrayBuffer();
@@ -218,9 +216,7 @@ export default function SkillUploadDialog({
           }
 
           // First, check for conflicts
-          const result = await (window as any).electronAPI.skillImportZip(
-            buffer
-          );
+          const result = await skillImportZip(buffer);
 
           if (result?.conflicts && result.conflicts.length > 0) {
             // Store conflicts and show dialog for first conflict

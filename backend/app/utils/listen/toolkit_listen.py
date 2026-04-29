@@ -231,7 +231,7 @@ def _safe_put_queue(task_lock, data):
                     logger.error(f"[SAFE_PUT_QUEUE] Thread failed: {e}")
                     result_queue.put(("error", e))
 
-            thread = threading.Thread(target=run_in_thread, daemon=False)
+            thread = threading.Thread(target=run_in_thread, daemon=True)
             thread.start()
 
             # Wait briefly for completion

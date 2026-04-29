@@ -18,6 +18,7 @@ import {
 } from '@/components/MenuButton/MenuButton';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { useWorkerList } from '@/store/authStore';
 import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -44,6 +45,7 @@ export function WorkSpaceMenu({
   isChatBoxVisible = true,
 }: WorkSpaceMenuProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const workerList = useWorkerList();
 
@@ -112,8 +114,8 @@ export function WorkSpaceMenu({
   }, [chatStore, baseWorker, workerList, taskAssigning]);
 
   useEffect(() => {
-    if (!chatStore) return;
-    const cleanup = window.electronAPI.onWebviewNavigated(
+    if (!chatStore || !host?.electronAPI?.onWebviewNavigated) return;
+    const cleanup = host.electronAPI.onWebviewNavigated(
       (id: string, url: string) => {
         if (!chatStore.activeTaskId) return;
         const currentTask = getCurrentTask();
@@ -205,8 +207,9 @@ export function WorkSpaceMenu({
 
         // capture webview
         const captureWebview = () => {
+          if (!host?.ipcRenderer) return;
           webviews.map((webview) => {
-            window.ipcRenderer
+            host.ipcRenderer
               .invoke('capture-webview', webview.id)
               .then((base64: string) => {
                 const currentTask = getCurrentTask();
@@ -243,9 +246,8 @@ export function WorkSpaceMenu({
       }
     );
 
-    // Cleanup function to remove listener when component unmounts or dependencies change
     return cleanup;
-  }, [chatStore, activeTaskId, webViewUrls, taskAssigning]);
+  }, [chatStore, activeTaskId, webViewUrls, taskAssigning, host]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -337,7 +339,7 @@ export function WorkSpaceMenu({
     }
     chatStore.setActiveWorkspace(chatStore.activeTaskId, val);
 
-    window.electronAPI.hideAllWebview();
+    host?.electronAPI?.hideAllWebview?.();
   };
 
   return (

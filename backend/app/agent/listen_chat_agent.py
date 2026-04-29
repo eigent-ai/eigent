@@ -709,7 +709,7 @@ class ListenChatAgent(ChatAgent):
         if has_cdp and hasattr(self, "_cdp_options"):
             options = self._cdp_options
             cdp_browsers = getattr(options, "cdp_browsers", [])
-            if cdp_browsers and hasattr(self, "_browser_toolkit"):
+            if cdp_browsers and getattr(self, "_browser_toolkit", None):
                 need_cdp_clone = True
                 import uuid as _uuid
 

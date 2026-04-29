@@ -18,6 +18,7 @@ import { InstallDependencies } from '@/components/InstallStep/InstallDependencie
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
+import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { useEffect, useState } from 'react';
@@ -27,6 +28,7 @@ import HistorySidebar from '../HistorySidebar';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
 
 const Layout = () => {
+  const host = useHost();
   const {
     initState,
     isFirstLaunch,
@@ -53,22 +55,23 @@ const Layout = () => {
   useInstallationSetup();
 
   useEffect(() => {
+    if (!host?.ipcRenderer || !host?.electronAPI) return;
+
     const handleBeforeClose = () => {
       const currentStatus =
         chatStore.tasks[chatStore.activeTaskId as string]?.status;
       if (['running', 'pause'].includes(currentStatus)) {
         setNoticeOpen(true);
       } else {
-        window.electronAPI.closeWindow(true);
+        host.electronAPI.closeWindow(true);
       }
     };
 
-    window.ipcRenderer.on('before-close', handleBeforeClose);
-
+    host.ipcRenderer.on('before-close', handleBeforeClose);
     return () => {
-      window.ipcRenderer.removeAllListeners('before-close');
+      host.ipcRenderer?.removeAllListeners('before-close');
     };
-  }, [chatStore.tasks, chatStore.activeTaskId]);
+  }, [chatStore.tasks, chatStore.activeTaskId, host]);
 
   // Determine what to show based on states
   const shouldShowOnboarding =

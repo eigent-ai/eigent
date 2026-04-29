@@ -78,6 +78,9 @@ class Chat(BaseModel):
     search_config: dict[str, str] | None = None
     # User identifier for user-specific skill configurations
     user_id: str | None = None
+    # Direct server API base URL (for example http://localhost:3001/api/v1)
+    # used by standalone Brain to sync replay steps without Electron env injection.
+    server_url: str | None = None
 
     @field_validator("model_type")
     @classmethod

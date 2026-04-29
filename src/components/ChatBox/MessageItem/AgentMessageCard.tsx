@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { Check, Copy, FileText } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -41,6 +42,8 @@ export function AgentMessageCard({
   className,
   attaches,
 }: AgentMessageCardProps) {
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
   // use content hash to track if typewriter effect is completed
   const contentHash = useMemo(() => {
     return `${id}-${content}`;
@@ -102,7 +105,7 @@ export function AgentMessageCard({
               <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.ipcRenderer.invoke('reveal-in-folder', file.filePath);
+                  ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
                 className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-task-border-default bg-message-fill-default py-1 pl-2"
