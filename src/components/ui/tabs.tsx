@@ -35,79 +35,11 @@ const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsListProps
 >(({ className, variant = 'default', ...props }, ref) => {
-  const tabsListRef = React.useRef<React.ElementRef<
-    typeof TabsPrimitive.List
-  > | null>(null) as React.MutableRefObject<React.ElementRef<
-    typeof TabsPrimitive.List
-  > | null>;
-  const [sliderStyle, setSliderStyle] = React.useState({ left: 0, width: 0 });
-
-  // Update slider position when active tab changes
-  React.useLayoutEffect(() => {
-    if (variant !== 'outline' || !tabsListRef.current) return;
-
-    const updateSlider = () => {
-      // Use requestAnimationFrame to ensure DOM has updated
-      requestAnimationFrame(() => {
-        const activeTab = tabsListRef.current?.querySelector(
-          '[data-state="active"][data-variant="outline"]'
-        ) as HTMLElement;
-
-        if (activeTab && tabsListRef.current) {
-          const containerRect = tabsListRef.current.getBoundingClientRect();
-          const tabRect = activeTab.getBoundingClientRect();
-
-          setSliderStyle({
-            left: tabRect.left - containerRect.left,
-            width: tabRect.width,
-          });
-        }
-      });
-    };
-
-    // Initial update
-    updateSlider();
-
-    // Watch for changes
-    const observer = new MutationObserver(updateSlider);
-    if (tabsListRef.current) {
-      observer.observe(tabsListRef.current, {
-        attributes: true,
-        attributeFilter: ['data-state'],
-        subtree: true,
-      });
-    }
-
-    // Also listen for resize
-    window.addEventListener('resize', updateSlider);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateSlider);
-    };
-  }, [variant]);
-
-  const combinedRef = React.useCallback(
-    (node: React.ElementRef<typeof TabsPrimitive.List> | null) => {
-      if (typeof ref === 'function') {
-        ref(node);
-      } else if (ref && 'current' in ref) {
-        (
-          ref as React.MutableRefObject<React.ElementRef<
-            typeof TabsPrimitive.List
-          > | null>
-        ).current = node;
-      }
-      tabsListRef.current = node;
-    },
-    [ref]
-  );
-
   return (
     <TabsContext.Provider value={{ variant }}>
       <div className="relative">
         <TabsPrimitive.List
-          ref={combinedRef}
+          ref={ref}
           className={cn(
             variant === 'outline'
               ? 'relative inline-flex items-center justify-center gap-0 bg-surface-disabled p-0'
@@ -118,21 +50,6 @@ const TabsList = React.forwardRef<
           data-variant={variant}
           {...props}
         />
-        {variant === 'outline' && sliderStyle.width > 0 && (
-          <motion.div
-            className="absolute bottom-0 z-10 h-[1.5px] bg-text-heading"
-            initial={false}
-            animate={{
-              left: sliderStyle.left,
-              width: sliderStyle.width,
-            }}
-            transition={{
-              type: 'spring',
-              stiffness: 300,
-              damping: 30,
-            }}
-          />
-        )}
       </div>
     </TabsContext.Provider>
   );
@@ -157,7 +74,7 @@ const TabsTrigger = React.forwardRef<
       ref={ref}
       className={cn(
         variant === 'outline'
-          ? 'relative flex cursor-pointer flex-row items-center justify-center gap-2 bg-transparent px-4 py-3 !text-body-sm !font-semibold text-text-label transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-surface-disabled data-[state=active]:!font-bold data-[state=active]:text-text-heading'
+          ? "relative flex cursor-pointer flex-row items-center justify-center gap-2 bg-transparent px-4 py-3 !text-body-sm !font-semibold text-text-label transition-colors after:absolute after:bottom-0 after:left-0 after:h-[1.5px] after:w-full after:bg-text-heading after:opacity-0 after:transition-opacity after:content-[''] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-surface-disabled data-[state=active]:!font-bold data-[state=active]:text-text-heading data-[state=active]:after:opacity-100"
           : 'ring-offset-background focus-visible:ring-ring inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-menutabs-fill-default px-2 py-1 text-body-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-menutabs-fill-active data-[state=active]:text-menutabs-text-active data-[state=active]:shadow-sm',
         className
       )}
