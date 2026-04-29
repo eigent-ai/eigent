@@ -14,7 +14,6 @@
 
 'use client';
 
-import GroupedHistoryView from '@/components/Dashboard/GroupedHistoryView';
 import { Button } from '@/components/ui/button';
 import {
   CommandDialog,
@@ -27,7 +26,9 @@ import {
 } from '@/components/ui/command';
 import { DialogTitle } from '@/components/ui/dialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useGroupedHistory } from '@/hooks/useGroupedHistory';
 import { loadProjectFromHistory } from '@/lib';
+import GroupedHistoryView from '@/pages/Dashboard/GroupedHistoryView';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { useGlobalStore } from '@/store/globalStore';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -41,6 +42,7 @@ export function SearchHistoryDialog() {
   const [open, setOpen] = useState(false);
   const [historyTasks, setHistoryTasks] = useState<any[]>([]);
   const { history_type } = useGlobalStore();
+  const groupedHistory = useGroupedHistory();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
@@ -113,8 +115,16 @@ export function SearchHistoryDialog() {
           {history_type === 'grid' ? (
             <div className="p-4">
               <GroupedHistoryView
+                projects={groupedHistory.projects}
+                isLoading={groupedHistory.isLoading}
+                updateProjects={groupedHistory.updateProjects}
+                invalidate={groupedHistory.invalidate}
+                viewMode={history_type === 'grid' ? 'board' : 'list'}
                 onTaskSelect={handleSetActive}
-                onTaskDelete={handleDelete}
+                onTaskDelete={(taskId, callback) => {
+                  handleDelete(taskId);
+                  callback();
+                }}
                 onTaskShare={handleShare}
                 activeTaskId={chatStore.activeTaskId || undefined}
               />

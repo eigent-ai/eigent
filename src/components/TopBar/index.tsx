@@ -22,6 +22,11 @@ import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
+import {
+  HistoryTabsNav,
+  isHistoryTabId,
+  type HistoryTabId,
+} from '@/components/Dashboard/HistoryTabsNav';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import NotificationPanel from '@/components/Notification';
@@ -47,7 +52,6 @@ import {
   Minus,
   PanelLeft,
   PanelLeftClose,
-  Plus,
   Settings,
   Share,
   Square,
@@ -60,6 +64,7 @@ import {
   useLocation,
   useNavigate,
   useNavigationType,
+  useSearchParams,
 } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -124,6 +129,10 @@ const topBarCrossfade = {
   ease: [0.4, 0, 0.2, 1] as const,
 };
 
+const HISTORY_TAB_SEARCH_ALIASES: Record<string, HistoryTabId> = {
+  mcp_tools: 'connectors',
+};
+
 function HeaderWin() {
   const { t } = useTranslation();
   const host = useHost();
@@ -132,6 +141,7 @@ function HeaderWin() {
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { canGoBack, canGoForward } = useStackNavigationBounds();
   const [reportBugOpen, setReportBugOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
@@ -195,6 +205,25 @@ function HeaderWin() {
   }, [location.pathname]);
 
   const isHomeRoute = location.pathname === '/';
+
+  const activeHistoryTab = useMemo((): HistoryTabId => {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl) {
+      const normalizedTab =
+        HISTORY_TAB_SEARCH_ALIASES[tabFromUrl] ?? tabFromUrl;
+      if (isHistoryTabId(normalizedTab)) {
+        return normalizedTab;
+      }
+    }
+    return 'dashboard';
+  }, [searchParams]);
+
+  const handleHistoryTabChange = useCallback(
+    (value: string) => {
+      if (value) navigate(`?tab=${value}`, { replace: true });
+    },
+    [navigate]
+  );
 
   const handleExitHistoryOrSettings = useCallback(() => {
     if (canGoBack) {
@@ -312,7 +341,7 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-10 py-1 min-w-0 absolute z-50 flex items-center ${
+      className={`drag left-0 right-0 top-0 !h-12 min-w-0 absolute z-50 flex items-center ${
         platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
       }`}
       id="titlebar"
@@ -328,8 +357,8 @@ function HeaderWin() {
           align="center"
         >
           <Button
-            variant="ghost"
-            size="sm"
+            variant={isHistoryRoute ? 'ghost' : 'ghost'}
+            size="md"
             buttonContent="text"
             textWeight="bold"
             className="no-drag gap-1.5 rounded-full"
@@ -357,11 +386,7 @@ function HeaderWin() {
                   className="gap-1.5 min-w-0 flex items-center"
                 >
                   <img
-                    src={
-                      appearance === 'dark'
-                        ? eigentAppIconWhite
-                        : eigentAppIconBlack
-                    }
+                    src={eigentAppIconWhite}
                     alt=""
                     className="h-6 w-6 mt-[2px] select-none"
                     width={16}
@@ -369,10 +394,6 @@ function HeaderWin() {
                     draggable={false}
                   />
                   {t('layout.new-project')}
-                  <Plus
-                    className="h-4 w-4 text-ds-icon-neutral-muted-default ml-1 shrink-0"
-                    aria-hidden
-                  />
                 </motion.span>
               ) : (
                 <motion.span
@@ -403,7 +424,7 @@ function HeaderWin() {
         </TooltipSimple>
       </div>
 
-      {/* Middle: full width on project home only (/) — left: nav + title; right: project + utilities */}
+      {/* Middle: home (/) — task strip; /history — tab nav */}
       <div className="min-h-0 min-w-0 relative z-0 flex h-full flex-1">
         <AnimatePresence initial={false}>
           {isHomeRoute && (
@@ -622,8 +643,25 @@ function HeaderWin() {
               </div>
             </motion.div>
           )}
+          {isHistoryRoute && (
+            <motion.div
+              key="history-middle"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={topBarCrossfade}
+              className="drag inset-0 min-h-0 min-w-0 px-2 absolute z-10 flex h-full items-center justify-start overflow-x-auto overflow-y-visible"
+            >
+              <HistoryTabsNav
+                compact
+                activeTab={activeHistoryTab}
+                onChange={handleHistoryTabChange}
+                className="no-drag min-w-0 pb-0 max-w-full shrink"
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
-        {!isHomeRoute && (
+        {!isHomeRoute && !isHistoryRoute && (
           <div className="drag min-h-0 min-w-0 flex-1" aria-hidden />
         )}
       </div>
@@ -631,7 +669,7 @@ function HeaderWin() {
       {/* Trailing: update + settings (home) or back (history) — always at the end */}
       <div
         className={`${
-          platform === 'darwin' && 'px-1'
+          (platform === 'darwin' || !host?.electronAPI) && 'pr-4 pl-1'
         } no-drag gap-1 relative z-50 flex h-full shrink-0 items-center`}
       >
         {packageUpdateAvailable && (
@@ -643,7 +681,7 @@ function HeaderWin() {
             <Button
               type="button"
               variant="primary"
-              size="sm"
+              size="md"
               className="no-drag px-3 shrink-0 rounded-full"
               onClick={handleStartDownload}
               aria-label={t('layout.update', { defaultValue: 'Update' })}

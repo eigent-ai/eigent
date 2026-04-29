@@ -26,7 +26,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const HISTORY_TAB_IDS = [
-  'projects',
+  'dashboard',
   'agents',
   'channels',
   'connectors',
@@ -47,7 +47,7 @@ type TabConfig = {
 };
 
 const HISTORY_TABS: TabConfig[] = [
-  { id: 'projects', icon: <Blocks />, iconAnimateOnHover: 'default' },
+  { id: 'dashboard', icon: <Blocks />, iconAnimateOnHover: 'default' },
   { id: 'agents', icon: <Bot />, iconAnimateOnHover: 'default' },
   { id: 'channels', icon: <Radio />, iconAnimateOnHover: 'default' },
   { id: 'connectors', icon: <Hammer />, iconAnimateOnHover: 'default' },
@@ -56,38 +56,49 @@ const HISTORY_TABS: TabConfig[] = [
 ];
 
 const tabButtonClass =
-  'group relative z-10 inline-flex h-8 min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-label-sm font-bold transition-colors';
+  'no-drag group relative z-10 inline-flex h-8 min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-label-sm font-bold transition-colors';
 
 const iconSlotClass =
   'inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4';
+
+const springTab = {
+  type: 'spring' as const,
+  stiffness: 440,
+  damping: 36,
+  mass: 0.55,
+};
 
 export type HistoryTabsNavProps = {
   activeTab: HistoryTabId;
   onChange: (value: string) => void;
   className?: string;
+  /** Narrow strip (e.g. title bar): no extra bottom padding on the tab row */
+  compact?: boolean;
 };
 
 export function HistoryTabsNav({
   activeTab,
   onChange,
   className,
+  compact,
 }: HistoryTabsNavProps) {
   const { t } = useTranslation();
   const navRef = useRef<HTMLDivElement>(null);
   const [hoveredTab, setHoveredTab] = useState<HistoryTabId | null>(null);
-  const [hoverRect, setHoverRect] = useState({
+  const [selectedRect, setSelectedRect] = useState({
     left: 0,
     top: 0,
     width: 0,
     height: 0,
   });
-  const [activeLine, setActiveLine] = useState({
+  const [hoverBorder, setHoverBorder] = useState({
     left: 0,
     top: 0,
     width: 0,
+    height: 2,
   });
 
-  const updateActiveLine = useCallback(() => {
+  const updateSelectedRect = useCallback(() => {
     const nav = navRef.current;
     if (!nav) return;
     const el = nav.querySelector<HTMLElement>(
@@ -96,19 +107,34 @@ export function HistoryTabsNav({
     if (!el) return;
     const r = el.getBoundingClientRect();
     const nr = nav.getBoundingClientRect();
-    const gapPx = 8;
-    setActiveLine({
+    setSelectedRect({
       left: r.left - nr.left,
-      top: r.bottom - nr.top + gapPx,
+      top: r.top - nr.top,
       width: r.width,
+      height: r.height,
     });
   }, [activeTab]);
 
-  useLayoutEffect(() => {
-    updateActiveLine();
+  const updateHoverBorder = useCallback((el: HTMLElement) => {
     const nav = navRef.current;
     if (!nav) return;
-    const onResize = () => updateActiveLine();
+    const r = el.getBoundingClientRect();
+    const nr = nav.getBoundingClientRect();
+    const h = 2;
+    const offsetBelowTab = 8;
+    setHoverBorder({
+      left: r.left - nr.left,
+      top: r.bottom - nr.top - h + offsetBelowTab,
+      width: r.width,
+      height: h,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    updateSelectedRect();
+    const nav = navRef.current;
+    if (!nav) return;
+    const onResize = () => updateSelectedRect();
     window.addEventListener('resize', onResize);
     const ro = new ResizeObserver(onResize);
     ro.observe(nav);
@@ -116,28 +142,15 @@ export function HistoryTabsNav({
       window.removeEventListener('resize', onResize);
       ro.disconnect();
     };
-  }, [updateActiveLine]);
-
-  const updateHoverRect = useCallback((el: HTMLElement) => {
-    const nav = navRef.current;
-    if (!nav) return;
-    const r = el.getBoundingClientRect();
-    const nr = nav.getBoundingClientRect();
-    setHoverRect({
-      left: r.left - nr.left,
-      top: r.top - nr.top,
-      width: r.width,
-      height: r.height,
-    });
-  }, []);
+  }, [updateSelectedRect]);
 
   useLayoutEffect(() => {
     if (!hoveredTab) return;
     const el = navRef.current?.querySelector<HTMLElement>(
       `[data-history-tab="${hoveredTab}"]`
     );
-    if (el) updateHoverRect(el);
-  }, [activeTab, hoveredTab, updateHoverRect]);
+    if (el) updateHoverBorder(el);
+  }, [activeTab, hoveredTab, updateHoverBorder]);
 
   useLayoutEffect(() => {
     if (!hoveredTab) return;
@@ -146,7 +159,7 @@ export function HistoryTabsNav({
     );
     if (!el || !navRef.current) return;
     const nav = navRef.current;
-    const onResize = () => updateHoverRect(el);
+    const onResize = () => updateHoverBorder(el);
     window.addEventListener('resize', onResize);
     const ro = new ResizeObserver(onResize);
     ro.observe(nav);
@@ -154,52 +167,58 @@ export function HistoryTabsNav({
       window.removeEventListener('resize', onResize);
       ro.disconnect();
     };
-  }, [hoveredTab, updateHoverRect]);
+  }, [hoveredTab, updateHoverBorder]);
 
   return (
     <div
       ref={navRef}
       className={cn(
-        'gap-2 pb-2 relative flex flex-row flex-wrap items-center',
+        'gap-2 relative flex flex-row flex-wrap items-center',
+        compact ? 'pb-0' : 'pb-2',
         className
       )}
       onMouseLeave={() => setHoveredTab(null)}
       role="tablist"
     >
+      {/* Selected tab: sliding background block */}
       <motion.div
         aria-hidden
-        className="rounded-lg bg-ds-bg-neutral-subtle-default ring-ds-border-neutral-default-default shadow-sm pointer-events-none absolute z-0 ring-1"
+        className="bg-ds-bg-neutral-subtle-default ring-ds-border-neutral-default-default shadow-sm pointer-events-none absolute z-[1] rounded-full ring-1"
         initial={false}
         animate={{
-          left: hoverRect.left,
-          top: hoverRect.top,
-          width: hoverRect.width,
-          height: hoverRect.height,
-          opacity: hoveredTab ? 1 : 0,
+          left: selectedRect.left,
+          top: selectedRect.top,
+          width: selectedRect.width,
+          height: selectedRect.height,
+          opacity: selectedRect.width > 0 ? 1 : 0,
         }}
         transition={{
-          left: { type: 'spring', stiffness: 440, damping: 36, mass: 0.55 },
-          top: { type: 'spring', stiffness: 440, damping: 36, mass: 0.55 },
-          width: { type: 'spring', stiffness: 440, damping: 36, mass: 0.55 },
-          height: { type: 'spring', stiffness: 440, damping: 36, mass: 0.55 },
-          opacity: { duration: 0.18, ease: 'easeOut' },
+          left: springTab,
+          top: springTab,
+          width: springTab,
+          height: springTab,
+          opacity: { duration: 0.15 },
         }}
         style={{ position: 'absolute' }}
       />
+      {/* Hover: bottom border segment (moves with pointer) */}
       <motion.div
         aria-hidden
-        className="bg-ds-bg-brand-default-default h-0.5 pointer-events-none absolute z-[11] rounded-full"
+        className="bg-ds-bg-brand-default-default pointer-events-none absolute z-[2] rounded-full"
         initial={false}
         animate={{
-          left: activeLine.left,
-          top: activeLine.top,
-          width: activeLine.width,
+          left: hoverBorder.left,
+          top: hoverBorder.top,
+          width: hoverBorder.width,
+          height: hoverBorder.height,
+          opacity: hoveredTab ? 1 : 0,
         }}
         transition={{
-          type: 'spring',
-          stiffness: 420,
-          damping: 34,
-          mass: 0.55,
+          left: springTab,
+          top: springTab,
+          width: springTab,
+          height: springTab,
+          opacity: { duration: 0.15, ease: 'easeOut' },
         }}
         style={{ position: 'absolute' }}
       />
@@ -213,7 +232,7 @@ export function HistoryTabsNav({
             onClick={() => onChange(id)}
             onMouseEnter={(e) => {
               setHoveredTab(id);
-              updateHoverRect(e.currentTarget);
+              updateHoverBorder(e.currentTarget);
             }}
             className={cn(
               tabButtonClass,

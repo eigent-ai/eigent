@@ -2225,7 +2225,7 @@ async function createWindow() {
         : '#f5f5f580',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
-    trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
+    trafficLightPosition: isMac ? { x: 10, y: 16 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     // Rounded corners on macOS and Linux (as original)
     roundedCorners: !isWindows,

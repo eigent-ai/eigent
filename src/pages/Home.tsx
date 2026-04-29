@@ -660,7 +660,7 @@ export default function Home() {
 
   return (
     <ReactFlowProvider>
-      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
+      <div className="min-h-0 px-1 pb-1 pt-12 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
           className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
