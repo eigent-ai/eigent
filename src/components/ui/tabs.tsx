@@ -277,7 +277,7 @@ const TabsContent = React.forwardRef<
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="gap-4 flex flex-col"
+          className="gap-4 min-h-0 min-w-0 flex flex-1 flex-col"
         >
           {children}
         </motion.div>

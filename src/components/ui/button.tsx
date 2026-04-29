@@ -364,7 +364,7 @@ const buttonVariants = cva(
         xxs: 'rounded-md text-label-xs',
         xs: 'rounded-md text-label-xs',
         sm: 'rounded-md text-label-sm',
-        md: 'rounded-md text-label-md',
+        md: 'rounded-md text-label-sm',
         lg: 'rounded-md text-label-lg',
       },
       /**
@@ -440,7 +440,7 @@ const buttonVariants = cva(
         size: 'md',
         layout: 'text',
         class:
-          'box-border min-h-[32px] gap-2 px-4 py-0 font-medium [&_svg:not([class*="size-"])]:size-[24px]',
+          'box-border min-h-[32px] gap-2 px-2 py-0 font-medium [&_svg:not([class*="size-"])]:size-[18px]',
       },
       {
         size: 'lg',
