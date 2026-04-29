@@ -27,6 +27,10 @@ export const queryClient = new QueryClient({
 
 // Query keys for consistent cache management
 export const queryKeys = {
+  history: {
+    all: ['history'] as const,
+    grouped: () => [...queryKeys.history.all, 'grouped'] as const,
+  },
   triggers: {
     all: ['triggers'] as const,
     list: (projectId: string | null) =>
