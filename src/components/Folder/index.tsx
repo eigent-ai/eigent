@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import {
   ChevronDown,
   ChevronRight,
@@ -167,51 +168,53 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
         return (
           <div key={child.path}>
-            <button
-              onClick={() => {
-                if (child.isFolder) {
-                  onToggleFolder(child.path);
-                } else {
-                  onSelectFile(fileInfo);
-                }
-              }}
-              className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
-                selectedFile?.path === child.path
-                  ? 'bg-fill-fill-transparent-active'
-                  : ''
-              }`}
-            >
-              {child.isFolder ? (
-                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </span>
-              ) : (
-                <span
-                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
-                  aria-hidden
-                />
-              )}
-
-              {child.isFolder ? (
-                <FolderIcon className="h-5 w-5 flex-shrink-0 text-yellow-600" />
-              ) : child.icon ? (
-                <child.icon className="h-5 w-5 flex-shrink-0" />
-              ) : (
-                <FileText className="h-5 w-5 flex-shrink-0" />
-              )}
-
-              <span
-                className={`truncate text-[13px] leading-5 ${
-                  child.isFolder ? 'font-semibold' : 'font-medium'
+            <TooltipSimple content={child.name}>
+              <button
+                onClick={() => {
+                  if (child.isFolder) {
+                    onToggleFolder(child.path);
+                  } else {
+                    onSelectFile(fileInfo);
+                  }
+                }}
+                className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
+                  selectedFile?.path === child.path
+                    ? 'bg-fill-fill-transparent-active'
+                    : ''
                 }`}
               >
-                {child.name}
-              </span>
-            </button>
+                {child.isFolder ? (
+                  <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </span>
+                ) : (
+                  <span
+                    className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                    aria-hidden
+                  />
+                )}
+
+                {child.isFolder ? (
+                  <FolderIcon className="h-5 w-5 flex-shrink-0 text-yellow-600" />
+                ) : child.icon ? (
+                  <child.icon className="h-5 w-5 flex-shrink-0" />
+                ) : (
+                  <FileText className="h-5 w-5 flex-shrink-0" />
+                )}
+
+                <span
+                  className={`truncate text-[13px] leading-5 ${
+                    child.isFolder ? 'font-semibold' : 'font-medium'
+                  }`}
+                >
+                  {child.name}
+                </span>
+              </button>
+            </TooltipSimple>
 
             {child.isFolder && isExpanded && child.children && (
               <FileTree
