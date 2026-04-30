@@ -328,5 +328,18 @@
   "dashboard-done": "완료",
   "dashboard-human-review": "사람 검토",
   "dashboard-canceled": "취소됨",
-  "dashboard-rework": "재작업"
+  "dashboard-load-error": "Failed to load dashboard data.",
+  "dashboard-rework": "재작업",
+  "history-nav-aria": "Dashboard navigation",
+  "history-nav-group-dashboard": "Dashboard",
+  "history-nav-group-agent": "Agent",
+  "history-nav-group-channels": "Channels",
+  "history-nav-group-connectors": "Connectors",
+  "history-nav-group-browsers": "Browsers",
+  "history-nav-group-settings": "Settings",
+  "history-nav-leaf-tasks": "Tasks",
+  "history-nav-leaf-cdp": "CDP",
+  "history-nav-leaf-plugins": "Plugins",
+  "history-nav-leaf-cookies": "Cookies",
+  "history-nav-leaf-profile": "Profile"
 }

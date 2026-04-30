@@ -345,5 +345,18 @@
   "dashboard-done": "已完成",
   "dashboard-human-review": "人工审核",
   "dashboard-canceled": "已取消",
-  "dashboard-rework": "返工"
+  "dashboard-load-error": "加载仪表板数据失败，请重试。",
+  "dashboard-rework": "返工",
+  "history-nav-aria": "Dashboard navigation",
+  "history-nav-group-dashboard": "Dashboard",
+  "history-nav-group-agent": "Agent",
+  "history-nav-group-channels": "Channels",
+  "history-nav-group-connectors": "Connectors",
+  "history-nav-group-browsers": "Browsers",
+  "history-nav-group-settings": "Settings",
+  "history-nav-leaf-tasks": "Tasks",
+  "history-nav-leaf-cdp": "CDP",
+  "history-nav-leaf-plugins": "Plugins",
+  "history-nav-leaf-cookies": "Cookies",
+  "history-nav-leaf-profile": "Profile"
 }
