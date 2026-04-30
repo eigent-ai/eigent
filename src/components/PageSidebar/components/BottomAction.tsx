@@ -20,7 +20,7 @@ import { Power } from 'lucide-react';
 import {
   PROJECT_SIDEBAR_FOLD_SPRING,
   SIDEBAR_TOOLTIP_CONTENT_CLASS,
-} from './constants';
+} from '../constants';
 import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
 
 export interface BottomActionProps {

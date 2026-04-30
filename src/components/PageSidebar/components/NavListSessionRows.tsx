@@ -23,7 +23,7 @@ import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
+import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from '../constants';
 import { workspaceTabButtonClass } from './NavTab';
 
 export interface NavListSession {

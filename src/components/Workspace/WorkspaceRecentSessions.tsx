@@ -16,7 +16,7 @@ import {
   NAV_LIST_SESSIONS_RECENT_MAX,
   NavListSessionRows,
   type NavListSession,
-} from '@/components/ProjectPageSidebar/NavList';
+} from '@/components/PageSidebar/components/NavList';
 import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import type { ChatStore } from '@/store/chatStore';

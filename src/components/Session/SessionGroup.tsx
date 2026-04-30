@@ -15,7 +15,7 @@
 import {
   NavListSessionRows,
   type NavListSession,
-} from '@/components/ProjectPageSidebar/NavList';
+} from '@/components/PageSidebar/components/NavList';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';

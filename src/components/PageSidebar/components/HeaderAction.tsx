@@ -31,7 +31,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PROJECT_SIDEBAR_FOLD_SPRING } from './constants';
+import { PROJECT_SIDEBAR_FOLD_SPRING } from '../constants';
 import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
 
 const MEMORY_STORAGE_KEY = 'eigent-sidebar-instructions-memory-on';

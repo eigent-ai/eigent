@@ -28,7 +28,7 @@ import type { ReactNode } from 'react';
 import {
   PROJECT_SIDEBAR_FOLD_SPRING,
   SIDEBAR_TOOLTIP_CONTENT_CLASS,
-} from './constants';
+} from '../constants';
 
 /** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
 export function workspaceTabButtonClass(active: boolean): string {
