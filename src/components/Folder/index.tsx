@@ -131,6 +131,15 @@ interface FileInfo {
   isRemote?: boolean;
 }
 
+function filterFolderOnlyTree(node: FileTreeNode): FileTreeNode {
+  if (!node.children || node.children.length === 0)
+    return { ...node, children: [] };
+  const children = node.children
+    .filter((c) => c.isFolder)
+    .map((c) => filterFolderOnlyTree(c));
+  return { ...node, children };
+}
+
 // FileTree component to render nested file structure
 interface FileTreeProps {
   node: FileTreeNode;
@@ -237,14 +246,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
 function downloadByBrowser(url: string) {
   window.ipcRenderer
     .invoke('download-file', url)
-    .then((result) => {
+    .then((result: any) => {
       if (result.success) {
         console.log('download-file success:', result.path);
       } else {
         console.error('download-file error:', result.error);
       }
     })
-    .catch((error) => {
+    .catch((error: any) => {
       console.error('download-file error:', error);
     });
 }
@@ -280,6 +289,23 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   ]);
   const hasFetchedRemote = useRef(false);
 
+  const folderOnlyTree = useMemo(
+    () => filterFolderOnlyTree(fileTree),
+    [fileTree]
+  );
+  const filesOnly = useMemo(() => {
+    const files = fileGroups?.[0]?.files || [];
+    return files
+      .filter((f) => !f.isFolder)
+      .sort((a, b) => {
+        const aKey =
+          `${a.relativePath ? `${a.relativePath}/` : ''}${a.name}`.toLowerCase();
+        const bKey =
+          `${b.relativePath ? `${b.relativePath}/` : ''}${b.name}`.toLowerCase();
+        return aKey.localeCompare(bKey);
+      });
+  }, [fileGroups]);
+
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
     if (file.type === 'zip') {
       // if file is remote, don't call reveal-in-folder
@@ -307,7 +333,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
           setLoading(false);
         })
-        .catch((error) => {
+        .catch((error: any) => {
           console.error('read-file-dataurl error:', error);
           setLoading(false);
         });
@@ -325,12 +351,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // all other files call open-file interface, the backend handles download and parsing
     window.ipcRenderer
       .invoke('open-file', file.type, file.path, isShowSourceCode)
-      .then((res) => {
+      .then((res: any) => {
         setSelectedFile({ ...file, content: res });
         chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
         setLoading(false);
       })
-      .catch((error) => {
+      .catch((error: any) => {
         console.error('open-file error:', error);
         setLoading(false);
       });
@@ -626,18 +652,52 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             <div className="p-2">
               <div className="mb-2">
                 <div className="text-primary px-2 py-1 text-[10px] font-bold leading-4">
-                  {t('chat.files')}
+                  {t('chat.folders')}
                 </div>
                 <FileTree
-                  node={fileTree}
+                  node={folderOnlyTree}
                   selectedFile={selectedFile}
                   expandedFolders={expandedFolders}
                   onToggleFolder={toggleFolder}
-                  onSelectFile={(file) =>
-                    selectedFileChange(file, isShowSourceCode)
-                  }
+                  onSelectFile={() => {}}
                   isShowSourceCode={isShowSourceCode}
                 />
+              </div>
+
+              <div className="mb-2 mt-3">
+                <div className="text-primary px-2 py-1 text-[10px] font-bold leading-4">
+                  {t('chat.files')}
+                </div>
+                <div className="space-y-1">
+                  {filesOnly.map((file) => {
+                    const displayName = file.relativePath
+                      ? `${file.relativePath}/${file.name}`
+                      : file.name;
+                    return (
+                      <TooltipSimple key={file.path} content={displayName}>
+                        <button
+                          onClick={() =>
+                            selectedFileChange(file, isShowSourceCode)
+                          }
+                          className={`text-primary flex w-full items-center justify-start gap-2 rounded-xl bg-fill-fill-transparent p-2 text-left text-sm backdrop-blur-lg transition-colors hover:bg-fill-fill-transparent-active ${
+                            selectedFile?.path === file.path
+                              ? 'bg-fill-fill-transparent-active'
+                              : ''
+                          }`}
+                        >
+                          {file.icon ? (
+                            <file.icon className="h-5 w-5 flex-shrink-0" />
+                          ) : (
+                            <FileText className="h-5 w-5 flex-shrink-0" />
+                          )}
+                          <span className="truncate text-[13px] font-medium leading-5">
+                            {displayName}
+                          </span>
+                        </button>
+                      </TooltipSimple>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           ) : (
