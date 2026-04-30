@@ -12,44 +12,37 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  isHistoryTabId,
-  type HistoryTabId,
-} from '@/components/Dashboard/HistoryTabsNav';
+import Browser from '@/components/Dashboard/Pages/Browser';
+import Channels from '@/components/Dashboard/Pages/Channels';
+import Connectors from '@/components/Dashboard/Pages/Connectors';
+import Memory from '@/components/Dashboard/Pages/Memory/Memory';
+import Models from '@/components/Dashboard/Pages/Models/Models';
+import Dashboard from '@/components/Dashboard/Pages/Project';
+import Setting from '@/components/Dashboard/Pages/Setting';
+import Skills from '@/components/Dashboard/Pages/Skills/Skills';
+import { AppResizableShell } from '@/components/Layout/AppResizableShell';
+import PageSidebar from '@/components/PageSidebar';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { parseHistoryNavState } from '@/lib/historyNavConfig';
 import { cn } from '@/lib/utils';
-import Setting from '@/pages/Setting';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import Agents from './Agents';
-import Browser from './Browser';
-import Channels from './Channels';
-import Connectors from './Connectors';
-import Dashboard from './Dashboard';
 
-const TAB_ALIASES: Record<string, HistoryTabId> = {
-  mcp_tools: 'connectors',
-};
+const HISTORY_SIDEBAR_WIDTH_STORAGE_KEY = 'eigent-history-sidebar-width-px';
 
-export default function Home() {
+const HISTORY_MAIN_MOTION_CLASS =
+  'scrollbar-hide bg-ds-bg-neutral-subtle-default min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden rounded-2xl';
+
+export default function History() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
-  const activeTab = useMemo(() => {
-    const tabFromUrl = searchParams.get('tab');
-    if (tabFromUrl) {
-      const normalizedTab = TAB_ALIASES[tabFromUrl] ?? tabFromUrl;
-      if (isHistoryTabId(normalizedTab)) {
-        return normalizedTab;
-      }
-    }
-    return 'dashboard' as HistoryTabId;
-  }, [searchParams]);
+
+  const navState = parseHistoryNavState(searchParams);
 
   const confirmDelete = () => {
     setDeleteModalOpen(false);
@@ -59,40 +52,66 @@ export default function Home() {
     return <div>Loading...</div>;
   }
 
-  return (
-    <div className="px-1 pb-1 pt-12 flex h-full w-full flex-1 flex-col">
-      <div
-        ref={scrollContainerRef}
-        className="scrollbar-hide bg-ds-bg-neutral-subtle-default rounded-2xl h-full overflow-y-auto"
-      >
-        {/* alert dialog */}
-        <AlertDialog
-          isOpen={deleteModalOpen}
-          onClose={() => setDeleteModalOpen(false)}
-          onConfirm={confirmDelete}
-          title={t('layout.delete-task')}
-          message={t('layout.delete-task-confirmation')}
-          confirmText={t('layout.delete')}
-          cancelText={t('layout.cancel')}
-        />
-        <div className="m-auto flex h-auto w-full flex-1 flex-col">
-          <div
-            className={cn(
-              'flex h-auto min-h-[calc(100vh-80px)] w-full',
-              activeTab === 'dashboard'
-                ? 'px-0'
-                : 'mx-auto max-w-[1020px] px-[70px]'
-            )}
-          >
-            {activeTab === 'dashboard' && <Dashboard />}
-            {activeTab === 'agents' && <Agents />}
-            {activeTab === 'channels' && <Channels />}
-            {activeTab === 'connectors' && <Connectors />}
-            {activeTab === 'browser' && <Browser />}
-            {activeTab === 'settings' && <Setting />}
-          </div>
+  const mainContent = (
+    <div
+      ref={scrollContainerRef}
+      className="scrollbar-hide min-h-0 flex-1 overflow-y-auto"
+    >
+      <div className="m-auto flex h-auto min-h-full w-full flex-1 flex-col">
+        <div
+          className={cn(
+            'flex min-h-[calc(100vh-80px)] w-full',
+            navState.tab === 'dashboard' ? 'px-0' : 'px-6'
+          )}
+        >
+          {navState.tab === 'dashboard' && (
+            <Dashboard embedded hub={navState.hub} />
+          )}
+          {navState.tab === 'agents' && navState.agentSection === 'models' && (
+            <Models />
+          )}
+          {navState.tab === 'agents' && navState.agentSection === 'skills' && (
+            <Skills />
+          )}
+          {navState.tab === 'agents' && navState.agentSection === 'memory' && (
+            <Memory />
+          )}
+          {navState.tab === 'channels' && (
+            <Channels embedded channelsView={navState.channelsView} />
+          )}
+          {navState.tab === 'connectors' && <Connectors />}
+          {navState.tab === 'browser' && (
+            <Browser embedded browserSection={navState.browserSection} />
+          )}
+          {navState.tab === 'settings' && (
+            <Setting embedded settingsTab={navState.settingsTab} />
+          )}
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-0 px-1 pb-1 pt-12 flex h-full flex-1 flex-col overflow-hidden">
+      <AlertDialog
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={confirmDelete}
+        title={t('layout.delete-task')}
+        message={t('layout.delete-task-confirmation')}
+        confirmText={t('layout.delete')}
+        cancelText={t('layout.cancel')}
+      />
+
+      <AppResizableShell
+        sidebarWidthStorageKey={HISTORY_SIDEBAR_WIDTH_STORAGE_KEY}
+        panelGroupId="history-page-panel-group"
+        sidebar={<PageSidebar variant="history" />}
+        sidebarDefaultSize={26}
+        main={mainContent}
+        mainMotionClassName={HISTORY_MAIN_MOTION_CLASS}
+        transparentShell
+      />
     </div>
   );
 }

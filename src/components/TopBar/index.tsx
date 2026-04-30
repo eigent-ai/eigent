@@ -22,11 +22,6 @@ import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
-import {
-  HistoryTabsNav,
-  isHistoryTabId,
-  type HistoryTabId,
-} from '@/components/Dashboard/HistoryTabsNav';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import NotificationPanel from '@/components/Notification';
@@ -36,6 +31,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { SITE_URL } from '@/lib';
 import { share } from '@/lib/share';
+import { lastNonHistoryAppPath } from '@/lib/workspaceReturnPath';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -52,6 +48,7 @@ import {
   Minus,
   PanelLeft,
   PanelLeftClose,
+  Plus,
   Settings,
   Share,
   Square,
@@ -64,7 +61,6 @@ import {
   useLocation,
   useNavigate,
   useNavigationType,
-  useSearchParams,
 } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -129,10 +125,6 @@ const topBarCrossfade = {
   ease: [0.4, 0, 0.2, 1] as const,
 };
 
-const HISTORY_TAB_SEARCH_ALIASES: Record<string, HistoryTabId> = {
-  mcp_tools: 'connectors',
-};
-
 function HeaderWin() {
   const { t } = useTranslation();
   const host = useHost();
@@ -141,7 +133,6 @@ function HeaderWin() {
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const { canGoBack, canGoForward } = useStackNavigationBounds();
   const [reportBugOpen, setReportBugOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
@@ -205,33 +196,6 @@ function HeaderWin() {
   }, [location.pathname]);
 
   const isHomeRoute = location.pathname === '/';
-
-  const activeHistoryTab = useMemo((): HistoryTabId => {
-    const tabFromUrl = searchParams.get('tab');
-    if (tabFromUrl) {
-      const normalizedTab =
-        HISTORY_TAB_SEARCH_ALIASES[tabFromUrl] ?? tabFromUrl;
-      if (isHistoryTabId(normalizedTab)) {
-        return normalizedTab;
-      }
-    }
-    return 'dashboard';
-  }, [searchParams]);
-
-  const handleHistoryTabChange = useCallback(
-    (value: string) => {
-      if (value) navigate(`?tab=${value}`, { replace: true });
-    },
-    [navigate]
-  );
-
-  const handleExitHistoryOrSettings = useCallback(() => {
-    if (canGoBack) {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  }, [canGoBack, navigate]);
 
   const summaryTask =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
@@ -347,84 +311,83 @@ function HeaderWin() {
       id="titlebar"
       ref={titlebarRef}
     >
-      {/* Leading: home ↔ dashboard / new project */}
-      <div className="no-drag flex shrink-0 items-center justify-center">
-        <TooltipSimple
-          content={
-            isHistoryRoute ? t('layout.new-project') : t('layout.dashboard')
-          }
-          side="bottom"
-          align="center"
-        >
-          <Button
-            variant={isHistoryRoute ? 'ghost' : 'ghost'}
-            size="md"
-            buttonContent="text"
-            textWeight="bold"
-            className="no-drag gap-1.5 rounded-full"
-            onClick={() => {
-              if (isHistoryRoute) {
-                projectStore.createProject('new project');
-                setActiveWorkspaceTab('workforce');
-                navigate('/');
-              } else {
-                navigate('/history');
-              }
-            }}
-            aria-label={
-              isHistoryRoute ? t('layout.new-project') : t('layout.home')
+      {/* Leading: fold sidebar (home / history); home → dashboard (home only) */}
+      <div className="no-drag gap-1 pl-1.5 flex shrink-0 items-center justify-center">
+        {(isHomeRoute || isHistoryRoute) && (
+          <TooltipSimple
+            content={
+              projectSidebarFolded
+                ? t('layout.expand-project-sidebar', {
+                    defaultValue: 'Expand sidebar',
+                  })
+                : t('layout.fold-project-sidebar', {
+                    defaultValue: 'Fold sidebar',
+                  })
             }
+            side="bottom"
+            align="center"
           >
-            <AnimatePresence mode="popLayout" initial={false}>
-              {isHistoryRoute ? (
-                <motion.span
-                  key="leading-history"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={topBarCrossfade}
-                  className="gap-1.5 min-w-0 flex items-center"
-                >
-                  <img
-                    src={eigentAppIconWhite}
-                    alt=""
-                    className="h-6 w-6 mt-[2px] select-none"
-                    width={16}
-                    height={16}
-                    draggable={false}
-                  />
-                  {t('layout.new-project')}
-                </motion.span>
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              className="no-drag shrink-0 rounded-full"
+              onClick={() => toggleProjectSidebarFolded()}
+              aria-pressed={!projectSidebarFolded}
+              aria-label={
+                projectSidebarFolded
+                  ? t('layout.expand-project-sidebar', {
+                      defaultValue: 'Expand sidebar',
+                    })
+                  : t('layout.fold-project-sidebar', {
+                      defaultValue: 'Fold sidebar',
+                    })
+              }
+            >
+              {projectSidebarFolded ? (
+                <PanelLeft className="h-4 w-4" aria-hidden />
               ) : (
-                <motion.span
-                  key="leading-home"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={topBarCrossfade}
-                  className="gap-1.5 min-w-0 flex items-center"
-                >
-                  <img
-                    src={
-                      appearance === 'dark'
-                        ? eigentAppIconWhite
-                        : eigentAppIconBlack
-                    }
-                    alt=""
-                    className="h-6 w-6 mt-[2px] select-none"
-                    width={16}
-                    height={16}
-                    draggable={false}
-                  />
-                  {t('layout.home')}
-                </motion.span>
+                <PanelLeftClose className="h-4 w-4" aria-hidden />
               )}
-            </AnimatePresence>
-          </Button>
-        </TooltipSimple>
+            </Button>
+          </TooltipSimple>
+        )}
+        {isHomeRoute && (
+          <TooltipSimple
+            content={t('layout.dashboard')}
+            side="bottom"
+            align="center"
+          >
+            <Button
+              variant="ghost"
+              size="md"
+              buttonContent="text"
+              textWeight="bold"
+              className="no-drag gap-1.5 rounded-full"
+              onClick={() => navigate('/history')}
+              aria-label={t('layout.home')}
+            >
+              <span className="gap-1.5 min-w-0 flex items-center">
+                <img
+                  src={
+                    appearance === 'dark'
+                      ? eigentAppIconWhite
+                      : eigentAppIconBlack
+                  }
+                  alt=""
+                  className="h-6 w-6 mt-[2px] select-none"
+                  width={16}
+                  height={16}
+                  draggable={false}
+                />
+                {t('layout.home')}
+              </span>
+            </Button>
+          </TooltipSimple>
+        )}
       </div>
 
-      {/* Middle: home (/) — task strip; /history — tab nav */}
+      {/* Middle: home — back/forward/task + actions; /history — back/forward + drag */}
       <div className="min-h-0 min-w-0 relative z-0 flex h-full flex-1">
         <AnimatePresence initial={false}>
           {isHomeRoute && (
@@ -438,43 +401,6 @@ function HeaderWin() {
             >
               <div className="min-w-0 min-h-0 relative z-50 flex h-full items-center">
                 <div className="no-drag min-w-0 flex items-center">
-                  <TooltipSimple
-                    content={
-                      projectSidebarFolded
-                        ? t('layout.expand-project-sidebar', {
-                            defaultValue: 'Expand sidebar',
-                          })
-                        : t('layout.fold-project-sidebar', {
-                            defaultValue: 'Fold sidebar',
-                          })
-                    }
-                    side="bottom"
-                    align="center"
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      className="no-drag shrink-0 rounded-full"
-                      onClick={() => toggleProjectSidebarFolded()}
-                      aria-pressed={!projectSidebarFolded}
-                      aria-label={
-                        projectSidebarFolded
-                          ? t('layout.expand-project-sidebar', {
-                              defaultValue: 'Expand sidebar',
-                            })
-                          : t('layout.fold-project-sidebar', {
-                              defaultValue: 'Fold sidebar',
-                            })
-                      }
-                    >
-                      {projectSidebarFolded ? (
-                        <PanelLeft className="h-4 w-4" aria-hidden />
-                      ) : (
-                        <PanelLeftClose className="h-4 w-4" aria-hidden />
-                      )}
-                    </Button>
-                  </TooltipSimple>
                   <TooltipSimple
                     content={t('layout.back')}
                     side="bottom"
@@ -509,30 +435,30 @@ function HeaderWin() {
                       <ChevronRight aria-hidden />
                     </Button>
                   </TooltipSimple>
-                  <div className="min-w-0 flex-1 overflow-hidden rounded-full">
-                    <TooltipSimple
-                      content={
-                        activeTaskTitle === t('layout.new-project')
-                          ? t('layout.new-project')
-                          : activeTaskTitle
-                      }
-                      side="bottom"
-                      align="center"
+                </div>
+                <div className="min-w-0 flex-1 overflow-hidden rounded-full">
+                  <TooltipSimple
+                    content={
+                      activeTaskTitle === t('layout.new-project')
+                        ? t('layout.new-project')
+                        : activeTaskTitle
+                    }
+                    side="bottom"
+                    align="center"
+                  >
+                    <button
+                      id="active-task-title-btn"
+                      type="button"
+                      className="no-drag min-w-0 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus/50 hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
+                      onClick={toggleHistorySidebar}
+                      aria-expanded={historySidebarOpen}
+                      aria-haspopup="dialog"
                     >
-                      <button
-                        id="active-task-title-btn"
-                        type="button"
-                        className="no-drag min-w-0 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus/50 hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
-                        onClick={toggleHistorySidebar}
-                        aria-expanded={historySidebarOpen}
-                        aria-haspopup="dialog"
-                      >
-                        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                          {activeTaskTitle}
-                        </span>
-                      </button>
-                    </TooltipSimple>
-                  </div>
+                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {activeTaskTitle}
+                      </span>
+                    </button>
+                  </TooltipSimple>
                 </div>
               </div>
 
@@ -650,14 +576,45 @@ function HeaderWin() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={topBarCrossfade}
-              className="drag inset-0 min-h-0 min-w-0 px-2 absolute z-10 flex h-full items-center justify-start overflow-x-auto overflow-y-visible"
+              className="drag inset-0 min-h-0 min-w-0 gap-2 px-2 absolute z-10 flex h-full flex-1 items-center overflow-hidden"
             >
-              <HistoryTabsNav
-                compact
-                activeTab={activeHistoryTab}
-                onChange={handleHistoryTabChange}
-                className="no-drag min-w-0 pb-0 max-w-full shrink"
-              />
+              <div className="no-drag min-w-0 flex shrink-0 items-center">
+                <TooltipSimple
+                  content={t('layout.back')}
+                  side="bottom"
+                  align="center"
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="icon-only"
+                    className="no-drag shrink-0 rounded-full"
+                    disabled={!canGoBack}
+                    onClick={() => navigate(-1)}
+                    aria-label={t('layout.back')}
+                  >
+                    <ChevronLeft aria-hidden />
+                  </Button>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.forward')}
+                  side="bottom"
+                  align="center"
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="icon-only"
+                    className="no-drag shrink-0 rounded-full"
+                    disabled={!canGoForward}
+                    onClick={() => navigate(1)}
+                    aria-label={t('layout.forward')}
+                  >
+                    <ChevronRight aria-hidden />
+                  </Button>
+                </TooltipSimple>
+              </div>
+              <div className="drag min-h-0 min-w-0 flex-1" aria-hidden />
             </motion.div>
           )}
         </AnimatePresence>
@@ -666,7 +623,7 @@ function HeaderWin() {
         )}
       </div>
 
-      {/* Trailing: update + settings (home) or back (history) — always at the end */}
+      {/* Trailing: settings (home); on /history — bell, support, gift, new project */}
       <div
         className={`${
           (platform === 'darwin' || !host?.electronAPI) && 'pr-4 pl-1'
@@ -707,7 +664,9 @@ function HeaderWin() {
                   align="end"
                 >
                   <Button
-                    onClick={() => navigate('/history?tab=settings')}
+                    onClick={() =>
+                      navigate('/history?tab=settings&settingsTab=general')
+                    }
                     variant="ghost"
                     buttonContent="icon-only"
                     size="sm"
@@ -718,34 +677,94 @@ function HeaderWin() {
                   </Button>
                 </TooltipSimple>
               </motion.div>
-            ) : (
+            ) : isHistoryRoute ? (
               <motion.div
-                key="trailing-back"
+                key="trailing-history-exit"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={topBarCrossfade}
-                className="flex"
+                className="gap-1 flex items-center"
               >
                 <TooltipSimple
-                  content={t('layout.back', { defaultValue: 'Back' })}
+                  content={t('layout.notifications')}
                   side="bottom"
                   align="end"
                 >
                   <Button
                     type="button"
-                    onClick={handleExitHistoryOrSettings}
+                    variant="ghost"
+                    size="sm"
+                    className="no-drag rounded-full"
+                    aria-label={t('layout.notifications')}
+                    aria-expanded={notificationPanelOpen}
+                    aria-controls="notification-panel"
+                    onClick={() => setNotificationPanelOpen((open) => !open)}
+                    buttonContent="icon-only"
+                  >
+                    <Bell aria-hidden />
+                  </Button>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.support')}
+                  side="bottom"
+                  align="end"
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="no-drag rounded-full"
+                    aria-label={t('layout.support')}
+                    onClick={() => navigate(lastNonHistoryAppPath())}
+                    buttonContent="icon-only"
+                  >
+                    <CircleHelp aria-hidden />
+                  </Button>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.refer-friends')}
+                  side="bottom"
+                  align="end"
+                >
+                  <Button
+                    onClick={getReferFriendsLink}
+                    variant="ghost"
+                    size="sm"
+                    className="no-drag rounded-full"
+                    buttonContent="icon-only"
+                  >
+                    <img
+                      src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
+                      alt="gift-icon"
+                      width={16}
+                      height={16}
+                    />
+                  </Button>
+                </TooltipSimple>
+                <TooltipSimple
+                  content={t('layout.new-project')}
+                  side="bottom"
+                  align="end"
+                >
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      projectStore.createProject('new project');
+                      setActiveWorkspaceTab('workforce');
+                      navigate('/');
+                    }}
                     variant="ghost"
                     buttonContent="icon-only"
                     size="sm"
                     className="no-drag rounded-full"
-                    aria-label={t('layout.back', { defaultValue: 'Back' })}
+                    aria-label={t('layout.new-project')}
                   >
-                    <X className="h-4 w-4" aria-hidden />
+                    <Plus className="h-4 w-4" aria-hidden />
                   </Button>
                 </TooltipSimple>
               </motion.div>
-            )}
+            ) : null}
           </AnimatePresence>
         </div>
       </div>

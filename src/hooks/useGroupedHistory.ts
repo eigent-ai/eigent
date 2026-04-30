@@ -14,14 +14,26 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { queryClient, queryKeys } from '@/lib/queryClient';
-import type { ProjectGroup } from '@/types/history';
+import type { HistoryTask, ProjectGroup } from '@/types/history';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // ---------------------------------------------------------------------------
 // Pure fetcher — no setState callbacks, just returns data
 // ---------------------------------------------------------------------------
 
-function groupTasksByProject(items: any[]): ProjectGroup[] {
+interface FlatHistoryTask {
+  id: number | string;
+  task_id: string;
+  project_id: string;
+  project_name?: string;
+  question?: string;
+  tokens?: number;
+  status?: number;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+function groupTasksByProject(items: FlatHistoryTask[]): ProjectGroup[] {
   const map = new Map<string, ProjectGroup>();
 
   for (const task of items) {
@@ -42,7 +54,7 @@ function groupTasksByProject(items: any[]): ProjectGroup[] {
       });
     }
     const p = map.get(pid)!;
-    p.tasks.push(task);
+    p.tasks.push(task as unknown as HistoryTask);
     p.task_count++;
     p.total_tokens += task.tokens || 0;
     if (task.status === 2) p.total_completed_tasks++;
@@ -79,7 +91,7 @@ export async function fetchGroupedHistoryData(): Promise<ProjectGroup[]> {
     // fall through to legacy
   }
   const flat = await proxyFetchGet('/api/v1/chat/histories');
-  return groupTasksByProject(flat?.items ?? []);
+  return groupTasksByProject((flat?.items ?? []) as FlatHistoryTask[]);
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +109,7 @@ export function useGroupedHistory() {
 
   /** Force a fresh fetch (e.g. after a mutation). */
   const invalidate = () =>
-    client.invalidateQueries({ queryKey: queryKeys.history.all });
+    client.invalidateQueries({ queryKey: queryKeys.history.grouped() });
 
   /**
    * Optimistically update the cached project list without re-fetching.
@@ -114,6 +126,8 @@ export function useGroupedHistory() {
   return {
     projects: query.data ?? [],
     isLoading: query.isLoading, // true only on the very first fetch — never on revisit
+    isError: query.isError,
+    error: query.error,
     invalidate,
     updateProjects,
   };
