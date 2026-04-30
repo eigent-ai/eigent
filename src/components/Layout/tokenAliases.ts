@@ -27,7 +27,7 @@ export function mergeLayoutAliasStyles(
   return style ? ({ ...base, ...style } as React.CSSProperties) : base;
 }
 
-// Shared layout-level aliases for TopBar, HistorySidebar, and ProjectPageSidebar.
+// Shared layout-level aliases for TopBar, HistorySidebar, and PageSidebar.
 export const productLayoutTokenAliases = asCssVarMap({
   '--border-secondary': 'var(--ds-border-neutral-default-default)',
   '--border-disabled': 'var(--ds-border-neutral-subtle-default)',

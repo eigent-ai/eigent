@@ -19,15 +19,17 @@ import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
+import { persistLastNonHistoryPath } from '@/lib/workspaceReturnPath';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import CloseNoticeDialog from '../Dialog/CloseNotice';
 import HistorySidebar from '../HistorySidebar';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
 
 const Layout = () => {
+  const location = useLocation();
   const host = useHost();
   const {
     initState,
@@ -53,6 +55,10 @@ const Layout = () => {
   } = useInstallationUI();
 
   useInstallationSetup();
+
+  useEffect(() => {
+    persistLastNonHistoryPath(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (!host?.ipcRenderer || !host?.electronAPI) return;
