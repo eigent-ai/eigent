@@ -184,17 +184,7 @@ export default function SettingGeneral() {
   }
 
   return (
-    <div className="m-auto h-auto w-full flex-1">
-      {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
-        <div className="gap-4 flex w-full flex-row items-center justify-between">
-          <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-              {t('setting.general')}
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="pt-8 m-auto h-auto w-full flex-1">
       {/* Content Section */}
       <div className="mb-xl gap-6 flex flex-col">
         {/* Profile Section */}

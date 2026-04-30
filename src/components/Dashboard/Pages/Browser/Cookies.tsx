@@ -224,12 +224,6 @@ export default function Cookies() {
         confirmVariant="information"
       />
 
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-          {t('layout.browser-cookie-management')}
-        </div>
-      </div>
-
       <div className="gap-4 flex flex-col">
         <div className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default p-6 relative flex w-full flex-col border">
           <div className="text-body-sm text-ds-text-neutral-muted-default max-w-[600px]">

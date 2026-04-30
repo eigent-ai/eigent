@@ -19,7 +19,7 @@ import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { ChatTaskStatus } from '@/types/constants';
 import type { ProjectGroup } from '@/types/history';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import GroupedHistoryView from './GroupedHistoryView';
@@ -42,7 +42,7 @@ export default function Project({
 }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
+  const deleteCallbackRef = useRef<() => void>(() => {});
   const { chatStore, projectStore } = useChatStoreAdapter();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [curHistoryId, setCurHistoryId] = useState('');
@@ -58,7 +58,7 @@ export default function Project({
   const handleDelete = (id: string, callback?: () => void) => {
     setCurHistoryId(id);
     setDeleteModalOpen(true);
-    if (callback) setDeleteCallback(callback);
+    if (callback) deleteCallbackRef.current = callback;
   };
 
   const confirmDelete = async () => {
@@ -74,7 +74,8 @@ export default function Project({
     } finally {
       setCurHistoryId('');
       setDeleteModalOpen(false);
-      deleteCallback();
+      deleteCallbackRef.current();
+      deleteCallbackRef.current = () => {};
     }
   };
 
@@ -194,16 +195,10 @@ export default function Project({
             onTaskDelete={handleDelete}
             onTaskShare={handleShare}
             activeTaskId={chatStore.activeTaskId || undefined}
-            ongoingTasks={chatStore.tasks}
-            onOngoingTaskClick={(taskId) => {
-              chatStore.setActiveTaskId(taskId);
-              navigate(`/`);
-            }}
             onOngoingTaskPause={(taskId) => handleTakeControl('pause', taskId)}
             onOngoingTaskResume={(taskId) =>
               handleTakeControl('resume', taskId)
             }
-            onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
             onProjectDelete={handleProjectDelete}
           />
         </div>

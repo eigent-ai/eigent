@@ -15,6 +15,10 @@
 import { mcpList as fetchMcpConfig } from '@/api/brain';
 import { fetchPost, proxyFetchGet } from '@/api/http';
 import githubIcon from '@/assets/github.svg';
+import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Dashboard/Pages/localModels';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -36,10 +40,6 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { INIT_PROVODERS } from '@/lib/llm';
-import {
-  getLocalPlatformName,
-  LOCAL_MODEL_OPTIONS,
-} from '@/pages/Agents/localModels';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';

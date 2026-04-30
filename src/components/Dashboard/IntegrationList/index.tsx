@@ -23,6 +23,7 @@ import {
 import { CircleAlert, Settings2 } from 'lucide-react';
 
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
+import { MCPEnvDialog } from '@/components/Dashboard/Pages/Connectors/components/MCPEnvDialog';
 import {
   Select,
   SelectContent,
@@ -37,7 +38,6 @@ import {
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
 import { cn } from '@/lib/utils';
-import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 

@@ -20,6 +20,10 @@
 import { proxyFetchGet } from '@/api/http';
 import folderIcon from '@/assets/Folder.svg';
 import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Dashboard/Pages/localModels';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -36,10 +40,6 @@ import {
 } from '@/lib/applyDefaultModelSelection';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { cn } from '@/lib/utils';
-import {
-  getLocalPlatformName,
-  LOCAL_MODEL_OPTIONS,
-} from '@/pages/Agents/localModels';
 import {
   getModelImage,
   needsInvertModelImage,

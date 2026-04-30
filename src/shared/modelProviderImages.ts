@@ -35,7 +35,7 @@ import {
   DARK_FILL_MODELS,
   LLAMA_CPP_PROVIDER_ID,
   PROVIDER_AVATAR_URLS,
-} from '@/pages/Agents/localModels';
+} from '@/components/Dashboard/Pages/localModels';
 
 const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   cloud: eigentImage,

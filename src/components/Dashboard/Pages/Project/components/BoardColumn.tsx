@@ -18,6 +18,7 @@ import type {
   DashboardTask,
   TaskStatusBucket,
 } from '@/types/dashboard';
+import { useTranslation } from 'react-i18next';
 import { BoardTaskCard } from './BoardTaskCard';
 
 const COLUMN_LABEL_TEXT: Record<TaskStatusBucket, string> = {
@@ -59,6 +60,7 @@ type Props = {
 };
 
 export function BoardColumn({ column, onOpenSession }: Props) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -90,7 +92,7 @@ export function BoardColumn({ column, onOpenSession }: Props) {
       <div className="gap-2 flex flex-col">
         {column.tasks.length === 0 ? (
           <div className="rounded-xl border-ds-border-neutral-subtle-disabled px-3 py-6 text-label-xs text-ds-text-neutral-muted-default border border-dashed text-center">
-            No tasks
+            {t('layout.no-tasks')}
           </div>
         ) : (
           column.tasks.map((task) => (

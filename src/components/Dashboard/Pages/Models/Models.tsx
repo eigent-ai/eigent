@@ -65,6 +65,7 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 
+import DashboardPageLayout from '../DashboardPageLayout';
 import {
   appendV1ToEndpoint,
   canAutoFixOllamaEndpoint,
@@ -79,7 +80,7 @@ import {
   SGLANG_PROVIDER_ID,
   toEndpointBaseUrl,
   VLLM_PROVIDER_ID,
-} from './localModels';
+} from '../localModels';
 
 // Sidebar tab types
 type SidebarTab =
@@ -1769,17 +1770,7 @@ export default function SettingModels() {
   };
 
   return (
-    <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
-        <div className="gap-4 flex w-full flex-col items-start justify-between">
-          <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-              {t('setting.models')}
-            </div>
-          </div>
-        </div>
-      </div>
+    <DashboardPageLayout title={t('setting.models')}>
       {/* Content Section */}
       <div className="mb-8 gap-6 flex flex-col">
         {/* Default Model Cascading Dropdown */}
@@ -1956,7 +1947,7 @@ export default function SettingModels() {
 
         {/* Content Section with Sidebar */}
         <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="px-3 py-2 text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-2 font-bold text-ds-text-neutral-default-default sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+          <div className="px-3 py-2 text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default pb-2 font-bold text-ds-text-neutral-default-default z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
@@ -2081,12 +2072,12 @@ export default function SettingModels() {
               </div>
             </div>
             {/* Main Content */}
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+            <div className="min-w-0 top-10 sticky z-10 flex-1">
               {renderContent()}
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </DashboardPageLayout>
   );
 }

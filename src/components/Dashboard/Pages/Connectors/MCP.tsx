@@ -51,6 +51,7 @@ import { ChevronDown, ChevronUp, Plus, Settings2, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import DashboardPageLayout from '../DashboardPageLayout';
 import MCPAddDialog from './components/MCPAddDialog';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
@@ -1035,253 +1036,252 @@ export default function SettingMCP() {
   };
 
   return (
-    <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-          {t('setting.mcps-and-tools')}
-        </div>
-      </div>
-
-      <div className="mb-12 gap-6 flex flex-col">
-        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default mb-4 gap-3 px-3 py-2 sticky top-[80px] z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
-              {t('setting.connectors')}
-            </div>
-            <div className="gap-2 flex items-center">
-              <SearchInput
-                variant="icon"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('setting.search-mcp')}
-              />
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowAdd(true)}
-              >
-                <Plus className="h-4 w-4" />
-                {t('setting.mcp-add')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="px-3 gap-4 flex w-full flex-row items-start justify-between">
-            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px] shrink-0">
-              <div className="gap-4 flex flex-col">
-                <div className="gap-1 flex flex-col">
-                  <button
-                    type="button"
-                    onClick={() => setWebCollapsed(!webCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.mcp-sidebar-web')}
-                    </div>
-                    {webCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    )}
-                  </button>
-                  <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
-                      webCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {isLoadingIntegrations ? (
-                      <div className="gap-2 px-1 flex flex-col">
-                        {[1, 2, 3].map((i) => (
-                          <div
-                            key={i}
-                            className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
-                          />
-                        ))}
-                      </div>
-                    ) : webConnected.length === 0 ? (
-                      <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
-                        {searchQuery.trim()
-                          ? t('dashboard.no-results')
-                          : integrations.length === 0
-                            ? t('setting.no-mcp-servers')
-                            : t('setting.not-configured')}
-                      </div>
-                    ) : (
-                      webConnected.map((item) =>
-                        renderSidebarRow(
-                          `web-${item.key}`,
-                          item.name,
-                          'web',
-                          selected?.type === 'web' && selected.key === item.key,
-                          () => setSelected({ type: 'web', key: item.key }),
-                          !!installed[item.key],
-                          undefined,
-                          item.key
-                        )
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div className="gap-1 flex flex-col">
-                  <button
-                    type="button"
-                    onClick={() => setYourCollapsed(!yourCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.your-own-mcps')}
-                    </div>
-                    {yourCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    )}
-                  </button>
-                  <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
-                      yourCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {isLoading ? (
-                      <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
-                        {t('setting.loading')}
-                      </div>
-                    ) : error ? (
-                      <div className="text-body-xs text-ds-text-status-error-strong-default px-3 py-1">
-                        {error}
-                      </div>
-                    ) : filteredItems.length === 0 ? (
-                      <div className="gap-2 px-3 py-2 flex flex-col items-start">
-                        <p className="text-body-xs text-ds-text-neutral-muted-default">
-                          {items.length === 0
-                            ? t('setting.no-mcp-servers')
-                            : t('dashboard.no-results')}
-                        </p>
-                        {items.length === 0 ? (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => setShowAdd(true)}
-                          >
-                            <Plus className="h-4 w-4" />
-                            {t('setting.mcp-add')}
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      filteredItems.map((item) =>
-                        renderSidebarRow(
-                          `your-${item.id}`,
-                          capitalizeFirstLetter(item.mcp_name || ''),
-                          'your',
-                          selected?.type === 'your' && selected.id === item.id,
-                          () => setSelected({ type: 'your', id: item.id }),
-                          undefined,
-                          item.status === 1
-                        )
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div className="gap-1 flex flex-col">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNotConnectedCollapsed(!notConnectedCollapsed)
-                    }
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.mcp-sidebar-not-connected')}
-                    </div>
-                    {notConnectedCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    )}
-                  </button>
-                  <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
-                      notConnectedCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {isLoadingIntegrations ? (
-                      <div className="gap-2 px-1 flex flex-col">
-                        {[1, 2, 3].map((i) => (
-                          <div
-                            key={i}
-                            className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
-                          />
-                        ))}
-                      </div>
-                    ) : webNotConnected.length === 0 ? (
-                      <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
-                        {searchQuery.trim()
-                          ? t('dashboard.no-results')
-                          : t('setting.configured')}
-                      </div>
-                    ) : (
-                      webNotConnected.map((item) =>
-                        renderSidebarRow(
-                          `nc-${item.key}`,
-                          item.name,
-                          'web',
-                          selected?.type === 'web' && selected.key === item.key,
-                          () => setSelected({ type: 'web', key: item.key }),
-                          !!installed[item.key],
-                          undefined,
-                          item.key
-                        )
-                      )
-                    )}
-                  </div>
-                </div>
+    <>
+      <DashboardPageLayout title={t('setting.mcps-and-tools')}>
+        <div className="gap-6 flex flex-col">
+          <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
+            <div className="border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default mb-4 gap-3 px-3 py-2 sticky top-[80px] z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+              <div className="text-body-base font-bold text-ds-text-neutral-default-default">
+                {t('setting.connectors')}
+              </div>
+              <div className="gap-2 flex items-center">
+                <SearchInput
+                  variant="icon"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('setting.search-mcp')}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowAdd(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('setting.mcp-add')}
+                </Button>
               </div>
             </div>
 
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
-              {isLoadingIntegrations && !selected ? (
-                <div className="gap-4 flex w-full flex-col items-start justify-start">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4 relative w-full overflow-hidden"
+            <div className="px-3 gap-4 flex w-full flex-row items-start justify-between">
+              <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px] shrink-0">
+                <div className="gap-4 flex flex-col">
+                  <div className="gap-1 flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => setWebCollapsed(!webCollapsed)}
+                      className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                     >
-                      <div className="gap-xs flex w-full flex-row items-center justify-between">
-                        <div className="gap-xs flex flex-row items-center">
-                          <div className="mr-2 h-3 w-3 bg-ds-bg-neutral-default-hover rounded-full" />
-                          <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
-                        </div>
-                        <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
+                      <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        {t('setting.mcp-sidebar-web')}
                       </div>
-                      <motion.div
-                        className="via-white/20 inset-0 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
-                        initial={{ x: '-100%' }}
-                        animate={{ x: '200%' }}
-                        transition={{
-                          repeat: Infinity,
-                          duration: 1.5,
-                          ease: 'linear',
-                        }}
-                      />
+                      {webCollapsed ? (
+                        <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                      )}
+                    </button>
+                    <div
+                      className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                        webCollapsed
+                          ? 'max-h-0 opacity-0'
+                          : 'max-h-[2000px] opacity-100'
+                      }`}
+                    >
+                      {isLoadingIntegrations ? (
+                        <div className="gap-2 px-1 flex flex-col">
+                          {[1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
+                            />
+                          ))}
+                        </div>
+                      ) : webConnected.length === 0 ? (
+                        <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
+                          {searchQuery.trim()
+                            ? t('dashboard.no-results')
+                            : integrations.length === 0
+                              ? t('setting.no-mcp-servers')
+                              : t('setting.not-configured')}
+                        </div>
+                      ) : (
+                        webConnected.map((item) =>
+                          renderSidebarRow(
+                            `web-${item.key}`,
+                            item.name,
+                            'web',
+                            selected?.type === 'web' &&
+                              selected.key === item.key,
+                            () => setSelected({ type: 'web', key: item.key }),
+                            !!installed[item.key],
+                            undefined,
+                            item.key
+                          )
+                        )
+                      )}
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="gap-1 flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => setYourCollapsed(!yourCollapsed)}
+                      className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    >
+                      <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        {t('setting.your-own-mcps')}
+                      </div>
+                      {yourCollapsed ? (
+                        <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                      )}
+                    </button>
+                    <div
+                      className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                        yourCollapsed
+                          ? 'max-h-0 opacity-0'
+                          : 'max-h-[2000px] opacity-100'
+                      }`}
+                    >
+                      {isLoading ? (
+                        <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
+                          {t('setting.loading')}
+                        </div>
+                      ) : error ? (
+                        <div className="text-body-xs text-ds-text-status-error-strong-default px-3 py-1">
+                          {error}
+                        </div>
+                      ) : filteredItems.length === 0 ? (
+                        <div className="gap-2 px-3 py-2 flex flex-col items-start">
+                          <p className="text-body-xs text-ds-text-neutral-muted-default">
+                            {items.length === 0
+                              ? t('setting.no-mcp-servers')
+                              : t('dashboard.no-results')}
+                          </p>
+                          {items.length === 0 ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => setShowAdd(true)}
+                            >
+                              <Plus className="h-4 w-4" />
+                              {t('setting.mcp-add')}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        filteredItems.map((item) =>
+                          renderSidebarRow(
+                            `your-${item.id}`,
+                            capitalizeFirstLetter(item.mcp_name || ''),
+                            'your',
+                            selected?.type === 'your' &&
+                              selected.id === item.id,
+                            () => setSelected({ type: 'your', id: item.id }),
+                            undefined,
+                            item.status === 1
+                          )
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="gap-1 flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNotConnectedCollapsed(!notConnectedCollapsed)
+                      }
+                      className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    >
+                      <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        {t('setting.mcp-sidebar-not-connected')}
+                      </div>
+                      {notConnectedCollapsed ? (
+                        <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                      )}
+                    </button>
+                    <div
+                      className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                        notConnectedCollapsed
+                          ? 'max-h-0 opacity-0'
+                          : 'max-h-[2000px] opacity-100'
+                      }`}
+                    >
+                      {isLoadingIntegrations ? (
+                        <div className="gap-2 px-1 flex flex-col">
+                          {[1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
+                            />
+                          ))}
+                        </div>
+                      ) : webNotConnected.length === 0 ? (
+                        <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
+                          {searchQuery.trim()
+                            ? t('dashboard.no-results')
+                            : t('setting.configured')}
+                        </div>
+                      ) : (
+                        webNotConnected.map((item) =>
+                          renderSidebarRow(
+                            `nc-${item.key}`,
+                            item.name,
+                            'web',
+                            selected?.type === 'web' &&
+                              selected.key === item.key,
+                            () => setSelected({ type: 'web', key: item.key }),
+                            !!installed[item.key],
+                            undefined,
+                            item.key
+                          )
+                        )
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                renderConnectionPanel()
-              )}
+              </div>
+
+              <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+                {isLoadingIntegrations && !selected ? (
+                  <div className="gap-4 flex w-full flex-col items-start justify-start">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className="rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4 relative w-full overflow-hidden"
+                      >
+                        <div className="gap-xs flex w-full flex-row items-center justify-between">
+                          <div className="gap-xs flex flex-row items-center">
+                            <div className="mr-2 h-3 w-3 bg-ds-bg-neutral-default-hover rounded-full" />
+                            <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
+                          </div>
+                          <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
+                        </div>
+                        <motion.div
+                          className="via-white/20 inset-0 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
+                          initial={{ x: '-100%' }}
+                          animate={{ x: '200%' }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 1.5,
+                            ease: 'linear',
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  renderConnectionPanel()
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </DashboardPageLayout>
 
       <MCPEnvDialog
         showEnvConfig={showEnvConfig}
@@ -1322,6 +1322,6 @@ export default function SettingMCP() {
         onConfirm={handleDelete}
         loading={deleting}
       />
-    </div>
+    </>
   );
 }

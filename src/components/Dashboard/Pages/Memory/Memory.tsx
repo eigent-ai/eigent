@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import DashboardPageLayout from '../DashboardPageLayout';
+
 import { Brain } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,16 +21,8 @@ export default function Memory() {
   const { t } = useTranslation();
 
   return (
-    <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-          {t('agents.memory')}
-        </div>
-      </div>
-
-      {/* Content Section */}
-      <div className="mb-12 gap-6 flex flex-col">
+    <DashboardPageLayout title={t('agents.memory')}>
+      <div className="gap-6 flex flex-col">
         <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
           <div className="h-16 w-16 flex items-center justify-center">
             <Brain className="h-8 w-8 text-ds-icon-neutral-muted-default" />
@@ -41,6 +35,6 @@ export default function Memory() {
           </p>
         </div>
       </div>
-    </div>
+    </DashboardPageLayout>
   );
 }

@@ -229,17 +229,6 @@ export default function CDP() {
         confirmVariant="caution"
       />
 
-      {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
-        <div className="gap-4 flex w-full flex-col items-start justify-between">
-          <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-              {t('layout.cdp-browser-connection')}
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="mb-8 gap-6 flex flex-col">
         <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
           {/* Header Section */}

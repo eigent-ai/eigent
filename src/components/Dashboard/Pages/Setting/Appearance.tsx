@@ -350,17 +350,7 @@ export default function AppearanceSettings() {
   };
 
   return (
-    <div className="m-auto h-auto w-full flex-1">
-      <div className="px-6 pb-6 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
-        <div className="gap-4 flex w-full flex-row items-center justify-between">
-          <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-              {t('setting.appearance-tab')}
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="pt-8 m-auto h-auto w-full flex-1">
       <div className="mb-xl gap-6 flex flex-col">
         <div className="item-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 h-18 flex flex-row items-center justify-between">
           <div className="text-body-base font-bold text-ds-text-neutral-default-default">

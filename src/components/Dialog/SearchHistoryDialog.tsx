@@ -14,6 +14,7 @@
 
 'use client';
 
+import GroupedHistoryView from '@/components/Dashboard/Pages/Project/GroupedHistoryView';
 import { Button } from '@/components/ui/button';
 import {
   CommandDialog,
@@ -28,7 +29,6 @@ import { DialogTitle } from '@/components/ui/dialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useGroupedHistory } from '@/hooks/useGroupedHistory';
 import { loadProjectFromHistory } from '@/lib';
-import GroupedHistoryView from '@/pages/Dashboard/GroupedHistoryView';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { useGlobalStore } from '@/store/globalStore';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -121,7 +121,7 @@ export function SearchHistoryDialog() {
                 invalidate={groupedHistory.invalidate}
                 viewMode={history_type === 'grid' ? 'board' : 'list'}
                 onTaskSelect={handleSetActive}
-                onTaskDelete={(taskId, callback) => {
+                onTaskDelete={(taskId: string, callback: () => void) => {
                   handleDelete(taskId);
                   callback();
                 }}

@@ -127,14 +127,6 @@ export function useDashboardData() {
   const taskBuckets = useMemo(() => {
     const buckets: Record<TaskStatusBucket, DashboardTask[]> = {
       ...EMPTY_BUCKETS,
-      draft: [],
-      todo: [],
-      in_progress: [],
-      done: [],
-      failed: [],
-      human_review: [],
-      canceled: [],
-      rework: [],
     };
 
     for (const task of filteredTasks) {
@@ -183,5 +175,7 @@ export function useDashboardData() {
     stats,
     visibleBuckets,
     hiddenBuckets,
+    isError: groupedHistory.isError,
+    error: groupedHistory.error,
   };
 }

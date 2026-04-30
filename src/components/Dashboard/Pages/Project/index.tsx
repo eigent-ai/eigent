@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DashboardPageTitleRow } from '@/components/Dashboard/Pages/DashboardPageLayout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -21,10 +23,11 @@ import {
 } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tag } from '@/components/ui/tag';
+import { cn } from '@/lib/utils';
 import { useDashboardStore } from '@/store/dashboardStore';
 import { BOARD_COLUMN_ORDER, TASK_BUCKET_LABEL_KEY } from '@/types/dashboard';
 import {
-  ArrowRightLeft,
+  AlertTriangle,
   Filter,
   Folder,
   LayoutGrid,
@@ -33,7 +36,7 @@ import {
   Plus,
   Zap,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Project from './Project';
 import Task from './Task';
@@ -144,11 +147,19 @@ function TaskFilters({
   const { t } = useTranslation();
   const { filters, setFilter, columnVisibility, setColumnBucketVisible } =
     useDashboardStore();
-  const activeFilterCount = [
-    filters.search,
-    filters.projectId,
-    filters.bucket,
-  ].filter(Boolean).length;
+  const [searchDraft, setSearchDraft] = useState(filters.search);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeFilterCount = [filters.search, filters.projectId].filter(
+    Boolean
+  ).length;
+
+  const handleSearchChange = (value: string) => {
+    setSearchDraft(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setFilter({ search: value });
+    }, 300);
+  };
 
   return (
     <Popover>
@@ -181,8 +192,8 @@ function TaskFilters({
           </span>
           <input
             type="text"
-            value={filters.search}
-            onChange={(e) => setFilter({ search: e.target.value })}
+            value={searchDraft}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder={t('layout.dashboard-search-placeholder')}
             className="rounded-lg border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default py-1.5 px-2.5 text-body-sm text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-muted-default focus:border-ds-border-brand-default-focus w-full border border-solid focus:outline-none"
           />
@@ -235,9 +246,10 @@ function TaskFilters({
             variant="ghost"
             size="sm"
             tone="error"
-            onClick={() =>
-              setFilter({ search: '', projectId: null, bucket: null })
-            }
+            onClick={() => {
+              setSearchDraft('');
+              setFilter({ search: '', projectId: null, bucket: null });
+            }}
             className="self-start"
           >
             {t('layout.dashboard-clear-filters')}
@@ -248,12 +260,22 @@ function TaskFilters({
   );
 }
 
-export default function Dashboard() {
+function DashboardHubInner({
+  embedded,
+  hub: hubProp,
+}: {
+  embedded?: boolean;
+  hub?: DashboardHub;
+}) {
   const { t } = useTranslation();
-  const [hub, setHub] = useState<DashboardHub>('project');
+
+  const hub = embedded ? (hubProp ?? 'project') : 'project';
+
   const [projectViewMode, setProjectViewMode] =
     useState<DashboardViewMode>('board');
   const dashboardData = useDashboardData();
+
+  const hPad = embedded ? 'px-6' : 'px-[70px]';
 
   useEffect(() => {
     document.title = `${
@@ -270,39 +292,45 @@ export default function Dashboard() {
     []
   );
 
+  if (dashboardData.isError) {
+    return (
+      <div className="gap-3 py-24 flex h-full flex-col items-center justify-center text-center">
+        <AlertTriangle className="h-8 w-8 text-ds-icon-status-error-default-default" />
+        <p className="text-body-sm text-ds-text-neutral-muted-default">
+          {t('layout.dashboard-load-error')}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          tone="neutral"
+          onClick={() => dashboardData.invalidate()}
+        >
+          {t('layout.retry')}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-full flex-1 flex-col">
       <div className="min-w-0 flex h-auto min-h-[calc(100vh-86px)] w-full flex-col">
         <div className="min-h-0 min-w-0 flex w-full flex-1 flex-col">
           <div className="top-0 bg-ds-bg-neutral-subtle-default sticky z-20">
-            <div className="pt-8 pb-6 px-[70px]">
-              <div className="gap-3 gap-y-2 flex flex-wrap items-center justify-between">
-                <div className="gap-2 min-w-0 flex flex-wrap items-center">
-                  <span className="text-heading-sm font-bold text-ds-text-neutral-default-default">
-                    {hub === 'project'
-                      ? t('layout.dashboard-overview')
-                      : t('layout.dashboard-tasks')}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    tone="neutral"
-                    textWeight="semibold"
-                    buttonContent="icon-only"
-                    buttonRadius="lg"
-                    onClick={() =>
-                      setHub(hub === 'project' ? 'task' : 'project')
-                    }
-                    aria-label={t('layout.dashboard-mode-switch')}
-                  >
-                    <ArrowRightLeft size={14} strokeWidth={2} aria-hidden />
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <DashboardPageTitleRow
+              title={
+                hub === 'project'
+                  ? t('layout.dashboard-overview')
+                  : t('layout.dashboard-tasks')
+              }
+              horizontalPadding={hPad}
+            />
 
-            <div className="border-ds-border-neutral-subtle-hover py-4 gap-3 mx-[70px] flex shrink-0 items-center justify-between border-x-0 border-t-0 border-b border-solid">
+            <div
+              className={cn(
+                'border-ds-border-neutral-subtle-hover px-6 pb-6 gap-3 mx-0 flex shrink-0 items-center justify-between border-x-0 border-t-0 border-b border-solid',
+                hPad
+              )}
+            >
               <div className="gap-3 min-w-0 flex flex-1 flex-wrap items-center">
                 <DashboardMetrics hub={hub} stats={dashboardData.stats} />
               </div>
@@ -333,7 +361,7 @@ export default function Dashboard() {
           </div>
 
           {hub === 'project' ? (
-            <div className="mt-0 pt-4 px-[70px]">
+            <div className={cn('mt-0 pt-4', hPad)}>
               <Project
                 projects={dashboardData.projects}
                 isLoading={dashboardData.isLoading}
@@ -343,8 +371,9 @@ export default function Dashboard() {
               />
             </div>
           ) : (
-            <div className="mt-0 pt-4 min-h-0 min-w-0 px-0 flex flex-1 flex-col">
+            <div className="mt-0 min-h-0 min-w-0 px-0 pt-4 flex flex-1 flex-col">
               <Task
+                horizontalPaddingClass={hPad}
                 taskBuckets={dashboardData.taskBuckets}
                 visibleBuckets={dashboardData.visibleBuckets}
                 hiddenBuckets={dashboardData.hiddenBuckets}
@@ -355,5 +384,15 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DashboardHub(
+  props: Parameters<typeof DashboardHubInner>[0]
+) {
+  return (
+    <ErrorBoundary>
+      <DashboardHubInner {...props} />
+    </ErrorBoundary>
   );
 }

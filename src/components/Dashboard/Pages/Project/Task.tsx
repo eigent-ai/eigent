@@ -23,6 +23,7 @@ import {
   type TaskStatusBucket,
 } from '@/types/dashboard';
 import type { ProjectGroup } from '@/types/history';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { BoardColumn } from './components/BoardColumn';
@@ -64,6 +65,8 @@ const HIDDEN_BADGE: Record<TaskStatusBucket, string> = {
 };
 
 type Props = {
+  /** Horizontal gutter for the board row (matches hub shell, e.g. `px-4` / `px-[70px]`). */
+  horizontalPaddingClass: string;
   taskBuckets: Record<TaskStatusBucket, DashboardTask[]>;
   visibleBuckets: TaskStatusBucket[];
   hiddenBuckets: TaskStatusBucket[];
@@ -71,6 +74,7 @@ type Props = {
 };
 
 export default function Task({
+  horizontalPaddingClass,
   taskBuckets,
   visibleBuckets,
   hiddenBuckets,
@@ -80,37 +84,44 @@ export default function Task({
   const navigate = useNavigate();
   const { projectStore } = useChatStoreAdapter();
 
-  const openTaskSession = async (task: DashboardTask) => {
-    if (!projectStore) return;
-    const projectId = task.project_id;
-    const question = task.question;
-    const historyId = String(task.id);
-    const camelTaskId = task.task_id;
+  const openTaskSession = useCallback(
+    async (task: DashboardTask) => {
+      if (!projectStore) return;
+      const projectId = task.project_id;
+      const question = task.question;
+      const historyId = String(task.id);
+      const camelTaskId = task.task_id;
 
-    const existingProject = projectStore.getProjectById(projectId);
-    const projectGroup = projects.find((p) => p.project_id === projectId);
+      const existingProject = projectStore.getProjectById(projectId);
+      const projectGroup = projects.find((p) => p.project_id === projectId);
 
-    if (existingProject) {
-      projectStore.setHistoryId(projectId, historyId);
-      projectStore.setActiveProject(projectId);
-      activateTaskSession(projectStore, projectId, camelTaskId);
-      navigate('/');
-    } else {
-      const taskIdsList = projectGroup?.tasks
-        ?.map((t) => t.task_id)
-        .filter(Boolean) || [camelTaskId];
-      await loadProjectFromHistory(
-        projectStore,
-        navigate,
-        projectId,
-        question,
-        historyId,
-        taskIdsList,
-        projectGroup?.project_name ?? task.project_name
-      );
-      activateTaskSession(projectStore, projectId, camelTaskId);
-    }
-  };
+      if (existingProject) {
+        projectStore.setHistoryId(projectId, historyId);
+        projectStore.setActiveProject(projectId);
+        activateTaskSession(projectStore, projectId, camelTaskId);
+        navigate('/');
+      } else {
+        const taskIdsList = projectGroup?.tasks
+          ?.map((t) => t.task_id)
+          .filter(Boolean) || [camelTaskId];
+        await loadProjectFromHistory(
+          projectStore,
+          navigate,
+          projectId,
+          question,
+          historyId,
+          taskIdsList,
+          projectGroup?.project_name ?? task.project_name
+        );
+        // Re-read from store after async load to avoid stale closure
+        const loadedProject = projectStore.getProjectById(projectId);
+        if (loadedProject) {
+          activateTaskSession(projectStore, projectId, camelTaskId);
+        }
+      }
+    },
+    [navigate, projectStore, projects]
+  );
 
   const buildCol = (id: TaskStatusBucket): BoardColumnDef => ({
     id,
@@ -123,7 +134,12 @@ export default function Task({
 
   return (
     <div className="gap-3 min-h-0 min-w-0 flex flex-1 flex-col">
-      <div className="gap-4 pb-4 min-h-0 min-w-0 flex flex-1 flex-row items-start overflow-x-auto overscroll-x-contain px-[70px]">
+      <div
+        className={cn(
+          'gap-4 pb-4 min-h-0 min-w-0 flex flex-1 flex-row items-start overflow-x-auto overscroll-x-contain',
+          horizontalPaddingClass
+        )}
+      >
         {visibleColumns.map((col) => (
           <BoardColumn
             key={col.id}

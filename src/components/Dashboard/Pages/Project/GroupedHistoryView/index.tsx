@@ -42,14 +42,11 @@ interface GroupedHistoryViewProps {
   onTaskDelete: (historyId: string, callback: () => void) => void;
   onTaskShare: (taskId: string) => void;
   activeTaskId?: string;
-  refreshTrigger?: number; // For triggering refresh from parent
-  ongoingTasks?: { [taskId: string]: any }; // Add ongoing tasks from chatStore
-  onOngoingTaskClick?: (taskId: string) => void; // Callback for clicking ongoing tasks
-  onOngoingTaskPause?: (taskId: string) => void; // Callback for pausing ongoing tasks
-  onOngoingTaskResume?: (taskId: string) => void; // Callback for resuming ongoing tasks
-  onOngoingTaskDelete?: (taskId: string) => void; // Callback for deleting ongoing tasks
-  onProjectEdit?: (projectId: string) => void; // Callback for editing a project
-  onProjectDelete?: (projectId: string, callback: () => Promise<void>) => void; // Callback for deleting a project with async callback
+  refreshTrigger?: number;
+  onOngoingTaskPause?: (taskId: string) => void;
+  onOngoingTaskResume?: (taskId: string) => void;
+  onProjectEdit?: (projectId: string) => void;
+  onProjectDelete?: (projectId: string, callback: () => Promise<void>) => void;
 }
 
 export default function GroupedHistoryView({
@@ -64,11 +61,8 @@ export default function GroupedHistoryView({
   onTaskShare,
   activeTaskId,
   refreshTrigger,
-  ongoingTasks: _ongoingTasks = {},
-  onOngoingTaskClick: _onOngoingTaskClick,
   onOngoingTaskPause,
   onOngoingTaskResume,
-  onOngoingTaskDelete: _onOngoingTaskDelete,
   onProjectEdit,
   onProjectDelete,
 }: GroupedHistoryViewProps) {
@@ -107,12 +101,7 @@ export default function GroupedHistoryView({
   };
 
   const handleProjectEdit = (projectId: string) => {
-    if (onProjectEdit) {
-      onProjectEdit(projectId);
-    } else {
-      console.log('Edit project:', projectId);
-      // TODO: Implement project edit functionality
-    }
+    onProjectEdit?.(projectId);
   };
 
   const handleProjectDelete = (projectId: string) => {
@@ -124,22 +113,11 @@ export default function GroupedHistoryView({
           (project) => project.project_id === projectId
         );
 
-        if (
-          targetProject &&
-          targetProject.tasks &&
-          targetProject.tasks.length > 0
-        ) {
-          console.log(
-            `Deleting project ${projectId} with ${targetProject.tasks.length} tasks`
-          );
-
-          // Delete each task one by one
+        if (targetProject && targetProject.tasks.length > 0) {
           for (const history of targetProject.tasks) {
             try {
               await proxyFetchDelete(`/api/v1/chat/history/${history.id}`);
-              console.log(`Successfully deleted task ${history.task_id}`);
 
-              // Also delete local files for this task if available (via Electron IPC)
               const { email } = getAuthStore();
               if (history.task_id && ipcRenderer) {
                 try {
@@ -149,14 +127,8 @@ export default function GroupedHistoryView({
                     history.task_id,
                     history.project_id ?? undefined
                   );
-                  console.log(
-                    `Successfully cleaned up local files for task ${history.task_id}`
-                  );
-                } catch (error) {
-                  console.warn(
-                    `Local file cleanup failed for task ${history.task_id}:`,
-                    error
-                  );
+                } catch {
+                  // local file cleanup is best-effort
                 }
               }
             } catch (error) {
@@ -164,26 +136,15 @@ export default function GroupedHistoryView({
             }
           }
 
-          // Remove from projectStore
           projectStore.removeProject(projectId);
-
-          // Update local state to remove the project
           setProjects((prevProjects) =>
             prevProjects.filter((project) => project.project_id !== projectId)
           );
-
-          console.log(`Completed deletion of project ${projectId}`);
         } else if (targetProject) {
-          // Project exists but has no tasks, just remove from store
-          console.log(
-            `Project ${projectId} has no tasks, removing from store only`
-          );
           projectStore.removeProject(projectId);
           setProjects((prevProjects) =>
             prevProjects.filter((project) => project.project_id !== projectId)
           );
-        } else {
-          console.warn(`Project ${projectId} not found`);
         }
       } catch (error) {
         console.error('Failed to delete project:', error);
@@ -221,15 +182,9 @@ export default function GroupedHistoryView({
 
       if (response && response.code !== undefined && response.code !== 0) {
         console.error(`Failed to update project name: ${response.code}`);
-        // Optionally: revert the local change if API call fails
-      } else {
-        console.log(
-          `Successfully updated project ${projectId} name to ${newName}`
-        );
       }
     } catch (error) {
       console.error(`Error updating project name:`, error);
-      // Optionally: revert the local change if API call fails
     }
   };
 
@@ -254,10 +209,6 @@ export default function GroupedHistoryView({
     );
   });
 
-  const allProjects = filteredProjects;
-
-  // Shimmer animation styles
-  // Shimmer animation styles
   const shimmerStyle = {
     background:
       'linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--ds-text-neutral-subtle-default) 40%, transparent) 50%, transparent 100%)',
@@ -387,7 +338,7 @@ export default function GroupedHistoryView({
               }}
             >
               <AnimatePresence mode="popLayout">
-                {allProjects.map((project, _index) => (
+                {filteredProjects.map((project) => (
                   <motion.div
                     key={project.project_id}
                     className="min-w-0 w-full"
@@ -448,7 +399,7 @@ export default function GroupedHistoryView({
               }}
             >
               <AnimatePresence mode="popLayout">
-                {allProjects.map((project, _index) => (
+                {filteredProjects.map((project) => (
                   <motion.div
                     key={project.project_id}
                     variants={{
