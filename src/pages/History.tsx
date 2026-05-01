@@ -23,7 +23,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import Project from '@/pages/Projects/Project';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Agents from './Agents';
@@ -56,6 +56,17 @@ export default function Home() {
     }
     return 'projects' as HistoryTabId;
   }, [searchParams]);
+
+  /** Mount each tab once when first opened; keep mounted and hide inactive so lists do not refetch on every tab switch. */
+  const [visitedTabs, setVisitedTabs] = useState<HistoryTabId[]>(() => [
+    activeTab,
+  ]);
+
+  useEffect(() => {
+    setVisitedTabs((prev) =>
+      prev.includes(activeTab) ? prev : [...prev, activeTab]
+    );
+  }, [activeTab]);
 
   const handleTabChange = (value: string) => {
     if (value) {
@@ -138,12 +149,54 @@ export default function Home() {
         </div>
         <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
           <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
-            {activeTab === 'projects' && <Project />}
-            {activeTab === 'agents' && <Agents />}
-            {activeTab === 'channels' && <Channels />}
-            {activeTab === 'connectors' && <Connectors />}
-            {activeTab === 'browser' && <Browser />}
-            {activeTab === 'settings' && <Setting />}
+            {visitedTabs.includes('projects') && (
+              <div
+                className={activeTab === 'projects' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'projects'}
+              >
+                <Project />
+              </div>
+            )}
+            {visitedTabs.includes('agents') && (
+              <div
+                className={activeTab === 'agents' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'agents'}
+              >
+                <Agents />
+              </div>
+            )}
+            {visitedTabs.includes('channels') && (
+              <div
+                className={activeTab === 'channels' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'channels'}
+              >
+                <Channels />
+              </div>
+            )}
+            {visitedTabs.includes('connectors') && (
+              <div
+                className={activeTab === 'connectors' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'connectors'}
+              >
+                <Connectors />
+              </div>
+            )}
+            {visitedTabs.includes('browser') && (
+              <div
+                className={activeTab === 'browser' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'browser'}
+              >
+                <Browser />
+              </div>
+            )}
+            {visitedTabs.includes('settings') && (
+              <div
+                className={activeTab === 'settings' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'settings'}
+              >
+                <Setting />
+              </div>
+            )}
           </div>
         </div>
       </div>

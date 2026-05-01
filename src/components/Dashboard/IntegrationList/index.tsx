@@ -100,7 +100,7 @@ export default function IntegrationList({
   const [activeMcp, setActiveMcp] = useState<any | null>(null);
   const isSelectMode = variant === 'select';
 
-  // Use shared hook for integration management
+  // Connection status uses `/api/v1/configs` via the hook; configs are session-cached so reopening this UI does not refetch on every mount.
   const {
     installed,
     fetchInstalled,
@@ -304,7 +304,7 @@ export default function IntegrationList({
     : 'flex flex-col w-full items-start justify-start gap-4';
 
   const itemClassName = isSelectMode
-    ? 'cursor-pointer gap-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 min-h-0 flex w-full items-center justify-between hover:bg-ds-bg-neutral-default-hover'
+    ? 'cursor-pointer gap-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 min-h-0 flex w-full items-center justify-between'
     : 'w-full px-6 py-4 bg-ds-bg-neutral-subtle-default rounded-2xl';
 
   const titleClassName = isSelectMode
