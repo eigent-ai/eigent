@@ -180,6 +180,7 @@
 
   "network-proxy": "Network Proxy",
   "network-proxy-description": "Configure a proxy server for network requests. This is useful if you need to access external APIs through a proxy.",
+  "network-proxy-helper": "Leave empty to disable the proxy. When set, all outbound HTTP requests from Eigent will respect this proxy configuration where supported.",
   "proxy-placeholder": "http://127.0.0.1:7890",
   "proxy-saved-restart-required": "Proxy configuration saved. Restart the app to apply changes.",
   "proxy-save-failed": "Failed to save proxy configuration.",
