@@ -22,6 +22,17 @@ interface IpcRenderer {
   invoke: (channel: string, ...args: any[]) => Promise<any>;
 }
 
+type AgentTemplateIpcPayload = {
+  id: string;
+  name: string;
+  description: string;
+  tools: string[];
+  mcp_tools: Record<string, unknown>;
+  custom_model_config?: Record<string, unknown>;
+  selected_tools_snapshot?: unknown[];
+  updatedAt: number;
+};
+
 interface ElectronAPI {
   closeWindow: () => void;
   minimizeWindow: () => void;
@@ -206,6 +217,16 @@ interface ElectronAPI {
   skillConfigDelete: (
     userId: string,
     skillName: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  // Global Agent Templates
+  agentTemplatesLoad: (userId: string) => Promise<{
+    success: boolean;
+    templates?: AgentTemplateIpcPayload[];
+    error?: string;
+  }>;
+  agentTemplatesSave: (
+    userId: string,
+    templates: AgentTemplateIpcPayload[]
   ) => Promise<{ success: boolean; error?: string }>;
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;
