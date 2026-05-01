@@ -136,6 +136,27 @@ const getRandomDefaultModel = (): CloudModelType => {
   return models[Math.floor(Math.random() * models.length)];
 };
 
+const SUPPORTED_CLOUD_MODEL_TYPES: ReadonlySet<CloudModelType> =
+  new Set<CloudModelType>([
+    'gemini-3.1-pro-preview',
+    'gemini-3-pro-preview',
+    'gemini-3-flash-preview',
+    'claude-haiku-4-5',
+    'claude-sonnet-4-5',
+    'claude-sonnet-4-6',
+    'claude-opus-4-6',
+    'claude-opus-4-7',
+    'gpt-5.4',
+    'gpt-5.5',
+    'gpt-5-mini',
+    'deepseek-v4-pro',
+    'minimax_m2_7',
+  ]);
+
+const isSupportedCloudModelType = (value: unknown): value is CloudModelType =>
+  typeof value === 'string' &&
+  SUPPORTED_CLOUD_MODEL_TYPES.has(value as CloudModelType);
+
 // create store
 const authStore = create<AuthState>()(
   persist(
@@ -306,7 +327,7 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 6,
+      version: 7,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -314,9 +335,18 @@ const authStore = create<AuthState>()(
               appearanceMode?: AppearanceMode;
               customThemeCatalog?: Partial<ThemeCatalog>;
               workspaceMainBackground?: string;
+              cloud_model_type?: unknown;
             }
           | undefined;
         if (!s) return persistedState as typeof persistedState;
+
+        // Drop unsupported cloud model ids so stale values like 'gpt-5.2'
+        // (removed from the chat input dropdown) don't keep submitting an
+        // empty model_platform and triggering 422 on /chat.
+        const sanitizedCloudModelType: CloudModelType =
+          isSupportedCloudModelType(s.cloud_model_type)
+            ? s.cloud_model_type
+            : getRandomDefaultModel();
 
         const rawWmb = s.workspaceMainBackground;
         let workspaceMainBackground: WorkspaceMainBackground = 'empty';
@@ -352,6 +382,7 @@ const authStore = create<AuthState>()(
             appearanceMode: 'light',
             customThemeCatalog: normalizedCustomCatalog,
             workspaceMainBackground,
+            cloud_model_type: sanitizedCloudModelType,
           };
         }
         return {
@@ -360,6 +391,7 @@ const authStore = create<AuthState>()(
           appearanceMode: normalizedAppearanceMode,
           customThemeCatalog: normalizedCustomCatalog,
           workspaceMainBackground,
+          cloud_model_type: sanitizedCloudModelType,
         } as typeof persistedState;
       },
       partialize: (state) => ({

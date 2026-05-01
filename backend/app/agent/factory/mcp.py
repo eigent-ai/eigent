@@ -23,7 +23,10 @@ from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
-from app.model.model_platform import patch_bedrock_cloud_config
+from app.model.model_platform import (
+    patch_azure_cloud_config,
+    patch_bedrock_cloud_config,
+)
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 
 
@@ -86,6 +89,8 @@ async def mcp_agent(options: Chat):
         api_url, extra_params = patch_bedrock_cloud_config(
             api_url, extra_params
         )
+    if options.model_platform == "azure" and options.is_cloud():
+        extra_params = patch_azure_cloud_config(extra_params)
 
     # Build model_config_dict with prompt caching
     model_config_dict = {}

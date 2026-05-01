@@ -24,7 +24,10 @@ from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
-from app.model.model_platform import patch_bedrock_cloud_config
+from app.model.model_platform import (
+    patch_azure_cloud_config,
+    patch_bedrock_cloud_config,
+)
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -89,6 +92,13 @@ def agent_model(
         effective_config["api_url"], extra_params = patch_bedrock_cloud_config(
             effective_config["api_url"], extra_params
         )
+    # Cloud mode: default api_version for Azure-backed models so AzureOpenAI
+    # construction does not blow up when the frontend omits extra_params.
+    if (
+        effective_config.get("model_platform") == "azure"
+        and options.is_cloud()
+    ):
+        extra_params = patch_azure_cloud_config(extra_params)
     init_param_keys = {
         "api_version",
         "azure_ad_token",
