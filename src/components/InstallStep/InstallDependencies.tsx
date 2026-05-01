@@ -22,9 +22,9 @@ export const InstallDependencies: React.FC = () => {
     useInstallationUI();
 
   return (
-    <div className="fixed inset-0 !z-[100] flex h-full w-full items-center justify-center overflow-hidden px-2 pb-2 pt-10">
-      <div className="flex h-full w-full flex-row justify-center gap-lg rounded-2xl border-solid border-border-tertiary bg-surface-secondary p-md">
-        <div className="flex h-full w-1/3 pt-6">
+    <div className="inset-0 px-1 pb-1 pt-10 fixed !z-[100] flex h-full w-full items-center justify-center overflow-hidden">
+      <div className="gap-lg rounded-2xl bg-ds-bg-neutral-subtle-default p-4 flex h-full w-full flex-row justify-center">
+        <div className="pt-6 flex h-full w-1/3">
           {/* {isInstalling.toString()} */}
           <div className="flex w-full flex-col">
             <ProgressInstall
@@ -35,16 +35,16 @@ export const InstallDependencies: React.FC = () => {
               }
               className="mb-4 w-full"
             />
-            <div className="mt-2 flex w-full flex-col items-start justify-between gap-4">
+            <div className="mt-2 gap-4 flex w-full flex-col items-start justify-between">
               <div className="flex w-full flex-row items-start justify-between">
-                <div className="text-body-sm font-medium leading-normal text-text-heading">
+                <div className="text-body-sm font-medium leading-normal text-ds-text-neutral-default-default">
                   {isInstalling
                     ? 'System Installing ...'
                     : installationState === 'waiting-backend'
                       ? 'Starting up... First launch may take a minute.'
                       : ''}
                 </div>
-                <div className="text-body-sm font-medium leading-normal text-text-heading">
+                <div className="text-body-sm font-medium leading-normal text-ds-text-neutral-default-default">
                   {Math.round(
                     (isInstalling || installationState === 'waiting-backend'
                       ? progress
@@ -53,13 +53,13 @@ export const InstallDependencies: React.FC = () => {
                   %
                 </div>
               </div>
-              <div className="w-full text-body-sm font-normal leading-normal text-text-label">
+              <div className="text-body-sm font-normal leading-normal text-ds-text-neutral-muted-default w-full">
                 {latestLog?.data}
               </div>
             </div>
           </div>
         </div>
-        <div className="flex h-full w-2/3 rounded-2xl bg-surface-tertiary p-md">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default p-md flex h-full w-2/3">
           <CarouselStep />
         </div>
       </div>

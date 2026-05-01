@@ -60,30 +60,30 @@ export class ErrorBoundary extends Component<Props, State> {
 
       // Default error UI
       return (
-        <div className="flex h-screen w-full items-center justify-center bg-surface-primary p-4">
-          <div className="flex max-w-md flex-col items-center gap-6 rounded-xl border border-solid border-border-secondary bg-surface-secondary p-8 text-center shadow-lg">
-            <div className="bg-warning/10 flex h-16 w-16 items-center justify-center rounded-full">
+        <div className="bg-ds-bg-neutral-subtle-default p-4 flex h-screen w-full items-center justify-center">
+          <div className="max-w-md gap-6 rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-8 shadow-lg flex flex-col items-center border border-solid text-center">
+            <div className="bg-warning/10 h-16 w-16 flex items-center justify-center rounded-full">
               <AlertTriangle className="text-warning h-8 w-8" />
             </div>
-            <div className="flex flex-col gap-2">
-              <h1 className="text-xl font-bold text-text-primary">
+            <div className="gap-2 flex flex-col">
+              <h1 className="text-xl font-bold text-ds-text-neutral-default-default">
                 Something went wrong
               </h1>
-              <p className="text-sm text-text-secondary">
+              <p className="text-sm text-ds-text-neutral-muted-default">
                 An unexpected error occurred. Please try refreshing the page.
               </p>
             </div>
             {this.state.error && (
-              <div className="w-full rounded-lg bg-surface-tertiary p-4 text-left">
-                <p className="mb-2 text-xs font-medium text-text-secondary">
+              <div className="rounded-lg bg-ds-bg-neutral-strong-default p-4 w-full text-left">
+                <p className="mb-2 text-xs font-medium text-ds-text-neutral-muted-default">
                   Error details:
                 </p>
-                <p className="max-h-32 overflow-y-auto font-mono text-xs text-text-primary">
+                <p className="max-h-32 font-mono text-xs text-ds-text-neutral-default-default overflow-y-auto">
                   {this.state.error.toString()}
                 </p>
               </div>
             )}
-            <div className="flex gap-3">
+            <div className="gap-3 flex">
               <Button
                 variant="outline"
                 size="md"

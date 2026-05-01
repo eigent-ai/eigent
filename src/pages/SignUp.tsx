@@ -29,6 +29,7 @@ import github2 from '@/assets/github2.svg';
 import google from '@/assets/google.svg';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 import WindowControls from '@/components/WindowControls';
+import { useHost } from '@/host';
 import { hasStackKeys } from '@/lib';
 import { useTranslation } from 'react-i18next';
 
@@ -36,6 +37,7 @@ const HAS_STACK_KEYS = hasStackKeys();
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
 export default function SignUp() {
+  const host = useHost();
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
@@ -276,27 +278,30 @@ export default function SignUp() {
   );
 
   useEffect(() => {
-    window.ipcRenderer?.on('auth-code-received', handleAuthCode);
-
+    if (!host?.ipcRenderer) return;
+    host.ipcRenderer.on('auth-code-received', handleAuthCode);
     return () => {
-      window.ipcRenderer?.off('auth-code-received', handleAuthCode);
+      host.ipcRenderer?.off('auth-code-received', handleAuthCode);
     };
-  }, [handleAuthCode]);
+  }, [handleAuthCode, host]);
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) {
+      setPlatform('web');
+      return;
+    }
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
-
-    if (platform === 'darwin') {
+    if (p === 'darwin') {
       titlebarRef.current?.classList.add('mac');
     }
-  }, [platform]);
+  }, []);
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
+        className="left-0 right-0 top-0 !h-9 py-1 pl-2 absolute z-50 flex items-center justify-between"
         id="signup-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -326,23 +331,23 @@ export default function SignUp() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`flex h-full items-center justify-center gap-2 px-2 pb-2 pt-10`}
+        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
       >
         <div
-          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary px-2 pb-2"
+          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
-          <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+          <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
             <img
               src={eigentLogo}
-              className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+              className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
             />
             <div className="mb-4 flex items-end justify-between self-stretch">
-              <div className="text-heading-lg font-bold text-text-heading">
+              <div className="text-heading-lg font-bold text-ds-text-neutral-default-default">
                 {t('layout.sign-up')}
               </div>
               <Button
@@ -354,12 +359,12 @@ export default function SignUp() {
               </Button>
             </div>
             {HAS_STACK_KEYS && (
-              <div className="w-full pt-6">
+              <div className="pt-6 w-full">
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('google')}
-                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                  className="mb-4 font-inter font-bold ease-in-out rounded-2xl text-body-md text-ds-text-brand-inverse-default w-full justify-center text-center transition-all duration-300"
                   disabled={isLoading}
                 >
                   <img src={google} className="h-5 w-5" />
@@ -371,7 +376,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('github')}
-                  className="mb-4 w-full justify-center rounded-[24px] text-center font-inter text-[15px] font-bold leading-[22px] text-[#F5F5F5] transition-all duration-300 ease-in-out"
+                  className="mb-4 font-inter font-bold ease-in-out rounded-2xl text-body-md text-ds-text-brand-inverse-default w-full justify-center text-center transition-all duration-300"
                   disabled={isLoading}
                 >
                   <img src={github2} className="h-5 w-5" />
@@ -382,17 +387,17 @@ export default function SignUp() {
               </div>
             )}
             {HAS_STACK_KEYS && (
-              <div className="mb-6 mt-2 w-full text-center font-inter text-[15px] font-medium leading-[22px] text-[#222]">
+              <div className="mb-6 mt-2 font-inter font-medium text-ds-text-neutral-default-default text-body-md w-full text-center">
                 {t('layout.or')}
               </div>
             )}
-            <div className="flex w-full flex-col gap-4">
+            <div className="gap-4 flex w-full flex-col">
               {generalError && (
-                <p className="mb-4 mt-1 text-label-md text-text-cuation">
+                <p className="mb-4 mt-1 text-label-md text-ds-text-status-error-strong-default">
                   {generalError}
                 </p>
               )}
-              <div className="relative mb-4 flex w-full flex-col gap-4">
+              <div className="mb-4 gap-4 relative flex w-full flex-col">
                 <Input
                   id="email"
                   type="email"

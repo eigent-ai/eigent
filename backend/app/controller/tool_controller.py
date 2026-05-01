@@ -12,18 +12,30 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
+import inspect
 import logging
 import os
 import shutil
 import threading
 import time
+import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.agent.toolkit.notion_mcp_toolkit import NotionMCPToolkit
+from app.utils.browser_launcher import (
+    DEFAULT_CDP_PORT,
+    _is_cdp_available,
+    _is_port_in_use,
+    ensure_cdp_browser_endpoint,
+    is_cdp_url_available,
+    is_local_cdp_host,
+    normalize_cdp_url,
+)
 from app.utils.cookie_manager import CookieManager
 from app.utils.oauth_state_manager import oauth_state_manager
 
@@ -39,6 +51,337 @@ class LinkedInTokenRequest(BaseModel):
 
 logger = logging.getLogger("tool_controller")
 router = APIRouter()
+_web_cdp_browser_meta: dict | None = None
+DEFAULT_LOGIN_BROWSER_CDP_PORT = 9323
+
+
+class CdpBrowserConnectRequest(BaseModel):
+    port: int
+    name: str | None = None
+
+
+def _build_web_cdp_browser(
+    endpoint: str,
+    *,
+    is_external: bool,
+    name: str | None = None,
+    added_at: int | None = None,
+    resource_session_id: str | None = None,
+    managed_by: str = "local",
+) -> dict:
+    normalized_endpoint, host, port = normalize_cdp_url(endpoint)
+    default_location = (
+        str(port) if is_local_cdp_host(host) else f"{host}:{port}"
+    )
+    browser_name = name or (
+        f"External Browser ({default_location})"
+        if is_external
+        else f"Managed Browser ({default_location})"
+    )
+    browser_id = resource_session_id or (
+        f"web-cdp-{port}"
+        if is_local_cdp_host(host)
+        else f"web-cdp-{host.replace('.', '-')}-{port}"
+    )
+    return {
+        "id": browser_id,
+        "port": port,
+        "endpoint": normalized_endpoint,
+        "host": host,
+        "isExternal": is_external,
+        "name": browser_name,
+        "addedAt": added_at or int(time.time() * 1000),
+        "resourceSessionId": resource_session_id,
+        "managedBy": managed_by,
+    }
+
+
+def _get_connected_cdp_endpoint() -> str | None:
+    cdp_url = os.environ.get("EIGENT_CDP_URL")
+    if cdp_url:
+        return cdp_url
+    if _web_cdp_browser_meta:
+        return _web_cdp_browser_meta.get("endpoint")
+    return None
+
+
+def _get_connected_cdp_port() -> int | None:
+    cdp_url = _get_connected_cdp_endpoint()
+    if not cdp_url:
+        return None
+    try:
+        _, _, port = normalize_cdp_url(cdp_url)
+        return port
+    except Exception:
+        logger.warning("Invalid EIGENT_CDP_URL: %s", cdp_url)
+        return None
+
+
+def _get_login_browser_cdp_port() -> int:
+    """Dedicated CDP port for the user-login cookie browser.
+
+    Keep this outside the Browser Agent fallback range (9223-9299), otherwise
+    Cookie Management can mistake a managed task browser for the login window.
+    """
+    raw_port = os.environ.get("EIGENT_LOGIN_BROWSER_CDP_PORT")
+    if not raw_port:
+        return DEFAULT_LOGIN_BROWSER_CDP_PORT
+
+    try:
+        port = int(raw_port)
+    except ValueError:
+        logger.warning(
+            "Invalid EIGENT_LOGIN_BROWSER_CDP_PORT=%s; using default %s",
+            raw_port,
+            DEFAULT_LOGIN_BROWSER_CDP_PORT,
+        )
+        return DEFAULT_LOGIN_BROWSER_CDP_PORT
+
+    if port <= 0 or port > 65535:
+        logger.warning(
+            "Out-of-range EIGENT_LOGIN_BROWSER_CDP_PORT=%s; using default %s",
+            raw_port,
+            DEFAULT_LOGIN_BROWSER_CDP_PORT,
+        )
+        return DEFAULT_LOGIN_BROWSER_CDP_PORT
+
+    return port
+
+
+def _set_connected_cdp_browser(
+    endpoint: str,
+    *,
+    is_external: bool,
+    name: str | None = None,
+    resource_session_id: str | None = None,
+    managed_by: str = "local",
+) -> dict:
+    global _web_cdp_browser_meta
+    normalized_endpoint, _, port = normalize_cdp_url(endpoint)
+    os.environ["EIGENT_CDP_URL"] = normalized_endpoint
+    os.environ["browser_port"] = str(port)
+    _web_cdp_browser_meta = _build_web_cdp_browser(
+        normalized_endpoint,
+        is_external=is_external,
+        name=name,
+        resource_session_id=resource_session_id,
+        managed_by=managed_by,
+    )
+    return _web_cdp_browser_meta
+
+
+def _clear_connected_cdp_browser() -> None:
+    global _web_cdp_browser_meta
+    os.environ.pop("EIGENT_CDP_URL", None)
+    _web_cdp_browser_meta = None
+
+
+def _list_connected_cdp_browsers() -> list[dict]:
+    global _web_cdp_browser_meta
+    endpoint = _get_connected_cdp_endpoint()
+    if endpoint is None:
+        return []
+
+    if not _is_cdp_endpoint_available(endpoint):
+        _clear_connected_cdp_browser()
+        return []
+
+    if (
+        _web_cdp_browser_meta
+        and _web_cdp_browser_meta.get("endpoint") == endpoint
+    ):
+        return [_web_cdp_browser_meta]
+
+    inferred_browser = _build_web_cdp_browser(endpoint, is_external=True)
+    _web_cdp_browser_meta = inferred_browser
+    return [inferred_browser]
+
+
+def _is_cdp_endpoint_available(endpoint: str) -> bool:
+    _, host, port = normalize_cdp_url(endpoint)
+    if is_local_cdp_host(host):
+        return _is_cdp_available(port)
+
+    return is_cdp_url_available(endpoint)
+
+
+def _is_remote_browser_hands(hands) -> bool:
+    if hands is None:
+        return False
+    get_manifest = getattr(hands, "get_capability_manifest", None)
+    if get_manifest is None or inspect.iscoroutinefunction(get_manifest):
+        return False
+    try:
+        manifest = get_manifest()
+    except Exception:
+        return False
+    if inspect.isawaitable(manifest):
+        if hasattr(manifest, "close"):
+            manifest.close()
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    return manifest.get("deployment") == "remote_cluster"
+
+
+async def _release_remote_browser_if_needed(request: Request | None) -> None:
+    meta = _web_cdp_browser_meta or {}
+    resource_session_id = meta.get("resourceSessionId")
+    if meta.get("managedBy") != "remote" or not resource_session_id:
+        return
+
+    hands = getattr(getattr(request, "state", None), "hands", None)
+    if hands is None:
+        return
+
+    try:
+        await asyncio.to_thread(
+            hands.release_resource,
+            "browser",
+            resource_session_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to release remote browser session %s: %s",
+            resource_session_id,
+            exc,
+        )
+
+
+@router.get("/browser/cdp/list", name="list cdp browsers")
+async def list_cdp_browsers():
+    """List the currently connected CDP browser in web mode."""
+    return _list_connected_cdp_browsers()
+
+
+@router.post("/browser/cdp/launch", name="launch cdp browser")
+async def launch_cdp_browser(request: Request):
+    """
+    Launch or reuse a managed CDP browser for web mode.
+
+    Returns:
+        Connection information for the managed browser.
+    """
+    existing_browsers = _list_connected_cdp_browsers()
+    if existing_browsers:
+        browser = existing_browsers[0]
+        return {
+            "success": True,
+            "port": browser["port"],
+            "browser": browser,
+            "endpoint": browser.get("endpoint"),
+            "reused": True,
+        }
+
+    hands = getattr(request.state, "hands", None)
+    if _is_remote_browser_hands(hands):
+        session_id = f"browser_ui_{uuid.uuid4().hex[:12]}"
+        try:
+            endpoint = await asyncio.to_thread(
+                hands.acquire_resource,
+                "browser",
+                session_id,
+                port=DEFAULT_CDP_PORT,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to acquire remote browser resource for session %s",
+                session_id,
+            )
+            return {
+                "success": False,
+                "error": "Failed to acquire remote browser",
+            }
+
+        browser = _set_connected_cdp_browser(
+            endpoint,
+            is_external=False,
+            resource_session_id=session_id,
+            managed_by="remote",
+        )
+        return {
+            "success": True,
+            "port": browser["port"],
+            "browser": browser,
+            "endpoint": browser.get("endpoint"),
+        }
+
+    endpoint = ensure_cdp_browser_endpoint(DEFAULT_CDP_PORT)
+    if not endpoint:
+        if _is_port_in_use(DEFAULT_CDP_PORT):
+            return {
+                "success": False,
+                "error": f"Port {DEFAULT_CDP_PORT} is already in use and is not exposing a compatible CDP browser.",
+            }
+        return {
+            "success": False,
+            "error": "Failed to launch browser. Ensure Chrome/Chromium is installed or run playwright install chromium.",
+        }
+
+    browser = _set_connected_cdp_browser(
+        endpoint,
+        is_external=False,
+    )
+    return {
+        "success": True,
+        "port": browser["port"],
+        "browser": browser,
+        "endpoint": browser.get("endpoint"),
+    }
+
+
+@router.post("/browser/cdp/connect", name="connect cdp browser")
+async def connect_cdp_browser(data: CdpBrowserConnectRequest):
+    """
+    Connect an already-running browser that exposes CDP.
+
+    Args:
+        data.port: CDP port exposed by the browser.
+        data.name: Optional custom display name.
+    """
+    if data.port < 1 or data.port > 65535:
+        return {"success": False, "error": "Invalid port number."}
+
+    if not _is_cdp_available(data.port):
+        return {
+            "success": False,
+            "error": f"No CDP browser found on port {data.port}.",
+        }
+
+    browser = _set_connected_cdp_browser(
+        f"http://127.0.0.1:{data.port}",
+        is_external=True,
+        name=data.name,
+    )
+    return {
+        "success": True,
+        "port": data.port,
+        "browser": browser,
+    }
+
+
+@router.delete("/browser/cdp/{port}", name="disconnect cdp browser")
+async def disconnect_cdp_browser(port: int, request: Request):
+    """
+    Disconnect the current web-mode CDP browser reference.
+
+    Note:
+        This does not terminate the browser process; it only clears
+        the backend's active CDP target.
+    """
+    current_port = _get_connected_cdp_port()
+    if current_port is None:
+        return {"success": False, "error": "No connected browser to remove."}
+
+    if current_port != port:
+        return {
+            "success": False,
+            "error": f"Browser on port {port} is not the active CDP connection.",
+        }
+
+    await _release_remote_browser_if_needed(request)
+    _clear_connected_cdp_browser()
+    return {"success": True}
 
 
 @router.post("/install/tool/{tool}", name="install tool")
@@ -661,12 +1004,11 @@ async def open_browser_login():
         Browser session information
     """
     try:
-        import socket
         import subprocess
 
         # Use fixed profile name for persistent logins (no port suffix)
         session_id = "user_login"
-        cdp_port = 9223
+        cdp_port = _get_login_browser_cdp_port()
 
         # IMPORTANT: Use dedicated profile for tool_controller browser
         # This is the SOURCE OF TRUTH for login data
@@ -687,12 +1029,7 @@ async def open_browser_login():
             f" at: {user_data_dir}"
         )
 
-        # Check if browser is already running on this port
-        def is_port_in_use(port):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                return s.connect_ex(("localhost", port)) == 0
-
-        if is_port_in_use(cdp_port):
+        if _is_port_in_use(cdp_port):
             logger.info(f"Browser already running on port {cdp_port}")
             return {
                 "success": True,
@@ -826,15 +1163,8 @@ async def open_browser_login():
 @router.get("/browser/status", name="browser status")
 async def browser_status():
     """Check if the login browser is currently open."""
-    import socket
-
-    cdp_port = 9223
-
-    def is_port_in_use(port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex(("localhost", port)) == 0
-
-    return {"is_open": is_port_in_use(cdp_port)}
+    cdp_port = _get_login_browser_cdp_port()
+    return {"is_open": _is_port_in_use(cdp_port), "cdp_port": cdp_port}
 
 
 @router.get("/browser/cookies", name="list cookie domains")

@@ -36,6 +36,8 @@ from app.model.enums import Status
 
 logger = logging.getLogger("task_service")
 
+TASK_LOCK_CLEANUP_SENTINEL = "__task_lock_cleanup__"
+
 
 class Action(str, Enum):
     improve = "improve"  # user -> backend
@@ -443,6 +445,16 @@ class TaskLock:
                 except asyncio.CancelledError:
                     pass
         self.background_tasks.clear()
+
+        # Unblock agents waiting on human input so shutdown can proceed.
+        for agent, queue in self.human_input.items():
+            try:
+                queue.put_nowait(TASK_LOCK_CLEANUP_SENTINEL)
+            except asyncio.QueueFull:
+                logger.debug(
+                    "Human input queue already full during cleanup",
+                    extra={"task_id": self.id, "agent": agent},
+                )
 
         # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
         for toolkit in self.registered_toolkits:

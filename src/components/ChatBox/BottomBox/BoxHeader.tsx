@@ -12,8 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AnimateIcon } from '@/components/animate-ui/icons/icon';
-import { Orbit } from '@/components/animate-ui/icons/orbit';
+import { UserMessageRichContent } from '@/components/ChatBox/MessageItem/UserMessageRichContent';
+import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
+import { Orbit } from '@/components/ui/animate-ui/icons/orbit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
@@ -31,11 +32,11 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
   return (
     <div
       className={cn(
-        'mb-2 flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 gap-1 flex w-full flex-col items-start justify-center',
         className
       )}
     >
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center">
         <Button
           variant="ghost"
           size="sm"
@@ -44,14 +45,14 @@ export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
           <AnimateIcon
             animate
             loop
-            className="h-4 w-4 items-center justify-center"
+            className="h-4 w-4 !text-ds-text-information-default-default items-center justify-center"
           >
-            <Orbit size={16} className="text-icon-information" />
+            <Orbit size={16} />
           </AnimateIcon>
         </Button>
 
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          <span className="whitespace-nowrap text-sm font-bold text-text-information">
+        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
+          <span className="text-body-sm font-bold text-ds-text-information-default-default whitespace-nowrap">
             {t('chat.splitting-tasks')}
           </span>
         </div>
@@ -82,28 +83,33 @@ export const BoxHeaderConfirm = ({
   return (
     <div
       className={cn(
-        'mb-2 flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 gap-1 flex w-full flex-col items-start justify-center',
         className
       )}
     >
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center">
         <Button
           variant="ghost"
           size="sm"
-          className="px-1 focus:ring-0 focus-visible:outline-none"
+          buttonContent="icon-only"
+          tone="neutral"
+          buttonRadius="full"
+          className="focus:ring-0 focus-visible:outline-none"
           onClick={onEdit}
         >
-          <ChevronLeft size={16} className="text-icon-primary" />
+          <ChevronLeft />
         </Button>
 
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          {subtitle && (
-            <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-              <span className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal text-text-label">
-                {subtitle}
-              </span>
+        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
+          {subtitle ? (
+            <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden">
+              <UserMessageRichContent
+                content={subtitle}
+                variant="compact"
+                className="w-full"
+              />
             </div>
-          )}
+          ) : null}
         </div>
 
         <Button

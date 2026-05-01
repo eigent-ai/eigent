@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import os
 import re
@@ -49,8 +50,14 @@ from app.service.task import (
     delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
+    get_task_lock_if_exists,
     set_current_task_id,
     task_locks,
+)
+from app.utils.browser_launcher import (
+    ensure_cdp_browser_endpoint,
+    is_cdp_url_available,
+    normalize_cdp_url,
 )
 
 router = APIRouter()
@@ -60,6 +67,81 @@ chat_logger = logging.getLogger("chat_controller")
 
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
+
+
+def _is_remote_browser_hands(request: Request | None) -> bool:
+    hands = getattr(getattr(request, "state", None), "hands", None)
+    if hands is None:
+        return False
+    get_manifest = getattr(hands, "get_capability_manifest", None)
+    if get_manifest is None or inspect.iscoroutinefunction(get_manifest):
+        return False
+    try:
+        manifest = get_manifest()
+    except Exception:
+        return False
+    if inspect.isawaitable(manifest):
+        if hasattr(manifest, "close"):
+            manifest.close()
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    return manifest.get("deployment") == "remote_cluster"
+
+
+async def _prepare_browser_for_request(
+    request: Request | None,
+    port: int,
+) -> bool:
+    existing_cdp_url = os.environ.get("EIGENT_CDP_URL", "").strip()
+    if existing_cdp_url:
+        is_available = await asyncio.to_thread(
+            is_cdp_url_available, existing_cdp_url
+        )
+        if is_available:
+            normalized_endpoint, _, selected_port = normalize_cdp_url(
+                existing_cdp_url
+            )
+            os.environ["EIGENT_CDP_URL"] = normalized_endpoint
+            os.environ["browser_port"] = str(selected_port)
+            if request is not None:
+                request.state.browser_available = True
+            return True
+        os.environ.pop("EIGENT_CDP_URL", None)
+
+    if _is_remote_browser_hands(request):
+        if request is not None:
+            request.state.browser_available = True
+        return True
+
+    try:
+        endpoint = await asyncio.to_thread(ensure_cdp_browser_endpoint, port)
+    except Exception as e:
+        os.environ.pop("EIGENT_CDP_URL", None)
+        chat_logger.warning(
+            "Could not ensure CDP browser for web mode",
+            extra={"error": str(e), "port": port},
+        )
+        if request is not None:
+            request.state.browser_available = False
+        return False
+
+    if endpoint:
+        os.environ["EIGENT_CDP_URL"] = endpoint
+        _, _, selected_port = normalize_cdp_url(endpoint)
+        os.environ["browser_port"] = str(selected_port)
+        if request is not None:
+            request.state.browser_available = True
+        return True
+
+    os.environ.pop("EIGENT_CDP_URL", None)
+    chat_logger.warning(
+        "CDP browser not available after ensure attempt",
+        extra={"port": port},
+    )
+    if request is not None:
+        request.state.browser_available = False
+    return False
 
 
 async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
@@ -164,8 +246,11 @@ async def timeout_stream_wrapper(
         raise
 
 
-@router.post("/chat", name="start chat")
-async def post(data: Chat, request: Request):
+async def start_chat_stream(data: Chat, request: Request):
+    """
+    Setup and start chat stream. Used by POST /chat and Message Router.
+    Returns async generator of SSE chunks.
+    """
     chat_logger.info(
         "Starting new chat session",
         extra={
@@ -184,8 +269,15 @@ async def post(data: Chat, request: Request):
     if safe_env_path:
         load_dotenv(dotenv_path=safe_env_path)
 
+    # TODO(multi-tenant): os.environ is global – concurrent sessions overwrite
+    # each other's API keys, file paths, and browser ports.  Pass these values
+    # through Chat / request context instead of mutating the process environment.
     os.environ["file_save_path"] = data.file_save_path()
     os.environ["browser_port"] = str(data.browser_port)
+    # Web mode: reuse an existing CDP endpoint first, otherwise acquire browser
+    # through RemoteHands or launch a local browser when available.
+    if not data.cdp_browsers:
+        await _prepare_browser_for_request(request, data.browser_port)
     os.environ["OPENAI_API_KEY"] = data.api_key
     os.environ["OPENAI_API_BASE_URL"] = (
         data.api_url or "https://api.openai.com/v1"
@@ -242,21 +334,32 @@ async def post(data: Chat, request: Request):
             "log_dir": str(camel_log),
         },
     )
+    return timeout_stream_wrapper(
+        step_solve(data, request, task_lock), task_lock=task_lock
+    )
+
+
+@router.post("/chat", name="start chat")
+async def post(data: Chat, request: Request):
+    stream = await start_chat_stream(data, request)
     return StreamingResponse(
-        timeout_stream_wrapper(
-            step_solve(data, request, task_lock), task_lock=task_lock
-        ),
+        stream,
         media_type="text/event-stream",
     )
 
 
 @router.post("/chat/{id}", name="improve chat")
-def improve(id: str, data: SupplementChat):
+def improve(id: str, data: SupplementChat, request: Request):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
     )
     task_lock = get_task_lock(id)
+
+    # Reuse an existing endpoint when possible to avoid tearing down
+    # a browser that was manually connected through the Browser page.
+    port = int(os.environ.get("browser_port", "9222"))
+    asyncio.run(_prepare_browser_for_request(request, port))
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
@@ -374,8 +477,8 @@ def stop(id: str):
     )
     chat_logger.info(f"[STOP-BUTTON] project_id/task_id: {id}")
     chat_logger.info("=" * 80)
-    try:
-        task_lock = get_task_lock(id)
+    task_lock = get_task_lock_if_exists(id)
+    if task_lock is not None:
         chat_logger.info(
             "[STOP-BUTTON] Task lock retrieved,"
             f" task_lock.id: {task_lock.id},"
@@ -386,20 +489,24 @@ def stop(id: str):
             " ActionStopData(Action.stop)"
             " to task_lock queue"
         )
-        asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
-        chat_logger.info(
-            "[STOP-BUTTON] ActionStopData queued"
-            " successfully, this will trigger"
-            " workforce.stop_gracefully()"
-        )
-    except Exception as e:
-        # Task lock may not exist if task is already
-        # finished or never started
+        try:
+            asyncio.run(
+                task_lock.put_queue(ActionStopData(action=Action.stop))
+            )
+            chat_logger.info(
+                "[STOP-BUTTON] ActionStopData queued"
+                " successfully, this will trigger"
+                " workforce.stop_gracefully()"
+            )
+        except Exception as e:
+            chat_logger.warning(
+                "[STOP-BUTTON] Failed to queue ActionStopData",
+                extra={"task_id": id, "error": str(e)},
+            )
+    else:
         chat_logger.warning(
-            "[STOP-BUTTON] Task lock not found"
-            " or already stopped,"
-            f" task_id: {id},"
-            f" error: {str(e)}"
+            "[STOP-BUTTON] Task lock not found, task may already be stopped",
+            extra={"task_id": id},
         )
     return Response(status_code=204)
 
@@ -515,7 +622,13 @@ def skip_task(project_id: str):
     )
     chat_logger.info(f"[STOP-BUTTON] project_id: {project_id}")
     chat_logger.info("=" * 80)
-    task_lock = get_task_lock(project_id)
+    task_lock = get_task_lock_if_exists(project_id)
+    if task_lock is None:
+        chat_logger.warning(
+            "[STOP-BUTTON] Task lock not found, task may already be stopped",
+            extra={"project_id": project_id},
+        )
+        return Response(status_code=204)
     chat_logger.info(
         "[STOP-BUTTON] Task lock retrieved,"
         f" task_lock.id: {task_lock.id},"

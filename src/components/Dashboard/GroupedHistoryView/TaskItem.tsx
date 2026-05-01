@@ -1,0 +1,224 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Tag } from '@/components/ui/tag';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import { formatDateTime } from '@/lib/utils';
+import { ChatTaskStatus } from '@/types/constants';
+import { HistoryTask } from '@/types/history';
+import {
+  CheckCircle,
+  CirclePause,
+  CirclePlay,
+  Clock,
+  Ellipsis,
+  Hash,
+  ListChecks,
+  Share,
+  Trash2,
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+
+interface TaskItemProps {
+  task: HistoryTask;
+  isActive: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+  onShare: () => void;
+  isLast: boolean;
+  isOngoing?: boolean;
+  onPause?: () => void;
+  onResume?: () => void;
+  showActions?: boolean;
+}
+
+export default function TaskItem({
+  task,
+  isActive,
+  onSelect,
+  onDelete,
+  onShare,
+  isLast,
+  isOngoing = false,
+  onPause,
+  onResume,
+  showActions = true,
+}: TaskItemProps) {
+  const { t } = useTranslation();
+
+  // Check if task is paused (for ongoing tasks)
+  const isPaused = (task as any)._taskData?.status === ChatTaskStatus.PAUSE;
+
+  const getStatusTag = (status: number) => {
+    // ChatStatus enum: ongoing = 1, done = 2
+    switch (status) {
+      case 1: // ChatStatus.ongoing
+        return (
+          <Tag variant="primary" tone="information" size="sm">
+            <Clock />
+            <span>{t('layout.running')}</span>
+          </Tag>
+        );
+      case 2: // ChatStatus.done
+        return (
+          <Tag variant="primary" tone="success" size="sm">
+            <CheckCircle />
+            <span>{t('layout.completed')}</span>
+          </Tag>
+        );
+      default: // Unknown status
+        return (
+          <Tag variant="primary" tone="neutral" size="sm">
+            <Clock />
+            <span>{t('layout.unknown')}</span>
+          </Tag>
+        );
+    }
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    return formatDateTime(dateString, 'MMM dd, yyyy HH:mm');
+  };
+
+  return (
+    <div
+      onClick={onSelect}
+      className={` ${isActive ? '!bg-ds-bg-neutral-inverse-default' : ''} h-14 gap-md rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-inverse-default/30 p-3 shadow-history-item hover:bg-ds-bg-neutral-inverse-default relative flex w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300 ${!isLast ? 'mb-2' : ''} `}
+    >
+      <div className="min-w-0 gap-2 flex flex-1 items-center">
+        <TooltipSimple content={t('layout.tasks')}>
+          <ListChecks className="h-4 w-4 text-ds-icon-neutral-default-default" />
+        </TooltipSimple>
+
+        <div className="min-w-0 gap-1 flex flex-1 flex-col">
+          <TooltipSimple
+            align="start"
+            className="max-w-xs bg-ds-bg-neutral-strong-default p-2 text-label-xs shadow-perfect pointer-events-auto text-wrap break-words select-text"
+            content={
+              <div className="space-y-1">
+                <div className="font-medium">
+                  {task.summary || task.question}
+                </div>
+                <div className="text-xs opacity-60">
+                  {t('layout.created')}: {formatDate(task.created_at)}
+                </div>
+                <div className="text-xs opacity-60">
+                  {t('chat.token')}:{' '}
+                  {task.tokens ? task.tokens.toLocaleString() : '0'}
+                </div>
+              </div>
+            }
+          >
+            <span className="text-sm font-medium text-ds-text-neutral-default-default block overflow-hidden text-ellipsis whitespace-nowrap">
+              {task.summary || task.question || t('layout.new-project')}
+            </span>
+          </TooltipSimple>
+        </div>
+      </div>
+
+      <div className="gap-2 flex flex-shrink-0 items-center">
+        {!isOngoing && getStatusTag(task.status)}
+
+        <Tag variant="primary" tone="information" size="sm">
+          <Hash />
+          <span>{task.tokens ? task.tokens.toLocaleString() : '0'}</span>
+        </Tag>
+
+        {isOngoing && (onPause || onResume) && (
+          <Tag
+            variant="primary"
+            tone={isPaused ? 'information' : 'success'}
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isPaused && onResume) {
+                onResume();
+              } else if (!isPaused && onPause) {
+                onPause();
+              }
+            }}
+          >
+            {isPaused ? <CirclePlay /> : <CirclePause />}
+            <span>{isPaused ? t('layout.continue') : t('layout.pause')}</span>
+          </Tag>
+        )}
+
+        {showActions && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                size="xs"
+                buttonContent="icon-only"
+                onClick={(e) => e.stopPropagation()}
+                variant="ghost"
+                className="rounded-full"
+              >
+                <Ellipsis />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm w-[98px] rounded-[12px] border border-solid"
+            >
+              <div className="space-y-1">
+                {!isOngoing && (
+                  <PopoverClose asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onShare();
+                      }}
+                    >
+                      <Share size={14} />
+                      {t('layout.share')}
+                    </Button>
+                  </PopoverClose>
+                )}
+
+                <PopoverClose asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                  >
+                    <Trash2
+                      size={14}
+                      className="text-ds-icon-neutral-default-default group-hover:text-ds-icon-status-error-default-default"
+                    />
+                    {t('layout.delete')}
+                  </Button>
+                </PopoverClose>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+    </div>
+  );
+}

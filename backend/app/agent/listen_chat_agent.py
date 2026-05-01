@@ -700,6 +700,7 @@ class ListenChatAgent(ChatAgent):
         # If this agent has CDP acquire callback, acquire CDP BEFORE cloning
         # tools so that HybridBrowserToolkit clones with the correct CDP port
         new_cdp_port = None
+        new_cdp_url = None
         new_cdp_session = None
         has_cdp = hasattr(self, "_cdp_acquire_callback") and callable(
             getattr(self, "_cdp_acquire_callback", None)
@@ -709,7 +710,7 @@ class ListenChatAgent(ChatAgent):
         if has_cdp and hasattr(self, "_cdp_options"):
             options = self._cdp_options
             cdp_browsers = getattr(options, "cdp_browsers", [])
-            if cdp_browsers and hasattr(self, "_browser_toolkit"):
+            if cdp_browsers and getattr(self, "_browser_toolkit", None):
                 need_cdp_clone = True
                 import uuid as _uuid
 
@@ -721,12 +722,18 @@ class ListenChatAgent(ChatAgent):
                     new_cdp_session,
                     getattr(self, "_cdp_task_id", None),
                 )
-                from app.agent.factory.browser import _get_browser_port
+                from app.agent.factory.browser import (
+                    _get_browser_endpoint,
+                    _get_browser_port,
+                )
 
                 if selected:
                     new_cdp_port = _get_browser_port(selected)
+                    new_cdp_url = _get_browser_endpoint(selected)
                 else:
-                    new_cdp_port = _get_browser_port(cdp_browsers[0])
+                    fallback_browser = cdp_browsers[0]
+                    new_cdp_port = _get_browser_port(fallback_browser)
+                    new_cdp_url = _get_browser_endpoint(fallback_browser)
 
         if need_cdp_clone:
             # Temporarily override the browser toolkit's CDP URL.
@@ -738,7 +745,7 @@ class ListenChatAgent(ChatAgent):
                     toolkit.config_loader.get_browser_config().cdp_url
                 )
                 toolkit.config_loader.get_browser_config().cdp_url = (
-                    f"http://localhost:{new_cdp_port}"
+                    new_cdp_url
                 )
                 try:
                     cloned_tools, toolkits_to_register = self._clone_tools()
@@ -803,10 +810,13 @@ class ListenChatAgent(ChatAgent):
             # Set CDP info on cloned agent
             if new_cdp_port is not None and new_cdp_session is not None:
                 new_agent._cdp_port = new_cdp_port
+                new_agent._cdp_url = new_cdp_url
                 new_agent._cdp_session_id = new_cdp_session
             else:
                 if hasattr(self, "_cdp_port"):
                     new_agent._cdp_port = self._cdp_port
+                if hasattr(self, "_cdp_url"):
+                    new_agent._cdp_url = self._cdp_url
                 if hasattr(self, "_cdp_session_id"):
                     new_agent._cdp_session_id = self._cdp_session_id
 

@@ -12,8 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Check, Copy, FileText } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useHost } from '@/host';
+import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
@@ -27,38 +28,44 @@ interface AgentMessageCardProps {
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
+  /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
+  deferredFooter?: ReactNode;
   onTyping?: () => void;
+  onMarkdownRenderComplete?: () => void;
 }
 
-// global Map to track completed typewriter effect content hash
-const completedTypewriterHashes = new Map<string, boolean>();
+// Tracks agent messages that have already played the typewriter (by stable message id).
+const completedTypewriterByMessageId = new Map<string, boolean>();
 
 export function AgentMessageCard({
   id,
   content,
   typewriter = true,
   onTyping,
+  onMarkdownRenderComplete,
   className,
   attaches,
+  deferredFooter,
 }: AgentMessageCardProps) {
-  // use content hash to track if typewriter effect is completed
-  const contentHash = useMemo(() => {
-    return `${id}-${content}`;
-  }, [id, content]);
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
+  const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
+    () => completedTypewriterByMessageId.has(id)
+  );
 
-  // check if typewriter effect is completed
-  const isCompleted = completedTypewriterHashes.has(contentHash);
+  useEffect(() => {
+    setMarkdownAndTypingComplete(completedTypewriterByMessageId.has(id));
+  }, [id]);
 
-  // if completed, disable typewriter effect
+  const isCompleted = completedTypewriterByMessageId.has(id);
   const enableTypewriter = !isCompleted;
 
   const [copied, setCopied] = useState(false);
   const { t } = useTranslation();
 
-  // when typewriter effect is completed, record to global Map
   const handleTypingComplete = () => {
-    if (!isCompleted) {
-      completedTypewriterHashes.set(contentHash, true);
+    if (!completedTypewriterByMessageId.has(id)) {
+      completedTypewriterByMessageId.set(id, true);
     }
     if (onTyping) {
       onTyping();
@@ -76,49 +83,88 @@ export function AgentMessageCard({
     }
   }, [content, t]);
 
+  const handleMarkdownRenderComplete = useCallback(() => {
+    setMarkdownAndTypingComplete(true);
+    onMarkdownRenderComplete?.();
+  }, [onMarkdownRenderComplete]);
+
+  const showDeferredFileUi =
+    markdownAndTypingComplete &&
+    ((attaches && attaches.length > 0) || deferredFooter != null);
+
   return (
     <div
       key={id}
-      className={`relative w-full rounded-xl bg-transparent px-sm py-3 ${className || ''} group overflow-hidden`}
+      className={`rounded-xl px-sm py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
     >
-      <div className="absolute bottom-[0px] right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <Button onClick={handleCopy} variant="ghost" size="icon">
-          {copied ? (
-            <Check className="h-4 w-4 text-text-success" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
       <MarkDown
         content={content}
         onTyping={handleTypingComplete}
+        onMarkdownRenderComplete={handleMarkdownRenderComplete}
         enableTypewriter={enableTypewriter && typewriter}
       />
-      {attaches && attaches.length > 0 && (
-        <div className="mt-[10px] flex flex-wrap gap-2">
+      {showDeferredFileUi && attaches && attaches.length > 0 && (
+        <div className="gap-2 mt-[10px] flex flex-wrap">
           {attaches?.map((file) => {
             return (
               <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.ipcRenderer.invoke('reveal-in-folder', file.filePath);
+                  ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-task-border-default bg-message-fill-default py-1 pl-2"
+                className="gap-2 rounded-2xl py-1 pl-2 flex w-full cursor-pointer items-center border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-text-body">
+                  <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
                     {file?.fileName?.split('.')[0]}
                   </div>
-                  <div className="text-xs font-medium leading-29 text-text-body">
+                  <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
                     {file?.fileName?.split('.')[1]}
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+      {showDeferredFileUi && deferredFooter != null && (
+        <div className="mt-[10px] w-full">{deferredFooter}</div>
+      )}
+      {markdownAndTypingComplete && (
+        <div className="mt-3 gap-1 flex shrink-0 justify-start">
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label={t('setting.copy')}
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-ds-text-success-default-default" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            onClick={() => {}}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label="Thumb up"
+          >
+            <ThumbsUp className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => {}}
+            variant="ghost"
+            size="xs"
+            buttonContent="icon-only"
+            aria-label="Thumb down"
+          >
+            <ThumbsDown className="h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>

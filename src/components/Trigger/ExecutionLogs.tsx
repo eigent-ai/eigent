@@ -137,42 +137,56 @@ const transformToLogEntry = (
 const getStatusIcon = (status: ExecutionLogEntry['status']) => {
   switch (status) {
     case 'success':
-      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
+      return (
+        <CheckCircle2 className="h-3.5 w-3.5 text-ds-icon-status-completed-default-default" />
+      );
     case 'error':
-      return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+      return (
+        <XCircle className="h-3.5 w-3.5 text-ds-icon-status-error-default-default" />
+      );
     case 'running':
-      return <Play className="h-3.5 w-3.5 animate-pulse text-blue-500" />;
+      return (
+        <Play className="h-3.5 w-3.5 animate-pulse text-ds-icon-status-running-default-default" />
+      );
     case 'pending':
-      return <Clock className="h-3.5 w-3.5 text-amber-500" />;
+      return (
+        <Clock className="h-3.5 w-3.5 text-ds-icon-status-pending-default-default" />
+      );
     case 'cancelled':
-      return <XCircle className="h-3.5 w-3.5 text-gray-500" />;
+      return (
+        <XCircle className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default" />
+      );
     default:
-      return <AlertTriangle className="h-3.5 w-3.5 text-gray-500" />;
+      return (
+        <AlertTriangle className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default" />
+      );
   }
 };
 
 const getStatusColor = (status: ExecutionLogEntry['status']) => {
   switch (status) {
     case 'success':
-      return 'border-l-emerald-500';
+      return 'border-l-ds-border-status-completed-default-default';
     case 'error':
-      return 'border-l-red-500';
+      return 'border-l-ds-border-status-error-default-default';
     case 'running':
-      return 'border-l-blue-500';
+      return 'border-l-ds-border-status-running-default-default';
     case 'pending':
-      return 'border-l-amber-500';
+      return 'border-l-ds-border-status-pending-default-default';
     case 'cancelled':
-      return 'border-l-gray-500';
+      return 'border-l-ds-border-neutral-muted-default';
     default:
-      return 'border-l-gray-500';
+      return 'border-l-ds-border-neutral-muted-default';
   }
 };
 
 const getSuccessRateColorClass = (rate: number | null): string => {
-  if (rate === null) return 'text-text-label';
-  if (rate >= SUCCESS_CRITERIA_EXCELLENT) return 'text-icon-success';
-  if (rate >= SUCCESS_CRITERIA_ACCEPTABLE) return 'text-icon-warning';
-  return 'text-icon-caution';
+  if (rate === null) return 'text-ds-text-neutral-muted-default';
+  if (rate >= SUCCESS_CRITERIA_EXCELLENT)
+    return 'text-ds-icon-status-completed-default-default';
+  if (rate >= SUCCESS_CRITERIA_ACCEPTABLE)
+    return 'text-ds-icon-status-pending-default-default';
+  return 'text-ds-icon-status-error-default-default';
 };
 
 interface ExecutionLogsProps {
@@ -252,7 +266,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-text-label">
+      <div className="text-ds-text-neutral-muted-default flex h-full flex-col items-center justify-center">
         <Loader2 className="mb-2 h-8 w-8 animate-spin" />
         <span className="text-sm">{t('triggers.loading-executions')}</span>
       </div>
@@ -261,7 +275,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
   if (error || !trigger) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-text-label">
+      <div className="text-ds-text-neutral-muted-default flex h-full flex-col items-center justify-center">
         <Terminal className="mb-2 h-8 w-8 opacity-50" />
         <span className="text-sm">
           {error || t('triggers.no-execution-data')}
@@ -296,15 +310,15 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Stats */}
-      <div className="flex flex-col items-start justify-start overflow-hidden bg-surface-tertiary px-4 pb-4">
+      <div className="px-4 pb-4 border-ds-border-neutral-subtle-default flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-b-1 border-solid">
         <div className="mb-4 flex w-full flex-row items-center justify-between">
           <span
-            className="max-w-[150px] truncate text-label-sm font-medium text-text-heading"
+            className="text-label-sm font-medium text-ds-text-neutral-default-default max-w-[150px] truncate"
             title={trigger.name}
           >
             {trigger.name}
           </span>
-          <span className="text-label-xs text-text-label">
+          <span className="text-label-xs text-ds-text-neutral-muted-default">
             {trigger.trigger_type === 'schedule'
               ? t('triggers.schedule-trigger')
               : trigger.trigger_type === 'webhook'
@@ -315,21 +329,21 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
           </span>
         </div>
         <div className="flex flex-row">
-          <div className="border-r-1 mr-4 flex flex-col border-y-0 border-l-0 border-solid border-border-tertiary pr-4">
-            <span className="text-label-sm font-medium text-text-heading">
+          <div className="mr-4 border-ds-border-neutral-subtle-default pr-4 flex flex-col border-y-0 border-r-1 border-l-0 border-solid">
+            <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
               {trigger.execution_count || 0}
             </span>
-            <span className="text-label-xs text-text-label">
+            <span className="text-label-xs text-ds-text-neutral-muted-default">
               {t('triggers.total-runs')}
             </span>
           </div>
-          <div className="border-r-1 mr-4 flex flex-col border-y-0 border-l-0 border-solid border-border-tertiary pr-4">
+          <div className="mr-4 border-ds-border-neutral-subtle-default pr-4 flex flex-col border-y-0 border-r-1 border-l-0 border-solid">
             <span
               className={`text-label-sm font-medium ${getSuccessRateColorClass(successRate)}`}
             >
               {successRate !== null ? `${successRate}%` : '-'}
             </span>
-            <span className="text-label-xs text-text-label">
+            <span className="text-label-xs text-ds-text-neutral-muted-default">
               {t('triggers.success-rate')}
             </span>
           </div>
@@ -339,39 +353,39 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
       {/* Log Entries */}
       <div className="scrollbar flex-1 overflow-y-auto">
         {logs.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center py-8 text-text-label">
+          <div className="py-8 text-ds-text-neutral-muted-default flex h-full flex-col items-center justify-center">
             <Terminal className="mb-2 h-8 w-8 opacity-50" />
             <span className="text-sm">{t('triggers.no-executions-yet')}</span>
           </div>
         ) : (
-          <div className="divide-y divide-border-tertiary">
+          <div className="divide-ds-border-neutral-subtle-default divide-y">
             {logs.map((log) => (
               <div
                 key={log.id}
-                className={`hover:bg-surface-tertiary-hover flex items-start gap-2.5 px-4 py-2.5 transition-colors ${getStatusColor(log.status)}`}
+                className={`hover:bg-ds-bg-neutral-strong-hover gap-2.5 px-4 py-2.5 flex items-start transition-colors ${getStatusColor(log.status)}`}
               >
                 <div className="mt-0.5 flex-shrink-0">
                   {getStatusIcon(log.status)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-label-xs text-text-label">
+                  <div className="gap-2 flex items-center">
+                    <span className="font-mono text-label-xs text-ds-text-neutral-muted-default">
                       {log.timestamp}
                     </span>
                     {log.duration && (
                       <>
-                        <ArrowRight className="h-3 w-3 text-text-label" />
-                        <span className="text-label-xs text-text-label">
+                        <ArrowRight className="h-3 w-3 text-ds-text-neutral-muted-default" />
+                        <span className="text-label-xs text-ds-text-neutral-muted-default">
                           {log.duration}
                         </span>
                       </>
                     )}
                   </div>
-                  <div className="mt-0.5 text-label-xs text-text-body">
+                  <div className="mt-0.5 text-label-xs text-ds-text-neutral-default-default">
                     {log.message}
                   </div>
                   {log.details && (
-                    <div className="mt-0.5 font-mono text-label-xs text-text-label">
+                    <div className="mt-0.5 font-mono text-label-xs text-ds-text-neutral-muted-default">
                       {log.details}
                     </div>
                   )}
@@ -383,8 +397,8 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex flex-row items-center justify-start px-4 py-2">
-        <span className="text-label-xs text-text-label">
+      <div className="px-4 py-2 flex flex-row items-center justify-start">
+        <span className="text-label-xs text-ds-text-neutral-muted-default">
           {t('triggers.last-run-label')}:{' '}
           {formatRelativeTime(trigger.last_executed_at)}
         </span>

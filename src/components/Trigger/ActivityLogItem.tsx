@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { AlarmClockIcon } from '@/components/ui/animate-ui/icons/alarm-clock';
 import { formatRelativeTime } from '@/lib/utils';
 import { ActivityLog, ActivityType } from '@/store/activityLogStore';
 import { motion } from 'framer-motion';
@@ -27,7 +28,6 @@ import {
   Zap,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { AlarmClockIcon } from '../animate-ui/icons/alarm-clock';
 
 // Helper function to get status icon for activity type (left side status lead)
 const getStatusIcon = (activityType: ActivityType) => {
@@ -152,20 +152,22 @@ export function ActivityLogItem({
   // Status lead icon styles
   const statusIconBgClass =
     statusType === 'error'
-      ? 'bg-surface-cuation'
+      ? 'bg-ds-bg-status-error-subtle-default'
       : statusType === 'success'
-        ? 'bg-surface-success'
-        : 'bg-surface-tertiary';
+        ? 'bg-ds-bg-status-completed-subtle-default'
+        : 'bg-ds-bg-neutral-strong-default';
   const statusIconColorClass =
     statusType === 'error'
-      ? 'text-icon-cuation'
+      ? 'text-ds-icon-status-error-default-default'
       : statusType === 'success'
-        ? 'text-icon-success'
-        : 'text-icon-information';
+        ? 'text-ds-icon-status-completed-default-default'
+        : 'text-ds-icon-status-splitting-default-default';
 
   // Trigger type icon styles
   const typeIconColorClass =
-    triggerTypeStatus === 'error' ? 'text-icon-cuation' : 'text-icon-success';
+    triggerTypeStatus === 'error'
+      ? 'text-ds-icon-status-error-default-default'
+      : 'text-ds-icon-status-completed-default-default';
 
   const TriggerTypeIcon = triggerType === 'webhook' ? Globe : AlarmClockIcon;
 
@@ -175,46 +177,48 @@ export function ActivityLogItem({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.2 }}
-      className="relative flex items-start px-4"
+      className="px-4 relative flex items-start"
     >
       {/* Left side: Status Lead Icon */}
       <div className="flex flex-col items-center self-stretch">
         <div
-          className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} flex-shrink-0`}
+          className={`h-6 w-6 relative flex items-center justify-center rounded-full ${statusIconBgClass} flex-shrink-0`}
         >
           <StatusIcon className={`h-4 w-4 ${statusIconColorClass}`} />
         </div>
-        <div className="w-[1px] flex-1 bg-border-secondary" />
+        <div className="bg-ds-border-neutral-default-default w-[1px] flex-1" />
       </div>
 
       {/* Right side: Content */}
-      <div className="mb-4 flex min-w-0 flex-1 flex-col">
+      <div className="mb-4 min-w-0 flex flex-1 flex-col">
         {/* Top row: Trigger type icon + timestamp */}
-        <div className="mb-2 flex items-center justify-between px-1">
+        <div className="mb-2 px-1 flex items-center justify-between">
           <div
-            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center`}
+            className={`h-6 w-6 flex flex-shrink-0 items-center justify-center`}
           >
             <TriggerTypeIcon className={`h-4 w-4 ${typeIconColorClass}`} />
           </div>
-          <span className="text-label-xs text-text-label">{timeAgo}</span>
+          <span className="text-label-xs text-ds-text-neutral-muted-default">
+            {timeAgo}
+          </span>
         </div>
 
         {/* Bottom row: Accordion */}
-        <div className="flex cursor-pointer flex-col items-center justify-center rounded-md bg-surface-secondary px-2 py-1 transition-colors duration-150 hover:bg-surface-tertiary">
+        <div className="rounded-md bg-ds-bg-neutral-default-default px-2 py-1 hover:bg-ds-bg-neutral-strong-default flex cursor-pointer flex-col items-center justify-center transition-colors duration-150">
           <button
             onClick={onToggleExpanded}
-            className="flex w-full cursor-pointer items-center justify-between border-none bg-transparent p-0 text-left"
+            className="p-0 flex w-full cursor-pointer items-center justify-between border-none bg-transparent text-left"
           >
-            <div className="flex flex-row gap-2">
-              <span className="text-label-sm font-medium text-text-heading">
+            <div className="gap-2 flex flex-row">
+              <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
                 {t('triggers.trigger-label')} {triggerNumber}
               </span>
-              <span className="text-label-sm font-normal text-text-label">
+              <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
                 {stateText}
               </span>
             </div>
             <ChevronDown
-              className={`h-4 w-4 text-text-label opacity-30 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 text-ds-text-neutral-muted-default opacity-30 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
             />
           </button>
 
@@ -228,9 +232,9 @@ export function ActivityLogItem({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="min-h-[32px] px-2 py-2">
+            <div className="px-2 py-2 min-h-[32px]">
               {log.metadata && Object.keys(log.metadata).length > 0 ? (
-                <div className="space-y-0.5 text-label-sm text-text-label">
+                <div className="space-y-0.5 text-label-sm text-ds-text-neutral-muted-default">
                   {Object.entries(log.metadata)
                     .filter(
                       ([, value]) =>
@@ -257,8 +261,8 @@ export function ActivityLogItem({
                         displayValue = String(value);
                       }
                       return (
-                        <div key={key} className="flex gap-2">
-                          <span className="font-medium text-text-secondary">
+                        <div key={key} className="gap-2 flex">
+                          <span className="font-medium text-ds-text-neutral-muted-default">
                             {displayKey}:
                           </span>
                           <span>{displayValue}</span>
@@ -267,7 +271,7 @@ export function ActivityLogItem({
                     })}
                 </div>
               ) : (
-                <div className="text-label-xs text-text-disabled">
+                <div className="text-label-xs text-ds-text-neutral-muted-disabled">
                   {/* Empty content box */}
                 </div>
               )}

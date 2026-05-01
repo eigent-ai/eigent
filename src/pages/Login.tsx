@@ -20,7 +20,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import WindowControls from '@/components/WindowControls';
-import { hasStackKeys, SITE_URL } from '@/lib';
+import { useHost } from '@/host';
+import { hasStackKeys } from '@/lib';
+import {
+  DESKTOP_LOGIN_CALLBACK_URL,
+  getExternalLoginUrl,
+  getWebLoginCallbackUrl,
+} from '@/pages/loginUtils';
 import { useTranslation } from 'react-i18next';
 
 import background from '@/assets/background.png';
@@ -31,6 +37,7 @@ const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
 
 export default function Login() {
+  const host = useHost();
   // Always call hooks unconditionally - React Hooks must be called in the same order
   const stackApp = useStackApp();
   const app = HAS_STACK_KEYS ? stackApp : null;
@@ -48,7 +55,9 @@ export default function Login() {
   const [generalError, setGeneralError] = useState('');
   const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
+  const handledWebTokenRef = useRef<string | null>(null);
   const [platform, setPlatform] = useState<string>('');
+  const isDesktopHost = !!host?.ipcRenderer && !!host?.electronAPI;
 
   const getLoginErrorMessage = useCallback(
     (data: any) => {
@@ -213,12 +222,13 @@ export default function Login() {
     [location.pathname, handleLoginByStack, handleGetToken, setIsLoading]
   );
 
-  // Listen for direct token callback from Electron (eigent.ai login redirect)
-  useEffect(() => {
-    const handleTokenReceived = async (_event: any, token: string) => {
+  const handleTokenLogin = useCallback(
+    async (token: string) => {
       if (!token) return;
+
+      setGeneralError('');
       setIsLoading(true);
-      // Temporarily set token so proxyFetchGet can use it for auth
+      setModelType('cloud');
       setAuth({ email: '', token, username: '', user_id: 0 });
       setLocalProxyValue(import.meta.env.VITE_USE_LOCAL_PROXY || null);
       try {
@@ -237,49 +247,85 @@ export default function Login() {
               userInfo.id || JSON.parse(atob(token.split('.')[1])).id || 0,
           });
         }
+        navigate('/', { replace: true });
       } catch (e) {
         console.error('Failed to fetch user info:', e);
+        setGeneralError(t('layout.login-failed-please-try-again'));
+      } finally {
+        setIsLoading(false);
       }
-      navigate('/');
+    },
+    [
+      navigate,
+      setAuth,
+      setGeneralError,
+      setIsLoading,
+      setLocalProxyValue,
+      setModelType,
+      t,
+    ]
+  );
+
+  // Listen for direct token callback from Electron (eigent.ai login redirect)
+  useEffect(() => {
+    if (!host?.ipcRenderer) return;
+
+    const handleTokenReceived = async (_event: any, token: string) => {
+      await handleTokenLogin(token);
     };
 
-    window.ipcRenderer?.on('auth-token-received', handleTokenReceived);
+    host.ipcRenderer.on('auth-token-received', handleTokenReceived);
 
     return () => {
-      window.ipcRenderer?.off('auth-token-received', handleTokenReceived);
+      host.ipcRenderer?.off('auth-token-received', handleTokenReceived);
     };
-  }, [setAuth, setLocalProxyValue, navigate]);
+  }, [handleTokenLogin, host]);
 
   // Listen for auth code callback from Electron (Stack Auth OAuth flow)
   useEffect(() => {
-    window.ipcRenderer?.on('auth-code-received', handleAuthCode);
-
+    if (!host?.ipcRenderer) return;
+    host.ipcRenderer.on('auth-code-received', handleAuthCode);
     return () => {
-      window.ipcRenderer?.off('auth-code-received', handleAuthCode);
+      host.ipcRenderer?.off('auth-code-received', handleAuthCode);
     };
-  }, [handleAuthCode]);
+  }, [handleAuthCode, host]);
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
-    setPlatform(p);
+    if (IS_LOCAL_MODE || isDesktopHost) return;
 
-    if (platform === 'darwin') {
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token || handledWebTokenRef.current === token) return;
+
+    handledWebTokenRef.current = token;
+    handleTokenLogin(token);
+  }, [handleTokenLogin, isDesktopHost, location.search]);
+
+  useEffect(() => {
+    if (!host?.electronAPI?.getPlatform) {
+      setPlatform('web');
+      return;
+    }
+    const p = host.electronAPI.getPlatform();
+    setPlatform(p);
+    if (p === 'darwin') {
       titlebarRef.current?.classList.add('mac');
     }
-  }, [platform]);
+  }, [host]);
 
   // Handle before-close event for login page
   useEffect(() => {
+    if (!host?.ipcRenderer || !host?.electronAPI) return;
+
     const handleBeforeClose = () => {
-      window.electronAPI.closeWindow(true);
+      host.electronAPI.closeWindow(true);
     };
 
-    window.ipcRenderer?.on('before-close', handleBeforeClose);
+    host.ipcRenderer.on('before-close', handleBeforeClose);
 
     return () => {
-      window.ipcRenderer?.off('before-close', handleBeforeClose);
+      host.ipcRenderer?.off('before-close', handleBeforeClose);
     };
-  }, []);
+  }, [host]);
 
   // Hybrid/app mode: prepare auth callback URL on mount (don't auto-open browser)
   useEffect(() => {
@@ -287,12 +333,14 @@ export default function Login() {
 
     const prepareCallbackUrl = async () => {
       let cbUrl: string;
-      if (import.meta.env.PROD) {
-        cbUrl = 'eigent://auth/callback';
+      if (!isDesktopHost) {
+        cbUrl = getWebLoginCallbackUrl(window.location.origin);
+      } else if (import.meta.env.PROD) {
+        cbUrl = DESKTOP_LOGIN_CALLBACK_URL;
       } else {
-        cbUrl = 'eigent://auth/callback';
+        cbUrl = DESKTOP_LOGIN_CALLBACK_URL;
         try {
-          const url = await window.ipcRenderer?.invoke('get-auth-callback-url');
+          const url = await host?.ipcRenderer?.invoke('get-auth-callback-url');
           if (url) cbUrl = url;
         } catch (e) {
           // Fallback to eigent:// protocol
@@ -302,20 +350,20 @@ export default function Login() {
     };
 
     prepareCallbackUrl();
-  }, []);
+  }, [host, isDesktopHost]);
 
   // Render local mode: "Start Eigent" button only
   const renderLocalMode = () => (
-    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
       <img
         src={eigentLogo}
-        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
       />
-      <div className="mb-8 text-heading-lg font-bold text-text-heading">
+      <div className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default">
         Eigent
       </div>
       {generalError && (
-        <p className="mb-4 mt-1 text-label-md text-text-cuation">
+        <p className="mb-4 mt-1 text-label-md text-ds-text-status-error-strong-default">
           {generalError}
         </p>
       )}
@@ -335,27 +383,35 @@ export default function Login() {
 
   // Render hybrid/app mode: waiting for external login callback
   const renderHybridMode = () => (
-    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
       <img
         src={eigentLogo}
-        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
       />
-      <div className="mb-4 text-heading-lg font-bold text-text-heading">
+      <div className="mb-4 text-heading-lg font-bold text-ds-text-neutral-default-default">
         {t('layout.login')}
       </div>
       {isLoading && (
-        <p className="mb-6 text-center text-label-md text-text-secondary">
+        <p className="mb-6 text-label-md text-ds-text-neutral-muted-default text-center">
           {t('layout.logging-in')}...
         </p>
       )}
       <Button
         onClick={() => {
           setIsLoading(true);
-          window.open(
-            `${SITE_URL}/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
-            '_blank',
-            'noopener,noreferrer'
-          );
+          const resolvedCallbackUrl =
+            callbackUrl ||
+            (isDesktopHost
+              ? DESKTOP_LOGIN_CALLBACK_URL
+              : getWebLoginCallbackUrl(window.location.origin));
+          const loginUrl = getExternalLoginUrl(resolvedCallbackUrl);
+
+          if (isDesktopHost) {
+            window.open(loginUrl, '_blank', 'noopener,noreferrer');
+            return;
+          }
+
+          window.location.assign(loginUrl);
         }}
         size="lg"
         variant="primary"
@@ -370,7 +426,7 @@ export default function Login() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
+        className="left-0 right-0 top-0 !h-9 py-1 pl-2 absolute z-50 flex items-center justify-between"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -400,10 +456,10 @@ export default function Login() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`flex h-full items-center justify-center gap-2 px-2 pb-2 pt-10`}
+        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
       >
         <div
-          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border-solid border-border-tertiary bg-surface-secondary px-2 pb-2"
+          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',

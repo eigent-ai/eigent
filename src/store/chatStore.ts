@@ -20,11 +20,13 @@ import {
   proxyFetchGet,
   proxyFetchPost,
   proxyFetchPut,
+  sseTransport,
   uploadFile,
   waitForBackendReady,
 } from '@/api/http';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
+import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
@@ -36,13 +38,119 @@ import {
   TaskStatus,
   type ChatTaskStatusType,
 } from '@/types/constants';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList, type CloudModelType } from './authStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
+
+let _host: AppHost | null = null;
+
+export function injectHost(host: AppHost | null): void {
+  _host = host;
+}
+
+function normalizeServerApiBaseUrl(url?: string): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  const trimmed = url.replace(/\/$/, '');
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.endsWith('/api/v1')) {
+    return trimmed;
+  }
+
+  return `${trimmed}/api/v1`;
+}
+
+function getDirectServerApiBaseUrl(): string | undefined {
+  if (import.meta.env.DEV) {
+    return normalizeServerApiBaseUrl(
+      import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
+    );
+  }
+
+  return normalizeServerApiBaseUrl(import.meta.env.VITE_BASE_URL);
+}
+
+function getHostElectronAPI() {
+  return _host?.electronAPI ?? null;
+}
+
+function getHostIpcRenderer() {
+  return _host?.ipcRenderer ?? null;
+}
+
+function includesBrowserAgent(workerList: Agent[]): boolean {
+  return workerList.some((worker) => {
+    if (worker.type === 'browser_agent' || worker.agent_id === 'browser_agent')
+      return true;
+    const tools = worker.workerInfo?.tools || worker.tools || [];
+    return Array.isArray(tools) && tools.includes('Browser Toolkit');
+  });
+}
+
+function getPersistedStepTimeMs(message: AgentMessage): number | null {
+  if (
+    typeof message.timestamp === 'number' &&
+    Number.isFinite(message.timestamp)
+  ) {
+    return message.timestamp < 1_000_000_000_000
+      ? message.timestamp * 1000
+      : message.timestamp;
+  }
+
+  if (message.created_at) {
+    const parsed = Date.parse(message.created_at);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+async function resolveCdpBrowsersForRequest(
+  shouldEnsureBrowser: boolean
+): Promise<{
+  browser_port?: number;
+  cdp_browsers: any[];
+}> {
+  const ipc = getHostIpcRenderer();
+  if (!ipc?.invoke) {
+    return { cdp_browsers: [] };
+  }
+
+  const browser_port = await ipc.invoke('get-browser-port');
+  let cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
+
+  if (shouldEnsureBrowser && cdp_browsers.length === 0) {
+    const launchResult = await ipc.invoke('launch-cdp-browser');
+    if (launchResult?.success) {
+      cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
+      if (cdp_browsers.length === 0 && launchResult.port) {
+        cdp_browsers = [
+          {
+            id: `launched-${launchResult.port}`,
+            port: launchResult.port,
+            isExternal: false,
+            name: `Launched Browser (${launchResult.port})`,
+          },
+        ];
+      }
+    } else {
+      console.warn(
+        'Failed to launch managed CDP browser:',
+        launchResult?.error || launchResult
+      );
+    }
+  }
+
+  return { browser_port, cdp_browsers };
+}
 
 interface Task {
   messages: Message[];
@@ -229,10 +337,20 @@ async function uploadTaskFiles(
   uploadTargetId: string
 ): Promise<UploadOutcome[]> {
   const results: UploadOutcome[] = [];
+  const hostIpcRenderer = getHostIpcRenderer();
 
   for (const file of files) {
     try {
-      const result = await window.ipcRenderer.invoke('read-file', file.path);
+      if (!hostIpcRenderer?.invoke) {
+        results.push({
+          success: false,
+          fileName: file.name,
+          source: file.source,
+          error: 'IPC renderer is unavailable',
+        });
+        continue;
+      }
+      const result = await hostIpcRenderer.invoke('read-file', file.path);
       if (!result.success || !result.data) {
         results.push({
           success: false,
@@ -383,6 +501,181 @@ const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
+
+const FINAL_OUTPUT_FILE_PATH_REGEX =
+  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
+  'csv',
+  'doc',
+  'docx',
+  'gif',
+  'htm',
+  'html',
+  'jpeg',
+  'jpg',
+  'json',
+  'log',
+  'md',
+  'pdf',
+  'png',
+  'ppt',
+  'pptx',
+  'svg',
+  'tsv',
+  'txt',
+  'webp',
+  'xls',
+  'xlsx',
+  'xml',
+  'zip',
+]);
+
+function normalizeOutputPath(path: string): string {
+  return path.replace(/\\/g, '/').trim();
+}
+
+function getOutputFileNameFromPath(path: string): string {
+  return normalizeOutputPath(path).split('/').pop() || '';
+}
+
+function getFileTypeFromName(name: string): string {
+  const extension = name.split('.').pop()?.toLowerCase() || '';
+  return extension === name.toLowerCase() ? '' : extension;
+}
+
+function getProjectRelativeFilePath(
+  filePath: string,
+  projectId?: string
+): string | undefined {
+  const normalizedPath = normalizeOutputPath(filePath);
+  if (projectId) {
+    const projectMarker = `/project_${projectId}/`;
+    const projectIndex = normalizedPath.indexOf(projectMarker);
+    if (projectIndex !== -1) {
+      return normalizedPath.slice(projectIndex + projectMarker.length);
+    }
+  }
+
+  return normalizedPath.match(/\/project_[^/]+\/(.+)$/)?.[1];
+}
+
+function buildRemoteFileInfoPath({
+  baseURL,
+  email,
+  projectId,
+  relativePath,
+}: {
+  baseURL?: string;
+  email?: string;
+  projectId?: string;
+  relativePath?: string;
+}): string | undefined {
+  if (!baseURL || !email || !projectId || !relativePath) {
+    return undefined;
+  }
+
+  const params = new URLSearchParams({
+    path: relativePath,
+    project_id: projectId,
+    email,
+  });
+
+  return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
+}
+
+function extractFinalOutputFileList(
+  content: string,
+  projectId?: string,
+  email?: string,
+  baseURL?: string
+): FileInfo[] {
+  if (!content) {
+    return [];
+  }
+
+  const fileInfos: FileInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+    const filePath = normalizeOutputPath(match[0]);
+    if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
+      continue;
+    }
+
+    const name = getOutputFileNameFromPath(filePath);
+    const type = getFileTypeFromName(name);
+    if (!name || !FINAL_OUTPUT_FILE_EXTENSIONS.has(type)) {
+      continue;
+    }
+
+    const relativePath = getProjectRelativeFilePath(filePath, projectId);
+    const remotePath = buildRemoteFileInfoPath({
+      baseURL,
+      email,
+      projectId,
+      relativePath,
+    });
+    const identity = normalizeOutputPath(relativePath || filePath);
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    seen.add(identity);
+    fileInfos.push({
+      name,
+      type,
+      path: remotePath || filePath,
+      icon: FileText,
+      relativePath,
+      isRemote: Boolean(remotePath),
+    });
+  }
+
+  return fileInfos;
+}
+
+function getFileInfoIdentities(file: FileInfo): string[] {
+  return [
+    file.relativePath,
+    file.path,
+    file.name,
+    getOutputFileNameFromPath(file.path || ''),
+  ]
+    .filter(Boolean)
+    .map((value) => normalizeOutputPath(value as string).toLowerCase());
+}
+
+function mergeFileInfoLists(
+  existingFileList: FileInfo[],
+  extractedFileList: FileInfo[]
+): FileInfo[] {
+  const merged = [...existingFileList];
+  const mergedIdentities = merged.map(getFileInfoIdentities);
+
+  extractedFileList.forEach((file) => {
+    const identities = getFileInfoIdentities(file);
+    const existingIndex = mergedIdentities.findIndex((existingIdentities) =>
+      identities.some((identity) => existingIdentities.includes(identity))
+    );
+
+    if (existingIndex === -1) {
+      merged.push(file);
+      mergedIdentities.push(identities);
+      return;
+    }
+
+    if (file.isRemote && !merged[existingIndex].isRemote) {
+      merged[existingIndex] = {
+        ...merged[existingIndex],
+        ...file,
+      };
+      mergedIdentities[existingIndex] = identities;
+    }
+  });
+
+  return merged;
+}
 
 const normalizeToolkitMessage = (value: unknown) => {
   if (typeof value === 'string') return value;
@@ -724,10 +1017,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setDelayTime,
         setType,
       } = get();
-      const baseURL = await getBaseURL();
       let systemLanguage = language;
       if (language === 'system') {
-        systemLanguage = await window.ipcRenderer.invoke('get-system-language');
+        try {
+          systemLanguage =
+            (await getHostIpcRenderer()?.invoke?.('get-system-language')) ??
+            'en';
+        } catch {
+          systemLanguage = 'en';
+        }
       }
       if (type === 'replay') {
         setDelayTime(taskId, delayTime as number);
@@ -771,20 +1069,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
-      const base_Url = import.meta.env.DEV
-        ? import.meta.env.VITE_PROXY_URL
+      // Replay/share APIs live on the server side, not Brain.
+      const serverBaseUrl = import.meta.env.DEV
+        ? window.location.origin
         : import.meta.env.VITE_BASE_URL;
       const api =
         type == 'share'
-          ? `${base_Url}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
+          ? `${serverBaseUrl}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
-            ? `${base_Url}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
-            : `${baseURL}/chat`;
+            ? `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+            : '/chat';
 
       const { tasks: _tasks } = get();
       let historyId: string | null = projectStore.getHistoryId(project_id);
       let snapshots: any = [];
       let skipFirstConfirm = true;
+      let playbackFirstStepTimeMs: number | null = null;
+      let playbackLastStepTimeMs: number | null = null;
 
       // replay or share request
       if (type) {
@@ -885,10 +1186,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       });
 
-      // get env path
+      // get env path (Electron only)
       let envPath = '';
       try {
-        envPath = await window.ipcRenderer.invoke('get-env-path', email);
+        envPath =
+          (await getHostIpcRenderer()?.invoke?.('get-env-path', email)) ?? '';
       } catch (error) {
         console.log('get-env-path error', error);
       }
@@ -927,8 +1229,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             projectStore.setHistoryId(project_id, historyId);
         });
       }
-      const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
+      let browser_port: number | undefined;
+      let cdp_browsers: any[] = [];
+      try {
+        ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
+          includesBrowserAgent(workerList)
+        ));
+      } catch {
+        // Web mode: no CDP
+      }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
@@ -971,47 +1280,47 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      const ssePromise = fetchEventSource(api, {
+      const requestBody = !type
+        ? {
+            project_id: project_id,
+            task_id: newTaskId,
+            question:
+              messageContent ||
+              targetChatStore.getState().getLastUserMessage()?.content,
+            model_platform: apiModel.model_platform,
+            email,
+            model_type: apiModel.model_type,
+            api_key: apiModel.api_key,
+            api_url: apiModel.api_url,
+            extra_params: apiModel.extra_params,
+            installed_mcp: { mcpServers: {} },
+            language: systemLanguage,
+            allow_local_system: true,
+            attaches: (
+              messageAttaches ||
+              targetChatStore.getState().tasks[newTaskId]?.attaches ||
+              []
+            ).map((f) => f.filePath),
+            summary_prompt: ``,
+            new_agents: [...addWorkers],
+            browser_port: browser_port,
+            cdp_browsers: cdp_browsers,
+            env_path: envPath,
+            search_config: searchConfig,
+            server_url: getDirectServerApiBaseUrl(),
+          }
+        : undefined;
+
+      const ssePromise = sseTransport({
+        url: api,
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
-        signal: abortController.signal, // Add abort signal for proper cleanup
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:
-            type == 'replay'
-              ? `Bearer ${token}`
-              : (undefined as unknown as string),
-        },
-        body: !type
-          ? JSON.stringify({
-              project_id: project_id,
-              task_id: newTaskId,
-              question:
-                messageContent ||
-                targetChatStore.getState().getLastUserMessage()?.content,
-              model_platform: apiModel.model_platform,
-              email,
-              model_type: apiModel.model_type,
-              api_key: apiModel.api_key,
-              api_url: apiModel.api_url,
-              extra_params: apiModel.extra_params,
-              installed_mcp: { mcpServers: {} },
-              language: systemLanguage,
-              allow_local_system: true,
-              attaches: (
-                messageAttaches ||
-                targetChatStore.getState().tasks[newTaskId]?.attaches ||
-                []
-              ).map((f) => f.filePath),
-              summary_prompt: ``,
-              new_agents: [...addWorkers],
-              browser_port: browser_port,
-              cdp_browsers: cdp_browsers,
-              env_path: envPath,
-              search_config: searchConfig,
-            })
-          : undefined,
-
+        signal: abortController.signal,
+        body: requestBody,
+        extraHeaders:
+          type == 'replay' && token
+            ? { Authorization: `Bearer ${token}` }
+            : undefined,
         async onmessage(event: any) {
           let agentMessages: AgentMessage;
 
@@ -1031,6 +1340,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               role: 'agent',
               content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
             });
+            return;
+          }
+
+          if (type) {
+            const stepTimeMs = getPersistedStepTimeMs(agentMessages);
+            if (stepTimeMs !== null) {
+              playbackFirstStepTimeMs ??= stepTimeMs;
+              playbackLastStepTimeMs = stepTimeMs;
+            }
+          }
+
+          if (
+            agentMessages &&
+            typeof agentMessages === 'object' &&
+            'error' in agentMessages &&
+            !('step' in agentMessages)
+          ) {
+            const currentStore = getCurrentChatStore();
+            const currentTaskId = getCurrentTaskId();
+            const errorText =
+              typeof (agentMessages as any).error === 'string'
+                ? (agentMessages as any).error
+                : 'Replay data is unavailable for this task.';
+
+            currentStore.addMessages(currentTaskId, {
+              id: generateUniqueId(),
+              role: 'agent',
+              content: errorText,
+            });
+            currentStore.setIsPending(currentTaskId, false);
+            currentStore.setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             return;
           }
 
@@ -1278,8 +1618,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const ttft =
                 performance.now() - ttftTracking[currentId].confirmedAt;
               console.log(
-                `%c[TTFT] 🚀 Time to First Token: ${ttft.toFixed(2)}ms - First streaming token received for task ${currentId}`,
-                'color: #4CAF50; font-weight: bold'
+                `[TTFT] Time to First Token: ${ttft.toFixed(2)}ms - first streaming token for task ${currentId}`
               );
             }
 
@@ -1600,7 +1939,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   let removeList: number[] = [];
                   item.activeWebviewIds.map((webview, index) => {
                     if (webview.processTaskId === task_id) {
-                      window.electronAPI.webviewDestroy(webview.id);
+                      getHostElectronAPI()?.webviewDestroy?.(webview.id);
                       removeList.push(index);
                     }
                   });
@@ -2162,8 +2501,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.WRITE_FILE) {
             console.log('write_to_file', agentMessages.data);
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
-            // Mark inbox tab as having unviewed content
-            usePageTabStore.getState().markTabAsUnviewed('inbox');
+            const { activeWorkspaceTab, markTabAsUnviewed } =
+              usePageTabStore.getState();
+            if (activeWorkspaceTab !== 'inbox' && project_id) {
+              markTabAsUnviewed('inbox', project_id);
+            }
             const { file_path } = agentMessages.data;
             const fileName =
               file_path?.replace(/\\/g, '/').split('/').pop() || '';
@@ -2420,62 +2762,81 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   'Skip file upload because no active project ID was found'
                 );
               } else {
-                try {
-                  const generatedFiles =
-                    ((await window.ipcRenderer.invoke(
-                      'get-file-list',
-                      email,
-                      currentTaskId,
-                      uploadTargetId
-                    )) as GeneratedUploadFile[]) || [];
-                  const filesToUpload = collectTaskUploadFiles(
-                    generatedFiles,
-                    tasks[currentTaskId].messages,
-                    tasks[currentTaskId].attaches,
-                    currentTaskId
+                const hostIpcRenderer = getHostIpcRenderer();
+                if (!hostIpcRenderer?.invoke) {
+                  console.warn(
+                    'Skip file upload because IPC renderer is unavailable'
                   );
-
-                  if (filesToUpload.length > 0) {
-                    const uploadResults = await uploadTaskFiles(
-                      filesToUpload,
-                      uploadTargetId
+                } else {
+                  try {
+                    const generatedFiles =
+                      ((await hostIpcRenderer.invoke(
+                        'get-file-list',
+                        email,
+                        currentTaskId,
+                        uploadTargetId
+                      )) as GeneratedUploadFile[]) || [];
+                    const filesToUpload = collectTaskUploadFiles(
+                      generatedFiles,
+                      tasks[currentTaskId].messages,
+                      tasks[currentTaskId].attaches,
+                      currentTaskId
                     );
-                    const failedUploads = uploadResults.filter(
-                      (result) => !result.success
+
+                    if (filesToUpload.length > 0) {
+                      const uploadResults = await uploadTaskFiles(
+                        filesToUpload,
+                        uploadTargetId
+                      );
+                      const failedUploads = uploadResults.filter(
+                        (result) => !result.success
+                      );
+                      if (failedUploads.length > 0) {
+                        console.error('Failed to upload files:', failedUploads);
+                      }
+
+                      const generatedSuccessCount = uploadResults.filter(
+                        (result) =>
+                          result.success && result.source === 'project_output'
+                      ).length;
+
+                      if (generatedSuccessCount > 0) {
+                        proxyFetchPost(`/api/v1/user/stat`, {
+                          action: 'file_generate_count',
+                          value: generatedSuccessCount,
+                        });
+                      }
+                    }
+                  } catch (error) {
+                    console.error(
+                      'Failed to prepare task files for upload:',
+                      error
                     );
-                    if (failedUploads.length > 0) {
-                      console.error('Failed to upload files:', failedUploads);
-                    }
-
-                    const generatedSuccessCount = uploadResults.filter(
-                      (result) =>
-                        result.success && result.source === 'project_output'
-                    ).length;
-
-                    if (generatedSuccessCount > 0) {
-                      proxyFetchPost(`/api/v1/user/stat`, {
-                        action: 'file_generate_count',
-                        value: generatedSuccessCount,
-                      });
-                    }
                   }
-                } catch (error) {
-                  console.error(
-                    'Failed to prepare task files for upload:',
-                    error
-                  );
                 }
               }
             }
 
             if (!type && historyId) {
-              const obj = {
-                project_name: tasks[currentTaskId].summaryTask.split('|')[0],
-                summary: tasks[currentTaskId].summaryTask.split('|')[1],
-                status: 2,
-                tokens: getTokens(currentTaskId),
-              };
-              proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
+              try {
+                const st = tasks[currentTaskId].summaryTask || '';
+                const parts = st.split('|');
+                const completionSummary =
+                  (typeof agentMessages.data === 'string'
+                    ? agentMessages.data
+                    : '') ||
+                  parts[1] ||
+                  '';
+                const obj = {
+                  project_name: parts[0] || '',
+                  summary: completionSummary,
+                  status: 2,
+                  tokens: getTokens(currentTaskId),
+                };
+                proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
+              } catch (e) {
+                console.warn('History update failed on END:', e);
+              }
             }
             uploadLog(currentTaskId, type);
 
@@ -2509,13 +2870,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskAssigning(currentTaskId, [...taskAssigning]);
             setTaskRunning(currentTaskId, [...taskRunning]);
 
-            if (!currentTaskId || !tasks[currentTaskId]) return 'N/A';
+            if (!currentTaskId || !tasks[currentTaskId]) return;
 
             const task = tasks[currentTaskId];
             let taskTime = task.taskTime;
             let elapsed = task.elapsed;
-            // if task is running, compute current time
-            if (taskTime !== 0) {
+            const playbackElapsed =
+              type &&
+              playbackFirstStepTimeMs !== null &&
+              playbackLastStepTimeMs !== null
+                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                : null;
+            if (playbackElapsed !== null) {
+              elapsed = playbackElapsed;
+            } else if (taskTime !== 0) {
               const currentTime = Date.now();
               elapsed += currentTime - taskTime;
             }
@@ -2545,6 +2913,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               endMessage = agent_summary_end.summary || '';
             }
 
+            const outputProjectId =
+              project_id || projectStore.activeProjectId || undefined;
+            const outputBaseURL = await getBaseURL().catch(() => '');
+            const finalOutputFileList = extractFinalOutputFileList(
+              endMessage,
+              outputProjectId,
+              email || undefined,
+              outputBaseURL || undefined
+            );
+            const mergedFileList = mergeFileInfoLists(
+              fileList,
+              finalOutputFileList
+            );
+
             console.log('endMessage', endMessage);
             newMessage = {
               id: generateUniqueId(),
@@ -2552,7 +2934,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               content: endMessage || '',
               step: agentMessages.step,
               isConfirm: false,
-              fileList: fileList,
+              fileList: mergedFileList,
             };
 
             addMessages(currentTaskId, newMessage);
@@ -2745,6 +3127,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // Server closes connection
         onclose() {
           console.log('SSE connection closed');
+          if (type) {
+            const currentStore = getCurrentChatStore();
+            const currentTaskId = getCurrentTaskId();
+            const currentTask = currentStore.tasks[currentTaskId];
+            if (currentTask?.isPending) {
+              currentStore.setIsPending(currentTaskId, false);
+            }
+            if (currentTask && currentTask.status !== ChatTaskStatus.FINISHED) {
+              currentStore.setStatus(currentTaskId, ChatTaskStatus.FINISHED);
+            }
+          }
           // Abort to resolve fetchEventSource promise (for replay/load - allows awaiting completion)
           try {
             abortController.abort();
@@ -3475,14 +3868,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         console.error('Error during SSE cleanup in clearTasks:', error);
       }
 
-      window.ipcRenderer
-        .invoke('restart-backend')
-        .then((res: unknown) => {
-          console.log('restart-backend', res);
-        })
-        .catch((error: unknown) => {
-          console.error('Error in clearTasks cleanup:', error);
-        });
+      const restartPromise = getHostIpcRenderer()?.invoke?.('restart-backend');
+      if (restartPromise) {
+        restartPromise
+          .then((res: unknown) => {
+            console.log('restart-backend', res);
+          })
+          .catch((error: unknown) => {
+            console.error('Error in clearTasks cleanup:', error);
+          });
+      }
 
       // Immediately create new task to maintain UI responsiveness
       const newTaskId = create();

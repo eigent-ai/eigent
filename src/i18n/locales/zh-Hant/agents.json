@@ -37,6 +37,7 @@
   "upload": "上傳",
   "invalid-file-type": "無效的檔案類型。請上傳 .skill、.md、.txt 或 .json 檔案。",
   "file-too-large": "檔案太大。最大大小為 1MB。",
+  "zip-import-too-large": "ZIP 檔案過大。最大大小為 50 MB。",
   "file-read-error": "讀取檔案失敗。請重試。",
   "reupload-file": "重新上傳檔案",
   "upload-error-invalid-format": "檔案必須為 .zip 或技能套件（.skill 或 .md）。",
@@ -46,5 +47,12 @@
   "custom-skill": "自訂技能",
   "delete-skill": "刪除技能",
   "delete-skill-confirmation": "您確定要刪除 \"{{name}}\" 嗎？此操作無法撤銷。",
-  "skill-deleted-success": "技能刪除成功！"
+  "skill-deleted-success": "技能刪除成功！",
+  "create-skill": "建立技能",
+  "upload-skill": "上傳技能",
+  "browse-skills": "瀏覽技能",
+  "create-skill-default-name": "新技能",
+  "create-skill-default-description": "描述此技能的用途。",
+  "save-skill": "儲存技能",
+  "compose-skill-hint": "編輯 SKILL.md（需要含名稱與描述的 YAML 前言），然後儲存。"
 }

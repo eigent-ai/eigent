@@ -37,6 +37,7 @@
   "upload": "アップロード",
   "invalid-file-type": "無効なファイル形式です。.skill、.md、.txt、または .json ファイルをアップロードしてください。",
   "file-too-large": "ファイルが大きすぎます。最大サイズは 1MB です。",
+  "zip-import-too-large": "ZIP が大きすぎます。最大サイズは 50 MB です。",
   "file-read-error": "ファイルの読み込みに失敗しました。もう一度お試しください。",
   "reupload-file": "ファイルを再アップロード",
   "upload-error-invalid-format": "ファイルは .zip またはスキルパッケージ（.skill または .md）である必要があります。",
@@ -46,5 +47,12 @@
   "custom-skill": "カスタムスキル",
   "delete-skill": "スキルを削除",
   "delete-skill-confirmation": "\"{{name}}\" を削除してもよろしいですか？この操作は元に戻せません。",
-  "skill-deleted-success": "スキルが正常に削除されました！"
+  "skill-deleted-success": "スキルが正常に削除されました！",
+  "create-skill": "スキルを作成",
+  "upload-skill": "スキルをアップロード",
+  "browse-skills": "スキルを参照",
+  "create-skill-default-name": "新しいスキル",
+  "create-skill-default-description": "このスキルの役割を説明してください。",
+  "save-skill": "スキルを保存",
+  "compose-skill-hint": "SKILL.md を編集（名前と説明の YAML フロントマターが必須）してから保存してください。"
 }

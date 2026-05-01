@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { getConnectionConfig } from '@/store/connectionStore';
+
 /**
  * Skill toolkit utilities aligned with CAMEL's skill_toolkit:
  * https://github.com/camel-ai/camel/blob/master/camel/toolkits/skill_toolkit.py
@@ -133,9 +135,8 @@ export function skillNameToDirName(name: string): string {
   return cleaned || 'skill';
 }
 
-/** Check if running in Electron with skills API available */
+/** Check if skills API is available (Brain REST only, no IPC). */
 export function hasSkillsFsApi(): boolean {
-  return (
-    typeof window !== 'undefined' && !!(window as any).electronAPI?.skillsScan
-  );
+  if (typeof window === 'undefined') return false;
+  return !!getConnectionConfig?.()?.brainEndpoint;
 }

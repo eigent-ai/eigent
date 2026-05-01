@@ -18,11 +18,34 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+  formFieldSelectSizeClasses,
+  formFieldSelectTriggerState,
+} from './formFieldSurface';
+import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type SelectSize = 'default' | 'sm';
+/** Primary: default surface. Secondary: subtle surface for nested or lower-emphasis fields. */
+export type SelectVariant = 'primary' | 'secondary';
 // Only keep controllable states; hover/focus/default are automatic
 export type SelectState = 'error' | 'success';
+
+const variantTriggerBase: Record<SelectVariant, string> = {
+  primary: 'bg-ds-bg-neutral-default-default',
+  secondary: 'bg-ds-bg-neutral-subtle-default',
+};
+
+const variantTriggerInteractive: Record<SelectVariant, [string, string]> = {
+  primary: [
+    'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
+    'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+  ],
+  secondary: [
+    'hover:bg-ds-bg-neutral-subtle-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
+    'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-default-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+  ],
+};
 
 const Select = SelectPrimitive.Root;
 
@@ -30,51 +53,16 @@ const SelectGroup = SelectPrimitive.Group;
 
 const SelectValue = SelectPrimitive.Value;
 
-// Local copies to mirror Input behavior for size/state without importing internal helpers
-const sizeClasses: Record<SelectSize, string> = {
-  default: 'h-10 text-body-sm',
-  sm: 'h-8 text-body-sm',
-};
-
-function resolveStateClasses(
-  state: SelectState | undefined,
-  disabled: boolean
-) {
-  if (disabled) {
-    return {
-      wrapper: 'opacity-50 cursor-not-allowed',
-      trigger: 'border-transparent',
-      note: 'text-text-label',
-    };
-  }
-  if (state === 'error') {
-    return {
-      wrapper: '',
-      trigger: 'border-input-border-cuation bg-input-bg-default',
-      note: 'text-text-cuation',
-    };
-  }
-  if (state === 'success') {
-    return {
-      wrapper: '',
-      trigger: 'border-input-border-success bg-input-bg-confirm',
-      note: 'text-text-success',
-    };
-  }
-  return {
-    wrapper: '',
-    trigger: 'border-transparent',
-    note: 'text-text-label',
-  };
-}
-
 type SelectTriggerExtraProps = {
   size?: SelectSize;
+  variant?: SelectVariant;
   state?: SelectState;
   title?: string;
   note?: string;
   tooltip?: string;
   required?: boolean;
+  /** Outer wrapper width; default `w-fit` keeps intrinsic width for inline selects. */
+  wrapperClassName?: string;
 };
 
 const SelectTrigger = React.forwardRef<
@@ -87,26 +75,34 @@ const SelectTrigger = React.forwardRef<
       className,
       children,
       size = 'default',
+      variant = 'primary',
       state,
       title,
       note,
       disabled,
       tooltip,
       required = false,
+      wrapperClassName,
+      style,
       ...props
     },
     ref
   ) => {
-    const stateCls = resolveStateClasses(state, Boolean(disabled));
+    const stateCls = formFieldSelectTriggerState(state, Boolean(disabled));
     return (
-      <div className={cn('w-fit', stateCls.wrapper)}>
+      <div className={cn(wrapperClassName ?? 'w-fit', stateCls.wrapper)}>
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+          <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
             <span>{title}</span>
-            {required && <span className="text-text-body">*</span>}
+            {required && (
+              <span className="text-ds-text-neutral-default-default">*</span>
+            )}
             {tooltip && (
               <TooltipSimple content={tooltip}>
-                <CircleAlert size={16} className="text-icon-primary" />
+                <CircleAlert
+                  size={16}
+                  className="text-ds-icon-neutral-default-default"
+                />
               </TooltipSimple>
             )}
           </div>
@@ -116,28 +112,27 @@ const SelectTrigger = React.forwardRef<
           disabled={disabled}
           className={cn(
             // Base styles
-            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid px-3 text-text-body outline-none transition-all',
-            sizeClasses[size],
+            'gap-2 rounded-xl px-3 text-ds-text-neutral-default-default relative flex w-full items-center justify-between border border-solid transition-all outline-none',
+            formFieldSelectSizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
-            // Default state (when no error/success)
-            !state && 'bg-input-bg-default',
+            // Default surface (when no error/success)
+            !state && variantTriggerBase[variant],
             // Interactive states (only when no error/success state)
             state !== 'error' &&
-              state !== 'success' && [
-                'hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
-                'focus-visible:ring-1 focus-visible:ring-input-border-focus focus-visible:ring-offset-0 data-[state=open]:bg-input-bg-input data-[state=open]:ring-1 data-[state=open]:ring-input-border-focus data-[state=open]:ring-offset-0',
-              ],
+              state !== 'success' &&
+              variantTriggerInteractive[variant],
             // Validation states (override defaults)
             stateCls.trigger,
             // Placeholder styling
-            'data-[placeholder]:text-input-label-default/50',
+            'data-[placeholder]:text-ds-text-neutral-muted-default/50',
             className
           )}
+          style={mergeAliasStyles(formControlTokenAliases, style)}
           {...props}
         >
           {children}
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className="h-4 w-4 text-icon-primary" />
+            <ChevronDown className="h-4 w-4 text-ds-icon-neutral-default-default" />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         {note ? (
@@ -156,7 +151,7 @@ const SelectScrollUpButton = React.forwardRef<
   <SelectPrimitive.ScrollUpButton
     ref={ref}
     className={cn(
-      'flex cursor-default items-center justify-center py-1',
+      'py-1 flex cursor-default items-center justify-center',
       className
     )}
     {...props}
@@ -173,7 +168,7 @@ const SelectScrollDownButton = React.forwardRef<
   <SelectPrimitive.ScrollDownButton
     ref={ref}
     className={cn(
-      'flex cursor-default items-center justify-center py-1',
+      'py-1 flex cursor-default items-center justify-center',
       className
     )}
     {...props}
@@ -187,17 +182,18 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', ...props }, ref) => (
+>(({ className, children, position = 'popper', style, ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'text-popover-foreground relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-y-auto overflow-x-hidden rounded-lg border border-solid border-transparent bg-input-bg-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        'text-ds-text-neutral-default-default rounded-xl bg-ds-bg-neutral-subtle-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-x-hidden overflow-y-auto border border-solid border-transparent',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
         className
       )}
       position={position}
+      style={mergeAliasStyles(formControlTokenAliases, style)}
       {...props}
     >
       <SelectScrollUpButton />
@@ -235,12 +231,12 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default rounded-xl py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
   >
-    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="right-2 h-3.5 w-3.5 absolute flex items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         <Check className="h-4 w-4" />
       </SelectPrimitive.ItemIndicator>
@@ -256,7 +252,7 @@ const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn('bg-muted -mx-1 my-1 h-px', className)}
+    className={cn('bg-ds-bg-neutral-muted-default -mx-1 my-1 h-px', className)}
     {...props}
   />
 ));
@@ -292,12 +288,12 @@ const SelectItemWithButton = React.forwardRef<
       value={value}
       disabled={!enabled}
       className={cn(
-        'focus:bg-accent focus:text-accent-foreground group relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-menutabs-fill-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default group rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}
     >
-      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className="right-2 h-3.5 w-3.5 absolute flex items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <Check className="h-4 w-4" />
         </SelectPrimitive.ItemIndicator>

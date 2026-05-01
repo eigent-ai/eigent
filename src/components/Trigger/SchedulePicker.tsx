@@ -736,7 +736,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col space-y-4">
+    <div className="space-y-4 flex h-full w-full flex-col">
       <Tabs
         value={frequency}
         onValueChange={(value) => setFrequency(value as FrequencyType)}
@@ -778,7 +778,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : undefined
             }
           />
-          <div className="flex items-end gap-3">
+          <div className="gap-3 flex items-end">
             <div className="flex-1">
               <InputSelect
                 value={hour}
@@ -807,7 +807,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="flex items-end gap-3">
+          <div className="gap-3 flex items-end">
             <div className="flex-1">
               <InputSelect
                 value={hour}
@@ -850,7 +850,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-4 space-y-3">
-          <div className="flex items-end gap-3">
+          <div className="gap-3 flex items-end">
             <div className="flex-1">
               <InputSelect
                 value={hour}
@@ -877,7 +877,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             </div>
           </div>
           <div>
-            <div className="mb-1.5 text-body-sm font-bold text-text-heading">
+            <div className="mb-1.5 text-body-sm font-bold text-ds-text-neutral-default-default">
               {t('triggers.schedule-weekdays')} *
             </div>
             <ToggleGroup
@@ -892,7 +892,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                   // This prevents having no weekdays selected
                 }
               }}
-              className="flex flex-wrap gap-2"
+              className="gap-2 flex flex-wrap"
             >
               <ToggleGroupItem
                 value="0"
@@ -945,7 +945,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
               </ToggleGroupItem>
             </ToggleGroup>
             {showErrors && weekdays.length === 0 && (
-              <div className="mt-1 text-xs text-text-cuation">
+              <div className="mt-1 text-xs text-ds-text-status-error-strong-default">
                 {t('triggers.weekday-required')}
               </div>
             )}
@@ -977,7 +977,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             required
             state={showErrors && !dayOfMonth ? 'error' : undefined}
           />
-          <div className="flex items-end gap-3">
+          <div className="gap-3 flex items-end">
             <div className="flex-1">
               <InputSelect
                 value={hour}
@@ -1040,19 +1040,19 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       {/* Scheduled Times Preview */}
       <Accordion type="single" collapsible className="mt-auto w-full">
         <AccordionItem value="scheduled-times" className="border-none">
-          <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
-            <span className="text-sm font-bold text-text-heading">
+          <AccordionTrigger className="py-2 bg-transparent hover:no-underline">
+            <span className="text-sm font-bold text-ds-text-neutral-default-default">
               {t('triggers.preview-scheduled-times')}
             </span>
           </AccordionTrigger>
           <AccordionContent>
-            <div className="space-y-2 rounded-lg bg-surface-primary p-4">
+            <div className="space-y-2 rounded-lg bg-ds-bg-neutral-subtle-default p-4">
               {nextScheduledTimes.map((time, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-2 text-label-sm text-text-body"
+                  className="gap-2 text-label-sm text-ds-text-neutral-default-default flex items-center"
                 >
-                  <span className="w-5 font-mono text-xs text-text-label">
+                  <span className="w-5 font-mono text-xs text-ds-text-neutral-muted-default">
                     {String(index + 1).padStart(2, '0')}
                   </span>
                   <span>{formatScheduledTime(time)}</span>

@@ -72,8 +72,8 @@ export const MarkDown = ({
       .join('\n')
       .trim();
     return (
-      <div className="prose prose-sm markdown-container pointer-events-auto w-full select-text overflow-x-auto">
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-code-surface p-2 font-mono text-xs">
+      <div className="prose prose-sm markdown-container pointer-events-auto w-full overflow-x-auto select-text">
+        <pre className="rounded bg-code-surface p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap">
           <code>{formattedHtml}</code>
         </pre>
       </div>
@@ -81,35 +81,35 @@ export const MarkDown = ({
   }
 
   return (
-    <div className="prose prose-sm markdown-container pointer-events-auto w-full select-text overflow-x-auto">
+    <div className="prose prose-sm markdown-container pointer-events-auto w-full overflow-x-auto select-text">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 className="text-primary mb-1 break-words text-label-sm font-bold">
+            <h1 className="text-ds-text-neutral-default-default mb-1 text-label-sm font-bold break-words">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-primary mb-1 break-words text-label-sm font-semibold">
+            <h2 className="text-ds-text-neutral-default-default mb-1 text-label-sm font-semibold break-words">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-primary mb-1 break-words text-label-sm font-medium">
+            <h3 className="text-ds-text-neutral-default-default mb-1 text-label-sm font-medium break-words">
               {children}
             </h3>
           ),
           p: ({ children }) => (
             <p
-              className={`m-0 ${pTextSize} text-primary whitespace-pre-line break-words font-inter text-label-xs font-medium`}
+              className={`m-0 ${pTextSize} text-ds-text-neutral-default-default font-inter text-label-xs font-medium break-words whitespace-pre-line`}
             >
               {children}
             </p>
           ),
           ul: ({ children }) => (
             <ul
-              className={`text-primary mb-1 list-disc pl-4 text-label-xs ${olPadding}`}
+              className={`text-ds-text-neutral-default-default mb-1 pl-4 text-label-xs list-disc ${olPadding}`}
             >
               {children}
             </ul>
@@ -127,7 +127,7 @@ export const MarkDown = ({
           a: ({ children, href }) => (
             <a
               href={href}
-              className="break-all underline hover:text-text-link-hover"
+              className="text-ds-text-neutral-default-default hover:text-ds-text-neutral-default-hover break-all underline"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -140,30 +140,30 @@ export const MarkDown = ({
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-code-surface p-2 font-mono text-xs">
+            <pre className="rounded bg-code-surface p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap">
               {children}
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="text-primary border-l-4 border-border-subtle-strong pl-3 text-xs italic">
+            <blockquote className="text-ds-text-neutral-default-default border-ds-border-neutral-strong-default pl-3 text-xs border-l-4 italic">
               {children}
             </blockquote>
           ),
           strong: ({ children }) => (
-            <strong className="text-primary text-xs font-semibold">
+            <strong className="text-ds-text-neutral-default-default text-xs font-semibold">
               {children}
             </strong>
           ),
           em: ({ children }) => (
-            <em className="text-primary text-xs italic">{children}</em>
+            <em className="text-ds-text-neutral-default-default text-xs italic">
+              {children}
+            </em>
           ),
           table: ({ children }) => (
             <div className="w-full max-w-full overflow-x-auto">
               <table
-                className="mb-4 !table w-full min-w-0"
+                className="mb-4 min-w-0 border-ds-border-neutral-default-default !table w-full border-collapse border"
                 style={{
-                  borderCollapse: 'collapse',
-                  border: '1px solid #d1d5db',
                   borderSpacing: 0,
                 }}
               >
@@ -172,7 +172,7 @@ export const MarkDown = ({
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="!table-header-group bg-code-surface">
+            <thead className="bg-code-surface !table-header-group">
               {children}
             </thead>
           ),
@@ -181,26 +181,12 @@ export const MarkDown = ({
           ),
           tr: ({ children }) => <tr className="!table-row">{children}</tr>,
           th: ({ children }) => (
-            <th
-              className="text-primary !table-cell text-left text-[10px] font-semibold"
-              style={{
-                border: '1px solid #d1d5db',
-                padding: '2px 5px',
-                borderCollapse: 'collapse',
-              }}
-            >
+            <th className="text-ds-text-neutral-default-default border-ds-border-neutral-default-default font-semibold py-0.5 !table-cell border px-[5px] text-left text-[10px]">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td
-              className="text-primary !table-cell text-[10px]"
-              style={{
-                border: '1px solid #d1d5db',
-                padding: '2px 5px',
-                borderCollapse: 'collapse',
-              }}
-            >
+            <td className="text-ds-text-neutral-default-default border-ds-border-neutral-default-default py-0.5 !table-cell border px-[5px] text-[10px]">
               {children}
             </td>
           ),

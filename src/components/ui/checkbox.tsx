@@ -17,23 +17,34 @@ import { Check } from 'lucide-react';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { checkboxTokenAliases, mergeAliasStyles } from './tokenAliases';
+
+export type CheckboxProps = React.ComponentPropsWithoutRef<
+  typeof CheckboxPrimitives.Root
+> & {
+  iconClassName?: string;
+};
 
 const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitives.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitives.Root>
->(({ className, ...props }, ref) => (
+  CheckboxProps
+>(({ className, style, iconClassName, ...props }, ref) => (
   <CheckboxPrimitives.Root
     ref={ref}
     className={cn(
-      'focus-visible:ring-ring peer h-4 w-4 shrink-0 rounded border border-solid border-input-border-default bg-input-bg-default transition-colors hover:border-input-border-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-switch-on-fill-track-fill data-[state=checked]:bg-switch-on-fill-track-fill data-[state=checked]:text-switch-on-fill-thumb-fill',
+      'group/checkbox focus-visible:ring-ds-ring-brand-default-focus peer h-4 w-4 rounded border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-strong-default data-[state=checked]:border-ds-border-status-completed-default-default data-[state=checked]:bg-ds-bg-success-default-default shrink-0 border border-solid transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}
+    style={mergeAliasStyles(checkboxTokenAliases, style)}
     {...props}
   >
-    <CheckboxPrimitives.Indicator
-      className={cn('flex items-center justify-center text-current')}
-    >
-      <Check className="h-3.5 w-3.5" />
+    <CheckboxPrimitives.Indicator className="flex items-center justify-center">
+      <Check
+        className={cn(
+          'h-3.5 w-3.5 group-data-[state=checked]/checkbox:text-ds-text-brand-inverse-default shrink-0',
+          iconClassName
+        )}
+      />
     </CheckboxPrimitives.Indicator>
   </CheckboxPrimitives.Root>
 ));

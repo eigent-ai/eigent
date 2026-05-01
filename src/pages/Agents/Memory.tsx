@@ -21,22 +21,22 @@ export default function Memory() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
-        <div className="text-heading-sm font-bold text-text-heading">
+      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('agents.memory')}
         </div>
       </div>
 
       {/* Content Section */}
-      <div className="mb-12 flex flex-col gap-6">
-        <div className="flex w-full flex-col items-center justify-between rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="flex h-16 w-16 items-center justify-center">
-            <Brain className="h-8 w-8 text-icon-secondary" />
+      <div className="mb-12 gap-6 flex flex-col">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
+          <div className="h-16 w-16 flex items-center justify-center">
+            <Brain className="h-8 w-8 text-ds-icon-neutral-muted-default" />
           </div>
-          <h2 className="mb-2 text-body-md font-bold text-text-heading">
+          <h2 className="mb-2 text-body-md font-bold text-ds-text-neutral-default-default">
             {t('layout.coming-soon')}
           </h2>
-          <p className="max-w-md text-center text-body-sm text-text-label">
+          <p className="max-w-md text-body-sm text-ds-text-neutral-muted-default text-center">
             {t('agents.memory-coming-soon-description')}
           </p>
         </div>
