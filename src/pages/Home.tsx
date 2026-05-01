@@ -31,6 +31,7 @@ import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
@@ -98,6 +99,7 @@ export default function Home() {
   const electronAPI = host?.electronAPI;
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  useModelConfigCheck();
 
   const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
     usePageTabStore();

@@ -39,7 +39,9 @@ import {
 } from '@/components/ui/select';
 import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
-import { useAuthStore } from '@/store/authStore';
+import type { ProvidersCatalogFormRow } from '@/lib/mergeProvidersCatalog';
+import { isCloudModelType, useAuthStore } from '@/store/authStore';
+import { useProvidersCatalogStore } from '@/store/providersCatalogStore';
 import { Provider } from '@/types';
 import {
   Check,
@@ -54,7 +56,7 @@ import {
   Server,
   Settings,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -115,7 +117,7 @@ export default function SettingModels() {
   const [items, _setItems] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
   );
-  const [form, setForm] = useState(() =>
+  const [form, setForm] = useState<ProvidersCatalogFormRow[]>(() =>
     INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => ({
       apiKey: p.apiKey,
       apiHost: p.apiHost,
@@ -162,8 +164,7 @@ export default function SettingModels() {
 
   // Local Model independent state - per platform
   const [localEnabled, setLocalEnabled] = useState(true);
-  const [localPlatform, setLocalPlatform] =
-    useState<string>(OLLAMA_PROVIDER_ID);
+  const [localPlatform, setLocalPlatform] = useState<string>('');
   const [localEndpoints, setLocalEndpoints] = useState<Record<string, string>>(
     {}
   );
@@ -175,6 +176,63 @@ export default function SettingModels() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [localInputError, setLocalInputError] = useState(false);
   const [localPrefer, setLocalPrefer] = useState(false); // Local model prefer state (for current platform)
+
+  // Per-entity dirty tracking: refs (not state) so onChange handlers don't
+  // cause re-renders, and so the catalog-pull effect runs whenever the
+  // catalog refreshes — only the matching dirty row/platform is preserved.
+  const dirtyFormIndicesRef = useRef<Set<number>>(new Set());
+  const dirtyLocalPlatformsRef = useRef<Set<string>>(new Set());
+
+  const markFormRowDirty = useCallback((idx: number) => {
+    dirtyFormIndicesRef.current.add(idx);
+  }, []);
+  const clearFormRowDirty = useCallback((idx: number) => {
+    dirtyFormIndicesRef.current.delete(idx);
+  }, []);
+  const markLocalPlatformDirty = useCallback((platform: string) => {
+    dirtyLocalPlatformsRef.current.add(platform);
+  }, []);
+  const clearLocalPlatformDirty = useCallback((platform: string) => {
+    dirtyLocalPlatformsRef.current.delete(platform);
+  }, []);
+
+  const pullProvidersCatalogIntoModelsState = useCallback(() => {
+    const s = useProvidersCatalogStore.getState();
+    const dirtyForm = dirtyFormIndicesRef.current;
+    const dirtyLocal = dirtyLocalPlatformsRef.current;
+
+    setForm((prev) =>
+      s.form.map((row, idx) => (dirtyForm.has(idx) ? prev[idx] : row))
+    );
+    setLocalEndpoints((prev) => {
+      if (dirtyLocal.size === 0) return s.localEndpoints;
+      const next: Record<string, string> = { ...s.localEndpoints };
+      for (const p of dirtyLocal) {
+        if (prev[p] !== undefined) next[p] = prev[p];
+      }
+      return next;
+    });
+    setLocalTypes((prev) => {
+      if (dirtyLocal.size === 0) return s.localTypes;
+      const next: Record<string, string> = { ...s.localTypes };
+      for (const p of dirtyLocal) {
+        if (prev[p] !== undefined) next[p] = prev[p];
+      }
+      return next;
+    });
+    setLocalProviderIds(s.localProviderIds);
+    setCloudPrefer(s.cloudPrefer);
+    setLocalPrefer(s.localPrefer);
+    if (!dirtyLocal.has(s.localPlatform)) {
+      setLocalPlatform(s.localPlatform);
+    }
+    if (modelType === 'local') {
+      setLocalEnabled(true);
+    }
+  }, [modelType]);
+
+  const catalogHydrated = useProvidersCatalogStore((s) => s.hydrated);
+  const catalogLastFetchedAt = useProvidersCatalogStore((s) => s.lastFetchedAt);
 
   // Per-platform model list state: { models, loading, error } keyed by platform ID.
   const [platformModelState, setPlatformModelState] = useState<
@@ -251,115 +309,20 @@ export default function SettingModels() {
     modelId: string;
   } | null>(null);
 
-  // Load provider list and populate form
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await proxyFetchGet('/api/v1/providers');
-        const providerList = Array.isArray(res) ? res : res.items || [];
-        // Handle custom models
-        setForm((f) =>
-          f.map((fi, idx) => {
-            const item = items[idx];
-            const found = providerList.find(
-              (p: any) => p.provider_name === item.id
-            );
-            if (found) {
-              return {
-                ...fi,
-                provider_id: found.id,
-                apiKey: found.api_key || '',
-                // Fall back to provider's default API host if endpoint_url is empty
-                apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
-                prefer: found.prefer ?? false,
-                model_type: found.model_type ?? '',
-                externalConfig: fi.externalConfig
-                  ? fi.externalConfig.map((ec) => {
-                      if (
-                        found.encrypted_config &&
-                        found.encrypted_config[ec.key] !== undefined
-                      ) {
-                        return { ...ec, value: found.encrypted_config[ec.key] };
-                      }
-                      return ec;
-                    })
-                  : undefined,
-              };
-            }
-            return fi;
-          })
-        );
-        // Handle local models - load all local providers per platform
-        const localProviders = providerList.filter((p: any) =>
-          LOCAL_MODEL_OPTIONS.some((model) => model.id === p.provider_name)
-        );
-
-        const endpoints: Record<string, string> = {};
-        const types: Record<string, string> = {};
-        const providerIds: Record<string, number | undefined> = {};
-
-        localProviders.forEach((local: any) => {
-          const platform =
-            local.encrypted_config?.model_platform || local.provider_name;
-          // Auto-populate platform default endpoint if not set
-          endpoints[platform] =
-            local.endpoint_url || getDefaultLocalEndpoint(platform);
-          types[platform] = local.encrypted_config?.model_type || '';
-          providerIds[platform] = local.id;
-
-          // Set prefer state if any local model is preferred
-          if (local.prefer) {
-            setLocalPrefer(true);
-            setLocalPlatform(platform);
-          }
-        });
-
-        setLocalEndpoints(endpoints);
-        setLocalTypes(types);
-        setLocalProviderIds(providerIds);
-
-        // Fetch model lists for all providers that support it
-        LOCAL_MODEL_OPTIONS.filter((m) => m.fetchPath).forEach((m) => {
-          const ep = endpoints[m.id] || m.defaultEndpoint;
-          fetchModelsForPlatform(m.id, ep);
-        });
-
-        // If no local providers found, initialize empty state with Ollama default
-        if (localProviders.length === 0) {
-          LOCAL_MODEL_OPTIONS.forEach((model) => {
-            endpoints[model.id] = getDefaultLocalEndpoint(model.id);
-            types[model.id] = '';
-            providerIds[model.id] = undefined;
-          });
-          setLocalEndpoints(endpoints);
-          setLocalTypes(types);
-          setLocalProviderIds(providerIds);
-        }
-        if (modelType === 'cloud') {
-          setCloudPrefer(true);
-          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-          setLocalPrefer(false);
-        } else if (modelType === 'local') {
-          setLocalEnabled(true);
-          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-          setLocalPrefer(true);
-          setCloudPrefer(false);
-        } else {
-          setLocalPrefer(false);
-          setCloudPrefer(false);
-        }
-      } catch (e) {
-        console.error('Error fetching providers:', e);
-        // ignore error
-      }
-    })();
-
-    if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-      fetchSubscription();
-      updateCredits();
-    }
-  }, [items, modelType, fetchModelsForPlatform]);
+    if (!catalogHydrated || catalogLastFetchedAt == null) return;
+    pullProvidersCatalogIntoModelsState();
+    const s = useProvidersCatalogStore.getState();
+    LOCAL_MODEL_OPTIONS.filter((m) => m.fetchPath).forEach((m) => {
+      const ep = s.localEndpoints[m.id] || m.defaultEndpoint;
+      fetchModelsForPlatform(m.id, ep);
+    });
+  }, [
+    catalogHydrated,
+    catalogLastFetchedAt,
+    fetchModelsForPlatform,
+    pullProvidersCatalogIntoModelsState,
+  ]);
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -452,8 +415,8 @@ export default function SettingModels() {
       setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
       setCloudPrefer(true);
       setModelType('cloud');
-      if (modelId !== 'cloud') {
-        setCloudModelType(modelId as any);
+      if (modelId !== 'cloud' && isCloudModelType(modelId)) {
+        setCloudModelType(modelId);
       }
     } else if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
@@ -588,39 +551,10 @@ export default function SettingModels() {
         await proxyFetchPost('/api/v1/provider', data);
       }
       // add: refresh provider list after saving, update form and switch editable status
-      const res = await proxyFetchGet('/api/v1/providers');
-      const providerList = Array.isArray(res) ? res : res.items || [];
-      setForm((f) =>
-        f.map((fi, i) => {
-          const item = items[i];
-          const found = providerList.find(
-            (p: any) => p.provider_name === item.id
-          );
-          if (found) {
-            return {
-              ...fi,
-              provider_id: found.id,
-              apiKey: found.api_key || '',
-              // Fall back to provider's default API host if endpoint_url is empty
-              apiHost: found.endpoint_url || item.apiHost,
-              is_valid: !!found.is_valid,
-              prefer: found.prefer ?? false,
-              externalConfig: fi.externalConfig
-                ? fi.externalConfig.map((ec) => {
-                    if (
-                      found.encrypted_config &&
-                      found.encrypted_config[ec.key] !== undefined
-                    ) {
-                      return { ...ec, value: found.encrypted_config[ec.key] };
-                    }
-                    return ec;
-                  })
-                : undefined,
-            };
-          }
-          return fi;
-        })
-      );
+      const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+      useProvidersCatalogStore.getState().applyFromApiResponse(res, modelType);
+      clearFormRowDirty(idx);
+      pullProvidersCatalogIntoModelsState();
 
       // Check if this was a pending default model selection
       if (
@@ -786,25 +720,23 @@ export default function SettingModels() {
       setLocalError(null);
       setLocalInputError(false);
       // add: refresh provider list after saving, update localProviderIds and localPrefer
-      const res = await proxyFetchGet('/api/v1/providers');
-      const providerList = Array.isArray(res) ? res : res.items || [];
-      const local = providerList.find(
-        (p: any) => p.provider_name === localPlatform
-      );
-      if (local) {
-        setLocalProviderIds((prev) => ({ ...prev, [localPlatform]: local.id }));
-        setLocalPrefer(local.prefer ?? false);
-
+      const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+      useProvidersCatalogStore.getState().applyFromApiResponse(res, modelType);
+      clearLocalPlatformDirty(localPlatform);
+      pullProvidersCatalogIntoModelsState();
+      const resolvedId =
+        useProvidersCatalogStore.getState().localProviderIds[localPlatform];
+      if (resolvedId != null) {
         // Check if this was a pending default model selection
         if (
           pendingDefaultModel &&
           pendingDefaultModel.category === 'local' &&
           pendingDefaultModel.modelId === localPlatform
         ) {
-          await handleLocalSwitch(true, local.id);
+          await handleLocalSwitch(true, resolvedId);
           setPendingDefaultModel(null);
         } else {
-          await handleLocalSwitch(true, local.id);
+          await handleLocalSwitch(true, resolvedId);
         }
       }
 
@@ -871,6 +803,10 @@ export default function SettingModels() {
       setCloudPrefer(false);
       setForm((f) => f.map((fi, i) => ({ ...fi, prefer: i === idx }))); // Only one prefer allowed
       setLocalPrefer(false);
+      // Refresh shared catalog so chat-input dropdown reflects the new prefer
+      // immediately rather than waiting for the next focus/sync event.
+      const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+      useProvidersCatalogStore.getState().applyFromApiResponse(res, 'custom');
     } catch (e) {
       console.error('Error switching model:', e);
       // Optional: add error message
@@ -905,6 +841,10 @@ export default function SettingModels() {
       setForm((f) => f.map((fi) => ({ ...fi, prefer: false }))); // Set all others' prefer to false
       setLocalPrefer(true);
       setCloudPrefer(false);
+      // Refresh shared catalog so chat-input dropdown reflects the new prefer
+      // immediately rather than waiting for the next focus/sync event.
+      const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+      useProvidersCatalogStore.getState().applyFromApiResponse(res, 'local');
     } catch (e) {
       console.error('Error switching local model:', e);
       // Optional: add error message
@@ -937,6 +877,11 @@ export default function SettingModels() {
       }
       clearPlatformModelsError(localPlatform);
       await fetchModelsForPlatform(localPlatform);
+      clearLocalPlatformDirty(localPlatform);
+      // Refresh shared catalog so chat-input dropdown stops listing the
+      // deleted local provider as configured.
+      const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+      useProvidersCatalogStore.getState().applyFromApiResponse(res, modelType);
       toast.success(t('setting.reset-success'));
     } catch (e) {
       console.error('Error resetting local model:', e);
@@ -977,6 +922,11 @@ export default function SettingModels() {
         setActiveModelIdx(null);
         setLocalEnabled(true);
       }
+      clearFormRowDirty(idx);
+      // Refresh shared catalog so chat-input dropdown stops listing the
+      // deleted custom provider as configured.
+      const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
+      useProvidersCatalogStore.getState().applyFromApiResponse(res, modelType);
       toast.success(t('setting.reset-success'));
     } catch (e) {
       console.error('Error deleting model:', e);
@@ -1022,6 +972,13 @@ export default function SettingModels() {
     }
   };
 
+  useEffect(() => {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
+      void fetchSubscription();
+      void updateCredits();
+    }
+  }, [modelType]);
+
   const needsInvert = (modelId: string | null): boolean =>
     needsInvertModelImage(modelId, appearance);
 
@@ -1048,13 +1005,13 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="flex items-center justify-center gap-3">
+        <div className="gap-3 flex items-center justify-center">
           {modelImage ? (
             <img
               src={modelImage}
@@ -1080,7 +1037,7 @@ export default function SettingModels() {
           </span>
         </div>
         {isConfigured && (
-          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+          <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
         )}
       </button>
     );
@@ -1092,16 +1049,16 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="flex h-64 items-center justify-center text-ds-text-neutral-muted-default">
+          <div className="h-64 text-ds-text-neutral-muted-default flex items-center justify-center">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-            <div className="inline-flex items-center justify-start gap-2 self-stretch">
-              <div className="text-body-base my-2 flex-1 justify-center font-bold text-ds-text-neutral-default-default">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-start self-stretch">
+              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default flex-1 justify-center">
                 {t('setting.eigent-cloud')}
               </div>
               {cloudPrefer ? (
@@ -1152,7 +1109,7 @@ export default function SettingModels() {
                 onClick={() => {
                   window.location.href = `${SITE_URL}/pricing`;
                 }}
-                className="cursor-pointer text-body-sm text-ds-text-neutral-muted-default underline"
+                className="text-body-sm text-ds-text-neutral-muted-default cursor-pointer underline"
               >
                 {t('setting.pricing-options')}
               </span>
@@ -1162,7 +1119,7 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
+          <div className="gap-4 px-6 pb-4 flex w-full flex-row items-center justify-between">
             <div className="text-body-sm text-ds-text-neutral-default-default">
               {t('setting.credits')}:{' '}
               {loadingCredits ? (
@@ -1191,9 +1148,9 @@ export default function SettingModels() {
               <Settings />
             </Button>
           </div>
-          <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
-            <div className="flex min-w-0 flex-1 items-center">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+          <div className="px-6 pb-4 flex w-full flex-1 items-center justify-between">
+            <div className="min-w-0 flex flex-1 items-center">
+              <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
                 {t('setting.select-model-type')}
               </span>
             </div>
@@ -1263,13 +1220,13 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="gap-2 flex items-center">
                 {form[idx].prefer ? (
                   <Button
                     variant="primary"
@@ -1309,9 +1266,9 @@ export default function SettingModels() {
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+                  <div className="h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
                 ) : (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-neutral-default-default opacity-10" />
+                  <div className="h-2 w-2 bg-ds-text-neutral-default-default shrink-0 rounded-full opacity-10" />
                 )}
               </div>
             </div>
@@ -1319,7 +1276,7 @@ export default function SettingModels() {
               {item.description}
             </div>
           </div>
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             {/* API Key Setting */}
             <Input
               id={`apiKey-${item.id}`}
@@ -1344,6 +1301,7 @@ export default function SettingModels() {
               value={form[idx].apiKey}
               onChange={(e) => {
                 const v = e.target.value;
+                markFormRowDirty(idx);
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, apiKey: v } : fi))
                 );
@@ -1365,6 +1323,7 @@ export default function SettingModels() {
               value={form[idx].apiHost}
               onChange={(e) => {
                 const v = e.target.value;
+                markFormRowDirty(idx);
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, apiHost: v } : fi))
                 );
@@ -1386,6 +1345,7 @@ export default function SettingModels() {
               value={form[idx].model_type}
               onChange={(e) => {
                 const v = e.target.value;
+                markFormRowDirty(idx);
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
                 );
@@ -1400,11 +1360,12 @@ export default function SettingModels() {
             {item.externalConfig &&
               form[idx].externalConfig &&
               form[idx].externalConfig.map((ec, ecIdx) => (
-                <div key={ec.key} className="flex h-full w-full flex-col gap-4">
+                <div key={ec.key} className="gap-4 flex h-full w-full flex-col">
                   {ec.options && ec.options.length > 0 ? (
                     <Select
                       value={ec.value}
                       onValueChange={(v) => {
+                        markFormRowDirty(idx);
                         setForm((f) =>
                           f.map((fi, i) =>
                             i === idx
@@ -1471,6 +1432,7 @@ export default function SettingModels() {
                       value={ec.value}
                       onChange={(e) => {
                         const v = e.target.value;
+                        markFormRowDirty(idx);
                         setForm((f) =>
                           f.map((fi, i) =>
                             i === idx
@@ -1491,7 +1453,7 @@ export default function SettingModels() {
               ))}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
               tone="neutral"
@@ -1536,10 +1498,10 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
-              <div className="flex items-center gap-2">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+              <div className="gap-2 flex items-center">
                 <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {getLocalPlatformName(platform)}
                 </div>
@@ -1569,7 +1531,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default shadow-none hover:bg-ds-bg-neutral-default-active'
+                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active shadow-none'
                         : ''
                     }
                   >
@@ -1580,20 +1542,21 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 rounded-full bg-text-success" />
+                <div className="h-2 w-2 bg-text-success rounded-full" />
               ) : (
-                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
               )}
             </div>
           </div>
           {/* Model Endpoint URL Setting */}
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             <Input
               size="default"
               title={t('setting.model-endpoint-url')}
               state={localInputError ? 'error' : 'default'}
               value={currentEndpoint}
               onChange={(e) => {
+                markLocalPlatformDirty(platform);
                 setLocalEndpoints((prev) => ({
                   ...prev,
                   [platform]: e.target.value,
@@ -1629,17 +1592,18 @@ export default function SettingModels() {
               note={localError ?? undefined}
             />
             {isModelListPlatform ? (
-              <div className="flex w-full flex-col gap-1">
-                <div className="flex w-full items-end gap-2">
+              <div className="gap-1 flex w-full flex-col">
+                <div className="gap-2 flex w-full items-end">
                   <div className="flex-1">
                     <Select
                       value={currentType}
-                      onValueChange={(v) =>
+                      onValueChange={(v) => {
+                        markLocalPlatformDirty(platform);
                         setLocalTypes((prev) => ({
                           ...prev,
                           [platform]: v,
-                        }))
-                      }
+                        }));
+                      }}
                       disabled={!localEnabled || platformModelsLoading}
                     >
                       <SelectTrigger
@@ -1717,18 +1681,19 @@ export default function SettingModels() {
                 state={localInputError ? 'error' : 'default'}
                 placeholder={t('setting.enter-your-local-model-type')}
                 value={currentType}
-                onChange={(e) =>
+                onChange={(e) => {
+                  markLocalPlatformDirty(platform);
                   setLocalTypes((prev) => ({
                     ...prev,
                     [platform]: e.target.value,
-                  }))
-                }
+                  }));
+                }}
                 disabled={!localEnabled}
               />
             )}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
               tone="neutral"
@@ -1763,8 +1728,8 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="z-10 flex w-full items-center justify-between px-6 pb-6 pt-8">
-        <div className="flex w-full flex-col items-start justify-between gap-4">
+      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
+        <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.models')}
@@ -1773,10 +1738,10 @@ export default function SettingModels() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 flex flex-col gap-6">
+      <div className="mb-8 gap-6 flex flex-col">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
-          <div className="flex w-full flex-col items-start justify-center gap-1">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
+          <div className="gap-1 flex w-full flex-col items-start justify-center">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.models-default-setting-title')}
             </div>
@@ -1786,11 +1751,11 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-ds-border-success-default-default bg-ds-bg-success-subtle-default px-3 py-1 font-semibold text-ds-text-success-default-default transition-colors hover:opacity-70 active:opacity-90">
-                <span className="whitespace-nowrap text-body-sm">
+              <button className="gap-2 rounded-lg border-ds-border-success-default-default bg-ds-bg-success-subtle-default px-3 py-1 font-semibold text-ds-text-success-default-default flex w-fit items-center justify-between border-[0.5px] border-solid transition-colors hover:opacity-70 active:opacity-90">
+                <span className="text-body-sm whitespace-nowrap">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 flex-shrink-0 !text-ds-text-success-default-default" />
+                <ChevronDown className="h-4 w-4 !text-ds-text-success-default-default flex-shrink-0" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1844,7 +1809,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1865,15 +1830,15 @@ export default function SettingModels() {
                             {item.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1905,7 +1870,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1926,15 +1891,15 @@ export default function SettingModels() {
                             {model.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1947,17 +1912,17 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
-          <div className="text-body-base sticky top-[48px] z-10 mb-4 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
+          <div className="text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
-          <div className="flex w-full flex-row items-start justify-between px-3">
+          <div className="px-3 flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-ds-bg-neutral-default-default">
-              <div className="flex flex-col gap-4">
+            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px]">
+              <div className="gap-4 flex flex-col">
                 {/* Eigent Cloud Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
                     {t('setting.eigent-cloud')}
                   </div>
@@ -1972,10 +1937,10 @@ export default function SettingModels() {
                     )}
                 </div>
                 {/* Bring Your Own Key Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.custom-model')}
@@ -1987,7 +1952,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       byokCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -2007,10 +1972,10 @@ export default function SettingModels() {
                 </div>
 
                 {/* Local Model Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.local-model')}
@@ -2022,7 +1987,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -2073,7 +2038,7 @@ export default function SettingModels() {
               </div>
             </div>
             {/* Main Content */}
-            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
+            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
               {renderContent()}
             </div>
           </div>

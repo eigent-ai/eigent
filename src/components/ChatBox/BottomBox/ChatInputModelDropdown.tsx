@@ -17,7 +17,6 @@
  * Configured models switch inline; unconfigured options open Agents → Models.
  */
 
-import { proxyFetchGet } from '@/api/http';
 import folderIcon from '@/assets/Folder.svg';
 import {
   DropdownMenu,
@@ -34,7 +33,6 @@ import {
   isDefaultModelConfigured,
   type DefaultModelCategory,
 } from '@/lib/applyDefaultModelSelection';
-import { INIT_PROVODERS } from '@/lib/llm';
 import { cn } from '@/lib/utils';
 import {
   getLocalPlatformName,
@@ -44,8 +42,13 @@ import {
   getModelImage,
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
-import { useAuthStore } from '@/store/authStore';
+import { isCloudModelType, useAuthStore } from '@/store/authStore';
+import {
+  CATALOG_ITEMS,
+  useProvidersCatalogStore,
+} from '@/store/providersCatalogStore';
 import type { Provider } from '@/types';
+import { useShallow } from 'zustand/react/shallow';
 
 import {
   Check,
@@ -56,15 +59,7 @@ import {
   Server,
   Sparkles,
 } from 'lucide-react';
-import type { Dispatch, SetStateAction } from 'react';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -72,18 +67,16 @@ const cloudModelOptions = [
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
   { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
   { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-  { id: 'gpt-4.1', name: 'GPT-4.1' },
-  { id: 'gpt-5', name: 'GPT-5' },
-  { id: 'gpt-5.1', name: 'GPT-5.1' },
-  { id: 'gpt-5.2', name: 'GPT-5.2' },
   { id: 'gpt-5.4', name: 'GPT-5.4' },
+  { id: 'gpt-5.5', name: 'GPT-5.5' },
   { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
   { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
   { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-  { id: 'minimax_m2_5', name: 'Minimax M2.5' },
+  { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
+  { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+  { id: 'minimax_m2_7', name: 'Minimax M2.7' },
 ] as const;
 
 export interface ChatInputModelDropdownProps {
@@ -102,136 +95,36 @@ const modelTriggerShellClass = cn(
   'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
 );
 
+const DROPDOWN_ITEMS: Provider[] = CATALOG_ITEMS;
+
 export function ChatInputModelDropdown({
   disabled,
   readOnly = false,
 }: ChatInputModelDropdownProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const {
-    modelType,
-    cloud_model_type,
-    appearance,
-    setModelType,
-    setCloudModelType,
-  } = useAuthStore();
+  const { cloud_model_type, appearance, setModelType, setCloudModelType } =
+    useAuthStore();
 
-  const [items] = useState<Provider[]>(
-    INIT_PROVODERS.filter((p) => p.id !== 'local')
-  );
-  const [form, setForm] = useState(() =>
-    INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => ({
-      apiKey: p.apiKey,
-      apiHost: p.apiHost,
-      is_valid: p.is_valid ?? false,
-      model_type: p.model_type ?? '',
-      externalConfig: p.externalConfig
-        ? p.externalConfig.map((ec) => ({ ...ec }))
-        : undefined,
-      provider_id: p.provider_id ?? undefined,
-      prefer: p.prefer ?? false,
+  const {
+    form,
+    cloudPrefer,
+    localPrefer,
+    localPlatform,
+    localTypes,
+    localProviderIds,
+  } = useProvidersCatalogStore(
+    useShallow((s) => ({
+      form: s.form,
+      cloudPrefer: s.cloudPrefer,
+      localPrefer: s.localPrefer,
+      localPlatform: s.localPlatform,
+      localTypes: s.localTypes,
+      localProviderIds: s.localProviderIds,
     }))
   );
-  const [cloudPrefer, setCloudPrefer] = useState(false);
-  const [localPrefer, setLocalPrefer] = useState(false);
-  const [localPlatform, setLocalPlatform] = useState<string>('ollama');
-  const [localTypes, setLocalTypes] = useState<Record<string, string>>({});
-  const [localProviderIds, setLocalProviderIds] = useState<
-    Record<string, number | undefined>
-  >({});
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await proxyFetchGet('/api/v1/providers');
-        const providerList = Array.isArray(res) ? res : res.items || [];
-
-        setForm((f) =>
-          f.map((fi, idx) => {
-            const item = items[idx];
-            const found = providerList.find(
-              (p: { provider_name: string }) => p.provider_name === item.id
-            );
-            if (found) {
-              return {
-                ...fi,
-                provider_id: found.id,
-                apiKey: found.api_key || '',
-                apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
-                prefer: found.prefer ?? false,
-                model_type: found.model_type ?? '',
-                externalConfig: fi.externalConfig
-                  ? fi.externalConfig.map((ec) => {
-                      if (
-                        found.encrypted_config &&
-                        found.encrypted_config[ec.key] !== undefined
-                      ) {
-                        return { ...ec, value: found.encrypted_config[ec.key] };
-                      }
-                      return ec;
-                    })
-                  : undefined,
-              };
-            }
-            return fi;
-          })
-        );
-
-        const localProviders = providerList.filter(
-          (p: { provider_name: string }) =>
-            LOCAL_MODEL_OPTIONS.some((model) => model.id === p.provider_name)
-        );
-
-        const types: Record<string, string> = {};
-        const providerIds: Record<string, number | undefined> = {};
-
-        localProviders.forEach((local: Record<string, unknown>) => {
-          const platform =
-            (local.encrypted_config as { model_platform?: string } | undefined)
-              ?.model_platform || (local.provider_name as string);
-          types[platform] =
-            (local.encrypted_config as { model_type?: string } | undefined)
-              ?.model_type || '';
-          providerIds[platform] = local.id as number;
-
-          if (local.prefer) {
-            setLocalPrefer(true);
-            setLocalPlatform(platform);
-          }
-        });
-
-        setLocalTypes(types);
-        setLocalProviderIds(providerIds);
-
-        if (localProviders.length === 0) {
-          const nextTypes: Record<string, string> = {};
-          const nextIds: Record<string, number | undefined> = {};
-          LOCAL_MODEL_OPTIONS.forEach((model) => {
-            nextTypes[model.id] = '';
-            nextIds[model.id] = undefined;
-          });
-          setLocalTypes(nextTypes);
-          setLocalProviderIds(nextIds);
-        }
-
-        if (modelType === 'cloud') {
-          setCloudPrefer(true);
-          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-          setLocalPrefer(false);
-        } else if (modelType === 'local') {
-          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-          setLocalPrefer(true);
-          setCloudPrefer(false);
-        } else {
-          setLocalPrefer(false);
-          setCloudPrefer(false);
-        }
-      } catch (e) {
-        console.error('Error fetching providers:', e);
-      }
-    })();
-  }, [items, modelType]);
+  const items = DROPDOWN_ITEMS;
 
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
@@ -276,11 +169,12 @@ export function ChatInputModelDropdown({
 
   const handleDefaultModelSelect = useCallback(
     async (category: DefaultModelCategory, modelId: string) => {
+      const catalog = useProvidersCatalogStore.getState();
       if (
         !isDefaultModelConfigured(category, modelId, {
           items,
-          form,
-          localProviderIds,
+          form: catalog.form,
+          localProviderIds: catalog.localProviderIds,
         })
       ) {
         navigate(DEFAULT_MODEL_CONFIGURE_PATH);
@@ -290,30 +184,23 @@ export function ChatInputModelDropdown({
         category,
         modelId,
         items,
-        form,
-        setForm: setForm as Dispatch<SetStateAction<unknown[]>>,
-        setCloudPrefer,
-        setLocalPrefer,
-        setLocalPlatform,
-        localProviderIds,
-        localPlatform,
+        form: catalog.form,
+        setForm: catalog.setForm,
+        setCloudPrefer: catalog.setCloudPrefer,
+        setLocalPrefer: catalog.setLocalPrefer,
+        setLocalPlatform: catalog.setLocalPlatform,
+        localProviderIds: catalog.localProviderIds,
+        localPlatform: catalog.localPlatform,
         setModelType,
         setCloudModelType: (id: string) => {
-          setCloudModelType(id as never);
+          if (isCloudModelType(id)) {
+            setCloudModelType(id);
+          }
         },
         t,
       });
     },
-    [
-      items,
-      form,
-      localProviderIds,
-      localPlatform,
-      navigate,
-      setModelType,
-      setCloudModelType,
-      t,
-    ]
+    [items, navigate, setModelType, setCloudModelType, t]
   );
 
   /** Radix submenu forces align=start (tops align); use alignOffset so sub bottom aligns with the SubTrigger row bottom. */
