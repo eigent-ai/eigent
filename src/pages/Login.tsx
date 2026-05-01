@@ -20,7 +20,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import WindowControls from '@/components/WindowControls';
-import { hasStackKeys } from '@/lib';
+import { hasStackKeys, SITE_URL } from '@/lib';
 import { useTranslation } from 'react-i18next';
 
 import background from '@/assets/background.png';
@@ -352,7 +352,7 @@ export default function Login() {
         onClick={() => {
           setIsLoading(true);
           window.open(
-            `https://www.eigent.ai/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
+            `${SITE_URL}/signin?callbackUrl=${encodeURIComponent(callbackUrl || 'eigent://auth/callback')}`,
             '_blank',
             'noopener,noreferrer'
           );
