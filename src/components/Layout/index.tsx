@@ -18,6 +18,7 @@ import { AnimationJson } from '@/components/Layout/AnimationJson';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
+import { useProvidersCatalogSync } from '@/hooks/useProvidersCatalogSync';
 import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -53,6 +54,7 @@ const Layout = () => {
   } = useInstallationUI();
 
   useInstallationSetup();
+  useProvidersCatalogSync();
 
   useEffect(() => {
     if (!host?.ipcRenderer || !host?.electronAPI) return;
