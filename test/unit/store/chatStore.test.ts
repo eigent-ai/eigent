@@ -26,24 +26,54 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies - moved to top before other imports
-vi.mock('@/api/http', () => ({
-  fetchPost: vi.fn(),
-  fetchPut: vi.fn(),
-  getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
-  proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
-  proxyFetchPut: vi.fn(),
-  proxyFetchGet: vi.fn(() =>
-    Promise.resolve({
-      value: '',
-      api_url: '',
-      items: [],
-      warning_code: null,
-    })
-  ),
-  uploadFile: vi.fn(),
-  fetchDelete: vi.fn(),
-  waitForBackendReady: vi.fn(() => Promise.resolve(true)),
-}));
+vi.mock('@/api/http', async () => {
+  const { fetchEventSource } = await import('@microsoft/fetch-event-source');
+  const getBaseURL = vi.fn(() => Promise.resolve('http://localhost:8000'));
+
+  return {
+    fetchPost: vi.fn(),
+    fetchPut: vi.fn(),
+    getBaseURL,
+    proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
+    proxyFetchPut: vi.fn(),
+    proxyFetchGet: vi.fn(() =>
+      Promise.resolve({
+        value: '',
+        api_url: '',
+        items: [],
+        warning_code: null,
+      })
+    ),
+    uploadFile: vi.fn(),
+    fetchDelete: vi.fn(),
+    waitForBackendReady: vi.fn(() => Promise.resolve(true)),
+    sseTransport: vi.fn(async (options: any) => {
+      const baseURL = await getBaseURL();
+      const fullUrl =
+        options.url.startsWith('http://') || options.url.startsWith('https://')
+          ? options.url
+          : `${baseURL}${options.url}`;
+      const body =
+        typeof options.body === 'string'
+          ? options.body
+          : options.body
+            ? JSON.stringify(options.body)
+            : undefined;
+
+      await fetchEventSource(fullUrl, {
+        method: options.method || 'POST',
+        openWhenHidden: options.openWhenHidden ?? true,
+        signal: options.signal,
+        headers: options.extraHeaders ?? {},
+        body,
+        onmessage: options.onmessage,
+        onopen: options.onopen,
+        onerror: options.onerror,
+        onclose: options.onclose,
+      });
+    }),
+  };
+});
 
 vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(),
@@ -59,7 +89,7 @@ vi.mock('../../../src/store/authStore', () => ({
     language: 'system',
     isFirstLaunch: true,
     modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-4.1' as const,
+    cloud_model_type: 'gpt-5.4' as const,
     initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
@@ -73,7 +103,7 @@ vi.mock('../../../src/store/authStore', () => ({
     language: 'system',
     isFirstLaunch: true,
     modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-4.1' as const,
+    cloud_model_type: 'gpt-5.4' as const,
     initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
@@ -96,6 +126,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
+  getCloudModelPlatform,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -225,6 +256,17 @@ describe('ChatStore - Core Functionality', () => {
           source: 'user_attachment',
         },
       ]);
+    });
+  });
+
+  describe('Cloud Model Platform Mapping', () => {
+    it('maps cloud model ids to backend platforms', () => {
+      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
+      expect(getCloudModelPlatform('claude-opus-4-7')).toBe(
+        'aws-bedrock-converse'
+      );
+      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
+      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
     });
   });
 
