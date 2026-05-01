@@ -14,17 +14,44 @@ jobs:
     name: Check Not Allowed File Changes
     runs-on: ubuntu-latest
     steps:
-      # Note: dorny/paths-filter fetches file info via GitHub API, no checkout needed
-      - name: Check Not Allowed File Changes
-        uses: dorny/paths-filter@v4
-        id: filter_not_allowed
+      # Avoid GitHub API rate-limits by diffing locally.
+      # We checkout both base and head without running any PR code.
+      - name: Checkout base (target) commit
+        uses: actions/checkout@v4
         with:
-          list-files: json
-          filters: |
-            change:
-              - 'package-lock.json'
-              - 'yarn.lock'
-              - 'pnpm-lock.yaml'
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          fetch-depth: 1
+
+      - name: Checkout head (PR) commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check Not Allowed File Changes
+        id: filter_not_allowed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # List changed files between base and head directories.
+          CHANGED_FILES="$(git diff --name-only --no-index --relative base head || true)"
+
+          echo "changed_files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          # Reject lockfile changes.
+          FORBIDDEN_REGEX='^(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$'
+          if echo "$CHANGED_FILES" | grep -Eq "$FORBIDDEN_REGEX"; then
+            echo "change=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "change=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # ref: https://github.com/github/docs/blob/main/.github/workflows/triage-unallowed-contributions.yml
       - name: Comment About Changes We Can't Accept
