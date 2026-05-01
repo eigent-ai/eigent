@@ -1764,6 +1764,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               type !== 'replay' &&
                 agentMessages.data.sub_tasks?.push(newTaskInfo);
             }
+            // Sub-tasks arrive from the backend with a camel `state` field
+            // (OPEN/RUNNING/DONE/FAILED), not the frontend's `status`. Seed
+            // every entry with EMPTY so the badge renders as Pending; later
+            // SSE events (ASSIGN_TASK, TASK_STATE, …) drive the real status.
+            // Replay finalization happens in the END handler below.
             agentMessages.data.sub_tasks = agentMessages.data.sub_tasks?.map(
               (item) => {
                 item.status = TaskStatus.EMPTY;
@@ -2821,16 +2826,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               try {
                 const st = tasks[currentTaskId].summaryTask || '';
                 const parts = st.split('|');
-                const completionSummary =
-                  (typeof agentMessages.data === 'string'
-                    ? agentMessages.data
-                    : '') ||
-                  parts[1] ||
-                  '';
+                const rawEndPayload =
+                  typeof agentMessages.data === 'string'
+                    ? (agentMessages.data as string)
+                    : '';
+                const completionSummary = rawEndPayload || parts[1] || '';
+                // The Stop button hits backend's Action.skip_task, which
+                // also yields an `end` SSE event with this fixed sentinel.
+                // Treat the run as ongoing so chat_history.status accurately
+                // reflects whether the project actually completed; the
+                // history-replay polish keys off this flag.
+                const wasStoppedByUser = rawEndPayload.startsWith(
+                  '<summary>Task stopped</summary>'
+                );
                 const obj = {
                   project_name: parts[0] || '',
                   summary: completionSummary,
-                  status: 2,
+                  status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
@@ -2857,7 +2869,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             });
 
             taskRunning = taskRunning.map((task) => {
-              console.log('task.status', task.status);
               if (
                 task.status !== TaskStatus.COMPLETED &&
                 task.status !== TaskStatus.FAILED &&
