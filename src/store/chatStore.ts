@@ -2802,16 +2802,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               try {
                 const st = tasks[currentTaskId].summaryTask || '';
                 const parts = st.split('|');
-                const completionSummary =
-                  (typeof agentMessages.data === 'string'
-                    ? agentMessages.data
-                    : '') ||
-                  parts[1] ||
-                  '';
+                const rawEndPayload =
+                  typeof agentMessages.data === 'string'
+                    ? (agentMessages.data as string)
+                    : '';
+                const completionSummary = rawEndPayload || parts[1] || '';
+                // The Stop button hits backend's Action.skip_task, which
+                // also yields an `end` SSE event with this fixed sentinel.
+                // Treat the run as ongoing so chat_history.status accurately
+                // reflects whether the project actually completed; the
+                // history-replay polish keys off this flag.
+                const wasStoppedByUser = rawEndPayload.startsWith(
+                  '<summary>Task stopped</summary>'
+                );
                 const obj = {
                   project_name: parts[0] || '',
                   summary: completionSummary,
-                  status: 2,
+                  status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
