@@ -44,6 +44,10 @@ export interface MockedElectronAPI {
   onInstallDependenciesComplete: ReturnType<typeof vi.fn>;
   removeAllListeners: ReturnType<typeof vi.fn>;
 
+  onBackendReady: ReturnType<typeof vi.fn>;
+  restartBackend: ReturnType<typeof vi.fn>;
+  getBackendPort: ReturnType<typeof vi.fn>;
+
   // EnvUtil mock functions
   getEnvPath: ReturnType<typeof vi.fn>;
   updateEnvBlock: ReturnType<typeof vi.fn>;
@@ -58,6 +62,11 @@ export interface MockedElectronAPI {
   simulateVersionChange: (newVersion: string) => void;
   simulateVenvRemoval: () => void;
   simulateUvicornStartup: () => void;
+  simulateBackendReady: (
+    success: boolean,
+    port?: number,
+    error?: string
+  ) => void;
   simulateEnvCorruption: () => void;
   simulateUserEmailChange: (email: string) => void;
   simulateMcpConfigMissing: () => void;
@@ -83,6 +92,9 @@ export function createElectronAPIMock(): MockedElectronAPI {
   const installCompleteListeners: Array<
     (data: { success: boolean; code?: number; error?: string }) => void
   > = [];
+  const backendReadyListeners: Array<
+    (data: { success: boolean; port?: number; error?: string }) => void
+  > = [];
 
   const mockState = {
     venvExists: true,
@@ -106,6 +118,23 @@ export function createElectronAPIMock(): MockedElectronAPI {
 
   const electronAPI: MockedElectronAPI = {
     mockState,
+    onBackendReady: vi
+      .fn()
+      .mockImplementation(
+        (
+          callback: (data: {
+            success: boolean;
+            port?: number;
+            error?: string;
+          }) => void
+        ) => {
+          backendReadyListeners.push(callback);
+        }
+      ),
+
+    restartBackend: vi.fn().mockResolvedValue({ success: true }),
+
+    getBackendPort: vi.fn().mockResolvedValue(null),
 
     // Core API functions
     checkAndInstallDepsOnUpdate: vi.fn().mockImplementation(async () => {
@@ -232,6 +261,7 @@ export function createElectronAPIMock(): MockedElectronAPI {
       installStartListeners.length = 0;
       installLogListeners.length = 0;
       installCompleteListeners.length = 0;
+      backendReadyListeners.length = 0;
     }),
 
     // EnvUtil mock functions
@@ -366,6 +396,12 @@ export function createElectronAPIMock(): MockedElectronAPI {
       }, 100);
     },
 
+    simulateBackendReady: (success: boolean, port?: number, error?: string) => {
+      backendReadyListeners.forEach((listener) =>
+        listener({ success, port, error })
+      );
+    },
+
     simulateEnvCorruption: () => {
       mockState.envFileExists = true;
       mockState.envContent =
@@ -405,6 +441,7 @@ export function createElectronAPIMock(): MockedElectronAPI {
       installStartListeners.length = 0;
       installLogListeners.length = 0;
       installCompleteListeners.length = 0;
+      backendReadyListeners.length = 0;
 
       // Reset all mocks
       electronAPI.checkAndInstallDepsOnUpdate.mockClear();
@@ -419,6 +456,9 @@ export function createElectronAPIMock(): MockedElectronAPI {
       electronAPI.removeEnvKey.mockClear();
       electronAPI.getEmailFolderPath.mockClear();
       electronAPI.parseEnvBlock.mockClear();
+      electronAPI.onBackendReady.mockClear();
+      electronAPI.restartBackend.mockClear();
+      electronAPI.getBackendPort.mockClear();
     },
   };
 

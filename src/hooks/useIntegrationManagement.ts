@@ -51,6 +51,16 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   } | null>(null);
   const [callBackUrl, setCallBackUrl] = useState<string | null>(null);
 
+  const itemsRef = useRef(items);
+  const configsRef = useRef(configs);
+  const emailRef = useRef(email);
+
+  useEffect(() => {
+    itemsRef.current = items;
+    configsRef.current = configs;
+    emailRef.current = email;
+  });
+
   // Fetch installed configs
   const fetchInstalled = useCallback(async (ignore: boolean = false) => {
     try {
@@ -74,11 +84,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 
   // Recalculate installed status when items or configs change
   useEffect(() => {
+    const currentItems = itemsRef.current;
     const map: { [key: string]: boolean } = {};
 
-    items.forEach((item) => {
+    currentItems.forEach((item) => {
       if (item.key === 'Google Calendar') {
-        // Only mark installed when refresh token is present (auth completed)
         const hasRefreshToken = configs.some(
           (c: any) =>
             c.config_group?.toLowerCase() === 'google calendar' &&
@@ -88,7 +98,6 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         );
         map[item.key] = hasRefreshToken;
       } else if (item.key === 'LinkedIn') {
-        // LinkedIn: check if access token is present
         const hasAccessToken = configs.some(
           (c: any) =>
             c.config_group?.toLowerCase() === 'linkedin' &&
@@ -98,7 +107,6 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         );
         map[item.key] = hasAccessToken;
       } else {
-        // For other integrations, use config_group presence
         const hasConfig = configs.some(
           (c: any) => c.config_group?.toLowerCase() === item.key.toLowerCase()
         );
@@ -107,26 +115,25 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     });
 
     setInstalled(map);
-  }, [items, configs]);
+  }, [configs]);
 
   // Save environment variable and config
   const saveEnvAndConfig = useCallback(
     async (provider: string, envVarKey: string, value: string) => {
       const configPayload = {
-        // Keep exact group name to satisfy backend whitelist
         config_group: provider,
         config_name: envVarKey,
         config_value: value,
       };
 
-      // Fetch latest configs to avoid stale state when deciding POST/PUT
-      let latestConfigs: any[] = Array.isArray(configs) ? configs : [];
+      let latestConfigs: any[] = Array.isArray(configsRef.current)
+        ? configsRef.current
+        : [];
       try {
         const fresh = await proxyFetchGet('/api/v1/configs');
         if (Array.isArray(fresh)) latestConfigs = fresh;
       } catch {}
 
-      // Backend uniqueness is by config_name for a user
       let existingConfig = latestConfigs.find(
         (c: any) => c.config_name === envVarKey
       );
@@ -156,23 +163,26 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       }
 
       if (window.electronAPI?.envWrite) {
-        await window.electronAPI.envWrite(email, { key: envVarKey, value });
+        await window.electronAPI.envWrite(emailRef.current, {
+          key: envVarKey,
+          value,
+        });
       }
     },
-    [configs, email]
+    []
   );
 
   // Process OAuth callback
   const processOauth = useCallback(
     async (data: { provider: string; code: string }) => {
+      const currentItems = itemsRef.current;
       if (isLockedRef.current) return;
-      if (!items || items.length === 0) {
-        // Items not ready, cache event, wait for items to have value
+      if (!currentItems || currentItems.length === 0) {
         pendingOauthEventRef.current = data;
         return;
       }
       const provider = data.provider.toLowerCase();
-      const hasProviderInItems = items.some(
+      const hasProviderInItems = currentItems.some(
         (item) => item.key.toLowerCase() === provider
       );
       if (!hasProviderInItems) {
@@ -184,7 +194,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           `/api/v1/oauth/${provider}/token`,
           { code: data.code }
         );
-        const currentItem = items.find(
+        const currentItem = currentItems.find(
           (item) => item.key.toLowerCase() === provider
         );
         if (provider === 'slack') {
@@ -210,17 +220,14 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
             );
           }
         } else if (provider === 'linkedin') {
-          // LinkedIn OAuth: save token via local backend endpoint and config
           if (tokenResult.access_token) {
             try {
-              // Save token to local backend toolkit (token file is stored locally)
               await fetchPost('/linkedin/save-token', {
                 access_token: tokenResult.access_token,
                 refresh_token: tokenResult.refresh_token,
                 expires_in: tokenResult.expires_in,
               });
 
-              // Also save to config for UI status tracking
               await saveEnvAndConfig(
                 'LinkedIn',
                 'LINKEDIN_ACCESS_TOKEN',
@@ -253,7 +260,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         isLockedRef.current = false;
       }
     },
-    [items, saveEnvAndConfig, fetchInstalled]
+    [saveEnvAndConfig, fetchInstalled]
   );
 
   // Listen to main process OAuth authorization callback
@@ -283,10 +290,15 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 
   // Process cached OAuth event when items are ready
   useEffect(() => {
-    if (items && items.length > 0 && pendingOauthEventRef.current) {
+    const currentItems = itemsRef.current;
+    if (
+      currentItems &&
+      currentItems.length > 0 &&
+      pendingOauthEventRef.current
+    ) {
       const pending = pendingOauthEventRef.current;
       const provider = pending.provider.toLowerCase();
-      const hasProviderInItems = items.some(
+      const hasProviderInItems = currentItems.some(
         (item) => item.key.toLowerCase() === provider
       );
       if (hasProviderInItems) {
@@ -294,33 +306,32 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         pendingOauthEventRef.current = null;
       }
     }
-  }, [items, processOauth]);
+  }, [processOauth]);
 
   // Uninstall integration
   const handleUninstall = useCallback(
     async (item: IntegrationItem) => {
       checkAgentTool(item.key);
       const groupKey = item.key.toLowerCase();
-      const toDelete = configs.filter(
+      const toDelete = configsRef.current.filter(
         (c: any) => c.config_group && c.config_group.toLowerCase() === groupKey
       );
       for (const config of toDelete) {
         try {
           await proxyFetchDelete(`/api/v1/configs/${config.id}`);
-          // Delete env
           if (
             item.env_vars &&
             item.env_vars.length > 0 &&
             window.electronAPI?.envRemove
           ) {
-            await window.electronAPI.envRemove(email, item.env_vars[0]);
+            await window.electronAPI.envRemove(
+              emailRef.current,
+              item.env_vars[0]
+            );
           }
-        } catch (_e) {
-          // Ignore error
-        }
+        } catch (_e) {}
       }
 
-      // Clean up authentication tokens for Google Calendar, Notion, and LinkedIn
       if (item.key === 'Google Calendar') {
         try {
           await fetchDelete('/uninstall/tool/google_calendar');
@@ -344,12 +355,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         }
       }
 
-      // Update configs after deletion
       setConfigs((prev) =>
         prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
       );
     },
-    [configs, email, checkAgentTool]
+    [checkAgentTool]
   );
 
   // Helper to create MCP object from integration item

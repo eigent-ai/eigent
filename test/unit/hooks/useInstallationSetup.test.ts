@@ -37,18 +37,27 @@ describe('useInstallationSetup Hook', () => {
     const mocks = setupElectronMocks();
     electronAPI = mocks.electronAPI;
 
-    // Mock installation store
+    // Mock fetch for backend health checks in startBackendPolling
+    global.fetch = vi.fn().mockResolvedValue({ ok: true }) as any;
+
+    // Mock installation store (all methods used by the hook)
     mockInstallationStore = {
       startInstallation: vi.fn(),
       addLog: vi.fn(),
       setSuccess: vi.fn(),
       setError: vi.fn(),
+      performInstallation: vi.fn(),
+      setBackendError: vi.fn(),
+      setWaitingBackend: vi.fn(),
+      needsBackendRestart: false,
+      setNeedsBackendRestart: vi.fn(),
     };
 
     // Mock auth store
     mockAuthStore = {
       initState: 'done',
       setInitState: vi.fn(),
+      email: null,
     };
 
     // Set up mock implementations
@@ -128,6 +137,7 @@ describe('useInstallationSetup Hook', () => {
       expect(electronAPI.onInstallDependenciesStart).toHaveBeenCalled();
       expect(electronAPI.onInstallDependenciesLog).toHaveBeenCalled();
       expect(electronAPI.onInstallDependenciesComplete).toHaveBeenCalled();
+      expect(electronAPI.onBackendReady).toHaveBeenCalled();
     });
 
     it('should handle install-dependencies-start event', () => {
@@ -173,6 +183,12 @@ describe('useInstallationSetup Hook', () => {
       act(() => {
         completeCallback(completeData);
       });
+
+      // In the new two-phase flow, setSuccess is deferred until backend-ready
+      expect(mockInstallationStore.setSuccess).not.toHaveBeenCalled();
+
+      // Simulate backend-ready to complete the flow
+      electronAPI.simulateBackendReady(true, 8000);
 
       expect(mockInstallationStore.setSuccess).toHaveBeenCalled();
       expect(mockAuthStore.setInitState).toHaveBeenCalledWith('done');
@@ -227,6 +243,9 @@ describe('useInstallationSetup Hook', () => {
       );
       expect(electronAPI.removeAllListeners).toHaveBeenCalledWith(
         'install-dependencies-complete'
+      );
+      expect(electronAPI.removeAllListeners).toHaveBeenCalledWith(
+        'backend-ready'
       );
     });
   });
@@ -299,9 +318,20 @@ describe('useInstallationSetup Hook', () => {
         expect(mockInstallationStore.startInstallation).toHaveBeenCalled();
       });
 
-      // Should receive logs and completion
+      // Should receive logs from the installation
       await vi.waitFor(() => {
         expect(mockInstallationStore.addLog).toHaveBeenCalled();
+      });
+
+      // setSuccess is deferred until backend-ready event
+      expect(mockInstallationStore.setSuccess).not.toHaveBeenCalled();
+
+      // Simulate backend ready to complete the full flow
+      act(() => {
+        electronAPI.simulateBackendReady(true, 8000);
+      });
+
+      await vi.waitFor(() => {
         expect(mockInstallationStore.setSuccess).toHaveBeenCalled();
       });
     });
@@ -387,8 +417,8 @@ describe('useInstallationSetup Hook', () => {
       });
     });
 
-    it('should not set carousel state if initState is not done', async () => {
-      mockAuthStore.initState = 'loading';
+    it('should not set carousel state if initState is done', async () => {
+      mockAuthStore.initState = 'done';
 
       window.ipcRenderer.invoke = vi.fn().mockResolvedValue({
         success: true,
@@ -403,7 +433,8 @@ describe('useInstallationSetup Hook', () => {
         );
       });
 
-      // Should not call setInitState because initState is not 'done'
+      // Should not call setInitState('carousel') because initState is 'done'
+      // (the code only sets carousel when initState !== 'done')
       expect(mockAuthStore.setInitState).not.toHaveBeenCalledWith('carousel');
     });
   });
