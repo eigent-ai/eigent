@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
 import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
@@ -28,6 +27,7 @@ import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExample
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
 import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -36,7 +36,7 @@ import { SessionMode } from '@/types/constants';
 import { Cast, MonitorSmartphone } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
@@ -48,7 +48,6 @@ const EMPTY_TASK_ASSIGNING: Agent[] = [];
 export default function Workspace() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const location = useLocation();
   const host = useHost();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -80,7 +79,7 @@ export default function Workspace() {
   const { modelType, setWorkerList } = useAuthStore();
 
   const [message, setMessage] = useState('');
-  const [hasModel, setHasModel] = useState(false);
+  const { hasModel } = useModelConfigCheck();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [workspaceWorkWithPanelOpen, setWorkspaceWorkWithPanelOpen] =
@@ -96,24 +95,6 @@ export default function Workspace() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [workspaceWorkWithPanelOpen]);
 
-  const checkModelConfig = useCallback(async () => {
-    try {
-      if (modelType === 'cloud') {
-        const res = await proxyFetchGet('/api/v1/user/key');
-        setHasModel(!!res.value);
-      } else if (modelType === 'local' || modelType === 'custom') {
-        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
-        const providerList = res.items || [];
-        setHasModel(providerList.length > 0);
-      } else {
-        setHasModel(false);
-      }
-    } catch (err) {
-      console.error('Failed to check model config:', err);
-      setHasModel(false);
-    }
-  }, [modelType]);
-
   useEffect(() => {
     if (
       import.meta.env.VITE_USE_LOCAL_PROXY === 'true' &&
@@ -124,16 +105,6 @@ export default function Workspace() {
       setUseCloudModelInDev(false);
     }
   }, [modelType]);
-
-  useEffect(() => {
-    checkModelConfig();
-  }, [modelType, checkModelConfig]);
-
-  useEffect(() => {
-    if (location.pathname === '/') {
-      checkModelConfig();
-    }
-  }, [location.pathname, checkModelConfig]);
 
   const handleSend = async () => {
     if (
@@ -303,8 +274,8 @@ export default function Workspace() {
       });
 
   return (
-    <div className="min-h-0 relative flex h-full w-full flex-col">
-      <div className="px-3 relative z-50 flex h-[44px] w-full shrink-0 flex-row items-center justify-start">
+    <div className="relative flex h-full min-h-0 w-full flex-col">
+      <div className="relative z-50 flex h-[44px] w-full shrink-0 flex-row items-center justify-start px-3">
         <TooltipSimple content={workWithPanelToggleLabel} delayDuration={300}>
           <Button
             type="button"
@@ -314,21 +285,21 @@ export default function Workspace() {
             onClick={() => setWorkspaceWorkWithPanelOpen((open) => !open)}
             aria-expanded={workspaceWorkWithPanelOpen}
             aria-controls="workspace-work-with-panel"
-            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
             aria-label={workWithPanelToggleLabel}
           >
             <Cast className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
       </div>
-      <div className="min-h-0 relative z-0 flex w-full flex-1 flex-col items-stretch overflow-hidden">
-        <div className="min-h-0 px-3 flex w-full flex-1 flex-col">
+      <div className="relative z-0 flex min-h-0 w-full flex-1 flex-col items-stretch overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 flex-col px-3">
           <div className="mx-auto flex w-full max-w-[600px] shrink-0 flex-col">
-            <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
+            <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
               <div className="mb-8 flex w-full justify-center">
                 <WorkspaceProjectPicker />
               </div>
-              <span className="mb-8 text-ds-text-neutral-default-default text-heading-lg font-bold w-full text-center">
+              <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
                 {sessionSidePanelMode === SessionMode.SINGLE_AGENT
                   ? t('layout.workspace-cowork-single-agent', {
                       defaultValue: 'Cowork with Single Agent',
@@ -337,7 +308,7 @@ export default function Workspace() {
                       defaultValue: 'Cowork with Workforce',
                     })}
               </span>
-              <div className="px-5 mb-8 flex w-full justify-center">
+              <div className="mb-8 flex w-full justify-center px-5">
                 {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
                   <SingleAgentList />
                 ) : (
@@ -397,7 +368,7 @@ export default function Workspace() {
           </div>
 
           <div
-            className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+            className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
             id="workspace-bottom-group"
           >
             {showWorkspaceExamplePrompts ? (
@@ -424,7 +395,7 @@ export default function Workspace() {
         <>
           <button
             type="button"
-            className="inset-0 absolute z-40 cursor-default bg-transparent backdrop-blur-[1px]"
+            className="absolute inset-0 z-40 cursor-default bg-transparent backdrop-blur-[1px]"
             aria-label={t('layout.workspace-work-with-dismiss-overlay', {
               defaultValue: 'Dismiss',
             })}
@@ -435,19 +406,19 @@ export default function Workspace() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="workspace-work-with-heading"
-            className="left-0 top-8 ease-out animate-in fade-in-0 slide-in-from-left-2 absolute z-50 flex max-h-[calc(100%-2.75rem)] w-[300px] flex-col overflow-y-auto duration-200"
+            className="absolute left-0 top-8 z-50 flex max-h-[calc(100%-2.75rem)] w-[300px] flex-col overflow-y-auto duration-200 ease-out animate-in fade-in-0 slide-in-from-left-2"
           >
-            <div className="gap-3 p-3 flex flex-col">
-              <div className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default min-w-0 p-3 flex flex-col border border-solid">
+            <div className="flex flex-col gap-3 p-3">
+              <div className="flex min-w-0 flex-col rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-3">
                 <span
                   id="workspace-work-with-heading"
-                  className="text-ds-text-neutral-default-default text-body-sm font-semibold"
+                  className="text-body-sm font-semibold text-ds-text-neutral-default-default"
                 >
                   {t('layout.workspace-work-with-title', {
                     defaultValue: 'Work with',
                   })}
                 </span>
-                <div className="mt-3 gap-1 flex flex-col">
+                <div className="mt-3 flex flex-col gap-1">
                   <Button
                     type="button"
                     variant="ghost"
@@ -455,10 +426,10 @@ export default function Workspace() {
                     emphasis="default"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag gap-2 justify-start"
+                    className="no-drag justify-start gap-2"
                   >
                     <MonitorSmartphone
-                      className="text-ds-text-neutral-muted-default h-4 w-4 shrink-0"
+                      className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
                       aria-hidden
                     />
                     {t('layout.workspace-work-with-remote-control', {
@@ -472,7 +443,7 @@ export default function Workspace() {
                     emphasis="default"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag gap-2 justify-start"
+                    className="no-drag justify-start gap-2"
                     aria-label={t('layout.channels-telegram', {
                       defaultValue: 'Telegram',
                     })}
@@ -494,7 +465,7 @@ export default function Workspace() {
                     emphasis="default"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag gap-2 justify-start"
+                    className="no-drag justify-start gap-2"
                     aria-label={t('layout.channels-lark', {
                       defaultValue: 'Lark',
                     })}
@@ -502,7 +473,7 @@ export default function Workspace() {
                     <img
                       src={larkIcon}
                       alt=""
-                      className="h-4 w-4 rounded-lg shrink-0 object-contain"
+                      className="h-4 w-4 shrink-0 rounded-lg object-contain"
                       aria-hidden
                     />
                     {t('layout.channels-lark', { defaultValue: 'Lark' })}
@@ -514,7 +485,7 @@ export default function Workspace() {
                     emphasis="default"
                     size="sm"
                     buttonContent="text"
-                    className="no-drag gap-2 justify-start"
+                    className="no-drag justify-start gap-2"
                     aria-label={t('layout.channels-whatsapp', {
                       defaultValue: 'WhatsApp',
                     })}
