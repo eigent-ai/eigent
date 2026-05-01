@@ -19,22 +19,20 @@ import { persist } from 'zustand/middleware';
 type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
-type CloudModelType =
+export type CloudModelType =
   | 'gemini-3.1-pro-preview'
   | 'gemini-3-pro-preview'
   | 'gemini-3-flash-preview'
-  | 'gpt-4.1-mini'
-  | 'gpt-4.1'
   | 'claude-haiku-4-5'
   | 'claude-sonnet-4-5'
   | 'claude-sonnet-4-6'
   | 'claude-opus-4-6'
-  | 'gpt-5'
-  | 'gpt-5.1'
-  | 'gpt-5.2'
+  | 'claude-opus-4-7'
   | 'gpt-5.4'
+  | 'gpt-5.5'
   | 'gpt-5-mini'
-  | 'minimax_m2_5';
+  | 'deepseek-v4-pro'
+  | 'minimax_m2_7';
 
 // auth info interface
 interface AuthInfo {
@@ -93,7 +91,7 @@ interface AuthState {
 
 // random default model selection
 const getRandomDefaultModel = (): CloudModelType => {
-  const models: CloudModelType[] = ['gpt-5.2', 'gpt-5.1', 'gpt-4.1'];
+  const models: CloudModelType[] = ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini'];
   return models[Math.floor(Math.random() * models.length)];
 };
 
