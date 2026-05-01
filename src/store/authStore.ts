@@ -17,6 +17,7 @@ import {
   getRecommendedContrast,
 } from '@/lib/themeTokens/catalog';
 import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
+import { useProvidersCatalogStore } from '@/store/providersCatalogStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -34,20 +35,27 @@ export type WorkspaceMainBackground =
   | 'ruled'
   | 'dotted'
   | 'dashed';
-export type CloudModelType =
-  | 'gemini-3.1-pro-preview'
-  | 'gemini-3-pro-preview'
-  | 'gemini-3-flash-preview'
-  | 'claude-haiku-4-5'
-  | 'claude-sonnet-4-5'
-  | 'claude-sonnet-4-6'
-  | 'claude-opus-4-6'
-  | 'claude-opus-4-7'
-  | 'gpt-5.4'
-  | 'gpt-5.5'
-  | 'gpt-5-mini'
-  | 'deepseek-v4-pro'
-  | 'minimax_m2_7';
+export const CLOUD_MODEL_TYPES = [
+  'gemini-3.1-pro-preview',
+  'gemini-3-pro-preview',
+  'gemini-3-flash-preview',
+  'claude-haiku-4-5',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-6',
+  'claude-opus-4-6',
+  'claude-opus-4-7',
+  'gpt-5.4',
+  'gpt-5.5',
+  'gpt-5-mini',
+  'deepseek-v4-pro',
+  'minimax_m2_7',
+] as const;
+export type CloudModelType = (typeof CLOUD_MODEL_TYPES)[number];
+
+/** Narrow an arbitrary string into the {@link CloudModelType} union. */
+export function isCloudModelType(id: string): id is CloudModelType {
+  return (CLOUD_MODEL_TYPES as readonly string[]).includes(id);
+}
 
 // auth info interface
 interface AuthInfo {
@@ -82,6 +90,12 @@ interface AuthState {
    * while the API request is still in flight.
    */
   hasModelConfigured: boolean;
+  /**
+   * Session-only: true after the first model-config check finishes this app
+   * session. Not persisted so overlays / share-token handling do not reset on
+   * tab switches (see useModelConfigCheck in Home).
+   */
+  modelConfigCheckCompleted: boolean;
   initState: InitState;
 
   // IDE preference
@@ -121,6 +135,7 @@ interface AuthState {
   setModelType: (modelType: ModelType) => void;
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
+  setModelConfigCheckCompleted: (completed: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
@@ -135,6 +150,70 @@ const getRandomDefaultModel = (): CloudModelType => {
   const models: CloudModelType[] = ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini'];
   return models[Math.floor(Math.random() * models.length)];
 };
+
+export function migrateAuthPersistedState(
+  persistedState: unknown,
+  _fromVersion: number
+): unknown {
+  const s = persistedState as
+    | {
+        appearance?: string;
+        appearanceMode?: AppearanceMode;
+        customThemeCatalog?: Partial<ThemeCatalog>;
+        workspaceMainBackground?: string;
+        hasModelConfigured?: boolean;
+      }
+    | undefined;
+  if (!s) return persistedState;
+
+  const rawWmb = s.workspaceMainBackground;
+  let workspaceMainBackground: WorkspaceMainBackground = 'empty';
+  if (
+    rawWmb === 'dots' ||
+    rawWmb === 'blocks' ||
+    rawWmb === 'ruled' ||
+    rawWmb === 'dotted' ||
+    rawWmb === 'dashed'
+  ) {
+    workspaceMainBackground = rawWmb;
+  } else if (rawWmb === 'margin-ruled') {
+    workspaceMainBackground = 'ruled';
+  } else if (rawWmb === 'empty' || rawWmb === 'none') {
+    workspaceMainBackground = 'empty';
+  }
+
+  const normalizedAppearance: Mode = s.appearance === 'dark' ? 'dark' : 'light';
+  const normalizedAppearanceMode: AppearanceMode =
+    s.appearanceMode === 'system' || s.appearanceMode === 'dark'
+      ? s.appearanceMode
+      : normalizedAppearance;
+  const normalizedCustomCatalog: ThemeCatalog = {
+    light: s.customThemeCatalog?.light ?? {},
+    dark: s.customThemeCatalog?.dark ?? {},
+  };
+
+  const hasModelConfigured =
+    typeof s.hasModelConfigured === 'boolean' ? s.hasModelConfigured : false;
+
+  if (s.appearance === 'transparent') {
+    return {
+      ...s,
+      appearance: 'light',
+      appearanceMode: 'light',
+      customThemeCatalog: normalizedCustomCatalog,
+      workspaceMainBackground,
+      hasModelConfigured,
+    };
+  }
+  return {
+    ...s,
+    appearance: normalizedAppearance,
+    appearanceMode: normalizedAppearanceMode,
+    customThemeCatalog: normalizedCustomCatalog,
+    workspaceMainBackground,
+    hasModelConfigured,
+  };
+}
 
 // create store
 const authStore = create<AuthState>()(
@@ -159,6 +238,7 @@ const authStore = create<AuthState>()(
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       hasModelConfigured: false,
+      modelConfigCheckCompleted: false,
       preferredIDE: 'system',
       workspaceMainBackground: 'empty',
       initState: 'carousel',
@@ -170,7 +250,8 @@ const authStore = create<AuthState>()(
       setAuth: ({ token, username, email, user_id }) =>
         set({ token, username, email, user_id }),
 
-      logout: () =>
+      logout: () => {
+        useProvidersCatalogStore.getState().reset();
         set({
           token: null,
           username: null,
@@ -178,7 +259,10 @@ const authStore = create<AuthState>()(
           user_id: null,
           initState: 'carousel',
           localProxyValue: null,
-        }),
+          hasModelConfigured: false,
+          modelConfigCheckCompleted: false,
+        });
+      },
 
       // set related methods
       setAppearance: (appearance) =>
@@ -254,6 +338,9 @@ const authStore = create<AuthState>()(
       setHasModelConfigured: (hasModelConfigured) =>
         set({ hasModelConfigured }),
 
+      setModelConfigCheckCompleted: (modelConfigCheckCompleted) =>
+        set({ modelConfigCheckCompleted }),
+
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
@@ -306,62 +393,8 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 6,
-      migrate: (persistedState, _version) => {
-        const s = persistedState as
-          | {
-              appearance?: string;
-              appearanceMode?: AppearanceMode;
-              customThemeCatalog?: Partial<ThemeCatalog>;
-              workspaceMainBackground?: string;
-            }
-          | undefined;
-        if (!s) return persistedState as typeof persistedState;
-
-        const rawWmb = s.workspaceMainBackground;
-        let workspaceMainBackground: WorkspaceMainBackground = 'empty';
-        if (
-          rawWmb === 'dots' ||
-          rawWmb === 'blocks' ||
-          rawWmb === 'ruled' ||
-          rawWmb === 'dotted' ||
-          rawWmb === 'dashed'
-        ) {
-          workspaceMainBackground = rawWmb;
-        } else if (rawWmb === 'margin-ruled') {
-          workspaceMainBackground = 'ruled';
-        } else if (rawWmb === 'empty' || rawWmb === 'none') {
-          workspaceMainBackground = 'empty';
-        }
-
-        const normalizedAppearance: Mode =
-          s.appearance === 'dark' ? 'dark' : 'light';
-        const normalizedAppearanceMode: AppearanceMode =
-          s.appearanceMode === 'system' || s.appearanceMode === 'dark'
-            ? s.appearanceMode
-            : normalizedAppearance;
-        const normalizedCustomCatalog: ThemeCatalog = {
-          light: s.customThemeCatalog?.light ?? {},
-          dark: s.customThemeCatalog?.dark ?? {},
-        };
-
-        if (s.appearance === 'transparent') {
-          return {
-            ...s,
-            appearance: 'light',
-            appearanceMode: 'light',
-            customThemeCatalog: normalizedCustomCatalog,
-            workspaceMainBackground,
-          };
-        }
-        return {
-          ...s,
-          appearance: normalizedAppearance,
-          appearanceMode: normalizedAppearanceMode,
-          customThemeCatalog: normalizedCustomCatalog,
-          workspaceMainBackground,
-        } as typeof persistedState;
-      },
+      version: 7,
+      migrate: migrateAuthPersistedState,
       partialize: (state) => ({
         token: state.token,
         username: state.username,
@@ -376,6 +409,7 @@ const authStore = create<AuthState>()(
         language: state.language,
         modelType: state.modelType,
         cloud_model_type: state.cloud_model_type,
+        hasModelConfigured: state.hasModelConfigured,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
         preferredIDE: state.preferredIDE,
