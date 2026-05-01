@@ -20,7 +20,6 @@
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import type { Provider } from '@/types';
 import type { TFunction } from 'i18next';
-import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'sonner';
 
 export type DefaultModelCategory = 'cloud' | 'custom' | 'local';
@@ -29,6 +28,10 @@ export type DefaultModelFormRow = {
   provider_id?: number;
   prefer?: boolean;
 };
+
+type SetDefaultModelFormUpdater<T extends DefaultModelFormRow> = (
+  updater: (prev: T[]) => T[]
+) => void;
 
 export function isDefaultModelConfigured(
   category: DefaultModelCategory,
@@ -64,13 +67,15 @@ async function checkHasSearchKey(): Promise<boolean> {
   return Boolean(hasApiKey && hasApiId);
 }
 
-export interface ApplyDefaultModelSelectionParams {
+export interface ApplyDefaultModelSelectionParams<
+  TFormRow extends DefaultModelFormRow = DefaultModelFormRow,
+> {
   category: DefaultModelCategory;
   modelId: string;
   items: Provider[];
-  form: DefaultModelFormRow[];
+  form: TFormRow[];
   /** Full provider form state from UIs (BYOK + chat); we only read/update `prefer`. */
-  setForm: Dispatch<SetStateAction<unknown[]>>;
+  setForm: SetDefaultModelFormUpdater<TFormRow>;
   setCloudPrefer: (v: boolean) => void;
   setLocalPrefer: (v: boolean) => void;
   setLocalPlatform: (p: string) => void;
@@ -85,9 +90,9 @@ export interface ApplyDefaultModelSelectionParams {
  * Applies default model for an already-configured option. Call only when
  * {@link isDefaultModelConfigured} is true.
  */
-export async function applyDefaultModelSelection(
-  params: ApplyDefaultModelSelectionParams
-): Promise<boolean> {
+export async function applyDefaultModelSelection<
+  TFormRow extends DefaultModelFormRow,
+>(params: ApplyDefaultModelSelectionParams<TFormRow>): Promise<boolean> {
   const {
     category,
     modelId,
@@ -106,7 +111,7 @@ export async function applyDefaultModelSelection(
 
   try {
     if (category === 'cloud') {
-      setForm((f) => (f as object[]).map((fi) => ({ ...fi, prefer: false })));
+      setForm((f) => f.map((fi) => ({ ...fi, prefer: false }) as TFormRow));
       setLocalPrefer(false);
       setCloudPrefer(true);
       setModelType('cloud');
@@ -138,7 +143,7 @@ export async function applyDefaultModelSelection(
       setCloudPrefer(false);
       setLocalPrefer(false);
       setForm((f) =>
-        (f as object[]).map((fi, i) => ({ ...fi, prefer: i === idx }))
+        f.map((fi, i) => ({ ...fi, prefer: i === idx }) as TFormRow)
       );
       return true;
     }
@@ -163,7 +168,7 @@ export async function applyDefaultModelSelection(
         provider_id: targetProviderId,
       });
       setModelType('local');
-      setForm((f) => (f as object[]).map((fi) => ({ ...fi, prefer: false })));
+      setForm((f) => f.map((fi) => ({ ...fi, prefer: false }) as TFormRow));
       setLocalPrefer(true);
       setCloudPrefer(false);
       return true;
