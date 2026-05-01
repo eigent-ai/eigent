@@ -12,10 +12,80 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
-import { ChatTaskStatus } from '@/types/constants';
+import {
+  ChatTaskStatus,
+  TaskStatus,
+  type TaskStatusType,
+} from '@/types/constants';
 import { create } from 'zustand';
 import { createChatStoreInstance, VanillaChatStore } from './chatStore';
+
+/**
+ * After a history project finishes replaying, the per-subtask `status` may be
+ * incomplete: backend's recorded SSE stream only carries `task_state` for
+ * leaf subtasks, so any top-level subtask that was further decomposed never
+ * gets its TaskStatus.COMPLETED set on replay (it stays at the EMPTY seed
+ * from the TO_SUB_TASKS handler). This polish pass uses the authoritative
+ * `chat_history.status` (set via direct PUT, not through the unreliable
+ * step-sync path) to decide whether the project as a whole completed; if so,
+ * any leftover non-terminal subtask is promoted to COMPLETED so the badge
+ * renders Done instead of Pending.
+ *
+ * Important: clicking the Stop button hits backend's Action.skip_task, which
+ * ALSO yields an `end` SSE event (with summary "<summary>Task stopped</…>")
+ * and triggers the same status=2 PUT. So `status === done` alone can't
+ * distinguish natural completion from a user-initiated stop. The skip_task
+ * path embeds a fixed sentinel in the END payload, which the frontend writes
+ * verbatim into `chat_history.summary`; we use that prefix to opt those tasks
+ * out of the polish.
+ */
+const HISTORY_STATUS_DONE = 2;
+const STOPPED_BY_USER_SUMMARY_PREFIX = '<summary>Task stopped</summary>';
+const TERMINAL_SUBTASK_STATUSES = new Set<TaskStatusType>([
+  TaskStatus.COMPLETED,
+  TaskStatus.FAILED,
+  TaskStatus.SKIPPED,
+]);
+
+const promoteSubtaskStatus = (
+  status: TaskStatusType | undefined
+): TaskStatusType =>
+  status && TERMINAL_SUBTASK_STATUSES.has(status)
+    ? status
+    : TaskStatus.COMPLETED;
+
+const polishCompletedHistoryTask = (
+  chatStore: VanillaChatStore,
+  taskId: string
+) => {
+  const state = chatStore.getState();
+  const task = state.tasks[taskId];
+  if (!task) return;
+
+  state.setTaskInfo(
+    taskId,
+    task.taskInfo.map((t) => ({ ...t, status: promoteSubtaskStatus(t.status) }))
+  );
+  state.setTaskRunning(
+    taskId,
+    task.taskRunning.map((t) => ({
+      ...t,
+      status: promoteSubtaskStatus(t.status),
+    }))
+  );
+  state.setTaskAssigning(
+    taskId,
+    task.taskAssigning.map((agent) => ({
+      ...agent,
+      tasks: agent.tasks.map((t) => ({
+        ...t,
+        status: promoteSubtaskStatus(t.status),
+      })),
+    }))
+  );
+};
 
 export enum ProjectType {
   NORMAL = 'normal',
@@ -661,6 +731,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     let cancelled = false;
+    const loadedChatStoresByTaskId = new Map<string, VanillaChatStore>();
     for (let index = 0; index < taskIds.length; index++) {
       if (get().activeProjectId !== loadProjectId) {
         console.log(
@@ -680,6 +751,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         if (chatStore) {
           try {
             await chatStore.getState().replay(taskId, question, 0);
+            loadedChatStoresByTaskId.set(taskId, chatStore);
             console.log(`[ProjectStore] Loaded task ${taskId}`);
           } catch (error) {
             console.error(
@@ -688,6 +760,42 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             );
           }
         }
+      }
+    }
+
+    // Polish leftover non-terminal subtask statuses for tasks that the
+    // server marks as done. See `polishCompletedHistoryTask` above for why.
+    if (!cancelled && loadedChatStoresByTaskId.size > 0) {
+      try {
+        const grouped = await proxyFetchGet(
+          `/api/v1/chat/histories/grouped/${projectId}`,
+          { include_tasks: true }
+        );
+        const doneTaskIds = new Set<string>();
+        for (const t of grouped?.tasks ?? []) {
+          if (!t?.task_id || t?.status !== HISTORY_STATUS_DONE) continue;
+          // Skip the polish for tasks the user explicitly stopped — the
+          // skip_task backend path also marks status=done, but the run
+          // genuinely didn't complete and the unfinished subtasks should
+          // stay Pending.
+          if (
+            typeof t?.summary === 'string' &&
+            t.summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)
+          ) {
+            continue;
+          }
+          doneTaskIds.add(t.task_id);
+        }
+        for (const [taskId, chatStore] of loadedChatStoresByTaskId) {
+          if (doneTaskIds.has(taskId)) {
+            polishCompletedHistoryTask(chatStore, taskId);
+          }
+        }
+      } catch (error) {
+        console.warn(
+          '[ProjectStore] Failed to polish history subtask statuses:',
+          error
+        );
       }
     }
 

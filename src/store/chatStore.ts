@@ -1740,18 +1740,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               type !== 'replay' &&
                 agentMessages.data.sub_tasks?.push(newTaskInfo);
             }
-            // Replay/history loads carry the recorded final statuses from the
-            // backend; resetting them would wipe out completion progress so
-            // the badge falls back to "Pending". Only seed EMPTY for fresh
-            // task runs that haven't started executing yet.
-            if (type !== 'replay') {
-              agentMessages.data.sub_tasks = agentMessages.data.sub_tasks?.map(
-                (item) => {
-                  item.status = TaskStatus.EMPTY;
-                  return item;
-                }
-              );
-            }
+            // Sub-tasks arrive from the backend with a camel `state` field
+            // (OPEN/RUNNING/DONE/FAILED), not the frontend's `status`. Seed
+            // every entry with EMPTY so the badge renders as Pending; later
+            // SSE events (ASSIGN_TASK, TASK_STATE, …) drive the real status.
+            // Replay finalization happens in the END handler below.
+            agentMessages.data.sub_tasks = agentMessages.data.sub_tasks?.map(
+              (item) => {
+                item.status = TaskStatus.EMPTY;
+                return item;
+              }
+            );
 
             if (!type && historyId) {
               const obj = {
@@ -2839,7 +2838,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             });
 
             taskRunning = taskRunning.map((task) => {
-              console.log('task.status', task.status);
               if (
                 task.status !== TaskStatus.COMPLETED &&
                 task.status !== TaskStatus.FAILED &&
