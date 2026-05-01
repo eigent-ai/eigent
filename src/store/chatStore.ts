@@ -1740,12 +1740,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               type !== 'replay' &&
                 agentMessages.data.sub_tasks?.push(newTaskInfo);
             }
-            agentMessages.data.sub_tasks = agentMessages.data.sub_tasks?.map(
-              (item) => {
-                item.status = TaskStatus.EMPTY;
-                return item;
-              }
-            );
+            // Replay/history loads carry the recorded final statuses from the
+            // backend; resetting them would wipe out completion progress so
+            // the badge falls back to "Pending". Only seed EMPTY for fresh
+            // task runs that haven't started executing yet.
+            if (type !== 'replay') {
+              agentMessages.data.sub_tasks = agentMessages.data.sub_tasks?.map(
+                (item) => {
+                  item.status = TaskStatus.EMPTY;
+                  return item;
+                }
+              );
+            }
 
             if (!type && historyId) {
               const obj = {
