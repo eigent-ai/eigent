@@ -15,8 +15,19 @@
 // Usage: npm run dev:web | npm run build:web
 
 import react from '@vitejs/plugin-react';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
+
+const proxyHttpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+});
+const proxyHttpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+});
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -44,6 +55,9 @@ export default defineConfig(({ mode }) => {
             '/api': {
               target: env.VITE_PROXY_URL,
               changeOrigin: true,
+              agent: env.VITE_PROXY_URL.startsWith('https')
+                ? proxyHttpsAgent
+                : proxyHttpAgent,
             },
           }
         : undefined,
