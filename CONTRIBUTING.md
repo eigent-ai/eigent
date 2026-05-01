@@ -259,25 +259,20 @@ Our aim is to make the developer setup as straightforward as possible. If you en
 
 ## Quick Start 🚀
 
+### Local Development
+
 ```bash
 git clone https://github.com/eigent-ai/eigent.git
 cd eigent
 npm install
 npm run dev
-
-# In a separate terminal, start the backend server
-cd server
-docker compose up -d
-# Stream the logs if you needed
-docker compose logs -f
 ```
 
-To run the application locally in developer mode:
+Then go to settings to specify your model key and model type.
 
-1. Configure `.env.development`:
-   - Set `VITE_USE_LOCAL_PROXY=true`
-   - Set `VITE_PROXY_URL=http://localhost:3001`
-1. Go to the settings to specify your model key and model type.
+### CLI
+
+See [cli/README.md](cli/README.md) for CLI installation and usage.
 
 ## Common Actions 🔄
 
