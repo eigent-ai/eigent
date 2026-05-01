@@ -26,6 +26,7 @@ export const AgentStep = {
   TASK_STATE: 'task_state',
   ACTIVATE_AGENT: 'activate_agent',
   DEACTIVATE_AGENT: 'deactivate_agent',
+  REQUEST_USAGE: 'request_usage',
   ASSIGN_TASK: 'assign_task',
   ACTIVATE_TOOLKIT: 'activate_toolkit',
   DEACTIVATE_TOOLKIT: 'deactivate_toolkit',
