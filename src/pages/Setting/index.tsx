@@ -19,6 +19,7 @@ import VerticalNavigation, {
 } from '@/components/Dashboard/VerticalNav';
 import useAppVersion from '@/hooks/use-app-version';
 import { useHost } from '@/host';
+import { SITE_URL } from '@/lib';
 import Appearance from '@/pages/Setting/Appearance';
 import General from '@/pages/Setting/General';
 import Privacy from '@/pages/Setting/Privacy';
@@ -120,7 +121,7 @@ export default function Setting() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="w-40 pr-6 pt-8 flex h-auto flex-shrink-0 flex-grow-0 flex-col self-start">
+      <div className="flex h-auto w-40 flex-shrink-0 flex-grow-0 flex-col self-start pr-6 pt-8">
         <VerticalNavigation
           items={
             settingMenus.map((menu) => {
@@ -134,22 +135,16 @@ export default function Setting() {
           }
           value={activeTab}
           onValueChange={handleTabChange}
-          className="min-h-0 gap-0 h-fit w-full flex-none"
+          className="h-fit min-h-0 w-full flex-none gap-0"
           listClassName="h-auto w-full"
           contentClassName="hidden"
         />
         <button
           type="button"
-          onClick={() =>
-            window.open(
-              'https://www.eigent.ai',
-              '_blank',
-              'noopener,noreferrer'
-            )
-          }
+          onClick={() => window.open(SITE_URL, '_blank', 'noopener,noreferrer')}
           className="no-drag mt-4 flex cursor-pointer items-center bg-transparent transition-opacity duration-200 hover:opacity-60"
         >
-          <img src={logoSrc} alt="Eigent" className="h-6 ml-3 w-auto" />
+          <img src={logoSrc} alt="Eigent" className="ml-3 h-6 w-auto" />
         </button>
         <button
           type="button"
@@ -166,8 +161,8 @@ export default function Setting() {
           }}
           className={
             packageUpdateAvailable
-              ? 'no-drag mt-4 min-w-0 gap-1.5 bg-ds-bg-neutral-subtle-default px-5 py-1 flex w-full cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90'
-              : 'no-drag mt-4 min-w-0 gap-1.5 bg-ds-bg-neutral-subtle-default px-5 py-1 flex w-full cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-60'
+              ? 'no-drag mt-4 flex w-full min-w-0 cursor-pointer flex-row items-center justify-center gap-1.5 rounded-full bg-ds-bg-neutral-subtle-default px-5 py-1 transition-opacity duration-200 hover:opacity-90'
+              : 'no-drag mt-4 flex w-full min-w-0 cursor-pointer flex-row items-center justify-center gap-1.5 rounded-full bg-ds-bg-neutral-subtle-default px-5 py-1 transition-opacity duration-200 hover:opacity-60'
           }
           aria-label={
             packageUpdateAvailable
@@ -184,16 +179,16 @@ export default function Setting() {
         >
           {packageUpdateAvailable ? (
             <Download
-              className="h-4 w-4 text-ds-text-neutral-default-default shrink-0 stroke-2"
+              className="h-4 w-4 shrink-0 stroke-2 text-ds-text-neutral-default-default"
               aria-hidden
             />
           ) : (
             <TagIcon
-              className="h-4 w-4 text-ds-text-success-default-default shrink-0 stroke-2"
+              className="h-4 w-4 shrink-0 stroke-2 text-ds-text-success-default-default"
               aria-hidden
             />
           )}
-          <span className="min-w-0 text-label-sm font-semibold text-ds-text-neutral-default-default flex-1 truncate text-left">
+          <span className="min-w-0 flex-1 truncate text-left text-label-sm font-semibold text-ds-text-neutral-default-default">
             {packageUpdateAvailable
               ? [t('update.new-version-available'), packageNewVersion]
                   .filter(Boolean)
@@ -204,7 +199,7 @@ export default function Setting() {
       </div>
 
       <div className="flex h-auto w-full flex-1 flex-col">
-        <div className="gap-4 flex flex-col">
+        <div className="flex flex-col gap-4">
           {activeTab === 'general' && <General />}
           {activeTab === 'appearance' && <Appearance />}
           {activeTab === 'privacy' && <Privacy />}

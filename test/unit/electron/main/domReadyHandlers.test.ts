@@ -73,7 +73,7 @@ describe('createWindow - DOM Ready Event Handlers', () => {
                     language: 'system',
                     isFirstLaunch: true,
                     modelType: 'cloud',
-                    cloud_model_type: 'gpt-4.1',
+                    cloud_model_type: 'gpt-5.4',
                     initState: 'carousel',
                     share_token: null,
                     workerListData: {}
@@ -160,7 +160,7 @@ describe('createWindow - DOM Ready Event Handlers', () => {
                     language: 'system',
                     isFirstLaunch: true,
                     modelType: 'cloud',
-                    cloud_model_type: 'gpt-4.1',
+                    cloud_model_type: 'gpt-5.4',
                     initState: 'carousel',
                     share_token: null,
                     workerListData: {}
@@ -197,7 +197,7 @@ describe('createWindow - DOM Ready Event Handlers', () => {
       expect(injectedScript).toContain("language: 'system'");
       expect(injectedScript).toContain('isFirstLaunch: true');
       expect(injectedScript).toContain("modelType: 'cloud'");
-      expect(injectedScript).toContain("cloud_model_type: 'gpt-4.1'");
+      expect(injectedScript).toContain("cloud_model_type: 'gpt-5.4'");
       expect(injectedScript).toContain("initState: 'carousel'");
       expect(injectedScript).toContain('share_token: null');
       expect(injectedScript).toContain('workerListData: {}');
@@ -420,7 +420,7 @@ describe('createWindow - DOM Ready Event Handlers', () => {
                     language: 'system',
                     isFirstLaunch: true,
                     modelType: 'cloud',
-                    cloud_model_type: 'gpt-4.1',
+                    cloud_model_type: 'gpt-5.4',
                     initState: 'carousel',
                     share_token: null,
                     workerListData: {}
