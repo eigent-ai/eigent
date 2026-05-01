@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from app.component import code
 from app.component.environment import sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
+from app.hitl.config import ApprovalRequest
 from app.model.chat import (
     AddTaskRequest,
     Chat,
@@ -35,6 +36,7 @@ from app.model.chat import (
     SupplementChat,
     sse_json,
 )
+from app.model.enums import ApprovalAction
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
@@ -176,6 +178,7 @@ async def post(data: Chat, request: Request):
     )
 
     task_lock = get_or_create_task_lock(data.project_id)
+    task_lock.hitl_options = data.hitl_options
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -257,6 +260,10 @@ def improve(id: str, data: SupplementChat):
         extra={"task_id": id, "question_length": len(data.question)},
     )
     task_lock = get_task_lock(id)
+
+    # Update HITL options if provided (user may have changed settings)
+    if data.hitl_options is not None:
+        task_lock.hitl_options = data.hitl_options
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
@@ -413,6 +420,39 @@ def human_reply(id: str, data: HumanReply):
     task_lock = get_task_lock(id)
     asyncio.run(task_lock.put_human_input(data.agent, data.reply))
     chat_logger.debug("Human reply processed", extra={"task_id": id})
+    return Response(status_code=201)
+
+
+@router.post("/chat/{id}/approval")
+def approval(id: str, data: ApprovalRequest):
+    """Handle user approval response for a command requiring confirmation."""
+    chat_logger.info(
+        "Approval received",
+        extra={
+            "task_id": id,
+            "agent": data.agent,
+            "approval": data.approval,
+            "approval_id": data.approval_id,
+        },
+    )
+    task_lock = get_task_lock(id)
+
+    if data.approval == ApprovalAction.auto_approve:
+        # Set flag and resolve ALL pending approvals for this agent
+        task_lock.auto_approve[data.agent] = True
+        task_lock.resolve_all_approvals_for_agent(
+            data.agent, ApprovalAction.auto_approve
+        )
+    elif data.approval == ApprovalAction.reject:
+        # Resolve ALL pending for this agent (skip-task cleanup handles rest)
+        task_lock.resolve_all_approvals_for_agent(
+            data.agent, ApprovalAction.reject
+        )
+    else:
+        # approve_once: resolve only the specific request
+        task_lock.resolve_approval(data.approval_id, data.approval)
+
+    chat_logger.debug("Approval processed", extra={"task_id": id})
     return Response(status_code=201)
 
 

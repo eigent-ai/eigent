@@ -1,6 +1,10 @@
 {
   "settings": "Réglages",
   "general": "General",
+  "human-in-the-loop": "Supervision",
+  "human-in-the-loop-title": "Supervision",
+  "terminal-approval": "Approbation des commandes",
+  "terminal-approval-hint": "Demander votre approbation avant d'exécuter des commandes de terminal potentiellement dangereuses (ex. rm, sudo, kill).",
   "privacy": "Privacy",
   "models": "Models",
   "mcp": "MCP & Tools",
