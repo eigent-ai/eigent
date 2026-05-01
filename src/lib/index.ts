@@ -14,6 +14,9 @@
 
 import { getAuthStore } from '@/store/authStore';
 
+export const SITE_URL =
+  import.meta.env.VITE_SITE_URL || 'https://www.eigent.ai';
+
 export function getProxyBaseURL() {
   const isDev = import.meta.env.DEV;
 

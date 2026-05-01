@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import i18n from '@/i18n';
+import { SITE_URL } from '@/lib';
 import { toast } from 'sonner';
 
 export function showStorageToast() {
@@ -25,7 +26,7 @@ export function showStorageToast() {
       Please{' '}
       <a
         className="cursor-pointer underline"
-        onClick={() => (window.location.href = 'https://www.eigent.ai/pricing')}
+        onClick={() => (window.location.href = `${SITE_URL}/pricing`)}
       >
         {i18n.t('chat.upgrade')}
       </a>{' '}
