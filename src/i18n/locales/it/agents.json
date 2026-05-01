@@ -37,6 +37,7 @@
   "upload": "Carica",
   "invalid-file-type": "Tipo di file non valido. Carica un file .skill, .md, .txt o .json.",
   "file-too-large": "Il file è troppo grande. La dimensione massima è 1MB.",
+  "zip-import-too-large": "Il file ZIP è troppo grande. La dimensione massima è 50 MB.",
   "file-read-error": "Impossibile leggere il file. Riprova.",
   "reupload-file": "Carica di nuovo un file",
   "upload-error-invalid-format": "Il file deve essere un .zip o un pacchetto skill (.skill o .md).",
@@ -46,5 +47,12 @@
   "custom-skill": "Competenza personalizzata",
   "delete-skill": "Elimina competenza",
   "delete-skill-confirmation": "Sei sicuro di voler eliminare \"{{name}}\"? Questa azione non può essere annullata.",
-  "skill-deleted-success": "Competenza eliminata con successo!"
+  "skill-deleted-success": "Competenza eliminata con successo!",
+  "create-skill": "Crea un'abilità",
+  "upload-skill": "Carica un'abilità",
+  "browse-skills": "Sfoglia le abilità",
+  "create-skill-default-name": "Nuova abilità",
+  "create-skill-default-description": "Descrivi cosa fa questa abilità.",
+  "save-skill": "Salva abilità",
+  "compose-skill-hint": "Modifica SKILL.md (è richiesto il frontmatter YAML con nome e descrizione), poi salva."
 }

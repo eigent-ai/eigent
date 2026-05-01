@@ -421,7 +421,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       selectedTrigger?.config?.authentication_required;
 
     return (
-      <div className="flex w-full flex-col gap-6 py-6 pl-6 pr-4">
+      <div className="gap-6 py-6 pl-6 pr-4 flex w-full flex-col">
         {/* Trigger Name */}
         <Input
           id="name"
@@ -478,15 +478,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               // Don't change trigger_type when switching to app tab
               // The actual type will be set when user selects an app
             }}
-            className="w-full rounded-2xl bg-surface-disabled"
+            className="rounded-2xl bg-ds-bg-neutral-muted-disabled w-full"
           >
-            <TabsList
-              variant="outline"
-              className="w-full rounded-t-2xl border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary px-4"
-            >
+            <TabsList appearance="default" className="w-full">
               <TabsTrigger
                 value="schedule"
-                className="flex-1"
+                className="text-body-sm gap-2 flex-1"
                 disabled={!!selectedTrigger}
               >
                 <AlarmClockIcon className="h-4 w-4" />
@@ -494,7 +491,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               </TabsTrigger>
               <TabsTrigger
                 value="app"
-                className="flex-1"
+                className="text-body-sm gap-2 flex-1"
                 disabled={!!selectedTrigger}
               >
                 <CableIcon className="h-4 w-4" />
@@ -521,9 +518,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                   <Label className="text-sm font-bold">
                     {t('triggers.select-app')}
                   </Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="gap-3 grid grid-cols-2">
                     <Card
-                      className="relative flex h-24 cursor-pointer flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary transition-colors hover:border-border-secondary"
+                      className="h-24 gap-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default hover:border-ds-border-neutral-default-default relative flex cursor-pointer flex-col items-center justify-center transition-colors"
                       onClick={() => {
                         setSelectedApp('slack');
                         setFormData({
@@ -536,12 +533,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                       }}
                     >
                       <img src={slackIcon} alt="Slack" className="h-8 w-8" />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
                         Slack
                       </span>
                     </Card>
                     <Card
-                      className="relative flex h-24 cursor-pointer flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary transition-colors hover:border-border-secondary"
+                      className="h-24 gap-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default hover:border-ds-border-neutral-default-default relative flex cursor-pointer flex-col items-center justify-center transition-colors"
                       onClick={() => {
                         setSelectedApp('webhook');
                         setFormData({
@@ -554,26 +551,26 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                       }}
                     >
                       <WebhookIcon className="h-5 w-5" />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
                         Webhook
                       </span>
                     </Card>
-                    <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary opacity-50 transition-colors hover:border-border-secondary">
+                    <Card className="h-24 gap-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default hover:border-ds-border-neutral-default-default relative flex cursor-not-allowed flex-col items-center justify-center opacity-50 transition-colors">
                       <Badge
                         variant="secondary"
-                        className="absolute right-2 top-2 text-xs"
+                        className="right-2 top-2 text-xs absolute"
                       >
                         Coming Soon
                       </Badge>
                       <img src={larkIcon} alt="Lark" className="h-8 w-8" />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
                         Lark
                       </span>
                     </Card>
-                    <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-border-tertiary bg-surface-primary opacity-50 transition-colors hover:border-border-secondary">
+                    <Card className="h-24 gap-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default hover:border-ds-border-neutral-default-default relative flex cursor-not-allowed flex-col items-center justify-center opacity-50 transition-colors">
                       <Badge
                         variant="secondary"
-                        className="absolute right-2 top-2 text-xs"
+                        className="right-2 top-2 text-xs absolute"
                       >
                         Coming Soon
                       </Badge>
@@ -582,7 +579,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         alt="Telegram"
                         className="h-8 w-8"
                       />
-                      <span className="text-body-md font-semibold text-text-heading">
+                      <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
                         Telegram
                       </span>
                     </Card>
@@ -591,7 +588,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               ) : (
                 <div className="space-y-4">
                   <div className="mb-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="gap-2 flex items-center">
                       {selectedApp === 'slack' && <Slack className="h-5 w-5" />}
                       {selectedApp === 'webhook' && (
                         <WebhookIcon className="h-5 w-5" />
@@ -618,19 +615,19 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     )}
                   </div>
                   {!selectedTrigger || !formData.webhook_url ? (
-                    <div className="rounded-lg bg-surface-secondary p-3 text-sm text-text-label">
+                    <div className="rounded-lg bg-ds-bg-neutral-default-default p-3 text-sm text-ds-text-neutral-muted-default">
                       {t('triggers.webhook-url-after-creation')}
                     </div>
                   ) : (
                     <div
-                      className={`flex flex-row items-center justify-start gap-4 rounded-xl bg-surface-primary p-4 ${needsAuth ? 'border border-yellow-500' : ''}`}
+                      className={`gap-4 rounded-xl bg-ds-bg-neutral-subtle-default p-4 flex flex-row items-center justify-start ${needsAuth ? 'border-yellow-500 border' : ''}`}
                     >
-                      <div className="flex w-full items-center gap-2 break-all font-mono text-sm text-text-body">
+                      <div className="gap-2 font-mono text-sm text-ds-text-neutral-default-default flex w-full items-center break-all">
                         {needsAuth && (
                           <TooltipSimple
                             content={t('triggers.verification-required')}
                           >
-                            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-yellow-600" />
+                            <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
                           </TooltipSimple>
                         )}
                         {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
@@ -684,13 +681,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                           value="extra-settings"
                           className="border-none"
                         >
-                          <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
-                            <span className="text-sm font-bold text-text-heading">
+                          <AccordionTrigger className="py-2 bg-transparent hover:no-underline">
+                            <span className="text-sm font-bold text-ds-text-neutral-default-default">
                               {t('triggers.extra-settings')}
                             </span>
                           </AccordionTrigger>
                           <AccordionContent>
-                            <div className="flex flex-col gap-4 rounded-xl bg-surface-tertiary p-4 pt-2">
+                            <div className="gap-4 rounded-xl bg-ds-bg-neutral-strong-default p-4 pt-2 flex flex-col">
                               <DynamicTriggerConfig
                                 triggerType={TriggerType.Webhook}
                                 value={triggerConfig}
@@ -714,14 +711,14 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         {formData?.trigger_type !== TriggerType.Schedule && (
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="execution-settings" className="border-none">
-              <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
-                <span className="text-sm font-bold text-text-heading">
+              <AccordionTrigger className="py-2 bg-transparent hover:no-underline">
+                <span className="text-sm font-bold text-ds-text-neutral-default-default">
                   {t('triggers.execution-settings')}
                 </span>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="flex flex-col gap-4 rounded-lg bg-surface-disabled p-4 pt-2">
-                  <div className="flex items-center gap-2">
+                <div className="gap-4 rounded-lg bg-ds-bg-neutral-muted-disabled p-4 pt-2 flex flex-col">
+                  <div className="gap-2 flex items-center">
                     <Input
                       id="max_per_hour"
                       title={t('triggers.max-per-hour')}
@@ -773,7 +770,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   const renderFooter = () => {
     return (
       <DialogFooter>
-        <div className="flex w-full justify-end gap-2">
+        <div className="gap-2 flex w-full justify-end">
           {selectedTrigger && (
             <Button variant="ghost" onClick={handleClose} disabled={isLoading}>
               {t('triggers.cancel')}
@@ -805,9 +802,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           showCloseButton={true}
           onClose={handleClose}
           aria-describedby={undefined}
+          className="min-h-0 h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)]"
         >
           <DialogHeader title={getDialogTitle()} />
-          <DialogContentSection className="scrollbar-overlay min-h-0 flex-1 p-0">
+          <DialogContentSection className="scrollbar-overlay min-h-0 p-0 flex-1">
             {renderCreateContent()}
           </DialogContentSection>
           {renderFooter()}
@@ -826,21 +824,21 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           aria-describedby={undefined}
         >
           <DialogHeader
-            className="!rounded-t-xl border-b border-border-secondary !bg-popup-surface p-md"
+            className="!rounded-t-xl border-ds-border-neutral-default-default !bg-ds-bg-neutral-strong-default p-md border-b"
             title={t('triggers.webhook-created-title')}
           />
 
           {/* Trigger Details Section */}
-          <div className="flex flex-col items-center justify-center gap-2 p-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-success shadow-sm">
-              <Zap className="h-8 w-8 text-text-success" />
+          <div className="gap-2 p-4 flex flex-col items-center justify-center">
+            <div className="h-16 w-16 bg-ds-bg-status-completed-subtle-default shadow-sm flex items-center justify-center rounded-full">
+              <Zap className="h-8 w-8 text-ds-icon-status-completed-default-default" />
             </div>
-            <div className="flex flex-col gap-2 px-4 pt-2">
-              <div className="text-lg font-bold text-text-heading">
+            <div className="gap-2 px-4 pt-2 flex flex-col">
+              <div className="text-lg font-bold text-ds-text-neutral-default-default">
                 {formData.name}
               </div>
               {formData.description && (
-                <div className="line-clamp-2 max-w-md text-sm text-text-label">
+                <div className="max-w-md text-sm text-ds-text-neutral-muted-default line-clamp-2">
                   {formData.description}
                 </div>
               )}
@@ -849,21 +847,21 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           </div>
 
           {/* Webhook URL Section */}
-          <div className="flex flex-col p-4">
-            <div className="mb-4 flex items-center justify-start gap-2">
-              <Label className="text-sm font-semibold text-text-heading">
+          <div className="p-4 flex flex-col">
+            <div className="mb-4 gap-2 flex items-center justify-start">
+              <Label className="text-sm font-semibold text-ds-text-neutral-default-default">
                 {t('triggers.your-webhook-url')}
               </Label>
               <TooltipSimple content={t('triggers.webhook-instructions')}>
                 <CircleAlert
-                  className="h-4 w-4 cursor-pointer text-icon-primary"
+                  className="h-4 w-4 text-ds-icon-neutral-default-default cursor-pointer"
                   onClick={(e) => e.stopPropagation()}
                 />
               </TooltipSimple>
             </div>
 
-            <div className="flex flex-row items-center justify-start gap-4 rounded-xl bg-surface-primary p-4">
-              <div className="w-full break-all font-mono text-sm text-text-body">
+            <div className="gap-4 rounded-xl bg-ds-bg-neutral-subtle-default p-4 flex flex-row items-center justify-start">
+              <div className="font-mono text-sm text-ds-text-neutral-default-default w-full break-all">
                 {`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`}
               </div>
               <Button
@@ -879,13 +877,13 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
           {/* Info Tip Section */}
           {/* <div className="flex flex-col p-4">
-                        <div className="flex flex-row items-start justify-start bg-surface-information rounded-xl p-4">
-                            <Globe className="w-5 h-5 text-text-information" />
+                        <div className="flex flex-row items-start justify-start bg-ds-bg-status-splitting-subtle-default rounded-xl p-4">
+                            <Globe className="w-5 h-5 text-ds-text-status-splitting-strong-default" />
                             <div className="flex flex-col items-start justify-start gap-2 pl-4">
-                                <div className="text-label-sm font-semibold text-text-information">
+                                <div className="text-label-sm font-semibold text-ds-text-status-splitting-strong-default">
                                     {t("triggers.webhook-tip-title")}
                                 </div>
-                                <div className="text-label-sm text-text-information opacity-60 leading-relaxed">
+                                <div className="text-label-sm text-ds-text-status-splitting-strong-default opacity-60 leading-relaxed">
                                     {t("triggers.webhook-tip-description")}
                                 </div>
                             </div>

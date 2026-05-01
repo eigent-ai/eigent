@@ -32,6 +32,7 @@ declare global {
     task_id?: string;
     project_id?: string;
     isFolder?: boolean;
+    isRemote?: boolean;
     relativePath?: string;
   }
 
@@ -119,6 +120,8 @@ declare global {
   }
 
   interface AgentMessage {
+    timestamp?: number | null;
+    created_at?: string | null;
     step: AgentStepType;
     data: {
       project_id?: string;

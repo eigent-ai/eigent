@@ -10,23 +10,23 @@ width="100%"
 height="auto"
 />
 
-### Step 1: Access the Bug Report Feature
+### Step 1: Open Report a bug
 
-1. Locate the **Bug Report** button in the top section of the desktop interface, positioned to the right of your project name
-1. Click the **Bug Report** button to initiate the reporting process
+1. In the top bar, click the **Support** (help) icon
+1. Choose **Report a bug**
 
-### Step 2: Download Log Files
+### Step 2: Describe the issue and save diagnostics
 
-- Upon clicking the Bug Report button, log files will be automatically downloaded to your device
-- These log files contain technical information that helps our development team diagnose issues more effectively
+1. Enter what went wrong. Optionally add **steps to reproduce**
+1. Click **Save diagnostics and open email**
+1. Choose where to save the **diagnostics ZIP** (it includes app logs and a `bug_report.txt` file)
 
-### Step 3: Complete the Bug Report Form
+Your default email app opens addressed to **info@eigent.ai** with a pre-filled message.
 
-- A bug report web form will automatically open in your default browser
-- Please provide the following information:
-  - **Bug Description**: Write a clear description of the issue you encountered
-  - **Screenshot Upload**: Attach relevant screenshots that demonstrate the problem
-  - **Log File Upload**: Upload the log files that were downloaded in Step 2
+### Step 3: Send the email
+
+1. **Attach the ZIP** you just saved to the message (the mail app cannot add this automatically)
+1. Add screenshots or other files if they help, then send
 
 ### Step 4: Join Our Community for Real-time Support
 
@@ -47,9 +47,11 @@ Developers and technical users are welcome to report issues directly through our
 - **Repository URL**: https://github.com/eigent-ai/eigent
 - Submit detailed issues with reproduction steps
 
+**Optional:** In the same **Report a bug** dialog, use **Download logs** to save a single log file (without the full diagnostics ZIP).
+
 ## Important Notes
 
-- Always include log files when reporting bugs for faster resolution
+- Always include the diagnostics ZIP (or log export) when reporting bugs for faster resolution
 - Provide as much detail as possible in your bug description
 - Screenshots help our team understand visual issues more quickly
 - Our community channels provide the fastest response times for urgent issues

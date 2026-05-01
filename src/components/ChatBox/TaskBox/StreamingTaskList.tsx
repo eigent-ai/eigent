@@ -71,17 +71,17 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
   if (tasks.length === 0) {
     // Show a loading state when no tasks have been parsed yet
     return (
-      <div className="flex h-auto w-full flex-col gap-2 py-sm pl-2 transition-all duration-300">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm backdrop-blur-[5px]">
-          <div className="absolute left-0 top-0 w-full bg-transparent">
+      <div className="gap-2 py-sm px-2 flex h-auto w-full flex-col transition-all duration-300">
+        <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
+          <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={100} className="h-[2px] w-full" />
           </div>
-          <div className="flex items-center gap-2 px-sm py-2">
+          <div className="gap-2 px-sm py-2 flex items-center">
             <LoaderCircle
               size={16}
-              className="animate-spin text-icon-information"
+              className="animate-spin text-ds-icon-information-default-default"
             />
-            <span className="animate-pulse text-sm text-text-secondary">
+            <span className="animate-pulse text-sm text-ds-text-neutral-subtle-default">
               {t('layout.task-splitting')}...
             </span>
           </div>
@@ -91,23 +91,23 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
   }
 
   return (
-    <div className="flex h-auto w-full flex-col gap-2 py-sm pl-2 transition-all duration-300">
-      <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm backdrop-blur-[5px]">
+    <div className="gap-2 py-sm px-2 flex h-auto w-full flex-col transition-all duration-300">
+      <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
         {/* Progress bar at top */}
-        <div className="absolute left-0 top-0 w-full bg-transparent">
+        <div className="left-0 top-0 absolute w-full bg-transparent">
           <Progress value={100} className="h-[2px] w-full" />
         </div>
 
         {/* Task type badge */}
-        <div className="mb-2 flex items-center gap-2 px-sm">
+        <div className="mb-2 gap-2 px-sm flex items-center">
           <TaskType type={1} />
-          <span className="text-xs font-medium text-text-tertiary">
+          <span className="text-xs font-medium text-ds-text-neutral-subtle-default">
             {t('layout.tasks')} {tasks.length}
           </span>
         </div>
 
         {/* Task list */}
-        <div className="mt-sm flex flex-col px-sm">
+        <div className="mt-sm px-sm flex flex-col">
           {tasks.map((task, index) => {
             const isLastTask = index === tasks.length - 1;
             const isCurrentlyStreaming = isLastTask && isStreaming;
@@ -115,26 +115,29 @@ export function StreamingTaskList({ streamingText }: StreamingTaskListProps) {
             return (
               <div
                 key={`streaming-task-${index}`}
-                className="group relative flex min-h-2 items-start rounded-lg p-sm duration-300 animate-in fade-in-0 slide-in-from-left-2"
+                className="group min-h-2 rounded-lg p-sm animate-in fade-in-0 slide-in-from-left-2 bg-ds-bg-neutral-subtle-default relative flex items-start duration-300"
               >
                 {/* Task indicator */}
-                <div className="flex h-4 w-7 flex-shrink-0 items-center justify-center pr-sm pt-1">
+                <div className="h-4 w-7 pr-sm pt-1 flex flex-shrink-0 items-center justify-center">
                   {isCurrentlyStreaming ? (
                     <LoaderCircle
                       size={13}
-                      className="animate-spin text-icon-information"
+                      className="animate-spin text-ds-icon-information-default-default"
                     />
                   ) : (
-                    <CircleDashed size={13} className="text-icon-secondary" />
+                    <CircleDashed
+                      size={13}
+                      className="text-ds-icon-neutral-muted-default"
+                    />
                   )}
                 </div>
 
                 {/* Task content */}
-                <div className="relative flex min-h-4 w-full items-start border-[0px] border-b border-solid border-task-border-default pb-2">
-                  <span className="text-xs leading-[20px] text-text-primary">
+                <div className="min-h-4 pb-2 relative flex w-full items-start">
+                  <span className="text-label-xs text-ds-text-neutral-default-default">
                     {task}
                     {isCurrentlyStreaming && (
-                      <span className="ml-0.5 inline-block h-4 w-1 animate-pulse bg-icon-information" />
+                      <span className="ml-0.5 h-4 w-1 animate-pulse bg-ds-icon-information-default-default inline-block" />
                     )}
                   </span>
                 </div>

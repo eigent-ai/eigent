@@ -12,36 +12,45 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Textarea } from '@/components/ui/textarea';
-import { useHost } from '@/host';
+import { WorkspaceSessionModeToggle } from '@/components/Workspace/WorkspaceSessionModeToggle';
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
-import { AnimatePresence } from 'framer-motion';
+import type { SessionModeType } from '@/types/constants';
 import {
   ArrowRight,
+  Compass,
   FileText,
+  Hammer,
   Image,
+  Paperclip,
   Plus,
   UploadCloud,
+  Wand2,
   X,
-  Zap,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ExpandedInputBox } from './ExpandedInputBox';
-
-// Module-level singleton to track which InputBox instance has the expanded dialog open
-// This prevents multiple dialogs from opening when Cmd+P is pressed
-let activeExpandedDialogId: string | null = null;
+import { ChatInputModelDropdown } from './ChatInputModelDropdown';
+import { RichChatInput } from './RichChatInput';
 
 /**
  * File attachment object
@@ -69,24 +78,32 @@ export interface InputboxProps {
   onFilesChange?: (files: FileAttachment[]) => void;
   /** Callback when add file button is clicked */
   onAddFile?: () => void;
-  /** Placeholder text for empty state */
+  /** Static placeholder when empty (no rotation). RichChatInput defaults to rotating product hints when omitted. */
   placeholder?: string;
+  /** Rotating placeholders when empty; takes precedence over `placeholder` when non-empty. */
+  placeholders?: readonly string[];
   /** Disable all interactions */
   disabled?: boolean;
   /** Additional CSS classes */
   className?: string;
-  /** Ref for textarea */
-  textareaRef?: React.RefObject<HTMLTextAreaElement>;
+  /** Ref for the rich text input surface (contenteditable) */
+  textareaRef?: React.RefObject<HTMLDivElement | null>;
   /** Allow drag and drop */
   allowDragDrop?: boolean;
+  /** Privacy mode enabled */
+  privacy?: boolean;
   /** Use cloud model in dev */
   useCloudModelInDev?: boolean;
+  /** Session mode for the mode-select row; omit to hide it. */
+  sessionMode?: SessionModeType;
+  /** Called when the user changes mode (workspace only). */
+  onSessionModeChange?: (mode: SessionModeType) => void;
+  /** Full toggle on workspace; on session chat, only the current mode is shown. */
+  sessionModeSelectInteractive?: boolean;
   /** Callback when trigger is being created (for placeholder) */
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
   onTriggerCreated?: (triggerData: TriggerInput) => void;
-  /** Hide the expand button (used when InputBox is already inside ExpandedInputBox) */
-  hideExpandButton?: boolean;
 }
 
 /**
@@ -97,7 +114,7 @@ export interface InputboxProps {
  * - **Focus/Input**: Active state with content, file attachments, and active send button
  *
  * Features:
- * - Auto-expanding textarea (up to 100px height)
+ * - Auto-expanding rich text input (links + #skills, up to 200px height)
  * - File attachment display (shows up to 5 files + count indicator)
  * - Action buttons (add file on left, send on right)
  * - Send button changes color based on content (gray when empty, green when has content)
@@ -122,7 +139,7 @@ export interface InputboxProps {
  *   onAddFile={() => {
  *     // Open file picker
  *   }}
- *   placeholder="What do you need to achieve today?"
+ *   placeholder="Ask a follow-up"
  *   allowDragDrop={true}
  * />
  * ```
@@ -135,19 +152,23 @@ export const Inputbox = ({
   files = [],
   onFilesChange,
   onAddFile,
-  placeholder: _placeholder = 'Ask Eigent to automate your tasks',
+  placeholder,
+  placeholders,
   disabled = false,
   className,
   textareaRef: externalTextareaRef,
   allowDragDrop = false,
+  privacy = true,
   useCloudModelInDev = false,
-  onTriggerCreating,
-  onTriggerCreated,
-  hideExpandButton = false,
+  sessionMode,
+  onSessionModeChange,
+  sessionModeSelectInteractive = false,
+  onTriggerCreating: _onTriggerCreating,
+  onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
-  const host = useHost();
   const { t } = useTranslation();
-  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const navigate = useNavigate();
+  const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -156,51 +177,6 @@ export const Inputbox = ({
   const [isRemainingOpen, setIsRemainingOpen] = useState(false);
   const hoverCloseTimerRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
-  const [isExpandedDialogOpen, setIsExpandedDialogOpen] = useState(false);
-  const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const [instanceId] = useState(
-    () => `inputbox-${crypto.randomUUID().slice(0, 9)}`
-  );
-
-  // Handle dialog open/close with singleton tracking
-  const handleExpandedDialogChange = useCallback(
-    (open: boolean) => {
-      if (open) {
-        activeExpandedDialogId = instanceId;
-        setIsExpandedDialogOpen(true);
-      } else {
-        if (activeExpandedDialogId === instanceId) {
-          activeExpandedDialogId = null;
-        }
-        setIsExpandedDialogOpen(false);
-      }
-    },
-    [instanceId]
-  );
-
-  // Keyboard shortcut handler for Cmd+P / Ctrl+P
-  // Opens dialog if none is open, or closes if this instance owns the open dialog
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
-        e.preventDefault();
-
-        // If this instance has the dialog open, close it
-        if (isExpandedDialogOpen && activeExpandedDialogId === instanceId) {
-          handleExpandedDialogChange(false);
-        }
-        // If no dialog is open, open this one
-        else if (activeExpandedDialogId === null) {
-          handleExpandedDialogChange(true);
-        }
-        // Otherwise another instance has it open, do nothing
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isExpandedDialogOpen, handleExpandedDialogChange, instanceId]);
 
   const openRemainingPopover = () => {
     if (hoverCloseTimerRef.current) {
@@ -230,11 +206,13 @@ export const Inputbox = ({
 
   // Determine if we're in the "Input" state (has content or files)
   const hasContent = value.trim().length > 0 || files.length > 0;
-  const isActive = isFocused || hasContent;
 
-  const handleTextChange = (newValue: string) => {
-    onChange?.(newValue);
-  };
+  const handleTextChange = useCallback(
+    (newValue: string, _cursorPos?: number) => {
+      onChange?.(newValue);
+    },
+    [onChange]
+  );
 
   const handleSend = () => {
     if (value.trim().length > 0 && !disabled) {
@@ -246,7 +224,7 @@ export const Inputbox = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !disabled && !isComposing) {
       e.preventDefault();
       handleSend();
@@ -261,9 +239,13 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="h-4 w-4 text-icon-primary" />;
+      return (
+        <Image className="size-3.5 text-ds-icon-neutral-default-default" />
+      );
     }
-    return <FileText className="h-4 w-4 text-icon-primary" />;
+    return (
+      <FileText className="size-3.5 text-ds-icon-neutral-default-default" />
+    );
   };
 
   // Drag & drop handlers
@@ -276,7 +258,7 @@ export const Inputbox = ({
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || useCloudModelInDev) return;
+    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -285,7 +267,7 @@ export const Inputbox = ({
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!allowDragDrop || useCloudModelInDev) return;
+    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -305,14 +287,15 @@ export const Inputbox = ({
     e.stopPropagation();
     setIsDragging(false);
     dragCounter.current = 0;
-    if (!allowDragDrop || useCloudModelInDev) return;
+    if (!allowDragDrop || !privacy || useCloudModelInDev) return;
+
     try {
       const dropped = Array.from(e.dataTransfer?.files || []);
       if (dropped.length === 0) return;
 
       console.log('[Drag-Drop] Processing dropped files:', dropped.length);
 
-      const result = await processDroppedFiles(dropped, files, host);
+      const result = await processDroppedFiles(dropped, files);
 
       if (result.success) {
         console.log('[Drag-Drop] Setting files:', result.files);
@@ -336,9 +319,11 @@ export const Inputbox = ({
   return (
     <div
       className={cn(
-        'relative box-border flex w-full flex-col items-start rounded-2xl border border-solid border-input-border-default bg-input-bg-input px-2 pb-2 pt-0 transition-colors',
-        isFocused && 'border-input-border-focus',
-        isDragging && 'border-info-primary bg-info-primary/10',
+        'rounded-3xl p-3 border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default shadow-lg relative flex w-full flex-col items-start border border-solid transition-colors',
+        (isFocused || hasContent) &&
+          'border-ds-border-information-default-default',
+        isDragging &&
+          'border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default',
         className
       )}
       onDragEnter={handleDragEnter}
@@ -347,60 +332,23 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="border-info-primary bg-info-primary/10 text-info-primary pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed backdrop-blur-sm">
+        <div className="inset-0 gap-2 rounded-2xl backdrop-blur-sm border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default pointer-events-none absolute z-20 flex flex-col items-center justify-center border-2 border-dashed">
           <UploadCloud className="h-8 w-8" />
           <div className="text-sm font-semibold">
             {t('chat.drop-files-to-attach')}
           </div>
         </div>
       )}
-      {/* Text Input Area */}
-      <div className="relative box-border flex w-full flex-1 items-start justify-center gap-2.5 px-0 pb-2 pt-2.5">
-        <div className="relative mx-2 box-border flex min-h-px min-w-px flex-1 items-center justify-center gap-2.5 py-0">
-          <Textarea
-            variant="none"
-            size="default"
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => handleTextChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            disabled={disabled}
-            placeholder={t('chat.ask-placeholder')}
-            className={cn(
-              'flex-1 resize-none',
-              'border-none shadow-none focus-visible:outline-none focus-visible:ring-0',
-              'max-h-[200px] min-h-[40px] px-0 py-0',
-              'scrollbar overflow-auto',
-              'placeholder:text-text-label',
-              isActive ? 'text-input-text-focus' : 'text-input-text-default'
-            )}
-            style={{
-              fontFamily: 'Inter',
-            }}
-            rows={1}
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = 'auto';
-              el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-            }}
-          />
-        </div>
-      </div>
-
-      {/* File Attachments (only show if has files) */}
+      {/* Layer 2: File attachments (only show if has files) */}
       {files.length > 0 && (
-        <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2 pt-0">
+        <div className="gap-1 pb-2 relative box-border flex w-full flex-wrap items-start">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;
             return (
               <div
                 key={file.filePath}
                 className={cn(
-                  'relative box-border flex h-auto max-w-32 items-center gap-0.5 rounded-lg bg-tag-surface pr-1'
+                  'max-w-24 gap-0.5 rounded-md pr-1 bg-ds-bg-neutral-default-default relative box-border flex h-auto items-center'
                 )}
                 onMouseEnter={() => setHoveredFilePath(file.filePath)}
                 onMouseLeave={() =>
@@ -413,7 +361,7 @@ export const Inputbox = ({
                 <a
                   href="#"
                   className={cn(
-                    'flex h-6 w-6 cursor-pointer items-center justify-center rounded-md'
+                    'h-6 w-6 rounded-md flex cursor-pointer items-center justify-center'
                   )}
                   onClick={(e) => {
                     e.preventDefault();
@@ -423,7 +371,7 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-4 text-icon-secondary" />
+                    <X className="size-3.5 text-ds-icon-neutral-muted-default" />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -432,7 +380,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <p
                   className={cn(
-                    "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body"
+                    "my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
                   )}
                   title={file.fileName}
                 >
@@ -446,34 +394,38 @@ export const Inputbox = ({
             <Popover open={isRemainingOpen} onOpenChange={setIsRemainingOpen}>
               <PopoverTrigger asChild>
                 <Button
-                  size="icon"
+                  size="xs"
                   variant="ghost"
-                  className="relative box-border flex h-auto items-center rounded-lg bg-tag-surface"
+                  buttonContent="text"
+                  textWeight="bold"
+                  buttonRadius="full"
+                  className="rounded-lg bg-ds-bg-neutral-strong-default relative box-border flex h-auto items-center"
                   onMouseEnter={openRemainingPopover}
                   onMouseLeave={scheduleCloseRemainingPopover}
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body">
+                  <p className="my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default font-['Inter'] whitespace-nowrap">
                     {remainingCount}+
                   </p>
                 </Button>
               </PopoverTrigger>
               <PopoverContent
                 align="end"
+                side="right"
                 sideOffset={4}
-                className="!w-auto max-w-40 rounded-md border border-dropdown-border bg-dropdown-bg p-1 shadow-perfect"
+                className="max-w-40 rounded-lg p-1 shadow-perfect border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default !w-auto border-solid"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
-                <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
+                <div className="scrollbar-hide gap-1 flex max-h-[176px] flex-col overflow-auto">
                   {files.slice(maxVisibleFiles).map((file) => {
                     const isHovered = hoveredFilePath === file.filePath;
                     return (
                       <div
                         key={file.filePath}
-                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-tag-surface px-1 py-0.5 transition-colors duration-300 hover:bg-tag-surface-hover"
+                        className="gap-1 rounded-lg px-1 py-0.5 bg-ds-bg-neutral-strong-default hover:bg-ds-bg-neutral-default-hover flex cursor-pointer items-center transition-colors duration-300"
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
@@ -484,7 +436,7 @@ export const Inputbox = ({
                         <a
                           href="#"
                           className={cn(
-                            'flex h-6 w-6 cursor-pointer items-center justify-center rounded-md'
+                            'h-6 w-6 rounded-md flex cursor-pointer items-center justify-center'
                           )}
                           onClick={(e) => {
                             e.preventDefault();
@@ -497,12 +449,12 @@ export const Inputbox = ({
                           }
                         >
                           {isHovered ? (
-                            <X className="size-4 text-icon-secondary" />
+                            <X className="size-4 text-ds-icon-neutral-muted-default" />
                           ) : (
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-text-body">
+                        <p className="my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap">
                           {file.fileName}
                         </p>
                       </div>
@@ -515,93 +467,203 @@ export const Inputbox = ({
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="relative flex w-full items-center justify-between">
+      {/* Layer 3: Text input area */}
+      <div className="gap-2.5 pb-3 relative flex w-full flex-1 items-start justify-center">
+        <RichChatInput
+          ref={textareaRef as React.RefObject<HTMLDivElement>}
+          value={value}
+          onChange={(next, cursorPos) =>
+            handleTextChange(next, cursorPos ?? undefined)
+          }
+          onKeyDown={handleKeyDown}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => setIsComposing(false)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          disabled={disabled}
+          placeholder={placeholder}
+          placeholders={placeholders}
+          className={cn(
+            'border-none shadow-none focus-visible:ring-0',
+            'max-h-[200px] min-h-[40px]'
+          )}
+          textClassName="text-ds-text-neutral-default-default"
+          style={{
+            fontFamily: 'Inter',
+            fontSize: '13px',
+            lineHeight: '20px',
+          }}
+          maxHeightPx={200}
+        />
+      </div>
+
+      {/* Layer 4: Action buttons */}
+      <div className="flex w-full items-center justify-between">
         {/* Left: Add File Button and Add Trigger Button */}
-        <div className="relative flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-lg shadow-none"
-            onClick={onAddFile}
-            disabled={disabled || useCloudModelInDev}
-          >
-            <Plus size={16} className="text-icon-primary" />
-          </Button>
-
-          {/* Add Trigger Button - opens TriggerDialog */}
-          <Button
-            variant="ghost"
-            size="xs"
-            className="rounded-lg"
+        <div className="gap-2 flex items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+                textWeight="bold"
+                buttonRadius="lg"
+                disabled={disabled}
+                aria-label={t('chat.input-attach-menu-trigger')}
+                aria-haspopup="menu"
+              >
+                <Plus />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="min-w-[13.5rem]"
+            >
+              <DropdownMenuItem
+                disabled={
+                  !privacy ||
+                  useCloudModelInDev ||
+                  typeof onAddFile !== 'function'
+                }
+                onSelect={() => {
+                  onAddFile?.();
+                }}
+              >
+                <Paperclip
+                  className="text-ds-icon-neutral-default-default"
+                  aria-hidden
+                />
+                {t('chat.input-attach-add-files-or-photos')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="-mx-1 my-1 bg-ds-border-neutral-default-default" />
+              {/* Submenus use alignOffset: Radix SubContent is fixed top-aligned; negative offset bottom-aligns panel to trigger row */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Wand2
+                    className="text-ds-icon-neutral-default-default"
+                    aria-hidden
+                  />
+                  {t('chat.input-attach-skills')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  sideOffset={6}
+                  alignOffset={-40}
+                  className="min-w-[13.5rem]"
+                >
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate(
+                        '/history?tab=agents&section=skills&skillAction=upload'
+                      )
+                    }
+                  >
+                    {t('chat.input-attach-upload-new-skill')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate('/history?tab=agents&section=skills')
+                    }
+                  >
+                    {t('chat.input-attach-manage-skills')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Hammer
+                    className="text-ds-icon-neutral-default-default"
+                    aria-hidden
+                  />
+                  {t('layout.connectors')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  sideOffset={6}
+                  alignOffset={-40}
+                  className="min-w-[13.5rem]"
+                >
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate('/history?tab=connectors&connectorAction=add')
+                    }
+                  >
+                    {t('chat.input-attach-add-mcp')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => navigate('/history?tab=connectors')}
+                  >
+                    {t('chat.input-attach-manage-connectors')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Compass
+                    className="text-ds-icon-neutral-default-default"
+                    aria-hidden
+                  />
+                  {t('layout.browser')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  sideOffset={6}
+                  alignOffset={-40}
+                  className="min-w-[13.5rem]"
+                >
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate('/history?tab=browser&browserAction=launch')
+                    }
+                  >
+                    {t('chat.input-attach-open-browser')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => navigate('/history?tab=browser')}
+                  >
+                    {t('chat.input-attach-manage-browsers')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ChatInputModelDropdown
             disabled={disabled}
-            onClick={() => setTriggerDialogOpen(true)}
-          >
-            <Zap size={16} className="text-icon-primary" />
-            {t('triggers.trigger-label')}
-          </Button>
-
-          {/* TriggerDialog for adding trigger and task */}
-          <TriggerDialog
-            selectedTrigger={null}
-            isOpen={triggerDialogOpen}
-            onOpenChange={setTriggerDialogOpen}
-            initialTaskPrompt={value}
+            readOnly={
+              sessionMode !== undefined &&
+              sessionModeSelectInteractive === false
+            }
           />
         </div>
 
-        {/* Right: Send Button */}
-        <div className="flex items-center gap-1">
-          {/* Expand Input Dialog Button - hidden when inside ExpandedInputBox */}
-          {/*{!hideExpandButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-lg"
-              onClick={() => handleExpandedDialogChange(true)}
-              disabled={disabled}
-              title={t('chat.expand-input')}
-            >
-              <Maximize size={16} className="text-icon-primary" />
-            </Button>
-          )}*/}
+        {/* Right: Session mode (workspace: full toggle; session: current mode only) + send */}
+        <div className="gap-2 flex items-center">
+          {sessionMode !== undefined && (
+            <WorkspaceSessionModeToggle
+              value={sessionMode}
+              onValueChange={onSessionModeChange ?? (() => {})}
+              readOnly={!sessionModeSelectInteractive}
+              className="shrink-0"
+            />
+          )}
           <Button
-            size="icon"
-            variant={value.trim().length > 0 ? 'success' : 'secondary'}
-            className="rounded-full"
+            size="xs"
+            buttonContent="icon-only"
+            textWeight="bold"
+            buttonRadius="full"
+            variant={value.trim().length > 0 ? 'primary' : 'primary'}
+            tone={value.trim().length > 0 ? 'success' : 'default'}
             onClick={handleSend}
             disabled={disabled || value.trim().length === 0}
           >
             <ArrowRight
-              size={16}
               className={cn(
-                'text-button-primary-icon-default transition-transform duration-200',
+                'text-current transition-transform duration-200',
                 value.trim().length > 0 && 'rotate-[-90deg]'
               )}
             />
-            {/* Inner shadow highlight (from Figma design) */}
-            <div className="pointer-events-none absolute inset-0 shadow-[0px_1px_0px_0px_inset_rgba(255,255,255,0.33)]" />
           </Button>
         </div>
-
-        {/* Expanded Input Box */}
-        <AnimatePresence>
-          {isExpandedDialogOpen && (
-            <ExpandedInputBox
-              inputProps={{
-                value,
-                onChange,
-                onSend,
-                files,
-                onFilesChange,
-                onAddFile,
-                disabled,
-                useCloudModelInDev,
-              }}
-              onClose={() => handleExpandedDialogChange(false)}
-            />
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );

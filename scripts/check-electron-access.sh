@@ -6,8 +6,9 @@ set -euo pipefail
 # only src/host/createHost.ts may read window.electronAPI/window.ipcRenderer.
 violations="$(
   rg -n \
-    -e 'window\.electronAPI' \
-    -e 'window\.ipcRenderer' \
+    -e 'window\s*(\?\.)?\s*\.\s*(electronAPI|ipcRenderer)' \
+    -e '\(window\s+as\s+any\)\s*\.\s*(electronAPI|ipcRenderer)' \
+    -e 'window\s*\[\s*["'\''](electronAPI|ipcRenderer)["'\'']\s*\]' \
     --glob '*.{ts,tsx,js,jsx}' \
     --glob '!src/host/createHost.ts' \
     src || true

@@ -139,8 +139,9 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
   };
 
   const getCategoryIcon = (categoryName?: string) => {
-    if (!categoryName) return <Bot className="h-10 w-10 text-icon-primary" />;
-    return <Bot className="h-10 w-10 text-icon-primary" />;
+    if (!categoryName)
+      return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+    return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -311,10 +312,10 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
             <div className="gap-md flex items-center">
               {getCategoryIcon(activeMcp?.category?.name)}
               <div>
-                <div className="text-base font-bold leading-9 text-text-action">
+                <div className="text-base font-bold leading-9 text-ds-text-brand-default-default">
                   {activeMcp?.name}
                 </div>
-                <div className="text-sm font-bold leading-normal text-text-body">
+                <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
                   {getGithubRepoName(activeMcp?.home_page) && (
                     <div className="flex items-center">
                       <img

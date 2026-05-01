@@ -10,6 +10,7 @@ node-compile-cache
 
 node_modules
 dist
+dist-web
 !package/**/dist
 dist-ssr
 dist-electron

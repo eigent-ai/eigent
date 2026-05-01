@@ -37,6 +37,7 @@
   "upload": "Upload",
   "invalid-file-type": "Invalid file type. Please upload a .skill, .md, .txt, or .json file.",
   "file-too-large": "File is too large. Maximum size is 1MB.",
+  "zip-import-too-large": "ZIP is too large. Maximum size is 50 MB.",
   "file-read-error": "Failed to read file. Please try again.",
   "reupload-file": "Click to reupload a file",
   "upload-error-invalid-format": "File must be a .zip or skill package (.skill or .md).",
@@ -46,5 +47,12 @@
   "custom-skill": "Custom skill",
   "delete-skill": "Delete Skill",
   "delete-skill-confirmation": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
-  "skill-deleted-success": "Skill deleted successfully!"
+  "skill-deleted-success": "Skill deleted successfully!",
+  "create-skill": "Create a skill",
+  "upload-skill": "Upload a skill",
+  "browse-skills": "Browse skills",
+  "create-skill-default-name": "New skill",
+  "create-skill-default-description": "Describe what this skill does.",
+  "save-skill": "Save skill",
+  "compose-skill-hint": "Edit SKILL.md (YAML frontmatter with name and description is required), then save."
 }

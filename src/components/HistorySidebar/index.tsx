@@ -13,25 +13,29 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete } from '@/api/http';
-import { Sparkle } from '@/components/animate-ui/icons/sparkle';
+import tokenDarkIcon from '@/assets/token-dark.svg';
+import tokenLightIcon from '@/assets/token-light.svg';
+import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
-import { getAuthStore } from '@/store/authStore';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Ellipsis,
-  Hash,
-  Pin,
+  FolderCheck,
+  FolderClock,
+  ListChecks,
   Plus,
   Share,
-  Sparkles,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -47,8 +51,47 @@ import { Tag } from '../ui/tag';
 import { TooltipSimple } from '../ui/tooltip';
 import SearchInput from './SearchInput';
 
+const compactCountFormatter = new Intl.NumberFormat('en', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+});
+
+const formatCompactCount = (value?: number) =>
+  compactCountFormatter.format(value || 0);
+
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const resolveProjectTokenCount = (
+  project: Pick<ProjectGroup, 'total_tokens' | 'tasks'>
+): number => {
+  const direct = toFiniteNumber(project.total_tokens as unknown);
+  if (direct !== null) {
+    return direct;
+  }
+
+  return (project.tasks || []).reduce(
+    (sum, task) =>
+      sum + (toFiniteNumber((task as { tokens?: unknown }).tokens) ?? 0),
+    0
+  );
+};
+
 export default function HistorySidebar() {
   const { t } = useTranslation();
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
+  const { appearance } = useAuthStore();
+  const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const { isOpen, close } = useSidebarStore();
   const navigate = useNavigate();
   //Get Chatstore for the active project's task
@@ -67,7 +110,7 @@ export default function HistorySidebar() {
   useEffect(() => {
     if (!chatStore) return;
     fetchGroupedHistoryTasks(setHistoryTasks);
-  }, [chatStore?.updateCount]);
+  }, [chatStore, chatStore?.updateCount]);
 
   // Group ongoing tasks by project
   const ongoingProjects = useMemo(() => {
@@ -112,6 +155,9 @@ export default function HistorySidebar() {
           tasks: [],
           task_count: taskCount,
           total_tokens: totalTokens,
+          total_triggers:
+            historyTasks.find((item) => item.project_id === project.id)
+              ?.total_triggers || 0,
           last_prompt: lastPrompt,
           isOngoing: true,
         });
@@ -119,7 +165,7 @@ export default function HistorySidebar() {
     });
 
     return Array.from(projectMap.values());
-  }, [projectStore, chatStore]);
+  }, [projectStore, chatStore, historyTasks]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.value) {
@@ -197,11 +243,11 @@ export default function HistorySidebar() {
       const history = project.tasks.find(
         (item: HistoryTask) => String(item.id) === historyId
       );
-      if (history?.task_id && (window as any).ipcRenderer) {
+      if (history?.task_id && ipcRenderer) {
         try {
           //TODO(file): rename endpoint to use project_id
           //TODO(history): make sure to sync to projectId when updating endpoint
-          await (window as any).ipcRenderer.invoke(
+          await ipcRenderer.invoke(
             'delete-task-files',
             email,
             history.task_id,
@@ -245,9 +291,9 @@ export default function HistorySidebar() {
 
             // Also delete local files for this task if available (via Electron IPC)
             const { email } = getAuthStore();
-            if (history.task_id && (window as any).ipcRenderer) {
+            if (history.task_id && ipcRenderer) {
               try {
-                await (window as any).ipcRenderer.invoke(
+                await ipcRenderer.invoke(
                   'delete-task-files',
                   email,
                   history.task_id,
@@ -303,11 +349,40 @@ export default function HistorySidebar() {
   };
 
   useLayoutEffect(() => {
+    const PANEL_WIDTH = 360;
+    const GAP = 8;
+    const MARGIN = 8;
+
     const updateAnchor = () => {
-      const btn = document.getElementById('active-task-title-btn');
-      if (btn) {
-        const rect = btn.getBoundingClientRect();
-        setAnchorStyle({ left: rect.left, top: rect.bottom + 6 });
+      const sidebarTitleEl = document.getElementById(
+        'sidebar-active-task-title-btn'
+      );
+      const topBarTitleEl = document.getElementById('active-task-title-btn');
+
+      let anchorEl: HTMLElement | null = null;
+      if (sidebarTitleEl) {
+        const r = sidebarTitleEl.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          anchorEl = sidebarTitleEl;
+        }
+      }
+      if (!anchorEl && topBarTitleEl) {
+        anchorEl = topBarTitleEl;
+      }
+
+      if (anchorEl) {
+        const rect = anchorEl.getBoundingClientRect();
+        let left = rect.left;
+        if (left + PANEL_WIDTH > window.innerWidth - MARGIN) {
+          left = window.innerWidth - MARGIN - PANEL_WIDTH;
+        }
+        if (left < MARGIN) {
+          left = MARGIN;
+        }
+        const top = rect.bottom + GAP;
+        setAnchorStyle({ left, top });
+      } else {
+        setAnchorStyle(null);
       }
     };
 
@@ -347,7 +422,7 @@ export default function HistorySidebar() {
             className="fixed inset-0 z-40 bg-transparent"
             onClick={close}
           />
-          {/* dropdown-style history panel under title bar */}
+          {/* History panel below project title (sidebar when expanded, else TopBar) */}
           <motion.div
             initial={false}
             animate={{ y: 0, opacity: 1 }}
@@ -355,7 +430,7 @@ export default function HistorySidebar() {
             transition={{ type: 'spring', damping: 22, stiffness: 220 }}
             onMouseLeave={close}
             ref={panelRef}
-            className="bg-bg-surface-tertiary fixed z-50 flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-xl p-sm shadow-perfect backdrop-blur-xl"
+            className="fixed z-50 flex max-h-[80vh] w-[360px] flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default p-2 shadow-perfect"
             style={{
               left: anchorStyle.left,
               top: anchorStyle.top,
@@ -365,7 +440,7 @@ export default function HistorySidebar() {
               {/* Search */}
               <SearchInput value={searchValue} onChange={handleSearch} />
               <Button variant="ghost" size="md" onClick={createChat}>
-                <Plus className="text-icon-tertiary h-8 w-8 transition-all duration-300 group-hover:text-icon-primary" />
+                <Plus className="h-8 w-8 text-ds-icon-neutral-muted-default transition-all duration-300 group-hover:text-ds-icon-neutral-default-default" />
               </Button>
             </div>
             <div className="scrollbar-hide mt-2 min-h-0 flex-1 overflow-y-auto">
@@ -389,24 +464,21 @@ export default function HistorySidebar() {
                         navigate(`/`);
                         close();
                       }}
-                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-project-surface-hover"
+                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-ds-bg-neutral-default-hover"
                     >
-                      <Sparkles
-                        size={20}
-                        className="flex-shrink-0 text-icon-information"
-                      />
+                      <FolderClock className="h-5 w-5 flex-shrink-0 text-ds-icon-status-running-default-default" />
 
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <TooltipSimple
                           align="start"
-                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-surface-tertiary p-2 text-label-xs shadow-perfect"
+                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-ds-bg-neutral-default-default p-2 text-label-xs shadow-perfect"
                           content={
                             <div>
                               {project.project_name || t('layout.new-project')}
                             </div>
                           }
                         >
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-text-heading">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-ds-text-neutral-default-default">
                             {project.project_name || t('layout.new-project')}
                           </span>
                         </TooltipSimple>
@@ -414,19 +486,48 @@ export default function HistorySidebar() {
 
                       <div className="flex flex-shrink-0 items-center gap-2">
                         <TooltipSimple content={t('chat.token')}>
-                          <Tag variant="info" size="sm">
-                            <Hash className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {(project.total_tokens || 0).toLocaleString()}
+                          <Tag
+                            variant="primary"
+                            tone="information"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <img src={tokenIcon} alt="" className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatTokenCount(
+                                resolveProjectTokenCount(project)
+                              )}
                             </span>
                           </Tag>
                         </TooltipSimple>
 
-                        <TooltipSimple content="Tasks">
-                          <Tag variant="default" size="sm">
-                            <Pin className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {project.task_count}
+                        <TooltipSimple content={t('layout.tasks')}>
+                          <Tag
+                            variant="primary"
+                            tone="default"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <ListChecks className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.task_count)}
+                            </span>
+                          </Tag>
+                        </TooltipSimple>
+
+                        <TooltipSimple content="Triggers">
+                          <Tag
+                            variant="primary"
+                            tone="warning"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <Zap className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.total_triggers)}
                             </span>
                           </Tag>
                         </TooltipSimple>
@@ -440,10 +541,13 @@ export default function HistorySidebar() {
                             variant="ghost"
                             className="flex-shrink-0"
                           >
-                            <Ellipsis size={16} className="text-text-primary" />
+                            <Ellipsis
+                              size={16}
+                              className="text-ds-text-neutral-default-default"
+                            />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-dropdown-border bg-dropdown-bg p-sm">
+                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-sm">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button
@@ -472,7 +576,7 @@ export default function HistorySidebar() {
                               >
                                 <Trash2
                                   size={16}
-                                  className="text-icon-primary group-hover:text-icon-cuation"
+                                  className="text-ds-icon-neutral-default-default group-hover:text-ds-icon-status-error-default-default"
                                 />
                                 {t('layout.delete')}
                               </Button>
@@ -504,17 +608,14 @@ export default function HistorySidebar() {
                         );
                       }}
                       key={project.project_id}
-                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-border-disabled bg-project-surface-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-project-surface-hover"
+                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-ds-bg-neutral-default-hover"
                     >
-                      <Sparkle
-                        size={20}
-                        className="flex-shrink-0 text-icon-secondary"
-                      />
+                      <FolderCheck className="h-5 w-5 flex-shrink-0 text-ds-icon-neutral-subtle-default" />
 
                       <div className="min-w-0 flex-1">
                         <TooltipSimple
                           align="start"
-                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-surface-tertiary p-2 text-label-xs shadow-perfect"
+                          className="pointer-events-auto w-[300px] select-text text-wrap break-words bg-ds-bg-neutral-default-default p-2 text-label-xs shadow-perfect"
                           content={
                             <div>
                               {project.last_prompt ||
@@ -523,7 +624,7 @@ export default function HistorySidebar() {
                             </div>
                           }
                         >
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-text-heading">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-semibold text-ds-text-neutral-default-default">
                             {project.last_prompt ||
                               project.project_name ||
                               t('layout.new-project')}
@@ -533,19 +634,48 @@ export default function HistorySidebar() {
 
                       <div className="flex flex-shrink-0 items-center gap-2">
                         <TooltipSimple content={t('chat.token')}>
-                          <Tag variant="info" size="sm">
-                            <Hash className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {(project.total_tokens || 0).toLocaleString()}
+                          <Tag
+                            variant="primary"
+                            tone="information"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <img src={tokenIcon} alt="" className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatTokenCount(
+                                resolveProjectTokenCount(project)
+                              )}
                             </span>
                           </Tag>
                         </TooltipSimple>
 
-                        <TooltipSimple content="Tasks">
-                          <Tag variant="default" size="sm">
-                            <Pin className="h-3.5 w-3.5" />
-                            <span className="text-xs">
-                              {project.task_count}
+                        <TooltipSimple content={t('layout.tasks')}>
+                          <Tag
+                            variant="primary"
+                            tone="default"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <ListChecks className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.task_count)}
+                            </span>
+                          </Tag>
+                        </TooltipSimple>
+
+                        <TooltipSimple content="Triggers">
+                          <Tag
+                            variant="primary"
+                            tone="warning"
+                            emphasis="default"
+                            size="xs"
+                            className="gap-1.5"
+                          >
+                            <Zap className="h-3 w-3" />
+                            <span className="text-label-xs">
+                              {formatCompactCount(project.total_triggers)}
                             </span>
                           </Tag>
                         </TooltipSimple>
@@ -559,10 +689,13 @@ export default function HistorySidebar() {
                             variant="ghost"
                             className="flex-shrink-0"
                           >
-                            <Ellipsis size={16} className="text-text-primary" />
+                            <Ellipsis
+                              size={16}
+                              className="text-ds-text-neutral-default-default"
+                            />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-dropdown-border bg-dropdown-bg p-sm">
+                        <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-sm">
                           <div className="space-y-1">
                             <PopoverClose asChild>
                               <Button
@@ -591,7 +724,7 @@ export default function HistorySidebar() {
                               >
                                 <Trash2
                                   size={16}
-                                  className="text-icon-primary group-hover:text-icon-cuation"
+                                  className="text-ds-icon-neutral-default-default group-hover:text-ds-icon-status-error-default-default"
                                 />
                                 {t('layout.delete')}
                               </Button>

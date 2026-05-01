@@ -13,19 +13,93 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { VanillaChatStore } from '@/store/chatStore';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectStore } from '@/store/projectStore';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
-import { FileText } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
+import { ChevronDown, FileText } from 'lucide-react';
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
+import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
+import { SplittingProgressRow } from './MessageItem/SplittingProgressRow';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
+import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { StreamingTaskList } from './TaskBox/StreamingTaskList';
 import { TaskCard } from './TaskBox/TaskCard';
-import { TypeCardSkeleton } from './TaskBox/TypeCardSkeleton';
-import { AnimatedTokenNumber } from './TokenUtils';
+
+/** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
+const AgentResultCard: React.FC<{
+  id: string;
+  agentName?: string;
+  content: string;
+  attaches?: any[];
+  defaultOpen?: boolean;
+}> = ({ id, agentName, content, attaches, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const label = agentName || 'Agent';
+
+  return (
+    <div className="overflow-hidden px-2">
+      {/* Header (always visible) */}
+      <button
+        type="button"
+        className="focus-visible:ring-ds-border-brand-default-focus/40 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:outline-none focus-visible:ring-2 active:bg-ds-bg-neutral-default-active"
+        onClick={() => setIsOpen((v) => !v)}
+      >
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <ChevronDown
+          size={14}
+          aria-hidden
+          className={`shrink-0 text-ds-icon-neutral-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+        />
+      </button>
+
+      {/* Collapsible body */}
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+      >
+        <div className="border-t border-ds-border-neutral-default-default px-1 py-1">
+          <AgentMessageCard
+            id={id}
+            content={content}
+            typewriter={false}
+            onTyping={() => {}}
+            attaches={attaches}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Typewriter only for the agent message currently being produced (latest agent row while task is running). */
+function shouldUseLiveAgentTypewriter(
+  task: {
+    type?: string;
+    delayTime?: number;
+    status: string;
+    messages: any[];
+  } | null,
+  messageId: string
+): boolean {
+  const replayAllows =
+    task?.type !== 'replay' ||
+    (task?.type === 'replay' && task?.delayTime !== 0);
+  if (!replayAllows) return false;
+  if (!task || task.status !== ChatTaskStatus.RUNNING) return false;
+  const msgs = task.messages;
+  if (!msgs.length) return false;
+  const last = msgs[msgs.length - 1];
+  return last.role === 'agent' && last.id === messageId;
+}
 
 interface QueryGroup {
   queryId: string;
@@ -51,25 +125,69 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   onQueryActive,
   index,
 }) => {
-  const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
-  const [isCompletionReady, setIsCompletionReady] = useState(false);
+  const [taskCompletionMarkdownReady, setTaskCompletionMarkdownReady] =
+    useState(false);
+  const [taskCompletionDismissed, setTaskCompletionDismissed] = useState(false);
   const chatState = chatStore.getState();
+
+  const completionEndMessage = queryGroup.otherMessages.find(
+    (m: any) => m.step === AgentStep.END && m.content.length > 0
+  );
+
+  useEffect(() => {
+    setTaskCompletionMarkdownReady(false);
+    setTaskCompletionDismissed(false);
+  }, [queryGroup.queryId, completionEndMessage?.id]);
+
+  const onTaskCompletionMarkdownReady = useCallback(() => {
+    setTaskCompletionMarkdownReady(true);
+  }, []);
   const activeTaskId = chatState.activeTaskId;
-  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : null;
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const setActiveWorkspaceTab = usePageTabStore(
+    (state) => state.setActiveWorkspaceTab
+  );
+  const openFilePreview = useCallback(
+    (file: FileInfo) => {
+      const state = chatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId) return;
+
+      state.setSelectedFile(taskId, file);
+      state.setNuwFileNum(taskId, 0);
+      state.setActiveWorkspace(taskId, 'documentWorkSpace');
+      setActiveWorkspaceTab('inbox', {
+        clearInboxForProjectId: activeProjectId,
+      });
+    },
+    [activeProjectId, chatStore, setActiveWorkspaceTab]
+  );
+
+  // Subscribe to streaming decompose text separately for efficient updates
+  const streamingDecomposeText = useSyncExternalStore(
+    (callback) => chatStore.subscribe(callback),
+    () => {
+      const state = chatStore.getState();
+      const taskId = state.activeTaskId;
+      if (!taskId || !state.tasks[taskId]) return '';
+      return state.tasks[taskId].streamingDecomposeText || '';
+    }
+  );
 
   // Show task if this query group has a task message OR if it's the most recent user query during splitting
   // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
   // Exclude human-reply scenarios (when user is replying to an activeAsk)
   const isHumanReply =
     queryGroup.userMessage &&
-    activeTask &&
-    (activeTask.activeAsk ||
+    activeTaskId &&
+    chatState.tasks[activeTaskId] &&
+    (chatState.tasks[activeTaskId].activeAsk ||
       // Check if this user message follows an 'ask' message in the message sequence
       (() => {
-        const messages = activeTask.messages;
+        const messages = chatState.tasks[activeTaskId].messages;
         const userMessageIndex = messages.findIndex(
           (m: any) => m.id === queryGroup.userMessage.id
         );
@@ -86,33 +204,30 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const isLastUserQuery =
     !queryGroup.taskMessage &&
     !isHumanReply &&
-    activeTask &&
+    activeTaskId &&
+    chatState.tasks[activeTaskId] &&
     queryGroup.userMessage &&
     queryGroup.userMessage.id ===
-      activeTask.messages.filter((m: any) => m.role === 'user').pop()?.id &&
+      chatState.tasks[activeTaskId].messages
+        .filter((m: any) => m.role === 'user')
+        .pop()?.id &&
     // Only show during active phases (not finished)
-    activeTask.status !== ChatTaskStatus.FINISHED;
+    chatState.tasks[activeTaskId].status !== ChatTaskStatus.FINISHED;
 
   // Only show the fallback task box for the newest query while the agent is still splitting work.
   // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
   // Also, do not show fallback task if we are currently decomposing (streaming text).
-  const streamingDecomposeText = activeTask?.streamingDecomposeText || '';
   const isDecomposing = streamingDecomposeText.length > 0;
   const shouldShowFallbackTask =
     isLastUserQuery &&
-    activeTask &&
-    !activeTask.hasWaitComfirm &&
+    activeTaskId &&
+    !chatState.tasks[activeTaskId].hasWaitComfirm &&
     !isDecomposing;
 
   const task =
-    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTask
-      ? activeTask
+    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
+      ? chatState.tasks[activeTaskId]
       : null;
-
-  // Reset completion flag when active task or query group changes
-  useEffect(() => {
-    setIsCompletionReady(false);
-  }, [activeTaskId, queryGroup.queryId]);
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -185,10 +300,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const isSkeletonPhase =
     task &&
     ((task.status !== ChatTaskStatus.FINISHED &&
+      task.status !== ChatTaskStatus.RUNNING &&
       !anyToSubTasksMessage &&
       !task.hasWaitComfirm &&
       task.messages.length > 0) ||
       (task.isTakeControl && !anyToSubTasksMessage));
+
+  /** Task card visible (user message is sticky alone in this mode). */
+  const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
+
+  const hasConfirmedSubTasks = Boolean(
+    task?.messages.some(
+      (m: any) => m.step === AgentStep.TO_SUB_TASKS && m.isConfirm
+    )
+  );
+  const showPreparingExecute =
+    taskCardVisible &&
+    Boolean(activeTaskId && task) &&
+    hasConfirmedSubTasks &&
+    task!.status === ChatTaskStatus.PENDING;
 
   return (
     <motion.div
@@ -202,8 +332,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       }}
       className="relative"
     >
-      {/* User Query (render only if exists) */}
-      {queryGroup.userMessage && (
+      {/* User query: scrolls with content unless workforce task is shown (then sticky user row only). */}
+      {queryGroup.userMessage && !taskCardVisible && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -218,8 +348,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {/* Sticky Task Box - Show only when task exists and NOT in skeleton phase */}
-      {task && !isSkeletonPhase && !isHumanReply && (
+      {/* Sticky user message only — task box scrolls away. */}
+      {taskCardVisible && queryGroup.userMessage && (
         <motion.div
           ref={taskBoxRef}
           className="sticky top-0 z-20"
@@ -230,71 +360,79 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           }}
         >
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            transition={{
-              duration: 0.3,
-              delay: 0.1, // Slight delay for sequencing
-            }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="mb-sm"
           >
-            <div
-              style={{
-                transition: 'all 0.3s ease-in-out',
-                transformOrigin: 'top',
-              }}
-            >
-              <TaskCard
-                key={`task-${activeTaskId}-${queryGroup.queryId}`}
-                chatId={chatId}
-                taskInfo={task?.taskInfo || []}
-                taskType={queryGroup.taskMessage?.taskType || 1}
-                taskAssigning={task?.taskAssigning || []}
-                taskRunning={task?.taskRunning || []}
-                progressValue={task?.progressValue || 0}
-                summaryTask={task?.summaryTask || ''}
-                onAddTask={() => {
-                  chatState.setIsTaskEdit(activeTaskId as string, true);
-                  chatState.addTaskInfo();
-                }}
-                onUpdateTask={(taskIndex, content) => {
-                  chatState.setIsTaskEdit(activeTaskId as string, true);
-                  chatState.updateTaskInfo(taskIndex, content);
-                }}
-                onSaveTask={() => {
-                  chatState.saveTaskInfo();
-                }}
-                onDeleteTask={(taskIndex) => {
-                  chatState.setIsTaskEdit(activeTaskId as string, true);
-                  chatState.deleteTaskInfo(taskIndex);
-                }}
-                clickable={true}
-              />
-            </div>
+            <UserMessageCard
+              id={queryGroup.userMessage.id}
+              content={queryGroup.userMessage.content}
+              attaches={queryGroup.userMessage.attaches}
+            />
           </motion.div>
         </motion.div>
       )}
 
-      {/* Live token count – visible only while the task is running */}
-      <AnimatePresence>
-        {task && task.status === ChatTaskStatus.RUNNING && (
-          <motion.div
-            key="live-token-count"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="mt-6 flex items-center justify-end gap-1 px-sm py-1 text-xs text-text-label"
+      {taskCardVisible && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
+          transition={{
+            duration: 0.3,
+            delay: 0.1,
+          }}
+        >
+          <div
+            style={{
+              transition: 'all 0.3s ease-in-out',
+              transformOrigin: 'top',
+            }}
           >
-            <span>{t('chat.current-task')}</span>
-            <span>·</span>
-            <AnimatedTokenNumber value={task.tokens || 0} />
-            <span>{t('chat.tokens')}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <TaskCard
+              key={`task-${activeTaskId}-${queryGroup.queryId}`}
+              chatId={chatId}
+              taskInfo={task?.taskInfo || []}
+              taskType={queryGroup.taskMessage?.taskType || 1}
+              taskAssigning={task?.taskAssigning || []}
+              taskRunning={task?.taskRunning || []}
+              progressValue={task?.progressValue || 0}
+              summaryTask={task?.summaryTask || ''}
+              onAddTask={() => {
+                chatState.setIsTaskEdit(activeTaskId as string, true);
+                chatState.addTaskInfo();
+              }}
+              onUpdateTask={(taskIndex, content) => {
+                chatState.setIsTaskEdit(activeTaskId as string, true);
+                chatState.updateTaskInfo(taskIndex, content);
+              }}
+              onSaveTask={() => {
+                chatState.saveTaskInfo();
+              }}
+              onDeleteTask={(taskIndex) => {
+                chatState.setIsTaskEdit(activeTaskId as string, true);
+                chatState.deleteTaskInfo(taskIndex);
+              }}
+              clickable={true}
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {taskCardVisible && activeTaskId && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.05 }}
+          className="px-sm"
+        >
+          {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
+          <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
+        </motion.div>
+      )}
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
@@ -306,69 +444,48 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4 px-sm"
+                className="flex flex-col gap-4"
               >
                 <AgentMessageCard
-                  typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
-                  }
+                  typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
-                  onTyping={() => {
-                    // Mark completion once the final END message finishes typing
-                    setIsCompletionReady(true);
-                  }}
+                  onTyping={() => {}}
+                  onMarkdownRenderComplete={onTaskCompletionMarkdownReady}
+                  deferredFooter={
+                    message.fileList?.length ? (
+                      <div className="my-2 flex flex-wrap gap-2">
+                        {message.fileList.map(
+                          (file: any, fileIndex: number) => (
+                            <motion.div
+                              key={`file-${message.id}-${file.name}-${fileIndex}`}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: 0.05 }}
+                              onClick={() => {
+                                openFilePreview(file);
+                              }}
+                              className="flex w-[140px] cursor-pointer items-center gap-2 rounded-lg bg-ds-bg-neutral-default-default px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-hover"
+                            >
+                              <FileText
+                                size={16}
+                                className="flex-shrink-0 text-ds-icon-neutral-default-default"
+                              />
+                              <div className="flex flex-col">
+                                <div className="max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
+                                  {file.name.split('.')[0]}
+                                </div>
+                                <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+                                  {file.type}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )
+                        )}
+                      </div>
+                    ) : undefined
+                  }
                 />
-                {/* File List */}
-                {message.fileList && (
-                  <div className="flex flex-wrap gap-2">
-                    {message.fileList.map((file: any, fileIndex: number) => (
-                      <motion.div
-                        key={`file-${message.id}-${file.name}-${fileIndex}`}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3 }}
-                        onClick={() => {
-                          chatState.setSelectedFile(
-                            activeTaskId as string,
-                            file
-                          );
-                          chatState.setNuwFileNum(activeTaskId as string, 0);
-                          chatState.setActiveWorkspace(
-                            activeTaskId as string,
-                            'documentWorkSpace'
-                          );
-                        }}
-                        className="flex w-[140px] cursor-pointer items-center gap-2 rounded-sm bg-message-fill-default px-2 py-1 transition-colors hover:bg-message-fill-hover"
-                      >
-                        <div className="flex flex-col">
-                          <div className="text-body max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-text-body">
-                            {file.name.split('.')[0]}
-                          </div>
-                          <div className="text-xs font-medium leading-29 text-text-body">
-                            {file.type}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-                {/* Task Completion Action Card - show only after markdown typing completes */}
-                {task?.status === 'finished' && isCompletionReady && (
-                  <TaskCompletionCard
-                    taskPrompt={queryGroup.userMessage?.content}
-                    onRerun={() => {
-                      // Focus the input for task refinement
-                      const inputElement = document.querySelector(
-                        '[data-chat-input]'
-                      ) as HTMLInputElement;
-                      if (inputElement) {
-                        inputElement.focus();
-                      }
-                    }}
-                  />
-                )}
               </motion.div>
             );
           } else if (message.content === 'skip') {
@@ -378,13 +495,31 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4 px-sm"
+                className="flex flex-col gap-4"
               >
                 <AgentMessageCard
                   key={message.id}
                   id={message.id}
                   content="No reply received, task continues..."
                   onTyping={() => {}}
+                />
+              </motion.div>
+            );
+          } else if (message.step === AgentStep.AGENT_END) {
+            return (
+              <motion.div
+                key={`agent-end-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="px-sm"
+              >
+                <AgentResultCard
+                  id={message.id}
+                  agentName={message.agent_name}
+                  content={message.content}
+                  attaches={message.attaches}
+                  defaultOpen
                 />
               </motion.div>
             );
@@ -395,14 +530,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4 px-sm"
+                className="flex flex-col gap-4"
               >
                 <AgentMessageCard
                   key={message.id}
-                  typewriter={
-                    task?.type !== 'replay' ||
-                    (task?.type === 'replay' && task?.delayTime !== 0)
-                  }
+                  typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
@@ -418,7 +550,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex flex-col gap-4 px-sm"
+              className="flex flex-col gap-4"
             >
               {message.fileList && (
                 <div className="flex flex-wrap gap-2">
@@ -429,24 +561,19 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: 0.3 }}
                       onClick={() => {
-                        chatState.setSelectedFile(activeTaskId as string, file);
-                        chatState.setNuwFileNum(activeTaskId as string, 0);
-                        chatState.setActiveWorkspace(
-                          activeTaskId as string,
-                          'documentWorkSpace'
-                        );
+                        openFilePreview(file);
                       }}
-                      className="flex w-[120px] cursor-pointer items-center gap-2 rounded-2xl bg-message-fill-default px-2 py-1 transition-colors hover:bg-message-fill-hover"
+                      className="flex w-[120px] cursor-pointer items-center gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 transition-colors hover:bg-ds-bg-neutral-default-hover"
                     >
                       <FileText
                         size={16}
-                        className="flex-shrink-0 text-icon-primary"
+                        className="flex-shrink-0 text-ds-icon-neutral-default-default"
                       />
                       <div className="flex flex-col">
-                        <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-text-body">
+                        <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
                           {file.name.split('.')[0]}
                         </div>
-                        <div className="text-xs font-medium leading-29 text-text-body">
+                        <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
                           {file.type}
                         </div>
                       </div>
@@ -471,19 +598,44 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         return null;
       })}
 
-      {/* Streaming Decompose Text - rendered separately to avoid flickering */}
+      {task?.status === ChatTaskStatus.FINISHED &&
+        completionEndMessage &&
+        taskCompletionMarkdownReady &&
+        !taskCompletionDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mb-md flex flex-col gap-4 px-sm"
+          >
+            <TaskCompletionCard
+              taskPrompt={queryGroup.userMessage?.content}
+              onRerun={() => {
+                const inputElement = document.querySelector(
+                  '[data-chat-input]'
+                ) as HTMLInputElement;
+                if (inputElement) {
+                  inputElement.focus();
+                }
+              }}
+              onDismiss={() => setTaskCompletionDismissed(true)}
+            />
+          </motion.div>
+        )}
+
+      {/* Streaming Decompose Text */}
       {isLastUserQuery && streamingDecomposeText && (
         <StreamingTaskList streamingText={streamingDecomposeText} />
       )}
 
-      {/* Skeleton for loading state */}
-      {isSkeletonPhase && (
+      {isSkeletonPhase && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.15 }}
+          className="px-sm"
         >
-          <TypeCardSkeleton isTakeControl={task?.isTakeControl || false} />
+          <SplittingProgressRow chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
     </motion.div>

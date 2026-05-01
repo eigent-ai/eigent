@@ -37,6 +37,20 @@ export class WebViewManager {
   private maxInactiveWebviews = 5;
   private lastCleanupTime = Date.now();
 
+  private getHiddenBounds(id: string, width = 100, height = 100) {
+    const numericId = Number(id);
+    const idOffset = Number.isFinite(numericId) ? (numericId % 20) * 20 : 0;
+    const safeWidth = Math.max(width, 100);
+    const safeHeight = Math.max(height, 100);
+
+    return {
+      x: -10000 - safeWidth - idOffset,
+      y: -10000 - safeHeight - idOffset,
+      width: safeWidth,
+      height: safeHeight,
+    };
+  }
+
   constructor(window: BrowserWindow) {
     this.win = window;
   }
@@ -245,13 +259,7 @@ export class WebViewManager {
 
       // Set to muted state when created
       view.webContents.audioMuted = true;
-      let newId = Number(id);
-      view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
+      view.setBounds(this.getHiddenBounds(id));
       view.setBorderRadius(16);
 
       await view.webContents.loadURL(url);
@@ -298,12 +306,7 @@ export class WebViewManager {
           this.win?.webContents.send('url-updated', navigationUrl);
           return;
         }
-        webViewInfo.view.setBounds({
-          x: -1919,
-          y: -1079,
-          width: 1920,
-          height: 1080,
-        });
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, 1920, 1080));
         const activeSize = this.getActiveWebview().length;
         const allSize = Array.from(this.webViews.values()).length;
         const inactiveSize = allSize - activeSize;
@@ -374,13 +377,7 @@ export class WebViewManager {
           height: Math.max(height, 100),
         });
       } else {
-        let newId = Number(id);
-        webViewInfo.view.setBounds({
-          x: -9999 + newId * 100,
-          y: -9999 + newId * 100,
-          width: Math.max(width, 100),
-          height: Math.max(height, 100),
-        });
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, width, height));
       }
 
       return { success: true };
@@ -395,13 +392,7 @@ export class WebViewManager {
     if (!webViewInfo) {
       return { success: false, error: `Webview with id ${id} not found` };
     }
-    let newId = Number(id);
-    webViewInfo.view.setBounds({
-      x: -9999 + newId * 100,
-      y: -9999 + newId * 100,
-      width: 100,
-      height: 100,
-    });
+    webViewInfo.view.setBounds(this.getHiddenBounds(id));
     webViewInfo.isShow = false;
 
     if (
@@ -415,13 +406,7 @@ export class WebViewManager {
   }
   public hideAllWebview() {
     this.webViews.forEach((webview) => {
-      let newId = Number(webview.id);
-      webview.view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
+      webview.view.setBounds(this.getHiddenBounds(webview.id));
       webview.isShow = false;
 
       if (webview.view.webContents && !webview.view.webContents.isDestroyed()) {

@@ -17,8 +17,9 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 interface CdpBrowser {
@@ -33,6 +34,7 @@ export default function CDP() {
   const host = useHost();
   const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [cdpBrowsers, setCdpBrowsers] = useState<CdpBrowser[]>([]);
   const [deletingBrowser, setDeletingBrowser] = useState<string | null>(null);
   const [browserToRemove, setBrowserToRemove] = useState<CdpBrowser | null>(
@@ -100,7 +102,7 @@ export default function CDP() {
     }
   };
 
-  const handleOpenNewBrowser = async () => {
+  const handleOpenNewBrowser = useCallback(async () => {
     try {
       toast.loading(t('layout.launching-browser', { port: '...' }), {
         id: 'launch-browser',
@@ -125,7 +127,15 @@ export default function CDP() {
         id: 'launch-browser',
       });
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    if (searchParams.get('browserAction') !== 'launch') return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('browserAction');
+    setSearchParams(next, { replace: true });
+    void handleOpenNewBrowser();
+  }, [searchParams, setSearchParams, handleOpenNewBrowser]);
 
   const handleConnectExistingBrowser = () => {
     setConnectPort('');
@@ -200,7 +210,7 @@ export default function CDP() {
   };
 
   return (
-    <div className="m-auto flex h-auto w-full flex-1 flex-col">
+    <div className="m-auto flex h-full w-full flex-1 flex-col">
       <AlertDialog
         isOpen={!!browserToRemove}
         onClose={() => setBrowserToRemove(null)}
@@ -216,87 +226,109 @@ export default function CDP() {
         })}
         confirmText={t('layout.remove')}
         cancelText={t('layout.cancel')}
-        confirmVariant="cuation"
+        confirmVariant="caution"
       />
 
-      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
-        <div className="text-heading-sm font-bold text-text-heading">
-          {t('layout.cdp-browser-connection')}
+      {/* Header Section */}
+      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
+        <div className="gap-4 flex w-full flex-col items-start justify-between">
+          <div className="flex flex-col">
+            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
+              {t('layout.cdp-browser-connection')}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 px-6">
-        <div className="flex items-center gap-3">
-          <Button variant="primary" size="sm" onClick={handleOpenNewBrowser}>
-            <Plus className="h-4 w-4" />
-            {t('layout.open-new-browser')}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleConnectExistingBrowser}
-          >
-            <Link2 className="h-4 w-4 text-button-tertiery-text-default" />
-            {t('layout.connect-existing-browser')}
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="text-body-base font-bold text-text-body">
-            {t('layout.cdp-browser-pool')}
+      <div className="mb-8 gap-6 flex flex-col">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
+          {/* Header Section */}
+          <div className="flex w-full flex-row items-center justify-between">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
+              {t('layout.cdp-browser-pool')}
+            </div>
+            <div className="gap-2 flex flex-row">
+              <Button
+                variant="primary"
+                size="sm"
+                buttonContent="text"
+                buttonRadius="lg"
+                tone="neutral"
+                textWeight="semibold"
+                onClick={handleOpenNewBrowser}
+              >
+                <Plus className="h-4 w-4" />
+                {t('layout.open-new-browser')}
+              </Button>
+              <Button
+                variant="outline"
+                textWeight="semibold"
+                buttonContent="text"
+                buttonRadius="lg"
+                tone="neutral"
+                size="sm"
+                onClick={handleConnectExistingBrowser}
+              >
+                <Link2 />
+                {t('layout.connect-existing-browser')}
+              </Button>
+            </div>
           </div>
-
-          {cdpBrowsers.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {cdpBrowsers.map((browser) => (
-                <div
-                  key={browser.id}
-                  className="flex items-center justify-between rounded-xl border-solid border-border-disabled bg-surface-tertiary px-4 py-2"
-                >
-                  <div className="flex w-full flex-row items-center gap-2">
-                    <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
-                    <div className="flex flex-col items-start justify-start">
-                      <span className="text-body-sm font-bold text-text-body">
-                        {browser.name || `Browser ${browser.port}`}
-                      </span>
-                      <span className="text-label-xs text-text-label">
-                        {t('layout.port')} {browser.port}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setBrowserToRemove(browser)}
-                    disabled={deletingBrowser === browser.id}
-                    className="ml-3 flex-shrink-0"
+          {/* Content Section */}
+          <div className="gap-2 mt-4 flex min-h-[200px] w-full flex-col">
+            {cdpBrowsers.length > 0 ? (
+              <div className="gap-2 flex flex-col">
+                {cdpBrowsers.map((browser) => (
+                  <div
+                    key={browser.id}
+                    className="rounded-xl bg-ds-bg-neutral-subtle-default px-4 py-2 flex items-center justify-between"
                   >
-                    <Trash2 className="h-4 w-4 text-text-cuation" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center px-4 py-8">
-              <Globe className="mb-4 h-12 w-12 text-icon-secondary opacity-50" />
-              <div className="text-body-base text-center font-bold text-text-label">
-                {t('layout.no-browsers-in-pool')}
+                    <div className="gap-3 flex w-full flex-row items-center">
+                      <div className="h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+                      <div className="flex flex-col items-start justify-start">
+                        <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                          {browser.name || `Browser ${browser.port}`}
+                        </span>
+                        <span className="text-label-xs text-ds-text-neutral-muted-default">
+                          {t('layout.port')} {browser.port}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      buttonContent="icon-only"
+                      onClick={() => setBrowserToRemove(browser)}
+                      disabled={deletingBrowser === browser.id}
+                      className="ml-3 flex-shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4 text-ds-text-error-default-default" />
+                    </Button>
+                  </div>
+                ))}
               </div>
-              <p className="text-center text-label-xs font-medium text-text-label">
-                {t('layout.add-browsers-hint')}
-              </p>
-            </div>
-          )}
+            ) : (
+              <div className="px-4 py-8 flex flex-col items-center justify-center">
+                <Globe className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
+                <div className="text-body-base font-bold text-ds-text-neutral-muted-default text-center">
+                  {t('layout.no-browsers-in-pool')}
+                </div>
+                <p className="text-label-xs font-medium text-ds-text-neutral-muted-default text-center">
+                  {t('layout.add-browsers-hint')}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {showConnectDialog && (
-        <div className="bg-black/50 fixed inset-0 z-50 flex items-center justify-center">
-          <div className="w-full max-w-md rounded-xl bg-surface-primary p-6 shadow-lg">
-            <div className="text-body-base mb-2 font-bold text-text-heading">
+        <div className="bg-dialog-overlay-scrim inset-0 fixed z-50 flex items-center justify-center">
+          <div className="max-w-md rounded-xl bg-ds-bg-neutral-subtle-default p-6 shadow-lg w-full">
+            <div className="text-body-base mb-2 font-bold text-ds-text-neutral-default-default">
               {t('layout.connect-existing-browser')}
             </div>
-            <p className="mb-4 text-label-xs text-text-label">
+            <p className="mb-4 text-label-xs text-ds-text-neutral-muted-default">
               {t('layout.connect-existing-browser-description')}
             </p>
             <input
@@ -307,17 +339,17 @@ export default function CDP() {
                 setConnectError('');
               }}
               placeholder={t('layout.enter-port-number')}
-              className="w-full rounded-lg border border-border-disabled bg-surface-secondary px-4 py-2 text-body-sm text-text-body outline-none focus:border-border-focus"
+              className="rounded-lg border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default px-4 py-2 text-body-sm text-ds-text-neutral-default-default focus:border-ds-border-brand-default-focus w-full border outline-none"
               onKeyDown={(event) => {
                 if (event.key === 'Enter') handleCheckAndConnect();
               }}
             />
             {connectError && (
-              <p className="mt-2 text-label-xs text-text-cuation">
+              <p className="mt-2 text-label-xs text-ds-text-status-error-strong-default">
                 {connectError}
               </p>
             )}
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-4 gap-2 flex justify-end">
               <Button
                 variant="ghost"
                 size="sm"

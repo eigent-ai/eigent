@@ -36,7 +36,6 @@ import os, { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
-import * as unzipper from 'unzipper';
 import { copyBrowserData } from './copy';
 import { FileReader } from './fileReader';
 import {
@@ -60,7 +59,7 @@ import {
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
-import { zipFolder } from './utils/log';
+import { createDiagnosticsZip, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
   checkVenvExistsForPreCheck,
@@ -413,13 +412,8 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Respect system theme on Windows, keep light theme on macOS for consistency
-const isWindows = process.platform === 'win32';
-if (isWindows) {
-  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
-} else {
-  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
-}
+// Always follow OS appearance so renderer `prefers-color-scheme` stays accurate.
+nativeTheme.themeSource = 'system';
 
 // Set log level
 log.transports.console.level = 'info';
@@ -1112,6 +1106,100 @@ function registerIpcHandlers() {
 
       await fsp.writeFile(filePath, logContent, 'utf-8');
       return { success: true, savedPath: filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-diagnostics-info', async () => {
+    return {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+    };
+  });
+
+  ipcMain.handle(
+    'export-diagnostics-zip',
+    async (
+      _event,
+      payload: { description: string; steps?: string } | undefined
+    ) => {
+      try {
+        const description =
+          typeof payload?.description === 'string'
+            ? payload.description.trim()
+            : '';
+        if (!description) {
+          return { success: false, error: 'Description is required' };
+        }
+        const steps =
+          typeof payload?.steps === 'string' ? payload.steps.trim() : '';
+
+        const logFiles: { src: string; destName: string }[] = [];
+        if (fs.existsSync(logPath)) {
+          logFiles.push({ src: logPath, destName: 'electron-main.log' });
+        }
+        const backupResolved = getBackupLogPath();
+        if (
+          fs.existsSync(backupResolved) &&
+          path.resolve(backupResolved) !== path.resolve(logPath)
+        ) {
+          logFiles.push({
+            src: backupResolved,
+            destName: 'electron-userdata-logs.log',
+          });
+        }
+        if (logFiles.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const platform = process.platform;
+        const arch = process.arch;
+        const bugReportText = [
+          'Eigent bug report',
+          '=================',
+          '',
+          `App version: ${appVersion}`,
+          `OS: ${platform} (${arch})`,
+          '',
+          'Description',
+          '-----------',
+          description,
+          '',
+          ...(steps
+            ? ['Steps to reproduce', '-------------------', steps, '']
+            : []),
+        ].join('\n');
+
+        const defaultFileName = `eigent-diagnostics-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save diagnostics',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await createDiagnosticsZip(filePath, bugReportText, logFiles);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-diagnostics-zip failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle('open-mailto', async (_event, url: string) => {
+    try {
+      if (typeof url !== 'string' || !url.startsWith('mailto:')) {
+        return { success: false, error: 'Invalid mailto URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -2067,239 +2155,6 @@ async function seedDefaultSkillsIfEmpty(): Promise<void> {
   }
 }
 
-/** Truncate a single path component to fit within the 255-byte filesystem limit. */
-function safePathComponent(name: string, maxBytes = 200): string {
-  // 200 leaves headroom for suffixes the OS or future logic may add
-  if (Buffer.byteLength(name, 'utf-8') <= maxBytes) return name;
-  // Trim from the end, character by character, until it fits
-  let trimmed = name;
-  while (Buffer.byteLength(trimmed, 'utf-8') > maxBytes) {
-    trimmed = trimmed.slice(0, -1);
-  }
-  return trimmed.replace(/-+$/, '') || 'skill';
-}
-
-// Simple mutex to prevent concurrent skill imports
-let _importLock: Promise<void> = Promise.resolve();
-function withImportLock<T>(fn: () => Promise<T>): Promise<T> {
-  let release: () => void;
-  const next = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const prev = _importLock;
-  _importLock = next;
-  return prev.then(fn).finally(() => release!());
-}
-
-async function importSkillsFromZip(
-  zipPath: string,
-  replacements?: Set<string>
-): Promise<{
-  success: boolean;
-  error?: string;
-  conflicts?: Array<{ folderName: string; skillName: string }>;
-}> {
-  // Extract to a temp directory, then find SKILL.md files and copy their
-  // parent skill directories into SKILLS_ROOT.  This handles any zip
-  // structure: wrapping directories, SKILL.md at root, or multiple skills.
-  const tempDir = path.join(os.tmpdir(), `eigent-skill-extract-${Date.now()}`);
-  try {
-    if (!existsSync(zipPath)) {
-      return { success: false, error: 'Zip file does not exist' };
-    }
-    const ext = path.extname(zipPath).toLowerCase();
-    if (ext !== '.zip') {
-      return { success: false, error: 'Only .zip files are supported' };
-    }
-    if (!existsSync(SKILLS_ROOT)) {
-      await fsp.mkdir(SKILLS_ROOT, { recursive: true });
-    }
-
-    // Step 1: Extract zip into temp directory
-    await fsp.mkdir(tempDir, { recursive: true });
-    const directory = await unzipper.Open.file(zipPath);
-    const resolvedTempDir = path.resolve(tempDir);
-    const comparePath = (value: string) =>
-      process.platform === 'win32' ? value.toLowerCase() : value;
-    const resolvedTempDirCmp = comparePath(resolvedTempDir);
-    const resolvedTempDirWithSep = resolvedTempDirCmp.endsWith(path.sep)
-      ? resolvedTempDirCmp
-      : `${resolvedTempDirCmp}${path.sep}`;
-    for (const file of directory.files as any[]) {
-      if (file.type === 'Directory') continue;
-      const normalizedArchivePath = path
-        .normalize(String(file.path))
-        .replace(/^([/\\])+/, '');
-      const destPath = path.join(tempDir, normalizedArchivePath);
-      const resolvedDestPathCmp = comparePath(path.resolve(destPath));
-      // Protect against zip-slip (e.g. entries containing ../)
-      if (
-        !normalizedArchivePath ||
-        (resolvedDestPathCmp !== resolvedTempDirCmp &&
-          !resolvedDestPathCmp.startsWith(resolvedTempDirWithSep))
-      ) {
-        return { success: false, error: 'Zip archive contains unsafe paths' };
-      }
-      const destDir = path.dirname(destPath);
-      await fsp.mkdir(destDir, { recursive: true });
-      const content = await file.buffer();
-      await fsp.writeFile(destPath, content);
-    }
-
-    // Step 2: Recursively find all SKILL.md files
-    const skillFiles: string[] = [];
-    async function findSkillMdFiles(dir: string) {
-      const entries = await fsp.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name.startsWith('.')) continue;
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await findSkillMdFiles(fullPath);
-        } else if (entry.name === SKILL_FILE) {
-          skillFiles.push(fullPath);
-        }
-      }
-    }
-    await findSkillMdFiles(tempDir);
-
-    if (skillFiles.length === 0) {
-      return {
-        success: false,
-        error: 'No SKILL.md files found in zip archive',
-      };
-    }
-
-    // Step 3: Copy each skill directory into SKILLS_ROOT
-
-    // Helper function to extract skill name from SKILL.md
-    async function getSkillName(skillFilePath: string): Promise<string> {
-      try {
-        const raw = await fsp.readFile(skillFilePath, 'utf-8');
-        const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
-        const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-        return parsed || path.basename(path.dirname(skillFilePath));
-      } catch {
-        return path.basename(path.dirname(skillFilePath));
-      }
-    }
-
-    // Helper: derive a safe folder name from a skill display name
-    function folderNameFromSkillName(
-      skillName: string,
-      fallback: string
-    ): string {
-      return safePathComponent(
-        skillName
-          .replace(/[\\/*?:"<>|\s]+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '') || fallback
-      );
-    }
-
-    // Step 3a: Scan existing skills to build a name→folderName map for
-    //          name-based duplicate detection (case-insensitive).
-    const existingSkillNames = new Map<string, string>(); // lower-case name → folder name on disk
-    if (existsSync(SKILLS_ROOT)) {
-      const rootEntries = await fsp.readdir(SKILLS_ROOT, {
-        withFileTypes: true,
-      });
-      for (const entry of rootEntries) {
-        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-        const existingSkillFile = path.join(
-          SKILLS_ROOT,
-          entry.name,
-          SKILL_FILE
-        );
-        if (!existsSync(existingSkillFile)) continue;
-        try {
-          const raw = await fsp.readFile(existingSkillFile, 'utf-8');
-          const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
-          const name = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-          if (name) existingSkillNames.set(name.toLowerCase(), entry.name);
-        } catch {
-          // skip unreadable skill
-        }
-      }
-    }
-
-    // Collect conflicts if replacements not provided
-    const conflicts: Array<{ folderName: string; skillName: string }> = [];
-    const replacementsSet = replacements || new Set<string>();
-
-    for (const skillFilePath of skillFiles) {
-      const skillDir = path.dirname(skillFilePath);
-
-      // Read the incoming skill's display name from SKILL.md frontmatter.
-      const incomingName = await getSkillName(skillFilePath);
-      const incomingNameLower = incomingName.toLowerCase();
-
-      // Determine where this skill will be written on disk.
-      // Both root-level and nested skills use the skill name to derive the
-      // folder, so that detection and storage are consistent.
-      const fallbackFolderName =
-        skillDir === tempDir
-          ? path.basename(zipPath, path.extname(zipPath))
-          : path.basename(skillDir);
-      const destFolderName = folderNameFromSkillName(
-        incomingName,
-        fallbackFolderName
-      );
-      const dest = path.join(SKILLS_ROOT, destFolderName);
-
-      // Name-based duplicate detection: check if any existing skill already
-      // has this display name, regardless of what folder it lives in.
-      const existingFolder = existingSkillNames.get(incomingNameLower);
-      if (existingFolder) {
-        if (!replacements) {
-          // First pass — report conflict using the existing skill's folder as
-          // the key so the frontend can confirm the right replacement.
-          conflicts.push({
-            folderName: existingFolder,
-            skillName: incomingName,
-          });
-          continue;
-        }
-        if (replacementsSet.has(existingFolder)) {
-          // User confirmed — remove the existing skill folder before importing.
-          await fsp.rm(path.join(SKILLS_ROOT, existingFolder), {
-            recursive: true,
-            force: true,
-          });
-        } else {
-          // User cancelled for this skill — skip it.
-          continue;
-        }
-      }
-
-      // Import the skill (no conflict, or conflict was resolved).
-      await fsp.mkdir(dest, { recursive: true });
-      if (skillDir === tempDir) {
-        // SKILL.md at zip root — copy all root-level entries.
-        await copyDirRecursive(tempDir, dest);
-      } else {
-        // SKILL.md inside a subdirectory — copy that directory.
-        await copyDirRecursive(skillDir, dest);
-      }
-    }
-
-    // Return conflicts if any were found and replacements not provided
-    if (conflicts.length > 0 && !replacements) {
-      return { success: false, conflicts };
-    }
-
-    log.info(
-      `Imported ${skillFiles.length} skill(s) from zip into ~/.eigent/skills:`,
-      zipPath
-    );
-    return { success: true };
-  } catch (error: any) {
-    log.error('importSkillsFromZip failed', error);
-    return { success: false, error: error?.message || String(error) };
-  } finally {
-    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
 // ==================== Shared backend startup logic ====================
 // Starts backend after installation completes
 // Used by both initial startup and retry flows
@@ -2322,6 +2177,7 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 // ==================== window create ====================
 async function createWindow() {
   const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
@@ -2348,10 +2204,10 @@ async function createWindow() {
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
-    width: 1200,
-    height: 800,
-    minWidth: 1050,
-    minHeight: 650,
+    width: 1280,
+    height: 960,
+    minWidth: 1100,
+    minHeight: 700,
     // Use native frame on Windows for better native integration
     frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen

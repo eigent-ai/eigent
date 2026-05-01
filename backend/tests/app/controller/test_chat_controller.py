@@ -91,6 +91,10 @@ class TestChatController:
             ) as mock_step_solve,
             patch("app.controller.chat_controller.load_dotenv"),
             patch("app.controller.chat_controller.set_current_task_id"),
+            patch(
+                "app.controller.chat_controller._prepare_browser_for_request",
+                return_value=True,
+            ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
             patch.dict(os.environ, {}, clear=True),
@@ -133,8 +137,8 @@ class TestChatController:
                 return_value=False,
             ),
             patch(
-                "app.controller.chat_controller.ensure_cdp_browser_available",
-                return_value=True,
+                "app.controller.chat_controller.ensure_cdp_browser_endpoint",
+                return_value="http://127.0.0.1:8080",
             ),
             patch("app.controller.chat_controller.load_dotenv"),
             patch("app.controller.chat_controller.set_current_task_id"),
@@ -151,6 +155,7 @@ class TestChatController:
             await post(chat_data, mock_request)
 
             assert os.environ.get("EIGENT_CDP_URL") == "http://127.0.0.1:8080"
+            assert os.environ.get("browser_port") == "8080"
             assert mock_request.state.browser_available is True
 
     @pytest.mark.asyncio
@@ -174,8 +179,8 @@ class TestChatController:
                 return_value=False,
             ),
             patch(
-                "app.controller.chat_controller.ensure_cdp_browser_available",
-                return_value=False,
+                "app.controller.chat_controller.ensure_cdp_browser_endpoint",
+                return_value=None,
             ),
             patch("app.controller.chat_controller.load_dotenv"),
             patch("app.controller.chat_controller.set_current_task_id"),
@@ -218,7 +223,7 @@ class TestChatController:
                 return_value=True,
             ),
             patch(
-                "app.controller.chat_controller.ensure_cdp_browser_available",
+                "app.controller.chat_controller.ensure_cdp_browser_endpoint",
             ) as mock_ensure_browser,
             patch("app.controller.chat_controller.load_dotenv"),
             patch("app.controller.chat_controller.set_current_task_id"),
@@ -239,6 +244,7 @@ class TestChatController:
             await post(chat_data, mock_request)
 
             assert os.environ.get("EIGENT_CDP_URL") == "http://worker-17:9222"
+            assert os.environ.get("browser_port") == "9222"
             assert mock_request.state.browser_available is True
             mock_ensure_browser.assert_not_called()
 

@@ -17,6 +17,8 @@
  * Used by ConnectionProvider and http.ts getBaseURL.
  */
 
+import { createHost } from '@/host/createHost';
+
 export type ConnectionChannel =
   | 'desktop'
   | 'web'
@@ -38,14 +40,8 @@ export interface ConnectionConfig {
 const SESSION_STORAGE_KEY = 'eigent_session_id';
 
 function isWebRuntime(): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  const win = window as Window & {
-    electronAPI?: unknown;
-    ipcRenderer?: unknown;
-  };
-  return !win.electronAPI && !win.ipcRenderer;
+  const host = createHost();
+  return !host.electronAPI && !host.ipcRenderer;
 }
 
 function readStoredSessionId(): string | undefined {

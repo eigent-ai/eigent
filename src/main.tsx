@@ -22,7 +22,7 @@ import { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
 import App from './App';
-import { ThemeProvider } from './components/ThemeProvider';
+import { ThemeProvider } from './components/Layout/ThemeProvider';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ConnectionProvider } from './context/ConnectionContext';
 import { createHost, HostProvider } from './host';

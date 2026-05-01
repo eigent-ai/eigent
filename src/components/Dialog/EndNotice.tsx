@@ -48,14 +48,14 @@ export default function EndNoticeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="gap-0 !rounded-xl border border-border-subtle-strong !bg-popup-surface p-0 shadow-sm sm:max-w-[600px]">
-        <DialogHeader className="justify-start !rounded-t-xl !bg-popup-surface p-md">
+      <DialogContent className="gap-0 !rounded-xl border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[600px] border">
+        <DialogHeader className="!rounded-t-xl !bg-ds-bg-neutral-strong-default p-md justify-start">
           <DialogTitle className="m-0">{t('layout.end-project')}</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-md bg-popup-bg p-md">
+        <div className="gap-md bg-ds-bg-neutral-strong-default p-md flex flex-col">
           {t('layout.ending-this-project-will-stop')}
         </div>
-        <DialogFooter className="!rounded-b-xl bg-white-100% p-md">
+        <DialogFooter className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md">
           <DialogClose asChild>
             <Button variant="ghost" size="md" disabled={loading}>
               {t('layout.cancel')}
@@ -64,7 +64,7 @@ export default function EndNoticeDialog({
           <Button
             size="md"
             onClick={onSubmit}
-            variant="cuation"
+            variant="caution"
             disabled={loading}
           >
             {t('layout.yes-end-project')}

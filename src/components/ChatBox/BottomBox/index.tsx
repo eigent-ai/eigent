@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import { type ChatTaskStatusType } from '@/types/constants';
+import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
@@ -53,6 +55,10 @@ interface BottomBoxProps {
 
   // Loading states
   loading?: boolean;
+
+  /** Full-area warning overlay on the input card when no model is configured. */
+  noModelOverlay?: boolean;
+  onSelectModel?: () => void;
 }
 
 export default function BottomBox({
@@ -64,20 +70,24 @@ export default function BottomBox({
   onEdit,
   inputProps,
   loading = false,
+  noModelOverlay = false,
+  onSelectModel,
 }: BottomBoxProps) {
   const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
-  let backgroundClass = 'bg-input-bg-default';
-  if (state === 'splitting') backgroundClass = 'bg-input-bg-spliting';
-  else if (state === 'confirm') backgroundClass = 'bg-input-bg-confirm';
+  let backgroundClass = 'bg-ds-bg-neutral-subtle-default';
+  if (state === 'splitting')
+    backgroundClass = 'bg-ds-bg-splitting-subtle-default';
+  else if (state === 'confirm')
+    backgroundClass = 'bg-ds-bg-completed-subtle-default';
 
   return (
-    <div className="relative z-50 flex w-full flex-col">
+    <div className="backdrop-blur-xl rounded-t-2xl bg-ds-bg-neutral-subtle-default relative z-50 flex w-full flex-col">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
-        <div className="pointer-events-auto z-50 px-2">
+        <div className="px-2 pointer-events-auto z-50">
           <QueuedBox
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
@@ -86,7 +96,7 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`flex w-full flex-col rounded-t-lg p-2 ${backgroundClass}`}
+        className={`rounded-3xl mb-sm relative flex w-full flex-col ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
         {state === 'splitting' && <BoxHeaderSplitting />}
@@ -101,6 +111,33 @@ export default function BottomBox({
 
         {/* Inputbox (always visible) */}
         <Inputbox {...inputProps} />
+
+        {noModelOverlay && onSelectModel ? (
+          <div
+            className="inset-0 rounded-3xl gap-3 backdrop-blur-lg px-4 py-5 bg-ds-bg-warning-subtle-default absolute z-[15] flex flex-row items-center justify-center"
+            role="alert"
+          >
+            <TriangleAlert
+              className="h-4 w-4 text-ds-icon-warning-default-default shrink-0"
+              aria-hidden
+            />
+            <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">
+              {t('layout.please-select-model')}
+            </p>
+            <Button
+              type="button"
+              variant="primary"
+              tone="warning"
+              size="sm"
+              buttonRadius="full"
+              onClick={onSelectModel}
+            >
+              {t('layout.select-model-cta', {
+                defaultValue: 'Select a model',
+              })}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

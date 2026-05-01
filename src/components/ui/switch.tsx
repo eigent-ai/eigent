@@ -16,6 +16,7 @@ import * as SwitchPrimitives from '@radix-ui/react-switch';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { mergeAliasStyles, switchTokenAliases } from './tokenAliases';
 
 export type SwitchSize = 'default' | 'sm';
 
@@ -39,19 +40,20 @@ const sizeClasses = {
 const Switch = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   SwitchProps
->(({ className, size = 'default', ...props }, ref) => (
+>(({ className, size = 'default', style, ...props }, ref) => (
   <SwitchPrimitives.Root
     className={cn(
-      'focus-visible:ring-ring focus-visible:ring-offset-background peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-switch-on-fill-track-fill data-[state=unchecked]:bg-switch-off-fill-track-fill',
+      'peer focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-subtle-default data-[state=checked]:bg-ds-bg-status-completed-default-default data-[state=unchecked]:bg-ds-bg-neutral-subtle-default shadow-sm inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
       sizeClasses[size].root,
       className
     )}
+    style={mergeAliasStyles(switchTokenAliases, style)}
     {...props}
     ref={ref}
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        'pointer-events-none block rounded-full bg-switch-on-fill-thumb-fill shadow-none ring-0 transition-transform data-[state=unchecked]:translate-x-0',
+        'bg-ds-text-brand-inverse-default data-[state=unchecked]:translate-x-0 shadow-lg pointer-events-none block rounded-full ring-0 transition-transform',
         sizeClasses[size].thumb
       )}
     />

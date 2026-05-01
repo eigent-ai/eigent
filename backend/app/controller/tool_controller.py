@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import os
 import shutil
@@ -30,7 +31,8 @@ from app.utils.browser_launcher import (
     DEFAULT_CDP_PORT,
     _is_cdp_available,
     _is_port_in_use,
-    ensure_cdp_browser_available,
+    ensure_cdp_browser_endpoint,
+    is_cdp_url_available,
     is_local_cdp_host,
     normalize_cdp_url,
 )
@@ -50,6 +52,7 @@ class LinkedInTokenRequest(BaseModel):
 logger = logging.getLogger("tool_controller")
 router = APIRouter()
 _web_cdp_browser_meta: dict | None = None
+DEFAULT_LOGIN_BROWSER_CDP_PORT = 9323
 
 
 class CdpBrowserConnectRequest(BaseModel):
@@ -114,6 +117,37 @@ def _get_connected_cdp_port() -> int | None:
         return None
 
 
+def _get_login_browser_cdp_port() -> int:
+    """Dedicated CDP port for the user-login cookie browser.
+
+    Keep this outside the Browser Agent fallback range (9223-9299), otherwise
+    Cookie Management can mistake a managed task browser for the login window.
+    """
+    raw_port = os.environ.get("EIGENT_LOGIN_BROWSER_CDP_PORT")
+    if not raw_port:
+        return DEFAULT_LOGIN_BROWSER_CDP_PORT
+
+    try:
+        port = int(raw_port)
+    except ValueError:
+        logger.warning(
+            "Invalid EIGENT_LOGIN_BROWSER_CDP_PORT=%s; using default %s",
+            raw_port,
+            DEFAULT_LOGIN_BROWSER_CDP_PORT,
+        )
+        return DEFAULT_LOGIN_BROWSER_CDP_PORT
+
+    if port <= 0 or port > 65535:
+        logger.warning(
+            "Out-of-range EIGENT_LOGIN_BROWSER_CDP_PORT=%s; using default %s",
+            raw_port,
+            DEFAULT_LOGIN_BROWSER_CDP_PORT,
+        )
+        return DEFAULT_LOGIN_BROWSER_CDP_PORT
+
+    return port
+
+
 def _set_connected_cdp_browser(
     endpoint: str,
     *,
@@ -123,8 +157,9 @@ def _set_connected_cdp_browser(
     managed_by: str = "local",
 ) -> dict:
     global _web_cdp_browser_meta
-    normalized_endpoint, _, _ = normalize_cdp_url(endpoint)
+    normalized_endpoint, _, port = normalize_cdp_url(endpoint)
     os.environ["EIGENT_CDP_URL"] = normalized_endpoint
+    os.environ["browser_port"] = str(port)
     _web_cdp_browser_meta = _build_web_cdp_browser(
         normalized_endpoint,
         is_external=is_external,
@@ -163,28 +198,28 @@ def _list_connected_cdp_browsers() -> list[dict]:
 
 
 def _is_cdp_endpoint_available(endpoint: str) -> bool:
-    normalized_endpoint, host, port = normalize_cdp_url(endpoint)
+    _, host, port = normalize_cdp_url(endpoint)
     if is_local_cdp_host(host):
         return _is_cdp_available(port)
 
-    try:
-        import httpx
-
-        response = httpx.get(
-            f"{normalized_endpoint}/json/version",
-            timeout=2.0,
-        )
-        return response.status_code == 200
-    except Exception:
-        return False
+    return is_cdp_url_available(endpoint)
 
 
 def _is_remote_browser_hands(hands) -> bool:
     if hands is None:
         return False
+    get_manifest = getattr(hands, "get_capability_manifest", None)
+    if get_manifest is None or inspect.iscoroutinefunction(get_manifest):
+        return False
     try:
-        manifest = hands.get_capability_manifest()
+        manifest = get_manifest()
     except Exception:
+        return False
+    if inspect.isawaitable(manifest):
+        if hasattr(manifest, "close"):
+            manifest.close()
+        return False
+    if not isinstance(manifest, dict):
         return False
     return manifest.get("deployment") == "remote_cluster"
 
@@ -271,13 +306,12 @@ async def launch_cdp_browser(request: Request):
             "endpoint": browser.get("endpoint"),
         }
 
-    port = DEFAULT_CDP_PORT
-    launched = ensure_cdp_browser_available(port)
-    if not launched:
-        if _is_port_in_use(port):
+    endpoint = ensure_cdp_browser_endpoint(DEFAULT_CDP_PORT)
+    if not endpoint:
+        if _is_port_in_use(DEFAULT_CDP_PORT):
             return {
                 "success": False,
-                "error": f"Port {port} is already in use and is not exposing CDP.",
+                "error": f"Port {DEFAULT_CDP_PORT} is already in use and is not exposing a compatible CDP browser.",
             }
         return {
             "success": False,
@@ -285,7 +319,7 @@ async def launch_cdp_browser(request: Request):
         }
 
     browser = _set_connected_cdp_browser(
-        f"http://127.0.0.1:{port}",
+        endpoint,
         is_external=False,
     )
     return {
@@ -970,12 +1004,11 @@ async def open_browser_login():
         Browser session information
     """
     try:
-        import socket
         import subprocess
 
         # Use fixed profile name for persistent logins (no port suffix)
         session_id = "user_login"
-        cdp_port = 9223
+        cdp_port = _get_login_browser_cdp_port()
 
         # IMPORTANT: Use dedicated profile for tool_controller browser
         # This is the SOURCE OF TRUTH for login data
@@ -996,12 +1029,7 @@ async def open_browser_login():
             f" at: {user_data_dir}"
         )
 
-        # Check if browser is already running on this port
-        def is_port_in_use(port):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                return s.connect_ex(("localhost", port)) == 0
-
-        if is_port_in_use(cdp_port):
+        if _is_port_in_use(cdp_port):
             logger.info(f"Browser already running on port {cdp_port}")
             return {
                 "success": True,
@@ -1135,15 +1163,8 @@ async def open_browser_login():
 @router.get("/browser/status", name="browser status")
 async def browser_status():
     """Check if the login browser is currently open."""
-    import socket
-
-    cdp_port = 9223
-
-    def is_port_in_use(port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex(("localhost", port)) == 0
-
-    return {"is_open": is_port_in_use(cdp_port)}
+    cdp_port = _get_login_browser_cdp_port()
+    return {"is_open": _is_port_in_use(cdp_port), "cdp_port": cdp_port}
 
 
 @router.get("/browser/cookies", name="list cookie domains")

@@ -44,12 +44,12 @@ export function QueuedBox({
   return (
     <div
       className={cn(
-        'border-solid-80 flex w-full flex-col items-start justify-center gap-1 rounded-t-2xl border border-b-0 border-input-border-default bg-input-bg-input py-1',
+        'border-solid-80 gap-1 rounded-t-2xl py-1 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default flex w-full flex-col items-start justify-center border border-b-0',
         className
       )}
     >
       {/* Queuing Header Top */}
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+      <div className="gap-1 px-2.5 py-0 relative box-border flex w-full items-center">
         {/* Lead Button for expand/collapse */}
         <Button
           variant="ghost"
@@ -58,21 +58,27 @@ export function QueuedBox({
           onClick={() => setIsExpanded(!isExpanded)}
         >
           {isExpanded ? (
-            <ChevronUp size={16} className="text-icon-primary" />
+            <ChevronUp
+              size={16}
+              className="text-ds-icon-neutral-default-default"
+            />
           ) : (
-            <ChevronDown size={16} className="text-icon-primary" />
+            <ChevronDown
+              size={16}
+              className="text-ds-icon-neutral-default-default"
+            />
           )}
         </Button>
 
         {/* Middle - Queued Title */}
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          <div className="relative mr-1 flex shrink-0 flex-col justify-center">
-            <span className="text-xs font-bold text-text-body">
+        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
+          <div className="mr-1 relative flex shrink-0 flex-col justify-center">
+            <span className="text-xs font-bold text-ds-text-neutral-default-default">
               {queuedMessages.length}
             </span>
           </div>
           <div className="relative flex shrink-0 flex-col justify-center">
-            <span className="text-xs font-bold text-text-body">
+            <span className="text-xs font-bold text-ds-text-neutral-default-default">
               {t('chat.queued-tasks')}
             </span>
           </div>
@@ -82,7 +88,7 @@ export function QueuedBox({
       {/* Header Content - Accordion Items for queued tasks */}
       <div
         className={cn(
-          'scrollbar-always-visible relative box-border flex w-full flex-col items-start gap-1 overflow-y-auto px-2 py-0 transition-all duration-200 ease-in-out',
+          'scrollbar-always-visible gap-1 px-2 py-0 ease-in-out relative box-border flex w-full flex-col items-start overflow-y-auto transition-all duration-200',
           isExpanded && queuedMessages.length > 0
             ? 'max-h-[156px] opacity-100'
             : 'max-h-0 opacity-0'
@@ -111,28 +117,29 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
 
   return (
     <div
-      className="relative box-border flex w-full cursor-pointer items-center gap-2 rounded-md bg-surface-tertiary px-1 py-1 transition-all duration-200 hover:bg-surface-secondary"
+      className="gap-2 rounded-md px-1 py-1 bg-ds-bg-neutral-strong-default hover:bg-ds-bg-neutral-default-default relative box-border flex w-full cursor-pointer items-center transition-all duration-200"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-transparent p-0.5">
-        <Circle size={16} className="text-icon-secondary" />
+      <div className="h-5 w-5 rounded-md p-0.5 flex shrink-0 items-center justify-center bg-transparent">
+        <Circle size={16} className="text-ds-icon-neutral-muted-default" />
       </div>
 
       <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-        <p className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
+        <p className="m-0 text-xs font-normal overflow-hidden overflow-ellipsis whitespace-nowrap">
           {content}
         </p>
       </div>
 
       <Button
         variant="ghost"
-        size="icon"
+        size="xs"
+        buttonContent="icon-only"
         className={cn(
-          'h-5 w-5 shrink-0 rounded-md p-0.5 transition-all duration-200',
+          'h-5 w-5 rounded-md p-0.5 shrink-0 transition-all duration-200',
           isHovered
-            ? 'translate-x-0 opacity-100 hover:bg-button-transparent-fill-hover'
-            : 'pointer-events-none translate-x-2 opacity-0'
+            ? 'translate-x-0 hover:bg-ds-bg-neutral-default-hover opacity-100'
+            : 'translate-x-2 pointer-events-none opacity-0'
         )}
         onClick={(e) => {
           e.preventDefault();
@@ -140,7 +147,7 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
         }}
         aria-label={t('chat.remove-queued-message')}
       >
-        <X size={16} className="text-icon-secondary" />
+        <X size={16} className="text-ds-icon-neutral-muted-default" />
       </Button>
     </div>
   );

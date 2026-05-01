@@ -110,7 +110,7 @@ export default function MCPAddDialog({
       >
         <DialogHeader title={t('setting.add-your-agent')} />
         <DialogContentSection>
-          <div className="mb-4 text-body-sm text-text-label">
+          <div className="mb-4 text-body-sm text-ds-text-neutral-muted-default">
             {t(
               'setting.add-a-local-mcp-server-by-providing-a-valid-json-configuration'
             )}
@@ -118,17 +118,17 @@ export default function MCPAddDialog({
               href="https://modelcontextprotocol.io/docs/getting-started/intro"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-text-information underline"
+              className="text-ds-text-status-splitting-strong-default underline"
             >
               {t('setting.learn-more')}
             </a>
           </div>
           {jsonError && (
-            <div className="mb-2 text-label-md text-text-cuation">
+            <div className="mb-2 text-label-md text-ds-text-status-error-strong-default">
               {jsonError}
             </div>
           )}
-          <div className="rounded-xl border-border-primary overflow-hidden border">
+          <div className="rounded-xl border-ds-border-neutral-strong-default overflow-hidden border">
             <MonacoEditor
               height="300px"
               width="100%"

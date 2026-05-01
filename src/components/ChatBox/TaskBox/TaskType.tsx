@@ -18,26 +18,26 @@ export const TaskType = ({ type }: { type: 1 | 2 | 3 }) => {
   const typeMap = {
     1: {
       label: t('layout.task-splitting'),
-      textColor: 'text-badge-splitting-surface-foreground',
-      bgColor: 'bg-badge-splitting-surface',
-      dotColor: 'bg-badge-splitting-surface-foreground',
+      textColor: 'text-ds-text-status-splitting-strong-default',
+      bgColor: 'bg-ds-bg-status-splitting-subtle-default',
+      dotColor: 'bg-ds-text-status-splitting-strong-default',
     },
     2: {
       label: t('layout.task-running'),
-      textColor: 'text-text-success-primary',
-      bgColor: 'bg-bg-fill-success-secondary',
-      dotColor: 'bg-text-success-primary',
+      textColor: 'text-ds-text-status-running-default-default',
+      bgColor: 'bg-ds-bg-status-running-subtle-default',
+      dotColor: 'bg-ds-text-status-running-default-default',
     },
     3: {
       label: t('layout.task-completed'),
-      textColor: 'text-text-primary',
+      textColor: 'text-ds-text-neutral-default-default',
       bgColor: 'bg-transparent',
-      dotColor: 'bg-text-primary',
+      dotColor: 'bg-ds-text-neutral-default-default',
     },
   };
   return (
     <div
-      className={`flex h-6 items-center gap-1 rounded-full px-2 py-1 ${typeMap[type].bgColor} ${typeMap[type].textColor} text-xs font-medium leading-17`}
+      className={`h-6 gap-1 px-2 py-1 flex items-center rounded-full ${typeMap[type].bgColor} ${typeMap[type].textColor} text-xs font-medium leading-17`}
     >
       <div className={`h-2 w-2 ${typeMap[type].dotColor} rounded-full`}></div>
       <span>{typeMap[type].label}</span>

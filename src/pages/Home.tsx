@@ -12,188 +12,386 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { checkLocalServerStale, uploadFileToBrain } from '@/api/http';
-import ChatBox from '@/components/ChatBox';
+import { checkLocalServerStale } from '@/api/http';
+import {
+  DashedLinesBackground,
+  DotPatternBackground,
+  DottedLinesBackground,
+  GridPatternBackground,
+  RuledLinesBackground,
+} from '@/components/Background';
 import Folder from '@/components/Folder';
+import ProjectPageSidebar from '@/components/ProjectPageSidebar';
+import {
+  PROJECT_SIDEBAR_FOLD_SPRING,
+  PROJECT_SIDEBAR_RAIL_WIDTH_PX,
+} from '@/components/ProjectPageSidebar/constants';
+import SessionGroup from '@/components/Session/SessionGroup';
+import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
-import Workflow from '@/components/WorkFlow';
+import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
+import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { AddWorker } from '@/components/AddWorker';
-import {
-  MenuToggleGroup,
-  MenuToggleItem,
-} from '@/components/MenuButton/MenuButton';
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
-import { Button } from '@/components/ui/button';
-
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import {
-  useTriggerStore,
-  WebSocketConnectionStatus,
-} from '@/store/triggerStore';
-import { Inbox, LayoutGrid, Plus, RefreshCw, Zap, ZapOff } from 'lucide-react';
-import Overview from './Project/Triggers';
+  EXECUTION_LOGS_OPEN_STORAGE_KEY,
+  type TriggerSortKey,
+} from '../components/Trigger/Triggers';
 
-import BottomBar from '@/components/BottomBar';
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
-import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
-import { Popover, PopoverContent } from '@/components/ui/popover';
+import Session from '@/components/Session';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import type {
+  ImperativePanelGroupHandle,
+  ImperativePanelHandle,
+} from 'react-resizable-panels';
 
-import * as PopoverPrimitive from '@radix-ui/react-popover';
+/** Same spring as project sidebar fold animation. */
+const HOME_MAIN_LAYOUT_SPRING = PROJECT_SIDEBAR_FOLD_SPRING;
 
-// Connection status icon component
-function ConnectionStatusIcon({
-  status,
-}: {
-  status: WebSocketConnectionStatus;
-}) {
-  const getStatusColor = () => {
-    switch (status) {
-      case 'connected':
-        return 'text-green-500';
-      case 'connecting':
-        return 'text-yellow-500 animate-pulse';
-      case 'unhealthy':
-        return 'text-orange-500';
-      case 'disconnected':
-      default:
-        return 'text-icon-secondary';
-    }
-  };
+/** Sidebar width bounds (react-resizable-panels uses %; derived from shell width). */
+const SIDEBAR_MIN_PX = 240;
+const SIDEBAR_MAX_PX = 400;
+/** Default expanded sidebar width when nothing is stored (px). */
+const DEFAULT_SIDEBAR_WIDTH_PX = 288;
+const SIDEBAR_WIDTH_STORAGE_KEY = 'eigent-home-sidebar-width-px';
 
-  const getStatusTooltip = () => {
-    switch (status) {
-      case 'connected':
-        return 'Connected to trigger listener';
-      case 'connecting':
-        return 'Connecting...';
-      case 'unhealthy':
-        return 'Connection unhealthy - click refresh to reconnect';
-      case 'disconnected':
-      default:
-        return 'Disconnected from trigger listener';
-    }
-  };
+function clampPct(n: number): number {
+  return Math.min(100, Math.max(1, n));
+}
 
-  const isConnected = status === 'connected';
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {isConnected ? (
-            <Zap className={getStatusColor()} />
-          ) : (
-            <ZapOff className={getStatusColor()} />
-          )}
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{getStatusTooltip()}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+function readStoredSidebarWidthPx(): number {
+  if (typeof window === 'undefined') return DEFAULT_SIDEBAR_WIDTH_PX;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    if (raw == null) return DEFAULT_SIDEBAR_WIDTH_PX;
+    const n = Number.parseFloat(raw);
+    if (!Number.isFinite(n)) return DEFAULT_SIDEBAR_WIDTH_PX;
+    return Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, n));
+  } catch {
+    return DEFAULT_SIDEBAR_WIDTH_PX;
+  }
 }
 
 export default function Home() {
-  const host = useHost();
   const { t } = useTranslation();
+  const host = useHost();
+  const ipc = host?.ipcRenderer;
+  const electronAPI = host?.electronAPI;
+  //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
 
-  const {
-    activeWorkspaceTab,
-    setActiveWorkspaceTab,
-    chatPanelPosition,
-    setHasTriggers,
-    setHasAgentFiles,
-    unviewedTabs,
-    markTabAsUnviewed,
-  } = usePageTabStore();
+  const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
+    usePageTabStore();
+  const triggerAddDialogRequestId = usePageTabStore(
+    (s) => s.triggerAddDialogRequestId
+  );
+  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
+  const setProjectSidebarFolded = usePageTabStore(
+    (s) => s.setProjectSidebarFolded
+  );
 
-  const { wsConnectionStatus, triggerReconnect } = useTriggerStore();
-  const authStore = useAuthStore.getState();
+  const email = useAuthStore((s) => s.email);
+  const workspaceMainBackground = useAuthStore(
+    (s) => s.workspaceMainBackground
+  );
 
-  const [_activeWebviewId, setActiveWebviewId] = useState<string | null>(null);
-  const [isChatBoxVisible, setIsChatBoxVisible] = useState(true);
-  const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
+  const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const toggleChatBox = () => {
-    setIsChatBoxVisible((prev) => !prev);
-  };
-
-  // Handle file upload
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Get the active project's folder path
-    const activeProjectId = projectStore.activeProjectId;
-    if (host?.ipcRenderer && !activeProjectId) return;
-
-    // Upload files using Electron API or Brain upload endpoint in pure Web mode.
-    for (const file of Array.from(files)) {
-      try {
-        if (host?.ipcRenderer) {
-          const content = await file.arrayBuffer();
-          if (activeProjectId) {
-            await host.ipcRenderer.invoke('save-file-to-agent-folder', {
-              projectId: activeProjectId,
-              fileName: file.name,
-              content,
-            });
-          }
-        } else {
-          await uploadFileToBrain(file);
-        }
-        // Mark the inbox tab as having new content
-        setHasAgentFiles(true);
-        if (activeWorkspaceTab !== 'inbox') {
-          markTabAsUnviewed('inbox');
-        }
-      } catch (error) {
-        console.error('Error uploading file:', error);
-      }
+  const [triggerSortBy, setTriggerSortBy] =
+    useState<TriggerSortKey>('createdAt');
+  const [triggerSelectedId, setTriggerSelectedId] = useState<number | null>(
+    null
+  );
+  const [triggerExecutionLogsOpen, setTriggerExecutionLogsOpen] = useState(
+    () => {
+      if (typeof window === 'undefined') return false;
+      return (
+        window.localStorage.getItem(EXECUTION_LOGS_OPEN_STORAGE_KEY) === 'true'
+      );
     }
+  );
 
-    // Reset input
-    e.target.value = '';
-  };
+  const shellPanelGroupRef = useRef<HTMLDivElement>(null);
+  const shellWidthRef = useRef(0);
+  const shellPanelGroupImperativeRef = useRef<ImperativePanelGroupHandle>(null);
+  const projectSidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const applyingSidebarLayoutRef = useRef(false);
+  const sidebarLayoutAnimationFrameRef = useRef<number | null>(null);
+  const hasInitializedSidebarLayoutRef = useRef(false);
+  /** Expanded sidebar width in px; only user drag (or stored value) changes this — window resize adjusts % to keep this width. */
+  const sidebarWidthPxRef = useRef(readStoredSidebarWidthPx());
+  const persistSidebarWidthTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  /** Percent constraints for the sidebar panel (1–100). `rail` = folded rail width. */
+  const [sidebarPct, setSidebarPct] = useState({
+    min: 18,
+    max: 35,
+    rail: 4,
+  });
+
+  const mainPanelPct = useMemo(() => {
+    const min = Math.max(1, 100 - sidebarPct.max);
+    const max = Math.max(min, Math.min(99, 100 - sidebarPct.min));
+    return { min, max };
+  }, [sidebarPct.min, sidebarPct.max]);
+
+  /** When folded, main must be allowed to reach `100 - rail` (~98%); else max ~82% blocks a 40px sidebar. */
+  const mainPanelMaxSize = useMemo(() => {
+    if (projectSidebarFolded) {
+      return Math.min(99, 100 - sidebarPct.rail);
+    }
+    return mainPanelPct.max;
+  }, [projectSidebarFolded, sidebarPct.rail, mainPanelPct.max]);
+
+  const schedulePersistSidebarWidth = useCallback((px: number) => {
+    if (persistSidebarWidthTimeoutRef.current) {
+      clearTimeout(persistSidebarWidthTimeoutRef.current);
+    }
+    persistSidebarWidthTimeoutRef.current = setTimeout(() => {
+      persistSidebarWidthTimeoutRef.current = null;
+      try {
+        window.localStorage.setItem(
+          SIDEBAR_WIDTH_STORAGE_KEY,
+          String(Math.round(px))
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 250);
+  }, []);
+
+  const setShellPanelLayout = useCallback(
+    (layout: number[], animate: boolean) => {
+      const group = shellPanelGroupImperativeRef.current;
+      if (!group) return;
+
+      const target = layout.map(clampPct);
+
+      if (sidebarLayoutAnimationFrameRef.current != null) {
+        cancelAnimationFrame(sidebarLayoutAnimationFrameRef.current);
+        sidebarLayoutAnimationFrameRef.current = null;
+      }
+
+      const applyFinalLayout = () => {
+        group.setLayout(target);
+        requestAnimationFrame(() => {
+          applyingSidebarLayoutRef.current = false;
+        });
+      };
+
+      const current = group.getLayout();
+      const shouldAnimate =
+        animate &&
+        current.length === target.length &&
+        current.some((value, index) => Math.abs(value - target[index]) > 0.1);
+
+      applyingSidebarLayoutRef.current = true;
+
+      if (!shouldAnimate) {
+        applyFinalLayout();
+        return;
+      }
+
+      const from = [...current];
+      const durationMs = 260;
+      const start = performance.now();
+
+      const tick = (now: number) => {
+        const progress = Math.min(1, (now - start) / durationMs);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        group.setLayout(
+          from.map((value, index) => value + (target[index] - value) * eased)
+        );
+
+        if (progress < 1) {
+          sidebarLayoutAnimationFrameRef.current = requestAnimationFrame(tick);
+          return;
+        }
+
+        sidebarLayoutAnimationFrameRef.current = null;
+        applyFinalLayout();
+      };
+
+      sidebarLayoutAnimationFrameRef.current = requestAnimationFrame(tick);
+    },
+    []
+  );
+
+  /** Recompute sidebar % from fixed px so the rail does not grow/shrink when the window resizes. */
+  const applyExpandedSidebarLayout = useCallback(
+    (animate: boolean = false) => {
+      const shell = shellPanelGroupRef.current;
+      if (!shell) return;
+      if (usePageTabStore.getState().projectSidebarFolded) return;
+      const w = shell.getBoundingClientRect().width;
+      if (w <= 0) return;
+      const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
+      const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
+      const px = Math.min(
+        SIDEBAR_MAX_PX,
+        Math.max(SIDEBAR_MIN_PX, sidebarWidthPxRef.current)
+      );
+      let pct = (px / w) * 100;
+      pct = Math.min(maxPct, Math.max(minPct, pct));
+      setShellPanelLayout([pct, 100 - pct], animate);
+    },
+    [setShellPanelLayout]
+  );
+
+  const handleShellPanelLayout = useCallback(
+    (sizes: number[]) => {
+      if (applyingSidebarLayoutRef.current) return;
+      const shell = shellPanelGroupRef.current;
+      if (!shell) return;
+      const shellW = shell.getBoundingClientRect().width;
+      if (shellW <= 0) return;
+
+      const sidebarPx = (sizes[0] / 100) * shellW;
+      const folded = usePageTabStore.getState().projectSidebarFolded;
+
+      if (!folded && sidebarPx < SIDEBAR_MIN_PX - 0.5) {
+        applyingSidebarLayoutRef.current = true;
+        setProjectSidebarFolded(true);
+        const rail = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / shellW) * 100);
+        const main = Math.min(99, Math.max(0, 100 - rail));
+        shellPanelGroupImperativeRef.current?.setLayout([rail, main]);
+        requestAnimationFrame(() => {
+          applyingSidebarLayoutRef.current = false;
+        });
+        return;
+      }
+
+      if (folded && sidebarPx > PROJECT_SIDEBAR_RAIL_WIDTH_PX + 1.5) {
+        applyingSidebarLayoutRef.current = true;
+        setProjectSidebarFolded(false);
+        requestAnimationFrame(() => {
+          applyingSidebarLayoutRef.current = false;
+        });
+        return;
+      }
+
+      if (!folded) {
+        sidebarWidthPxRef.current = Math.min(
+          SIDEBAR_MAX_PX,
+          Math.max(SIDEBAR_MIN_PX, sidebarPx)
+        );
+        schedulePersistSidebarWidth(sidebarWidthPxRef.current);
+      }
+    },
+    [schedulePersistSidebarWidth, setProjectSidebarFolded]
+  );
+
+  /** Expanded: apply stored px width when leaving folded or on first paint. */
+  useLayoutEffect(() => {
+    if (projectSidebarFolded) return;
+    applyExpandedSidebarLayout(hasInitializedSidebarLayoutRef.current);
+    hasInitializedSidebarLayoutRef.current = true;
+  }, [projectSidebarFolded, applyExpandedSidebarLayout]);
+
+  /** Folded: exact rail + main split (`setLayout`); update when shell width changes rail %. */
+  useLayoutEffect(() => {
+    if (!projectSidebarFolded) return;
+    const rail = sidebarPct.rail;
+    const main = Math.min(99, Math.max(0, 100 - rail));
+    setShellPanelLayout(
+      [rail, main],
+      hasInitializedSidebarLayoutRef.current && sidebarWidthPxRef.current > 0
+    );
+    hasInitializedSidebarLayoutRef.current = true;
+  }, [projectSidebarFolded, sidebarPct.rail, setShellPanelLayout]);
+
+  useEffect(() => {
+    const el = shellPanelGroupRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w <= 0) return;
+      const prevW = shellWidthRef.current;
+      shellWidthRef.current = w;
+      const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
+      const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
+      const railPct = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / w) * 100);
+      setSidebarPct({
+        min: minPct,
+        max: Math.max(minPct, maxPct),
+        rail: railPct,
+      });
+
+      if (
+        !usePageTabStore.getState().projectSidebarFolded &&
+        prevW > 0 &&
+        Math.abs(w - prevW) > 0.5
+      ) {
+        applyExpandedSidebarLayout();
+      }
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [applyExpandedSidebarLayout]);
+
+  useEffect(() => {
+    return () => {
+      if (sidebarLayoutAnimationFrameRef.current != null) {
+        cancelAnimationFrame(sidebarLayoutAnimationFrameRef.current);
+      }
+      if (persistSidebarWidthTimeoutRef.current) {
+        clearTimeout(persistSidebarWidthTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      EXECUTION_LOGS_OPEN_STORAGE_KEY,
+      String(triggerExecutionLogsOpen)
+    );
+  }, [triggerExecutionLogsOpen]);
+
+  useEffect(() => {
+    if (triggerAddDialogRequestId === 0) return;
+    setTriggerDialogOpen(true);
+  }, [triggerAddDialogRequestId]);
+
+  useEffect(() => {
+    setTriggerSelectedId(null);
+  }, [projectStore.activeProjectId]);
+
+  useEffect(() => {
+    checkLocalServerStale();
+  }, []);
 
   // Detect files and triggers when project loads
   useEffect(() => {
     const detectAgentFiles = async () => {
-      if (
-        !projectStore.activeProjectId ||
-        !authStore.email ||
-        !host?.ipcRenderer
-      ) {
-        return;
-      }
+      if (!projectStore.activeProjectId || !email) return;
       try {
-        const files = await host.ipcRenderer.invoke(
+        const files = await ipc?.invoke(
           'get-project-file-list',
-          authStore.email,
+          email,
           projectStore.activeProjectId
         );
         setHasAgentFiles(files && files.length > 0);
@@ -202,34 +400,22 @@ export default function Home() {
       }
     };
 
-    // For triggers, since we're using mock data, we set hasTriggers to true
-    // When you have real trigger data, replace this with an API call
-    setHasTriggers(true); // Mock data has triggers
-
     detectAgentFiles();
-  }, [
-    projectStore.activeProjectId,
-    authStore.email,
-    setHasAgentFiles,
-    setHasTriggers,
-    host,
-  ]);
+  }, [projectStore.activeProjectId, email, setHasAgentFiles, ipc]);
 
-  // One-time check: warn if local server is outdated after a git pull
+  // Add webview-show listener in useEffect with cleanup
   useEffect(() => {
-    checkLocalServerStale();
-  }, []);
-
-  useEffect(() => {
-    if (!host?.ipcRenderer) return;
     const handleWebviewShow = (_event: any, id: string) => {
       setActiveWebviewId(id);
     };
-    host.ipcRenderer.on('webview-show', handleWebviewShow);
+
+    ipc?.on('webview-show', handleWebviewShow);
+
+    // Cleanup: remove listener on unmount
     return () => {
-      host.ipcRenderer?.off('webview-show', handleWebviewShow);
+      ipc?.off('webview-show', handleWebviewShow);
     };
-  }, [host]);
+  }, [ipc]);
 
   // Extract complex dependency to a variable
   const taskAssigning =
@@ -273,17 +459,14 @@ export default function Home() {
 
     // capture webview
     const captureWebview = async () => {
-      if (!host?.ipcRenderer) {
-        return;
-      }
       const activeTask = chatStore.tasks[chatStore.activeTaskId as string];
       if (!activeTask || activeTask.status === ChatTaskStatus.FINISHED) {
         return;
       }
       webviews.map((webview) => {
-        host.ipcRenderer
-          .invoke('capture-webview', webview.id)
-          .then((base64: string) => {
+        void ipc
+          ?.invoke('capture-webview', webview.id)
+          ?.then((base64: string) => {
             const currentTask =
               chatStore.tasks[chatStore.activeTaskId as string];
             if (!currentTask || currentTask.type) return;
@@ -335,21 +518,20 @@ export default function Home() {
         clearInterval(intervalTimer);
       }
     };
-  }, [chatStore, taskAssigning, host]);
+  }, [chatStore, taskAssigning, ipc]);
 
   const getSize = useCallback(() => {
-    if (!host?.electronAPI?.setSize) return;
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const rect = webviewContainer.getBoundingClientRect();
-      host.electronAPI.setSize({
+      electronAPI?.setSize({
         x: rect.left,
         y: rect.top,
         width: rect.width,
         height: rect.height,
       });
     }
-  }, [host]);
+  }, [electronAPI]);
 
   useEffect(() => {
     if (!chatStore) return;
@@ -371,487 +553,157 @@ export default function Home() {
     }
   }, [chatStore, projectStore, getSize]);
 
-  if (!chatStore) {
-    return <div>{t('triggers.loading')}</div>;
-  }
+  const mainPanelSurfaceClass =
+    'rounded-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
+  const mainPanelContentClass = 'min-h-0 min-w-0 flex h-full w-full flex-col';
+  const mainPanelShellClass = cn(mainPanelSurfaceClass);
 
-  // Render workspace content based on active workspace tab
-  const renderWorkspaceContent = () => {
-    const activeTask = chatStore.activeTaskId
-      ? chatStore.tasks[chatStore.activeTaskId]
-      : null;
-    const activeWorkSpace = activeTask?.activeWorkspace;
+  const useWorkspacePatternBg =
+    activeWorkspaceTab === 'workforce' || activeWorkspaceTab === 'session';
+  const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
+    if (!useWorkspacePatternBg) return 'empty';
+    return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
+  }, [useWorkspacePatternBg, workspaceMainBackground]);
 
+  const workspaceMainContentClass = cn(
+    mainPanelContentClass,
+    workspacePatternKey !== 'empty' && 'relative'
+  );
+
+  const workspacePatternOverlayEl = useMemo(() => {
+    switch (workspacePatternKey) {
+      case 'dots':
+        return <DotPatternBackground />;
+      case 'blocks':
+        return <GridPatternBackground />;
+      case 'ruled':
+        return <RuledLinesBackground />;
+      case 'dotted':
+        return <DottedLinesBackground />;
+      case 'dashed':
+        return <DashedLinesBackground />;
+      default:
+        return null;
+    }
+  }, [workspacePatternKey]);
+
+  const handleSessionGroupDeleteSession = useCallback(
+    (sessionId: string) => {
+      if (!chatStore) return;
+      if (!window.confirm(t('layout.delete-task-confirmation'))) return;
+      const wasActive = chatStore.activeTaskId === sessionId;
+      chatStore.removeTask(sessionId);
+      if (wasActive) {
+        setActiveWorkspaceTab('workforce');
+      }
+    },
+    [chatStore, setActiveWorkspaceTab, t]
+  );
+
+  const renderActiveWorkspaceTab = () => {
     switch (activeWorkspaceTab) {
-      case 'triggers':
+      case 'workforce':
         return (
-          <div
-            className={`h-full w-full ${wsConnectionStatus === 'disconnected' ? 'pointer-events-none opacity-50 grayscale' : ''}`}
-          >
-            <Overview />
+          <div className={workspaceMainContentClass}>
+            {workspacePatternOverlayEl}
+            <Workspace />
+          </div>
+        );
+      case 'session':
+        return (
+          <div className={workspaceMainContentClass}>
+            {workspacePatternOverlayEl}
+            <Session />
           </div>
         );
       case 'inbox':
         return (
-          <div className="flex h-full w-full flex-1 items-center justify-center">
-            <div className="relative z-10 h-full w-full">
-              <Folder />
-            </div>
+          <div className={mainPanelContentClass}>
+            <Folder />
           </div>
         );
-      case 'workforce':
-      default:
-        // If no active task, show default workflow view
-        if (!activeTask || !activeWorkSpace) {
-          return (
-            <div className="flex h-full w-full flex-1 items-center justify-center">
-              <div className="relative flex h-full w-full flex-col">
-                <div className="pointer-events-none absolute inset-0 rounded-xl bg-transparent"></div>
-                <div className="relative z-10 h-full w-full">
-                  <Workflow taskAssigning={[]} />
-                </div>
-              </div>
-            </div>
-          );
-        }
-
+      case 'triggers':
         return (
-          <>
-            {activeTask.taskAssigning?.find(
-              (agent) => agent.agent_id === activeWorkSpace
-            )?.type === 'browser_agent' && (
-              <div className="flex h-full w-full flex-1 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                <BrowserAgentWorkspace />
-              </div>
-            )}
-            {activeWorkSpace === 'workflow' && (
-              <div className="flex h-full w-full flex-1 items-center justify-center">
-                <div className="relative flex h-full w-full flex-col">
-                  {/*filter blur */}
-                  <div className="pointer-events-none absolute inset-0 rounded-xl bg-transparent"></div>
-                  <div className="relative z-10 h-full w-full">
-                    <Workflow taskAssigning={activeTask.taskAssigning || []} />
-                  </div>
-                </div>
-              </div>
-            )}
-            {activeTask.taskAssigning?.find(
-              (agent) => agent.agent_id === activeWorkSpace
-            )?.type === 'developer_agent' && (
-              <div className="flex h-full w-full flex-1">
-                <TerminalAgentWorkspace />
-                {/* <Terminal content={[]} /> */}
-              </div>
-            )}
-            {activeWorkSpace === 'documentWorkSpace' && (
-              <div className="flex h-full w-full flex-1 items-center justify-center">
-                <div className="relative flex h-full w-full flex-col">
-                  {/*filter blur */}
-                  <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
-                  <div className="relative z-10 h-full w-full">
-                    <Folder />
-                  </div>
-                </div>
-              </div>
-            )}
-            {activeTask.taskAssigning?.find(
-              (agent) => agent.agent_id === activeWorkSpace
-            )?.type === 'document_agent' && (
-              <div className="flex h-full w-full flex-1 items-center justify-center">
-                <div className="relative flex h-full w-full flex-col">
-                  {/*filter blur */}
-                  <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
-                  <div className="relative z-10 h-full w-full">
-                    <Folder
-                      data={activeTask.taskAssigning?.find(
-                        (agent) => agent.agent_id === activeWorkSpace
-                      )}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Inbox Workspace - kept for backward compatibility */}
-            {activeWorkSpace === 'inbox' && (
-              <div className="flex h-full w-full flex-1 items-center justify-center">
-                <div className="relative flex h-full w-full flex-col">
-                  {/*filter blur */}
-                  <div className="blur-bg pointer-events-none absolute inset-0 rounded-xl bg-surface-secondary"></div>
-                  <div className="relative z-10 h-full w-full">
-                    <Folder />
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
+          <TriggerPanel
+            className={mainPanelContentClass}
+            sortBy={triggerSortBy}
+            onSortByChange={setTriggerSortBy}
+            selectedTriggerId={triggerSelectedId}
+            onSelectedTriggerIdChange={setTriggerSelectedId}
+            isExecutionLogsOpen={triggerExecutionLogsOpen}
+            onExecutionLogsOpenChange={setTriggerExecutionLogsOpen}
+            isDialogOpen={triggerDialogOpen}
+            onDialogOpenChange={setTriggerDialogOpen}
+          />
         );
+      case 'sessions':
+        return (
+          <SessionGroup
+            className={mainPanelContentClass}
+            tasks={chatStore.tasks}
+            activeSessionId={chatStore.activeTaskId}
+            onSelectSession={(sessionId) => {
+              chatStore.setActiveTaskId(sessionId);
+              setActiveWorkspaceTab('session');
+            }}
+            onDeleteSession={handleSessionGroupDeleteSession}
+          />
+        );
+      default:
+        return null;
     }
   };
 
-  // Render Tasks tab content (default)
+  if (!chatStore) {
+    return <div>{t('triggers.loading')}</div>;
+  }
+
   return (
     <ReactFlowProvider>
-      <div className="flex h-full min-h-0 flex-row overflow-hidden px-2 pb-2 pt-10">
-        <div className="relative flex h-full min-h-0 min-w-0 flex-1 items-center justify-center gap-4 overflow-hidden">
+      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
+        <div
+          ref={shellPanelGroupRef}
+          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
+        >
           <ResizablePanelGroup
+            ref={shellPanelGroupImperativeRef}
+            id="home-shell-panel-group"
             direction="horizontal"
-            key={`${isChatBoxVisible}-${chatPanelPosition}`}
-            className="w-full items-center justify-center gap-0.5"
+            className="min-h-0 gap-0 h-full w-full"
+            onLayout={handleShellPanelLayout}
           >
-            {/* ChatBox Panel - Left side */}
-            {isChatBoxVisible && chatPanelPosition === 'left' && (
-              <>
-                <ResizablePanel
-                  defaultSize={30}
-                  minSize={20}
-                  className="h-full"
-                >
-                  <ChatBox />
-                </ResizablePanel>
-                <ResizableHandle
-                  withHandle={true}
-                  className="custom-resizable-handle"
-                />
-              </>
-            )}
-            <ResizablePanel className="h-full w-full min-w-[600px]">
-              {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId]?.activeWorkspace ? (
-                <div className="flex h-full w-full flex-col rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
-                  {/* Header with workspace tabs */}
-                  <div className="flex w-full items-center justify-between px-2 py-2">
-                    <div className="flex w-full flex-row items-center justify-start gap-4">
-                      <MenuToggleGroup
-                        type="single"
-                        variant="info"
-                        size="xs"
-                        orientation="horizontal"
-                        value={activeWorkspaceTab}
-                        onValueChange={(val) =>
-                          val &&
-                          setActiveWorkspaceTab(
-                            val as 'triggers' | 'workforce' | 'inbox'
-                          )
-                        }
-                        className="rounded-lg bg-surface-primary"
-                      >
-                        <MenuToggleItem
-                          value="workforce"
-                          variant="info"
-                          size="xs"
-                          icon={<LayoutGrid />}
-                          className="w-32"
-                        >
-                          {t('triggers.workspace')}
-                        </MenuToggleItem>
-                        <MenuToggleItem
-                          value="inbox"
-                          variant="info"
-                          size="xs"
-                          icon={<Inbox />}
-                          showSubIcon={unviewedTabs.has('inbox')}
-                          subIcon={
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          }
-                          className="w-32"
-                        >
-                          {t('triggers.agent-folder')}
-                        </MenuToggleItem>
-                        <MenuToggleItem
-                          value="triggers"
-                          variant="info"
-                          size="xs"
-                          icon={
-                            <ConnectionStatusIcon status={wsConnectionStatus} />
-                          }
-                          showSubIcon={unviewedTabs.has('triggers')}
-                          subIcon={
-                            <span className="h-2 w-2 rounded-full bg-text-error" />
-                          }
-                          className="w-32"
-                          rightElement={
-                            wsConnectionStatus !== 'connected' && (
-                              <Popover>
-                                <PopoverPrimitive.Trigger asChild>
-                                  <div className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-surface-tertiary">
-                                    <RefreshCw
-                                      className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
-                                    />
-                                  </div>
-                                </PopoverPrimitive.Trigger>
-                                <PopoverContent
-                                  className="w-64 p-4"
-                                  side="bottom"
-                                  align="end"
-                                >
-                                  <div className="flex flex-col gap-3">
-                                    <p className="text-body-sm text-text-body">
-                                      Reconnect to trigger listener
-                                    </p>
-                                    <Button
-                                      variant="primary"
-                                      size="sm"
-                                      className="w-full items-center justify-center"
-                                      onClick={triggerReconnect}
-                                    >
-                                      <RefreshCw
-                                        className={`mr-2 h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
-                                      />
-                                      Reconnect
-                                    </Button>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            )
-                          }
-                        >
-                          {t('triggers.title')}
-                        </MenuToggleItem>
-                      </MenuToggleGroup>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {activeWorkspaceTab !== 'inbox' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="w-24 items-center justify-center rounded-lg"
-                          onClick={() => {
-                            if (activeWorkspaceTab === 'workforce') {
-                              setAddWorkerDialogOpen(true);
-                            } else if (activeWorkspaceTab === 'triggers') {
-                              setTriggerDialogOpen(true);
-                            }
-                          }}
-                        >
-                          <Plus />
-                          {activeWorkspaceTab === 'workforce' &&
-                            t('triggers.add')}
-                          {activeWorkspaceTab === 'triggers' &&
-                            t('triggers.create')}
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Hidden file input for upload */}
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      multiple
-                      className="hidden"
-                    />
-
-                    {/* AddWorker Dialog */}
-                    <AddWorker
-                      isOpen={addWorkerDialogOpen}
-                      onOpenChange={setAddWorkerDialogOpen}
-                    />
-
-                    {/* TriggerDialog */}
-                    <TriggerDialog
-                      selectedTrigger={null}
-                      isOpen={triggerDialogOpen}
-                      onOpenChange={setTriggerDialogOpen}
-                    />
-                  </div>
-                  <div className="min-h-0 w-full flex-1">
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={activeWorkspaceTab}
-                        initial={{ opacity: 0, filter: 'blur(4px)' }}
-                        animate={{ opacity: 1, filter: 'blur(0px)' }}
-                        exit={{ opacity: 0, filter: 'blur(4px)' }}
-                        transition={{ duration: 0.2 }}
-                        className="h-full w-full"
-                      >
-                        {renderWorkspaceContent()}
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                  {activeWorkspaceTab === 'workforce' && (
-                    <BottomBar
-                      onToggleChatBox={toggleChatBox}
-                      isChatBoxVisible={isChatBoxVisible}
-                    />
-                  )}
-                </div>
-              ) : (
-                // Show default workspace when activeTaskId is null or task doesn't exist
-                <div className="flex h-full w-full flex-col rounded-2xl border-solid border-border-tertiary bg-surface-secondary">
-                  {/* Header with workspace tabs */}
-                  <div className="flex w-full items-center justify-between px-2 py-2">
-                    <div className="flex w-full flex-row items-center justify-start gap-4">
-                      <MenuToggleGroup
-                        type="single"
-                        variant="info"
-                        size="xs"
-                        orientation="horizontal"
-                        value={activeWorkspaceTab}
-                        onValueChange={(val) =>
-                          val &&
-                          setActiveWorkspaceTab(
-                            val as 'triggers' | 'workforce' | 'inbox'
-                          )
-                        }
-                        className="rounded-lg bg-surface-primary"
-                      >
-                        <MenuToggleItem
-                          value="workforce"
-                          variant="info"
-                          size="xs"
-                          icon={<LayoutGrid />}
-                          className="w-32"
-                        >
-                          {t('triggers.workspace')}
-                        </MenuToggleItem>
-                        <MenuToggleItem
-                          value="inbox"
-                          variant="info"
-                          size="xs"
-                          icon={<Inbox />}
-                          showSubIcon={unviewedTabs.has('inbox')}
-                          subIcon={
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          }
-                          className="w-32"
-                        >
-                          {t('triggers.agent-folder')}
-                        </MenuToggleItem>
-                        <MenuToggleItem
-                          value="triggers"
-                          variant="info"
-                          size="xs"
-                          icon={
-                            <ConnectionStatusIcon status={wsConnectionStatus} />
-                          }
-                          showSubIcon={unviewedTabs.has('triggers')}
-                          subIcon={
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          }
-                          className="w-32"
-                          rightElement={
-                            wsConnectionStatus !== 'connected' && (
-                              <Popover>
-                                <PopoverPrimitive.Trigger asChild>
-                                  <div className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-surface-tertiary">
-                                    <RefreshCw
-                                      className={`h-3 w-3 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
-                                    />
-                                  </div>
-                                </PopoverPrimitive.Trigger>
-                                <PopoverContent
-                                  className="w-64 p-4"
-                                  side="bottom"
-                                  align="end"
-                                >
-                                  <div className="flex flex-col gap-3">
-                                    <p className="text-sm text-text-body">
-                                      Reconnect to trigger listener
-                                    </p>
-                                    <Button
-                                      variant="primary"
-                                      size="sm"
-                                      className="w-full"
-                                      onClick={triggerReconnect}
-                                    >
-                                      <RefreshCw
-                                        className={`mr-2 h-4 w-4 ${wsConnectionStatus === 'connecting' ? 'animate-spin' : ''}`}
-                                      />
-                                      Reconnect
-                                    </Button>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            )
-                          }
-                        >
-                          {t('triggers.triggers')}
-                        </MenuToggleItem>
-                      </MenuToggleGroup>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {activeWorkspaceTab !== 'inbox' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="rounded-lg"
-                          onClick={() => {
-                            if (activeWorkspaceTab === 'workforce') {
-                              setAddWorkerDialogOpen(true);
-                            } else if (activeWorkspaceTab === 'triggers') {
-                              setTriggerDialogOpen(true);
-                            }
-                          }}
-                        >
-                          <Plus />
-                          {activeWorkspaceTab === 'workforce' &&
-                            t('triggers.add')}
-                          {activeWorkspaceTab === 'triggers' &&
-                            t('triggers.create')}
-                        </Button>
-                      )}
-                    </div>
-                    {/* Hidden file input for upload */}
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      multiple
-                      className="hidden"
-                    />
-
-                    {/* AddWorker Dialog */}
-                    <AddWorker
-                      isOpen={addWorkerDialogOpen}
-                      onOpenChange={setAddWorkerDialogOpen}
-                    />
-
-                    {/* TriggerDialog */}
-                    <TriggerDialog
-                      selectedTrigger={null}
-                      isOpen={triggerDialogOpen}
-                      onOpenChange={setTriggerDialogOpen}
-                    />
-                  </div>
-                  <div className="min-h-0 w-full flex-1">
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={activeWorkspaceTab}
-                        initial={{ opacity: 0, filter: 'blur(4px)' }}
-                        animate={{ opacity: 1, filter: 'blur(0px)' }}
-                        exit={{ opacity: 0, filter: 'blur(4px)' }}
-                        transition={{ duration: 0.2 }}
-                        className="h-full w-full"
-                      >
-                        {renderWorkspaceContent()}
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                  {activeWorkspaceTab === 'workforce' && (
-                    <BottomBar
-                      onToggleChatBox={toggleChatBox}
-                      isChatBoxVisible={isChatBoxVisible}
-                    />
-                  )}
-                </div>
-              )}
+            <ResizablePanel
+              ref={projectSidebarPanelRef}
+              defaultSize={24}
+              minSize={sidebarPct.rail}
+              maxSize={sidebarPct.max}
+              className="min-h-0 min-w-0 pl-1"
+            >
+              <ProjectPageSidebar chatStore={chatStore} />
             </ResizablePanel>
-            {/* ChatBox Panel - Right side */}
-            {isChatBoxVisible && chatPanelPosition === 'right' && (
-              <>
-                <ResizableHandle
-                  withHandle={true}
-                  className="custom-resizable-handle"
-                />
-                <ResizablePanel
-                  defaultSize={30}
-                  minSize={20}
-                  className="h-full"
-                >
-                  <ChatBox />
-                </ResizablePanel>
-              </>
-            )}
+            <ResizableHandle
+              className={cn(
+                'w-1 after:bg-ds-bg-neutral-default-default shrink-0 bg-transparent after:transition-colors',
+                'hover:after:bg-ds-bg-brand-default-focus transition-colors',
+                'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
+              )}
+            />
+            <ResizablePanel
+              defaultSize={76}
+              minSize={mainPanelPct.min}
+              maxSize={mainPanelMaxSize}
+              className="min-h-0 min-w-[300px]"
+            >
+              <motion.div
+                layout
+                transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
+                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
+              >
+                <div className={mainPanelShellClass}>
+                  {renderActiveWorkspaceTab()}
+                </div>
+              </motion.div>
+            </ResizablePanel>
           </ResizablePanelGroup>
         </div>
         <UpdateElectron />

@@ -1,4 +1,83 @@
 @import './token.css';
+
+/* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-light-italic.ttf') format('truetype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-roman.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-medium-italic.ttf')
+    format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-bold-italic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Palatino LT';
+  src: url('/fonts/palatino-lt/palatino-lt-black-italic.ttf') format('truetype');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+.history-welcome-headline {
+  font-family:
+    'Palatino LT', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -35,7 +114,7 @@ body {
 
 @layer base {
   body {
-    color: var(--text-body);
+    color: var(--ds-text-neutral-default-default);
   }
 
   p,
@@ -53,28 +132,27 @@ body {
   input,
   textarea,
   select {
-    color: var(--text-primary);
-    background-color: var(--surface-primary);
-    border: 1px solid var(--border-secondary);
+    color: var(--ds-text-neutral-default-default);
+    background-color: var(--ds-bg-neutral-subtle-default);
+    border: 1px solid var(--ds-border-neutral-default-default);
     outline: none;
   }
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--text-tertiary);
+    color: var(--ds-text-neutral-subtle-default);
     opacity: 1;
   }
 
   .lucide {
-    color: var(--icon-secondary);
+    color: var(--ds-icon-neutral-muted-default);
     stroke: currentColor;
-    stroke-width: 1.5;
   }
 
   button .lucide,
   a .lucide,
   .lucide[data-state='active'] {
-    color: var(--icon-primary);
+    color: var(--ds-icon-neutral-default-default);
   }
 
   :is(
@@ -84,13 +162,13 @@ body {
     [class*='bg-white-100%'],
     [class*='bg-white-50']
   ) {
-    color: var(--text-primary);
-    background-color: var(--surface-card) !important;
+    color: var(--ds-text-neutral-default-default);
+    background-color: var(--ds-bg-neutral-default-default) !important;
     box-shadow: none;
   }
 
   [class*='bg-white-50'] {
-    background-color: var(--surface-tertiary) !important;
+    background-color: var(--ds-bg-neutral-strong-default) !important;
   }
 
   .theme-image-invert-dark {
@@ -99,10 +177,6 @@ body {
   }
 
   [data-theme='dark'] .theme-image-invert-dark {
-    filter: brightness(0) invert(1);
-  }
-
-  [data-theme='transparent'] .theme-image-invert-dark {
     filter: brightness(0) invert(1);
   }
 }
@@ -118,10 +192,10 @@ body {
   box-shadow:
     -2px -2px 100px rgba(255, 255, 255, 0.1) inset,
     2px 2px 100px rgba(29, 29, 29, 0.1) inset;
-  background-color: var(--bg-page) !important;
+  background-color: var(--ds-bg-neutral-subtle-default) !important;
   backdrop-filter: blur(75px);
   z-index: 0;
-  color: var(--text-body);
+  color: var(--ds-text-neutral-default-default);
   position: relative;
   isolation: isolate;
 }
@@ -152,14 +226,9 @@ body {
 }
 
 /* Perfect Shadow */
-.perfect-shadow {
-  box-shadow:
-    0 8px 20px -2px rgba(29, 33, 41, 0.1),
-    0 32px 48px -12px rgba(29, 33, 41, 0.12),
-    0 96px 120px -12px rgba(65, 74, 92, 0.06),
-    0 108px 72px -16px rgba(65, 74, 92, 0.08),
-    0 32px 64px -8px rgba(113, 153, 189, 0.12),
-    0 8px 10px 0 rgba(113, 153, 189, 0.12);
+.perfect-shadow,
+.soft-shadow {
+  box-shadow: var(--shadow-soft);
 }
 
 .blur-effect {
@@ -181,7 +250,7 @@ body {
 }
 
 .custom-resizable-handle:hover {
-  background: var(--border-information);
+  background: var(--ds-border-brand-default-focus);
   width: 2px;
   height: 40px;
   transform: none;
@@ -354,11 +423,13 @@ code {
 
 .scrollbar-always-visible::-webkit-scrollbar {
   width: 8px;
+  max-height: 25%;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.4);
+  background-color: rgba(156, 163, 175, 0.3);
   border-radius: 4px;
+  max-height: 25%;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
@@ -530,7 +601,7 @@ code {
 }
 
 .hover-style-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--text-label, rgba(0, 0, 0, 0.4));
+  background-color: var(--ds-text-neutral-muted-default, rgba(0, 0, 0, 0.4));
   opacity: 0;
   border-radius: 9999px;
   transition: opacity 0.2s ease;
@@ -548,7 +619,7 @@ code {
 
 /* Dark mode overrides for FolderComponent (CSV/table content) */
 [data-theme='dark'] .folder-component-content {
-  color: var(--text-primary);
+  color: var(--ds-text-neutral-default-default);
 }
 
 [data-theme='dark'] .folder-component-content * {
@@ -562,7 +633,7 @@ code {
 [data-theme='dark'] .folder-component-content table th,
 [data-theme='dark'] .folder-component-content table td {
   border-color: #30363d !important;
-  color: var(--text-primary) !important;
+  color: var(--ds-text-neutral-default-default) !important;
 }
 
 [data-theme='dark'] .folder-component-content table th {
@@ -605,5 +676,32 @@ code {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+/* Chat: single-agent "working" — shimmer painted on the text glyphs only */
+.single-agent-text-shimmer {
+  color: transparent;
+  background: linear-gradient(
+    110deg,
+    var(--ds-text-neutral-default-default) 0%,
+    var(--ds-text-neutral-default-default) 35%,
+    var(--colors-primary-4) 50%,
+    var(--ds-text-neutral-default-default) 65%,
+    var(--ds-text-neutral-default-default) 100%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: single-agent-text-shimmer 2.5s ease-in-out infinite;
+}
+
+@keyframes single-agent-text-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -50% 0;
   }
 }

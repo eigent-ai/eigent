@@ -29,7 +29,37 @@ import {
   Plus,
   TriangleAlert,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+const TASK_CARD_EXPAND_STORAGE_PREFIX = 'eigent:task-card-expanded';
+
+function getTaskCardExpandStorageKey(
+  chatId: string | undefined,
+  activeTaskId: string | undefined
+): string | null {
+  if (!activeTaskId) return null;
+  if (chatId)
+    return `${TASK_CARD_EXPAND_STORAGE_PREFIX}:${chatId}:${activeTaskId}`;
+  return `${TASK_CARD_EXPAND_STORAGE_PREFIX}:${activeTaskId}`;
+}
+
+function readStoredTaskCardExpanded(key: string | null): boolean {
+  if (!key || typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredTaskCardExpanded(key: string | null, expanded: boolean) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(key, expanded ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 interface TaskCardProps {
   taskInfo: any[];
@@ -61,7 +91,6 @@ export function TaskCard({
 }: TaskCardProps) {
   const host = useHost();
   const electronAPI = host?.electronAPI;
-  const [isExpanded, setIsExpanded] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | 'auto'>('auto');
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
@@ -74,7 +103,21 @@ export function TaskCard({
   const activeTaskId = chatStore?.activeTaskId as string;
   const activeTask = chatStore?.tasks?.[activeTaskId];
   const activeTaskStatus = activeTask?.status;
-  const activeWorkspace = activeTask?.activeWorkspace;
+  const expandStorageKey = getTaskCardExpandStorageKey(chatId, activeTaskId);
+
+  const [isExpanded, setIsExpanded] = useState(() =>
+    readStoredTaskCardExpanded(
+      getTaskCardExpandStorageKey(chatId, activeTaskId)
+    )
+  );
+
+  useEffect(() => {
+    setIsExpanded(readStoredTaskCardExpanded(expandStorageKey));
+  }, [expandStorageKey]);
+
+  useEffect(() => {
+    writeStoredTaskCardExpanded(expandStorageKey, isExpanded);
+  }, [expandStorageKey, isExpanded]);
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -113,18 +156,6 @@ export function TaskCard({
       setFilterTasks(newFiltered);
     }
   }, [selectedState, taskInfo, taskRunning]);
-
-  const isAllTaskFinished = useMemo(() => {
-    return activeTaskStatus === ChatTaskStatus.FINISHED;
-  }, [activeTaskStatus]);
-
-  useEffect(() => {
-    if (activeWorkspace === 'workflow') {
-      setIsExpanded(false);
-    } else {
-      setIsExpanded(true);
-    }
-  }, [activeWorkspace]);
 
   // Improved height calculation logic
   useEffect(() => {
@@ -188,9 +219,9 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 px-sm transition-all duration-300">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-task-surface py-sm">
-          <div className="absolute left-0 top-0 w-full bg-transparent">
+      <div className="gap-2 px-sm py-2 flex h-auto w-full flex-col transition-all duration-300">
+        <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
+          <div className="left-0 top-0 absolute w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
           {summaryTask && (
@@ -200,8 +231,8 @@ export function TaskCard({
           )}
 
           {summaryTask && (
-            <div className={`flex items-center justify-between gap-2 px-sm`}>
-              <div className="flex items-center gap-2">
+            <div className={`gap-2 px-sm flex items-center justify-between`}>
+              <div className="gap-2 flex items-center">
                 {taskType === 1 && (
                   <TaskState
                     all={
@@ -293,16 +324,16 @@ export function TaskCard({
                 )}
               </div>
 
-              <div className="transition-all duration-300 ease-in-out">
+              <div className="ease-in-out transition-all duration-300">
                 {taskType === 1 && (
                   <Button variant="ghost" size="icon" onClick={onAddTask}>
                     <Plus size={16} />
                   </Button>
                 )}
                 {taskType === 2 && (
-                  <div className="flex items-center gap-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
-                    {(isExpanded || isAllTaskFinished) && (
-                      <div className="text-xs font-medium leading-17 text-text-tertiary">
+                  <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
+                    {isExpanded && (
+                      <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
                         {taskRunning?.filter(
                           (task) =>
                             task.status === TaskStatus.COMPLETED ||
@@ -314,7 +345,7 @@ export function TaskCard({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setIsExpanded(!isExpanded)}
+                      onClick={() => setIsExpanded((prev) => !prev)}
                     >
                       <ChevronDown
                         size={16}
@@ -331,11 +362,11 @@ export function TaskCard({
 
           <div className="relative">
             {taskType === 1 && (
-              <div className="mt-sm flex flex-col px-sm duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4">
+              <div className="mt-sm px-sm ease-out animate-in fade-in-0 slide-in-from-bottom-4 flex flex-col duration-500">
                 {taskInfo.map((task, taskIndex) => (
                   <div
                     key={`task-${taskIndex}`}
-                    className="duration-300 animate-in fade-in-0 slide-in-from-left-2"
+                    className="animate-in fade-in-0 slide-in-from-left-2 duration-300"
                   >
                     <TaskItem
                       taskInfo={task}
@@ -351,13 +382,13 @@ export function TaskCard({
             {taskType === 2 && (
               <div
                 ref={contentRef}
-                className="overflow-hidden transition-all duration-300 ease-in-out"
+                className="ease-in-out overflow-hidden transition-all duration-300"
                 style={{
                   height: isExpanded ? contentHeight : 0,
                   opacity: isExpanded ? 1 : 0,
                 }}
               >
-                <div className="mt-sm flex flex-col gap-2 px-2">
+                <div className="mt-sm gap-2 px-2 flex flex-col">
                   {filterTasks.map((task: TaskInfo) => {
                     return (
                       <div
@@ -402,33 +433,41 @@ export function TaskCard({
                           }
                         }}
                         key={`taskList-${task.id}`}
-                        className={`flex gap-2 rounded-lg px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
+                        className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'bg-task-fill-success'
+                            ? 'bg-ds-bg-completed-subtle-default'
                             : task.status === TaskStatus.FAILED
-                              ? 'bg-task-fill-error'
+                              ? 'bg-ds-bg-error-subtle-default'
                               : task.status === TaskStatus.RUNNING
-                                ? 'bg-task-fill-running'
+                                ? 'bg-ds-bg-running-subtle-default'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'bg-task-fill-warning'
-                                  : 'bg-task-fill-running'
+                                  ? 'bg-ds-bg-blocked-subtle-default'
+                                  : task.status === TaskStatus.SKIPPED ||
+                                      task.status === TaskStatus.WAITING ||
+                                      task.status === TaskStatus.EMPTY
+                                    ? 'bg-ds-bg-pending-subtle-default'
+                                    : 'bg-ds-bg-running-subtle-default'
                         } cursor-pointer border border-solid border-transparent ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'hover:border-bg-fill-success-primary'
+                            ? 'hover:border-ds-border-status-completed-default-focus'
                             : task.status === TaskStatus.FAILED
-                              ? 'hover:border-task-border-focus-error'
+                              ? 'hover:border-ds-border-status-error-default-focus'
                               : task.status === TaskStatus.RUNNING
-                                ? 'hover:border-border-primary'
+                                ? 'hover:border-ds-border-status-running-default-focus'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'hover:border-task-border-focus-warning'
-                                  : 'border-transparent'
+                                  ? 'hover:border-ds-border-status-blocked-default-focus'
+                                  : task.status === TaskStatus.SKIPPED ||
+                                      task.status === TaskStatus.WAITING ||
+                                      task.status === TaskStatus.EMPTY
+                                    ? 'hover:border-ds-border-status-pending-default-hover'
+                                    : 'border-transparent'
                         } `}
                       >
                         <div className="pt-0.5">
                           {task.status === TaskStatus.RUNNING && (
                             <LoaderCircle
                               size={16}
-                              className={`text-icon-information ${
+                              className={`text-ds-icon-information-default-default ${
                                 activeTaskStatus === ChatTaskStatus.RUNNING &&
                                 'animate-spin'
                               } `}
@@ -437,39 +476,47 @@ export function TaskCard({
                           {task.status === TaskStatus.SKIPPED && (
                             <LoaderCircle
                               size={16}
-                              className={`text-icon-secondary`}
+                              className="text-ds-icon-status-pending-default-default"
                             />
                           )}
                           {task.status === TaskStatus.COMPLETED && (
                             <CircleCheckBig
                               size={16}
-                              className="text-icon-success"
+                              className="text-ds-icon-success-default-default"
                             />
                           )}
                           {task.status === TaskStatus.FAILED && (
                             <CircleSlash
                               size={16}
-                              className="text-icon-cuation"
+                              className="text-ds-icon-caution-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
                             <TriangleAlert
                               size={16}
-                              className="text-icon-warning"
+                              className="text-ds-icon-warning-default-default"
                             />
                           )}
-                          {task.status === TaskStatus.EMPTY && (
-                            <Circle size={16} className="text-icon-secondary" />
+                          {(task.status === TaskStatus.EMPTY ||
+                            task.status === TaskStatus.WAITING) && (
+                            <Circle
+                              size={16}
+                              className="text-ds-icon-status-pending-default-default"
+                            />
                           )}
                         </div>
-                        <div className="flex min-w-0 flex-1 flex-col items-start justify-center">
+                        <div className="min-w-0 flex flex-1 flex-col items-start justify-center">
                           <div
-                            className={`w-full min-w-0 whitespace-pre-line break-words [overflow-wrap:anywhere] ${
+                            className={`min-w-0 w-full [overflow-wrap:anywhere] whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
-                                ? 'text-text-cuation-default'
+                                ? 'text-ds-text-caution-default-default'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'text-text-body'
-                                  : 'text-text-primary'
+                                  ? 'text-ds-text-warning-default-default'
+                                  : task.status === TaskStatus.SKIPPED ||
+                                      task.status === TaskStatus.WAITING ||
+                                      task.status === TaskStatus.EMPTY
+                                    ? 'text-ds-text-status-pending-default-default'
+                                    : 'text-ds-text-neutral-default-default'
                             } text-sm font-medium leading-13`}
                           >
                             {task.content}

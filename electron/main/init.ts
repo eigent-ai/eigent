@@ -288,8 +288,7 @@ export async function startBackend(
   }
 
   // In dev mode, also check .env.development for SERVER_URL
-  if (!resolvedServerUrl && devServerUrl) {
-    const devEnvPath = path.join(app.getAppPath(), '.env.development');
+  if (!resolvedServerUrl && fs.existsSync(devEnvPath)) {
     const devFileServerUrl = readEnvValue(devEnvPath, 'SERVER_URL');
     if (devFileServerUrl) {
       resolvedServerUrl = devFileServerUrl;

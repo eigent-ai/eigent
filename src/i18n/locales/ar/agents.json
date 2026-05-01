@@ -37,6 +37,7 @@
   "upload": "رفع",
   "invalid-file-type": "نوع ملف غير صالح. يرجى رفع ملف .skill أو .md أو .txt أو .json.",
   "file-too-large": "الملف كبير جداً. الحد الأقصى للحجم هو 1 ميجابايت.",
+  "zip-import-too-large": "ملف ZIP كبير جداً. الحد الأقصى 50 ميجابايت.",
   "file-read-error": "فشل في قراءة الملف. يرجى المحاولة مرة أخرى.",
   "reupload-file": "إعادة رفع ملف",
   "upload-error-invalid-format": "يجب أن يكون الملف .zip أو حزمة مهارة (.skill أو .md).",
@@ -46,5 +47,12 @@
   "custom-skill": "مهارة مخصصة",
   "delete-skill": "حذف المهارة",
   "delete-skill-confirmation": "هل أنت متأكد من أنك تريد حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
-  "skill-deleted-success": "تم حذف المهارة بنجاح!"
+  "skill-deleted-success": "تم حذف المهارة بنجاح!",
+  "create-skill": "إنشاء مهارة",
+  "upload-skill": "تحميل مهارة",
+  "browse-skills": "تصفح المهارات",
+  "create-skill-default-name": "مهارة جديدة",
+  "create-skill-default-description": "صفّ ما تفعله هذه المهارة.",
+  "save-skill": "حفظ المهارة",
+  "compose-skill-hint": "عدّل SKILL.md (مطلوب ترويسة YAML بالاسم والوصف)، ثم احفظ."
 }
