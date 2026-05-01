@@ -76,6 +76,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAIN_DIST = path.join(__dirname, '../..');
 const RENDERER_DIST = path.join(MAIN_DIST, 'dist');
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+/** When set to '1', allows multiple Electron instances in dev (e.g. multiple `npm run dev`). Default: single-instance. */
+const EIGENT_DEV_MULTI_INSTANCE = process.env.EIGENT_DEV_MULTI_INSTANCE === '1';
+const skipSingleInstanceInDev = Boolean(
+  VITE_DEV_SERVER_URL && EIGENT_DEV_MULTI_INSTANCE
+);
 const VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(MAIN_DIST, 'public')
   : RENDERER_DIST;
@@ -433,7 +438,8 @@ if (os.release().startsWith('6.1')) app.disableHardwareAcceleration();
 // Set application name for Windows 10+ notifications
 if (process.platform === 'win32') app.setAppUserModelId(app.getName());
 
-if (!app.requestSingleInstanceLock()) {
+// Enforce single-instance unless in dev with EIGENT_DEV_MULTI_INSTANCE=1 (allows multiple npm run dev).
+if (!skipSingleInstanceInDev && !app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
 }
@@ -587,16 +593,21 @@ async function startAuthCallbackServer() {
 
 // ==================== single instance lock ====================
 const setupSingleInstanceLock = () => {
-  // The lock is already acquired at module level (requestSingleInstanceLock
-  // above). Calling it again here would release and re-acquire the lock,
-  // creating a window where a second instance could start. We only need
-  // to register the event handlers.
-  app.on('second-instance', (event, argv) => {
-    log.info('second-instance', argv);
-    const url = argv.find((arg) => arg.startsWith('eigent://'));
-    if (url) handleProtocolUrl(url);
-    if (win) win.show();
-  });
+  if (skipSingleInstanceInDev) {
+    // Dev with EIGENT_DEV_MULTI_INSTANCE=1: allow multiple instances
+    return;
+  }
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    log.info('no-lock');
+    app.quit();
+  } else {
+    app.on('second-instance', (event, argv) => {
+      log.info('second-instance', argv);
+      const url = argv.find((arg) => arg.startsWith('eigent://'));
+      if (url) handleProtocolUrl(url);
+      if (win) win.show();
+    });
 
   app.on('open-url', (event, url) => {
     log.info('open-url');
