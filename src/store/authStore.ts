@@ -76,6 +76,12 @@ interface AuthState {
   isFirstLaunch: boolean;
   modelType: ModelType;
   cloud_model_type: CloudModelType;
+  /**
+   * Last known result of the model configuration check, persisted so that
+   * returning users don't see the "select a model" overlay flash on mount
+   * while the API request is still in flight.
+   */
+  hasModelConfigured: boolean;
   initState: InitState;
 
   // IDE preference
@@ -114,6 +120,7 @@ interface AuthState {
   setInitState: (initState: InitState) => void;
   setModelType: (modelType: ModelType) => void;
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
+  setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
@@ -151,6 +158,7 @@ const authStore = create<AuthState>()(
       isFirstLaunch: true,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
+      hasModelConfigured: false,
       preferredIDE: 'system',
       workspaceMainBackground: 'empty',
       initState: 'carousel',
@@ -242,6 +250,9 @@ const authStore = create<AuthState>()(
       setModelType: (modelType) => set({ modelType }),
 
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
+
+      setHasModelConfigured: (hasModelConfigured) =>
+        set({ hasModelConfigured }),
 
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 

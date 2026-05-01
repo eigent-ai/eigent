@@ -22,6 +22,7 @@ import {
 } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
@@ -38,7 +39,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
@@ -62,8 +63,7 @@ export default function ChatBox(): JSX.Element {
   const sessionSidePanelMode = usePageTabStore(
     (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
   );
-  const [hasModel, setHasModel] = useState(false);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+  const { hasModel, isConfigLoaded } = useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
   const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
@@ -72,7 +72,6 @@ export default function ChatBox(): JSX.Element {
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { modelType } = useAuthStore();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
-  const location = useLocation();
 
   useEffect(() => {
     // Only show warning message, don't block functionality
@@ -93,54 +92,11 @@ export default function ChatBox(): JSX.Element {
     return () => clearTimeout(focusTimer);
   }, [workspaceChatFocusRequestId]);
 
-  // Shared function to check model configuration
-  const checkModelConfig = useCallback(async () => {
-    try {
-      if (modelType === 'cloud') {
-        const res = await proxyFetchGet('/api/v1/user/key');
-        setHasModel(!!res.value);
-      } else if (modelType === 'local' || modelType === 'custom') {
-        const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
-        const providerList = res.items || [];
-        setHasModel(providerList.length > 0);
-      } else {
-        setHasModel(false);
-      }
-    } catch (err) {
-      console.error('Failed to check model config:', err);
-      setHasModel(false);
-    } finally {
-      setIsConfigLoaded(true);
-    }
-  }, [modelType]);
-
-  // Check model config on mount and when modelType changes
   useEffect(() => {
     proxyFetchGet('/api/v1/configs').catch((err) =>
       console.error('Failed to fetch configs:', err)
     );
-
-    checkModelConfig();
-  }, [modelType, checkModelConfig]);
-
-  // Re-check model config when returning from settings page
-  useEffect(() => {
-    if (location.pathname === '/') {
-      checkModelConfig();
-    }
-  }, [location.pathname, checkModelConfig]);
-
-  // Also check when window gains focus (user returns from settings)
-  useEffect(() => {
-    const handleFocus = () => {
-      checkModelConfig();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [checkModelConfig]);
+  }, []);
   const [searchParams, setSearchParams] = useSearchParams();
   const share_token = searchParams.get('share_token');
   const skill_prompt = searchParams.get('skill_prompt');
