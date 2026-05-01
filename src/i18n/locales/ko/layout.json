@@ -52,6 +52,8 @@
   "welcome": "환영",
   "delete-task": "작업 삭제",
   "delete-task-confirmation": "이 작업을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+  "delete-success": "작업이 삭제되었습니다",
+  "delete-failed": "작업 삭제에 실패했습니다",
   "delete": "삭제",
   "cancel": "취소",
   "continue": "계속",
