@@ -131,7 +131,7 @@ export function UserMessageCard({
 
   return (
     <div key={id} className={cn('group/msg relative w-full', className)}>
-      <div className="rounded-xl py-2 px-4 bg-ds-bg-neutral-default-default w-full overflow-visible">
+      <div className="rounded-xl py-2 px-4 bg-ds-bg-neutral-subtle-default border-ds-border-neutral-muted-default w-full overflow-visible border border-solid">
         {attaches && attaches.length > 0 && (
           <div className="mb-2 gap-1 relative box-border flex w-full flex-wrap items-start">
             {(() => {
@@ -174,7 +174,7 @@ export function UserMessageCard({
                         {/* File Name */}
                         <p
                           className={cn(
-                            "my-0 text-xs font-bold leading-tight relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap text-ds-text-neutral-default-default"
+                            "my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
                           )}
                           title={file.fileName}
                         >
@@ -195,14 +195,14 @@ export function UserMessageCard({
                           size="xs"
                           buttonContent="text"
                           variant="ghost"
-                          className="rounded-lg relative flex items-center bg-ds-bg-neutral-strong-default"
+                          className="rounded-lg bg-ds-bg-neutral-strong-default relative flex items-center"
                           onMouseEnter={openRemainingPopover}
                           onMouseLeave={scheduleCloseRemainingPopover}
                           onClick={(e) => {
                             e.stopPropagation();
                           }}
                         >
-                          <span className="text-label-xs font-bold leading-tight font-['Inter'] whitespace-nowrap text-ds-text-neutral-default-default">
+                          <span className="text-label-xs font-bold leading-tight text-ds-text-neutral-default-default font-['Inter'] whitespace-nowrap">
                             {remainingCount}+
                           </span>
                         </Button>
@@ -210,7 +210,7 @@ export function UserMessageCard({
                       <PopoverContent
                         align="end"
                         sideOffset={4}
-                        className="max-w-40 rounded-md p-1 shadow-perfect !w-auto border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
+                        className="max-w-40 rounded-md p-1 shadow-perfect border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default !w-auto border"
                         onMouseEnter={openRemainingPopover}
                         onMouseLeave={scheduleCloseRemainingPopover}
                       >
@@ -219,7 +219,7 @@ export function UserMessageCard({
                             return (
                               <div
                                 key={file.filePath}
-                                className="gap-1 rounded-lg py-0.5 flex cursor-pointer items-center bg-ds-bg-neutral-strong-default transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                                className="gap-1 rounded-lg py-0.5 bg-ds-bg-neutral-strong-default hover:bg-ds-bg-neutral-default-hover flex cursor-pointer items-center transition-colors duration-300"
                                 onMouseLeave={() =>
                                   setHoveredFilePath((prev) =>
                                     prev === file.filePath ? null : prev
@@ -237,7 +237,7 @@ export function UserMessageCard({
                                 <div className="h-6 w-6 rounded-md flex items-center justify-center">
                                   {getFileIcon(file.fileName)}
                                 </div>
-                                <p className="my-0 text-xs font-bold leading-tight flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
+                                <p className="my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap">
                                   {file.fileName}
                                 </p>
                               </div>
