@@ -63,6 +63,13 @@ interface PageTabState {
   scrollToQueryId: string | null;
   setScrollToQueryId: (queryId: string | null) => void;
   /**
+   * Bumped when the side-panel Progress section asks the chat to surface
+   * the task box: TaskCard expands itself, ProjectChatContainer scrolls
+   * the active query group so the task box sits at the top.
+   */
+  taskBoxFocusRequestId: number;
+  requestTaskBoxFocus: () => void;
+  /**
    * Optional absolute path override for the agent folder (per project).
    * When unset for a project, the default Eigent project folder is used.
    */
@@ -169,6 +176,11 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       scrollToQueryId: null,
       setScrollToQueryId: (queryId) => set({ scrollToQueryId: queryId }),
+      taskBoxFocusRequestId: 0,
+      requestTaskBoxFocus: () =>
+        set((state) => ({
+          taskBoxFocusRequestId: state.taskBoxFocusRequestId + 1,
+        })),
       customAgentFolderPathByProjectId: {},
       setProjectCustomAgentFolderPath: (projectId, path) =>
         set((state) => {

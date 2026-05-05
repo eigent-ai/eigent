@@ -2993,6 +2993,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (assigneeAgentIndex !== -1 && task) {
                 task.toolkits ??= [];
                 task.toolkits.push({ ...toolkit });
+                // Mirror the notice onto the agent log so the work-log
+                // timeline can render it inline alongside tool calls.
+                taskAssigning[assigneeAgentIndex].log.push(agentMessages);
               }
               setTaskAssigning(currentTaskId, [...taskAssigning]);
             } else {
