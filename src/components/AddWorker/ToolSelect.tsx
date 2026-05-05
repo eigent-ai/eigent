@@ -30,6 +30,7 @@ import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import type { TFunction } from 'i18next';
 import { CircleAlert, X } from 'lucide-react';
 import {
   forwardRef,
@@ -63,6 +64,187 @@ interface ToolSelectProps {
   onShowEnvConfig?: (mcp: McpItem) => void;
   onSelectedToolsChange?: (tools: McpItem[]) => void;
   initialSelectedTools?: McpItem[];
+}
+
+type ToolSelectAddOption = (item: McpItem, isLocal?: boolean) => void;
+
+type ToolSelectCatalogSnapshot = {
+  email: string | null;
+  configInfo: Record<string, any> | null;
+  userMcps: any[];
+  hasUserMcps: boolean;
+};
+
+/** Session cache so Add Worker tool list + user MCPs show immediately when reopening. */
+let toolSelectCatalogSnapshot: ToolSelectCatalogSnapshot | null = null;
+
+function buildIntegrationsFromConfigInfo(
+  res: unknown,
+  keyword: string | undefined,
+  t: TFunction,
+  addOption: ToolSelectAddOption
+): any[] {
+  if (!res || typeof res !== 'object' || (res as any).error) {
+    return [];
+  }
+  const body = res as Record<string, any>;
+  const baseURL = getProxyBaseURL();
+
+  return Object.entries(body)
+    .filter(([key]) => {
+      if (!keyword) return true;
+      return key.toLowerCase().includes(keyword.toLowerCase());
+    })
+    .map(([key, value]: [string, any]) => {
+      let onInstall: IntegrationItem['onInstall'] | null = null;
+
+      if (key.toLowerCase() === 'notion') {
+        onInstall = async () => {
+          try {
+            const response = await fetchPost('/install/tool/notion');
+            if (response.success) {
+              if (response.warning) {
+                console.warn(
+                  'Notion MCP connection warning:',
+                  response.warning
+                );
+              }
+              await proxyFetchPost('/api/v1/configs', {
+                config_group: 'Notion',
+                config_name: 'MCP_REMOTE_CONFIG_DIR',
+                config_value: response.toolkit_name || 'NotionMCPToolkit',
+              });
+              console.log('Notion MCP installed successfully');
+              const notionItem = {
+                id: 0,
+                key: key,
+                name: key,
+                description:
+                  'Notion workspace integration for reading and managing Notion pages',
+                toolkit: 'notion_mcp_toolkit',
+                isLocal: true,
+              };
+              addOption(notionItem, true);
+            } else {
+              console.error(
+                'Failed to install Notion MCP:',
+                response.error || 'Unknown error'
+              );
+              throw new Error(response.error || 'Failed to install Notion MCP');
+            }
+          } catch (error: any) {
+            console.error('Failed to install Notion MCP:', error.message);
+            throw error;
+          }
+        };
+      } else if (key.toLowerCase() === 'google calendar') {
+        onInstall = async () => {
+          try {
+            const response = await fetchPost('/install/tool/google_calendar');
+            if (response.success) {
+              if (response.warning) {
+                console.warn(
+                  'Google Calendar connection warning:',
+                  response.warning
+                );
+              }
+              try {
+                const existingConfigs = await proxyFetchGet('/api/v1/configs');
+                const existing = Array.isArray(existingConfigs)
+                  ? existingConfigs.find(
+                      (c: any) =>
+                        c.config_group?.toLowerCase() === 'google calendar' &&
+                        c.config_name === 'GOOGLE_REFRESH_TOKEN'
+                    )
+                  : null;
+
+                const configPayload = {
+                  config_group: 'Google Calendar',
+                  config_name: 'GOOGLE_REFRESH_TOKEN',
+                  config_value: 'exists',
+                };
+
+                if (existing) {
+                  await proxyFetchPut(
+                    `/api/v1/configs/${existing.id}`,
+                    configPayload
+                  );
+                } else {
+                  await proxyFetchPost('/api/v1/configs', configPayload);
+                }
+              } catch (configError) {
+                console.warn(
+                  'Failed to persist Google Calendar config',
+                  configError
+                );
+              }
+              console.log('Google Calendar installed successfully');
+              const calendarItem = {
+                id: 0,
+                key: key,
+                name: key,
+                description:
+                  'Google Calendar integration for managing events and schedules',
+                toolkit: 'google_calendar_toolkit',
+                isLocal: true,
+              };
+              addOption(calendarItem, true);
+            } else if (response.status === 'authorizing') {
+              console.log(
+                'Google Calendar authorization in progress. Please complete in browser.'
+              );
+              if (response.message) {
+                console.log(response.message);
+              }
+            } else {
+              console.error(
+                'Failed to install Google Calendar:',
+                response.error || 'Unknown error'
+              );
+              throw new Error(
+                response.error || 'Failed to install Google Calendar'
+              );
+            }
+            return response;
+          } catch (error: any) {
+            if (!error.message?.includes('authorization')) {
+              console.error(
+                'Failed to install Google Calendar:',
+                error.message
+              );
+              throw error;
+            }
+            return null;
+          }
+        };
+      } else {
+        onInstall = () => {
+          window.open(
+            `${baseURL}/api/v1/oauth/${key.toLowerCase()}/login`,
+            '_blank',
+            'width=600,height=700'
+          );
+        };
+      }
+
+      return {
+        key: key,
+        name: key,
+        env_vars: value.env_vars,
+        toolkit: value.toolkit,
+        desc:
+          value.env_vars && value.env_vars.length > 0
+            ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
+                ', '
+              )}`
+            : key.toLowerCase() === 'notion'
+              ? t('layout.notion-workspace-integration')
+              : key.toLowerCase() === 'google calendar'
+                ? t('layout.google-calendar-integration')
+                : '',
+        onInstall,
+      };
+    });
 }
 
 const ToolSelect = forwardRef<
@@ -107,185 +289,37 @@ const ToolSelect = forwardRef<
   );
 
   const fetchIntegrationsData = useCallback(
-    (keyword?: string) => {
+    (keyword?: string, opts?: { force?: boolean }) => {
+      const u = email ?? null;
+      const snap = toolSelectCatalogSnapshot;
+      const hydratedFromCache =
+        !opts?.force && snap && snap.email === u && snap.configInfo;
+      if (hydratedFromCache) {
+        setIntegrations(
+          buildIntegrationsFromConfigInfo(
+            snap.configInfo,
+            keyword,
+            t,
+            addOption
+          )
+        );
+      }
+
       proxyFetchGet('/api/v1/config/info')
         .then((res) => {
-          if (res && typeof res === 'object' && !res.error) {
-            const baseURL = getProxyBaseURL();
-
-            const list = Object.entries(res)
-              .filter(([key]) => {
-                if (!keyword) return true;
-                return key.toLowerCase().includes(keyword.toLowerCase());
-              })
-              .map(([key, value]: [string, any]) => {
-                let onInstall = null;
-
-                // Special handling for Notion MCP
-                if (key.toLowerCase() === 'notion') {
-                  onInstall = async () => {
-                    try {
-                      const response = await fetchPost('/install/tool/notion');
-                      if (response.success) {
-                        // Check if there's a warning (connection failed but installation marked as complete)
-                        if (response.warning) {
-                          console.warn(
-                            'Notion MCP connection warning:',
-                            response.warning
-                          );
-                          // Still proceed but log the warning
-                        }
-                        // Save to config to mark as installed
-                        await proxyFetchPost('/api/v1/configs', {
-                          config_group: 'Notion',
-                          config_name: 'MCP_REMOTE_CONFIG_DIR',
-                          config_value:
-                            response.toolkit_name || 'NotionMCPToolkit',
-                        });
-                        console.log('Notion MCP installed successfully');
-                        // After successful installation, add to selected tools
-                        const notionItem = {
-                          id: 0, // Use 0 for integration items
-                          key: key,
-                          name: key,
-                          description:
-                            'Notion workspace integration for reading and managing Notion pages',
-                          toolkit: 'notion_mcp_toolkit', // Add the toolkit name
-                          isLocal: true,
-                        };
-                        addOption(notionItem, true);
-                      } else {
-                        console.error(
-                          'Failed to install Notion MCP:',
-                          response.error || 'Unknown error'
-                        );
-                        throw new Error(
-                          response.error || 'Failed to install Notion MCP'
-                        );
-                      }
-                    } catch (error: any) {
-                      console.error(
-                        'Failed to install Notion MCP:',
-                        error.message
-                      );
-                      throw error;
-                    }
-                  };
-                } else if (key.toLowerCase() === 'google calendar') {
-                  onInstall = async () => {
-                    try {
-                      const response = await fetchPost(
-                        '/install/tool/google_calendar'
-                      );
-                      if (response.success) {
-                        if (response.warning) {
-                          console.warn(
-                            'Google Calendar connection warning:',
-                            response.warning
-                          );
-                        }
-                        try {
-                          const existingConfigs =
-                            await proxyFetchGet('/api/v1/configs');
-                          const existing = Array.isArray(existingConfigs)
-                            ? existingConfigs.find(
-                                (c: any) =>
-                                  c.config_group?.toLowerCase() ===
-                                    'google calendar' &&
-                                  c.config_name === 'GOOGLE_REFRESH_TOKEN'
-                              )
-                            : null;
-
-                          const configPayload = {
-                            config_group: 'Google Calendar',
-                            config_name: 'GOOGLE_REFRESH_TOKEN',
-                            config_value: 'exists',
-                          };
-
-                          if (existing) {
-                            await proxyFetchPut(
-                              `/api/v1/configs/${existing.id}`,
-                              configPayload
-                            );
-                          } else {
-                            await proxyFetchPost(
-                              '/api/v1/configs',
-                              configPayload
-                            );
-                          }
-                        } catch (configError) {
-                          console.warn(
-                            'Failed to persist Google Calendar config',
-                            configError
-                          );
-                        }
-                        console.log('Google Calendar installed successfully');
-                        const calendarItem = {
-                          id: 0, // Use 0 for integration items
-                          key: key,
-                          name: key,
-                          description:
-                            'Google Calendar integration for managing events and schedules',
-                          toolkit: 'google_calendar_toolkit', // Add the toolkit name
-                          isLocal: true,
-                        };
-                        addOption(calendarItem, true);
-                      } else if (response.status === 'authorizing') {
-                        console.log(
-                          'Google Calendar authorization in progress. Please complete in browser.'
-                        );
-                        if (response.message) {
-                          console.log(response.message);
-                        }
-                      } else {
-                        console.error(
-                          'Failed to install Google Calendar:',
-                          response.error || 'Unknown error'
-                        );
-                        throw new Error(
-                          response.error || 'Failed to install Google Calendar'
-                        );
-                      }
-                      return response;
-                    } catch (error: any) {
-                      if (!error.message?.includes('authorization')) {
-                        console.error(
-                          'Failed to install Google Calendar:',
-                          error.message
-                        );
-                        throw error;
-                      }
-                      return null; // Return null on authorization flow errors
-                    }
-                  };
-                } else {
-                  onInstall = () =>
-                    window.open(
-                      `${baseURL}/api/v1/oauth/${key.toLowerCase()}/login`,
-                      '_blank',
-                      'width=600,height=700'
-                    );
-                }
-
-                return {
-                  key: key,
-                  name: key,
-                  env_vars: value.env_vars,
-                  toolkit: value.toolkit,
-                  desc:
-                    value.env_vars && value.env_vars.length > 0
-                      ? `${t('layout.environmental-variables-required')} ${value.env_vars.join(
-                          ', '
-                        )}`
-                      : key.toLowerCase() === 'notion'
-                        ? t('layout.notion-workspace-integration')
-                        : key.toLowerCase() === 'google calendar'
-                          ? t('layout.google-calendar-integration')
-                          : '',
-                  onInstall,
-                };
-              });
-            setIntegrations(list);
+          if (res && typeof res === 'object' && !(res as any).error) {
+            const info = res as Record<string, any>;
+            const prev = toolSelectCatalogSnapshot;
+            const sameUser = prev?.email === u;
+            toolSelectCatalogSnapshot = {
+              email: u,
+              configInfo: info,
+              userMcps: sameUser ? (prev?.userMcps ?? []) : [],
+              hasUserMcps: sameUser ? (prev?.hasUserMcps ?? false) : false,
+            };
+            setIntegrations(
+              buildIntegrationsFromConfigInfo(info, keyword, t, addOption)
+            );
           } else {
             console.error('Failed to fetch integrations:', res);
             setIntegrations([]);
@@ -293,28 +327,47 @@ const ToolSelect = forwardRef<
         })
         .catch((error) => {
           console.error('Error fetching integrations:', error);
-          setIntegrations([]);
+          if (!hydratedFromCache) setIntegrations([]);
         });
     },
-    [addOption, t]
+    [addOption, email, t]
   );
 
-  const fetchInstalledMcps = useCallback(() => {
-    proxyFetchGet('/api/v1/mcp/users')
-      .then((res) => {
-        let dataList: any[] = [];
-        if (Array.isArray(res)) {
-          dataList = res;
-        } else if (res && Array.isArray(res.items)) {
-          dataList = res.items;
-        }
-        setUserMcpList(dataList);
-      })
-      .catch((error) => {
-        console.error('Error fetching installed MCPs:', error);
-        setUserMcpList([]);
-      });
-  }, []);
+  const fetchInstalledMcps = useCallback(
+    (opts?: { force?: boolean }) => {
+      const u = email ?? null;
+      const snap = toolSelectCatalogSnapshot;
+      const hydratedFromCache =
+        !opts?.force && snap && snap.email === u && snap.hasUserMcps;
+      if (hydratedFromCache) {
+        setUserMcpList(snap.userMcps);
+      }
+
+      proxyFetchGet('/api/v1/mcp/users')
+        .then((res) => {
+          let dataList: any[] = [];
+          if (Array.isArray(res)) {
+            dataList = res;
+          } else if (res && Array.isArray(res.items)) {
+            dataList = res.items;
+          }
+          setUserMcpList(dataList);
+          const prev = toolSelectCatalogSnapshot;
+          const sameUser = prev?.email === u;
+          toolSelectCatalogSnapshot = {
+            email: u,
+            configInfo: sameUser ? (prev?.configInfo ?? null) : null,
+            userMcps: dataList,
+            hasUserMcps: true,
+          };
+        })
+        .catch((error) => {
+          console.error('Error fetching installed MCPs:', error);
+          if (!hydratedFromCache) setUserMcpList([]);
+        });
+    },
+    [email]
+  );
 
   // public save env/config logic
   const saveEnvAndConfig = async (
@@ -449,7 +502,7 @@ const ToolSelect = forwardRef<
             }
 
             // Refresh integrations to update install status
-            fetchIntegrationsData();
+            fetchIntegrationsData(undefined, { force: true });
 
             const selectedItem = {
               id: activeMcp.id,
@@ -518,7 +571,7 @@ const ToolSelect = forwardRef<
                       await proxyFetchPost('/api/v1/configs', configPayload);
                     }
 
-                    fetchIntegrationsData();
+                    fetchIntegrationsData(undefined, { force: true });
 
                     const selectedItem = {
                       id: activeMcp.id,
@@ -596,6 +649,7 @@ const ToolSelect = forwardRef<
       if (installedMcp) {
         addOption(installedMcp);
       }
+      void fetchInstalledMcps({ force: true });
     } catch (e) {
       console.error('Failed to install MCP:', e);
     }
@@ -609,7 +663,19 @@ const ToolSelect = forwardRef<
   const removeOption = useCallback(
     (item: McpItem) => {
       const currentSelected = initialSelectedTools || [];
-      const newSelected = currentSelected.filter((i) => i.id !== item.id);
+      const newSelected = currentSelected.filter((row) => {
+        const bothLocal =
+          row.isLocal === true &&
+          item.isLocal === true &&
+          row.key != null &&
+          item.key != null &&
+          String(row.key) !== '' &&
+          String(item.key) !== '';
+        if (bothLocal) {
+          return row.key !== item.key;
+        }
+        return row.id !== item.id;
+      });
       onSelectedToolsChange?.(newSelected);
     },
     [initialSelectedTools, onSelectedToolsChange]
@@ -773,24 +839,30 @@ const ToolSelect = forwardRef<
     const checked = !!(initialSelectedTools || []).find(
       (i) => i.id === item.id
     );
+    const label = String(item.mcp_name || item.mcp_key || '');
     return (
-      <div
+      <button
         key={item.id}
-        className="gap-2 rounded-lg bg-ds-bg-neutral-subtle-default py-2 px-3 last:mb-1 min-h-0 flex w-auto items-center"
+        type="button"
+        aria-pressed={checked}
+        aria-label={label}
+        onClick={() => handleToggleUserMcp(item, !checked)}
+        className={cn(
+          'gap-2 rounded-lg bg-ds-bg-neutral-subtle-default py-2 px-3 last:mb-1 min-h-0 min-w-0 flex w-full items-center text-left',
+          'cursor-pointer border-none shadow-none transition-colors',
+          'focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
+        )}
       >
         <Checkbox
           checked={checked}
-          onCheckedChange={(c) => {
-            if (c === 'indeterminate') return;
-            handleToggleUserMcp(item, c === true);
-          }}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={String(item.mcp_name || item.mcp_key || '')}
+          tabIndex={-1}
+          className="pointer-events-none"
+          aria-hidden
         />
         <span className="min-w-0 text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base line-clamp-2 flex-1 break-words">
           {capitalizeFirstLetter(item.mcp_name || '')}
         </span>
-      </div>
+      </button>
     );
   };
 
@@ -809,7 +881,7 @@ const ToolSelect = forwardRef<
         <div
           onMouseDown={() => inputRef.current?.focus()}
           className={cn(
-            'focus-within:ring-ds-border-brand-default-default/35 gap-1.5 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default min-w-0 px-2 py-1.5 flex max-h-[120px] min-h-[40px] w-full flex-wrap content-center items-center justify-start border border-solid focus-within:ring-2'
+            'focus-within:ring-ds-border-brand-default-default/35 gap-1.5 rounded-lg bg-ds-bg-neutral-default-default min-w-0 px-2 py-1.5 flex max-h-[120px] min-h-[40px] w-full flex-wrap content-center items-center justify-start focus-within:ring-2'
           )}
         >
           {renderSelectedItems()}
@@ -832,7 +904,7 @@ const ToolSelect = forwardRef<
           id="agent-tool-picker-panel"
           role="region"
           aria-label={t('workforce.agent-tool')}
-          className="min-w-0 rounded-lg border-ds-border-neutral-muted-default bg-ds-bg-neutral-default-default w-full overflow-hidden border border-solid"
+          className="min-w-0 rounded-lg bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-default w-full overflow-hidden border border-solid"
         >
           <div className="scrollbar-always-visible gap-1.5 px-2 py-2 min-h-0 flex h-[260px] flex-col overflow-x-hidden overflow-y-auto">
             {listHasItems ? (

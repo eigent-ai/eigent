@@ -17,7 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tag } from '@/components/ui/tag';
 import { useHost } from '@/host';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
-import { getAuthStore } from '@/store/authStore';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
 import { useProjectStore } from '@/store/projectStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
@@ -30,9 +30,17 @@ import {
   ListChecks,
   Zap,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ProjectGroup from './ProjectGroup';
+
+/** Session cache so remounts (e.g. dialogs) show the project list immediately without refetching. */
+let groupedHistorySnapshot: {
+  email: string | null;
+  projects: ProjectGroupType[];
+  triggerKey: number | string;
+} | null = null;
 
 interface GroupedHistoryViewProps {
   /** When true, grid/list tabs are hidden (e.g. controlled from a parent sidebar). */
@@ -74,26 +82,82 @@ export default function GroupedHistoryView({
   onProjectDelete,
 }: GroupedHistoryViewProps) {
   const { t } = useTranslation();
+  const email = useAuthStore((s) => s.email);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
-  const [projects, setProjects] = useState<ProjectGroupType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const triggerKey = refreshTrigger ?? '_default';
+
+  const [projects, setProjects] = useState<ProjectGroupType[]>(() => {
+    const snap = groupedHistorySnapshot;
+    if (
+      snap &&
+      snap.email === (email ?? null) &&
+      snap.triggerKey === triggerKey
+    ) {
+      return snap.projects;
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const snap = groupedHistorySnapshot;
+    return !(
+      snap &&
+      snap.email === (email ?? null) &&
+      snap.triggerKey === triggerKey
+    );
+  });
   const { history_type, setHistoryType } = useGlobalStore();
   const projectStore = useProjectStore();
 
   // Default to list view if not set
   const viewType = history_type || 'list';
 
-  const loadProjects = async () => {
-    setLoading(true);
-    try {
-      await fetchGroupedHistoryTasks(setProjects);
-    } catch (error) {
-      console.error('Failed to load grouped projects:', error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const u = email ?? null;
+    if (
+      groupedHistorySnapshot &&
+      groupedHistorySnapshot.email === u &&
+      groupedHistorySnapshot.triggerKey === triggerKey
+    ) {
+      groupedHistorySnapshot = {
+        ...groupedHistorySnapshot,
+        projects,
+      };
     }
-  };
+  }, [projects, email, triggerKey]);
+
+  const loadProjects = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      const u = email ?? null;
+      try {
+        const snapshotSetter: Dispatch<SetStateAction<ProjectGroupType[]>> = (
+          action
+        ) => {
+          setProjects((prev) => {
+            const next =
+              typeof action === 'function'
+                ? (action as (p: ProjectGroupType[]) => ProjectGroupType[])(
+                    prev
+                  )
+                : action;
+            groupedHistorySnapshot = {
+              email: u,
+              projects: next,
+              triggerKey,
+            };
+            return next;
+          });
+        };
+        await fetchGroupedHistoryTasks(snapshotSetter);
+      } catch (error) {
+        console.error('Failed to load grouped projects:', error);
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [email, triggerKey]
+  );
 
   const onDelete = (historyId: string) => {
     try {
@@ -251,8 +315,16 @@ export default function GroupedHistoryView({
   };
 
   useEffect(() => {
-    loadProjects();
-  }, [refreshTrigger]);
+    const u = email ?? null;
+    const snap = groupedHistorySnapshot;
+    if (snap && snap.email === u && snap.triggerKey === triggerKey) {
+      setProjects(snap.projects);
+      setLoading(false);
+      void loadProjects({ silent: true });
+      return;
+    }
+    void loadProjects();
+  }, [email, triggerKey, loadProjects]);
 
   // Filter projects based on search value
   const filteredProjects = projects.filter((project) => {
@@ -312,35 +384,35 @@ export default function GroupedHistoryView({
 
   // Skeleton component for list card loading state
   const ListCardSkeleton = () => (
-    <div className="overflow-hidden rounded-xl bg-ds-bg-neutral-default-default">
-      <div className="flex w-full items-center justify-between px-6 py-4">
+    <div className="rounded-xl bg-ds-bg-neutral-default-default overflow-hidden">
+      <div className="px-6 py-4 flex w-full items-center justify-between">
         {/* Start: Folder icon and project name skeleton */}
-        <div className="flex w-48 flex-shrink-0 items-center gap-3">
-          <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="w-48 gap-3 flex flex-shrink-0 items-center">
+          <div className="h-5 w-5 rounded bg-ds-bg-neutral-subtle-default relative flex-shrink-0 overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-5 w-32 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-5 w-32 rounded bg-ds-bg-neutral-subtle-default relative overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
 
         {/* Middle: Tags skeleton */}
-        <div className="flex flex-1 items-center justify-end gap-4">
-          <div className="relative h-6 w-16 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="gap-4 flex flex-1 items-center justify-end">
+          <div className="h-6 w-16 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
 
         {/* End: Menu skeleton */}
-        <div className="ml-4 flex min-w-32 items-center justify-end gap-2 pl-4">
-          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="ml-4 min-w-32 gap-2 pl-4 flex items-center justify-end">
+          <div className="h-8 w-8 rounded-md bg-ds-bg-neutral-subtle-default relative overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
       </div>
@@ -349,7 +421,7 @@ export default function GroupedHistoryView({
 
   if (loading) {
     return (
-      <div className="flex w-full flex-col gap-4 pb-40">
+      <div className="gap-4 pb-40 flex w-full flex-col">
         {/* Keyframe animation for shimmer effect */}
         <style>
           {`
@@ -361,24 +433,24 @@ export default function GroupedHistoryView({
         </style>
 
         {/* Summary skeleton */}
-        <div className="flex items-center justify-between pb-4">
-          <div className="flex items-center gap-2">
-            <div className="relative h-7 w-28 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="pb-4 flex items-center justify-between">
+          <div className="gap-2 flex items-center">
+            <div className="h-7 w-28 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
-            <div className="relative h-7 w-32 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+            <div className="h-7 w-32 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
           </div>
-          <div className="flex items-center gap-md">
-            <div className="relative h-9 w-40 overflow-hidden rounded-lg bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="gap-md flex items-center">
+            <div className="h-9 w-40 rounded-lg bg-ds-bg-neutral-strong-default relative overflow-hidden">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
           </div>
         </div>
 
         {/* List skeleton cards */}
-        <div className="flex flex-col gap-3">
+        <div className="gap-3 flex flex-col">
           {[1, 2, 3, 4, 5].map((i) => (
             <ListCardSkeleton key={i} />
           ))}
@@ -389,7 +461,7 @@ export default function GroupedHistoryView({
 
   if (filteredProjects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
+      <div className="p-8 flex flex-col items-center justify-center text-center">
         <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
         <div className="text-sm text-ds-text-neutral-muted-default">
           {searchValue
@@ -406,12 +478,12 @@ export default function GroupedHistoryView({
   }
 
   return (
-    <div className="flex w-full flex-col gap-4 pb-40">
+    <div className="gap-4 pb-40 flex w-full flex-col">
       {/* Summary */}
       <div
-        className={`flex items-center pb-4 ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
+        className={`pb-4 flex items-center ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
       >
-        <div className="flex items-center gap-2">
+        <div className="gap-2 flex items-center">
           <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
             <Folder />
             <span className="text-body-sm"> {t('layout.projects')}</span>
@@ -440,7 +512,7 @@ export default function GroupedHistoryView({
             )}
           </Tag>
         </div>
-        <div className="flex items-center gap-md">
+        <div className="gap-md flex items-center">
           {!hideViewSwitcher && (
             <Tabs
               value={viewType}
@@ -450,13 +522,13 @@ export default function GroupedHistoryView({
             >
               <TabsList>
                 <TabsTrigger value="grid">
-                  <div className="flex items-center gap-1 text-label-sm">
+                  <div className="gap-1 text-label-sm flex items-center">
                     <LayoutGrid size={16} />
                     <span>{t('dashboard.grid')}</span>
                   </div>
                 </TabsTrigger>
                 <TabsTrigger value="list">
-                  <div className="flex items-center gap-1 text-label-sm">
+                  <div className="gap-1 text-label-sm flex items-center">
                     <List size={16} />
                     <span>{t('dashboard.list')}</span>
                   </div>
@@ -478,7 +550,7 @@ export default function GroupedHistoryView({
           {viewType === 'grid' ? (
             // Grid layout for project cards
             <motion.div
-              className="grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2"
+              className="gap-4 md:grid-cols-2 grid auto-rows-fr grid-cols-1"
               initial="hidden"
               animate="visible"
               variants={{
@@ -538,7 +610,7 @@ export default function GroupedHistoryView({
           ) : (
             // List layout for projects
             <motion.div
-              className="flex flex-col gap-3"
+              className="gap-3 flex flex-col"
               initial="hidden"
               animate="visible"
               variants={{

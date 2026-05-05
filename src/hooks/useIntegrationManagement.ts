@@ -24,6 +24,12 @@ import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+/** Last fetched `/api/v1/configs` per session so connection status stays instant across remounts (e.g. opening another page and returning). */
+let integrationConfigsSnapshot: {
+  email: string | null;
+  configs: any[];
+} | null = null;
+
 export interface IntegrationItem {
   key: string;
   name: string;
@@ -60,21 +66,54 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     try {
       const configsRes = await proxyFetchGet('/api/v1/configs');
       if (!ignore) {
-        setConfigs(Array.isArray(configsRes) ? configsRes : []);
+        const list = Array.isArray(configsRes) ? configsRes : [];
+        setConfigs(list);
+        integrationConfigsSnapshot = {
+          email: useAuthStore.getState().email ?? null,
+          configs: list,
+        };
       }
     } catch (_e) {
-      if (!ignore) setConfigs([]);
+      if (!ignore) {
+        setConfigs([]);
+        integrationConfigsSnapshot = {
+          email: useAuthStore.getState().email ?? null,
+          configs: [],
+        };
+      }
     }
   }, []);
 
-  // Fetch configs when mounted
+  // Hydrate configs from cache or fetch once per user session when mounted
   useEffect(() => {
-    let ignore = false;
-    fetchInstalled(ignore);
+    const u = email ?? null;
+    const snap = integrationConfigsSnapshot;
+    if (snap && snap.email === u) {
+      setConfigs(snap.configs);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const configsRes = await proxyFetchGet('/api/v1/configs');
+        if (cancelled) return;
+        const list = Array.isArray(configsRes) ? configsRes : [];
+        setConfigs(list);
+        integrationConfigsSnapshot = {
+          email: u,
+          configs: list,
+        };
+      } catch {
+        if (!cancelled) {
+          setConfigs([]);
+          integrationConfigsSnapshot = { email: u, configs: [] };
+        }
+      }
+    })();
     return () => {
-      ignore = true;
+      cancelled = true;
     };
-  }, [fetchInstalled]);
+  }, [email]);
 
   // Recalculate installed status when items or configs change
   useEffect(() => {
@@ -349,9 +388,16 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       }
 
       // Update configs after deletion
-      setConfigs((prev) =>
-        prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
-      );
+      setConfigs((prev) => {
+        const next = prev.filter(
+          (c: any) => c.config_group?.toLowerCase() !== groupKey
+        );
+        integrationConfigsSnapshot = {
+          email: email ?? null,
+          configs: next,
+        };
+        return next;
+      });
     },
     [checkAgentTool, configs, electronAPI, email]
   );
