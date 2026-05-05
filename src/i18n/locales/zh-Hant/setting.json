@@ -17,7 +17,6 @@
   "eigent-cloud": "Eigent Cloud",
   "default": "預設",
   "profile": "個人檔案",
-
   "account": "帳戶",
   "you-are-currently-signed-in-with": "您目前使用的是 {{email}} 帳戶",
   "manage": "管理",
@@ -29,7 +28,6 @@
   "dark": "深色",
   "light": "淺色",
   "transparent": "透明",
-
   "workspace-main-background": "工作區背景",
   "workspace-main-background-description": "僅套用於 Workforce 與 Session 主內容區。",
   "workspace-main-background-empty": "無圖案",
@@ -38,14 +36,12 @@
   "workspace-main-background-ruled": "橫格線",
   "workspace-main-background-dotted": "虛線格",
   "workspace-main-background-dashed": "長虛線",
-
   "appearance-tab": "外觀",
   "color-mode": "顏色模式",
   "accent-palette": "強調色主題",
   "accent-palette-description": "介面的預設配色方案，淺色與深色模式分別儲存。",
   "accent-for-light": "淺色模式",
   "accent-for-dark": "深色模式",
-
   "data-privacy": "數據隱私",
   "data-privacy-description": "Eigent 以本地優先原則確保您的隱私。您的數據預設儲存在您的設備上。雲端功能是可選的，僅使用最少量的數據來實現功能。詳細資訊請參閱我們的",
   "privacy-policy": "隱私政策",
@@ -125,8 +121,8 @@
   "delete": "刪除",
   "configure {name} Toolkit": "設定 {{name}} 工具組",
   "get-it-from": "從此處取得",
-  "google-custom-search-api": "Google Custom Search API",
-  "google-cloud-console": "Google Cloud Console",
+  "google-custom-search-api": "Google 自訂搜尋 API",
+  "google-cloud-console": "Google Cloud 控制台",
   "connect": "連接",
   "setting": "設定",
   "all": "全部",
@@ -176,7 +172,6 @@
   "reset-success": "重設成功！",
   "reset-failed": "重設失敗！",
   "select-default-model": "選擇預設模型",
-
   "browser-login": "瀏覽器登入",
   "browser-login-description": "開啟 Chrome 以登入您的帳戶。登入資料將安全地儲存在本機設定檔中。",
   "open-browser-login": "開啟瀏覽器登入",
@@ -201,7 +196,6 @@
   "confirm-delete-all-cookies": "確定要刪除所有 Cookie 嗎？此操作無法復原。",
   "all-cookies-deleted": "所有 Cookie 已成功刪除。",
   "cookie-delete-warning": "注意：刪除 Cookie 會使您從相關網站登出。您可能需要重新啟動瀏覽器才能看到變更生效。",
-
   "cloud-not-available-in-local-proxy": "在本機代理模式下無法使用雲端版本",
   "set-as-default": "設為預設",
   "api-key-setting": "API 金鑰設定",
@@ -209,14 +203,12 @@
   "model-type-setting": "模型類型設定",
   "please-select": "請選擇",
   "configuring": "正在配置...",
-
   "models-default-setting-title": "預設設定",
   "models-default-setting-description": "從已配置的模型中選擇一個作為 Eigent 的預設模型，它將全域套用於您的工作區。",
   "models-configuration": "配置",
-
-  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-pro-preview-name": "Gemini 3 Pro 預覽版",
   "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
-  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash 預覽版",
   "gpt-5.4-name": "GPT-5.4",
   "gpt-5.5-name": "GPT-5.5",
   "gpt-5-mini-name": "GPT-5 Mini",
@@ -227,7 +219,6 @@
   "claude-opus-4-7-name": "Claude Opus 4.7",
   "deepseek-v4-pro-name": "DeepSeek V4 Pro",
   "minimax-m2-7-name": "Minimax M2.7",
-
   "network-proxy": "網路代理",
   "network-proxy-description": "設定網路請求的代理伺服器。如果您需要透過代理存取外部 API，這將非常有用。",
   "proxy-placeholder": "http://127.0.0.1:7890",
@@ -240,5 +231,10 @@
   "system-file-manager": "系統檔案管理器",
   "agents": "智能體",
   "help-improve-eigent": "幫助改進 Eigent",
-  "help-improve-eigent-description": "允許 Eigent 收集匿名錯誤日誌和使用數據以改進服務。此項為可選，可隨時更改。"
+  "help-improve-eigent-description": "允許 Eigent 收集匿名錯誤日誌和使用數據以改進服務。此項為可選，可隨時更改。",
+  "please-complete-authorization-in-browser": "請在瀏覽器中完成授權",
+  "authorization-cancelled": "授權已取消",
+  "authorization-failed": "授權失敗",
+  "this-service-is-already-enabled-by-default": "此服務預設已啟用",
+  "version": "Version"
 }

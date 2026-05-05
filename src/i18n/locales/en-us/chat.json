@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "Manage connectors",
   "input-attach-open-browser": "Open a browser",
   "input-attach-manage-browsers": "Manage browsers",
-  "input-attach-menu-trigger": "Add files or photos, or open Skills, Connectors, or Browser from the menu"
+  "input-attach-menu-trigger": "Add files or photos, or open Skills, Connectors, or Browser from the menu",
+  "hide-file-sidebar": "Hide file sidebar",
+  "show-file-sidebar": "Show file sidebar"
 }

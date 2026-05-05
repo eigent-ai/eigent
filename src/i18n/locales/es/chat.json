@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "Gestionar conectores",
   "input-attach-open-browser": "Abrir un navegador",
   "input-attach-manage-browsers": "Gestionar navegadores",
-  "input-attach-menu-trigger": "Añadir archivos o fotos o abrir Habilidades, Conectores o Navegador desde el menú"
+  "input-attach-menu-trigger": "Añadir archivos o fotos o abrir Habilidades, Conectores o Navegador desde el menú",
+  "hide-file-sidebar": "Ocultar barra lateral de archivos",
+  "show-file-sidebar": "Mostrar barra lateral de archivos"
 }
