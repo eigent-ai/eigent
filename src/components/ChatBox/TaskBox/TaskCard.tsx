@@ -19,6 +19,7 @@ import { TaskItem } from './TaskItem';
 
 import { TaskState, TaskStateType } from '@/components/TaskState';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus, TaskStatus } from '@/types/constants';
 import {
   ChevronDown,
@@ -118,6 +119,18 @@ export function TaskCard({
   useEffect(() => {
     writeStoredTaskCardExpanded(expandStorageKey, isExpanded);
   }, [expandStorageKey, isExpanded]);
+
+  // Side-panel Progress section can ask the chat to surface this card. Each
+  // bump of the counter forces the card open; ProjectChatContainer handles
+  // the scroll. Skip the initial value so we don't pop on mount.
+  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
+  const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
+  useEffect(() => {
+    if (taskBoxFocusRequestId !== lastSeenFocusRef.current) {
+      lastSeenFocusRef.current = taskBoxFocusRequestId;
+      setIsExpanded(true);
+    }
+  }, [taskBoxFocusRequestId]);
 
   useEffect(() => {
     const tasks = taskRunning || [];

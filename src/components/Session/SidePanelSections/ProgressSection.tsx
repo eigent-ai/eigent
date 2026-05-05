@@ -19,6 +19,8 @@ import {
   ProgressConnector,
   SidePanelListRow,
 } from '@/components/Session/SidePanelSections/primitives';
+import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { TaskStatus } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -33,6 +35,7 @@ interface ProgressSectionProps {
 
 export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
   const count = subtasks.length;
+  const requestTaskBoxFocus = usePageTabStore((s) => s.requestTaskBoxFocus);
 
   const collapsedStrip =
     count > 0 ? (
@@ -85,10 +88,13 @@ export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
                   transition={{ duration: 0.2, ease: 'easeOut' }}
                 >
                   <SidePanelListRow
-                    className="hover:bg-ds-bg-neutral-subtle-default cursor-pointer"
+                    className="hover:bg-ds-bg-neutral-subtle-default"
                     leading={<ProgressCircle done={isDone(task)} />}
+                    onClick={requestTaskBoxFocus}
                   >
-                    {task.content}
+                    <span className={cn(isDone(task) && 'line-through')}>
+                      {task.content}
+                    </span>
                   </SidePanelListRow>
                 </motion.li>
               ))}

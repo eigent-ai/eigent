@@ -20,6 +20,7 @@ import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSecti
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSkillsStore } from '@/store/skillsStore';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -64,9 +65,11 @@ export function SingleAgentSidePanel() {
       return true;
     });
   }, [activeTask]);
+  const skills = useSkillsStore((s) => s.skills);
   const contextItems = useMemo(
-    () => buildContextItems(agents, activeTask?.taskRunning, uploadedFiles),
-    [agents, activeTask?.taskRunning, uploadedFiles]
+    () =>
+      buildContextItems(agents, activeTask?.taskRunning, uploadedFiles, skills),
+    [agents, activeTask?.taskRunning, uploadedFiles, skills]
   );
 
   const handleOpenAgentFile = useCallback(

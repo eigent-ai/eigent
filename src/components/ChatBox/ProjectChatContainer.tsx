@@ -161,6 +161,29 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     setScrollToQueryId(null);
   }, [scrollToQueryId, setScrollToQueryId]);
 
+  // Surface the task box when the side-panel Progress section asks for it.
+  // TaskCard listens to the same counter to expand itself; we own the
+  // scroll. The `data-task-card="true"` attribute is set on a query
+  // group's outer wrapper only when its TaskCard is currently visible.
+  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
+  useEffect(() => {
+    if (!taskBoxFocusRequestId) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const matches = container.querySelectorAll<HTMLElement>(
+      '[data-task-card="true"]'
+    );
+    const target = matches[matches.length - 1];
+    if (!target) return;
+    // TaskCard's expand transition is ~300ms; do the scroll after a tick
+    // so the card has started animating, but anchor on its top edge so
+    // the final position is stable regardless of how tall it grows.
+    const containerRect = container.getBoundingClientRect();
+    const elRect = target.getBoundingClientRect();
+    const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+    container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+  }, [taskBoxFocusRequestId, scrollContainerRef]);
+
   return (
     <div className={`relative z-10 w-full ${className}`}>
       <div
