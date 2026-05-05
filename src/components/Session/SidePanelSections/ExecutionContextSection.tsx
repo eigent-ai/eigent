@@ -66,7 +66,7 @@ export function ExecutionContextSection({
           Track skills, MCPs and referenced files used in this task.
         </div>
       ) : (
-        <div className="flex flex-col">
+        <div className="gap-2 flex flex-col">
           {grouped.map(({ category, items: groupItems }) => (
             <div key={category} className="flex flex-col">
               <CategoryLabel>{CATEGORY_LABEL[category]}</CategoryLabel>

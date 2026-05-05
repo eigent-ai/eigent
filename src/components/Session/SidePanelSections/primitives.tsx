@@ -40,7 +40,7 @@ export function CategoryLabel({
   return (
     <div
       className={cn(
-        'text-ds-text-neutral-muted-default text-body-sm px-1 pb-1 pt-2 first:pt-0',
+        'text-ds-text-neutral-muted-default text-body-xs px-1 pb-1 pt-2 first:pt-0',
         className
       )}
     >
@@ -134,7 +134,8 @@ SidePanelListRow.displayName = 'SidePanelListRow';
 
 /**
  * Progress circle. Incomplete: neutral subtle fill so the ring reads on any
- * panel background. Complete: success subtle fill, strong border and check.
+ * panel background. Complete: filled success (matches primary success button)
+ * with inverse check mark.
  */
 export function ProgressCircle({
   done,
@@ -148,13 +149,19 @@ export function ProgressCircle({
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full border-[0.5px] border-solid',
         done
-          ? 'bg-ds-bg-success-subtle-default border-ds-border-success-strong-default text-ds-text-success-strong-default'
+          ? 'border-ds-bg-success-default-default bg-ds-bg-success-default-default text-ds-text-success-inverse-default'
           : 'border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default'
       )}
       style={{ width: size, height: size }}
       aria-hidden
     >
-      {done ? <Check size={Math.max(8, size - 6)} strokeWidth={4} /> : null}
+      {done ? (
+        <Check
+          className="!text-ds-text-success-inverse-default"
+          size={Math.max(8, size - 6)}
+          strokeWidth={4}
+        />
+      ) : null}
     </span>
   );
 }
