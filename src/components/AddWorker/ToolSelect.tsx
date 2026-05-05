@@ -292,7 +292,9 @@ const ToolSelect = forwardRef<
     (keyword?: string, opts?: { force?: boolean }) => {
       const u = email ?? null;
       const snap = toolSelectCatalogSnapshot;
-      if (!opts?.force && snap && snap.email === u && snap.configInfo) {
+      const hydratedFromCache =
+        !opts?.force && snap && snap.email === u && snap.configInfo;
+      if (hydratedFromCache) {
         setIntegrations(
           buildIntegrationsFromConfigInfo(
             snap.configInfo,
@@ -301,7 +303,6 @@ const ToolSelect = forwardRef<
             addOption
           )
         );
-        return;
       }
 
       proxyFetchGet('/api/v1/config/info')
@@ -326,7 +327,7 @@ const ToolSelect = forwardRef<
         })
         .catch((error) => {
           console.error('Error fetching integrations:', error);
-          setIntegrations([]);
+          if (!hydratedFromCache) setIntegrations([]);
         });
     },
     [addOption, email, t]
@@ -336,9 +337,10 @@ const ToolSelect = forwardRef<
     (opts?: { force?: boolean }) => {
       const u = email ?? null;
       const snap = toolSelectCatalogSnapshot;
-      if (!opts?.force && snap && snap.email === u && snap.hasUserMcps) {
+      const hydratedFromCache =
+        !opts?.force && snap && snap.email === u && snap.hasUserMcps;
+      if (hydratedFromCache) {
         setUserMcpList(snap.userMcps);
-        return;
       }
 
       proxyFetchGet('/api/v1/mcp/users')
@@ -361,7 +363,7 @@ const ToolSelect = forwardRef<
         })
         .catch((error) => {
           console.error('Error fetching installed MCPs:', error);
-          setUserMcpList([]);
+          if (!hydratedFromCache) setUserMcpList([]);
         });
     },
     [email]

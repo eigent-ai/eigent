@@ -126,33 +126,38 @@ export default function GroupedHistoryView({
     }
   }, [projects, email, triggerKey]);
 
-  const loadProjects = useCallback(async () => {
-    setLoading(true);
-    const u = email ?? null;
-    try {
-      const snapshotSetter: Dispatch<SetStateAction<ProjectGroupType[]>> = (
-        action
-      ) => {
-        setProjects((prev) => {
-          const next =
-            typeof action === 'function'
-              ? (action as (p: ProjectGroupType[]) => ProjectGroupType[])(prev)
-              : action;
-          groupedHistorySnapshot = {
-            email: u,
-            projects: next,
-            triggerKey,
-          };
-          return next;
-        });
-      };
-      await fetchGroupedHistoryTasks(snapshotSetter);
-    } catch (error) {
-      console.error('Failed to load grouped projects:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [email, triggerKey]);
+  const loadProjects = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      const u = email ?? null;
+      try {
+        const snapshotSetter: Dispatch<SetStateAction<ProjectGroupType[]>> = (
+          action
+        ) => {
+          setProjects((prev) => {
+            const next =
+              typeof action === 'function'
+                ? (action as (p: ProjectGroupType[]) => ProjectGroupType[])(
+                    prev
+                  )
+                : action;
+            groupedHistorySnapshot = {
+              email: u,
+              projects: next,
+              triggerKey,
+            };
+            return next;
+          });
+        };
+        await fetchGroupedHistoryTasks(snapshotSetter);
+      } catch (error) {
+        console.error('Failed to load grouped projects:', error);
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [email, triggerKey]
+  );
 
   const onDelete = (historyId: string) => {
     try {
@@ -315,6 +320,7 @@ export default function GroupedHistoryView({
     if (snap && snap.email === u && snap.triggerKey === triggerKey) {
       setProjects(snap.projects);
       setLoading(false);
+      void loadProjects({ silent: true });
       return;
     }
     void loadProjects();
