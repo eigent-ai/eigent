@@ -59,7 +59,7 @@ vi.mock('../../../src/store/authStore', () => ({
     language: 'system',
     isFirstLaunch: true,
     modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-4.1' as const,
+    cloud_model_type: 'gpt-5.4' as const,
     initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
@@ -73,7 +73,7 @@ vi.mock('../../../src/store/authStore', () => ({
     language: 'system',
     isFirstLaunch: true,
     modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-4.1' as const,
+    cloud_model_type: 'gpt-5.4' as const,
     initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
@@ -96,6 +96,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
+  getCloudModelPlatform,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -225,6 +226,17 @@ describe('ChatStore - Core Functionality', () => {
           source: 'user_attachment',
         },
       ]);
+    });
+  });
+
+  describe('Cloud Model Platform Mapping', () => {
+    it('maps cloud model ids to backend platforms', () => {
+      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
+      expect(getCloudModelPlatform('claude-opus-4-7')).toBe(
+        'aws-bedrock-converse'
+      );
+      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
+      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
     });
   });
 

@@ -40,7 +40,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList } from './authStore';
+import { getAuthStore, getWorkerList, type CloudModelType } from './authStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 
@@ -192,6 +192,36 @@ export function collectTaskUploadFiles(
   }
 
   return Array.from(uniqueCandidates.values());
+}
+
+type CloudModelPlatform =
+  | 'azure'
+  | 'aws-bedrock-converse'
+  | 'gemini'
+  | 'deepseek'
+  | 'minimax';
+
+// prettier-ignore
+const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
+  'gemini-3.1-pro-preview': 'gemini',
+  'gemini-3-pro-preview': 'gemini',
+  'gemini-3-flash-preview': 'gemini',
+  'claude-haiku-4-5': 'aws-bedrock-converse',
+  'claude-sonnet-4-5': 'aws-bedrock-converse',
+  'claude-sonnet-4-6': 'aws-bedrock-converse',
+  'claude-opus-4-6': 'aws-bedrock-converse',
+  'claude-opus-4-7': 'aws-bedrock-converse',
+  'gpt-5.4': 'azure',
+  'gpt-5.5': 'azure',
+  'gpt-5-mini': 'azure',
+  'deepseek-v4-pro': 'deepseek',
+  'minimax_m2_7': 'minimax',
+};
+
+export function getCloudModelPlatform(
+  cloudModelType: CloudModelType
+): CloudModelPlatform {
+  return CLOUD_MODEL_PLATFORM_MAP[cloudModelType];
 }
 
 async function uploadTaskFiles(
@@ -808,13 +838,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         apiModel = {
           api_key: res.value,
           model_type: cloud_model_type,
-          model_platform: cloud_model_type.includes('gpt')
-            ? 'openai'
-            : cloud_model_type.includes('claude')
-              ? 'aws-bedrock-converse'
-              : cloud_model_type.includes('gemini')
-                ? 'gemini'
-                : 'openai-compatible-model',
+          model_platform: getCloudModelPlatform(cloud_model_type),
           api_url: res.api_url,
           extra_params: {},
         };

@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore } from '@/store/authStore';
 import { Provider } from '@/types';
@@ -597,18 +598,16 @@ export default function SettingModels() {
     { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-    { id: 'gpt-4.1', name: 'GPT-4.1' },
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'gpt-5.1', name: 'GPT-5.1' },
-    { id: 'gpt-5.2', name: 'GPT-5.2' },
     { id: 'gpt-5.4', name: 'GPT-5.4' },
+    { id: 'gpt-5.5', name: 'GPT-5.5' },
     { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
     { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
     { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-    { id: 'minimax_m2_5', name: 'Minimax M2.5' },
+    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
+    { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+    { id: 'minimax_m2_7', name: 'Minimax M2.7' },
   ];
 
   const handleVerify = async (idx: number) => {
@@ -1334,7 +1333,7 @@ export default function SettingModels() {
               </span>
               <span
                 onClick={() => {
-                  window.location.href = `https://www.eigent.ai/pricing`;
+                  window.location.href = `${SITE_URL}/pricing`;
                 }}
                 className="cursor-pointer text-body-sm text-text-label underline"
               >
@@ -1357,7 +1356,7 @@ export default function SettingModels() {
             </div>
             <Button
               onClick={() => {
-                window.location.href = `https://www.eigent.ai/dashboard`;
+                window.location.href = `${SITE_URL}/dashboard`;
               }}
               variant="primary"
               size="sm"
@@ -1395,23 +1394,11 @@ export default function SettingModels() {
                   <SelectItem value="gemini-3-flash-preview">
                     {t('setting.gemini-3-flash-preview-name')}
                   </SelectItem>
-                  <SelectItem value="gpt-4.1-mini">
-                    {t('setting.gpt-4.1-mini-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-4.1">
-                    {t('setting.gpt-4.1-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5">
-                    {t('setting.gpt-5-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.1">
-                    {t('setting.gpt-5.1-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.2">
-                    {t('setting.gpt-5.2-name')}
-                  </SelectItem>
                   <SelectItem value="gpt-5.4">
                     {t('setting.gpt-5.4-name')}
+                  </SelectItem>
+                  <SelectItem value="gpt-5.5">
+                    {t('setting.gpt-5.5-name')}
                   </SelectItem>
                   <SelectItem value="gpt-5-mini">
                     {t('setting.gpt-5-mini-name')}
@@ -1428,8 +1415,14 @@ export default function SettingModels() {
                   <SelectItem value="claude-opus-4-6">
                     {t('setting.claude-opus-4-6-name')}
                   </SelectItem>
-                  <SelectItem value="minimax_m2_5">
-                    {t('setting.minimax-m2-5-name')}
+                  <SelectItem value="claude-opus-4-7">
+                    {t('setting.claude-opus-4-7-name')}
+                  </SelectItem>
+                  <SelectItem value="deepseek-v4-pro">
+                    {t('setting.deepseek-v4-pro-name')}
+                  </SelectItem>
+                  <SelectItem value="minimax_m2_7">
+                    {t('setting.minimax-m2-7-name')}
                   </SelectItem>
                 </SelectContent>
               </Select>

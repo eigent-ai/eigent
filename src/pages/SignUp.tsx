@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -52,11 +53,7 @@ export default function SignUp() {
   // Hybrid/app mode without Stack keys: redirect to external signup
   useEffect(() => {
     if (!IS_LOCAL_MODE && !HAS_STACK_KEYS) {
-      window.open(
-        'https://www.eigent.ai/signup',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      window.open(`${SITE_URL}/signup`, '_blank', 'noopener,noreferrer');
       navigate('/login', { replace: true });
     }
   }, [navigate]);
