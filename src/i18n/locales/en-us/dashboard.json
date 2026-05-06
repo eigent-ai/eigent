@@ -23,5 +23,7 @@
   "document-agent": "Document Agent",
   "multi-modal-agent": "Multi Modal Agent",
   "social-media-agent": "Social Media Agent",
-  "no-projects-found": "No projects found."
+  "no-projects-found": "No projects found.",
+  "no-projects-match-search": "No projects match your search",
+  "try-different-search": "Try a different search"
 }

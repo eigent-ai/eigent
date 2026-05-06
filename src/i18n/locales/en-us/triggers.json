@@ -165,6 +165,8 @@
   "execution-cancelled": "Execution was cancelled",
   "execution-missed": "Execution was missed",
   "unknown-status": "Unknown status",
+  "status-cancelled": "Cancelled",
+  "select-method": "Select method",
   "trigger-label": "Trigger",
   "status-created": "Created",
   "status-updated": "Updated",

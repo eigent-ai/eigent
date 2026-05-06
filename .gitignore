@@ -38,6 +38,7 @@ yarn.lock
 /playwright/.cache/
 
 .env
+# Never commit API keys (i18n sync, local dev). Use shell exports instead of committing .env.local.
 .env.local
 .env.production
 .env.development

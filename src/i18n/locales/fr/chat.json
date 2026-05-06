@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "Gérer les connecteurs",
   "input-attach-open-browser": "Ouvrir un navigateur",
   "input-attach-manage-browsers": "Gérer les navigateurs",
-  "input-attach-menu-trigger": "Ajouter fichiers ou photos ou ouvrir Compétences, Connecteurs ou Navigateur depuis le menu"
+  "input-attach-menu-trigger": "Ajouter fichiers ou photos ou ouvrir Compétences, Connecteurs ou Navigateur depuis le menu",
+  "hide-file-sidebar": "Masquer la barre latérale des fichiers",
+  "show-file-sidebar": "Afficher la barre latérale des fichiers"
 }

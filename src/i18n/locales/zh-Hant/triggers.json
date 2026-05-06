@@ -89,7 +89,7 @@
   "frequency-one-time": "單次",
   "frequency-custom": "自定義",
   "invalid-time-format": "無效的時間格式。請使用 HH:MM (例如: 09:30)",
-  "schedule-day-of-month-note": "If the selected day doesn’t exist in that month (e.g., the 31st), the task will be skipped.",
+  "schedule-day-of-month-note": "如果所選日期在該月份不存在（例如 31 號），該任務將被略過。",
   "schedule-hour": "小時",
   "schedule-minute": "分鐘",
   "schedule-date": "日期",
@@ -103,9 +103,9 @@
   "select-expiration": "選擇到期日期",
   "no-upcoming-one-time": "請選擇未來的日期和時間",
   "no-upcoming-executions": "沒有即將執行的計劃",
-  "date-required": "Date is required",
-  "weekday-required": "At least one weekday is required",
-  "schedule-required-fields": "Please fill in all required fields for the schedule",
+  "date-required": "日期為必填",
+  "weekday-required": "至少需要選擇一個星期幾",
+  "schedule-required-fields": "請填寫排程所需的所有必填欄位",
   "create-trigger-agent": "使用觸發器自動化任務",
   "trigger-overview": "觸發器概覽",
   "edit": "編輯",
@@ -181,7 +181,7 @@
   "task-prompt-required": "任務提示詞必填",
   "project-id-required": "項目 ID 必填",
   "execution-settings": "執行設置",
-  "extra-settings": "Extra Settings",
+  "extra-settings": "額外設定",
   "max-per-hour-placeholder": "0",
   "max-per-day-placeholder": "0",
   "copy": "複製",
@@ -200,97 +200,97 @@
   "change-app": "Change",
   "dynamic": {
     "credentials": "Credentials",
-    "credentials-notice": "Your credentials are stored securely and used to authenticate with the service.",
-    "credentials-saved": "Credentials configured successfully",
-    "configuration": "Configuration",
-    "behavior-settings": "Behavior Settings",
-    "enter-value": "Please enter a value",
+    "credentials-notice": "您的憑證會被安全地儲存，並用於與服務進行驗證。",
+    "credentials-saved": "憑證設定成功",
+    "configuration": "設定",
+    "behavior-settings": "行為設定",
+    "enter-value": "請輸入值",
     "add": "Add",
     "update": "Update",
-    "config-saved": "Configuration saved successfully",
-    "config-updated": "Configuration updated successfully",
-    "config-save-error": "Failed to save configuration",
+    "config-saved": "設定已成功儲存",
+    "config-updated": "設定已成功更新",
+    "config-save-error": "儲存設定失敗",
     "loading": "Loading...",
-    "loading-config": "Loading configuration...",
-    "no-config-available": "No configuration available for this trigger type",
-    "failed-to-load-schema": "Failed to load configuration schema",
-    "select-options": "Select options...",
+    "loading-config": "正在載入設定...",
+    "no-config-available": "此觸發器類型沒有可用的設定",
+    "failed-to-load-schema": "載入設定結構描述失敗",
+    "select-options": "選擇選項...",
     "selected": "selected",
-    "save-credentials-first": "Save credentials first",
+    "save-credentials-first": "請先儲存憑證",
     "search": "Search...",
-    "no-options": "No options found",
+    "no-options": "找不到選項",
     "validation": {
-      "required": "{{field}} is required",
-      "invalid-regex": "Invalid regular expression pattern",
-      "invalid-email": "Invalid email address",
-      "invalid-url": "Invalid URL format",
-      "min-length": "Must be at least {{min}} characters",
-      "max-length": "Must be no more than {{max}} characters",
-      "pattern-mismatch": "Value does not match required pattern",
-      "min-value": "Must be at least {{min}}",
-      "max-value": "Must be no more than {{max}}"
+      "required": "{{field}} 為必填",
+      "invalid-regex": "無效的正規表示式模式",
+      "invalid-email": "無效的電子郵件地址",
+      "invalid-url": "無效的 URL 格式",
+      "min-length": "至少必須有 {{min}} 個字元",
+      "max-length": "最多不能超過 {{max}} 個字元",
+      "pattern-mismatch": "值不符合所需的格式",
+      "min-value": "至少必須為 {{min}}",
+      "max-value": "最多不能超過 {{max}}"
     },
-    "validation-failed": "Please fix validation errors: {{errors}}"
+    "validation-failed": "請修正驗證錯誤：{{errors}}"
   },
   "slack": {
-    "credentials-saved": "Slack credentials configured successfully",
-    "enter-bot-token": "Please enter a bot token",
-    "bot-token-saved": "Bot token saved successfully",
-    "bot-token-updated": "Bot token updated successfully",
-    "bot-token-save-error": "Failed to save bot token",
-    "signing-secret-saved": "Signing secret saved successfully",
-    "signing-secret-updated": "Signing secret updated successfully",
-    "signing-secret-save-error": "Failed to save signing secret",
+    "credentials-saved": "Slack 憑證設定成功",
+    "enter-bot-token": "請輸入機器人權杖",
+    "bot-token-saved": "機器人權杖儲存成功",
+    "bot-token-updated": "機器人權杖更新成功",
+    "bot-token-save-error": "儲存機器人權杖失敗",
+    "signing-secret-saved": "簽署密鑰已成功儲存",
+    "signing-secret-updated": "簽署密鑰已成功更新",
+    "signing-secret-save-error": "儲存簽署密鑰失敗",
     "add": "Add",
     "update": "Update",
-    "event-configuration": "Event Configuration",
+    "event-configuration": "事件設定",
     "event-types": "Event Types",
-    "select-events": "Select events to trigger on...",
-    "search-events": "Search events...",
-    "no-events-found": "No events found",
-    "events-selected": "events selected",
-    "channel-filter": "Channel Filter",
-    "select-channels": "All channels (no filter)",
-    "search-channels": "Search channels...",
-    "no-channels-found": "No channels found",
-    "channels-selected": "channels selected",
-    "save-credentials-first": "Save credentials first to load channels",
-    "loading-channels": "Loading channels...",
-    "channels-fetch-error": "Failed to fetch channels. Please check your credentials.",
-    "behavior-settings": "Behavior Settings",
+    "select-events": "選擇要觸發的事件...",
+    "search-events": "搜尋事件...",
+    "no-events-found": "找不到事件",
+    "events-selected": "個事件已選取",
+    "channel-filter": "頻道篩選",
+    "select-channels": "所有頻道（不篩選）",
+    "search-channels": "搜尋頻道...",
+    "no-channels-found": "找不到頻道",
+    "channels-selected": "個頻道已選取",
+    "save-credentials-first": "請先儲存憑證以載入頻道",
+    "loading-channels": "正在載入頻道...",
+    "channels-fetch-error": "無法取得頻道。請檢查您的憑證。",
+    "behavior-settings": "行為設定",
     "authentication_required": {
-      "label": "Require Authentication",
-      "notice": "Slack triggers require authentication to verify webhook signatures (Slack Signing Secret required). Verify webhook endpoint at https://api.slack.com/apps to activate trigger."
+      "label": "需要驗證",
+      "notice": "Slack 觸發器需要驗證以確認 webhook 簽章（需要 Slack Signing Secret）。請至 https://api.slack.com/apps 驗證 webhook 端點以啟用觸發器。"
     },
     "bot_token": {
-      "label": "Slack Bot Token",
+      "label": "Slack Bot 權杖",
       "placeholder": "xoxb-...",
-      "notice": "Your Slack Bot User OAuth Token (starts with xoxb-)"
+      "notice": "您的 Slack Bot 使用者 OAuth 權杖（以 xoxb- 開頭）"
     },
     "signing_secret": {
-      "label": "Slack Signing Secret",
-      "placeholder": "Enter your Slack signing secret...",
-      "notice": "Your Slack app's signing secret used to verify requests"
+      "label": "Slack 簽署密鑰",
+      "placeholder": "輸入您的 Slack 簽署密鑰...",
+      "notice": "用於驗證請求的 Slack 應用程式簽署密鑰"
     },
     "events": {
       "label": "Event Types",
-      "notice": "Select which Slack events should trigger this workflow"
+      "notice": "選擇哪些 Slack 事件應觸發此工作流程"
     },
     "channel_id": {
       "label": "Channel ID",
-      "placeholder": "Select a channel...",
-      "notice": "Specific channel to watch (leave empty to watch all channels)"
+      "placeholder": "選擇頻道...",
+      "notice": "要監聽的特定頻道（留空則監聽所有頻道）"
     },
     "ignore_bot_messages": {
-      "label": "Ignore Bot Messages"
+      "label": "忽略機器人訊息"
     },
     "ignore_users": {
-      "label": "Ignore Users",
-      "placeholder": "Enter Slack user IDs (e.g., U1234567890)...",
-      "notice": "Slack user IDs to ignore messages from"
+      "label": "忽略使用者",
+      "placeholder": "輸入 Slack 使用者 ID（例如：U1234567890）...",
+      "notice": "要忽略其訊息的 Slack 使用者 ID"
     }
   },
-  "verification-required": "Pending Verification. A valid event message is required for Trigger Activation or disable trigger Authentication.",
+  "verification-required": "待驗證。觸發器啟用需要有效的事件訊息，或停用觸發器驗證。",
   "base": {
     "authentication_required": {
       "label": "需要身份驗證",
@@ -309,34 +309,36 @@
   },
   "webhook": {
     "authentication_required": {
-      "label": "Require Authentication",
-      "notice": "Whether authentication is required for this webhook trigger"
+      "label": "需要驗證",
+      "notice": "此 webhook 觸發器是否需要驗證"
     },
     "body_contains": {
-      "label": "Body Contains",
-      "placeholder": "Enter text that must be in request body...",
-      "notice": "Only trigger if the request body contains this string"
+      "label": "內容包含",
+      "placeholder": "輸入必須出現在請求本文中的文字...",
+      "notice": "只有當請求本文包含此字串時才觸發"
     },
     "required_headers": {
-      "label": "Required Headers",
-      "placeholder": "Enter header names (e.g., Content-Type, Authorization)...",
-      "notice": "List of HTTP headers that must be present in the request"
+      "label": "必填標頭",
+      "placeholder": "輸入標頭名稱（例如：Content-Type、Authorization）...",
+      "notice": "請列出請求中必須存在的 HTTP 標頭"
     },
     "header_match": {
-      "label": "Header Match (Regex)",
-      "placeholder": "Header-Name: regex pattern",
-      "notice": "Match request headers against a regex pattern (format: Header-Name: pattern)"
+      "label": "標頭比對（Regex）",
+      "placeholder": "標頭名稱：正規表示式模式",
+      "notice": "使用正規表示式模式比對請求標頭（格式：標頭名稱：模式）"
     },
     "include_headers": {
-      "label": "Include Headers",
-      "notice": "Include request headers in the workflow execution input"
+      "label": "包含標頭",
+      "notice": "在工作流程執行輸入中包含請求標頭"
     },
     "include_query_params": {
-      "label": "Include Query Parameters"
+      "label": "包含查詢參數"
     },
     "include_request_metadata": {
-      "label": "Include Request Metadata",
-      "notice": "Include request metadata (method, URL, client IP) in execution input"
+      "label": "包含請求中繼資料",
+      "notice": "在執行輸入中包含請求中繼資料（方法、URL、用戶端 IP）"
     }
-  }
+  },
+  "status-cancelled": "Cancelled",
+  "select-method": "選擇方法"
 }

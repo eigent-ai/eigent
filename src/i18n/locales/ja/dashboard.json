@@ -23,5 +23,7 @@
   "document-agent": "ドキュメントエージェント",
   "multi-modal-agent": "マルチモーダルエージェント",
   "social-media-agent": "ソーシャルメディアエージェント",
-  "no-projects-found": "プロジェクトが見つかりませんでした。"
+  "no-projects-found": "プロジェクトが見つかりませんでした。",
+  "no-projects-match-search": "検索に一致するプロジェクトはありません",
+  "try-different-search": "別の検索を試してください"
 }

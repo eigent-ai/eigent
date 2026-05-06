@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "إدارة الموصلات",
   "input-attach-open-browser": "فتح متصفح",
   "input-attach-manage-browsers": "إدارة المتصفحات",
-  "input-attach-menu-trigger": "إضافة ملفات أو صور، أو فتح المهارات أو الموصلات أو المتصفح من القائمة"
+  "input-attach-menu-trigger": "إضافة ملفات أو صور، أو فتح المهارات أو الموصلات أو المتصفح من القائمة",
+  "hide-file-sidebar": "إخفاء الشريط الجانبي للملف",
+  "show-file-sidebar": "إظهار الشريط الجانبي للملف"
 }

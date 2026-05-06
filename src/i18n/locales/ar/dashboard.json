@@ -23,5 +23,7 @@
   "document-agent": "وكيل المستندات",
   "multi-modal-agent": "وكيل متعدد الوسائط",
   "social-media-agent": "وكيل وسائل التواصل الاجتماعي",
-  "no-projects-found": "لا توجد مشاريع"
+  "no-projects-found": "لا توجد مشاريع",
+  "no-projects-match-search": "لا توجد مشاريع تطابق بحثك",
+  "try-different-search": "جرّب بحثًا مختلفًا"
 }
