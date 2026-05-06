@@ -40,6 +40,7 @@ class Provider(AbstractModel, DefaultTimes, table=True):
         default=VaildStatus.not_valid,
         sa_column=Column(ChoiceType(VaildStatus, SmallInteger()), server_default=text("1")),
     )
+    model_types: list[str] | None = Field(default=None, sa_column=Column(JSON))
 
 
 class ProviderIn(BaseModel):
@@ -50,6 +51,7 @@ class ProviderIn(BaseModel):
     encrypted_config: dict | None = None
     is_vaild: VaildStatus = VaildStatus.not_valid
     prefer: bool = False
+    model_types: list[str] | None = None
 
 
 class ProviderPreferIn(BaseModel):
@@ -61,3 +63,4 @@ class ProviderOut(ProviderIn):
     user_id: int
     prefer: bool
     model_type: str | None = None
+    model_types: list[str] | None = None

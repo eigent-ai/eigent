@@ -35,6 +35,8 @@ export type Provider = {
   externalConfig?: externalConfig[];
   is_valid?: boolean;
   model_type?: string;
+  model_types?: string[];
+  suggestedModels?: string[];
   prefer?: boolean;
   azure_deployment?: string;
 };

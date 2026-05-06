@@ -66,7 +66,10 @@ class ProviderService:
             if not model:
                 return {"success": False, "error_code": "PROVIDER_NOT_FOUND"}
             # H10: only allow updating safe fields
-            _UPDATABLE_FIELDS = {"provider_name", "api_key", "api_base", "extra_config", "prefer", "is_vaild"}
+            _UPDATABLE_FIELDS = {
+                "provider_name", "api_key", "endpoint_url", "encrypted_config",
+                "model_type", "model_types", "prefer", "is_vaild",
+            }
             for key, value in data.items():
                 if key in _UPDATABLE_FIELDS:
                     setattr(model, key, value)

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchPost } from '@/api/http';
+import { fetchPost, proxyFetchGet } from '@/api/http';
 import githubIcon from '@/assets/github.svg';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,7 +36,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { Bot, ChevronDown, ChevronUp, Edit, Eye, EyeOff } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ToolSelect from './ToolSelect';
 
@@ -109,6 +109,27 @@ export function AddWorker({
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [customModelPlatform, setCustomModelPlatform] = useState('');
   const [customModelType, setCustomModelType] = useState('');
+  const [savedProviders, setSavedProviders] = useState<
+    { provider_name: string; model_type: string; model_types: string[] }[]
+  >([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await proxyFetchGet('/api/providers');
+        const list = Array.isArray(res) ? res : res.items || [];
+        setSavedProviders(
+          list.map((p: any) => ({
+            provider_name: p.provider_name,
+            model_type: p.model_type || '',
+            model_types: p.model_types || (p.model_type ? [p.model_type] : []),
+          }))
+        );
+      } catch {
+        // ignore
+      }
+    })();
+  }, [dialogOpen]);
 
   if (!chatStore) {
     return null;
@@ -666,16 +687,47 @@ export function AddWorker({
                             <label className="text-xs text-text-body">
                               {t('workforce.model-type')}
                             </label>
-                            <Input
-                              size="sm"
-                              placeholder={t(
-                                'workforce.model-type-placeholder'
-                              )}
-                              value={customModelType}
-                              onChange={(e) =>
-                                setCustomModelType(e.target.value)
+                            {(() => {
+                              const saved = savedProviders.find(
+                                (p) => p.provider_name === customModelPlatform
+                              );
+                              const models = saved?.model_types || [];
+                              if (models.length > 0) {
+                                return (
+                                  <Select
+                                    value={customModelType}
+                                    onValueChange={setCustomModelType}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue
+                                        placeholder={t(
+                                          'workforce.model-type-placeholder'
+                                        )}
+                                      />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {models.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                          {m}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                );
                               }
-                            />
+                              return (
+                                <Input
+                                  size="sm"
+                                  placeholder={t(
+                                    'workforce.model-type-placeholder'
+                                  )}
+                                  value={customModelType}
+                                  onChange={(e) =>
+                                    setCustomModelType(e.target.value)
+                                  }
+                                />
+                              );
+                            })()}
                           </div>
                         </>
                       )}

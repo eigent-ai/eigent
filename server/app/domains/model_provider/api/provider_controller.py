@@ -68,6 +68,15 @@ async def put(id: int, data: ProviderIn, auth: V1UserAuth = Depends(auth_must)):
     return result["provider"]
 
 
+@router.get("/provider/{id}/models", name="get provider models")
+async def get_models(id: int, auth: V1UserAuth = Depends(auth_must)):
+    """Get the list of sub-models for a provider."""
+    model = ProviderService.get(id, auth.id)
+    if not model:
+        raise HTTPException(status_code=404, detail=_("Provider not found"))
+    return {"models": model.model_types or []}
+
+
 @router.delete("/provider/{id}", name="delete provider")
 async def delete(id: int, auth: V1UserAuth = Depends(auth_must)):
     if not ProviderService.delete(id, auth.id):
