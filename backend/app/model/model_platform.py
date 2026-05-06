@@ -17,11 +17,12 @@ from typing import Annotated, Final
 from pydantic import BeforeValidator
 
 PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
-    "z.ai": "zhipu",
+    "z.ai": "openai-compatible-model",
     "ModelArk": "openai-compatible-model",
     "grok": "openai-compatible-model",
     "ernie": "qianfan",
     "llama.cpp": "openai-compatible-model",
+    "deepseek": "openai-compatible-model",
 }
 
 # Bedrock Converse requires a region during model initialization.
