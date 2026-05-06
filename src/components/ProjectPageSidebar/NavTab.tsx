@@ -12,12 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WebSocketConnectionStatus } from '@/store/triggerStore';
@@ -61,67 +55,49 @@ export function triggerListenerLeadIconClass(
       return 'text-ds-icon-status-error-default';
     case 'disconnected':
     default:
-      return 'text-ds-icon-neutral-muted-default';
+      return '!text-ds-icon-status-error-default';
   }
 }
 
 export interface NavTabReconnectSuffixProps {
   wsConnectionStatus: WebSocketConnectionStatus;
-  reconnectHint: string;
-  reconnectButtonLabel: string;
   onReconnect: () => void;
 }
 
-/** Optional right control for {@link NavTab} `layout="split"` (e.g. triggers reconnect). */
+/** Reconnect button for the triggers tab — direct click, no dropdown. */
 export function NavTabReconnectSuffix({
   wsConnectionStatus,
-  reconnectHint,
-  reconnectButtonLabel,
   onReconnect,
 }: NavTabReconnectSuffixProps) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
+    <TooltipSimple
+      content="Reconnect to trigger listener"
+      side="top"
+      sideOffset={8}
+      delayDuration={300}
+    >
+      <button
+        type="button"
+        className={cn(
+          'no-drag h-8 w-8 rounded-xl text-ds-icon-neutral-muted-default hover:bg-ds-bg-neutral-strong-default flex shrink-0 items-center justify-center transition-colors outline-none',
+          'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+        )}
+        aria-label="Reconnect to trigger listener"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onReconnect();
+        }}
+      >
+        <RefreshCw
           className={cn(
-            'no-drag h-8 w-8 rounded-xl text-ds-icon-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default flex shrink-0 items-center justify-center transition-colors outline-none',
-            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+            'h-3.5 w-3.5',
+            wsConnectionStatus === 'connecting' && 'animate-spin'
           )}
-          aria-label={reconnectHint}
-        >
-          <RefreshCw
-            className={cn(
-              'h-3.5 w-3.5',
-              wsConnectionStatus === 'connecting' && 'animate-spin'
-            )}
-            aria-hidden
-          />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-4" side="right" align="start">
-        <div className="gap-3 flex flex-col">
-          <p className="text-body-sm text-ds-text-neutral-default-default">
-            {reconnectHint}
-          </p>
-          <Button
-            variant="primary"
-            size="sm"
-            className="w-full items-center justify-center"
-            onClick={onReconnect}
-          >
-            <RefreshCw
-              className={cn(
-                'mr-2 h-4 w-4',
-                wsConnectionStatus === 'connecting' && 'animate-spin'
-              )}
-              aria-hidden
-            />
-            {reconnectButtonLabel}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+          aria-hidden
+        />
+      </button>
+    </TooltipSimple>
   );
 }
 
@@ -146,6 +122,8 @@ export interface NavTabProps {
   suffix?: ReactNode;
   /** Split only: extra control after `suffix`; shown when the tab row is hovered (or focused within). */
   endAction?: ReactNode;
+  /** Override the max-width reveal class on the endAction wrapper (default: `group-hover:max-w-10`). */
+  endActionMaxWidthClass?: string;
   tooltip: string;
   /** When true, tooltips are hidden (labels are visible in the fixed-width sidebar). */
   tooltipEnabledWhenCollapsed?: boolean;
@@ -233,6 +211,7 @@ export function NavTab({
   mainButtonClassName,
   folded = false,
   endAction,
+  endActionMaxWidthClass,
 }: NavTabProps) {
   const inner = tabMainInner({
     leading,
@@ -293,8 +272,11 @@ export function NavTab({
                 <div
                   className={cn(
                     'max-w-0 ease-out flex shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150',
-                    'group-hover:max-w-10 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100',
-                    'focus-within:max-w-10 focus-within:pointer-events-auto focus-within:opacity-100'
+                    'pointer-events-none opacity-0',
+                    'group-hover:pointer-events-auto group-hover:opacity-100',
+                    endActionMaxWidthClass ??
+                      'group-hover:max-w-10 focus-within:max-w-10',
+                    'focus-within:pointer-events-auto focus-within:opacity-100'
                   )}
                 >
                   {endAction}

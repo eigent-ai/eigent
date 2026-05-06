@@ -748,6 +748,7 @@ module.exports = {
         soft: 'var(--shadow-soft)',
         'blur-effect': 'var(--shadow-blur-effect)',
         'button-shadow': 'var(--shadow-button)',
+        'workspace-project-picker': 'var(--shadow-workspace-project-picker)',
       },
       spacing: {
         xs: 'var(--spacing-xs, 4px)',

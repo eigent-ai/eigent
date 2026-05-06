@@ -396,6 +396,13 @@ export function AddWorker({
   const activeWorkerModelOptions = workerModelOptions[workerModelMode];
 
   useEffect(() => {
+    if (!dialogOpen || !edit || !workerInfo) return;
+    setWorkerName(workerInfo.workerInfo?.name || '');
+    setWorkerDescription(workerInfo.workerInfo?.description || '');
+    setSelectedTools(workerInfo.workerInfo?.selectedTools || []);
+  }, [dialogOpen, edit, workerInfo]);
+
+  useEffect(() => {
     if (!showModelConfig) return;
     const options = activeWorkerModelOptions;
     if (options.length === 0) {
@@ -673,7 +680,7 @@ export function AddWorker({
           {showEnvConfig ? (
             // environment configuration interface
             <>
-              <DialogContentSection className="gap-3 p-md flex flex-col">
+              <DialogContentSection className="scrollbar-always-visible gap-3 p-md flex flex-col overflow-y-auto">
                 <div className="gap-md flex items-center">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
@@ -772,7 +779,7 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="gap-3 p-md flex flex-col">
+              <DialogContentSection className="scrollbar-always-visible gap-3 p-md flex flex-col overflow-y-auto">
                 <div className="gap-4 flex flex-col">
                   <div className="gap-sm flex items-center">
                     <div className="h-16 w-16 flex items-center justify-center">

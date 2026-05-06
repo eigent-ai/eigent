@@ -70,8 +70,6 @@ export default function ProjectPageSidebar({
   const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
   const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
   const triggersListenerConnected = wsConnectionStatus === 'connected';
-  const showTriggersDisconnectedTag =
-    wsConnectionStatus === 'disconnected' || wsConnectionStatus === 'unhealthy';
   const projectStore = useProjectStore();
   const activeProjectId = projectStore.activeProjectId;
   const folderTabHasUnviewedFiles =
@@ -346,50 +344,38 @@ export default function ProjectPageSidebar({
                     )
                   }
                   label="Scheduled"
-                  trailing={
-                    showTriggersDisconnectedTag ? (
-                      <span className="rounded-md px-1.5 font-medium leading-tight bg-ds-bg-neutral-default-default text-ds-text-status-error-strong-default max-w-[5.5rem] shrink-0 truncate py-px text-[10px]">
-                        {t('layout.triggers-disconnected')}
-                      </span>
-                    ) : undefined
-                  }
                   showNotificationDot={unviewedTabs.has('triggers')}
                   notificationDotTone="attention"
                   notificationDotClassName="h-2 w-2"
-                  suffix={
-                    wsConnectionStatus !== 'connected' ? (
+                  endAction={
+                    triggersListenerConnected ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        buttonContent="icon-only"
+                        className={cn(
+                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
+                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                        )}
+                        aria-label={t('triggers.add-trigger')}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          requestOpenTriggerAddDialog();
+                        }}
+                      >
+                        <Plus
+                          className="h-4 w-4 text-ds-icon-neutral-muted-default"
+                          aria-hidden
+                        />
+                      </Button>
+                    ) : (
                       <NavTabReconnectSuffix
                         wsConnectionStatus={wsConnectionStatus}
-                        reconnectHint={t('layout.triggers-reconnect-hint')}
-                        reconnectButtonLabel={t(
-                          'layout.triggers-listener-reconnect'
-                        )}
                         onReconnect={triggerReconnect}
                       />
-                    ) : undefined
-                  }
-                  endAction={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      className={cn(
-                        'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                        'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-                      )}
-                      aria-label={t('triggers.add-trigger')}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        requestOpenTriggerAddDialog();
-                      }}
-                    >
-                      <Plus
-                        className="h-4 w-4 text-ds-icon-neutral-muted-default"
-                        aria-hidden
-                      />
-                    </Button>
+                    )
                   }
                   tooltip={triggersTabTooltip}
                   tooltipEnabledWhenCollapsed={!projectSidebarFolded}
