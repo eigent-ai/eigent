@@ -90,6 +90,10 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light dark;
 
+  --shadow-workspace-project-picker:
+    inset 0 0 0 1px var(--ds-bg-neutral-subtle-default),
+    0 0 4px var(--ds-bg-neutral-strong-default);
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

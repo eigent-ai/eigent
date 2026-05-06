@@ -320,6 +320,47 @@ function HeaderWin() {
     >
       {/* Leading: home ↔ dashboard / new project */}
       <div className="no-drag flex shrink-0 items-center justify-center">
+        {isHistoryRoute ? (
+          <div className="no-drag h-[28px] w-[28px] shrink-0" aria-hidden />
+        ) : (
+          <TooltipSimple
+            content={
+              projectSidebarFolded
+                ? t('layout.expand-project-sidebar', {
+                    defaultValue: 'Expand sidebar',
+                  })
+                : t('layout.fold-project-sidebar', {
+                    defaultValue: 'Fold sidebar',
+                  })
+            }
+            side="bottom"
+            align="center"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              className="no-drag shrink-0 rounded-full"
+              onClick={() => toggleProjectSidebarFolded()}
+              aria-pressed={!projectSidebarFolded}
+              aria-label={
+                projectSidebarFolded
+                  ? t('layout.expand-project-sidebar', {
+                      defaultValue: 'Expand sidebar',
+                    })
+                  : t('layout.fold-project-sidebar', {
+                      defaultValue: 'Fold sidebar',
+                    })
+              }
+            >
+              {projectSidebarFolded ? (
+                <PanelLeft className="h-4 w-4" aria-hidden />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" aria-hidden />
+              )}
+            </Button>
+          </TooltipSimple>
+        )}
         <TooltipSimple
           content={
             isHistoryRoute ? t('layout.new-project') : t('layout.dashboard')
@@ -417,43 +458,6 @@ function HeaderWin() {
             >
               <div className="min-w-0 min-h-0 relative z-50 flex h-full items-center">
                 <div className="no-drag min-w-0 flex items-center">
-                  <TooltipSimple
-                    content={
-                      projectSidebarFolded
-                        ? t('layout.expand-project-sidebar', {
-                            defaultValue: 'Expand sidebar',
-                          })
-                        : t('layout.fold-project-sidebar', {
-                            defaultValue: 'Fold sidebar',
-                          })
-                    }
-                    side="bottom"
-                    align="center"
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      className="no-drag shrink-0 rounded-full"
-                      onClick={() => toggleProjectSidebarFolded()}
-                      aria-pressed={!projectSidebarFolded}
-                      aria-label={
-                        projectSidebarFolded
-                          ? t('layout.expand-project-sidebar', {
-                              defaultValue: 'Expand sidebar',
-                            })
-                          : t('layout.fold-project-sidebar', {
-                              defaultValue: 'Fold sidebar',
-                            })
-                      }
-                    >
-                      {projectSidebarFolded ? (
-                        <PanelLeft className="h-4 w-4" aria-hidden />
-                      ) : (
-                        <PanelLeftClose className="h-4 w-4" aria-hidden />
-                      )}
-                    </Button>
-                  </TooltipSimple>
                   <TooltipSimple
                     content={t('layout.back')}
                     side="bottom"

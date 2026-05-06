@@ -45,7 +45,7 @@ import {
   FileText,
   Globe,
   Image,
-  Info,
+  Pencil,
   Trash2,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -112,9 +112,10 @@ export function FoldedAgentCard({
   borderless?: boolean;
   /** Compact icon card: click opens a menu instead of calling `onSelect` directly. */
   compactContextMenu?: {
-    onDetail: () => void;
+    onEdit: () => void;
     onDuplicate: () => void;
     onDelete: () => void;
+    editEnabled?: boolean;
     duplicateEnabled?: boolean;
     deleteEnabled?: boolean;
   };
@@ -205,16 +206,19 @@ export function FoldedAgentCard({
         <DropdownMenuContent align="start" side="bottom" sideOffset={8}>
           <DropdownMenuItem
             className="gap-2 cursor-pointer"
+            disabled={compactContextMenu.editEnabled === false}
             onSelect={(e) => {
               e.preventDefault();
-              compactContextMenu.onDetail();
+              if (compactContextMenu.editEnabled !== false) {
+                compactContextMenu.onEdit();
+              }
             }}
           >
-            <Info
+            <Pencil
               className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
               aria-hidden
             />
-            {t('workforce.detail', { defaultValue: 'Detail' })}
+            {t('workforce.edit', { defaultValue: 'Edit' })}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2 cursor-pointer"

@@ -30,6 +30,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectGroup } from '@/types/history';
 import {
   ChevronDown,
+  FolderIcon,
   FolderKanban,
   FolderOpen,
   PlusCircle,
@@ -158,17 +159,15 @@ export function WorkspaceProjectPicker() {
           size="md"
           buttonContent="text"
           buttonRadius="full"
-          className="no-drag bg-ds-bg-neutral-subtle-default px-3 py-1 font-semibold shadow-soft hover:bg-ds-bg-neutral-default-hover inline-flex h-auto w-fit max-w-[300px] justify-between"
+          className="no-drag bg-ds-bg-neutral-subtle-default shadow-workspace-project-picker px-3 py-1 font-semibold hover:bg-ds-bg-neutral-default-hover inline-flex h-auto w-fit max-w-[300px] min-w-[180px] justify-between"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
+          <FolderIcon className="size-4 shrink-0" aria-hidden />
           <span className="text-ds-text-neutral-default-default min-w-0 text-label-sm truncate">
             {activeTaskTitle}
           </span>
-          <ChevronDown
-            className="text-ds-icon-neutral-muted-default h-2.5 w-2.5 shrink-0 opacity-80"
-            aria-hidden
-          />
+          <ChevronDown className="shrink-0 opacity-80" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

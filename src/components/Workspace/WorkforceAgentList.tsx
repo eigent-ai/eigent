@@ -25,7 +25,7 @@ export interface WorkforceAgentListProps {
   sortedAgents: Agent[];
   activeAgentId: string | undefined;
   onSelectAgent: (agentId: string) => void;
-  onAgentDetailFromMenu: (agentId: string) => void;
+  onEditWorkerFromMenu: (agent: Agent) => void;
   onDuplicateUserAgent: (agent: Agent) => void;
   onDeleteUserAgent: (agentId: string) => void;
   onAddWorker: () => void;
@@ -38,7 +38,7 @@ export function WorkforceAgentList({
   sortedAgents,
   activeAgentId,
   onSelectAgent,
-  onAgentDetailFromMenu,
+  onEditWorkerFromMenu,
   onDuplicateUserAgent,
   onDeleteUserAgent,
   onAddWorker,
@@ -65,9 +65,10 @@ export function WorkforceAgentList({
                   onSelect={() => onSelectAgent(agent.agent_id)}
                   showUserAgentOverflow={false}
                   compactContextMenu={{
-                    onDetail: () => onAgentDetailFromMenu(agent.agent_id),
+                    onEdit: () => onEditWorkerFromMenu(agent),
                     onDuplicate: () => onDuplicateUserAgent(agent),
                     onDelete: () => onDeleteUserAgent(agent.agent_id),
+                    editEnabled: !isBaseWorkflowAgent(agent),
                     duplicateEnabled: !isBaseWorkflowAgent(agent),
                     deleteEnabled: !isBaseWorkflowAgent(agent),
                   }}
