@@ -16,14 +16,14 @@ import { Button } from '@/components/ui/button';
 import { type ChatTaskStatusType } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
+import { BoxHeaderConfirm, BoxHeaderSave } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
 
 export type BottomBoxState =
   | 'input'
-  | 'splitting'
   | 'confirm'
+  | 'save'
   | 'running'
   | 'finished';
 
@@ -35,11 +35,12 @@ interface BottomBoxProps {
   queuedMessages?: QueuedMessage[];
   onRemoveQueuedMessage?: (id: string) => void;
 
-  // Subtask-related props (confirm/splitting state)
+  // Subtask-related props (confirm/save state)
   subtitle?: string;
 
   // Action buttons
   onStartTask?: () => void;
+  onSavePlan?: () => void;
   onEdit?: () => void;
 
   // Task info
@@ -67,6 +68,7 @@ export default function BottomBox({
   onRemoveQueuedMessage,
   subtitle,
   onStartTask,
+  onSavePlan,
   onEdit,
   inputProps,
   loading = false,
@@ -78,9 +80,7 @@ export default function BottomBox({
 
   // Background color reflects current state only
   let backgroundClass = 'bg-ds-bg-neutral-subtle-default';
-  if (state === 'splitting')
-    backgroundClass = 'bg-ds-bg-splitting-subtle-default';
-  else if (state === 'confirm')
+  if (state === 'confirm' || state === 'save')
     backgroundClass = 'bg-ds-bg-completed-subtle-default';
 
   return (
@@ -99,11 +99,18 @@ export default function BottomBox({
         className={`rounded-3xl mb-sm relative flex w-full flex-col ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
-        {state === 'splitting' && <BoxHeaderSplitting />}
         {state === 'confirm' && (
           <BoxHeaderConfirm
             subtitle={subtitle}
             onStartTask={onStartTask}
+            onEdit={onEdit}
+            loading={loading}
+          />
+        )}
+        {state === 'save' && (
+          <BoxHeaderSave
+            subtitle={subtitle}
+            onSave={onSavePlan}
             onEdit={onEdit}
             loading={loading}
           />

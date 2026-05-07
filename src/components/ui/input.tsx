@@ -82,7 +82,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
     return (
       <div
-        className={cn('w-full', stateCls.container)}
+        className={cn('min-w-0 w-full', stateCls.container)}
         style={formControlTokenAliases}
       >
         {title ? (
@@ -175,7 +175,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
         {note ? (
           <div
             className={cn(
-              'mt-1.5 !text-body-xs',
+              'mt-1.5 !text-body-xs min-w-0 w-full overflow-hidden break-all',
               formFieldNoteTextClassName(
                 state === 'error'
                   ? 'error'

@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "Управлять коннекторами",
   "input-attach-open-browser": "Открыть браузер",
   "input-attach-manage-browsers": "Управлять браузерами",
-  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер из меню"
+  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер из меню",
+  "subtasks-planning": "Планирование подзадач",
+  "expand-plan": "Развернуть план",
+  "minimize-plan": "Свернуть план",
+  "expand-subtasks": "Развернуть подзадачи",
+  "add-subtask-placeholder": "Добавьте новую подзадачу и нажмите Enter, чтобы добавить еще"
 }

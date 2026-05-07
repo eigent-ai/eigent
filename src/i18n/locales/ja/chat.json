@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "コネクタを管理",
   "input-attach-open-browser": "ブラウザを開く",
   "input-attach-manage-browsers": "ブラウザを管理",
-  "input-attach-menu-trigger": "ファイル・写真の追加、またはメニューからスキル・コネクタ・ブラウザを開く"
+  "input-attach-menu-trigger": "ファイル・写真の追加、またはメニューからスキル・コネクタ・ブラウザを開く",
+  "subtasks-planning": "サブタスクの計画",
+  "expand-plan": "計画を展開",
+  "minimize-plan": "計画を最小化",
+  "expand-subtasks": "サブタスクを展開",
+  "add-subtask-placeholder": "新しいサブタスクを追加し、Enter キーでさらに追加"
 }

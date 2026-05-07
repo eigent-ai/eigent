@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { StreamingTaskList } from '@/components/ChatBox/TaskBox/StreamingTaskList';
+import { PlanTaskBox } from '@/components/ChatBox/TaskBox/PlanTaskBox';
+import { isPlanSplittingPhase } from '@/components/ChatBox/TaskBox/PlanTaskBox/utils';
 import { TaskCard } from '@/components/ChatBox/TaskBox/TaskCard';
-import { TypeCardSkeleton } from '@/components/ChatBox/TaskBox/TypeCardSkeleton';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import {
   FoldedAgentCard,
@@ -164,91 +164,79 @@ export default function FoldedPanel({
       ? (projectStore.projects[activeProjectId].activeChatId ?? undefined)
       : undefined;
 
-  const { taskCardVisible, isSkeletonPhase, showStreamingDecompose, taskType } =
-    useMemo(() => {
-      const fallback = {
-        taskCardVisible: false,
-        isSkeletonPhase: false,
-        showStreamingDecompose: false,
-        taskType: 1 as 1 | 2 | 3,
-      };
-      if (!activeTask || !activeTaskId) return fallback;
+  const { taskCardVisible, taskType } = useMemo(() => {
+    const fallback = {
+      taskCardVisible: false,
+      taskType: 1 as 1 | 2 | 3,
+    };
+    if (!activeTask || !activeTaskId) return fallback;
 
-      const messages = activeTask.messages;
-      const isHumanReply =
-        !!activeTask.activeAsk ||
-        (() => {
-          const userMessages = messages.filter((m: any) => m.role === 'user');
-          const lastUser = userMessages[userMessages.length - 1];
-          if (!lastUser) return false;
-          const userMessageIndex = messages.findIndex(
-            (m: any) => m.id === lastUser.id
+    const messages = activeTask.messages;
+    const isHumanReply =
+      !!activeTask.activeAsk ||
+      (() => {
+        const userMessages = messages.filter((m: any) => m.role === 'user');
+        const lastUser = userMessages[userMessages.length - 1];
+        if (!lastUser) return false;
+        const userMessageIndex = messages.findIndex(
+          (m: any) => m.id === lastUser.id
+        );
+        if (userMessageIndex > 0) {
+          const prevMessage = messages[userMessageIndex - 1];
+          return (
+            prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK
           );
-          if (userMessageIndex > 0) {
-            const prevMessage = messages[userMessageIndex - 1];
-            return (
-              prevMessage?.role === 'agent' &&
-              prevMessage?.step === AgentStep.ASK
-            );
-          }
-          return false;
-        })();
-
-      const anyToSubTasksMessage = messages.find(
-        (m: any) => m.step === AgentStep.TO_SUB_TASKS
-      );
-      const isSkeletonPhaseLocal =
-        (activeTask.status !== ChatTaskStatus.FINISHED &&
-          activeTask.status !== ChatTaskStatus.RUNNING &&
-          !anyToSubTasksMessage &&
-          !activeTask.hasWaitComfirm &&
-          messages.length > 0) ||
-        (!!activeTask.isTakeControl && !anyToSubTasksMessage);
-
-      let lastUserIndex = -1;
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          lastUserIndex = i;
-          break;
         }
-      }
-      const afterLastUser =
-        lastUserIndex >= 0 ? messages.slice(lastUserIndex + 1) : [];
-      const hasTaskPlanForCurrentTurn = afterLastUser.some(
-        (m: any) => m.step === AgentStep.TO_SUB_TASKS
-      );
+        return false;
+      })();
 
-      const isDecomposing = streamingDecomposeText.length > 0;
-      const shouldShowFallbackTask =
-        lastUserIndex >= 0 &&
-        !hasTaskPlanForCurrentTurn &&
+    const anyToSubTasksMessage = messages.find(
+      (m: any) => m.step === AgentStep.TO_SUB_TASKS
+    );
+    const isSkeletonPhaseLocal =
+      (activeTask.status !== ChatTaskStatus.FINISHED &&
+        activeTask.status !== ChatTaskStatus.RUNNING &&
+        !anyToSubTasksMessage &&
         !activeTask.hasWaitComfirm &&
-        !isDecomposing &&
-        activeTask.status !== ChatTaskStatus.FINISHED;
+        messages.length > 0) ||
+      (!!activeTask.isTakeControl && !anyToSubTasksMessage);
 
-      const taskLike = hasTaskPlanForCurrentTurn || shouldShowFallbackTask;
+    let lastUserIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserIndex = i;
+        break;
+      }
+    }
+    const afterLastUser =
+      lastUserIndex >= 0 ? messages.slice(lastUserIndex + 1) : [];
+    const hasTaskPlanForCurrentTurn = afterLastUser.some(
+      (m: any) => m.step === AgentStep.TO_SUB_TASKS
+    );
 
-      const taskCardVisibleLocal =
-        taskLike && !isSkeletonPhaseLocal && !isHumanReply;
+    const isDecomposing = streamingDecomposeText.length > 0;
+    const shouldShowFallbackTask =
+      lastUserIndex >= 0 &&
+      !hasTaskPlanForCurrentTurn &&
+      !activeTask.hasWaitComfirm &&
+      !isDecomposing &&
+      activeTask.status !== ChatTaskStatus.FINISHED;
 
-      const showStreamingDecomposeLocal =
-        streamingDecomposeText.length > 0 &&
-        activeTask.status !== ChatTaskStatus.FINISHED &&
-        !isHumanReply &&
-        !hasTaskPlanForCurrentTurn;
+    const taskLike = hasTaskPlanForCurrentTurn || shouldShowFallbackTask;
 
-      const toSub = [...messages]
-        .reverse()
-        .find((m: any) => m.step === AgentStep.TO_SUB_TASKS);
-      const taskTypeLocal = (toSub?.taskType as 1 | 2 | 3) || 1;
+    const taskCardVisibleLocal =
+      taskLike && !isSkeletonPhaseLocal && !isHumanReply;
 
-      return {
-        taskCardVisible: taskCardVisibleLocal,
-        isSkeletonPhase: isSkeletonPhaseLocal,
-        showStreamingDecompose: showStreamingDecomposeLocal,
-        taskType: taskTypeLocal,
-      };
-    }, [activeTask, activeTaskId, streamingDecomposeText]);
+    const toSub = [...messages]
+      .reverse()
+      .find((m: any) => m.step === AgentStep.TO_SUB_TASKS);
+    const taskTypeLocal = (toSub?.taskType as 1 | 2 | 3) || 1;
+
+    return {
+      taskCardVisible: taskCardVisibleLocal,
+      taskType: taskTypeLocal,
+    };
+  }, [activeTask, activeTaskId, streamingDecomposeText]);
 
   const sortedAgents = useMemo(() => {
     const base = [...BASE_WORKFLOW_AGENTS, ...workerList].filter(
@@ -299,6 +287,22 @@ export default function FoldedPanel({
     (activeTask.status === ChatTaskStatus.RUNNING ||
       activeTask.status === ChatTaskStatus.FINISHED ||
       activeTask.status === ChatTaskStatus.PAUSE);
+
+  const hasUnconfirmedPlan = Boolean(
+    activeTask?.messages.some(
+      (m: any) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+    )
+  );
+  const showPlanTaskBox = Boolean(
+    activeTaskId &&
+    activeTask &&
+    activeChatStore &&
+    !activeTask.hasWaitComfirm &&
+    !isMainTaskStarted &&
+    (isPlanSplittingPhase(activeTask) ||
+      streamingDecomposeText.length > 0 ||
+      hasUnconfirmedPlan)
+  );
 
   /** TaskCard only after the main task has started and an agent is selected (not detail-pane "Select an agent"). */
   const showFoldedTaskCard =
@@ -427,53 +431,45 @@ export default function FoldedPanel({
                   ))}
                 </div>
               </div>
-              {(showFoldedTaskCard ||
-                isSkeletonPhase ||
-                showStreamingDecompose) &&
+              {showFoldedTaskCard &&
                 activeTaskId &&
                 activeTask &&
                 chatStore && (
                   <div className="scrollbar scrollbar-always-visible min-h-0 min-w-0 pb-2 flex h-full shrink-0 flex-col overflow-x-hidden overflow-y-auto">
-                    {showStreamingDecompose && (
-                      <StreamingTaskList
-                        streamingText={streamingDecomposeText}
-                      />
-                    )}
-                    {isSkeletonPhase && (
-                      <TypeCardSkeleton
-                        isTakeControl={activeTask.isTakeControl || false}
-                      />
-                    )}
-                    {showFoldedTaskCard && (
-                      <TaskCard
-                        key={`task-folded-${activeTaskId}`}
-                        chatId={taskPanelChatId}
-                        taskInfo={activeTask.taskInfo || []}
-                        taskType={taskType}
-                        taskAssigning={activeTask.taskAssigning || []}
-                        taskRunning={activeTask.taskRunning || []}
-                        progressValue={activeTask.progressValue || 0}
-                        summaryTask={activeTask.summaryTask || ''}
-                        onAddTask={() => {
-                          chatStore.setIsTaskEdit(activeTaskId, true);
-                          chatStore.addTaskInfo();
-                        }}
-                        onUpdateTask={(taskIndex, content) => {
-                          chatStore.setIsTaskEdit(activeTaskId, true);
-                          chatStore.updateTaskInfo(taskIndex, content);
-                        }}
-                        onSaveTask={() => {
-                          chatStore.saveTaskInfo();
-                        }}
-                        onDeleteTask={(taskIndex) => {
-                          chatStore.setIsTaskEdit(activeTaskId, true);
-                          chatStore.deleteTaskInfo(taskIndex);
-                        }}
-                        clickable
-                      />
-                    )}
+                    <TaskCard
+                      key={`task-folded-${activeTaskId}`}
+                      chatId={taskPanelChatId}
+                      taskInfo={activeTask.taskInfo || []}
+                      taskType={taskType}
+                      taskAssigning={activeTask.taskAssigning || []}
+                      taskRunning={activeTask.taskRunning || []}
+                      progressValue={activeTask.progressValue || 0}
+                      summaryTask={activeTask.summaryTask || ''}
+                      onAddTask={() => {
+                        chatStore.addTaskInfo();
+                      }}
+                      onUpdateTask={(taskIndex, content) => {
+                        chatStore.updateTaskInfo(taskIndex, content);
+                      }}
+                      onSaveTask={() => {
+                        chatStore.saveTaskInfo();
+                      }}
+                      onDeleteTask={(taskIndex) => {
+                        chatStore.deleteTaskInfo(taskIndex);
+                      }}
+                      clickable
+                    />
                   </div>
                 )}
+              {showPlanTaskBox && activeTaskId && activeChatStore ? (
+                <div className="pb-2 shrink-0">
+                  <PlanTaskBox
+                    chatStore={activeChatStore}
+                    taskId={activeTaskId}
+                    allowOverlay={false}
+                  />
+                </div>
+              ) : null}
               <div className="min-h-0 min-w-0 px-2 pb-2 flex flex-1 flex-col overflow-hidden">
                 {detailAgent ? (
                   <AgentDetailPane
@@ -499,6 +495,13 @@ export default function FoldedPanel({
               transition={FOLDED_LAYOUT_TRANSITION}
             >
               <div className="gap-2 min-w-0 flex w-full max-w-full flex-col opacity-80">
+                {showPlanTaskBox && activeTaskId && activeChatStore ? (
+                  <PlanTaskBox
+                    chatStore={activeChatStore}
+                    taskId={activeTaskId}
+                    allowOverlay={false}
+                  />
+                ) : null}
                 {sortedAgents.map((agent) => (
                   <FoldedAgentCard
                     key={agent.agent_id}

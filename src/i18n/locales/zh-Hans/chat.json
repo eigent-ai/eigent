@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "管理连接器",
   "input-attach-open-browser": "打开浏览器",
   "input-attach-manage-browsers": "管理浏览器",
-  "input-attach-menu-trigger": "添加文件、照片，或通过菜单打开技能、连接器、浏览器"
+  "input-attach-menu-trigger": "添加文件、照片，或通过菜单打开技能、连接器、浏览器",
+  "subtasks-planning": "子任务规划",
+  "expand-plan": "展开计划",
+  "minimize-plan": "最小化计划",
+  "expand-subtasks": "展开子任务",
+  "add-subtask-placeholder": "添加新的子任务，按 Enter 添加更多"
 }
