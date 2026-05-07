@@ -644,20 +644,20 @@ export function Node({ id, data }: NodeProps) {
                             ? 'bg-ds-bg-status-pending-subtle-default hover:bg-ds-bg-status-pending-subtle-hover'
                             : 'bg-ds-bg-status-running-subtle-default hover:bg-ds-bg-status-running-subtle-hover';
                 const taskTextClass = task.reAssignTo
-                  ? 'text-ds-text-status-blocked-default-default'
+                  ? 'text-ds-text-status-blocked-strong-default'
                   : task.status === TaskStatus.COMPLETED
-                    ? 'text-ds-text-status-completed-default-default'
+                    ? 'text-ds-text-status-completed-strong-default'
                     : task.status === TaskStatus.FAILED
-                      ? 'text-ds-text-status-error-default-default'
+                      ? 'text-ds-text-status-error-strong-default'
                       : task.status === TaskStatus.RUNNING
-                        ? 'text-ds-text-status-running-default-default'
+                        ? 'text-ds-text-status-running-strong-default'
                         : task.status === TaskStatus.BLOCKED
-                          ? 'text-ds-text-status-blocked-default-default'
+                          ? 'text-ds-text-status-blocked-strong-default'
                           : task.status === TaskStatus.SKIPPED ||
                               task.status === TaskStatus.WAITING ||
                               task.status === TaskStatus.EMPTY
-                            ? 'text-ds-text-status-pending-default-default'
-                            : 'text-ds-text-status-running-default-default';
+                            ? 'text-ds-text-status-pending-strong-default'
+                            : 'text-ds-text-status-running-strong-default';
                 return (
                   <div
                     onClick={() => {

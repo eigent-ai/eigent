@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "Gestionar conectores",
   "input-attach-open-browser": "Abrir un navegador",
   "input-attach-manage-browsers": "Gestionar navegadores",
-  "input-attach-menu-trigger": "Añadir archivos o fotos o abrir Habilidades, Conectores o Navegador desde el menú"
+  "input-attach-menu-trigger": "Añadir archivos o fotos o abrir Habilidades, Conectores o Navegador desde el menú",
+  "subtasks-planning": "Planificación de subtareas",
+  "expand-plan": "Expandir plan",
+  "minimize-plan": "Minimizar plan",
+  "expand-subtasks": "Expandir subtareas",
+  "add-subtask-placeholder": "Añade una nueva subtarea y pulsa Enter para añadir más"
 }

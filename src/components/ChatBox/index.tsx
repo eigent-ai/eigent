@@ -43,6 +43,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
+import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
 const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
@@ -841,43 +842,22 @@ export default function ChatBox(): JSX.Element {
     if (!chatStore.activeTaskId) return 'input';
     const task = chatStore.tasks[chatStore.activeTaskId];
 
-    // Queued messages no longer change BottomBox state; QueuedBox renders independently
-
-    // Check for any to_sub_tasks message (confirmed or not)
-    const anyToSubTasksMessage = task.messages.find(
-      (m) => m.step === 'to_sub_tasks'
-    );
+    // The plan-mode splitting UI now lives in PlanTaskBox, not BottomBox.
+    // BottomBox surfaces the action for the unconfirmed plan: `save` if the
+    // user has unsaved subtask edits, otherwise `confirm`.
     const toSubTasksMessage = task.messages.find(
       (m) => m.step === 'to_sub_tasks' && !m.isConfirm
     );
 
-    // Determine if we're in the "splitting in progress" phase (skeleton visible)
-    // Only show splitting if there's NO to_sub_tasks message yet (not even confirmed)
-    // Skip splitting phase when task is already RUNNING (e.g. direct @agent mode)
-    const isSkeletonPhase =
-      (task.status !== ChatTaskStatus.FINISHED &&
-        task.status !== ChatTaskStatus.RUNNING &&
-        !anyToSubTasksMessage &&
-        !task.hasWaitComfirm &&
-        task.messages.length > 0) ||
-      (task.isTakeControl && !anyToSubTasksMessage);
-    if (isSkeletonPhase) {
-      return 'splitting';
-    }
-
-    // After splitting completes and TaskCard is awaiting user confirmation,
-    // the Task becomes 'pending' and we show the confirm state.
     if (
       toSubTasksMessage &&
       !toSubTasksMessage.isConfirm &&
       task.status === 'pending'
     ) {
-      return 'confirm';
+      return task.planDirty ? 'save' : 'confirm';
     }
-
-    // If subtasks exist but not yet confirmed while task is still running, keep showing splitting
     if (toSubTasksMessage && !toSubTasksMessage.isConfirm) {
-      return 'splitting';
+      return task.planDirty ? 'save' : 'confirm';
     }
 
     // Check task status
@@ -941,10 +921,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -954,8 +934,8 @@ export default function ChatBox(): JSX.Element {
               isPauseResumeLoading={isPauseResumeLoading}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col pl-4 pr-2">
-              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
+            <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -995,11 +975,15 @@ export default function ChatBox(): JSX.Element {
         </div>
 
         {chatStore.activeTaskId && hasAnyMessages && (
+          <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
+        )}
+        {chatStore.activeTaskId && hasAnyMessages && (
           <div
             ref={bottomBoxOverlayRef}
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            data-bottom-box-overlay
+            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
           >
-            <div className="pointer-events-auto w-full max-w-[600px] px-sm">
+            <div className="px-sm pointer-events-auto w-full max-w-[600px]">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
@@ -1007,7 +991,8 @@ export default function ChatBox(): JSX.Element {
                 noModelOverlay={!hasModel}
                 onSelectModel={handleSelectModel}
                 subtitle={
-                  getBottomBoxState() === 'confirm'
+                  getBottomBoxState() === 'confirm' ||
+                  getBottomBoxState() === 'save'
                     ? (() => {
                         const messages =
                           chatStore.tasks[chatStore.activeTaskId]?.messages ||
@@ -1024,6 +1009,13 @@ export default function ChatBox(): JSX.Element {
                     : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
                 }
                 onStartTask={() => handleConfirmTask()}
+                onSavePlan={async () => {
+                  if (chatStore.activeTaskId) {
+                    setLoading(true);
+                    await chatStore.savePlan(chatStore.activeTaskId);
+                    setLoading(false);
+                  }
+                }}
                 onEdit={handleEditQuery}
                 taskTime={taskTime}
                 taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
@@ -1064,7 +1056,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

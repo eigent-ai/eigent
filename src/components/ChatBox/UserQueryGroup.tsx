@@ -28,11 +28,11 @@ import React, {
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
-import { SplittingProgressRow } from './MessageItem/SplittingProgressRow';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
-import { StreamingTaskList } from './TaskBox/StreamingTaskList';
+import { PlanTaskBox } from './TaskBox/PlanTaskBox';
+import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
 import { TaskCard } from './TaskBox/TaskCard';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
@@ -214,15 +214,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     // Only show during active phases (not finished)
     chatState.tasks[activeTaskId].status !== ChatTaskStatus.FINISHED;
 
-  // Only show the fallback task box for the newest query while the agent is still splitting work.
-  // Simple Q&A sessions set hasWaitComfirm to true, so we should not render an empty task box there.
-  // Also, do not show fallback task if we are currently decomposing (streaming text).
-  const isDecomposing = streamingDecomposeText.length > 0;
+  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const hasUnconfirmedPlan = Boolean(
+    activeTask?.messages.some(
+      (m: any) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
+    )
+  );
+  const isPlanningPhase = Boolean(
+    activeTask &&
+    !activeTask.hasWaitComfirm &&
+    (isPlanSplittingPhase(activeTask) ||
+      streamingDecomposeText.length > 0 ||
+      hasUnconfirmedPlan)
+  );
+
+  // Show the fallback task box for the newest query only while the agent is
+  // actually planning. Direct running tasks without `to_sub_tasks` should stay
+  // in the normal running/input path.
   const shouldShowFallbackTask =
-    isLastUserQuery &&
-    activeTaskId &&
-    !chatState.tasks[activeTaskId].hasWaitComfirm &&
-    !isDecomposing;
+    isLastUserQuery && activeTaskId && isPlanningPhase;
 
   const task =
     (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
@@ -294,17 +304,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   }, [task]);
 
   // Check if we're in skeleton phase
-  const anyToSubTasksMessage = task?.messages.find(
-    (m: any) => m.step === AgentStep.TO_SUB_TASKS
-  );
-  const isSkeletonPhase =
-    task &&
-    ((task.status !== ChatTaskStatus.FINISHED &&
-      task.status !== ChatTaskStatus.RUNNING &&
-      !anyToSubTasksMessage &&
-      !task.hasWaitComfirm &&
-      task.messages.length > 0) ||
-      (task.isTakeControl && !anyToSubTasksMessage));
+  const isSkeletonPhase = task && isPlanSplittingPhase(task);
 
   /** Task card visible (user message is sticky alone in this mode). */
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
@@ -375,7 +375,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {taskCardVisible && (
+      {taskCardVisible && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{
@@ -393,32 +393,37 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               transformOrigin: 'top',
             }}
           >
-            <TaskCard
-              key={`task-${activeTaskId}-${queryGroup.queryId}`}
-              chatId={chatId}
-              taskInfo={task?.taskInfo || []}
-              taskType={queryGroup.taskMessage?.taskType || 1}
-              taskAssigning={task?.taskAssigning || []}
-              taskRunning={task?.taskRunning || []}
-              progressValue={task?.progressValue || 0}
-              summaryTask={task?.summaryTask || ''}
-              onAddTask={() => {
-                chatState.setIsTaskEdit(activeTaskId as string, true);
-                chatState.addTaskInfo();
-              }}
-              onUpdateTask={(taskIndex, content) => {
-                chatState.setIsTaskEdit(activeTaskId as string, true);
-                chatState.updateTaskInfo(taskIndex, content);
-              }}
-              onSaveTask={() => {
-                chatState.saveTaskInfo();
-              }}
-              onDeleteTask={(taskIndex) => {
-                chatState.setIsTaskEdit(activeTaskId as string, true);
-                chatState.deleteTaskInfo(taskIndex);
-              }}
-              clickable={true}
-            />
+            {hasConfirmedSubTasks ? (
+              <TaskCard
+                key={`task-${activeTaskId}-${queryGroup.queryId}`}
+                chatId={chatId}
+                taskInfo={task?.taskInfo || []}
+                taskType={queryGroup.taskMessage?.taskType || 1}
+                taskAssigning={task?.taskAssigning || []}
+                taskRunning={task?.taskRunning || []}
+                progressValue={task?.progressValue || 0}
+                summaryTask={task?.summaryTask || ''}
+                onAddTask={() => {
+                  chatState.addTaskInfo();
+                }}
+                onUpdateTask={(taskIndex, content) => {
+                  chatState.updateTaskInfo(taskIndex, content);
+                }}
+                onSaveTask={() => {
+                  chatState.saveTaskInfo();
+                }}
+                onDeleteTask={(taskIndex) => {
+                  chatState.deleteTaskInfo(taskIndex);
+                }}
+                clickable={true}
+              />
+            ) : (
+              <PlanTaskBox
+                chatStore={chatStore}
+                taskId={activeTaskId}
+                userPrompt={queryGroup.userMessage?.content}
+              />
+            )}
           </div>
         </motion.div>
       )}
@@ -624,11 +629,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           </motion.div>
         )}
 
-      {/* Streaming Decompose Text */}
-      {isLastUserQuery && streamingDecomposeText && (
-        <StreamingTaskList streamingText={streamingDecomposeText} />
-      )}
-
+      {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -636,7 +637,11 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           transition={{ delay: 0.15 }}
           className="px-sm"
         >
-          <SplittingProgressRow chatStore={chatStore} taskId={activeTaskId} />
+          <PlanTaskBox
+            chatStore={chatStore}
+            taskId={activeTaskId}
+            userPrompt={queryGroup.userMessage?.content}
+          />
         </motion.div>
       )}
     </motion.div>
