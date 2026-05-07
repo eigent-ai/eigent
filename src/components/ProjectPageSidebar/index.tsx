@@ -286,11 +286,11 @@ export default function ProjectPageSidebar({
                   leading={
                     <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
                   }
-                  label="Cowork"
-                  tooltip="Cowork"
+                  label="Workspace"
+                  tooltip="Workspace"
                   tooltipEnabledWhenCollapsed={!projectSidebarFolded}
                   folded={projectSidebarFolded}
-                  ariaLabel="Cowork"
+                  ariaLabel="Workspace"
                   ariaCurrentPage={activeWorkspaceTab === 'workforce'}
                 />
                 <NavTab
