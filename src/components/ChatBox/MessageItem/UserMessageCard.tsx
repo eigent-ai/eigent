@@ -263,7 +263,7 @@ export function UserMessageCard({
             <UserMessageRichContent content={content} variant="card" />
             {canClamp && !expanded && (
               <div
-                className="inset-x-0 bottom-0 h-14 bg-ds-bg-neutral-default-default pointer-events-none absolute z-[1]"
+                className="inset-x-0 bottom-0 h-14 bg-ds-bg-neutral-subtle-default pointer-events-none absolute z-[1]"
                 style={USER_MESSAGE_FOLD_FADE_STYLE}
                 aria-hidden
               />
