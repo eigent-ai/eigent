@@ -25,12 +25,11 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Inbox, Plus, Zap, ZapOff } from 'lucide-react';
+import { Inbox, LayoutDashboard, Plus, Users, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { HeaderAction } from './HeaderAction';
 import { NavList } from './NavList';
 import {
   NavTab,
@@ -276,9 +275,20 @@ export default function ProjectPageSidebar({
         <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
           <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <div className="gap-2 flex w-full shrink-0 flex-col">
-              <HeaderAction />
-
               <div className="gap-2 min-w-0 flex w-full flex-col">
+                {/* 1. Cowork */}
+                <NavTab
+                  active={activeWorkspaceTab === 'workforce'}
+                  onClick={() => setActiveWorkspaceTab('workforce')}
+                  leading={<Users className="h-4 w-4 shrink-0" aria-hidden />}
+                  label="Cowork"
+                  tooltip="Cowork"
+                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
+                  folded={projectSidebarFolded}
+                  ariaLabel="Cowork"
+                  ariaCurrentPage={activeWorkspaceTab === 'workforce'}
+                />
+                {/* 2. Context */}
                 <NavTab
                   active={activeWorkspaceTab === 'inbox'}
                   onClick={() => {
@@ -320,6 +330,7 @@ export default function ProjectPageSidebar({
                   ariaLabel={`Context, ${folderSettingTagLabel}`}
                   ariaCurrentPage={activeWorkspaceTab === 'inbox'}
                 />
+                {/* 3. Scheduled */}
                 <NavTab
                   layout="split"
                   active={activeWorkspaceTab === 'triggers'}
@@ -383,6 +394,20 @@ export default function ProjectPageSidebar({
                   ariaLabel={triggersTabAriaLabel}
                   ariaCurrentPage={activeWorkspaceTab === 'triggers'}
                 />
+                {/* 4. Live Artifacts */}
+                <NavTab
+                  active={activeWorkspaceTab === 'dashboard'}
+                  onClick={() => setActiveWorkspaceTab('dashboard')}
+                  leading={
+                    <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
+                  }
+                  label="Live Artifacts"
+                  tooltip="Live Artifacts"
+                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
+                  folded={projectSidebarFolded}
+                  ariaLabel="Live Artifacts"
+                  ariaCurrentPage={activeWorkspaceTab === 'dashboard'}
+                />
               </div>
             </div>
 
@@ -390,7 +415,7 @@ export default function ProjectPageSidebar({
               <NavList
                 className={cn(
                   'min-h-0 flex flex-1 flex-col',
-                  projectSidebarFolded ? 'mt-2' : 'mt-6'
+                  projectSidebarFolded ? 'mt-2' : 'mt-4'
                 )}
                 sessions={navSessions}
                 activeSessionId={
@@ -403,8 +428,6 @@ export default function ProjectPageSidebar({
                   setActiveWorkspaceTab('session');
                 }}
                 onDeleteSession={handleDeleteSession}
-                workspaceActive={activeWorkspaceTab === 'workforce'}
-                onWorkspaceClick={() => setActiveWorkspaceTab('workforce')}
                 onNewSession={handleNewSession}
                 folded={projectSidebarFolded}
               />

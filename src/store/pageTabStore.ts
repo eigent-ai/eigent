@@ -26,9 +26,16 @@ interface PageTabState {
     | 'inbox'
     | 'triggers'
     | 'sessions'
-    | 'session';
+    | 'session'
+    | 'dashboard';
   setActiveWorkspaceTab: (
-    tab: 'workforce' | 'inbox' | 'triggers' | 'sessions' | 'session',
+    tab:
+      | 'workforce'
+      | 'inbox'
+      | 'triggers'
+      | 'sessions'
+      | 'session'
+      | 'dashboard',
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;

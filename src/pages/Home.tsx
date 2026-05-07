@@ -20,6 +20,7 @@ import {
   GridPatternBackground,
   RuledLinesBackground,
 } from '@/components/Background';
+import Dashboard from '@/components/Dashboard';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import {
@@ -620,6 +621,12 @@ export default function Home() {
         return (
           <div className={mainPanelContentClass}>
             <Folder />
+          </div>
+        );
+      case 'dashboard':
+        return (
+          <div className={mainPanelContentClass}>
+            <Dashboard />
           </div>
         );
       case 'triggers':
