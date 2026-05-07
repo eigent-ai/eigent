@@ -8,6 +8,9 @@ src/components/ui/WordCarousel/WordCarousel.tsx
 # Terminal — @xterm/xterm ITheme requires hex strings for theme colors.
 src/components/Terminal/index.tsx
 #
+# ColorPicker — HSV UI requires fixed gradients / hex placeholder.
+src/components/ui/colorPicker.tsx
+#
 # Install progress bar (src/components/ui/progress-install.tsx) and similar: use CSS vars only — no entry needed.
 #
 # Electron shell surfaces use fixed native colors in preload HTML and BrowserWindow options.

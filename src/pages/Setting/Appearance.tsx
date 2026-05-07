@@ -13,7 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { ColorPicker, normalizeHexColor } from '@/components/ui/colorPicker';
 import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -38,7 +45,6 @@ import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const DEFAULT_EDITABLE_THEME_IDS = [
   'eigent',
   'camel',
@@ -52,13 +58,6 @@ type ThemeOption = {
   label: string;
   isDefault: boolean;
 };
-
-function normalizeHexColor(input: string): `#${string}` | null {
-  const trimmed = input.trim();
-  const candidate = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
-  if (!HEX_COLOR_RE.test(candidate)) return null;
-  return candidate.toLowerCase() as `#${string}`;
-}
 
 function buildMergedCatalog(customThemeCatalog: ThemeCatalog): ThemeCatalog {
   return {
@@ -95,6 +94,24 @@ function ColorSeedEditor({
   const normalizedPreview =
     normalizeHexColor(value) ?? 'var(--colors-black-100)';
 
+  const [open, setOpen] = useState(false);
+  const [openKey, setOpenKey] = useState(0);
+  const [pending, setPending] = useState(value);
+
+  const handleOpen = (next: boolean) => {
+    if (next) {
+      setPending(value);
+      setOpenKey((k) => k + 1);
+    }
+    setOpen(next);
+  };
+
+  const handleApply = () => {
+    const hex = normalizeHexColor(pending);
+    if (hex) onChange(hex);
+    setOpen(false);
+  };
+
   return (
     <div className="gap-2 border-ds-border-neutral-subtle-disabled py-4 px-6 flex flex-row items-center justify-between border-x-0 border-t-0 border-b border-solid">
       <div className="text-body-md font-semibold text-ds-text-neutral-default-default w-24">
@@ -111,10 +128,56 @@ function ColorSeedEditor({
               : 'Hex format: six digits (e.g. 1a2b3c)'
           }
         />
-        <div
-          className="h-8 w-10 rounded-md border-ds-border-neutral-default-default border-solid"
-          style={{ backgroundColor: normalizedPreview }}
-        />
+
+        <Popover open={open} onOpenChange={handleOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="h-8 w-10 rounded-md border-ds-border-neutral-default-default flex-shrink-0 cursor-pointer border border-solid focus-visible:ring-2 focus-visible:outline-none"
+              style={{ backgroundColor: normalizedPreview }}
+              title={`Pick ${label} color`}
+              aria-label={`Pick ${label} color`}
+            />
+          </PopoverTrigger>
+
+          <PopoverContent
+            className="w-64 p-4 gap-3 bg-ds-bg-neutral-subtle-default rounded-xl flex flex-col"
+            side="top"
+            align="end"
+            sideOffset={8}
+          >
+            <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+              {label}
+            </div>
+
+            <ColorPicker key={openKey} value={pending} onChange={setPending} />
+
+            <div className="gap-2 flex flex-row justify-end">
+              <PopoverClose asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  buttonContent="text"
+                  buttonRadius="full"
+                  textWeight="semibold"
+                >
+                  Cancel
+                </Button>
+              </PopoverClose>
+              <Button
+                variant="primary"
+                size="sm"
+                buttonContent="text"
+                buttonRadius="full"
+                textWeight="semibold"
+                disabled={!normalizeHexColor(pending)}
+                onClick={handleApply}
+              >
+                Apply
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   );
@@ -255,13 +318,7 @@ export default function AppearanceSettings() {
     setAccent(activeTheme.seed.accent);
     setBackground(activeTheme.seed.background);
     setInk(activeTheme.seed.ink);
-  }, [
-    activeTheme?.id,
-    activeTheme?.seed.accent,
-    activeTheme?.seed.background,
-    activeTheme?.seed.ink,
-    activeMode,
-  ]);
+  }, [activeTheme, activeMode]);
 
   const commitThemeSeed = (
     nextAccent: string,
