@@ -89,7 +89,7 @@
   "frequency-one-time": "1회",
   "frequency-custom": "사용자 정의",
   "invalid-time-format": "잘못된 시간 형식입니다. HH:MM을 사용하세요 (예: 09:30)",
-  "schedule-day-of-month-note": "If the selected day doesn’t exist in that month (e.g., the 31st), the task will be skipped.",
+  "schedule-day-of-month-note": "선택한 날짜가 해당 월에 존재하지 않으면(예: 31일), 작업은 건너뜁니다.",
   "schedule-hour": "시",
   "schedule-minute": "분",
   "schedule-date": "날짜",
@@ -103,9 +103,9 @@
   "select-expiration": "만료 날짜 선택",
   "no-upcoming-one-time": "미래 날짜와 시간을 선택하세요",
   "no-upcoming-executions": "예정된 실행 없음",
-  "date-required": "Date is required",
-  "weekday-required": "At least one weekday is required",
-  "schedule-required-fields": "Please fill in all required fields for the schedule",
+  "date-required": "날짜는 필수입니다",
+  "weekday-required": "최소한 하나의 요일이 필요합니다",
+  "schedule-required-fields": "일정에 필요한 모든 필드를 입력해 주세요",
   "create-trigger-agent": "트리거로 작업 자동화",
   "trigger-overview": "트리거 개요",
   "edit": "편집",
@@ -181,7 +181,7 @@
   "task-prompt-required": "작업 프롬프트는 필수입니다",
   "project-id-required": "프로젝트 ID는 필수입니다",
   "execution-settings": "실행 설정",
-  "extra-settings": "Extra Settings",
+  "extra-settings": "추가 설정",
   "max-per-hour-placeholder": "0",
   "max-per-day-placeholder": "0",
   "copy": "복사",
@@ -200,97 +200,97 @@
   "change-app": "Change",
   "dynamic": {
     "credentials": "Credentials",
-    "credentials-notice": "Your credentials are stored securely and used to authenticate with the service.",
-    "credentials-saved": "Credentials configured successfully",
-    "configuration": "Configuration",
-    "behavior-settings": "Behavior Settings",
-    "enter-value": "Please enter a value",
+    "credentials-notice": "자격 증명은 안전하게 저장되며 서비스 인증에 사용됩니다.",
+    "credentials-saved": "자격 증명이 성공적으로 구성되었습니다",
+    "configuration": "구성",
+    "behavior-settings": "동작 설정",
+    "enter-value": "값을 입력해 주세요",
     "add": "Add",
     "update": "Update",
-    "config-saved": "Configuration saved successfully",
-    "config-updated": "Configuration updated successfully",
-    "config-save-error": "Failed to save configuration",
+    "config-saved": "구성이 성공적으로 저장되었습니다",
+    "config-updated": "구성이 성공적으로 업데이트되었습니다",
+    "config-save-error": "구성 저장에 실패했습니다",
     "loading": "Loading...",
-    "loading-config": "Loading configuration...",
-    "no-config-available": "No configuration available for this trigger type",
-    "failed-to-load-schema": "Failed to load configuration schema",
-    "select-options": "Select options...",
+    "loading-config": "구성을 불러오는 중...",
+    "no-config-available": "이 트리거 유형에 사용할 수 있는 구성이 없습니다",
+    "failed-to-load-schema": "구성 스키마를 불러오지 못했습니다",
+    "select-options": "옵션 선택...",
     "selected": "selected",
-    "save-credentials-first": "Save credentials first",
+    "save-credentials-first": "먼저 자격 증명을 저장하세요",
     "search": "Search...",
-    "no-options": "No options found",
+    "no-options": "옵션을 찾을 수 없습니다",
     "validation": {
-      "required": "{{field}} is required",
-      "invalid-regex": "Invalid regular expression pattern",
-      "invalid-email": "Invalid email address",
-      "invalid-url": "Invalid URL format",
-      "min-length": "Must be at least {{min}} characters",
-      "max-length": "Must be no more than {{max}} characters",
-      "pattern-mismatch": "Value does not match required pattern",
-      "min-value": "Must be at least {{min}}",
-      "max-value": "Must be no more than {{max}}"
+      "required": "{{field}}은(는) 필수입니다",
+      "invalid-regex": "유효하지 않은 정규식 패턴입니다",
+      "invalid-email": "유효하지 않은 이메일 주소입니다",
+      "invalid-url": "유효하지 않은 URL 형식입니다",
+      "min-length": "최소 {{min}}자 이상이어야 합니다",
+      "max-length": "최대 {{max}}자 이하여야 합니다",
+      "pattern-mismatch": "값이 필요한 패턴과 일치하지 않습니다",
+      "min-value": "최소 {{min}} 이상이어야 합니다",
+      "max-value": "최대 {{max}} 이하여야 합니다"
     },
-    "validation-failed": "Please fix validation errors: {{errors}}"
+    "validation-failed": "다음 유효성 검사 오류를 수정해 주세요: {{errors}}"
   },
   "slack": {
-    "credentials-saved": "Slack credentials configured successfully",
-    "enter-bot-token": "Please enter a bot token",
-    "bot-token-saved": "Bot token saved successfully",
-    "bot-token-updated": "Bot token updated successfully",
-    "bot-token-save-error": "Failed to save bot token",
-    "signing-secret-saved": "Signing secret saved successfully",
-    "signing-secret-updated": "Signing secret updated successfully",
-    "signing-secret-save-error": "Failed to save signing secret",
+    "credentials-saved": "Slack 자격 증명이 성공적으로 구성되었습니다",
+    "enter-bot-token": "봇 토큰을 입력해 주세요",
+    "bot-token-saved": "봇 토큰이 성공적으로 저장되었습니다",
+    "bot-token-updated": "봇 토큰이 성공적으로 업데이트되었습니다",
+    "bot-token-save-error": "봇 토큰 저장에 실패했습니다",
+    "signing-secret-saved": "서명 시크릿이 성공적으로 저장되었습니다",
+    "signing-secret-updated": "서명 시크릿이 성공적으로 업데이트되었습니다",
+    "signing-secret-save-error": "서명 시크릿 저장에 실패했습니다",
     "add": "Add",
     "update": "Update",
-    "event-configuration": "Event Configuration",
+    "event-configuration": "이벤트 구성",
     "event-types": "Event Types",
-    "select-events": "Select events to trigger on...",
-    "search-events": "Search events...",
-    "no-events-found": "No events found",
-    "events-selected": "events selected",
-    "channel-filter": "Channel Filter",
-    "select-channels": "All channels (no filter)",
-    "search-channels": "Search channels...",
-    "no-channels-found": "No channels found",
-    "channels-selected": "channels selected",
-    "save-credentials-first": "Save credentials first to load channels",
-    "loading-channels": "Loading channels...",
-    "channels-fetch-error": "Failed to fetch channels. Please check your credentials.",
-    "behavior-settings": "Behavior Settings",
+    "select-events": "트리거할 이벤트를 선택하세요...",
+    "search-events": "이벤트 검색...",
+    "no-events-found": "이벤트를 찾을 수 없습니다",
+    "events-selected": "개의 이벤트가 선택됨",
+    "channel-filter": "채널 필터",
+    "select-channels": "모든 채널(필터 없음)",
+    "search-channels": "채널 검색...",
+    "no-channels-found": "채널을 찾을 수 없습니다",
+    "channels-selected": "개의 채널이 선택됨",
+    "save-credentials-first": "채널을 불러오려면 먼저 자격 증명을 저장하세요",
+    "loading-channels": "채널 불러오는 중...",
+    "channels-fetch-error": "채널을 가져오지 못했습니다. 자격 증명을 확인하세요.",
+    "behavior-settings": "동작 설정",
     "authentication_required": {
-      "label": "Require Authentication",
-      "notice": "Slack triggers require authentication to verify webhook signatures (Slack Signing Secret required). Verify webhook endpoint at https://api.slack.com/apps to activate trigger."
+      "label": "인증 필요",
+      "notice": "Slack 트리거는 웹훅 서명을 확인하기 위해 인증이 필요합니다(Slack 서명 시크릿 필요). 트리거를 활성화하려면 https://api.slack.com/apps에서 웹훅 엔드포인트를 확인하세요."
     },
     "bot_token": {
-      "label": "Slack Bot Token",
+      "label": "Slack 봇 토큰",
       "placeholder": "xoxb-...",
-      "notice": "Your Slack Bot User OAuth Token (starts with xoxb-)"
+      "notice": "Slack Bot User OAuth 토큰(xoxb-로 시작)"
     },
     "signing_secret": {
-      "label": "Slack Signing Secret",
-      "placeholder": "Enter your Slack signing secret...",
-      "notice": "Your Slack app's signing secret used to verify requests"
+      "label": "Slack 서명 시크릿",
+      "placeholder": "Slack 서명 시크릿을 입력하세요...",
+      "notice": "요청을 검증하는 데 사용되는 Slack 앱의 서명 시크릿"
     },
     "events": {
       "label": "Event Types",
-      "notice": "Select which Slack events should trigger this workflow"
+      "notice": "이 워크플로를 트리거할 Slack 이벤트를 선택하세요"
     },
     "channel_id": {
       "label": "Channel ID",
-      "placeholder": "Select a channel...",
-      "notice": "Specific channel to watch (leave empty to watch all channels)"
+      "placeholder": "채널을 선택하세요...",
+      "notice": "감시할 특정 채널(비워두면 모든 채널 감시)"
     },
     "ignore_bot_messages": {
-      "label": "Ignore Bot Messages"
+      "label": "봇 메시지 무시"
     },
     "ignore_users": {
-      "label": "Ignore Users",
-      "placeholder": "Enter Slack user IDs (e.g., U1234567890)...",
-      "notice": "Slack user IDs to ignore messages from"
+      "label": "사용자 무시",
+      "placeholder": "무시할 Slack 사용자 ID를 입력하세요(예: U1234567890)...",
+      "notice": "메시지를 무시할 Slack 사용자 ID"
     }
   },
-  "verification-required": "Pending Verification. A valid event message is required for Trigger Activation or disable trigger Authentication.",
+  "verification-required": "보류 중인 확인입니다. 트리거 활성화에는 유효한 이벤트 메시지가 필요하며, 또는 트리거 인증을 비활성화하세요.",
   "base": {
     "authentication_required": {
       "label": "인증 필요",
@@ -309,34 +309,36 @@
   },
   "webhook": {
     "authentication_required": {
-      "label": "Require Authentication",
-      "notice": "Whether authentication is required for this webhook trigger"
+      "label": "인증 필요",
+      "notice": "이 웹훅 트리거에 인증이 필요한지 여부"
     },
     "body_contains": {
-      "label": "Body Contains",
-      "placeholder": "Enter text that must be in request body...",
-      "notice": "Only trigger if the request body contains this string"
+      "label": "본문에 포함",
+      "placeholder": "요청 본문에 포함되어야 하는 텍스트를 입력하세요...",
+      "notice": "요청 본문에 이 문자열이 포함된 경우에만 트리거됩니다"
     },
     "required_headers": {
-      "label": "Required Headers",
-      "placeholder": "Enter header names (e.g., Content-Type, Authorization)...",
-      "notice": "List of HTTP headers that must be present in the request"
+      "label": "필수 헤더",
+      "placeholder": "헤더 이름을 입력하세요(예: Content-Type, Authorization)...",
+      "notice": "요청에 반드시 포함되어야 하는 HTTP 헤더 목록"
     },
     "header_match": {
-      "label": "Header Match (Regex)",
-      "placeholder": "Header-Name: regex pattern",
-      "notice": "Match request headers against a regex pattern (format: Header-Name: pattern)"
+      "label": "헤더 일치(정규식)",
+      "placeholder": "헤더-이름: 정규식 패턴",
+      "notice": "정규식 패턴과 요청 헤더를 일치시킵니다(형식: 헤더-이름: 패턴)"
     },
     "include_headers": {
-      "label": "Include Headers",
-      "notice": "Include request headers in the workflow execution input"
+      "label": "헤더 포함",
+      "notice": "워크플로 실행 입력에 요청 헤더를 포함합니다"
     },
     "include_query_params": {
-      "label": "Include Query Parameters"
+      "label": "쿼리 매개변수 포함"
     },
     "include_request_metadata": {
-      "label": "Include Request Metadata",
-      "notice": "Include request metadata (method, URL, client IP) in execution input"
+      "label": "요청 메타데이터 포함",
+      "notice": "실행 입력에 요청 메타데이터(메서드, URL, 클라이언트 IP)를 포함합니다"
     }
-  }
+  },
+  "status-cancelled": "Cancelled",
+  "select-method": "방법 선택"
 }

@@ -14,10 +14,9 @@
   "mcp-custom-server-tools": "服务器命令",
   "mcp-add": "添加",
   "disable": "禁用",
-  "eigent-cloud": "Eigent Cloud",
+  "eigent-cloud": "Eigent 云",
   "default": "默认",
   "profile": "个人资料",
-
   "account": "账户",
   "you-are-currently-signed-in-with": "你当前使用的是 {{email}} 账户",
   "manage": "管理",
@@ -29,7 +28,6 @@
   "dark": "深色",
   "light": "亮色",
   "transparent": "透明",
-
   "workspace-main-background": "工作区背景",
   "workspace-main-background-description": "仅应用于 Workforce 与 Session 主内容区。",
   "workspace-main-background-empty": "无图案",
@@ -38,14 +36,12 @@
   "workspace-main-background-ruled": "横格线",
   "workspace-main-background-dotted": "虚线格",
   "workspace-main-background-dashed": "长虚线",
-
   "appearance-tab": "外观",
   "color-mode": "颜色模式",
   "accent-palette": "强调色主题",
   "accent-palette-description": "界面的预设配色方案，浅色与深色模式分别保存。",
   "accent-for-light": "浅色模式",
   "accent-for-dark": "深色模式",
-
   "data-privacy": "数据隐私",
   "data-privacy-description": "Eigent 基于本地优先原则确保您的隐私。您的数据默认存储在您的设备上。云功能是可选的，仅使用最小的数据来实现功能。详细信息请访问我们的",
   "privacy-policy": "隐私政策",
@@ -124,8 +120,8 @@
   "delete": "删除",
   "configure {name} Toolkit": "配置 {{name}} 工具包",
   "get-it-from": "获取它来自",
-  "google-custom-search-api": "Google Custom Search API",
-  "google-cloud-console": "Google Cloud Console",
+  "google-custom-search-api": "Google 自定义搜索 API",
+  "google-cloud-console": "Google Cloud 控制台",
   "connect": "连接",
   "setting": "设置",
   "all": "全部",
@@ -175,7 +171,6 @@
   "reset-success": "重置成功！",
   "reset-failed": "重置失败！",
   "select-default-model": "选择默认模型",
-
   "browser-login": "浏览器登录",
   "browser-login-description": "打开 Chrome 浏览器以登录您的账户。您的登录数据将安全地保存在本地配置文件中。",
   "open-browser-login": "打开浏览器登录",
@@ -183,7 +178,6 @@
   "browser-opened-successfully": "浏览器已成功打开。请登录您的账户。",
   "failed-to-open-browser": "打开浏览器失败，请重试。",
   "restart-to-apply": "重启应用",
-
   "cookie-manager": "Cookie 管理器",
   "cookie-manager-description": "管理从浏览器会话中保存的 Cookie。可以删除特定网站或全部 Cookie。",
   "refresh": "刷新",
@@ -202,7 +196,6 @@
   "confirm-delete-all-cookies": "确定要删除所有 Cookie 吗？此操作无法撤销。",
   "all-cookies-deleted": "所有 Cookie 已成功删除。",
   "cookie-delete-warning": "注意：删除 Cookie 会使您从相关网站登出。您可能需要重启浏览器才能看到更改生效。",
-
   "network-proxy": "网络代理",
   "network-proxy-description": "为网络请求配置代理服务器。如需通过代理访问外部 API，非常有用。",
   "proxy-placeholder": "http://127.0.0.1:7890",
@@ -210,7 +203,6 @@
   "proxy-save-failed": "保存代理配置失败。",
   "proxy-invalid-url": "无效的代理 URL。必须以 http://、https://、socks4:// 或 socks5:// 开头。",
   "proxy-restart-hint": "需要重启应用以应用代理更改。",
-
   "cloud-not-available-in-local-proxy": "在本地代理模式下无法使用云端版本",
   "set-as-default": "设为默认",
   "api-key-setting": "API 密钥设置",
@@ -218,14 +210,12 @@
   "model-type-setting": "模型类型设置",
   "please-select": "请选择",
   "configuring": "正在配置...",
-
   "models-default-setting-title": "默认设置",
   "models-default-setting-description": "从已配置的模型中选择一个作为 Eigent 的默认模型，它将全局应用到您的工作区。",
   "models-configuration": "配置",
-
-  "gemini-3-pro-preview-name": "Gemini 3 Pro Preview",
+  "gemini-3-pro-preview-name": "Gemini 3 Pro 预览版",
   "gemini-3.1-pro-preview-name": "Gemini 3.1 Pro Preview",
-  "gemini-3-flash-preview-name": "Gemini 3 Flash Preview",
+  "gemini-3-flash-preview-name": "Gemini 3 Flash 预览版",
   "gpt-5.4-name": "GPT-5.4",
   "gpt-5.5-name": "GPT-5.5",
   "gpt-5-mini-name": "GPT-5 Mini",
@@ -236,11 +226,15 @@
   "claude-opus-4-7-name": "Claude Opus 4.7",
   "deepseek-v4-pro-name": "DeepSeek V4 Pro",
   "minimax-m2-7-name": "Minimax M2.7",
-
   "preferred-ide": "首选 IDE",
   "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
   "system-file-manager": "系统文件管理器",
   "agents": "智能体",
   "help-improve-eigent": "帮助改进 Eigent",
-  "help-improve-eigent-description": "允许 Eigent 收集匿名错误日志和使用数据以改进服务。此项为可选，可随时更改。"
+  "help-improve-eigent-description": "允许 Eigent 收集匿名错误日志和使用数据以改进服务。此项为可选，可随时更改。",
+  "please-complete-authorization-in-browser": "请在浏览器中完成授权",
+  "authorization-cancelled": "授权已取消",
+  "authorization-failed": "授权失败",
+  "this-service-is-already-enabled-by-default": "此服务默认已启用",
+  "version": "Version"
 }

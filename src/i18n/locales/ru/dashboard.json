@@ -23,5 +23,7 @@
   "document-agent": "Агент документов",
   "multi-modal-agent": "Мультимодальный агент",
   "social-media-agent": "Агент социальных сетей",
-  "no-projects-found": "Проекты не найдены"
+  "no-projects-found": "Проекты не найдены",
+  "no-projects-match-search": "По вашему запросу не найдено ни одного проекта",
+  "try-different-search": "Попробуйте другой поисковый запрос"
 }

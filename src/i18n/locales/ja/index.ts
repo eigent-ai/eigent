@@ -15,6 +15,7 @@
 import agents from './agents.json';
 import chat from './chat.json';
 import dashboard from './dashboard.json';
+import folder from './folder.json';
 import layout from './layout.json';
 import setting from './setting.json';
 import triggers from './triggers.json';
@@ -24,6 +25,7 @@ export default {
   agents,
   layout,
   dashboard,
+  folder,
   workforce,
   chat,
   setting,

@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "Gestisci i connettori",
   "input-attach-open-browser": "Apri un browser",
   "input-attach-manage-browsers": "Gestisci i browser",
-  "input-attach-menu-trigger": "Aggiungi file o foto o apri Skill, Connettori o Browser dal menu"
+  "input-attach-menu-trigger": "Aggiungi file o foto o apri Skill, Connettori o Browser dal menu",
+  "hide-file-sidebar": "Nascondi la barra laterale dei file",
+  "show-file-sidebar": "Mostra la barra laterale dei file"
 }

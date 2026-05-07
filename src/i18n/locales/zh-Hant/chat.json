@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "管理連接器",
   "input-attach-open-browser": "開啟瀏覽器",
   "input-attach-manage-browsers": "管理瀏覽器",
-  "input-attach-menu-trigger": "新增檔案、相片，或從選單開啟技能、連接器、瀏覽器"
+  "input-attach-menu-trigger": "新增檔案、相片，或從選單開啟技能、連接器、瀏覽器",
+  "hide-file-sidebar": "隱藏檔案側邊欄",
+  "show-file-sidebar": "顯示檔案側邊欄"
 }

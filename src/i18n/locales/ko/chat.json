@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "커넥터 관리",
   "input-attach-open-browser": "브라우저 열기",
   "input-attach-manage-browsers": "브라우저 관리",
-  "input-attach-menu-trigger": "파일·사진 추가 또는 메뉴에서 스킬, 커넥터, 브라우저 열기"
+  "input-attach-menu-trigger": "파일·사진 추가 또는 메뉴에서 스킬, 커넥터, 브라우저 열기",
+  "hide-file-sidebar": "파일 사이드바 숨기기",
+  "show-file-sidebar": "파일 사이드바 표시"
 }

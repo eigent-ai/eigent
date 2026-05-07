@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "コネクタを管理",
   "input-attach-open-browser": "ブラウザを開く",
   "input-attach-manage-browsers": "ブラウザを管理",
-  "input-attach-menu-trigger": "ファイル・写真の追加、またはメニューからスキル・コネクタ・ブラウザを開く"
+  "input-attach-menu-trigger": "ファイル・写真の追加、またはメニューからスキル・コネクタ・ブラウザを開く",
+  "hide-file-sidebar": "ファイルサイドバーを非表示にする",
+  "show-file-sidebar": "ファイルサイドバーを表示する"
 }

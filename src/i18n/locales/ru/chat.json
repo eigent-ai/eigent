@@ -91,5 +91,7 @@
   "input-attach-manage-connectors": "Управлять коннекторами",
   "input-attach-open-browser": "Открыть браузер",
   "input-attach-manage-browsers": "Управлять браузерами",
-  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер из меню"
+  "input-attach-menu-trigger": "Добавить файлы или фото или открыть Навыки, Коннекторы или Браузер из меню",
+  "hide-file-sidebar": "Скрыть боковую панель файлов",
+  "show-file-sidebar": "Показать боковую панель файлов"
 }
