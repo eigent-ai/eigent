@@ -1008,6 +1008,9 @@ export default function ChatBox(): JSX.Element {
                       })()
                     : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
                 }
+                autoStartDeadline={
+                  chatStore.tasks[chatStore.activeTaskId]?.autoConfirmDeadline
+                }
                 onStartTask={() => handleConfirmTask()}
                 onSavePlan={async () => {
                   if (chatStore.activeTaskId) {

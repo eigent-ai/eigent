@@ -183,6 +183,7 @@ interface Task {
   snapshotsTemp: any[];
   isTakeControl: boolean;
   planDirty: boolean;
+  autoConfirmDeadline: number | null;
   isContextExceeded?: boolean;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
@@ -479,6 +480,7 @@ export interface ChatStore {
   setIsTakeControl: (taskId: string, isTakeControl: boolean) => void;
   setSnapshotsTemp: (taskId: string, snapshot: any) => void;
   setPlanDirty: (taskId: string, dirty: boolean) => void;
+  setAutoConfirmDeadline: (taskId: string, deadline: number | null) => void;
   savePlan: (taskId: string) => Promise<void>;
   clearTasks: () => void;
   setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
@@ -499,6 +501,7 @@ export type VanillaChatStore = {
 
 // Track auto-confirm timers per task to avoid reusing stale timers across rounds
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
@@ -849,6 +852,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshotsTemp: [],
             isTakeControl: false,
             planDirty: false,
+            autoConfirmDeadline: null,
             streamingDecomposeText: '',
             executionId: undefined,
           },
@@ -877,6 +881,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        get().setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in removeTask:', error);
       }
@@ -948,6 +953,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        get().setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in stopTask:', error);
       }
@@ -1599,6 +1605,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStreamingDecomposeText,
             clearStreamingDecomposeText,
             setPlanDirty,
+            setAutoConfirmDeadline,
           } = getCurrentChatStore();
 
           currentTaskId = getCurrentTaskId();
@@ -1694,18 +1701,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   clearTimeout(autoConfirmTimers[currentTaskId]);
                   delete autoConfirmTimers[currentTaskId];
                 }
+                setAutoConfirmDeadline(currentTaskId, null);
               } catch (error) {
                 console.warn('Error clearing auto-confirm timer:', error);
               }
 
               // 30 seconds auto confirm
               try {
+                setAutoConfirmDeadline(
+                  currentTaskId,
+                  Date.now() + AUTO_CONFIRM_TIMEOUT_MS
+                );
                 autoConfirmTimers[currentTaskId] = setTimeout(() => {
                   try {
                     const currentStore = getCurrentChatStore();
                     const currentId = getCurrentTaskId();
-                    const { tasks, handleConfirmTask, setPlanDirty } =
-                      currentStore;
+                    const {
+                      tasks,
+                      handleConfirmTask,
+                      setPlanDirty,
+                      setAutoConfirmDeadline,
+                    } = currentStore;
                     const message = tasks[currentId].messages.findLast(
                       (item) => item.step === AgentStep.TO_SUB_TASKS
                     );
@@ -1721,6 +1737,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       handleConfirmTask(project_id, currentId, type);
                     }
                     setPlanDirty(currentId, false);
+                    setAutoConfirmDeadline(currentId, null);
                     delete autoConfirmTimers[currentId];
                   } catch (error) {
                     console.error(
@@ -1728,11 +1745,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       error
                     );
                     // Clean up the timer reference even if there's an error
+                    setAutoConfirmDeadline(currentTaskId, null);
                     delete autoConfirmTimers[currentTaskId];
                   }
-                }, 30000);
+                }, AUTO_CONFIRM_TIMEOUT_MS);
               } catch (error) {
                 console.error('Error setting auto-confirm timer:', error);
+                setAutoConfirmDeadline(currentTaskId, null);
               }
 
               const newNoticeMessage: Message = {
@@ -3437,6 +3456,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setTaskInfo,
         setTaskRunning,
         setPlanDirty,
+        setAutoConfirmDeadline,
       } = get();
       if (!taskId) return;
 
@@ -3446,6 +3466,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn(
           'Error clearing auto-confirm timer in handleConfirmTask:',
@@ -3841,8 +3862,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
       }));
     },
+    setAutoConfirmDeadline(taskId: string, deadline: number | null) {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              autoConfirmDeadline: deadline,
+            },
+          },
+        };
+      });
+    },
     async savePlan(taskId: string) {
-      const { tasks, setPlanDirty } = get();
+      const { tasks, setPlanDirty, setAutoConfirmDeadline } = get();
       const task = tasks[taskId];
       if (!task) return;
       try {
@@ -3872,10 +3908,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in savePlan:', error);
       }
 
+      setAutoConfirmDeadline(taskId, Date.now() + AUTO_CONFIRM_TIMEOUT_MS);
       autoConfirmTimers[taskId] = setTimeout(() => {
         try {
           const latestState = get();
@@ -3894,12 +3932,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             latestState.handleConfirmTask(projectId, taskId);
           }
           latestState.setPlanDirty(taskId, false);
+          latestState.setAutoConfirmDeadline(taskId, null);
           delete autoConfirmTimers[taskId];
         } catch (error) {
           console.error('Error in savePlan auto-confirm handler:', error);
+          get().setAutoConfirmDeadline(taskId, null);
           delete autoConfirmTimers[taskId];
         }
-      }, 30000);
+      }, AUTO_CONFIRM_TIMEOUT_MS);
     },
     clearTasks: () => {
       const { create } = get();
