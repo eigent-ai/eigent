@@ -37,6 +37,7 @@ interface BottomBoxProps {
 
   // Subtask-related props (confirm/save state)
   subtitle?: string;
+  autoStartDeadline?: number | null;
 
   // Action buttons
   onStartTask?: () => void;
@@ -67,6 +68,7 @@ export default function BottomBox({
   queuedMessages = [],
   onRemoveQueuedMessage,
   subtitle,
+  autoStartDeadline,
   onStartTask,
   onSavePlan,
   onEdit,
@@ -105,6 +107,7 @@ export default function BottomBox({
             onStartTask={onStartTask}
             onEdit={onEdit}
             loading={loading}
+            autoStartDeadline={autoStartDeadline}
           />
         )}
         {state === 'save' && (
