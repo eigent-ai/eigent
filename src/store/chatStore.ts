@@ -182,7 +182,7 @@ interface Task {
   snapshots: any[];
   snapshotsTemp: any[];
   isTakeControl: boolean;
-  isTaskEdit: boolean;
+  planDirty: boolean;
   isContextExceeded?: boolean;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
@@ -478,7 +478,8 @@ export interface ChatStore {
   setSnapshots: (taskId: string, snapshots: any[]) => void;
   setIsTakeControl: (taskId: string, isTakeControl: boolean) => void;
   setSnapshotsTemp: (taskId: string, snapshot: any) => void;
-  setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void;
+  setPlanDirty: (taskId: string, dirty: boolean) => void;
+  savePlan: (taskId: string) => Promise<void>;
   clearTasks: () => void;
   setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
   setNextTaskId: (taskId: string | null) => void;
@@ -688,14 +689,12 @@ const normalizeToolkitMessage = (value: unknown) => {
 };
 
 /** Persist subtask edits to backend via PUT /task/{project_id}. */
-const persistSubtaskEdits = (taskInfo: TaskInfo[]) => {
+const persistSubtaskEdits = async (taskInfo: TaskInfo[]) => {
   const projectId = useProjectStore.getState().activeProjectId;
   if (!projectId) return;
 
   const nonEmpty = taskInfo.filter((t) => t.content !== '');
-  fetchPut(`/task/${projectId}`, { task: nonEmpty }).catch((err) =>
-    console.error('Failed to persist subtask edits:', err)
-  );
+  await fetchPut(`/task/${projectId}`, { task: nonEmpty });
 };
 
 const resolveProcessTaskIdForToolkitEvent = (
@@ -849,7 +848,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshots: [],
             snapshotsTemp: [],
             isTakeControl: false,
-            isTaskEdit: false,
+            planDirty: false,
             streamingDecomposeText: '',
             executionId: undefined,
           },
@@ -1599,7 +1598,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setIsContextExceeded,
             setStreamingDecomposeText,
             clearStreamingDecomposeText,
-            setIsTaskEdit,
+            setPlanDirty,
           } = getCurrentChatStore();
 
           currentTaskId = getCurrentTaskId();
@@ -1680,7 +1679,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             }
 
             // Each splitting round starts in a clean editing state
-            setIsTaskEdit(currentTaskId, false);
+            setPlanDirty(currentTaskId, false);
 
             const messages = [...tasks[currentTaskId].messages];
             const toSubTaskIndex = messages.findLastIndex(
@@ -1705,7 +1704,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   try {
                     const currentStore = getCurrentChatStore();
                     const currentId = getCurrentTaskId();
-                    const { tasks, handleConfirmTask, setIsTaskEdit } =
+                    const { tasks, handleConfirmTask, setPlanDirty } =
                       currentStore;
                     const message = tasks[currentId].messages.findLast(
                       (item) => item.step === AgentStep.TO_SUB_TASKS
@@ -1717,11 +1716,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       project_id &&
                       !isConfirm &&
                       !isTakeControl &&
-                      !tasks[currentId].isTaskEdit
+                      !tasks[currentId].planDirty
                     ) {
                       handleConfirmTask(project_id, currentId, type);
                     }
-                    setIsTaskEdit(currentId, false);
+                    setPlanDirty(currentId, false);
                     delete autoConfirmTimers[currentId];
                   } catch (error) {
                     console.error(
@@ -3437,7 +3436,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setTaskTime,
         setTaskInfo,
         setTaskRunning,
-        setIsTaskEdit,
+        setPlanDirty,
       } = get();
       if (!taskId) return;
 
@@ -3493,7 +3492,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       // Reset editing state after manual confirmation so next round can auto-start
-      setIsTaskEdit(taskId, false);
+      setPlanDirty(taskId, false);
     },
     addTaskInfo() {
       const { tasks, activeTaskId, setTaskInfo } = get();
@@ -3682,7 +3681,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const targetTaskInfo = [...tasks[activeTaskId].taskInfo];
       targetTaskInfo.splice(index, 1);
       setTaskInfo(activeTaskId, targetTaskInfo);
-      persistSubtaskEdits(targetTaskInfo);
     },
     getLastUserMessage() {
       const { activeTaskId, tasks } = get();
@@ -3831,17 +3829,77 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       });
     },
-    setIsTaskEdit(taskId: string, isTaskEdit: boolean) {
+    setPlanDirty(taskId: string, dirty: boolean) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            isTaskEdit,
+            planDirty: dirty,
           },
         },
       }));
+    },
+    async savePlan(taskId: string) {
+      const { tasks, setPlanDirty } = get();
+      const task = tasks[taskId];
+      if (!task) return;
+      try {
+        await persistSubtaskEdits(task.taskInfo);
+        setPlanDirty(taskId, false);
+      } catch (err) {
+        console.error('Failed to persist subtask edits:', err);
+        return;
+      }
+
+      // After Save, restart the 30-second auto-confirm timer for predictable UX.
+      const projectId = useProjectStore.getState().activeProjectId;
+      const lastToSubTasks = task.messages.findLast(
+        (m: Message) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      if (
+        !projectId ||
+        !lastToSubTasks ||
+        lastToSubTasks.isConfirm ||
+        task.isTakeControl
+      ) {
+        return;
+      }
+
+      try {
+        if (autoConfirmTimers[taskId]) {
+          clearTimeout(autoConfirmTimers[taskId]);
+          delete autoConfirmTimers[taskId];
+        }
+      } catch (error) {
+        console.warn('Error clearing auto-confirm timer in savePlan:', error);
+      }
+
+      autoConfirmTimers[taskId] = setTimeout(() => {
+        try {
+          const latestState = get();
+          const latest = latestState.tasks[taskId];
+          if (!latest) {
+            delete autoConfirmTimers[taskId];
+            return;
+          }
+          const message = latest.messages.findLast(
+            (item: Message) => item.step === AgentStep.TO_SUB_TASKS
+          );
+          const isConfirm = message?.isConfirm || false;
+          const isTakeControl = latest.isTakeControl;
+
+          if (projectId && !isConfirm && !isTakeControl && !latest.planDirty) {
+            latestState.handleConfirmTask(projectId, taskId);
+          }
+          latestState.setPlanDirty(taskId, false);
+          delete autoConfirmTimers[taskId];
+        } catch (error) {
+          console.error('Error in savePlan auto-confirm handler:', error);
+          delete autoConfirmTimers[taskId];
+        }
+      }, 30000);
     },
     clearTasks: () => {
       const { create } = get();

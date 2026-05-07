@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { TaskStatus } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useMemo } from 'react';
 
 function isDone(task: TaskInfo) {
   return task.status === TaskStatus.COMPLETED;
@@ -34,14 +35,18 @@ interface ProgressSectionProps {
 }
 
 export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
-  const count = subtasks.length;
+  const visibleSubtasks = useMemo(
+    () => subtasks.filter((task) => task.content.trim() !== ''),
+    [subtasks]
+  );
+  const count = visibleSubtasks.length;
   const requestTaskBoxFocus = usePageTabStore((s) => s.requestTaskBoxFocus);
 
   const collapsedStrip =
     count > 0 ? (
       <div className="gap-1 min-w-0 mx-1 flex items-center overflow-hidden">
         <AnimatePresence initial={false}>
-          {subtasks.map((task, idx) => (
+          {visibleSubtasks.map((task, idx) => (
             <motion.span
               key={task.id}
               layout
@@ -52,7 +57,7 @@ export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
               className="gap-1 min-w-0 flex items-center"
             >
               <ProgressCircle done={isDone(task)} />
-              {idx < subtasks.length - 1 ? <ProgressConnector /> : null}
+              {idx < visibleSubtasks.length - 1 ? <ProgressConnector /> : null}
             </motion.span>
           ))}
         </AnimatePresence>
@@ -78,7 +83,7 @@ export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
         return (
           <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
             <AnimatePresence initial={false}>
-              {subtasks.map((task) => (
+              {visibleSubtasks.map((task) => (
                 <motion.li
                   key={task.id}
                   layout

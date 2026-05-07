@@ -12,54 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { UserMessageRichContent } from '@/components/ChatBox/MessageItem/UserMessageRichContent';
-import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
-import { Orbit } from '@/components/ui/animate-ui/icons/orbit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-/**
- * Variant: Splitting
- */
-export interface BoxHeaderSplittingProps {
-  className?: string;
-}
-
-export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
-  const { t } = useTranslation();
-  return (
-    <div
-      className={cn(
-        'mb-2 gap-1 flex w-full flex-col items-start justify-center',
-        className
-      )}
-    >
-      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="px-1 focus:ring-0 focus-visible:outline-none"
-        >
-          <AnimateIcon
-            animate
-            loop
-            className="h-4 w-4 !text-ds-text-information-default-default items-center justify-center"
-          >
-            <Orbit size={16} />
-          </AnimateIcon>
-        </Button>
-
-        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
-          <span className="text-body-sm font-bold text-ds-text-information-default-default whitespace-nowrap">
-            {t('chat.splitting-tasks')}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 /**
  * Variant: Confirm
@@ -83,11 +39,11 @@ export const BoxHeaderConfirm = ({
   return (
     <div
       className={cn(
-        'mb-2 gap-1 flex w-full flex-col items-start justify-center',
+        'mb-2 gap-1 flex w-full flex-col items-start justify-between',
         className
       )}
     >
-      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center">
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center justify-between">
         <Button
           variant="ghost"
           size="sm"
@@ -100,18 +56,6 @@ export const BoxHeaderConfirm = ({
           <ChevronLeft />
         </Button>
 
-        <div className="gap-0.5 relative flex min-h-px min-w-px flex-1 items-center">
-          {subtitle ? (
-            <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden">
-              <UserMessageRichContent
-                content={subtitle}
-                variant="compact"
-                className="w-full"
-              />
-            </div>
-          ) : null}
-        </div>
-
         <Button
           variant="success"
           size="sm"
@@ -120,6 +64,62 @@ export const BoxHeaderConfirm = ({
           disabled={loading}
         >
           {t('chat.start-task')}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Variant: Save
+ *
+ * Mirrors `BoxHeaderConfirm` but the primary action is "Save" — used when the
+ * plan editor has unsaved subtask edits.
+ */
+export interface BoxHeaderSaveProps {
+  subtitle?: string;
+  onSave?: () => void;
+  onEdit?: () => void;
+  className?: string;
+  loading?: boolean;
+}
+
+export const BoxHeaderSave = ({
+  subtitle,
+  onSave,
+  onEdit,
+  className,
+  loading = false,
+}: BoxHeaderSaveProps) => {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={cn(
+        'mb-2 gap-1 flex w-full flex-col items-start justify-between',
+        className
+      )}
+    >
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center justify-between">
+        <Button
+          variant="ghost"
+          size="sm"
+          buttonContent="icon-only"
+          tone="neutral"
+          buttonRadius="full"
+          className="focus:ring-0 focus-visible:outline-none"
+          onClick={onEdit}
+        >
+          <ChevronLeft />
+        </Button>
+
+        <Button
+          variant="success"
+          size="sm"
+          className="rounded-full"
+          onClick={onSave}
+          disabled={loading}
+        >
+          {t('layout.save')}
         </Button>
       </div>
     </div>

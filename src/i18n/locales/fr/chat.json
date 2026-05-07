@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "Gérer les connecteurs",
   "input-attach-open-browser": "Ouvrir un navigateur",
   "input-attach-manage-browsers": "Gérer les navigateurs",
-  "input-attach-menu-trigger": "Ajouter fichiers ou photos ou ouvrir Compétences, Connecteurs ou Navigateur depuis le menu"
+  "input-attach-menu-trigger": "Ajouter fichiers ou photos ou ouvrir Compétences, Connecteurs ou Navigateur depuis le menu",
+  "subtasks-planning": "Planification des sous-tâches",
+  "expand-plan": "Développer le plan",
+  "minimize-plan": "Réduire le plan",
+  "expand-subtasks": "Développer les sous-tâches",
+  "add-subtask-placeholder": "Ajoutez une nouvelle sous-tâche et appuyez sur Entrée pour en ajouter d’autres"
 }

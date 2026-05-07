@@ -40,17 +40,20 @@ function getTaskInfoRows(
   return Array.isArray(task.taskInfo) ? task.taskInfo : [];
 }
 
-export function getBottomBoxStateForTask(
-  task: TaskLifecycleFields
-): BottomBoxState {
+/**
+ * `'splitting'` is no longer a real `BottomBoxState` — the splitting visuals
+ * moved into `PlanTaskBox`. For the sidebar/project list we still need a way to
+ * recognize the pre-confirm planning window, so we compute that signal locally
+ * via {@link isTaskInPlanPhase}.
+ */
+function isTaskInPlanPhase(task: TaskLifecycleFields): boolean {
   const messages = getTaskMessages(task);
   const status = task.status ?? ChatTaskStatus.PENDING;
-  const type = task.type ?? '';
   const hasWaitComfirm = Boolean(task.hasWaitComfirm);
   const isTakeControl = Boolean(task.isTakeControl);
 
   const anyToSubTasksMessage = messages.find((m) => m.step === 'to_sub_tasks');
-  const toSubTasksMessage = messages.find(
+  const unconfirmedToSubTasks = messages.find(
     (m) => m.step === 'to_sub_tasks' && !m.isConfirm
   );
 
@@ -60,20 +63,23 @@ export function getBottomBoxStateForTask(
       !hasWaitComfirm &&
       messages.length > 0) ||
     (isTakeControl && !anyToSubTasksMessage);
-  if (isSkeletonPhase) {
-    return 'splitting';
-  }
 
-  if (
-    toSubTasksMessage &&
-    !toSubTasksMessage.isConfirm &&
-    status === 'pending'
-  ) {
-    return 'confirm';
-  }
+  return isSkeletonPhase || Boolean(unconfirmedToSubTasks);
+}
+
+export function getBottomBoxStateForTask(
+  task: TaskLifecycleFields
+): BottomBoxState {
+  const messages = getTaskMessages(task);
+  const status = task.status ?? ChatTaskStatus.PENDING;
+  const type = task.type ?? '';
+
+  const toSubTasksMessage = messages.find(
+    (m) => m.step === 'to_sub_tasks' && !m.isConfirm
+  );
 
   if (toSubTasksMessage && !toSubTasksMessage.isConfirm) {
-    return 'splitting';
+    return 'confirm';
   }
 
   if (status === ChatTaskStatus.RUNNING || status === ChatTaskStatus.PAUSE) {
@@ -93,9 +99,10 @@ export type TaskListShelfTone = 'splitting' | 'running' | 'default';
 export function getTaskListShelfTone(
   task: TaskLifecycleFields
 ): TaskListShelfTone {
+  if (isTaskInPlanPhase(task)) return 'splitting';
   const s = getBottomBoxStateForTask(task);
   if (s === 'running') return 'running';
-  if (s === 'splitting' || s === 'confirm') return 'splitting';
+  if (s === 'confirm') return 'splitting';
   return 'default';
 }
 

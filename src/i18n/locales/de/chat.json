@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "Connectors verwalten",
   "input-attach-open-browser": "Browser öffnen",
   "input-attach-manage-browsers": "Browser verwalten",
-  "input-attach-menu-trigger": "Dateien oder Fotos hinzufügen oder Skills, Connectors oder Browser über das Menü öffnen"
+  "input-attach-menu-trigger": "Dateien oder Fotos hinzufügen oder Skills, Connectors oder Browser über das Menü öffnen",
+  "subtasks-planning": "Teilaufgabenplanung",
+  "expand-plan": "Plan erweitern",
+  "minimize-plan": "Plan minimieren",
+  "expand-subtasks": "Teilaufgaben erweitern",
+  "add-subtask-placeholder": "Neue Teilaufgabe hinzufügen und Enter drücken, um weitere hinzuzufügen"
 }

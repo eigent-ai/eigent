@@ -91,5 +91,10 @@
   "input-attach-manage-connectors": "Gestisci i connettori",
   "input-attach-open-browser": "Apri un browser",
   "input-attach-manage-browsers": "Gestisci i browser",
-  "input-attach-menu-trigger": "Aggiungi file o foto o apri Skill, Connettori o Browser dal menu"
+  "input-attach-menu-trigger": "Aggiungi file o foto o apri Skill, Connettori o Browser dal menu",
+  "subtasks-planning": "Pianificazione delle sottoattività",
+  "expand-plan": "Espandi piano",
+  "minimize-plan": "Riduci piano",
+  "expand-subtasks": "Espandi sottoattività",
+  "add-subtask-placeholder": "Aggiungi una nuova sottoattività e premi Invio per aggiungerne altre"
 }
