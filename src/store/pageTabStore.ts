@@ -17,18 +17,21 @@ import { SessionMode } from '@/types/constants';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type WorkspaceTab =
+  | 'workforce'
+  | 'inbox'
+  | 'triggers'
+  | 'sessions'
+  | 'session'
+  | 'widget';
+
 interface PageTabState {
   activeTab: 'tasks' | 'trigger';
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
   // Workspace tabs within the Tasks page (sidebar → main panel)
-  activeWorkspaceTab:
-    | 'workforce'
-    | 'inbox'
-    | 'triggers'
-    | 'sessions'
-    | 'session';
+  activeWorkspaceTab: WorkspaceTab;
   setActiveWorkspaceTab: (
-    tab: 'workforce' | 'inbox' | 'triggers' | 'sessions' | 'session',
+    tab: WorkspaceTab,
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;

@@ -29,6 +29,7 @@ import {
 import SessionGroup from '@/components/Session/SessionGroup';
 import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
+import { WorkspaceWidgetPage } from '@/components/Widget/WorkspaceWidgetPage';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -48,6 +49,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useWidgetStore } from '@/store/widgetStore';
 import {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
   type TriggerSortKey,
@@ -113,6 +115,7 @@ export default function Home() {
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
+  const loadProjectWidget = useWidgetStore((s) => s.loadProjectWidget);
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
@@ -384,6 +387,13 @@ export default function Home() {
     checkLocalServerStale();
   }, []);
 
+  useEffect(() => {
+    if (!projectStore.activeProjectId || !email) return;
+    void loadProjectWidget(projectStore.activeProjectId, email, {
+      quietMissing: true,
+    });
+  }, [projectStore.activeProjectId, email, loadProjectWidget]);
+
   // Detect files and triggers when project loads
   useEffect(() => {
     const detectAgentFiles = async () => {
@@ -648,6 +658,12 @@ export default function Home() {
             }}
             onDeleteSession={handleSessionGroupDeleteSession}
           />
+        );
+      case 'widget':
+        return (
+          <div className={mainPanelContentClass}>
+            <WorkspaceWidgetPage />
+          </div>
         );
       default:
         return null;

@@ -12,12 +12,13 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import json
 import logging
 import mimetypes
 import re
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
@@ -187,6 +188,122 @@ def _resolve_project_root(email: str, project_id: str) -> Path:
         file_logger.warning("project root fallback lookup failed: %s", e)
 
     return preferred
+
+
+def _resolve_widget_file(widget_dir: Path, file_name: str) -> Path:
+    normalized = (file_name or "").strip().replace("\\", "/")
+    if not normalized:
+        raise ValueError("Widget manifest entry is empty")
+    candidate = (widget_dir / normalized).resolve()
+    widget_root = widget_dir.resolve()
+    try:
+        candidate.relative_to(widget_root)
+    except ValueError as exc:
+        raise ValueError(
+            "Widget manifest entry must stay inside widget/"
+        ) from exc
+    if not candidate.is_file():
+        raise FileNotFoundError(normalized)
+    return candidate
+
+
+def _read_widget_html(
+    widget_dir: Path, manifest: dict[str, Any], key: str
+) -> tuple[str, str]:
+    file_name = manifest.get(key)
+    if not isinstance(file_name, str):
+        raise ValueError(f"Widget manifest field '{key}' must be a string")
+    file_path = _resolve_widget_file(widget_dir, file_name)
+    return file_path.read_text(encoding="utf-8"), file_path.as_posix()
+
+
+def _widget_preview_url(email: str, project_id: str, file_path: str) -> str:
+    return (
+        f"/files/preview/{quote(email, safe='')}/"
+        f"{quote(project_id, safe='')}/{quote(file_path, safe='/')}"
+    )
+
+
+@router.get("/projects/{project_id}/widget")
+async def get_project_widget(
+    project_id: str,
+    email: str = Query(..., description="User email"),
+) -> dict:
+    """
+    Load the active project's generated widget folder.
+    Reads only project_root/widget/{widget.json, preview entry, full entry}.
+    """
+    if not project_id or not email:
+        raise HTTPException(
+            status_code=400,
+            detail="project_id and email are required",
+        )
+
+    project_root = _resolve_project_root(email, project_id)
+    widget_dir = (project_root / "widget").resolve()
+    try:
+        widget_dir.relative_to(project_root.resolve())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="Invalid widget path"
+        ) from exc
+
+    if not widget_dir.is_dir():
+        return {"exists": False}
+
+    manifest_path = widget_dir / "widget.json"
+    if not manifest_path.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail="widget/widget.json is required",
+        )
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="widget/widget.json is invalid JSON",
+        ) from exc
+
+    if not isinstance(manifest, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="widget/widget.json must contain an object",
+        )
+
+    try:
+        preview_html, preview_path = _read_widget_html(
+            widget_dir, manifest, "preview"
+        )
+        entry_html, entry_path = _read_widget_html(
+            widget_dir, manifest, "entry"
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Widget file not found: {exc}",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    widget_stat = manifest_path.stat()
+    updated_at = manifest.get("updatedAt") or str(widget_stat.st_mtime)
+
+    preview_rel = (
+        Path(preview_path).relative_to(project_root.resolve()).as_posix()
+    )
+    entry_rel = Path(entry_path).relative_to(project_root.resolve()).as_posix()
+
+    return {
+        "exists": True,
+        "manifest": manifest,
+        "previewHtml": preview_html,
+        "entryHtml": entry_html,
+        "previewUrl": _widget_preview_url(email, project_id, preview_rel),
+        "entryUrl": _widget_preview_url(email, project_id, entry_rel),
+        "updatedAt": updated_at,
+    }
 
 
 @router.get("/files")

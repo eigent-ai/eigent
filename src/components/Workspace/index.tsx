@@ -19,6 +19,7 @@ import { AddWorker } from '@/components/AddWorker';
 import BottomBox from '@/components/ChatBox/BottomBox';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { WorkspaceWidgetPreview } from '@/components/Widget/WorkspaceWidgetPreview';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
@@ -37,9 +38,16 @@ import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
+import { useWidgetStore } from '@/store/widgetStore';
 import { SessionMode } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Cast, MonitorSmartphone, ScrollText } from 'lucide-react';
+import {
+  ArrowLeft,
+  Cast,
+  MonitorSmartphone,
+  PencilRuler,
+  ScrollText,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -96,6 +104,14 @@ export default function Workspace() {
   );
   const workerList = useWorkerList();
   const { modelType, setWorkerList } = useAuthStore();
+  const email = useAuthStore((s) => s.email);
+  const widget = useWidgetStore((s) =>
+    activeProjectId ? s.widgetsByProjectId[activeProjectId] : null
+  );
+  const widgetLoading = useWidgetStore((s) =>
+    activeProjectId ? Boolean(s.loadingByProjectId[activeProjectId]) : false
+  );
+  const loadProjectWidget = useWidgetStore((s) => s.loadProjectWidget);
 
   const [message, setMessage] = useState('');
   const { hasModel } = useModelConfigCheck();
@@ -107,6 +123,7 @@ export default function Workspace() {
   const [leftPanelTab, setLeftPanelTab] = useState<
     'instructions' | 'workWith' | null
   >(null);
+  const [isWidgetPanelOpen, setIsWidgetPanelOpen] = useState(true);
   type WorkspaceSubPage = 'all-sessions' | 'instruction-md' | 'dispatch' | null;
   const [workspaceSubPage, setWorkspaceSubPage] =
     useState<WorkspaceSubPage>(null);
@@ -136,6 +153,15 @@ export default function Workspace() {
     }, 180);
     return () => window.clearTimeout(focusTimer);
   }, [workspaceChatFocusRequestId, activeWorkspaceTab]);
+
+  useEffect(() => {
+    if (!activeProjectId || !email) return;
+    void loadProjectWidget(activeProjectId, email, { quietMissing: true });
+  }, [activeProjectId, email, loadProjectWidget]);
+
+  useEffect(() => {
+    setIsWidgetPanelOpen(true);
+  }, [activeProjectId]);
 
   useEffect(() => {
     if (!leftPanelTab) return;
@@ -232,6 +258,32 @@ export default function Workspace() {
       console.error('Select File Error:', error);
     }
   }, [chatStore, host, t]);
+
+  const handleLoadWidget = useCallback(async () => {
+    if (!activeProjectId || !email) return;
+    try {
+      const loaded = await loadProjectWidget(activeProjectId, email);
+      if (!loaded.exists) {
+        toast.error('No widget folder found for this project.');
+      } else {
+        setIsWidgetPanelOpen(true);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to load widget.'
+      );
+    }
+  }, [activeProjectId, email, loadProjectWidget]);
+
+  const hasWidget = widget?.exists === true;
+
+  const handleWidgetButtonClick = useCallback(() => {
+    if (hasWidget) {
+      setIsWidgetPanelOpen((open) => !open);
+      return;
+    }
+    void handleLoadWidget();
+  }, [handleLoadWidget, hasWidget]);
 
   const taskAssigning =
     chatStore?.activeTaskId != null
@@ -348,6 +400,24 @@ export default function Workspace() {
             </span>
           </div>
         )}
+        {workspaceSubPage === null && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonContent="text"
+            onClick={handleWidgetButtonClick}
+            disabled={!hasWidget && widgetLoading}
+            aria-expanded={hasWidget ? isWidgetPanelOpen : undefined}
+            className="no-drag !text-label-sm gap-2 shrink-0"
+          >
+            <PencilRuler
+              className={`h-4 w-4 text-ds-icon-neutral-default-default ${widgetLoading ? 'animate-pulse' : ''}`}
+              aria-hidden
+            />
+            Widget
+          </Button>
+        )}
         <div className="flex-1" />
         {workspaceSubPage === 'instruction-md' && activeProjectId && (
           <Button
@@ -454,6 +524,23 @@ export default function Workspace() {
         {/* Main content + right panel (hidden when sub-page is active) */}
         {workspaceSubPage === null && (
           <>
+            <AnimatePresence initial={false}>
+              {hasWidget && isWidgetPanelOpen && widget && (
+                <motion.div
+                  key="workspace-widget-panel"
+                  initial={{ width: 0, x: -16, opacity: 0 }}
+                  animate={{ width: 280, x: 0, opacity: 1 }}
+                  exit={{ width: 0, x: -16, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="min-h-0 shrink-0 overflow-hidden"
+                >
+                  <WorkspaceWidgetPreview
+                    widget={widget}
+                    onOpen={() => setActiveWorkspaceTab('widget')}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="min-h-0 min-w-0 relative z-0 flex flex-1 flex-col items-stretch overflow-hidden">
               <div className="min-h-0 px-3 flex w-full flex-1 flex-col">
                 <div className="mx-auto flex w-full max-w-[600px] shrink-0 flex-col">
