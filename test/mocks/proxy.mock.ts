@@ -24,6 +24,7 @@ const mockImplementation = {
   }),
   fetchPut: vi.fn(() => Promise.resolve({ success: true })),
   getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
+  waitForBackendReady: vi.fn(() => Promise.resolve(true)),
   proxyFetchPost: vi.fn((url, _data) => {
     // Mock history creation
     if (url.includes('/api/chat/history')) {
@@ -61,7 +62,10 @@ const mockImplementation = {
       return Promise.resolve([]);
     }
     // Mock snapshots - return empty array to prevent the error
-    if (url.includes('/api/chat/snapshots')) {
+    if (
+      url.includes('/api/chat/snapshots') ||
+      url.includes('/api/v1/chat/snapshots')
+    ) {
       return Promise.resolve([]);
     }
     return Promise.resolve({});
@@ -75,4 +79,5 @@ vi.mock('../../src/api/http', () => mockImplementation);
 vi.mock('@/api/http', () => mockImplementation);
 
 // Export the mocked functions for use in tests
-export const { proxyFetchGet, proxyFetchPost, fetchPost } = mockImplementation;
+export const { proxyFetchGet, proxyFetchPost, fetchPost, waitForBackendReady } =
+  mockImplementation;

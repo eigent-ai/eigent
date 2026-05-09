@@ -193,7 +193,10 @@ export default function Project() {
     projectId: string,
     question: string,
     historyId: string,
-    project?: { tasks: { task_id: string }[]; project_name?: string }
+    project?: {
+      tasks: { task_id: string; question?: string }[];
+      project_name?: string;
+    }
   ) => {
     const existingProject = projectStore.getProjectById(projectId);
     if (existingProject) {
@@ -204,6 +207,11 @@ export default function Project() {
       const taskIdsList = project?.tasks
         ?.map((t) => t.task_id)
         .filter(Boolean) || [projectId];
+      const taskQuestions = Object.fromEntries(
+        (project?.tasks || [])
+          .filter((task) => task.task_id && task.question)
+          .map((task) => [task.task_id, task.question as string])
+      );
       await loadProjectFromHistory(
         projectStore,
         navigate,
@@ -211,7 +219,8 @@ export default function Project() {
         question,
         historyId,
         taskIdsList,
-        project?.project_name
+        project?.project_name,
+        taskQuestions
       );
     }
   };
