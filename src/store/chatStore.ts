@@ -26,6 +26,11 @@ import {
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { generateUniqueId, uploadLog } from '@/lib';
+import {
+  normalizeRemoteSubAgentProvider,
+  REMOTE_SUB_AGENT_PROVIDER_ID,
+  toRemoteSubAgentRuntimeConfig,
+} from '@/lib/remoteSubAgent';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -876,6 +881,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      let remoteSubAgentConfig = null;
+      try {
+        const providersRes = await proxyFetchGet(
+          '/api/v1/remote-sub-agent-providers',
+          { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
+        );
+        const providerList = Array.isArray(providersRes)
+          ? providersRes
+          : providersRes.items || [];
+        const remoteSubAgentProvider = providerList[0];
+        remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
+          normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
+        );
+      } catch (error) {
+        console.error('Failed to load remote sub agent configuration:', error);
+      }
+
       const addWorkers = workerList.map((worker) => {
         return {
           name: worker.workerInfo?.name,
@@ -1009,6 +1031,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               cdp_browsers: cdp_browsers,
               env_path: envPath,
               search_config: searchConfig,
+              remote_sub_agent_config: remoteSubAgentConfig,
             })
           : undefined,
 

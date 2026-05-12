@@ -19,11 +19,15 @@ from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import DEVELOPER_SYS_PROMPT
+from app.agent.prompt import (
+    DEVELOPER_SYS_PROMPT,
+    build_remote_sub_agent_usage_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.remote_sub_agent_toolkit import RemoteSubAgentToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -103,12 +107,44 @@ async def developer_agent(options: Chat):
         *skill_toolkit.get_tools(),
         *search_tools,
     ]
+    tool_names = [
+        HumanToolkit.toolkit_name(),
+        TerminalToolkit.toolkit_name(),
+        NoteTakingToolkit.toolkit_name(),
+        WebDeployToolkit.toolkit_name(),
+        ScreenshotToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+        SearchToolkit.toolkit_name(),
+    ]
+
+    remote_sub_agent_enabled = RemoteSubAgentToolkit.is_enabled(
+        options.remote_sub_agent_config, working_directory
+    )
+    if remote_sub_agent_enabled:
+        remote_sub_agent_toolkit = RemoteSubAgentToolkit(
+            api_task_id=options.project_id,
+            agent_name=Agents.developer_agent,
+            working_directory=working_directory,
+            remote_sub_agent_config=options.remote_sub_agent_config,
+        )
+        remote_sub_agent_toolkit = message_integration.register_toolkits(
+            remote_sub_agent_toolkit
+        )
+        tools.extend(remote_sub_agent_toolkit.get_tools())
+        tool_names.append(RemoteSubAgentToolkit.toolkit_name())
+
     system_message = DEVELOPER_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
         now_str=NOW_STR,
     )
+    if remote_sub_agent_enabled:
+        remote_sub_agent_notice = build_remote_sub_agent_usage_notice(
+            working_directory=working_directory,
+            local_tool_description="local `shell_exec` or local file writes",
+        )
+        system_message = f"{system_message}\n{remote_sub_agent_notice}"
 
     return agent_model(
         Agents.developer_agent,
@@ -118,15 +154,7 @@ async def developer_agent(options: Chat):
         ),
         options,
         tools,
-        tool_names=[
-            HumanToolkit.toolkit_name(),
-            TerminalToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
-            WebDeployToolkit.toolkit_name(),
-            ScreenshotToolkit.toolkit_name(),
-            SkillToolkit.toolkit_name(),
-            SearchToolkit.toolkit_name(),
-        ],
+        tool_names=tool_names,
         toolkits_to_register_agent=[
             screenshot_toolkit_for_agent_registration,
         ],

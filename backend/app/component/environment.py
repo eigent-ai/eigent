@@ -17,6 +17,7 @@ import importlib.util
 import logging
 import os
 import threading
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, overload
 
@@ -28,12 +29,62 @@ logger = logging.getLogger("env")
 # Thread-local storage for user-specific environment
 _thread_local = threading.local()
 
-# Default global environment path
-default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
-load_dotenv(dotenv_path=default_env_path)
-
 # Safe base directory for user environment files
 env_base_dir = os.path.join(os.path.expanduser("~"), ".eigent")
+
+# Default global environment path
+default_env_path = os.path.join(env_base_dir, ".env")
+
+
+def _resolve_initial_env_paths() -> tuple[Path, ...]:
+    backend_dir = Path(__file__).resolve().parents[2]
+    repo_root = backend_dir.parent
+    return (
+        Path(default_env_path),
+        backend_dir / ".env",
+        backend_dir / ".env.development",
+        repo_root / ".env",
+        repo_root / ".env.development",
+    )
+
+
+def _load_initial_env_files(paths: Iterable[Path]) -> list[Path]:
+    """
+    Load backend env files for both Electron and standalone web development.
+
+    Precedence is:
+    1. Real process environment, always highest.
+    2. Later files in `paths`.
+    3. Earlier files in `paths`.
+    """
+    original_env = dict(os.environ)
+    loaded_paths: list[Path] = []
+    seen: set[str] = set()
+
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        resolved_key = str(resolved)
+        if resolved_key in seen:
+            continue
+        seen.add(resolved_key)
+        if not resolved.exists():
+            continue
+        load_dotenv(dotenv_path=resolved, override=True)
+        loaded_paths.append(resolved)
+
+    # Keep shell / service-manager env vars authoritative over dotenv files.
+    for key, value in original_env.items():
+        os.environ[key] = value
+
+    if loaded_paths:
+        logger.info(
+            "Loaded backend env files: %s",
+            ", ".join(str(path) for path in loaded_paths),
+        )
+    return loaded_paths
+
+
+_load_initial_env_files(_resolve_initial_env_paths())
 
 
 def sanitize_env_path(env_path: str | None) -> str | None:

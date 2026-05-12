@@ -21,12 +21,16 @@ from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.prompt import (
+    BROWSER_SYS_PROMPT,
+    build_remote_sub_agent_usage_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.remote_sub_agent_toolkit import RemoteSubAgentToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -268,6 +272,22 @@ def browser_agent(options: Chat):
     else:
         search_tools = []
 
+    remote_sub_agent_tools = []
+    remote_sub_agent_enabled = RemoteSubAgentToolkit.is_enabled(
+        options.remote_sub_agent_config, working_directory
+    )
+    if remote_sub_agent_enabled:
+        remote_sub_agent_toolkit = RemoteSubAgentToolkit(
+            api_task_id=options.project_id,
+            agent_name=Agents.browser_agent,
+            working_directory=working_directory,
+            remote_sub_agent_config=options.remote_sub_agent_config,
+        )
+        remote_sub_agent_toolkit = message_integration.register_toolkits(
+            remote_sub_agent_toolkit
+        )
+        remote_sub_agent_tools = remote_sub_agent_toolkit.get_tools()
+
     tools = [
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.browser_agent
@@ -278,7 +298,19 @@ def browser_agent(options: Chat):
         *screenshot_toolkit.get_tools(),
         *search_tools,
         *skill_toolkit.get_tools(),
+        *remote_sub_agent_tools,
     ]
+    tool_names = [
+        SearchToolkit.toolkit_name(),
+        HybridBrowserToolkit.toolkit_name(),
+        HumanToolkit.toolkit_name(),
+        NoteTakingToolkit.toolkit_name(),
+        TerminalToolkit.toolkit_name(),
+        ScreenshotToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+    ]
+    if remote_sub_agent_tools:
+        tool_names.append(RemoteSubAgentToolkit.toolkit_name())
 
     # Build external browser notice
     external_browser_notice = ""
@@ -300,6 +332,14 @@ def browser_agent(options: Chat):
         now_str=NOW_STR,
         external_browser_notice=external_browser_notice,
     )
+    if remote_sub_agent_enabled:
+        remote_sub_agent_notice = build_remote_sub_agent_usage_notice(
+            working_directory=working_directory,
+            local_tool_description=(
+                "local browser, search, or terminal actions"
+            ),
+        )
+        system_message = f"{system_message}\n{remote_sub_agent_notice}"
 
     agent = agent_model(
         Agents.browser_agent,
@@ -310,15 +350,7 @@ def browser_agent(options: Chat):
         options,
         tools,
         prune_tool_calls_from_memory=True,
-        tool_names=[
-            SearchToolkit.toolkit_name(),
-            HybridBrowserToolkit.toolkit_name(),
-            HumanToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
-            TerminalToolkit.toolkit_name(),
-            ScreenshotToolkit.toolkit_name(),
-            SkillToolkit.toolkit_name(),
-        ],
+        tool_names=tool_names,
         toolkits_to_register_agent=[
             web_toolkit_for_agent_registration,
             screenshot_toolkit_for_agent_registration,

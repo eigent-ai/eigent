@@ -13,6 +13,40 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 # flake8: noqa
 
+REMOTE_SUB_AGENT_USAGE_NOTICE = """
+<remote_sub_agent_execution>
+RemoteSubAgent is configured for this task. When the user or a subtask asks
+for RemoteSubAgent, remote sub-agent, remote sandbox, cloud sandbox, or
+isolated remote execution, you MUST call `run_remote_sub_agent` for the
+remote work first. Do not satisfy those requests with {local_tool_description}.
+Local output from `{working_directory}` is not valid evidence of remote
+execution. After the remote result returns, you may use local tools only to
+inspect local artifacts, register notes, or assemble the final report.
+
+Cost control:
+- Make at most one full remote execution call per subtask unless the tool/API
+  explicitly fails.
+- If the remote result is complete but the formatting is imperfect, do not
+  rerun the remote job. Produce a best-effort report and clearly label any
+  evidence limitation.
+- If a follow-up is truly needed, set `reuse_session=True` and ask the same
+  remote session to clarify or reformat existing outputs instead of recreating
+  the environment or repeating expensive setup.
+</remote_sub_agent_execution>
+"""
+
+
+def build_remote_sub_agent_usage_notice(
+    *,
+    working_directory: str,
+    local_tool_description: str,
+) -> str:
+    return REMOTE_SUB_AGENT_USAGE_NOTICE.format(
+        working_directory=working_directory,
+        local_tool_description=local_tool_description,
+    )
+
+
 SOCIAL_MEDIA_SYS_PROMPT = """\
 You are a Social Media Management Assistant with comprehensive capabilities
 across multiple platforms. You MUST use the `send_message_to_user` tool to

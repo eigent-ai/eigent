@@ -25,6 +25,7 @@ from app.controller import (
     chat_controller,
     health_controller,
     model_controller,
+    remote_sub_agent_controller,
     task_controller,
     tool_controller,
 )
@@ -60,6 +61,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": model_controller.router,
             "tags": ["model"],
             "description": "Model validation and configuration",
+        },
+        {
+            "router": remote_sub_agent_controller.router,
+            "tags": ["remote-sub-agent"],
+            "description": "Remote sub-agent validation",
         },
         {
             "router": task_controller.router,
