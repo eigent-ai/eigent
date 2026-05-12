@@ -60,6 +60,7 @@ import {
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
+import { ensureLinuxProtocolHandler } from './utils/linuxProtocol';
 import { zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
@@ -452,6 +453,13 @@ const setupProtocolHandlers = () => {
   } else {
     app.setAsDefaultProtocolClient('eigent');
   }
+
+  // On Linux, Electron's setAsDefaultProtocolClient does not create a
+  // .desktop file — it only calls xdg-mime default against one that must
+  // already exist. AppImage builds typically have none, and user-authored
+  // entries often omit %u, which strips the eigent:// URL out of argv and
+  // hangs the login flow. See https://github.com/eigent-ai/eigent/issues/1525
+  ensureLinuxProtocolHandler();
 };
 
 // ==================== protocol url handle ====================
@@ -594,7 +602,19 @@ const setupSingleInstanceLock = () => {
   app.on('second-instance', (event, argv) => {
     log.info('second-instance', argv);
     const url = argv.find((arg) => arg.startsWith('eigent://'));
-    if (url) handleProtocolUrl(url);
+    if (url) {
+      handleProtocolUrl(url);
+    } else if (process.platform === 'linux') {
+      // The second instance was triggered (likely by xdg-open from the OAuth
+      // browser tab) but no eigent:// URL made it into argv. This almost
+      // always means the .desktop file routing the protocol is missing the
+      // %u/%U field code, so the URL gets dropped before reaching us. We
+      // re-register our own handler so the next login attempt succeeds.
+      log.warn(
+        'second-instance fired without eigent:// URL — refreshing Linux protocol handler'
+      );
+      ensureLinuxProtocolHandler();
+    }
     if (win) win.show();
   });
 
