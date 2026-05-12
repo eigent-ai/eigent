@@ -60,12 +60,8 @@ class RemoteSubAgentRuntime:
             remote_agent_name=request.remote_agent_name,
             session_key=session_key,
         )
-        if (
-            not request.reuse_session
-            and (
-                session.remote_interaction_id
-                or session.remote_environment_id
-            )
+        if not request.reuse_session and (
+            session.remote_interaction_id or session.remote_environment_id
         ):
             logger.info(
                 "RemoteSubAgent existing session found; reusing it",

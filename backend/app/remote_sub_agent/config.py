@@ -29,4 +29,3 @@ class RemoteSubAgentConfig(BaseModel):
     enabled: bool = False
     provider: str = DEFAULT_REMOTE_SUB_AGENT_PROVIDER
     gemini_agents: GeminiRemoteSubAgentConfig | None = None
-

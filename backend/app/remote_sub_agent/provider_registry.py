@@ -36,11 +36,14 @@ class RemoteSubAgentProviderAdapter:
 def get_configured_provider_name(
     remote_sub_agent_config: Any | None,
 ) -> str:
-    return _config_str(
-        remote_sub_agent_config,
-        "provider",
-        DEFAULT_REMOTE_SUB_AGENT_PROVIDER,
-    ) or DEFAULT_REMOTE_SUB_AGENT_PROVIDER
+    return (
+        _config_str(
+            remote_sub_agent_config,
+            "provider",
+            DEFAULT_REMOTE_SUB_AGENT_PROVIDER,
+        )
+        or DEFAULT_REMOTE_SUB_AGENT_PROVIDER
+    )
 
 
 def get_provider_config(

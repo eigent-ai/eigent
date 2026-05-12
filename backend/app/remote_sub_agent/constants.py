@@ -13,4 +13,3 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 DEFAULT_REMOTE_SUB_AGENT_PROVIDER = "gemini_agents"
-
