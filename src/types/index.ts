@@ -37,6 +37,13 @@ export type Provider = {
   model_type?: string;
   prefer?: boolean;
   azure_deployment?: string;
+  /**
+   * If set, the provider exposes an OpenAI-compatible `/v1/models` listing
+   * endpoint. Value is the path relative to `apiHost` (e.g. `/v1/models`).
+   * Cards with this field render a searchable model dropdown grouped by
+   * provider prefix instead of a free-form text input.
+   */
+  modelsEndpoint?: string;
 };
 
 export type Model = {

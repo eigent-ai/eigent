@@ -98,6 +98,13 @@ import {
   toEndpointBaseUrl,
   VLLM_PROVIDER_ID,
 } from './localModels';
+import { ProviderModelCombobox } from './components/ProviderModelCombobox';
+import {
+  fetchProviderModels,
+  loadCachedModels,
+  saveCachedModels,
+  type ProviderModelGroup,
+} from '@/lib/providerModels';
 
 // Sidebar tab types
 type SidebarTab =
@@ -200,6 +207,72 @@ export default function SettingModels() {
   >({});
   const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
     useState(false);
+
+  // Per-cloud-provider model list state: { groups, loading, error } keyed by
+  // provider id. Populated for providers whose `INIT_PROVODERS` entry declares
+  // a `modelsEndpoint` (today: only OrcaRouter).
+  const [cloudModelsState, setCloudModelsState] = useState<
+    Record<
+      string,
+      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+    >
+  >(() => {
+    const initial: Record<
+      string,
+      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+    > = {};
+    for (const p of INIT_PROVODERS) {
+      if (!p.modelsEndpoint) continue;
+      const cached = loadCachedModels(p.id);
+      if (cached) {
+        initial[p.id] = { groups: cached, loading: false, error: null };
+      }
+    }
+    return initial;
+  });
+
+  const fetchCloudProviderModels = useCallback(
+    async (idx: number) => {
+      const item = items[idx];
+      if (!item?.modelsEndpoint) return;
+      const apiKey = form[idx]?.apiKey;
+      const apiHost = form[idx]?.apiHost || item.apiHost;
+      if (!apiKey) return;
+      setCloudModelsState((prev) => ({
+        ...prev,
+        [item.id]: {
+          groups: prev[item.id]?.groups || [],
+          loading: true,
+          error: null,
+        },
+      }));
+      try {
+        const groups = await fetchProviderModels(
+          apiHost,
+          item.modelsEndpoint,
+          apiKey
+        );
+        setCloudModelsState((prev) => ({
+          ...prev,
+          [item.id]: { groups, loading: false, error: null },
+        }));
+        saveCachedModels(item.id, groups);
+      } catch (err: any) {
+        setCloudModelsState((prev) => ({
+          ...prev,
+          [item.id]: {
+            groups: prev[item.id]?.groups || [],
+            loading: false,
+            error:
+              typeof err?.message === 'string'
+                ? err.message
+                : 'Failed to fetch models.',
+          },
+        }));
+      }
+    },
+    [items, form]
+  );
 
   // Generic model fetcher driven by LOCAL_MODEL_OPTIONS config.
   // Only fetches for providers that define fetchPath and parseModels.
@@ -1406,28 +1479,63 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <Input
-              id={`modelType-${item.id}`}
-              size="default"
-              title={t('setting.model-type-setting')}
-              state={errors[idx]?.model_type ? 'error' : 'default'}
-              note={errors[idx]?.model_type ?? undefined}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
-              value={form[idx].model_type}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) =>
-                  f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
-                );
-                setErrors((errs) =>
-                  errs.map((er, i) =>
-                    i === idx ? { ...er, model_type: '' } : er
-                  )
-                );
-              }}
-            />
+            {item.modelsEndpoint ? (
+              <ProviderModelCombobox
+                providerName={item.name}
+                title={t('setting.model-type-setting')}
+                value={form[idx].model_type || ''}
+                onChange={(v) => {
+                  setForm((f) =>
+                    f.map((fi, i) =>
+                      i === idx ? { ...fi, model_type: v } : fi
+                    )
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+                groups={cloudModelsState[item.id]?.groups || []}
+                loading={cloudModelsState[item.id]?.loading || false}
+                error={
+                  cloudModelsState[item.id]?.error ??
+                  errors[idx]?.model_type ??
+                  null
+                }
+                disabled={!form[idx].apiKey}
+                disabledReason="Enter API Key first."
+                onRefresh={() => void fetchCloudProviderModels(idx)}
+                triggerPlaceholder={`${t('setting.enter-your-model-type')} ${
+                  item.name
+                } ${t('setting.model-type')}`}
+              />
+            ) : (
+              <Input
+                id={`modelType-${item.id}`}
+                size="default"
+                title={t('setting.model-type-setting')}
+                state={errors[idx]?.model_type ? 'error' : 'default'}
+                note={errors[idx]?.model_type ?? undefined}
+                placeholder={`${t('setting.enter-your-model-type')} ${
+                  item.name
+                } ${t('setting.model-type')}`}
+                value={form[idx].model_type}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((f) =>
+                    f.map((fi, i) =>
+                      i === idx ? { ...fi, model_type: v } : fi
+                    )
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+              />
+            )}
             {/* externalConfig render */}
             {item.externalConfig &&
               form[idx].externalConfig &&
