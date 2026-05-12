@@ -75,6 +75,7 @@ import moonshotImage from '@/assets/model/moonshot.svg';
 import ollamaImage from '@/assets/model/ollama.svg';
 import openaiImage from '@/assets/model/openai.svg';
 import openrouterImage from '@/assets/model/openrouter.svg';
+import orcarouterImage from '@/assets/model/orcarouter.svg';
 import qwenImage from '@/assets/model/qwen.svg';
 import sglangImage from '@/assets/model/sglang.svg';
 import vllmImage from '@/assets/model/vllm.svg';
@@ -1060,6 +1061,7 @@ export default function SettingModels() {
       anthropic: anthropicImage,
       gemini: geminiImage,
       openrouter: openrouterImage,
+      orcarouter: orcarouterImage,
       'tongyi-qianwen': qwenImage,
       deepseek: deepseekImage,
       ernie: ernieImage,
