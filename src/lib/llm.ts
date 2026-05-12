@@ -51,6 +51,7 @@ export const INIT_PROVODERS: Provider[] = [
     is_valid: false,
     model_type: '',
     modelsEndpoint: '/models',
+    websiteUrl: 'https://www.orcarouter.ai',
   },
   {
     id: 'openrouter',

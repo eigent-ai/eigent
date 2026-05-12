@@ -44,6 +44,12 @@ export type Provider = {
    * provider prefix instead of a free-form text input.
    */
   modelsEndpoint?: string;
+  /**
+   * Optional marketing / docs website. When set, the card renders a
+   * clickable link below the description (opened in the user's default
+   * external browser via Electron's `setWindowOpenHandler`).
+   */
+  websiteUrl?: string;
 };
 
 export type Model = {

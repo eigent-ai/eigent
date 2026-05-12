@@ -1422,6 +1422,19 @@ export default function SettingModels() {
             </div>
             <div className="text-body-sm text-text-label">
               {item.description}
+              {item.websiteUrl ? (
+                <>
+                  {' '}
+                  <a
+                    href={item.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text-information hover:underline"
+                  >
+                    Visit {item.name}
+                  </a>
+                </>
+              ) : null}
             </div>
           </div>
           <div className="flex w-full flex-col items-center gap-4 px-6">
