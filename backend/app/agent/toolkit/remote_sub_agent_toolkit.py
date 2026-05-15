@@ -62,13 +62,28 @@ class RemoteSubAgentToolkit(BaseToolkit, AbstractToolkit):
         remote_agent_name: str | None = None,
         system_instruction: str | None = None,
         reuse_session: bool = True,
+        skill_context: str | None = None,
     ) -> str:
         """Delegate a bounded task to the configured remote sub-agent.
 
         Use this tool whenever the user or task explicitly asks for
         RemoteSubAgent, remote sub-agent, remote sandbox, cloud sandbox, or
-        isolated remote execution. Do not replace those requests with local
-        terminal execution; local terminal output is not remote evidence.
+        isolated remote execution. Also use it for bounded work that is likely
+        long-running or better suited to an isolated environment, such as
+        dependency installation, script execution, scraping, data/log analysis,
+        ML or CI failure audits, and remote research. Do not replace those
+        requests with local terminal execution; local terminal output is not
+        remote evidence.
+
+        The remote agent only has access to content supplied in the
+        instruction or through HTTP(S) URLs included in the task context. Pass
+        user-provided readable URLs verbatim and ask the remote agent to
+        fetch/read them from the remote environment. Do not claim that it
+        inspected local workspace files unless the needed content was included
+        in the instruction or made available through a readable URL. When the
+        remote work depends on a locally loaded skill, pass the relevant skill
+        instructions in `skill_context`; the remote sandbox cannot read local
+        skill files by itself.
         To control cost, do not repeat a completed remote job only to improve
         formatting. Reuse the existing session for clarifications when needed.
 
@@ -77,6 +92,8 @@ class RemoteSubAgentToolkit(BaseToolkit, AbstractToolkit):
             remote_agent_name: Optional provider-specific remote agent id.
             system_instruction: Optional behavior constraints for this run.
             reuse_session: Continue the previous provider interaction when true.
+            skill_context: Optional relevant skill instructions to include in
+                the remote prompt.
 
         Returns:
             The remote sub-agent's final text answer plus minimal run metadata.
@@ -98,10 +115,16 @@ class RemoteSubAgentToolkit(BaseToolkit, AbstractToolkit):
         provider_name = get_configured_provider_name(
             self.remote_sub_agent_config
         )
+        prompt_parts = []
+        if skill_context and skill_context.strip():
+            prompt_parts.append(
+                f"<skill_context>\n{skill_context.strip()}\n</skill_context>"
+            )
+        prompt_parts.append(instruction)
 
         request = RemoteSubAgentRequest(
             api_task_id=self.api_task_id,
-            prompt=instruction,
+            prompt="\n\n".join(prompt_parts),
             provider=provider_name,
             remote_agent_name=remote_agent_name,
             system_instruction=system_instruction,

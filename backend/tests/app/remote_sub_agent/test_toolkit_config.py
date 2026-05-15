@@ -12,8 +12,13 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from types import SimpleNamespace
+
 import pytest
 
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+)
 from app.agent.toolkit.remote_sub_agent_toolkit import RemoteSubAgentToolkit
 
 pytestmark = pytest.mark.unit
@@ -61,3 +66,26 @@ async def test_toolkit_returns_message_when_config_is_incomplete():
     result = await toolkit.run_remote_sub_agent("research this")
 
     assert "disabled or incomplete" in result
+
+
+def test_factory_helper_attaches_remote_tool_and_notice_when_enabled():
+    options = SimpleNamespace(
+        project_id="task-1", remote_sub_agent_config=_valid_config()
+    )
+    tools = []
+    tool_names = []
+
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name="test_agent",
+        working_directory="/tmp/work",
+        tools=tools,
+        tool_names=tool_names,
+        system_message="base prompt",
+        local_tool_description="local tools",
+    )
+
+    assert RemoteSubAgentToolkit.toolkit_name() in tool_names
+    assert [tool.func.__name__ for tool in tools] == ["run_remote_sub_agent"]
+    assert "remote-suitable work" in system_message
+    assert "/tmp/work" in system_message

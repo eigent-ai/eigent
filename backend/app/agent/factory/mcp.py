@@ -16,25 +16,38 @@ import logging
 import uuid
 
 from camel.models import ModelFactory
+from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
 
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+)
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
+from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
 from app.model.model_platform import patch_bedrock_cloud_config
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
+from app.utils.file_utils import get_working_directory
 
 
 async def mcp_agent(options: Chat):
+    working_directory = get_working_directory(options)
     logger.info(
         f"Creating MCP agent for project: {options.project_id} "
         f"with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(
+            options.project_id, Agents.mcp_agent
+        ).send_message_to_user
+    )
     tools = [
         *McpSearchToolkit(options.project_id).get_tools(),
     ]
+    tool_names = [McpSearchToolkit.toolkit_name()]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
@@ -43,7 +56,7 @@ async def mcp_agent(options: Chat):
                 f"for task {options.project_id}"
             )
             if mcp_tools:
-                tool_names = [
+                mcp_tool_names = [
                     (
                         tool.get_function_name()
                         if hasattr(tool, "get_function_name")
@@ -51,7 +64,8 @@ async def mcp_agent(options: Chat):
                     )
                     for tool in mcp_tools
                 ]
-                logger.debug(f"MCP tools: {tool_names}")
+                logger.debug(f"MCP tools: {mcp_tool_names}")
+                tool_names.extend(mcp_tool_names)
             tools = [*tools, *mcp_tools]
         except Exception as e:
             logger.debug(repr(e))
@@ -87,6 +101,17 @@ async def mcp_agent(options: Chat):
             api_url, extra_params
         )
 
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=Agents.mcp_agent,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=MCP_SYS_PROMPT,
+        local_tool_description="local MCP or search tools",
+        message_integration=message_integration,
+    )
+
     # Build model_config_dict with prompt caching
     model_config_dict = {}
     if options.is_cloud():
@@ -111,7 +136,7 @@ async def mcp_agent(options: Chat):
     return ListenChatAgent(
         options.project_id,
         Agents.mcp_agent,
-        system_message=MCP_SYS_PROMPT,
+        system_message=system_message,
         model=ModelFactory.create(
             model_platform=options.model_platform,
             model_type=options.model_type,
