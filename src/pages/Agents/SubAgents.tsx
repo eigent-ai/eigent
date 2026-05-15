@@ -31,6 +31,7 @@ import {
   REMOTE_SUB_AGENT_PROVIDER,
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentProviderPayload,
+  type RemoteSubAgentFormState,
 } from '@/lib/remoteSubAgent';
 import { Eye, EyeOff } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -74,8 +75,19 @@ export default function SubAgents() {
     return t('setting.validate-failed');
   };
 
-  const validateRemoteSubAgentConfig = async () => {
-    const form = remoteSubAgentForm;
+  const getRemoteSubAgentRequiredError = (form: RemoteSubAgentFormState) => {
+    if (
+      form.enabled &&
+      (!form.apiKey.trim() || !form.baseUrl.trim() || !form.agentName.trim())
+    ) {
+      return t('setting.remote-sub-agent-required-fields');
+    }
+    return null;
+  };
+
+  const validateRemoteSubAgentConfig = async (
+    form: RemoteSubAgentFormState
+  ) => {
     const res = await fetchPost('/remote-sub-agent/validate', {
       provider: form.provider,
       api_key: form.apiKey.trim(),
@@ -93,21 +105,19 @@ export default function SubAgents() {
     });
   };
 
-  const handleRemoteSubAgentSave = async () => {
-    const form = remoteSubAgentForm;
-    if (
-      form.enabled &&
-      (!form.apiKey.trim() || !form.baseUrl.trim() || !form.agentName.trim())
-    ) {
-      setRemoteSubAgentError(t('setting.remote-sub-agent-required-fields'));
-      return;
+  const persistRemoteSubAgentForm = async (form: RemoteSubAgentFormState) => {
+    const requiredError = getRemoteSubAgentRequiredError(form);
+    if (requiredError) {
+      setRemoteSubAgentError(requiredError);
+      toast.error(requiredError);
+      return false;
     }
 
     setRemoteSubAgentSaving(true);
     setRemoteSubAgentError(null);
     try {
       if (form.enabled) {
-        await validateRemoteSubAgentConfig();
+        await validateRemoteSubAgentConfig(form);
       }
 
       const data = toRemoteSubAgentProviderPayload(form);
@@ -122,13 +132,40 @@ export default function SubAgents() {
 
       await loadRemoteSubAgentProvider();
       toast.success(t('setting.configuration-saved-successfully'));
+      return true;
     } catch (error) {
       console.error('Error saving remote sub agent:', error);
       const message = remoteSubAgentValidateMessage(error);
       setRemoteSubAgentError(message);
       toast.error(message);
+      return false;
     } finally {
       setRemoteSubAgentSaving(false);
+    }
+  };
+
+  const handleRemoteSubAgentSave = async () => {
+    await persistRemoteSubAgentForm(remoteSubAgentForm);
+  };
+
+  const handleRemoteSubAgentToggle = async (checked: boolean) => {
+    const previousForm = remoteSubAgentForm;
+    const nextForm = {
+      ...remoteSubAgentForm,
+      enabled: checked,
+    };
+
+    const requiredError = getRemoteSubAgentRequiredError(nextForm);
+    if (requiredError) {
+      setRemoteSubAgentError(requiredError);
+      toast.error(requiredError);
+      return;
+    }
+
+    setRemoteSubAgentForm(nextForm);
+    const saved = await persistRemoteSubAgentForm(nextForm);
+    if (!saved) {
+      setRemoteSubAgentForm(previousForm);
     }
   };
 
@@ -201,13 +238,8 @@ export default function SubAgents() {
             )}
             <Switch
               checked={remoteSubAgentForm.enabled}
-              onCheckedChange={(checked) => {
-                setRemoteSubAgentForm((prev) => ({
-                  ...prev,
-                  enabled: checked,
-                }));
-                setRemoteSubAgentError(null);
-              }}
+              disabled={remoteSubAgentSaving}
+              onCheckedChange={handleRemoteSubAgentToggle}
             />
           </div>
         </div>
