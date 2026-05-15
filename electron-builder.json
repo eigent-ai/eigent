@@ -129,7 +129,13 @@
   "linux": {
     "icon": "build/icon.png",
     "target": ["AppImage"],
-    "category": "Development"
+    "category": "Development",
+    "desktop": {
+      "entry": {
+        "MimeType": "x-scheme-handler/eigent;",
+        "StartupWMClass": "Eigent"
+      }
+    }
   },
   "nsis": {
     "oneClick": false,
