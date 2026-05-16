@@ -27,7 +27,7 @@
 #### 前置要求
 
 - **Docker Desktop**：已安装并运行
-- **Python**：3.10.\*（推荐使用 3.10.15）
+- **Python**：3.12.\*（与 `pyproject.toml` 中的 `requires-python = ">=3.12,<3.13"` 一致）
 - **Node.js**：>=18.0.0 \<23.0.0
 
 #### Triggers 托管配置
