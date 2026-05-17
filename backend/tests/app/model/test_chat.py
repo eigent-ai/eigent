@@ -158,3 +158,38 @@ class TestModelPlatformMapping:
         assert config.model_platform == "mistral"
         config = AgentModelConfig(model_platform="samba-nova")
         assert config.model_platform == "samba-nova"
+
+
+class TestIsCloud:
+    """Tests for Chat.is_cloud detection of eigent-managed proxy URLs."""
+
+    def _chat_with_url(self, api_url: str | None) -> Chat:
+        return Chat(
+            task_id="t",
+            project_id="p",
+            question="q",
+            email="x@y.com",
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="k",
+            api_url=api_url,
+        )
+
+    def test_is_cloud_matches_legacy_hyphenated_host(self):
+        assert self._chat_with_url(
+            "https://eigent-proxy.example.com"
+        ).is_cloud()
+
+    def test_is_cloud_matches_current_proxy_host(self):
+        # `proxy.eigent.ai` is the actual prod/dev hostname (no hyphen).
+        assert self._chat_with_url("https://proxy.eigent.ai").is_cloud()
+        assert self._chat_with_url("https://proxy.eigent.ai/").is_cloud()
+
+    def test_is_cloud_false_for_user_configured_endpoints(self):
+        assert not self._chat_with_url("https://api.openai.com/v1").is_cloud()
+        assert not self._chat_with_url(
+            "https://bedrock-runtime.us-west-2.amazonaws.com"
+        ).is_cloud()
+
+    def test_is_cloud_false_when_url_missing(self):
+        assert not self._chat_with_url(None).is_cloud()
