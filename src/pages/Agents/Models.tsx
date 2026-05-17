@@ -21,6 +21,13 @@ import {
 } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogContentSection,
+  DialogFooter,
+  DialogHeader,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -109,6 +116,11 @@ type SidebarTab =
   | 'local-sglang'
   | 'local-lmstudio'
   | 'local-llama.cpp';
+
+const PLAN_CREDITS_BY_KEY: Record<string, number> = {
+  plus: 2000,
+  pro: 10000,
+};
 
 export default function SettingModels() {
   const {
@@ -1017,6 +1029,8 @@ export default function SettingModels() {
   };
 
   const [subscription, setSubscription] = useState<any>(null);
+  const [trialUpgradeDialogOpen, setTrialUpgradeDialogOpen] = useState(false);
+  const [upgradingTrial, setUpgradingTrial] = useState(false);
   const fetchSubscription = async () => {
     const res = await proxyFetchGet('/api/v1/subscription');
     console.log(res);
@@ -1036,6 +1050,72 @@ export default function SettingModels() {
       console.error(error);
     } finally {
       setLoadingCredits(false);
+    }
+  };
+
+  const formatCredits = (value: unknown): string => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return String(value ?? 0);
+    }
+    return new Intl.NumberFormat().format(numericValue);
+  };
+
+  const getPlanKey = () =>
+    typeof subscription?.plan_key === 'string'
+      ? subscription.plan_key.toLowerCase()
+      : '';
+
+  const getPlanName = () => {
+    const planKey = getPlanKey();
+    if (!planKey) {
+      return '';
+    }
+    return planKey.charAt(0).toUpperCase() + planKey.slice(1);
+  };
+
+  const getSelectedPlanCredits = () => {
+    const planKey = getPlanKey();
+    const monthlyCredits = Number(subscription?.monthly_credits);
+    return (
+      PLAN_CREDITS_BY_KEY[planKey] ??
+      (Number.isFinite(monthlyCredits) ? monthlyCredits : 0)
+    );
+  };
+
+  const handleTrialUpgrade = async () => {
+    try {
+      setUpgradingTrial(true);
+      await proxyFetchPost('/api/v1/upgrade-trial-to-paid');
+      toast.success(
+        t('setting.trial-upgrade-success', {
+          defaultValue: 'Your full plan credits are unlocked.',
+        })
+      );
+      setTrialUpgradeDialogOpen(false);
+      await Promise.all([fetchSubscription(), updateCredits()]);
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const recoveryUrl =
+        detail && typeof detail === 'object' ? detail.recovery_url : undefined;
+      const message =
+        detail && typeof detail === 'object'
+          ? detail.message
+          : detail || error?.message;
+
+      if (recoveryUrl) {
+        window.location.href = recoveryUrl;
+        return;
+      }
+
+      toast.error(
+        message ||
+          t('setting.trial-upgrade-failed', {
+            defaultValue: 'Upgrade failed. Please try again.',
+          })
+      );
+    } finally {
+      setUpgradingTrial(false);
     }
   };
 
@@ -1156,6 +1236,12 @@ export default function SettingModels() {
           </div>
         );
       }
+      const isTrialing = Boolean(subscription?.is_trialing);
+      const selectedPlanCredits = getSelectedPlanCredits();
+      const trialDailyLimit =
+        Number(subscription?.trial_daily_credits_limit) || 300;
+      const trialTotalLimit =
+        Number(subscription?.trial_total_credits_limit) || 1000;
       return (
         <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
           <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
@@ -1195,9 +1281,7 @@ export default function SettingModels() {
             <div className="justify-center self-stretch">
               <span className="text-body-sm text-text-label">
                 {t('setting.you-are-currently-subscribed-to-the')}{' '}
-                {subscription?.plan_key?.charAt(0).toUpperCase() +
-                  subscription?.plan_key?.slice(1)}
-                . {t('setting.discover-more-about-our')}{' '}
+                {getPlanName()}. {t('setting.discover-more-about-our')}{' '}
               </span>
               <span
                 onClick={() => {
@@ -1213,13 +1297,38 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
-            <div className="text-body-sm text-text-body">
-              {t('setting.credits')}:{' '}
-              {loadingCredits ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                credits
+          <div className="flex w-full flex-row items-start justify-between gap-4 px-6 pb-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex items-center gap-1 text-body-sm text-text-body">
+                <span>{t('setting.credits')}:</span>
+                {loadingCredits ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <span>{formatCredits(credits)}</span>
+                )}
+              </div>
+              {isTrialing && (
+                <p className="m-0 max-w-[560px] text-label-sm leading-5 text-text-label">
+                  {t('setting.trial-plan-notice-before-upgrade', {
+                    defaultValue:
+                      "You're on a trial. Your {{planName}} plan includes {{planCredits}} credits; the trial unlocks {{daily}} credits/day (up to {{total}}) before you upgrade.",
+                    planName: getPlanName(),
+                    planCredits: formatCredits(selectedPlanCredits),
+                    daily: formatCredits(trialDailyLimit),
+                    total: formatCredits(trialTotalLimit),
+                  })}{' '}
+                  <button
+                    type="button"
+                    onClick={() => setTrialUpgradeDialogOpen(true)}
+                    className="cursor-pointer border-0 bg-transparent p-0 text-label-sm font-medium text-text-body underline"
+                  >
+                    {t('setting.upgrade', { defaultValue: 'Upgrade' })}
+                  </button>{' '}
+                  {t('setting.trial-plan-notice-after-upgrade', {
+                    defaultValue:
+                      'anytime to unlock the full plan credits and get the most out of your plan.',
+                  })}
+                </p>
               )}
             </div>
             <Button
@@ -1232,12 +1341,51 @@ export default function SettingModels() {
               {loadingCredits ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                subscription?.plan_key?.charAt(0).toUpperCase() +
-                subscription?.plan_key?.slice(1)
+                getPlanName()
               )}
               <Settings />
             </Button>
           </div>
+          <Dialog
+            open={trialUpgradeDialogOpen}
+            onOpenChange={setTrialUpgradeDialogOpen}
+          >
+            <DialogContent
+              size="sm"
+              overlayVariant="dark"
+              onClose={() => setTrialUpgradeDialogOpen(false)}
+            >
+              <DialogHeader
+                title={t('setting.trial-upgrade-title', {
+                  defaultValue: 'Upgrade plan',
+                })}
+              />
+              <DialogContentSection className="px-4 py-4">
+                <p className="m-0 text-body-sm text-text-body">
+                  {t('setting.trial-upgrade-body', {
+                    defaultValue:
+                      'Upgrade now to unlock full credits instantly.',
+                  })}
+                </p>
+              </DialogContentSection>
+              <DialogFooter
+                showCancelButton
+                showConfirmButton
+                cancelButtonText={t('setting.not-now', {
+                  defaultValue: 'Not Now',
+                })}
+                confirmButtonText={
+                  upgradingTrial
+                    ? t('setting.upgrading', { defaultValue: 'Upgrading...' })
+                    : t('setting.upgrade', { defaultValue: 'Upgrade' })
+                }
+                onCancel={() => setTrialUpgradeDialogOpen(false)}
+                onConfirm={handleTrialUpgrade}
+                confirmButtonDisabled={upgradingTrial}
+                cancelButtonDisabled={upgradingTrial}
+              />
+            </DialogContent>
+          </Dialog>
           <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
             <div className="flex min-w-0 flex-1 items-center">
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">

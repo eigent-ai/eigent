@@ -20,7 +20,7 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { generateUniqueId, replayActiveTask } from '@/lib';
+import { generateUniqueId, replayActiveTask, SITE_URL } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import type { VanillaChatStore } from '@/store/chatStore';
@@ -44,6 +44,145 @@ const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
   );
 };
 
+const USAGE_WARNING_RATIO = 0.75;
+const FREE_STARTING_CREDITS = 500;
+
+interface SubscriptionLimitInfo {
+  plan_key?: string | null;
+  is_trialing?: boolean | null;
+  monthly_credits?: number | null;
+  trial_daily_credits_limit?: number | null;
+  trial_daily_credits_used?: number | null;
+  trial_daily_credits_remaining?: number | null;
+  trial_total_credits_limit?: number | null;
+  trial_total_credits_used?: number | null;
+  trial_total_credits_remaining?: number | null;
+}
+
+interface UsageLimitBannerState {
+  id: string;
+  message: string;
+  actionLabel: string;
+  severity: 'warning' | 'danger';
+}
+
+const toFiniteNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const usagePercent = (used: number, limit: number) =>
+  Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+
+const buildUsageLimitBannerState = (
+  subscription: SubscriptionLimitInfo | null,
+  currentCredits: number | null,
+  t: (key: string, options?: Record<string, unknown>) => string
+): UsageLimitBannerState | null => {
+  const actionLabel = t('chat.usage-limit-action');
+
+  if (subscription?.is_trialing) {
+    const trialCandidates = [
+      {
+        id: 'trial-daily',
+        warningKey: 'chat.usage-limit-trial-daily-warning',
+        exhaustedKey: 'chat.usage-limit-trial-daily-exhausted',
+        limit: toFiniteNumber(subscription.trial_daily_credits_limit),
+        used: toFiniteNumber(subscription.trial_daily_credits_used),
+        remaining: toFiniteNumber(subscription.trial_daily_credits_remaining),
+      },
+      {
+        id: 'trial-total',
+        warningKey: 'chat.usage-limit-trial-total-warning',
+        exhaustedKey: 'chat.usage-limit-trial-total-exhausted',
+        limit: toFiniteNumber(subscription.trial_total_credits_limit),
+        used: toFiniteNumber(subscription.trial_total_credits_used),
+        remaining: toFiniteNumber(subscription.trial_total_credits_remaining),
+      },
+    ]
+      .map((candidate) => {
+        if (!candidate.limit || candidate.limit <= 0 || candidate.used === null)
+          return null;
+
+        const remaining =
+          candidate.remaining ?? Math.max(candidate.limit - candidate.used, 0);
+        const ratio = candidate.used / candidate.limit;
+        const exhausted = remaining <= 0 || candidate.used >= candidate.limit;
+
+        if (!exhausted && ratio < USAGE_WARNING_RATIO) return null;
+
+        const percent = usagePercent(candidate.used, candidate.limit);
+        return {
+          id: `${candidate.id}:${exhausted ? 'exhausted' : 'warning'}`,
+          message: t(
+            exhausted ? candidate.exhaustedKey : candidate.warningKey,
+            {
+              percent,
+            }
+          ),
+          actionLabel,
+          severity: exhausted ? ('danger' as const) : ('warning' as const),
+          ratio,
+          exhausted,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a!.exhausted !== b!.exhausted) {
+          return a!.exhausted ? -1 : 1;
+        }
+        return b!.ratio - a!.ratio;
+      });
+
+    if (trialCandidates[0]) {
+      const {
+        ratio: _ratio,
+        exhausted: _exhausted,
+        ...banner
+      } = trialCandidates[0];
+      return banner;
+    }
+  }
+
+  if (currentCredits === null) return null;
+
+  if (currentCredits <= 0) {
+    const planKey = subscription?.plan_key?.toLowerCase() || 'free';
+    return {
+      id: `credits-exhausted:${planKey}`,
+      message: t(
+        planKey === 'free'
+          ? 'chat.usage-limit-free-exhausted'
+          : 'chat.usage-limit-monthly-exhausted'
+      ),
+      actionLabel,
+      severity: 'danger',
+    };
+  }
+
+  const planKey = subscription?.plan_key?.toLowerCase() || 'free';
+  const limit =
+    planKey === 'free'
+      ? FREE_STARTING_CREDITS
+      : toFiniteNumber(subscription?.monthly_credits);
+
+  if (!limit || limit <= 0) return null;
+
+  const remainingRatio = currentCredits / limit;
+  if (remainingRatio > 1 - USAGE_WARNING_RATIO) return null;
+
+  const percent = usagePercent(limit - currentCredits, limit);
+  return {
+    id: `${planKey === 'free' ? 'free' : 'monthly'}-credits:warning`,
+    message: t(
+      planKey === 'free'
+        ? 'chat.usage-limit-free-warning'
+        : 'chat.usage-limit-monthly-warning',
+      { percent }
+    ),
+    actionLabel,
+    severity: 'warning',
+  };
+};
+
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
 
@@ -57,7 +196,77 @@ export default function ChatBox(): JSX.Element {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [_hasSearchKey, setHasSearchKey] = useState<any>(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType } = useAuthStore();
+  const { modelType, token } = useAuthStore();
+  const [subscriptionUsage, setSubscriptionUsage] =
+    useState<SubscriptionLimitInfo | null>(null);
+  const [currentCredits, setCurrentCredits] = useState<number | null>(null);
+  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
+    useState<string | null>(null);
+
+  const refreshUsageLimits = useCallback(async () => {
+    if (modelType !== 'cloud' || !token) {
+      setSubscriptionUsage(null);
+      setCurrentCredits(null);
+      return;
+    }
+
+    const [subscriptionResult, creditsResult] = await Promise.allSettled([
+      proxyFetchGet('/api/v1/subscription'),
+      proxyFetchGet('/api/v1/user/current_credits'),
+    ]);
+
+    if (subscriptionResult.status === 'fulfilled') {
+      setSubscriptionUsage(subscriptionResult.value || null);
+    }
+
+    if (creditsResult.status === 'fulfilled') {
+      setCurrentCredits(toFiniteNumber(creditsResult.value?.credits));
+    }
+  }, [modelType, token]);
+
+  const scheduleUsageRefresh = useCallback(() => {
+    window.setTimeout(refreshUsageLimits, 2000);
+    window.setTimeout(refreshUsageLimits, 15000);
+  }, [refreshUsageLimits]);
+
+  const usageLimitBannerState = useMemo(
+    () => buildUsageLimitBannerState(subscriptionUsage, currentCredits, t),
+    [subscriptionUsage, currentCredits, t]
+  );
+
+  const usageLimitBanner = useMemo(() => {
+    if (
+      !usageLimitBannerState ||
+      usageLimitBannerState.id === dismissedUsageLimitBannerId
+    ) {
+      return null;
+    }
+
+    return {
+      ...usageLimitBannerState,
+      onAction: () => {
+        window.location.href = `${SITE_URL}/pricing`;
+      },
+      onDismiss: () => {
+        setDismissedUsageLimitBannerId(usageLimitBannerState.id);
+      },
+    };
+  }, [usageLimitBannerState, dismissedUsageLimitBannerId]);
+
+  useEffect(() => {
+    refreshUsageLimits();
+
+    if (modelType !== 'cloud' || !token) return;
+
+    const intervalId = window.setInterval(refreshUsageLimits, 60000);
+    window.addEventListener('focus', refreshUsageLimits);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshUsageLimits);
+    };
+  }, [modelType, token, refreshUsageLimits]);
+
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   useEffect(() => {
     // Only show warning message, don't block functionality
@@ -642,6 +851,8 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
+    } finally {
+      scheduleUsageRefresh();
     }
   };
 
@@ -1082,6 +1293,7 @@ export default function ChatBox(): JSX.Element {
                 state="input"
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                usageLimitBanner={usageLimitBanner}
                 inputProps={{
                   value: message,
                   onChange: setMessage,
@@ -1163,6 +1375,7 @@ export default function ChatBox(): JSX.Element {
             state={hasAnyMessages ? getBottomBoxState() : 'input'}
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+            usageLimitBanner={usageLimitBanner}
             subtitle={
               hasAnyMessages && getBottomBoxState() === 'confirm'
                 ? (() => {
