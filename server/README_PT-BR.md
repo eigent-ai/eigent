@@ -27,7 +27,7 @@ Nota: Todos os dados acima são armazenados no volume PostgreSQL local no Docker
 #### Pré-requisitos
 
 - **Docker Desktop**: Instalado e em execução
-- **Python**: 3.10.\* (3.10.15 recomendado)
+- **Python**: 3.12.\* (corresponde a `requires-python = ">=3.12,<3.13"` em `pyproject.toml`)
 - **Node.js**: >=18.0.0 \<23.0.0
 
 #### Etapas de Configuração
