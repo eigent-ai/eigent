@@ -39,8 +39,18 @@
         "!venv/**/__pycache__/**",
         "!venv/**/*.pyc",
 
+        "!venv/lib/python*/site-packages/datasets/**",
+        "!venv/lib/python*/site-packages/datasets-*.dist-info/**",
+        "!venv/lib/python*/site-packages/pyarrow/**",
+        "!venv/lib/python*/site-packages/pyarrow-*.dist-info/**",
         "!venv/lib/python*/site-packages/yt_dlp/**",
         "!venv/lib/python*/site-packages/yt_dlp-*.dist-info/**",
+        "!venv/Lib/site-packages/datasets/**",
+        "!venv/Lib/site-packages/datasets-*.dist-info/**",
+        "!venv/Lib/site-packages/pyarrow/**",
+        "!venv/Lib/site-packages/pyarrow-*.dist-info/**",
+        "!venv/Lib/site-packages/yt_dlp/**",
+        "!venv/Lib/site-packages/yt_dlp-*.dist-info/**",
         "!uv_python/**/site-packages/setuptools/**",
         "!uv_python/**/site-packages/wheel/**"
       ]

@@ -523,12 +523,65 @@ function findPythonForTerminalVenv(): string | null {
 
 const TERMINAL_VENV_VERSION_FILE = '.terminal_venv_version';
 const BACKEND_VENV_VERSION_FILE = '.backend_venv_version';
+const OPTIONAL_PREBUILT_DEPS_MARKER = '.optional_prebuilt_deps_synced';
+// Marker-version component only; uv.lock/pyproject.toml still define what uv sync installs.
+const OPTIONAL_PREBUILT_PYTHON_PACKAGES = ['datasets', 'pyarrow', 'yt-dlp'];
 
 let _optionalDepsSyncStarted = false;
 
-/** Background uv sync to install deps excluded from bundle (yt_dlp, etc). Does not block startup. */
+function getOptionalDepsSyncVersion(): string {
+  return `${app.getVersion()}:${OPTIONAL_PREBUILT_PYTHON_PACKAGES.join(',')}`;
+}
+
+function getOptionalDepsIndexArgs(): string[] {
+  const configuredIndex = process.env.EIGENT_OPTIONAL_DEPS_INDEX_URL?.trim();
+  const configuredExtraIndex =
+    process.env.EIGENT_OPTIONAL_DEPS_EXTRA_INDEX_URL?.trim();
+  if (configuredIndex) {
+    return [
+      '--default-index',
+      configuredIndex,
+      ...(configuredExtraIndex ? ['--index', configuredExtraIndex] : []),
+    ];
+  }
+
+  const configuredUseChinaMirror =
+    process.env.EIGENT_OPTIONAL_DEPS_USE_CHINA_MIRROR?.trim().toLowerCase();
+  let useChinaMirror: boolean;
+  if (configuredUseChinaMirror === 'true') {
+    useChinaMirror = true;
+  } else if (configuredUseChinaMirror === 'false') {
+    useChinaMirror = false;
+  } else {
+    useChinaMirror =
+      Intl.DateTimeFormat().resolvedOptions().timeZone === 'Asia/Shanghai';
+  }
+  if (!useChinaMirror) {
+    return [];
+  }
+
+  return [
+    '--default-index',
+    'https://mirrors.aliyun.com/pypi/simple/',
+    '--index',
+    'https://pypi.org/simple/',
+  ];
+}
+
+/** Background uv sync to install deps excluded from bundle. Does not block startup. */
 function runBackgroundUvSyncForOptionalDeps(userBackendVenv: string): void {
   if (!app.isPackaged) return;
+
+  const markerPath = path.join(userBackendVenv, OPTIONAL_PREBUILT_DEPS_MARKER);
+  const markerVersion = getOptionalDepsSyncVersion();
+  if (
+    fs.existsSync(markerPath) &&
+    fs.readFileSync(markerPath, 'utf-8').trim() === markerVersion
+  ) {
+    log.info('[VENV] Optional prebuilt deps already synced');
+    return;
+  }
+
   if (_optionalDepsSyncStarted) return;
   _optionalDepsSyncStarted = true;
 
@@ -551,20 +604,9 @@ function runBackgroundUvSyncForOptionalDeps(userBackendVenv: string): void {
     UV_TOOL_DIR: getCachePath('uv_tool'),
     UV_HTTP_TIMEOUT: '300',
   } as NodeJS.ProcessEnv;
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const syncArgs =
-    timezone === 'Asia/Shanghai'
-      ? [
-          'sync',
-          '--no-dev',
-          '--default-index',
-          'https://mirrors.aliyun.com/pypi/simple/',
-          '--index',
-          'https://pypi.org/simple/',
-        ]
-      : ['sync', '--no-dev'];
+  const syncArgs = ['sync', '--no-dev', ...getOptionalDepsIndexArgs()];
   log.info(
-    '[VENV] Starting background uv sync to install optional deps (e.g. yt_dlp); app will not wait.'
+    `[VENV] Starting background uv sync for optional prebuilt deps (${OPTIONAL_PREBUILT_PYTHON_PACKAGES.join(', ')}); app will not wait.`
   );
   const child = spawn(uvPath, syncArgs, {
     cwd: backendPath,
@@ -579,6 +621,11 @@ function runBackgroundUvSyncForOptionalDeps(userBackendVenv: string): void {
   child.on('exit', (code) => {
     if (code === 0) {
       log.info('[VENV] Background uv sync completed');
+      try {
+        fs.writeFileSync(markerPath, markerVersion, 'utf-8');
+      } catch (error) {
+        log.warn(`[VENV] Failed to write optional deps marker: ${error}`);
+      }
     } else {
       log.warn(
         `[VENV] Background uv sync exited with code ${code} (optional deps may be missing)`
