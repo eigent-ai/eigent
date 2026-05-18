@@ -89,6 +89,15 @@ def agent_model(
         effective_config["api_url"], extra_params = patch_bedrock_cloud_config(
             effective_config["api_url"], extra_params
         )
+    # Cloud Azure: camel's AzureOpenAIModel raises ValueError if api_version
+    # is missing. The frontend doesn't pass one for cloud GPT models, so
+    # default it here.
+    if (
+        effective_config.get("model_platform") == "azure"
+        and options.is_cloud()
+    ):
+        extra_params = dict(extra_params)
+        extra_params.setdefault("api_version", "2024-12-01-preview")
     init_param_keys = {
         "api_version",
         "azure_ad_token",
