@@ -100,6 +100,11 @@ async def mcp_agent(options: Chat):
         api_url, extra_params = patch_bedrock_cloud_config(
             api_url, extra_params
         )
+    # Cloud Azure: camel's AzureOpenAIModel requires api_version; default it
+    # since the frontend doesn't pass one for cloud GPT models.
+    if options.model_platform == "azure" and options.is_cloud():
+        extra_params = dict(extra_params)
+        extra_params.setdefault("api_version", "2024-12-01-preview")
 
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
