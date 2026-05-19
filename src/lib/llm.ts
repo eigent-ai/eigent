@@ -43,6 +43,17 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: '',
   },
   {
+    id: 'orcarouter',
+    name: 'OrcaRouter',
+    apiKey: '',
+    apiHost: 'https://api.orcarouter.ai/v1',
+    description: 'OrcaRouter model configuration.',
+    is_valid: false,
+    model_type: '',
+    modelsEndpoint: '/models',
+    websiteUrl: 'https://www.orcarouter.ai',
+  },
+  {
     id: 'openrouter',
     name: 'OpenRouter',
     apiKey: '',
