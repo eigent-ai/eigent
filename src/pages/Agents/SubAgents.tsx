@@ -75,10 +75,22 @@ export default function SubAgents() {
     return t('setting.validate-failed');
   };
 
-  const getRemoteSubAgentRequiredError = (form: RemoteSubAgentFormState) => {
+  const getRemoteSubAgentRequiredError = (
+    form: RemoteSubAgentFormState,
+    requireFields = form.enabled
+  ) => {
+    const maxWallTimeSeconds = Number(form.maxWallTimeSeconds.trim());
+    const pollIntervalSeconds = Number(form.pollIntervalSeconds.trim());
+
     if (
-      form.enabled &&
-      (!form.apiKey.trim() || !form.baseUrl.trim() || !form.agentName.trim())
+      requireFields &&
+      (!form.apiKey.trim() ||
+        !form.baseUrl.trim() ||
+        !form.agentName.trim() ||
+        !Number.isFinite(maxWallTimeSeconds) ||
+        maxWallTimeSeconds <= 0 ||
+        !Number.isFinite(pollIntervalSeconds) ||
+        pollIntervalSeconds <= 0)
     ) {
       return t('setting.remote-sub-agent-required-fields');
     }
@@ -105,8 +117,17 @@ export default function SubAgents() {
     });
   };
 
-  const persistRemoteSubAgentForm = async (form: RemoteSubAgentFormState) => {
-    const requiredError = getRemoteSubAgentRequiredError(form);
+  const persistRemoteSubAgentForm = async (
+    form: RemoteSubAgentFormState,
+    {
+      requireFields = form.enabled,
+      validateConnection = form.enabled,
+    }: {
+      requireFields?: boolean;
+      validateConnection?: boolean;
+    } = {}
+  ) => {
+    const requiredError = getRemoteSubAgentRequiredError(form, requireFields);
     if (requiredError) {
       setRemoteSubAgentError(requiredError);
       toast.error(requiredError);
@@ -116,7 +137,7 @@ export default function SubAgents() {
     setRemoteSubAgentSaving(true);
     setRemoteSubAgentError(null);
     try {
-      if (form.enabled) {
+      if (validateConnection) {
         await validateRemoteSubAgentConfig(form);
       }
 
@@ -145,7 +166,10 @@ export default function SubAgents() {
   };
 
   const handleRemoteSubAgentSave = async () => {
-    await persistRemoteSubAgentForm(remoteSubAgentForm);
+    await persistRemoteSubAgentForm(remoteSubAgentForm, {
+      requireFields: true,
+      validateConnection: true,
+    });
   };
 
   const handleRemoteSubAgentToggle = async (checked: boolean) => {
@@ -155,7 +179,13 @@ export default function SubAgents() {
       enabled: checked,
     };
 
-    const requiredError = getRemoteSubAgentRequiredError(nextForm);
+    if (!checked && !remoteSubAgentForm.provider_id) {
+      setRemoteSubAgentForm(nextForm);
+      setRemoteSubAgentError(null);
+      return;
+    }
+
+    const requiredError = getRemoteSubAgentRequiredError(nextForm, checked);
     if (requiredError) {
       setRemoteSubAgentError(requiredError);
       toast.error(requiredError);
@@ -163,7 +193,10 @@ export default function SubAgents() {
     }
 
     setRemoteSubAgentForm(nextForm);
-    const saved = await persistRemoteSubAgentForm(nextForm);
+    const saved = await persistRemoteSubAgentForm(nextForm, {
+      requireFields: checked,
+      validateConnection: checked,
+    });
     if (!saved) {
       setRemoteSubAgentForm(previousForm);
     }

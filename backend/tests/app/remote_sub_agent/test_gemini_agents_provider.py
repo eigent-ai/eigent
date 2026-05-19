@@ -48,7 +48,7 @@ async def test_provider_posts_agent_interaction():
             200,
             json={
                 "id": "interaction-1",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "environment_id": "env-1",
                 "status": "completed",
                 "outputs": [{"type": "text", "text": "done"}],
@@ -58,7 +58,7 @@ async def test_provider_posts_agent_interaction():
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         transport=httpx.MockTransport(handler),
     )
@@ -77,7 +77,7 @@ async def test_provider_posts_agent_interaction():
 
     body = seen["body"]
     assert isinstance(body, dict)
-    assert body["agent"] == "waverunner"
+    assert body["agent"] == "antigravity-preview-05-2026"
     assert body["input"] == [{"type": "text", "text": "research this"}]
     assert body["stream"] is False
     assert body["environment"] == {"enabled": True}
@@ -102,7 +102,7 @@ async def test_provider_validation_posts_background_probe():
             200,
             json={
                 "id": "interaction-validation",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "environment_id": "env-validation",
                 "status": "in_progress",
             },
@@ -110,7 +110,7 @@ async def test_provider_validation_posts_background_probe():
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         transport=httpx.MockTransport(handler),
     )
@@ -119,7 +119,7 @@ async def test_provider_validation_posts_background_probe():
 
     body = seen["body"]
     assert isinstance(body, dict)
-    assert body["agent"] == "waverunner"
+    assert body["agent"] == "antigravity-preview-05-2026"
     assert body["stream"] is False
     assert body["background"] is True
     assert body["environment"] == {"enabled": True}
@@ -148,14 +148,14 @@ async def test_provider_validation_falls_back_without_background():
             200,
             json={
                 "id": "interaction-validation",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "status": "completed",
             },
         )
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         transport=httpx.MockTransport(handler),
     )
@@ -178,7 +178,7 @@ async def test_provider_uses_configured_agent_over_display_name():
             200,
             json={
                 "id": "interaction-1",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "status": "completed",
                 "outputs": [{"type": "text", "text": "done"}],
             },
@@ -186,7 +186,7 @@ async def test_provider_uses_configured_agent_over_display_name():
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         transport=httpx.MockTransport(handler),
     )
@@ -205,7 +205,7 @@ async def test_provider_uses_configured_agent_over_display_name():
 
     body = seen["body"]
     assert isinstance(body, dict)
-    assert body["agent"] == "waverunner"
+    assert body["agent"] == "antigravity-preview-05-2026"
     assert events[-1].content == "done"
 
 
@@ -216,7 +216,7 @@ async def test_provider_concatenates_chunked_outputs_without_extra_newlines():
             200,
             json={
                 "id": "interaction-1",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "status": "completed",
                 "outputs": [
                     {"type": "text", "text": "sha256sum orders"},
@@ -229,7 +229,7 @@ async def test_provider_concatenates_chunked_outputs_without_extra_newlines():
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         transport=httpx.MockTransport(handler),
     )
@@ -257,7 +257,7 @@ async def test_provider_merges_system_instruction_for_agent():
             200,
             json={
                 "id": "interaction-1",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "status": "completed",
                 "outputs": [{"type": "text", "text": "done"}],
             },
@@ -265,7 +265,7 @@ async def test_provider_merges_system_instruction_for_agent():
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         transport=httpx.MockTransport(handler),
     )
@@ -302,7 +302,7 @@ async def test_provider_polls_background_agent_until_completed():
                 200,
                 json={
                     "id": "interaction-1",
-                    "agent": "waverunner",
+                    "agent": "antigravity-preview-05-2026",
                     "status": "in_progress",
                 },
             )
@@ -310,7 +310,7 @@ async def test_provider_polls_background_agent_until_completed():
             200,
             json={
                 "id": "interaction-1",
-                "agent": "waverunner",
+                "agent": "antigravity-preview-05-2026",
                 "status": "completed",
                 "outputs": [{"type": "text", "text": "done"}],
                 "usage": {"total_tokens": 42},
@@ -319,7 +319,7 @@ async def test_provider_polls_background_agent_until_completed():
 
     provider = GeminiAgentsProvider(
         api_key="test-key",
-        agent_name="waverunner",
+        agent_name="antigravity-preview-05-2026",
         base_url="https://example.test/v1beta",
         poll_interval_seconds=0,
         transport=httpx.MockTransport(handler),

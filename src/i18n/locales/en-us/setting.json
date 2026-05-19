@@ -209,7 +209,7 @@
   "sub-agents": "Sub Agents",
   "gemini-agent": "Gemini Agents API",
   "gemini-remote-sub-agent": "Gemini Agents API",
-  "remote-sub-agent-description": "Delegate suitable tasks to a managed Waverunner-compatible remote agent sandbox.",
+  "remote-sub-agent-description": "Delegate suitable tasks to a managed remote agent sandbox.",
   "agent-provider": "Agent Provider",
   "agent-id": "Agent ID",
   "max-wall-time-seconds": "Max Wall Time (Seconds)",

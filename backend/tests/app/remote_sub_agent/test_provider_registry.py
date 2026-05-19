@@ -32,7 +32,7 @@ def _config() -> dict:
         "gemini_agents": {
             "api_key": "test-key",
             "base_url": "https://example.test/v1beta",
-            "agent_name": "waverunner",
+            "agent_name": "antigravity-preview-05-2026",
             "max_wall_time_seconds": 900,
             "poll_interval_seconds": 7,
         },
@@ -62,7 +62,7 @@ def test_registry_builds_gemini_provider_from_provider_config():
     assert provider.name == "gemini_agents"
     assert provider.api_key == "test-key"
     assert provider.base_url == "https://example.test/v1beta"
-    assert provider.agent_name == "waverunner"
+    assert provider.agent_name == "antigravity-preview-05-2026"
     assert provider.poll_interval_seconds == 7
 
 

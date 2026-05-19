@@ -31,7 +31,7 @@ from app.remote_sub_agent.types import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-_DEFAULT_AGENT = "waverunner"
+_DEFAULT_AGENT = ""
 _TERMINAL_SUCCESS_STATUSES = {"completed"}
 _TERMINAL_FAILURE_STATUSES = {"failed", "cancelled", "expired", "incomplete"}
 _UNSUPPORTED_ACTION_STATUSES = {"requires_action"}

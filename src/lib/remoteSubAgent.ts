@@ -16,7 +16,7 @@ export const REMOTE_SUB_AGENT_PROVIDER = 'gemini_agents';
 export const REMOTE_SUB_AGENT_PROVIDER_ID = REMOTE_SUB_AGENT_PROVIDER;
 export const REMOTE_SUB_AGENT_DEFAULT_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta';
-export const REMOTE_SUB_AGENT_DEFAULT_AGENT = 'waverunner';
+export const REMOTE_SUB_AGENT_DEFAULT_AGENT = '';
 export const REMOTE_SUB_AGENT_DEFAULT_MAX_WALL_TIME_SECONDS = '900';
 export const REMOTE_SUB_AGENT_DEFAULT_POLL_INTERVAL_SECONDS = '5';
 
@@ -101,6 +101,12 @@ export function toRemoteSubAgentProviderPayload(form: RemoteSubAgentFormState) {
   const agentName = form.agentName.trim();
   const maxWallTimeSeconds = Number(form.maxWallTimeSeconds);
   const pollIntervalSeconds = Number(form.pollIntervalSeconds);
+  const fallbackMaxWallTimeSeconds = Number(
+    REMOTE_SUB_AGENT_DEFAULT_MAX_WALL_TIME_SECONDS
+  );
+  const fallbackPollIntervalSeconds = Number(
+    REMOTE_SUB_AGENT_DEFAULT_POLL_INTERVAL_SECONDS
+  );
 
   return {
     provider_name: REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -110,12 +116,14 @@ export function toRemoteSubAgentProviderPayload(form: RemoteSubAgentFormState) {
     agent_name: agentName,
     model_name: '',
     config: {
-      max_wall_time_seconds: Number.isFinite(maxWallTimeSeconds)
-        ? maxWallTimeSeconds
-        : Number(REMOTE_SUB_AGENT_DEFAULT_MAX_WALL_TIME_SECONDS),
-      poll_interval_seconds: Number.isFinite(pollIntervalSeconds)
-        ? pollIntervalSeconds
-        : Number(REMOTE_SUB_AGENT_DEFAULT_POLL_INTERVAL_SECONDS),
+      max_wall_time_seconds:
+        Number.isFinite(maxWallTimeSeconds) && maxWallTimeSeconds > 0
+          ? maxWallTimeSeconds
+          : fallbackMaxWallTimeSeconds,
+      poll_interval_seconds:
+        Number.isFinite(pollIntervalSeconds) && pollIntervalSeconds > 0
+          ? pollIntervalSeconds
+          : fallbackPollIntervalSeconds,
     },
   };
 }
