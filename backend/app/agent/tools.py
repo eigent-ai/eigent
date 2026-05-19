@@ -34,6 +34,7 @@ from app.agent.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.agent.toolkit.pptx_toolkit import PPTXToolkit
 from app.agent.toolkit.rag_toolkit import RAGToolkit
 from app.agent.toolkit.reddit_toolkit import RedditToolkit
+from app.agent.toolkit.remote_sub_agent_toolkit import RemoteSubAgentToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.slack_toolkit import SlackToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
@@ -68,6 +69,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "pptx_toolkit": PPTXToolkit,
         "rag_toolkit": RAGToolkit,
         "reddit_toolkit": RedditToolkit,
+        "remote_sub_agent_toolkit": RemoteSubAgentToolkit,
         "search_toolkit": SearchToolkit,
         "slack_toolkit": SlackToolkit,
         "terminal_toolkit": TerminalToolkit,

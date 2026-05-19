@@ -89,6 +89,13 @@ import vllmImage from '@/assets/model/vllm.svg';
 import zaiImage from '@/assets/model/zai.svg';
 
 import {
+  fetchProviderModels,
+  loadCachedModels,
+  saveCachedModels,
+  type ProviderModelGroup,
+} from '@/lib/providerModels';
+import { ProviderModelCombobox } from './components/ProviderModelCombobox';
+import {
   appendV1ToEndpoint,
   canAutoFixOllamaEndpoint,
   DARK_FILL_MODELS,
@@ -105,13 +112,6 @@ import {
   toEndpointBaseUrl,
   VLLM_PROVIDER_ID,
 } from './localModels';
-import { ProviderModelCombobox } from './components/ProviderModelCombobox';
-import {
-  fetchProviderModels,
-  loadCachedModels,
-  saveCachedModels,
-  type ProviderModelGroup,
-} from '@/lib/providerModels';
 
 // Sidebar tab types
 type SidebarTab =
@@ -360,6 +360,7 @@ export default function SettingModels() {
       try {
         const res = await proxyFetchGet('/api/v1/providers');
         const providerList = Array.isArray(res) ? res : res.items || [];
+
         // Handle custom models
         setForm((f) =>
           f.map((fi, idx) => {
@@ -576,6 +577,7 @@ export default function SettingModels() {
 
   // Cloud model options
   const cloudModelOptions = [
+    { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
     { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
@@ -1046,6 +1048,7 @@ export default function SettingModels() {
       toast.error(t('setting.reset-failed'));
     }
   };
+
   const handleDelete = async (idx: number) => {
     try {
       const { provider_id } = form[idx];
@@ -1476,6 +1479,9 @@ export default function SettingModels() {
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini-3.5-flash">
+                    {t('setting.gemini-3.5-flash-name')}
+                  </SelectItem>
                   <SelectItem value="gemini-3.1-pro-preview">
                     {t('setting.gemini-3.1-pro-preview-name')}
                   </SelectItem>

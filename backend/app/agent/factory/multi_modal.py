@@ -19,6 +19,9 @@ from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
 
 from app.agent.agent_model import agent_model
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+)
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
 from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
@@ -149,11 +152,34 @@ def multi_modal_agent(options: Chat):
         )
         tools.extend(audio_analysis_toolkit.get_tools())
 
+    tool_names = [
+        VideoDownloaderToolkit.toolkit_name(),
+        AudioAnalysisToolkit.toolkit_name(),
+        ScreenshotToolkit.toolkit_name(),
+        OpenAIImageToolkit.toolkit_name(),
+        HumanToolkit.toolkit_name(),
+        TerminalToolkit.toolkit_name(),
+        NoteTakingToolkit.toolkit_name(),
+        SearchToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+    ]
     system_message = MULTI_MODAL_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
         now_str=NOW_STR,
+    )
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=Agents.multi_modal_agent,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=system_message,
+        local_tool_description=(
+            "local media, terminal, file, or search tools"
+        ),
+        message_integration=message_integration,
     )
 
     return agent_model(
@@ -164,17 +190,7 @@ def multi_modal_agent(options: Chat):
         ),
         options,
         tools,
-        tool_names=[
-            VideoDownloaderToolkit.toolkit_name(),
-            AudioAnalysisToolkit.toolkit_name(),
-            ScreenshotToolkit.toolkit_name(),
-            OpenAIImageToolkit.toolkit_name(),
-            HumanToolkit.toolkit_name(),
-            TerminalToolkit.toolkit_name(),
-            NoteTakingToolkit.toolkit_name(),
-            SearchToolkit.toolkit_name(),
-            SkillToolkit.toolkit_name(),
-        ],
+        tool_names=tool_names,
         toolkits_to_register_agent=[
             screenshot_toolkit_for_agent_registration,
         ],
