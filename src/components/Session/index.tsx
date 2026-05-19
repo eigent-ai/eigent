@@ -15,6 +15,7 @@
 import ChatBox from '@/components/ChatBox';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -36,6 +37,13 @@ export default function Session() {
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const sessionMode = usePageTabStore(
     (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
+  );
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+  const effectiveSessionMode = inferSessionModeFromTask(
+    activeTask,
+    sessionMode
   );
 
   const [isSidePanelVisible, setIsSidePanelVisible] = useState(true);
@@ -114,8 +122,8 @@ export default function Session() {
   }
 
   return (
-    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
@@ -127,14 +135,14 @@ export default function Session() {
       <div
         id="session-side-panel"
         className={cn(
-          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
+          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
           isSidePanelVisible
             ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
         <SessionSidePanel
-          mode={sessionMode}
+          mode={effectiveSessionMode}
           workforcePanelKey={workforcePanelKey}
           hasAnyMessages={hasAnyMessages}
           isSidePanelVisible={isSidePanelVisible}

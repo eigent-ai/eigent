@@ -46,6 +46,7 @@ from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.hands.interface import IHands
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
     ActionDecomposeProgressData,
@@ -57,6 +58,12 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+)
+from app.utils.agent_memory import (
+    build_memory_context,
+    estimate_memory_size,
+    record_agent_memory_snapshot,
+    record_workforce_memory_snapshot,
 )
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory, list_files
@@ -196,6 +203,7 @@ def check_conversation_history_length(
     total_length = 0
     for entry in task_lock.conversation_history:
         total_length += len(entry.get("content", ""))
+    total_length += estimate_memory_size(task_lock)
 
     is_exceeded = total_length > max_length
 
@@ -270,6 +278,10 @@ def build_conversation_context(
 
         context += "\n"
 
+    memory_context = build_memory_context(task_lock)
+    if memory_context:
+        context += memory_context
+
     return context
 
 
@@ -311,6 +323,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         task_lock.conversation_history = []
     if not hasattr(task_lock, "last_task_result"):
         task_lock.last_task_result = ""
+    if not hasattr(task_lock, "agent_memory_history"):
+        task_lock.agent_memory_history = []
+    if not hasattr(task_lock, "memory_summary"):
+        task_lock.memory_summary = ""
     if not hasattr(task_lock, "question_agent"):
         task_lock.question_agent = None
     if not hasattr(task_lock, "summary_generated"):
@@ -351,8 +367,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
         extra={
             "task_id": options.task_id,
             "model_platform": options.model_platform,
+            "session_mode": options.session_mode,
         },
     )
+
+    if options.session_mode == "single-agent":
+        async for chunk in single_agent_solve(
+            options, request, task_lock, hands=hands
+        ):
+            yield chunk
+        return
 
     while True:
         loop_iteration += 1
@@ -553,6 +577,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 "right now."
                             )
 
+                        record_agent_memory_snapshot(
+                            task_lock,
+                            question_agent,
+                            scope="question_agent",
+                            task_id=options.task_id,
+                            task_content=question,
+                            task_result=answer_content,
+                        )
                         task_lock.add_conversation("assistant", answer_content)
 
                         yield sse_json(
@@ -1013,6 +1045,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 else:
                     task_content: str = f"Task {options.task_id}"
 
+                if workforce is not None:
+                    record_workforce_memory_snapshot(
+                        task_lock,
+                        workforce,
+                        task_id=camel_task.id
+                        if camel_task
+                        else options.task_id,
+                        task_content=task_content,
+                        task_result=end_message,
+                    )
+
                 task_lock.add_conversation(
                     "task_result",
                     {
@@ -1143,6 +1186,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "=== CURRENT TASK ==="
                     )[-1].strip()
 
+                if workforce is not None:
+                    record_workforce_memory_snapshot(
+                        task_lock,
+                        workforce,
+                        task_id=camel_task.id,
+                        task_content=old_task_content_clean,
+                        task_result=old_task_result,
+                    )
+
                 task_lock.add_conversation(
                     "task_result",
                     {
@@ -1253,6 +1305,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                         " right now."
                                     )
 
+                                record_agent_memory_snapshot(
+                                    task_lock,
+                                    question_agent,
+                                    scope="question_agent",
+                                    task_id=options.task_id,
+                                    task_content=new_task_content,
+                                    task_result=answer_content,
+                                )
                                 task_lock.add_conversation(
                                     "assistant", answer_content
                                 )
@@ -1679,6 +1739,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         )[-1].strip()
                 else:
                     task_content: str = f"Task {options.task_id}"
+
+                if workforce is not None:
+                    record_workforce_memory_snapshot(
+                        task_lock,
+                        workforce,
+                        task_id=camel_task.id
+                        if camel_task
+                        else options.task_id,
+                        task_content=task_content,
+                        task_result=final_result,
+                    )
 
                 task_lock.add_conversation(
                     "task_result",

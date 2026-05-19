@@ -60,6 +60,7 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
+    todo_state = "todo_state"  # backend -> user
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -221,6 +222,11 @@ class ActionTerminalData(BaseModel):
     data: str
 
 
+class ActionTodoStateData(BaseModel):
+    action: Literal[Action.todo_state] = Action.todo_state
+    data: dict
+
+
 class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
 
@@ -298,6 +304,7 @@ ActionData = (
     | ActionSearchMcpData
     | ActionInstallMcpData
     | ActionTerminalData
+    | ActionTodoStateData
     | ActionStopData
     | ActionEndData
     | ActionTimeoutData
@@ -323,6 +330,7 @@ class Agents(str, Enum):
     multi_modal_agent = "multi_modal_agent"
     social_media_agent = "social_media_agent"
     mcp_agent = "mcp_agent"
+    single_agent = "single_agent"
 
 
 class TaskLock:
@@ -345,6 +353,10 @@ class TaskLock:
     # Context management fields
     conversation_history: list[dict[str, Any]]
     """Store conversation history for context"""
+    agent_memory_history: list[dict[str, Any]]
+    """Serialized ChatAgent memory snapshots for session continuity"""
+    memory_summary: str
+    """Compressed summary of older serialized agent memory"""
     last_task_result: str
     """Store the last task execution result"""
     question_agent: Any | None
@@ -367,6 +379,8 @@ class TaskLock:
 
         # Initialize context management fields
         self.conversation_history = []
+        self.agent_memory_history = []
+        self.memory_summary = ""
         self.last_task_result = ""
         self.last_task_summary = ""
         self.question_agent = None
@@ -523,6 +537,18 @@ class TaskLock:
                 "timestamp": datetime.now().isoformat(),
             }
         )
+
+    def add_agent_memory_snapshot(self, snapshot: dict[str, Any]) -> None:
+        logger.debug(
+            "Adding agent memory snapshot",
+            extra={
+                "task_id": self.id,
+                "scope": snapshot.get("scope"),
+                "agent_name": snapshot.get("agent_name"),
+                "message_count": len(snapshot.get("messages", [])),
+            },
+        )
+        self.agent_memory_history.append(snapshot)
 
     def get_recent_context(self, max_entries: int = None) -> str:
         """Get recent conversation context as a formatted string"""

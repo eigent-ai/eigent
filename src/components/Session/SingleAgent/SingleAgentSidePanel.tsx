@@ -16,7 +16,11 @@ import { AgentFolderSection } from '@/components/Session/SidePanelSections/Agent
 import { ExecutionContextSection } from '@/components/Session/SidePanelSections/ExecutionContextSection';
 import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
 import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
-import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import {
+  collectSidePanelOutputFiles,
+  mergeSidePanelOutputFiles,
+} from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -34,6 +38,10 @@ export function SingleAgentSidePanel() {
     : undefined;
 
   const agents = activeTask?.taskAssigning ?? [];
+  const projectFiles = useProjectOutputFiles(
+    projectStore.activeProjectId,
+    activeTask
+  );
   /** Prefer live `taskRunning` status (updated on TASK_STATE), keep plan order/text from agent tasks or taskInfo. */
   const subtasks = useMemo(() => {
     const base = agents[0]?.tasks ?? activeTask?.taskInfo ?? [];
@@ -46,8 +54,12 @@ export function SingleAgentSidePanel() {
     });
   }, [agents, activeTask?.taskInfo, activeTask?.taskRunning]);
   const files = useMemo(
-    () => collectSidePanelOutputFiles(activeTask),
-    [activeTask]
+    () =>
+      mergeSidePanelOutputFiles(
+        collectSidePanelOutputFiles(activeTask),
+        projectFiles
+      ),
+    [activeTask, projectFiles]
   );
   const uploadedFiles = useMemo(() => {
     if (!activeTask) return [];
@@ -86,11 +98,11 @@ export function SingleAgentSidePanel() {
   return (
     <div
       className={cn(
-        'min-w-0 min-h-0 flex w-full flex-1 flex-col overflow-hidden',
+        'flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden',
         'relative'
       )}
     >
-      <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-2">
         <ProgressSection
           title={t('layout.workforce-progress', { defaultValue: 'Progress' })}
           subtasks={subtasks}
