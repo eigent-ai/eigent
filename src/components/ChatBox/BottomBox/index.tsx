@@ -13,10 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { type ChatTaskStatusType } from '@/types/constants';
-import { useTranslation } from 'react-i18next';
 import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
+import {
+  UsageLimitBanner,
+  type UsageLimitBannerProps,
+} from './UsageLimitBanner';
 
 export type BottomBoxState =
   | 'input'
@@ -50,6 +53,7 @@ interface BottomBoxProps {
 
   // Input props
   inputProps: Omit<InputboxProps, 'className'> & { className?: string };
+  usageLimitBanner?: UsageLimitBannerProps | null;
 
   // Loading states
   loading?: boolean;
@@ -63,9 +67,9 @@ export default function BottomBox({
   onStartTask,
   onEdit,
   inputProps,
+  usageLimitBanner,
   loading = false,
 }: BottomBoxProps) {
-  const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
@@ -100,6 +104,7 @@ export default function BottomBox({
         )}
 
         {/* Inputbox (always visible) */}
+        {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
         <Inputbox {...inputProps} />
       </div>
     </div>
