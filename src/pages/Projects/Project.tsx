@@ -19,6 +19,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchHistoryTasks } from '@/service/historyApi';
+import { HistoryTask } from '@/types/history';
 import { ChatTaskStatus } from '@/types/constants';
 import { Bird, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -131,8 +132,12 @@ export default function Project() {
     navigate(`/`);
   };
 
-  const handleDelete = (id: string, callback?: () => void) => {
-    setCurHistoryId(id);
+  const handleDelete = (
+    historyId: string,
+    _task?: HistoryTask,
+    callback?: () => void
+  ) => {
+    setCurHistoryId(historyId);
     setDeleteModalOpen(true);
     if (callback) setDeleteCallback(callback);
   };
@@ -296,7 +301,9 @@ export default function Project() {
             onOngoingTaskResume={(taskId) =>
               handleTakeControl('resume', taskId)
             }
-            onOngoingTaskDelete={(taskId) => handleDelete(taskId)}
+            onOngoingTaskDelete={(taskId) =>
+              handleDelete(taskId, undefined, () => {})
+            }
             onProjectDelete={handleProjectDelete}
             refreshTrigger={refreshTrigger}
           />

@@ -52,6 +52,8 @@
   "welcome": "أهلاً وسهلاً",
   "delete-task": "حذف المهمة",
   "delete-task-confirmation": "هل أنت متأكد من أنك تريد حذف هذه المهمة؟ لا يمكن التراجع عن هذا الإجراء.",
+  "delete-success": "تم حذف المهمة بنجاح",
+  "delete-failed": "فشل حذف المهمة",
   "delete": "حذف",
   "cancel": "إلغاء",
   "continue": "متابعة",
