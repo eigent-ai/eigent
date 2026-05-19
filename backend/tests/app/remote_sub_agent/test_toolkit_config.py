@@ -31,7 +31,7 @@ def _valid_config() -> dict:
         "gemini_agents": {
             "api_key": "test-key",
             "base_url": "https://generativelanguage.googleapis.com/v1beta",
-            "agent_name": "waverunner",
+            "agent_name": "antigravity-preview-05-2026",
             "max_wall_time_seconds": 900,
             "poll_interval_seconds": 5,
         },
@@ -58,7 +58,7 @@ async def test_toolkit_returns_message_when_config_is_incomplete():
             "gemini_agents": {
                 "api_key": "",
                 "base_url": "https://generativelanguage.googleapis.com/v1beta",
-                "agent_name": "waverunner",
+                "agent_name": "antigravity-preview-05-2026",
             },
         },
     )

@@ -29,7 +29,7 @@ async def test_validate_remote_sub_agent_rejects_missing_fields():
             provider="gemini_agents",
             api_key="",
             base_url="https://example.test/v1beta",
-            agent_name="waverunner",
+            agent_name="antigravity-preview-05-2026",
         )
     )
 
@@ -61,7 +61,7 @@ async def test_validate_remote_sub_agent_success(monkeypatch):
             provider="gemini_agents",
             api_key=" test-key ",
             base_url=" https://example.test/v1beta ",
-            agent_name=" waverunner ",
+            agent_name=" antigravity-preview-05-2026 ",
             timeout_seconds=12,
         )
     )
@@ -76,7 +76,7 @@ async def test_validate_remote_sub_agent_success(monkeypatch):
         "gemini_agents": {
             "api_key": "test-key",
             "base_url": "https://example.test/v1beta",
-            "agent_name": "waverunner",
+            "agent_name": "antigravity-preview-05-2026",
         },
     }
     assert seen["timeout"] == 12
@@ -98,7 +98,7 @@ async def test_validate_remote_sub_agent_failure(monkeypatch):
             provider="gemini_agents",
             api_key="bad-key",
             base_url="https://example.test/v1beta",
-            agent_name="waverunner",
+            agent_name="antigravity-preview-05-2026",
         )
     )
 

@@ -190,7 +190,7 @@
   "sub-agents": "Sub Agents",
   "gemini-agent": "Gemini Agents API",
   "gemini-remote-sub-agent": "Gemini Agents API",
-  "remote-sub-agent-description": "把适合远程执行的任务委托给 Waverunner 兼容的托管智能体沙盒。",
+  "remote-sub-agent-description": "把适合远程执行的任务委托给托管远程智能体沙盒。",
   "agent-provider": "Agent Provider",
   "agent-id": "Agent ID",
   "max-wall-time-seconds": "最长运行时间（秒）",
