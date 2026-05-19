@@ -216,6 +216,7 @@ type CloudModelPlatform =
 // prettier-ignore
 const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
   'gemini-3.1-pro-preview': 'gemini',
+  'gemini-3.5-flash': 'gemini',
   'gemini-3-pro-preview': 'gemini',
   'gemini-3-flash-preview': 'gemini',
   'claude-haiku-4-5': 'aws-bedrock-converse',
