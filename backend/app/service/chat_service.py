@@ -37,7 +37,12 @@ from app.agent.factory import (
     question_confirm_agent,
     task_summary_agent,
 )
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+    remote_sub_agent_enabled,
+)
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.prompt import build_remote_sub_agent_planning_notice
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -2128,6 +2133,11 @@ async def construct_workforce(
     set_main_event_loop(asyncio.get_running_loop())
 
     working_directory = get_working_directory(options)
+    remote_sub_agent_planning_notice = (
+        build_remote_sub_agent_planning_notice()
+        if remote_sub_agent_enabled(options, working_directory)
+        else ""
+    )
 
     # ========================================================================
     # Define agent creation functions
@@ -2155,6 +2165,7 @@ precision and avoid ambiguity.
 The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
+{remote_sub_agent_planning_notice}
             """,
                 Agents.task_agent: f"""
 You are a helpful task planner.
@@ -2168,15 +2179,43 @@ precision and avoid ambiguity.
 The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
+{remote_sub_agent_planning_notice}
         """,
             }.items()
         ]
 
     def _create_new_worker_agent() -> ListenChatAgent:
         """Create new worker agent (sync, runs in thread pool)."""
-        return agent_model(
+        message_integration = ToolkitMessageIntegration(
+            message_handler=HumanToolkit(
+                options.project_id, Agents.new_worker_agent
+            ).send_message_to_user
+        )
+        note_toolkit = NoteTakingToolkit(
+            options.project_id,
+            agent_name=Agents.new_worker_agent,
+            working_directory=working_directory,
+        )
+        note_toolkit = message_integration.register_toolkits(note_toolkit)
+        skill_toolkit = SkillToolkit(
+            options.project_id,
             Agents.new_worker_agent,
-            f"""
+            working_directory=working_directory,
+            user_id=options.skill_config_user_id(),
+        )
+        tools = [
+            *HumanToolkit.get_can_use_tools(
+                options.project_id, Agents.new_worker_agent
+            ),
+            *note_toolkit.get_tools(),
+            *skill_toolkit.get_tools(),
+        ]
+        tool_names = [
+            HumanToolkit.toolkit_name(),
+            NoteTakingToolkit.toolkit_name(),
+            SkillToolkit.toolkit_name(),
+        ]
+        system_message = f"""
         You are a helpful assistant.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory \
@@ -2188,31 +2227,23 @@ precision and avoid ambiguity.
 The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
-        """,
+        """
+        system_message = attach_remote_sub_agent_if_enabled(
+            options=options,
+            agent_name=Agents.new_worker_agent,
+            working_directory=working_directory,
+            tools=tools,
+            tool_names=tool_names,
+            system_message=system_message,
+            local_tool_description="local note, terminal, or skill tools",
+            message_integration=message_integration,
+        )
+        return agent_model(
+            Agents.new_worker_agent,
+            system_message,
             options,
-            [
-                *HumanToolkit.get_can_use_tools(
-                    options.project_id, Agents.new_worker_agent
-                ),
-                *(
-                    ToolkitMessageIntegration(
-                        message_handler=HumanToolkit(
-                            options.project_id, Agents.new_worker_agent
-                        ).send_message_to_user
-                    ).register_toolkits(
-                        NoteTakingToolkit(
-                            options.project_id,
-                            working_directory=working_directory,
-                        )
-                    )
-                ).get_tools(),
-                *SkillToolkit(
-                    options.project_id,
-                    Agents.new_worker_agent,
-                    working_directory=working_directory,
-                    user_id=options.skill_config_user_id(),
-                ).get_tools(),
-            ],
+            tools,
+            tool_names=tool_names,
         )
 
     # ========================================================================
@@ -2361,8 +2392,13 @@ async def new_agent_model(data: NewAgent | ActionNewAgent, options: Chat):
     )
     working_directory = get_working_directory(options)
     tool_names = []
-    tools = [*await get_toolkits(data.tools, data.name, options.project_id)]
-    for item in data.tools:
+    requested_tools = [
+        item for item in data.tools if item != "remote_sub_agent_toolkit"
+    ]
+    tools = [
+        *await get_toolkits(requested_tools, data.name, options.project_id)
+    ]
+    for item in requested_tools:
         tool_names.append(titleize(item))
     # Always include terminal_toolkit with proper working directory
     terminal_toolkit = TerminalToolkit(
@@ -2396,6 +2432,21 @@ The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """
+    message_integration = ToolkitMessageIntegration(
+        message_handler=HumanToolkit(
+            options.project_id, data.name
+        ).send_message_to_user
+    )
+    enhanced_description = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=data.name,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=enhanced_description,
+        local_tool_description="local custom-agent tools or terminal actions",
+        message_integration=message_integration,
+    )
 
     # Pass per-agent custom model config if available
     custom_model_config = getattr(data, "custom_model_config", None)

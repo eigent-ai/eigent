@@ -26,6 +26,7 @@ from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
 )
+from app.remote_sub_agent.config import RemoteSubAgentConfig
 
 logger = logging.getLogger("chat_model")
 
@@ -78,6 +79,7 @@ class Chat(BaseModel):
     search_config: dict[str, str] | None = None
     # User identifier for user-specific skill configurations
     user_id: str | None = None
+    remote_sub_agent_config: RemoteSubAgentConfig | None = None
 
     @field_validator("model_type")
     @classmethod

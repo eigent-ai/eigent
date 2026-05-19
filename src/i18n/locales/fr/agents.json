@@ -1,6 +1,7 @@
 {
   "skills": "Compétences",
   "memory": "Mémoire",
+  "sub-agents": "Sous-agents",
   "preview": "Aperçu",
   "skills-description": "Ajoutez des compétences personnalisées pour étendre les capacités de votre agent.",
   "memory-description": "Gérez la mémoire et la base de connaissances de votre agent.",

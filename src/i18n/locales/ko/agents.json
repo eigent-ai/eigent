@@ -1,6 +1,7 @@
 {
   "skills": "스킬",
   "memory": "메모리",
+  "sub-agents": "하위 에이전트",
   "preview": "미리보기",
   "skills-description": "사용자 정의 스킬을 추가하여 에이전트 기능을 확장하세요.",
   "memory-description": "에이전트의 메모리와 지식 베이스를 관리하세요.",

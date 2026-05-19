@@ -360,6 +360,7 @@ export default function SettingModels() {
       try {
         const res = await proxyFetchGet('/api/v1/providers');
         const providerList = Array.isArray(res) ? res : res.items || [];
+
         // Handle custom models
         setForm((f) =>
           f.map((fi, idx) => {
@@ -1046,6 +1047,7 @@ export default function SettingModels() {
       toast.error(t('setting.reset-failed'));
     }
   };
+
   const handleDelete = async (idx: number) => {
     try {
       const { provider_id } = form[idx];

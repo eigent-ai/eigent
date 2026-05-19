@@ -1,6 +1,7 @@
 {
   "skills": "Skills",
   "memory": "Memory",
+  "sub-agents": "Sub Agents",
   "preview": "Preview",
   "skills-description": "Add custom skills to extend your agent's capabilities.",
   "memory-description": "Manage your agent's memory and knowledge base.",
