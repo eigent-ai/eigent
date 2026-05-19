@@ -58,6 +58,7 @@
   "remove-file": "Remove file",
   "drop-files-to-attach": "Drop files to attach",
   "usage-limit-action": "Get more usage",
+  "usage-limit-switch-model-hint": "Switch to a local/custom model or use another API key to continue.",
   "usage-limit-trial-daily-warning": "You've used {{percent}}% of today's free trial limit",
   "usage-limit-trial-daily-exhausted": "You've reached today's free trial limit",
   "usage-limit-trial-total-warning": "You've used {{percent}}% of your free trial usage",

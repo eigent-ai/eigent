@@ -58,6 +58,7 @@
   "remove-file": "移除文件",
   "drop-files-to-attach": "拖放文件以附加",
   "usage-limit-action": "取得更多用量",
+  "usage-limit-switch-model-hint": "你也可以切換到本機/自訂模型，或使用其他 API key 繼續。",
   "usage-limit-trial-daily-warning": "你已使用今日免費試用額度的 {{percent}}%",
   "usage-limit-trial-daily-exhausted": "你已達到今日免費試用額度上限",
   "usage-limit-trial-total-warning": "你已使用免費試用總額度的 {{percent}}%",

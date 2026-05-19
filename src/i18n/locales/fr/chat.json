@@ -58,6 +58,7 @@
   "remove-file": "Supprimer le fichier",
   "drop-files-to-attach": "Déposez les fichiers à joindre",
   "usage-limit-action": "Obtenir plus d'utilisation",
+  "usage-limit-switch-model-hint": "Passez à un modèle local/personnalisé ou utilisez une autre clé API pour continuer.",
   "usage-limit-trial-daily-warning": "Vous avez utilisé {{percent}}% de la limite d'essai d'aujourd'hui",
   "usage-limit-trial-daily-exhausted": "Vous avez atteint la limite d'essai d'aujourd'hui",
   "usage-limit-trial-total-warning": "Vous avez utilisé {{percent}}% de votre essai gratuit",

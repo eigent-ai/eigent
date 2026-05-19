@@ -58,6 +58,7 @@
   "remove-file": "ファイルを削除",
   "drop-files-to-attach": "ファイルをドロップして添付",
   "usage-limit-action": "利用枠を増やす",
+  "usage-limit-switch-model-hint": "続行するには、ローカル/カスタムモデルに切り替えるか、別の API キーを使用してください。",
   "usage-limit-trial-daily-warning": "本日の無料トライアル上限の{{percent}}%を使用しました",
   "usage-limit-trial-daily-exhausted": "本日の無料トライアル上限に達しました",
   "usage-limit-trial-total-warning": "無料トライアル利用枠の{{percent}}%を使用しました",

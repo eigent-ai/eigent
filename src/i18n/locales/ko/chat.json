@@ -58,6 +58,7 @@
   "remove-file": "파일 제거",
   "drop-files-to-attach": "첨부할 파일을 여기에 놓으세요",
   "usage-limit-action": "사용량 더 받기",
+  "usage-limit-switch-model-hint": "계속하려면 로컬/사용자 지정 모델로 전환하거나 다른 API 키를 사용하세요.",
   "usage-limit-trial-daily-warning": "오늘 무료 체험 한도의 {{percent}}%를 사용했습니다",
   "usage-limit-trial-daily-exhausted": "오늘 무료 체험 한도에 도달했습니다",
   "usage-limit-trial-total-warning": "무료 체험 사용량의 {{percent}}%를 사용했습니다",

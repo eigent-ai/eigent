@@ -58,6 +58,7 @@
   "remove-file": "Удалить файл",
   "drop-files-to-attach": "Перетащите файлы для прикрепления",
   "usage-limit-action": "Получить больше использования",
+  "usage-limit-switch-model-hint": "Переключитесь на локальную/пользовательскую модель или используйте другой API-ключ, чтобы продолжить.",
   "usage-limit-trial-daily-warning": "Вы использовали {{percent}}% сегодняшнего лимита пробного периода",
   "usage-limit-trial-daily-exhausted": "Вы достигли сегодняшнего лимита пробного периода",
   "usage-limit-trial-total-warning": "Вы использовали {{percent}}% пробного лимита",

@@ -46,6 +46,7 @@ const getChatStoreTotalTokens = (chatStore: VanillaChatStore): number => {
 
 const USAGE_WARNING_RATIO = 0.75;
 const FREE_STARTING_CREDITS = 500;
+const API_CODE_TRIAL_LIMIT = '22';
 
 interface SubscriptionLimitInfo {
   plan_key?: string | null;
@@ -71,6 +72,11 @@ const toFiniteNumber = (value: unknown): number | null =>
 
 const usagePercent = (used: number, limit: number) =>
   Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+
+const hasApiCode = (value: unknown, code: string) =>
+  typeof value === 'object' &&
+  value !== null &&
+  String((value as { code?: unknown }).code) === code;
 
 const buildUsageLimitBannerState = (
   subscription: SubscriptionLimitInfo | null,
@@ -200,6 +206,7 @@ export default function ChatBox(): JSX.Element {
   const [subscriptionUsage, setSubscriptionUsage] =
     useState<SubscriptionLimitInfo | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
+  const [cloudUsageLimitReached, setCloudUsageLimitReached] = useState(false);
   const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
     useState<string | null>(null);
 
@@ -234,24 +241,45 @@ export default function ChatBox(): JSX.Element {
     [subscriptionUsage, currentCredits, t]
   );
 
+  const cloudUsageLimitMessage = useMemo(() => {
+    if (modelType !== 'cloud' || !cloudUsageLimitReached) return null;
+    return [
+      usageLimitBannerState?.message ||
+        t('chat.usage-limit-trial-daily-exhausted'),
+      t('chat.usage-limit-switch-model-hint'),
+    ].join(' ');
+  }, [modelType, cloudUsageLimitReached, usageLimitBannerState, t]);
+
+  const effectiveUsageLimitBannerState = useMemo(() => {
+    if (!cloudUsageLimitMessage) return usageLimitBannerState;
+
+    return {
+      id: 'cloud-usage-limit-blocked',
+      message: cloudUsageLimitMessage,
+      actionLabel:
+        usageLimitBannerState?.actionLabel || t('chat.usage-limit-action'),
+      severity: 'danger' as const,
+    };
+  }, [cloudUsageLimitMessage, usageLimitBannerState, t]);
+
   const usageLimitBanner = useMemo(() => {
     if (
-      !usageLimitBannerState ||
-      usageLimitBannerState.id === dismissedUsageLimitBannerId
+      !effectiveUsageLimitBannerState ||
+      effectiveUsageLimitBannerState.id === dismissedUsageLimitBannerId
     ) {
       return null;
     }
 
     return {
-      ...usageLimitBannerState,
+      ...effectiveUsageLimitBannerState,
       onAction: () => {
         window.location.href = `${SITE_URL}/pricing`;
       },
       onDismiss: () => {
-        setDismissedUsageLimitBannerId(usageLimitBannerState.id);
+        setDismissedUsageLimitBannerId(effectiveUsageLimitBannerState.id);
       },
     };
-  }, [usageLimitBannerState, dismissedUsageLimitBannerId]);
+  }, [effectiveUsageLimitBannerState, dismissedUsageLimitBannerId]);
 
   useEffect(() => {
     refreshUsageLimits();
@@ -297,22 +325,41 @@ export default function ChatBox(): JSX.Element {
       if (modelType === 'cloud') {
         // For cloud model, check if API key exists
         const res = await proxyFetchGet('/api/v1/user/key');
+        if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
+          setCloudUsageLimitReached(true);
+          setHasModel(false);
+          refreshUsageLimits();
+          return;
+        }
+        setCloudUsageLimitReached(false);
         setHasModel(!!res.value);
       } else if (modelType === 'local' || modelType === 'custom') {
+        setCloudUsageLimitReached(false);
         // For local/custom model, check if provider exists
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
         const providerList = res.items || [];
         setHasModel(providerList.length > 0);
       } else {
+        setCloudUsageLimitReached(false);
         setHasModel(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to check model config:', err);
+      if (
+        modelType === 'cloud' &&
+        hasApiCode(err?.response?.data, API_CODE_TRIAL_LIMIT)
+      ) {
+        setCloudUsageLimitReached(true);
+        setHasModel(false);
+        refreshUsageLimits();
+        return;
+      }
+      setCloudUsageLimitReached(false);
       setHasModel(false);
     } finally {
       setIsConfigLoaded(true);
     }
-  }, [modelType]);
+  }, [modelType, refreshUsageLimits]);
 
   // Check model config on mount and when modelType changes
   useEffect(() => {
@@ -501,6 +548,8 @@ export default function ChatBox(): JSX.Element {
     );
   }, [chatStore?.activeTaskId, chatStore?.tasks]);
 
+  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
+
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return true;
@@ -513,6 +562,7 @@ export default function ChatBox(): JSX.Element {
     if (isTaskBusy) return true;
 
     // Standard checks - check model
+    if (isCloudUsageLimited) return true;
     if (!hasModel) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
@@ -521,6 +571,7 @@ export default function ChatBox(): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
+    isCloudUsageLimited,
     hasModel,
     useCloudModelInDev,
     isTaskBusy,
@@ -537,6 +588,13 @@ export default function ChatBox(): JSX.Element {
 
       // Check model configuration before starting task
       if (!hasModel) {
+        if (isCloudUsageLimited) {
+          toast.error(
+            cloudUsageLimitMessage ||
+              t('chat.usage-limit-trial-daily-exhausted')
+          );
+          return;
+        }
         toast.error('Please select a model first.');
         navigate('/history?tab=agents');
         return;
@@ -570,7 +628,15 @@ export default function ChatBox(): JSX.Element {
         }
       }
     },
-    [chatStore, projectStore.activeProjectId, hasModel, navigate]
+    [
+      chatStore,
+      projectStore.activeProjectId,
+      hasModel,
+      isCloudUsageLimited,
+      cloudUsageLimitMessage,
+      navigate,
+      t,
+    ]
   );
 
   // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
@@ -640,6 +706,12 @@ export default function ChatBox(): JSX.Element {
 
     // Check model configuration
     if (!hasModel) {
+      if (isCloudUsageLimited) {
+        toast.error(
+          cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
+        );
+        return;
+      }
       toast.error('Please select a model first.');
       navigate('/history?tab=agents');
       return;
@@ -1322,7 +1394,17 @@ export default function ChatBox(): JSX.Element {
 
             {/* Suggestion Area - Bottom area, flex-1 to push content up */}
             <div className="mt-3 flex h-[210px] flex-1 items-start justify-center gap-2">
-              {!hasModel ? (
+              {isCloudUsageLimited ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 rounded-md bg-surface-warning px-sm py-xs">
+                    <TriangleAlert size={20} className="text-icon-warning" />
+                    <span className="flex-1 text-xs font-medium leading-[20px] text-text-warning">
+                      {cloudUsageLimitMessage ||
+                        t('chat.usage-limit-trial-daily-exhausted')}
+                    </span>
+                  </div>
+                </div>
+              ) : !hasModel ? (
                 <div className="flex items-center gap-2">
                   <div
                     onClick={() => {
@@ -1337,7 +1419,7 @@ export default function ChatBox(): JSX.Element {
                   </div>
                 </div>
               ) : null}
-              {hasModel && (
+              {hasModel && !isCloudUsageLimited && (
                 <div className="mr-2 flex flex-col items-center gap-2">
                   {[
                     {
