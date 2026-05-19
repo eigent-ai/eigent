@@ -48,7 +48,7 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
-import { agentMap } from './agents';
+import { agentMap, type WorkflowAgentType } from './agents';
 import { getAgentToolkitLabels } from './agentToolkitLabels';
 import { TaskLogPanelContent } from './TaskLogPanelContent';
 
@@ -372,6 +372,11 @@ export function Node({ id, data }: NodeProps) {
         : 'grid-cols-2 grid-rows-2';
   const terminalPlaceholderCount =
     terminalTasks.length >= 3 ? Math.max(0, 4 - terminalTasks.length) : 0;
+  const workflowAgentType =
+    data.type in agentMap ? (data.type as WorkflowAgentType) : undefined;
+  const displayInfo = workflowAgentType
+    ? agentMap[workflowAgentType]
+    : undefined;
 
   return chatStore ? (
     <>
@@ -401,27 +406,27 @@ export function Node({ id, data }: NodeProps) {
               : 'w-[342px]'
         } ${
           data.isEditMode ? 'h-full' : 'max-h-[calc(100vh-200px)]'
-        } rounded-xl border-ds-border-neutral-subtle-default shadow-sm bg-ds-bg-neutral-subtle-default flex overflow-hidden border border-solid ${
+        } flex overflow-hidden rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default shadow-sm ${
           getCurrentTask()?.activeAgent === id
-            ? `${agentMap[data.type]?.borderColor} z-50`
-            : 'border-ds-border-neutral-default-default z-10'
-        } ease-in-out transition-all duration-300 ${
+            ? `${displayInfo?.borderColor} z-50`
+            : 'z-10 border-ds-border-neutral-default-default'
+        } transition-all duration-300 ease-in-out ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
-        <div className="border-ds-border-neutral-default-default flex w-[342px] shrink-0 flex-col border-y-0 border-r-[0.5px] border-l-0 border-solid">
+        <div className="flex w-[342px] shrink-0 flex-col border-y-0 border-l-0 border-r-[0.5px] border-solid border-ds-border-neutral-default-default">
           {/* header */}
-          <div className="gap-sm px-3 pb-1 pt-2 flex items-center justify-between">
-            <div className="gap-md flex items-center justify-between">
+          <div className="flex items-center justify-between gap-sm px-3 pb-1 pt-2">
+            <div className="flex items-center justify-between gap-md">
               <div
                 className={`text-base font-bold leading-relaxed ${
-                  agentMap[data.type]?.textColor
+                  displayInfo?.textColor
                 }`}
               >
-                {agentMap[data.type]?.name || data.agent?.name}
+                {displayInfo?.name || data.agent?.name}
               </div>
             </div>
-            <div className="gap-xs flex items-center">
+            <div className="flex items-center gap-xs">
               <Button
                 onClick={handleShowLog}
                 variant="ghost"
@@ -430,7 +435,7 @@ export function Node({ id, data }: NodeProps) {
               >
                 {isExpanded ? <SquareChevronLeft /> : <SquareCode />}
               </Button>
-              {!Object.keys(agentMap).find((key) => key === data.type) &&
+              {!workflowAgentType &&
                 getCurrentTask()?.messages?.length === 0 && (
                   <Popover>
                     <PopoverTrigger asChild>
@@ -443,7 +448,7 @@ export function Node({ id, data }: NodeProps) {
                         <Ellipsis />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm w-[98px] rounded-[12px] border border-solid">
+                    <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm">
                       <div className="space-y-1">
                         <PopoverClose asChild>
                           <AddWorker
@@ -455,7 +460,7 @@ export function Node({ id, data }: NodeProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="gap-2 w-full justify-start"
+                            className="w-full justify-start gap-2"
                             onClick={(e) => {
                               e.stopPropagation();
                               const newWorkerList = workerList.filter(
@@ -480,7 +485,7 @@ export function Node({ id, data }: NodeProps) {
           {/* tools */}
           <div
             ref={toolsRef}
-            className="mb-sm min-h-4 px-3 text-xs font-normal leading-tight text-ds-text-neutral-muted-default flex flex-shrink-0 flex-wrap"
+            className="mb-sm flex min-h-4 flex-shrink-0 flex-wrap px-3 text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
           >
             {/* {JSON.stringify(data.agent)} */}
             {toolkitLabels.map((toolkit, index) => (
@@ -491,7 +496,7 @@ export function Node({ id, data }: NodeProps) {
           </div>
           {/* workspace */}
           <div
-            className="mb-2 px-3 max-h-[180px]"
+            className="mb-2 max-h-[180px] px-3"
             onClick={() => {
               chatStore.setActiveWorkspace(
                 chatStore.activeTaskId as string,
@@ -503,15 +508,15 @@ export function Node({ id, data }: NodeProps) {
           >
             {browserImages.length > 0 && (
               <div
-                className={`gap-1 grid h-[180px] w-full overflow-hidden ${browserImageGridClass}`}
+                className={`grid h-[180px] w-full gap-1 overflow-hidden ${browserImageGridClass}`}
               >
                 {browserImages.map((img, index) => (
                   <div
                     key={`${img.img}-${index}`}
-                    className="rounded-lg relative h-full w-full overflow-hidden"
+                    className="relative h-full w-full overflow-hidden rounded-lg"
                   >
                     <img
-                      className="left-0 top-0 absolute h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
                       src={img.img}
                       alt={data.type}
                     />
@@ -521,7 +526,7 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`browser-placeholder-${index}`}
-                      className="rounded-sm bg-ds-bg-neutral-subtle-default h-full w-full"
+                      className="h-full w-full rounded-sm bg-ds-bg-neutral-subtle-default"
                     />
                   )
                 )}
@@ -530,8 +535,8 @@ export function Node({ id, data }: NodeProps) {
             {data.type === 'document_agent' &&
               data?.agent?.tasks &&
               data.agent.tasks.length > 0 && (
-                <div className="rounded-sm relative h-[180px] w-full overflow-hidden">
-                  <div className="left-0 top-0 absolute h-[500px] w-[900px] origin-top-left scale-[0.36]">
+                <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
+                  <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
                     <Folder data={data.agent as Agent} />
                   </div>
                 </div>
@@ -539,14 +544,14 @@ export function Node({ id, data }: NodeProps) {
 
             {data.type === 'developer_agent' && terminalTasks.length > 0 && (
               <div
-                className={`gap-1 grid h-[180px] w-full overflow-hidden ${terminalGridClass}`}
+                className={`grid h-[180px] w-full gap-1 overflow-hidden ${terminalGridClass}`}
               >
                 {terminalTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="rounded-lg relative h-full w-full overflow-hidden object-cover"
+                    className="relative h-full w-full overflow-hidden rounded-lg object-cover"
                   >
-                    <div className="left-0 top-0 absolute h-[250%] w-[250%] origin-top-left scale-[0.4]">
+                    <div className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
                       <Terminal content={task.terminal} />
                     </div>
                   </div>
@@ -555,7 +560,7 @@ export function Node({ id, data }: NodeProps) {
                   (_, index) => (
                     <div
                       key={`terminal-placeholder-${index}`}
-                      className="rounded-lg bg-ds-bg-neutral-subtle-default h-full w-full"
+                      className="h-full w-full rounded-lg bg-ds-bg-neutral-subtle-default"
                     />
                   )
                 )}
@@ -564,7 +569,7 @@ export function Node({ id, data }: NodeProps) {
           </div>
           {/* subtasks */}
           {data.agent?.tasks && data.agent?.tasks.length > 0 && (
-            <div className="gap-1 border-ds-border-neutral-default-default px-3 py-sm flex flex-col items-start justify-between border-[0px] border-t border-solid">
+            <div className="flex flex-col items-start justify-between gap-1 border-[0px] border-t border-solid border-ds-border-neutral-default-default px-3 py-sm">
               {/* <div className="font-bold leading-tight text-xs">Subtasks</div> */}
               <div className="flex flex-1 justify-end">
                 <TaskState
@@ -616,7 +621,7 @@ export function Node({ id, data }: NodeProps) {
             onWheel={(e) => {
               e.stopPropagation();
             }}
-            className="scrollbar scrollbar-always-visible gap-2 px-3 pb-2 ease-out animate-in fade-in-0 slide-in-from-bottom-4 flex flex-col overflow-y-auto duration-500"
+            className="scrollbar scrollbar-always-visible flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4"
             style={{
               maxHeight:
                 data.img && data.img.length > 0
@@ -677,7 +682,7 @@ export function Node({ id, data }: NodeProps) {
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}
-                    className={`gap-2 rounded-xl px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
+                    className={`flex gap-2 rounded-xl px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
                         ? 'hover:border-ds-border-status-completed-subtle-focus'
                         : task.status === TaskStatus.FAILED
@@ -762,16 +767,16 @@ export function Node({ id, data }: NodeProps) {
                     </div>
                     <div className="flex flex-1 flex-col items-start justify-center">
                       <div
-                        className={`w-full flex-grow-0 ${taskTextClass} text-xs font-medium leading-13 pointer-events-auto text-wrap break-all whitespace-pre-line select-text`}
+                        className={`w-full flex-grow-0 ${taskTextClass} pointer-events-auto select-text whitespace-pre-line text-wrap break-all text-xs font-medium leading-13`}
                       >
-                        <div className="gap-sm flex items-center">
+                        <div className="flex items-center gap-sm">
                           <div
                             className={`text-xs font-bold leading-13 ${taskTextClass}`}
                           >
                             No. {getTaskId(task.id)}
                           </div>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover leading-none">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold leading-none text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
@@ -781,8 +786,8 @@ export function Node({ id, data }: NodeProps) {
                                   task.status === TaskStatus.FAILED
                                     ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-default-default hover:bg-ds-bg-status-error-subtle-hover'
                                     : task.status === TaskStatus.COMPLETED
-                                      ? 'text-ds-text-status-completed-default-default bg-ds-bg-neutral-subtle-default'
-                                      : 'text-ds-text-neutral-default-default bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-hover'
+                                      ? 'bg-ds-bg-neutral-subtle-default text-ds-text-status-completed-default-default'
+                                      : 'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-subtle-hover'
                                 } rounded-lg px-1 py-0.5 text-xs font-bold leading-none`}
                               >
                                 Attempt {task.failure_count}
@@ -793,11 +798,11 @@ export function Node({ id, data }: NodeProps) {
                         <div>{task.content}</div>
                       </div>
                       {task?.status === TaskStatus.RUNNING && (
-                        <div className="mt-xs gap-2 animate-in fade-in-0 slide-in-from-bottom-2 flex items-center duration-400">
+                        <div className="duration-400 mt-xs flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2">
                           {/* active toolkit */}
                           {lastActiveToolkit?.toolkitStatus ===
                             AgentStatusValue.RUNNING && (
-                            <div className="min-w-0 gap-sm animate-in fade-in-0 slide-in-from-right-2 flex flex-1 items-center justify-start duration-300">
+                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
                               {getToolkitIcon(
                                 lastActiveToolkit.toolkitName ?? ''
                               )}
@@ -808,11 +813,11 @@ export function Node({ id, data }: NodeProps) {
                                   ].activeWorkspace
                                     ? '!w-[100px]'
                                     : '!w-[500px]'
-                                } min-w-0 pt-1 text-xs leading-17 text-ds-text-status-running-default-default flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap`}
+                                } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-ds-text-status-running-default-default`}
                               >
                                 <ShinyText
                                   text={task.toolkits?.[0].toolkitName}
-                                  className="text-xs font-bold leading-17 text-ds-text-status-running-default-default pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
+                                  className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-ds-text-status-running-default-default"
                                 />
                               </div>
                             </div>
@@ -833,14 +838,14 @@ export function Node({ id, data }: NodeProps) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 24 }}
               transition={{ duration: 0.3, ease: 'easeIn' }}
-              className="gap-sm rounded-r-xl bg-ds-bg-neutral-subtle-default py-2 pl-sm flex w-[342px] shrink-0 flex-col overflow-hidden"
+              className="flex w-[342px] shrink-0 flex-col gap-sm overflow-hidden rounded-r-xl bg-ds-bg-neutral-subtle-default py-2 pl-sm"
             >
               <div
                 ref={logRef}
                 onWheel={(e) => {
                   e.stopPropagation();
                 }}
-                className="scrollbar scrollbar-always-visible pr-sm rounded-xl max-h-[calc(100vh-200px)] overflow-y-scroll"
+                className="scrollbar scrollbar-always-visible max-h-[calc(100vh-200px)] overflow-y-scroll rounded-xl pr-sm"
               >
                 <AnimatePresence mode="wait">
                   {selectedTask && (
@@ -850,7 +855,7 @@ export function Node({ id, data }: NodeProps) {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -16 }}
                       transition={{ duration: 0.25, ease: 'easeIn' }}
-                      className="gap-sm flex w-full flex-col"
+                      className="flex w-full flex-col gap-sm"
                     >
                       <TaskLogPanelContent
                         selectedTask={selectedTask}

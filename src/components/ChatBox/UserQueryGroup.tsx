@@ -12,10 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
 import { ChevronDown, FileText } from 'lucide-react';
 import React, {
@@ -47,26 +48,26 @@ const AgentResultCard: React.FC<{
   const label = agentName || 'Agent';
 
   return (
-    <div className="px-2 overflow-hidden">
+    <div className="overflow-hidden px-2">
       {/* Header (always visible) */}
       <button
         type="button"
-        className="focus-visible:ring-ds-border-brand-default-focus/40 gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex w-full items-center text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        className="focus-visible:ring-ds-border-brand-default-focus/40 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:outline-none focus-visible:ring-2 active:bg-ds-bg-neutral-default-active"
         onClick={() => setIsOpen((v) => !v)}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <ChevronDown
           size={14}
           aria-hidden
-          className={`text-ds-icon-neutral-default-default shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+          className={`shrink-0 text-ds-icon-neutral-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
 
       {/* Collapsible body */}
       <div
-        className={`ease-in-out overflow-hidden transition-all duration-200 ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+        className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
-        <div className="border-ds-border-neutral-default-default px-1 py-1 border-t">
+        <div className="border-t border-ds-border-neutral-default-default px-1 py-1">
           <AgentMessageCard
             id={id}
             content={content}
@@ -201,20 +202,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         return false;
       })());
 
-  const isLastUserQuery =
+  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const lastUserMessageId = activeTask?.messages
+    .filter((m: any) => m.role === 'user')
+    .pop()?.id;
+  const isCurrentUserQuery = Boolean(
     !queryGroup.taskMessage &&
     !isHumanReply &&
-    activeTaskId &&
-    chatState.tasks[activeTaskId] &&
+    activeTask &&
     queryGroup.userMessage &&
-    queryGroup.userMessage.id ===
-      chatState.tasks[activeTaskId].messages
-        .filter((m: any) => m.role === 'user')
-        .pop()?.id &&
+    queryGroup.userMessage.id === lastUserMessageId
+  );
+  const isLastUserQuery =
+    isCurrentUserQuery &&
     // Only show during active phases (not finished)
-    chatState.tasks[activeTaskId].status !== ChatTaskStatus.FINISHED;
+    activeTask?.status !== ChatTaskStatus.FINISHED;
 
-  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const isSingleAgentTask =
+    inferSessionModeFromTask(activeTask, SessionMode.WORKFORCE) ===
+    SessionMode.SINGLE_AGENT;
   const hasUnconfirmedPlan = Boolean(
     activeTask?.messages.some(
       (m: any) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
@@ -233,9 +239,21 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // in the normal running/input path.
   const shouldShowFallbackTask =
     isLastUserQuery && activeTaskId && isPlanningPhase;
+  const shouldShowSingleAgentWorkLog =
+    isCurrentUserQuery &&
+    activeTaskId &&
+    activeTask &&
+    isSingleAgentTask &&
+    !isPlanningPhase &&
+    !isHumanReply &&
+    (activeTask.status !== ChatTaskStatus.PENDING ||
+      (activeTask.taskAssigning?.length ?? 0) > 0);
 
   const task =
-    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
+    (queryGroup.taskMessage ||
+      shouldShowFallbackTask ||
+      shouldShowSingleAgentWorkLog) &&
+    activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
 
@@ -308,6 +326,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
   /** Task card visible (user message is sticky alone in this mode). */
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
+  const showTaskPlanCard = taskCardVisible && !shouldShowSingleAgentWorkLog;
 
   const hasConfirmedSubTasks = Boolean(
     task?.messages.some(
@@ -315,7 +334,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     )
   );
   const showPreparingExecute =
-    taskCardVisible &&
+    showTaskPlanCard &&
     Boolean(activeTaskId && task) &&
     hasConfirmedSubTasks &&
     task!.status === ChatTaskStatus.PENDING;
@@ -353,7 +372,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {taskCardVisible && queryGroup.userMessage && (
         <motion.div
           ref={taskBoxRef}
-          className="top-0 sticky z-20"
+          className="sticky top-0 z-20"
           style={{
             position: 'sticky',
             top: 0,
@@ -375,7 +394,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {taskCardVisible && activeTaskId && (
+      {showTaskPlanCard && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{
@@ -450,7 +469,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="gap-4 flex flex-col"
+                className="flex flex-col gap-4"
               >
                 <AgentMessageCard
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
@@ -460,7 +479,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   onMarkdownRenderComplete={onTaskCompletionMarkdownReady}
                   deferredFooter={
                     message.fileList?.length ? (
-                      <div className="my-2 gap-2 flex flex-wrap">
+                      <div className="my-2 flex flex-wrap gap-2">
                         {message.fileList.map(
                           (file: any, fileIndex: number) => (
                             <motion.div
@@ -471,14 +490,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                               onClick={() => {
                                 openFilePreview(file);
                               }}
-                              className="gap-2 rounded-lg bg-ds-bg-neutral-default-default px-3 py-2 hover:bg-ds-bg-neutral-default-hover flex w-[140px] cursor-pointer items-center transition-colors"
+                              className="flex w-[140px] cursor-pointer items-center gap-2 rounded-lg bg-ds-bg-neutral-default-default px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-hover"
                             >
                               <FileText
                                 size={16}
-                                className="text-ds-icon-neutral-default-default flex-shrink-0"
+                                className="flex-shrink-0 text-ds-icon-neutral-default-default"
                               />
                               <div className="flex flex-col">
-                                <div className="text-body-sm font-bold text-ds-text-neutral-default-default max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap">
+                                <div className="max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
                                   {file.name.split('.')[0]}
                                 </div>
                                 <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
@@ -501,7 +520,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="gap-4 flex flex-col"
+                className="flex flex-col gap-4"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -536,7 +555,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="gap-4 flex flex-col"
+                className="flex flex-col gap-4"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -556,10 +575,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="gap-4 flex flex-col"
+              className="flex flex-col gap-4"
             >
               {message.fileList && (
-                <div className="gap-2 flex flex-wrap">
+                <div className="flex flex-wrap gap-2">
                   {message.fileList.map((file: any, fileIndex: number) => (
                     <motion.div
                       key={`file-${message.id}-${file.name}-${fileIndex}`}
@@ -569,14 +588,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                       onClick={() => {
                         openFilePreview(file);
                       }}
-                      className="gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 hover:bg-ds-bg-neutral-default-hover flex w-[120px] cursor-pointer items-center transition-colors"
+                      className="flex w-[120px] cursor-pointer items-center gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 transition-colors hover:bg-ds-bg-neutral-default-hover"
                     >
                       <FileText
                         size={16}
-                        className="text-ds-icon-neutral-default-default flex-shrink-0"
+                        className="flex-shrink-0 text-ds-icon-neutral-default-default"
                       />
                       <div className="flex flex-col">
-                        <div className="text-body max-w-48 text-sm font-bold text-ds-text-neutral-default-default overflow-hidden text-ellipsis whitespace-nowrap">
+                        <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
                           {file.name.split('.')[0]}
                         </div>
                         <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
@@ -612,7 +631,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="mb-md gap-4 px-sm flex flex-col"
+            className="mb-md flex flex-col gap-4 px-sm"
           >
             <TaskCompletionCard
               taskPrompt={queryGroup.userMessage?.content}

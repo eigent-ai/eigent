@@ -35,8 +35,10 @@ import {
   AgentStatusValue,
   AgentStep,
   ChatTaskStatus,
+  SessionMode,
   TaskStatus,
   type ChatTaskStatusType,
+  type SessionModeType,
 } from '@/types/constants';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -153,6 +155,7 @@ async function resolveCdpBrowsersForRequest(
 }
 
 interface Task {
+  sessionMode?: SessionModeType;
   messages: Message[];
   type: string;
   summaryTask: string;
@@ -401,6 +404,7 @@ export interface ChatStore {
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   setActiveTaskId: (taskId: string) => void;
+  setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (taskId: string, question: string, time: number) => Promise<void>;
   startTask: (
     taskId: string,
@@ -410,7 +414,8 @@ export interface ChatStore {
     messageContent?: string,
     messageAttaches?: File[],
     executionId?: string,
-    projectId?: string
+    projectId?: string,
+    sessionMode?: SessionModeType
   ) => Promise<void>;
   handleConfirmTask: (
     project_id: string,
@@ -468,7 +473,7 @@ export interface ChatStore {
   setElapsed: (taskId: string, taskTime: number) => void;
   getFormattedTaskTime: (taskId: string) => string;
   addTokens: (taskId: string, tokens: number) => void;
-  getTokens: (taskId: string) => void;
+  getTokens: (taskId: string) => number;
   setUpdateCount: () => void;
   setCotList: (taskId: string, cotList: string[]) => void;
   setHasAddWorker: (taskId: string, hasAddWorker: boolean) => void;
@@ -691,6 +696,32 @@ const normalizeToolkitMessage = (value: unknown) => {
   }
 };
 
+const isSingleAgentEventName = (value: unknown) =>
+  typeof value === 'string' &&
+  (value === 'single_agent' ||
+    value === 'Agents.single_agent' ||
+    value.endsWith('.single_agent'));
+
+const ensureSingleAgentAssignment = (
+  taskAssigning: Agent[],
+  taskId: string,
+  agentId?: string
+) => {
+  const existingIndex = taskAssigning.findIndex(
+    (agent) => agent.type === 'single_agent'
+  );
+  if (existingIndex !== -1) return existingIndex;
+  taskAssigning.push({
+    agent_id: agentId || `${taskId}-single-agent`,
+    name: 'Single Agent',
+    type: 'single_agent',
+    status: AgentStatusValue.RUNNING,
+    tasks: [],
+    log: [],
+  });
+  return taskAssigning.length - 1;
+};
+
 /** Persist subtask edits to backend via PUT /task/{project_id}. */
 const persistSubtaskEdits = async (taskInfo: TaskInfo[]) => {
   const projectId = useProjectStore.getState().activeProjectId;
@@ -706,12 +737,32 @@ const resolveProcessTaskIdForToolkitEvent = (
   agentName: string | undefined,
   processTaskId: unknown
 ) => {
-  const direct = typeof processTaskId === 'string' ? processTaskId : '';
-  if (direct) return direct;
+  const currentTask = tasksById[currentTaskId];
+  const taskRunning = currentTask?.taskRunning ?? [];
+  const taskInfo = currentTask?.taskInfo ?? [];
+  const taskAssigning = currentTask?.taskAssigning ?? [];
 
-  const running = tasksById[currentTaskId]?.taskRunning ?? [];
+  const hasTaskId = (id: string) =>
+    taskRunning.some((task) => task.id === id) ||
+    taskInfo.some((task) => task.id === id) ||
+    taskAssigning.some((agent) => agent.tasks.some((task) => task.id === id));
+
+  const singleAgent = taskAssigning.find(
+    (agent) => agent.type === 'single_agent'
+  );
+  const singleAgentTasks = singleAgent?.tasks ?? [];
+  const singleAgentRunning =
+    singleAgentTasks.find((task) => task.status === TaskStatus.RUNNING) ||
+    taskRunning.find((task) => task.status === TaskStatus.RUNNING) ||
+    singleAgentTasks.find((task) => task.status !== TaskStatus.COMPLETED) ||
+    taskRunning.find((task) => task.status !== TaskStatus.COMPLETED);
+
+  const direct = typeof processTaskId === 'string' ? processTaskId : '';
+  if (direct && hasTaskId(direct)) return direct;
+  if (singleAgentRunning?.id) return singleAgentRunning.id;
+
   // Prefer a task owned by the same agent
-  const match = running.findLast(
+  const match = taskRunning.findLast(
     (t: any) =>
       typeof t?.id === 'string' &&
       t.id &&
@@ -719,8 +770,9 @@ const resolveProcessTaskIdForToolkitEvent = (
   );
   if (match?.id) return match.id as string;
   // Fallback to the latest running task id
-  const last = running.at(-1);
+  const last = taskRunning.at(-1);
   if (typeof last?.id === 'string' && last.id) return last.id;
+  if (direct) return direct;
   return '';
 };
 // Throttle streaming decompose text updates to prevent excessive re-renders
@@ -993,7 +1045,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       messageContent?: string,
       messageAttaches?: File[],
       executionId?: string,
-      projectId?: string
+      projectId?: string,
+      sessionMode?: SessionModeType
     ) => {
       // ✅ Wait for backend to be ready before starting task (except for replay/share)
       if (!type || type === 'normal') {
@@ -1040,6 +1093,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       //ProjectStore must exist as chatStore is already
       const projectStore = useProjectStore.getState();
       const project_id = projectId || projectStore.activeProjectId;
+      const sessionModeForRequest =
+        sessionMode ||
+        usePageTabStore.getState().sessionSidePanelMode ||
+        SessionMode.WORKFORCE;
       //Create a new chatStore on Start
       let newTaskId = taskId;
       let targetChatStore = { getState: () => get() }; // Default to current store
@@ -1073,6 +1130,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
       }
+      targetChatStore
+        .getState()
+        .setTaskSessionMode(newTaskId, sessionModeForRequest);
 
       // Replay/share APIs live on the server side, not Brain.
       const serverBaseUrl = import.meta.env.DEV
@@ -1313,6 +1373,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             env_path: envPath,
             search_config: searchConfig,
             server_url: getDirectServerApiBaseUrl(),
+            session_mode: sessionModeForRequest,
           }
         : undefined;
 
@@ -1424,6 +1485,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             document_agent: 'Document Agent',
             multi_modal_agent: 'Multi Modal Agent',
             social_media_agent: 'Social Media Agent',
+            single_agent: 'Single Agent',
           };
 
           /**
@@ -1592,6 +1654,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskAssigning,
             setTaskInfo,
             setTaskRunning,
+            setTaskSessionMode,
             addTerminal,
             addFileList,
             setActiveAsk,
@@ -1661,6 +1724,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (agentMessages.step === AgentStep.TO_SUB_TASKS) {
+            setTaskSessionMode(currentTaskId, SessionMode.WORKFORCE);
             // Clear streaming decompose text when task splitting is done
             clearStreamingDecomposeText(currentTaskId);
             // Clean up TTFT tracking
@@ -1922,6 +1986,83 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               currentChatStore.tasks[currentTaskId]?.tokens || 0
             );
 
+            return;
+          }
+          if (agentMessages.step === AgentStep.TODO_STATE) {
+            setTaskSessionMode(currentTaskId, SessionMode.SINGLE_AGENT);
+            const todos = agentMessages.data.todos || [];
+            const agentId =
+              agentMessages.data.agent_id || `${currentTaskId}-single-agent`;
+            const existingAgents = [...tasks[currentTaskId].taskAssigning];
+            const existingIndex = existingAgents.findIndex(
+              (agent) =>
+                agent.agent_id === agentId || agent.type === 'single_agent'
+            );
+            const previousTasks = [
+              ...(existingIndex === -1
+                ? []
+                : existingAgents[existingIndex].tasks || []),
+              ...(tasks[currentTaskId].taskRunning || []),
+              ...(tasks[currentTaskId].taskInfo || []),
+            ];
+            const previousTaskById = new Map(
+              previousTasks.map((task) => [task.id, task])
+            );
+            const todoTasks: TaskInfo[] = todos.map((todo, index) => {
+              const id = todo.id || `todo_${index + 1}`;
+              const previous = previousTaskById.get(id);
+              return {
+                ...previous,
+                id,
+                content:
+                  todo.status === 'in_progress' && todo.active_form
+                    ? todo.active_form
+                    : todo.content,
+                status:
+                  todo.status === 'completed'
+                    ? TaskStatus.COMPLETED
+                    : todo.status === 'in_progress'
+                      ? TaskStatus.RUNNING
+                      : TaskStatus.EMPTY,
+                toolkits: previous?.toolkits,
+                terminal: previous?.terminal,
+                fileList: previous?.fileList,
+                report: previous?.report,
+                failure_count: previous?.failure_count,
+              };
+            });
+            const singleAgent: Agent =
+              existingIndex === -1
+                ? {
+                    agent_id: agentId,
+                    name: 'Single Agent',
+                    type: 'single_agent',
+                    tasks: todoTasks,
+                    log: [],
+                    img: [],
+                    tools: ['TodoToolkit'],
+                    activeWebviewIds: [],
+                  }
+                : {
+                    ...existingAgents[existingIndex],
+                    agent_id: existingAgents[existingIndex].agent_id || agentId,
+                    name: existingAgents[existingIndex].name || 'Single Agent',
+                    type: 'single_agent',
+                    tasks: todoTasks,
+                  };
+
+            if (existingIndex === -1) {
+              existingAgents.push(singleAgent);
+            } else {
+              existingAgents[existingIndex] = singleAgent;
+            }
+
+            setTaskInfo(currentTaskId, todoTasks);
+            setTaskRunning(currentTaskId, todoTasks);
+            setTaskAssigning(currentTaskId, existingAgents);
+            if (tasks[currentTaskId].status !== ChatTaskStatus.FINISHED) {
+              setStatus(currentTaskId, ChatTaskStatus.RUNNING);
+            }
             return;
           }
           // Task State
@@ -2321,6 +2462,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 (agent: Agent) => agent.type === agentMessages.data.agent_name
               );
             }
+            if (
+              assigneeAgentIndex === -1 &&
+              (isSingleAgentEventName(agentMessages.data.agent_name) ||
+                tasks[currentTaskId].sessionMode === SessionMode.SINGLE_AGENT)
+            ) {
+              assigneeAgentIndex = ensureSingleAgentAssignment(
+                taskAssigning,
+                currentTaskId,
+                agentMessages.data.agent_id
+              );
+            }
 
             if (assigneeAgentIndex !== -1) {
               const message = filterMessage(agentMessages);
@@ -2436,12 +2588,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               agentMessages.data.process_task_id
             );
 
-            const assigneeAgentIndex = taskAssigning!.findIndex(
-              (agent: Agent) =>
-                agent.tasks.find(
-                  (task: TaskInfo) => task.id === resolvedProcessTaskId
-                )
+            let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) =>
+              agent.tasks.find(
+                (task: TaskInfo) => task.id === resolvedProcessTaskId
+              )
             );
+            if (
+              assigneeAgentIndex === -1 &&
+              (isSingleAgentEventName(agentMessages.data.agent_name) ||
+                tasks[currentTaskId].sessionMode === SessionMode.SINGLE_AGENT)
+            ) {
+              assigneeAgentIndex = ensureSingleAgentAssignment(
+                taskAssigning,
+                currentTaskId,
+                agentMessages.data.agent_id
+              );
+            }
             if (assigneeAgentIndex !== -1) {
               const message = filterMessage(agentMessages);
               if (message) {
@@ -2486,9 +2648,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             const { toolkit_name, method_name, message } = agentMessages.data;
             const taskIndex = taskRunning.findIndex(
-              (task) =>
-                task.agent?.type === agentMessages.data.agent_name &&
-                task.toolkits?.at(-1)?.toolkitName === toolkit_name
+              (task) => task.id === resolvedProcessTaskId
             );
 
             if (taskIndex !== -1) {
@@ -2496,14 +2656,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const targetMessage = filterMessage(agentMessages);
 
                 if (targetMessage) {
-                  taskRunning![taskIndex].toolkits?.unshift({
-                    toolkitName: toolkit_name,
-                    toolkitMethods: method_name,
-                    message: normalizeToolkitMessage(
-                      targetMessage.data.message
-                    ),
-                    toolkitStatus: AgentStatusValue.COMPLETED,
-                  });
+                  const runningToolkitIndex = taskRunning[
+                    taskIndex
+                  ].toolkits?.findLastIndex(
+                    (toolkit) =>
+                      toolkit.toolkitName === toolkit_name &&
+                      toolkit.toolkitMethods === method_name &&
+                      toolkit.toolkitStatus === AgentStatusValue.RUNNING
+                  );
+                  if (
+                    taskRunning[taskIndex].toolkits &&
+                    runningToolkitIndex !== undefined &&
+                    runningToolkitIndex !== -1
+                  ) {
+                    taskRunning[taskIndex].toolkits[
+                      runningToolkitIndex
+                    ].message =
+                      `${normalizeToolkitMessage(taskRunning[taskIndex].toolkits[runningToolkitIndex].message)}\n${normalizeToolkitMessage(targetMessage.data.message)}`.trim();
+                    taskRunning[taskIndex].toolkits[
+                      runningToolkitIndex
+                    ].toolkitStatus = AgentStatusValue.COMPLETED;
+                  } else {
+                    taskRunning![taskIndex].toolkits ??= [];
+                    taskRunning![taskIndex].toolkits?.push({
+                      toolkitName: toolkit_name,
+                      toolkitMethods: method_name,
+                      message: normalizeToolkitMessage(
+                        targetMessage.data.message
+                      ),
+                      toolkitStatus: AgentStatusValue.COMPLETED,
+                    });
+                  }
                 }
               }
             }
@@ -2513,9 +2696,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Terminal
           if (agentMessages.step === AgentStep.TERMINAL) {
+            const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+              tasks,
+              currentTaskId,
+              agentMessages.data.agent_name,
+              agentMessages.data.process_task_id
+            );
             addTerminal(
               currentTaskId,
-              agentMessages.data.process_task_id as string,
+              resolvedProcessTaskId,
               agentMessages.data.output as string
             );
             return;
@@ -2539,11 +2728,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               path: file_path || '',
               icon: FileText,
             };
-            addFileList(
+            const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+              tasks,
               currentTaskId,
-              agentMessages.data.process_task_id as string,
-              fileInfo
+              agentMessages.data.agent_name,
+              agentMessages.data.process_task_id
             );
+            addFileList(currentTaskId, resolvedProcessTaskId, fileInfo);
             return;
           }
 
@@ -2766,6 +2957,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (agentMessages.step === AgentStep.END) {
+            const endData: unknown = agentMessages.data;
+            const endMessageText =
+              typeof endData === 'string'
+                ? endData
+                : typeof (endData as { message?: unknown })?.message ===
+                    'string'
+                  ? (endData as { message: string }).message
+                  : '';
+            const endTokens =
+              typeof endData === 'object' &&
+              endData !== null &&
+              typeof (endData as { tokens?: unknown }).tokens === 'number'
+                ? (endData as { tokens: number }).tokens
+                : 0;
+            if (endTokens > 0 && getTokens(currentTaskId) === 0) {
+              addTokens(currentTaskId, endTokens);
+            }
             // compute task time
             console.log(
               'tasks[taskId].snapshotsTemp',
@@ -2844,10 +3052,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               try {
                 const st = tasks[currentTaskId].summaryTask || '';
                 const parts = st.split('|');
-                const rawEndPayload =
-                  typeof agentMessages.data === 'string'
-                    ? (agentMessages.data as string)
-                    : '';
+                const rawEndPayload = endMessageText;
                 const completionSummary = rawEndPayload || parts[1] || '';
                 // The Stop button hits backend's Action.skip_task, which
                 // also yields an `end` SSE event with this fixed sentinel.
@@ -2928,7 +3133,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   .flat();
               })
               .flat();
-            let endMessage = agentMessages.data as string;
+            let endMessage = endMessageText;
             let summary = endMessage.match(/<summary>(.*?)<\/summary>/)?.[1];
             let newMessage: Message | null = null;
             const agent_summary_end = tasks[currentTaskId].messages.findLast(
@@ -2981,7 +3186,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               project_id,
               currentTaskId,
               ExecutionStatus.Completed,
-              tasks[currentTaskId]?.tokens || 0
+              getTokens(currentTaskId)
             );
 
             return;
@@ -3244,6 +3449,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     setActiveTaskId: (taskId: string) => {
       set({
         activeTaskId: taskId,
+      });
+    },
+    setTaskSessionMode: (taskId: string, mode: SessionModeType) => {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task || task.sessionMode === mode) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              sessionMode: mode,
+            },
+          },
+        };
       });
     },
     addMessages(taskId, message) {

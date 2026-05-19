@@ -15,9 +15,13 @@
 import { AgentFolderSection } from '@/components/Session/SidePanelSections/AgentFolderSection';
 import { AgentPoolSection } from '@/components/Session/SidePanelSections/AgentPoolSection';
 import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
-import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import {
+  collectSidePanelOutputFiles,
+  mergeSidePanelOutputFiles,
+} from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
 import { ExecutionContextSection } from '@/components/Session/SidePanelSections/ExecutionContextSection';
 import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
+import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
 import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { cn } from '@/lib/utils';
@@ -58,6 +62,10 @@ export function WorkforceSidePanel({
     : undefined;
 
   const agents = activeTask?.taskAssigning ?? [];
+  const projectFiles = useProjectOutputFiles(
+    projectStore.activeProjectId,
+    activeTask
+  );
   /** Subtask status is updated in `taskRunning` (e.g. TASK_STATE); `taskInfo` keeps plan text/order. */
   const subtasks = useMemo(() => {
     const taskInfo = activeTask?.taskInfo ?? [];
@@ -73,8 +81,12 @@ export function WorkforceSidePanel({
     });
   }, [activeTask?.taskInfo, activeTask?.taskRunning]);
   const files = useMemo(
-    () => collectSidePanelOutputFiles(activeTask),
-    [activeTask]
+    () =>
+      mergeSidePanelOutputFiles(
+        collectSidePanelOutputFiles(activeTask),
+        projectFiles
+      ),
+    [activeTask, projectFiles]
   );
   const uploadedFiles = useMemo(() => {
     if (!activeTask) return [];
@@ -113,7 +125,7 @@ export function WorkforceSidePanel({
   return (
     <>
       <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
-        <div className="gap-2 px-2 pb-2 min-h-0 min-w-0 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-2">
           <AgentPoolSection
             title={t('layout.workforce-agent-pool', {
               defaultValue: 'Agent Pool',
