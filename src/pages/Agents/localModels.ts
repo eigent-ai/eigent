@@ -101,6 +101,7 @@ export const DARK_FILL_MODELS = new Set([
 ]);
 
 export const PROVIDER_AVATAR_URLS: Record<string, string> = {
+  nebius: 'https://github.com/nebius.png',
   'samba-nova': 'https://github.com/sambanova.png',
   mistral: 'https://github.com/mistralai.png',
   grok: 'https://github.com/xai-org.png',

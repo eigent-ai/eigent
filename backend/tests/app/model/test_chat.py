@@ -140,6 +140,11 @@ class TestModelPlatformMapping:
         chat = self._create_chat("grok")
         assert chat.model_platform == "openai-compatible-model"
 
+    def test_chat_maps_nebius_to_openai_compatible_model(self):
+        """Test Chat maps Nebius platform alias correctly."""
+        chat = self._create_chat("nebius")
+        assert chat.model_platform == "openai-compatible-model"
+
     def test_chat_keeps_supported_platforms_unchanged(self):
         """Test Chat keeps native camel-ai platforms unchanged."""
         chat = self._create_chat("mistral")
@@ -150,6 +155,11 @@ class TestModelPlatformMapping:
     def test_agent_model_config_maps_grok_alias(self):
         """Test AgentModelConfig also maps grok alias for per-agent overrides."""
         config = AgentModelConfig(model_platform="grok")
+        assert config.model_platform == "openai-compatible-model"
+
+    def test_agent_model_config_maps_nebius_alias(self):
+        """Test AgentModelConfig also maps Nebius alias."""
+        config = AgentModelConfig(model_platform="nebius")
         assert config.model_platform == "openai-compatible-model"
 
     def test_agent_model_config_keeps_supported_platforms_unchanged(self):
