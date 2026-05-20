@@ -32,6 +32,10 @@ ALLOWED_EXTENSIONS = {
     "pdf", "txt", "md", "csv",
     "json", "xml", "yaml", "yml",
     "doc", "docx", "xls", "xlsx",
+    "html", "htm", "svg",
+    "py", "ipynb", "js", "jsx", "ts", "tsx",
+    "css", "scss", "sh", "sql",
+    "log", "toml", "ini", "cfg", "conf",
     "zip",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB

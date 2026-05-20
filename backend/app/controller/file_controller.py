@@ -12,9 +12,9 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import json
 import logging
 import mimetypes
-import re
 import time
 from pathlib import Path
 from typing import Annotated
@@ -23,8 +23,14 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
-from app.component.environment import env
 from app.utils.file_utils import list_files, resolve_under_base
+from app.utils.server.session import (
+    SessionIdError,
+    get_session_uploads_dir,
+    validate_session_id,
+)
+from app.utils.workspace_paths import get_workspace_root
+from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
 file_logger = logging.getLogger("file_controller")
@@ -32,49 +38,23 @@ file_logger = logging.getLogger("file_controller")
 # Config
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 MAX_FILES_PER_SESSION = 20
-WORKSPACE_ROOT = env("EIGENT_WORKSPACE", "~/.eigent/workspace")
-SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-
-
-def _get_eigent_root() -> Path:
-    """Base root for eigent storage (~/eigent). Do NOT use env file_save_path
-    here: chat overwrites it to task path, which would break list/stream."""
-    eigent = Path.home() / "eigent"
-    if eigent.exists():
-        return eigent
-    dot_eigent = Path.home() / ".eigent"
-    if dot_eigent.exists():
-        return dot_eigent
-    return eigent  # default to ~/eigent
-
-
-def _get_workspace_root() -> Path:
-    return Path(WORKSPACE_ROOT).expanduser()
 
 
 def _validate_session_id(session_id: str) -> str:
-    normalized = (session_id or "").strip()
-    if not SESSION_ID_PATTERN.fullmatch(normalized):
-        raise ValueError("Invalid X-Session-ID")
-    return normalized
+    return validate_session_id(session_id)
 
 
 def _get_session_uploads_dir(session_id: str) -> Path:
-    root = _get_workspace_root().resolve()
-    validated = _validate_session_id(session_id)
-    uploads_dir = (root / validated / "uploads").resolve()
-    try:
-        uploads_dir.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("Invalid X-Session-ID") from exc
-    return uploads_dir
+    return get_session_uploads_dir(session_id, get_workspace_root())
 
 
 def _count_session_uploads(session_id: str) -> int:
     uploads_dir = _get_session_uploads_dir(session_id)
     if not uploads_dir.exists():
         return 0
-    return len(list(uploads_dir.iterdir()))
+    return sum(
+        1 for p in uploads_dir.iterdir() if not p.name.endswith(".meta.json")
+    )
 
 
 @router.post("/files")
@@ -93,7 +73,7 @@ async def upload_file(
         )
     try:
         validated_session_id = _validate_session_id(x_session_id)
-    except ValueError as exc:
+    except SessionIdError as exc:
         raise HTTPException(
             status_code=400, detail="Invalid X-Session-ID"
         ) from exc
@@ -127,6 +107,21 @@ async def upload_file(
     uploads_dir.mkdir(parents=True, exist_ok=True)
     target_path = uploads_dir / stored_name
     target_path.write_bytes(content)
+    meta_path = uploads_dir / f"{stored_name}.meta.json"
+    try:
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "original_filename": file.filename or stored_name,
+                    "size": len(content),
+                    "uploaded_at": int(time.time()),
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        file_logger.warning("Failed to write upload sidecar: %s", meta_path)
 
     file_id = f"upload://{stored_name}"
     file_logger.info(
@@ -140,53 +135,9 @@ async def upload_file(
     }
 
 
-def _sanitize_email(email: str) -> str:
-    """Sanitize email for use in path (match chat_controller logic)."""
-    return re.sub(r'[\\/*?:"<>|\s]', "_", email.split("@")[0]).strip(".")
-
-
 def _normalize_relative_path(path: str) -> str:
     """Normalize relative path to URL-safe POSIX style."""
     return path.replace("\\", "/")
-
-
-def _get_project_root(email: str, project_id: str) -> Path:
-    """Get project root path: ~/eigent/{email}/project_{project_id}/."""
-    root = _get_eigent_root()
-    email_sanitized = _sanitize_email(email)
-    return root / email_sanitized / f"project_{project_id}"
-
-
-def _resolve_project_root(email: str, project_id: str) -> Path:
-    """
-    Resolve project root, preferring the email-scoped path but falling back to
-    any local project_{project_id} directory when the stored email differs from
-    the current login identity.
-    """
-    preferred = _get_project_root(email, project_id)
-    if preferred.exists():
-        return preferred
-
-    root = _get_eigent_root()
-    candidate_name = f"project_{project_id}"
-    try:
-        for child in root.iterdir():
-            if not child.is_dir():
-                continue
-            candidate = child / candidate_name
-            if candidate.exists():
-                file_logger.info(
-                    "Resolved project root via fallback lookup: %s -> %s",
-                    preferred,
-                    candidate,
-                )
-                return candidate
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        file_logger.warning("project root fallback lookup failed: %s", e)
-
-    return preferred
 
 
 @router.get("/files")
@@ -207,17 +158,20 @@ async def list_project_files(
             status_code=400,
             detail="project_id and email are required",
         )
-    project_root = _resolve_project_root(email, project_id)
-    list_dir = str(project_root)
-    if task_id:
-        list_dir = str(project_root / f"task_{task_id}")
-    if not Path(list_dir).exists():
+    resolver = get_workspace_resolver()
+    base = (
+        resolver.task_output_root(project_id, task_id, email)
+        if task_id
+        else resolver.project_root(project_id, email)
+    )
+    list_dir = str(base)
+    if not base.exists():
         file_logger.debug(
             "list_project_files: path does not exist: %s",
             list_dir,
         )
         return []
-    base_path = str(project_root.resolve())
+    base_path = str(base.resolve())
     try:
         paths = list_files(list_dir, base=base_path, max_entries=500)
     except Exception as e:
@@ -231,10 +185,16 @@ async def list_project_files(
             )
             # URL-encode the relative path for stream endpoint
             path_param = quote(rel, safe="")
+            stream_url = (
+                f"/files/stream?path={path_param}&project_id={quote(project_id)}"
+                f"&email={quote(email)}"
+            )
+            if task_id:
+                stream_url = f"{stream_url}&task_id={quote(task_id)}"
             result.append(
                 {
                     "filename": Path(abs_path).name,
-                    "url": f"/files/stream?path={path_param}&project_id={quote(project_id)}&email={quote(email)}",
+                    "url": stream_url,
                     "relativePath": rel,
                 }
             )
@@ -248,6 +208,7 @@ async def stream_file(
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),
+    task_id: str | None = Query(None, description="Optional task ID"),
 ):
     """
     Stream file content. Path must be relative to project root.
@@ -258,10 +219,15 @@ async def stream_file(
             status_code=400,
             detail="path, project_id and email are required",
         )
-    project_root = _resolve_project_root(email, project_id)
+    resolver = get_workspace_resolver()
+    base = (
+        resolver.task_output_root(project_id, task_id, email)
+        if task_id
+        else resolver.project_root(project_id, email)
+    )
     # Resolve path and ensure it stays under project root (security)
     try:
-        resolved = resolve_under_base(path, str(project_root.resolve()))
+        resolved = resolve_under_base(path, str(base.resolve()))
     except Exception as e:
         file_logger.warning("stream_file path validation failed: %s", e)
         raise HTTPException(status_code=400, detail="Invalid path") from e
@@ -285,6 +251,7 @@ async def preview_file(
     email: str,
     project_id: str,
     file_path: str,
+    task_id: str | None = Query(None, description="Optional task ID"),
 ):
     """
     Preview file content with a path-based URL so relative references inside
@@ -296,9 +263,14 @@ async def preview_file(
             detail="file_path, project_id and email are required",
         )
 
-    project_root = _resolve_project_root(email, project_id)
+    resolver = get_workspace_resolver()
+    base = (
+        resolver.task_output_root(project_id, task_id, email)
+        if task_id
+        else resolver.project_root(project_id, email)
+    )
     try:
-        resolved = resolve_under_base(file_path, str(project_root.resolve()))
+        resolved = resolve_under_base(file_path, str(base.resolve()))
     except Exception as e:
         file_logger.warning("preview_file path validation failed: %s", e)
         raise HTTPException(status_code=400, detail="Invalid path") from e

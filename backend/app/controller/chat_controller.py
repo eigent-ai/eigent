@@ -16,7 +16,6 @@ import asyncio
 import inspect
 import logging
 import os
-import re
 import time
 from pathlib import Path
 
@@ -54,11 +53,13 @@ from app.service.task import (
     set_current_task_id,
     task_locks,
 )
+from app.service.upload.service import PartialUploadContext
 from app.utils.browser_launcher import (
     ensure_cdp_browser_endpoint,
     is_cdp_url_available,
     normalize_cdp_url,
 )
+from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
 
@@ -67,6 +68,50 @@ chat_logger = logging.getLogger("chat_controller")
 
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
+
+
+def _user_upload_ids(attaches: list[str] | None) -> list[str]:
+    return [
+        attach
+        for attach in (attaches or [])
+        if isinstance(attach, str) and attach.startswith("upload://")
+    ]
+
+
+def _remember_user_uploads(
+    task_lock,
+    task_id: str | None,
+    attaches: list[str] | None,
+) -> None:
+    if not task_id:
+        return
+    uploads = _user_upload_ids(attaches)
+    if not uploads:
+        return
+    by_task = getattr(task_lock, "user_upload_ids_by_task", None)
+    if by_task is None:
+        by_task = {}
+        task_lock.user_upload_ids_by_task = by_task
+    existing = by_task.setdefault(task_id, [])
+    for upload_id in uploads:
+        if upload_id not in existing:
+            existing.append(upload_id)
+
+
+def _email_from_task_lock_or_env(task_lock) -> str | None:
+    email = getattr(task_lock, "email", None)
+    if email:
+        return email
+    current_file_save_path = os.environ.get("file_save_path", "")
+    if not current_file_save_path:
+        return None
+    path_parts = Path(current_file_save_path).parts
+    for root_name in ("eigent", ".eigent"):
+        if root_name in path_parts:
+            root_index = path_parts.index(root_name)
+            if root_index + 1 < len(path_parts):
+                return path_parts[root_index + 1]
+    return None
 
 
 def _is_remote_browser_hands(request: Request | None) -> bool:
@@ -269,10 +314,29 @@ async def start_chat_stream(data: Chat, request: Request):
     if safe_env_path:
         load_dotenv(dotenv_path=safe_env_path)
 
+    resolver = get_workspace_resolver()
+    frozen_dirs = resolver.freeze_task_directories(data, task_lock)
+    try:
+        await asyncio.to_thread(
+            resolver.write_task_snapshot,
+            data.email,
+            frozen_dirs.snapshot,
+        )
+    except Exception:
+        chat_logger.warning(
+            "Failed to persist task workspace snapshot",
+            extra={"project_id": data.project_id, "task_id": data.task_id},
+            exc_info=True,
+        )
+
+    session_id = getattr(request.state, "session_id", "")
+    task_lock.session_id = session_id
+    _remember_user_uploads(task_lock, data.task_id, data.attaches)
+
     # TODO(multi-tenant): os.environ is global – concurrent sessions overwrite
     # each other's API keys, file paths, and browser ports.  Pass these values
     # through Chat / request context instead of mutating the process environment.
-    os.environ["file_save_path"] = data.file_save_path()
+    os.environ["file_save_path"] = str(frozen_dirs.working_directory)
     os.environ["browser_port"] = str(data.browser_port)
     # Web mode: reuse an existing CDP endpoint first, otherwise acquire browser
     # through RemoteHands or launch a local browser when available.
@@ -294,20 +358,18 @@ async def start_chat_stream(data: Chat, request: Request):
                     extra={"project_id": data.project_id},
                 )
 
-    email_sanitized = re.sub(
-        r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]
-    ).strip(".")
-    camel_log = (
-        Path.home()
-        / ".eigent"
-        / email_sanitized
-        / ("project_" + data.project_id)
-        / ("task_" + data.task_id)
-        / "camel_logs"
-    )
+    camel_log = resolver.log_root(data.project_id, data.task_id, data.email)
     camel_log.mkdir(parents=True, exist_ok=True)
 
     os.environ["CAMEL_LOG_DIR"] = str(camel_log)
+    task_lock.upload_context_partial = PartialUploadContext(
+        session_id=session_id,
+        raw_server_url=data.server_url or "",
+        authorization=request.headers.get("Authorization", ""),
+        task_output_root=frozen_dirs.task_output_root,
+        task_start_time=frozen_dirs.task_start_time,
+        camel_log_dir=camel_log,
+    )
 
     if data.is_cloud():
         os.environ["cloud_api_key"] = data.api_key
@@ -383,46 +445,66 @@ def improve(id: str, data: SupplementChat, request: Request):
                 f"[CONTEXT] Preserved task result: {result_len} chars"
             )
 
-    # If task_id is provided, optimistically update
-    # file_save_path (will be destroyed if task is
-    # not complex)
-    # this is because a NEW workforce instance may be created for this task
-    new_folder_path = None
+    # If task_id is provided, freeze the task-level workspace context before
+    # the action reaches the workforce.  project_root() intentionally stays
+    # project-scoped; agent execution reads TaskLock.working_directory.
     if data.task_id:
         try:
-            # Get current environment values needed to construct new path
-            current_email = None
-
-            # Extract email from current file_save_path if available
-            current_file_save_path = os.environ.get("file_save_path", "")
-            if current_file_save_path:
-                path_parts = Path(current_file_save_path).parts
-                if len(path_parts) >= 3 and "eigent" in path_parts:
-                    eigent_index = path_parts.index("eigent")
-                    if eigent_index + 1 < len(path_parts):
-                        current_email = path_parts[eigent_index + 1]
-
-            # If we have the necessary info, update
-            # the file_save_path
+            current_email = _email_from_task_lock_or_env(task_lock)
             if current_email and id:
-                # Create new path using the existing
-                # pattern: email/project_{id}/task_{id}
-                new_folder_path = (
-                    Path.home()
-                    / "eigent"
-                    / current_email
-                    / f"project_{id}"
-                    / f"task_{data.task_id}"
+                resolver = get_workspace_resolver()
+                frozen_dirs = resolver.freeze_task_directories_for(
+                    project_id=id,
+                    task_id=data.task_id,
+                    email=current_email,
+                    task_lock=task_lock,
                 )
-                new_folder_path.mkdir(parents=True, exist_ok=True)
-                os.environ["file_save_path"] = str(new_folder_path)
-                chat_logger.info(
-                    f"Updated file_save_path to: {new_folder_path}"
+                try:
+                    resolver.write_task_snapshot(
+                        current_email, frozen_dirs.snapshot
+                    )
+                except Exception:
+                    chat_logger.warning(
+                        "Failed to persist task workspace snapshot",
+                        extra={"project_id": id, "task_id": data.task_id},
+                        exc_info=True,
+                    )
+                os.environ["file_save_path"] = str(
+                    frozen_dirs.working_directory
+                )
+                camel_log = resolver.log_root(id, data.task_id, current_email)
+                camel_log.mkdir(parents=True, exist_ok=True)
+                os.environ["CAMEL_LOG_DIR"] = str(camel_log)
+                task_lock.new_folder_path = (
+                    frozen_dirs.working_directory
+                    if frozen_dirs.binding_source == "default"
+                    else None
                 )
 
-                # Store the new folder path in task_lock
-                # for potential cleanup and persistence
-                task_lock.new_folder_path = new_folder_path
+                previous_context = getattr(
+                    task_lock, "upload_context_partial", None
+                )
+                task_lock.upload_context_partial = PartialUploadContext(
+                    session_id=getattr(
+                        request.state,
+                        "session_id",
+                        getattr(task_lock, "session_id", "") or "",
+                    ),
+                    raw_server_url=getattr(
+                        previous_context, "raw_server_url", ""
+                    ),
+                    authorization=request.headers.get(
+                        "Authorization",
+                        getattr(previous_context, "authorization", ""),
+                    ),
+                    task_output_root=frozen_dirs.task_output_root,
+                    task_start_time=frozen_dirs.task_start_time,
+                    camel_log_dir=camel_log,
+                )
+                _remember_user_uploads(task_lock, data.task_id, data.attaches)
+                chat_logger.info(
+                    f"Updated working directory to: {frozen_dirs.working_directory}"
+                )
             else:
                 chat_logger.warning(
                     "Could not update"

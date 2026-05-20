@@ -30,6 +30,7 @@ import httpx
 
 from app.component.environment import env
 from app.service.task import get_task_lock_if_exists
+from app.utils.server.url import normalize_server_url
 
 logger = logging.getLogger("sync_step")
 
@@ -44,16 +45,6 @@ _logged_sync_targets: set[str] = set()
 _logged_first_sync_tasks: set[str] = set()
 
 
-def _normalize_server_url(server_url: str | None) -> str:
-    if not server_url:
-        return ""
-
-    trimmed = server_url.rstrip("/")
-    if trimmed.endswith("/api/v1"):
-        return trimmed
-    return f"{trimmed}/api/v1"
-
-
 def _get_config(args):
     server_url = (
         getattr(args[0], "server_url", None)
@@ -64,7 +55,7 @@ def _get_config(args):
     if not server_url:
         server_url = env("SERVER_URL", "")
 
-    server_url = _normalize_server_url(server_url)
+    server_url = normalize_server_url(server_url)
 
     if not server_url:
         return None

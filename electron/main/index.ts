@@ -1443,6 +1443,27 @@ function registerIpcHandlers() {
     };
   });
 
+  ipcMain.handle('select-folder', async (event, options = {}) => {
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory'],
+      ...options,
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const folderPath = result.filePaths[0];
+      return {
+        success: true,
+        folderPath,
+        folderName: folderPath.split(/[/\\]/).pop() || folderPath,
+      };
+    }
+
+    return {
+      success: false,
+      canceled: result.canceled,
+    };
+  });
+
   // Handle drag-and-drop files - convert File objects to file paths
   ipcMain.handle(
     'process-dropped-files',

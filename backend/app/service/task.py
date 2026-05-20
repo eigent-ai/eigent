@@ -371,6 +371,14 @@ class TaskLock:
         self.last_task_summary = ""
         self.question_agent = None
         self.current_task_id = None
+        self.session_id = None
+        self.email = None
+        self.project_id = id
+        self.working_directory = None
+        self.task_output_root = None
+        self.task_start_time = None
+        self.user_upload_ids_by_task = {}
+        self.upload_context_partial = None
 
         logger.info(
             "Task lock initialized",

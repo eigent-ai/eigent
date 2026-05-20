@@ -32,6 +32,7 @@ from app.controller import (
     skill_controller,
     task_controller,
     tool_controller,
+    workspace_controller,
 )
 
 logger = logging.getLogger("router")
@@ -60,6 +61,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": file_controller.router,
             "tags": ["Files"],
             "description": "File upload for Web/Channel clients",
+        },
+        {
+            "router": workspace_controller.router,
+            "tags": ["Workspace"],
+            "description": "Workspace binding and upload status",
         },
         {
             "router": mcp_controller.router,

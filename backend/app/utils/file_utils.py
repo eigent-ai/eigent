@@ -276,6 +276,12 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
     raw: Path | str
     if (
         task_lock
+        and hasattr(task_lock, "working_directory")
+        and task_lock.working_directory
+    ):
+        raw = Path(task_lock.working_directory)
+    elif (
+        task_lock
         and hasattr(task_lock, "new_folder_path")
         and task_lock.new_folder_path
     ):
