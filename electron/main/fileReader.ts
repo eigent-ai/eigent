@@ -1040,41 +1040,21 @@ export class FileReader {
         return [];
       }
 
-      const allFiles: FileInfo[] = [];
-      const taskDirs = fs.readdirSync(projectPath);
+      const allFiles = this.getFilesRecursive(projectPath, projectPath).map(
+        (file) => {
+          const relativePath = path.relative(projectPath, file.path);
+          const taskMatch = relativePath.match(/^task_([^/\\]+)/);
 
-      for (const taskDir of taskDirs) {
-        if (!taskDir.startsWith('task_')) continue;
-
-        const taskPath = path.join(projectPath, taskDir);
-        const stats = fs.statSync(taskPath);
-
-        if (stats.isDirectory()) {
-          const taskId = taskDir.replace('task_', '');
-          const taskFiles = this.getFilesRecursive(taskPath, taskPath);
-
-          const enrichedFiles = taskFiles.map((file) => {
-            const fileDir = path.dirname(file.path);
-            const relativeParentPath = path.relative(projectPath, fileDir);
-
-            return {
-              ...file,
-              task_id: taskId,
-              project_id: projectId,
-              relativePath:
-                relativeParentPath === '.' ? '' : relativeParentPath,
-            };
-          });
-
-          allFiles.push(...enrichedFiles);
+          return {
+            ...file,
+            task_id: taskMatch?.[1],
+            project_id: projectId,
+            relativePath: relativePath === '.' ? '' : relativePath,
+          };
         }
-      }
+      );
 
       return allFiles.sort((a, b) => {
-        // Sort by task_id first, then by file path
-        if (a.task_id !== b.task_id) {
-          return a.task_id!.localeCompare(b.task_id!);
-        }
         return a.path.localeCompare(b.path);
       });
     } catch (err) {
