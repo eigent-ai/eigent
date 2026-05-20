@@ -68,12 +68,13 @@ export default function ChatBox(): JSX.Element {
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
-  // `null` = mode not yet determined (existing session still loading).
+  // Session mode in three forms (see naming convention shared with
+  // Session/Workspace): `inferred` is the raw, nullable inference;
+  // `effective` always resolves to a concrete mode; `display` stays nullable
+  // so a still-loading session renders empty instead of the wrong mode.
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
-  // Concrete mode for the fresh-session input and for starting a task.
-  const submitSessionMode = inferredSessionMode ?? sessionSidePanelMode;
-  // Read-only input chip: hidden while an existing session resolves its mode.
-  const inputSessionMode = inferredSessionMode ?? undefined;
+  const effectiveSessionMode = inferredSessionMode ?? sessionSidePanelMode;
+  const displaySessionMode = inferredSessionMode ?? undefined;
   const { hasModel, isConfigLoaded } = useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
@@ -530,7 +531,7 @@ export default function ChatBox(): JSX.Element {
                 attachesToSend,
                 executionId,
                 undefined,
-                submitSessionMode
+                effectiveSessionMode
               );
               chatStore.setAttaches(_taskId, []);
             } catch (err: any) {
@@ -594,7 +595,7 @@ export default function ChatBox(): JSX.Element {
               attachesToSend,
               executionId,
               undefined,
-              submitSessionMode
+              effectiveSessionMode
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
             chatStore.setAttaches(_taskId, []);
@@ -979,7 +980,7 @@ export default function ChatBox(): JSX.Element {
                     textareaRef: textareaRef,
                     allowDragDrop: true,
                     useCloudModelInDev: useCloudModelInDev,
-                    sessionMode: submitSessionMode,
+                    sessionMode: effectiveSessionMode,
                     sessionModeSelectInteractive: false,
                   }}
                 />
@@ -1061,7 +1062,7 @@ export default function ChatBox(): JSX.Element {
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
-                  sessionMode: inputSessionMode,
+                  sessionMode: displaySessionMode,
                   sessionModeSelectInteractive: false,
                 }}
               />

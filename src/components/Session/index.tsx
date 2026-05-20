@@ -97,10 +97,12 @@ export default function Session() {
     }
   }, [hasSessionStarted, setActiveWorkspaceTab]);
 
-  // While a saved session is still loading, the mode is briefly unknown —
-  // render the side panel empty rather than defaulting to workforce and
-  // flickering once the real mode resolves. Fresh sessions use the toggle.
-  const effectiveSessionMode: SessionModeType | null =
+  // Nullable "display" form of the session mode (see the naming convention
+  // shared with ChatBox/Workspace). `null` while a saved session is still
+  // loading — the side panel renders empty rather than defaulting to
+  // workforce and flickering once the real mode resolves. Fresh sessions
+  // fall back to the toggle's mode.
+  const displaySessionMode: SessionModeType | null =
     inferredSessionMode ?? (hasSessionStarted ? null : sessionMode);
 
   useEffect(() => {
@@ -149,9 +151,9 @@ export default function Session() {
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
-        {effectiveSessionMode ? (
+        {displaySessionMode ? (
           <SessionSidePanel
-            mode={effectiveSessionMode}
+            mode={displaySessionMode}
             workforcePanelKey={workforcePanelKey}
             hasAnyMessages={hasAnyMessages}
             isSidePanelVisible={isSidePanelVisible}
