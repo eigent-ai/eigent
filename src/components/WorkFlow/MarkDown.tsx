@@ -32,7 +32,12 @@ export const MarkDown = ({
   pTextSize?: string;
   olPadding?: string;
 }) => {
-  const [displayedContent, setDisplayedContent] = useState('');
+  // When the typewriter is off, seed with the full content so the very first
+  // paint already has it — otherwise the content arrives a tick later (via the
+  // effect below) and any height-animated container measures an empty body.
+  const [displayedContent, setDisplayedContent] = useState(
+    enableTypewriter ? '' : content
+  );
 
   useEffect(() => {
     if (!enableTypewriter) {

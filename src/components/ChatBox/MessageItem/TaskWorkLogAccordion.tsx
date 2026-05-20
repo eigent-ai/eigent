@@ -42,8 +42,6 @@ const HEIGHT_MOTION = {
   height: { duration: 0.22, ease: CONTENT_EASE },
   opacity: { duration: 0.16, ease: CONTENT_EASE },
 } as const;
-const MARKDOWN_DEFER_THRESHOLD = 1200;
-const MARKDOWN_DEFER_MS = 180;
 const TOOL_INLINE_PREVIEW_MAX = 200;
 
 function normalizeToolkitMessage(value: unknown): string {
@@ -584,25 +582,6 @@ const ToolDetailRow = memo(function ToolDetailRow({
   status: 'running' | 'done';
 }) {
   const [open, setOpen] = useState(false);
-  const [renderMarkdown, setRenderMarkdown] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setRenderMarkdown(false);
-      return;
-    }
-
-    if (detail.length <= MARKDOWN_DEFER_THRESHOLD) {
-      setRenderMarkdown(true);
-      return;
-    }
-
-    const timer = window.setTimeout(
-      () => setRenderMarkdown(true),
-      MARKDOWN_DEFER_MS
-    );
-    return () => window.clearTimeout(timer);
-  }, [open, detail]);
 
   return (
     <div className="min-w-0 flex w-full flex-col items-start">
@@ -642,21 +621,15 @@ const ToolDetailRow = memo(function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="min-w-0 mt-1 w-full overflow-hidden"
+            className="min-w-0 w-full overflow-hidden"
           >
             {detail ? (
-              <div className="p-2 bg-ds-bg-neutral-muted-default rounded-md w-full opacity-60">
-                {renderMarkdown ? (
-                  <MarkDown
-                    content={detail}
-                    enableTypewriter={false}
-                    pTextSize="text-label-xs text-ds-text-neutral-default-default"
-                  />
-                ) : (
-                  <p className="text-label-xs text-ds-text-neutral-default-default m-0">
-                    Rendering details...
-                  </p>
-                )}
+              <div className="mt-1 p-2 bg-ds-bg-neutral-muted-default rounded-md w-full opacity-60">
+                <MarkDown
+                  content={detail}
+                  enableTypewriter={false}
+                  pTextSize="text-label-xs text-ds-text-neutral-default-default"
+                />
               </div>
             ) : null}
           </motion.div>
