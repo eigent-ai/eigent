@@ -171,10 +171,10 @@ export default function Login() {
       formData.append('code_verifier', code_verifier || '');
       formData.append('code', code);
       formData.append('grant_type', 'authorization_code');
-      formData.append('client_id', 'aa49cdd0-318e-46bd-a540-0f1e5f2b391f');
+      formData.append('client_id', import.meta.env.VITE_STACK_CLIENT_ID || '');
       formData.append(
         'client_secret',
-        'pck_t13egrd9ve57tz52kfcd2s4h1zwya5502z43kr5xv5cx8'
+        import.meta.env.VITE_STACK_CLIENT_SECRET || ''
       );
 
       try {
