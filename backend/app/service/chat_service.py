@@ -63,6 +63,7 @@ from app.service.task import (
     delete_task_lock,
     set_current_task_id,
 )
+from app.service.upload.service import BrainUploadService
 from app.utils.event_loop_utils import set_main_event_loop
 from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
@@ -1694,6 +1695,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             options, task_lock
                         ),
                     },
+                )
+
+                upload_context = BrainUploadService.finalize_at_task_end(
+                    options, task_lock, request
+                )
+                BrainUploadService.singleton().register_and_start(
+                    upload_context,
+                    getattr(task_lock, "current_task_id", None)
+                    or options.task_id,
                 )
 
                 yield sse_json("end", final_result)

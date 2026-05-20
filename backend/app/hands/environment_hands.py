@@ -19,6 +19,7 @@ Brain deployment env determines capability set; all Channels share one instance.
 Channel only handles message display format adaptation.
 """
 
+import platform
 from pathlib import Path
 
 from app.hands.capabilities import BrainCapabilities
@@ -72,6 +73,85 @@ class EnvironmentHands(IHands):
             except (OSError, RuntimeError):
                 return False
         return False  # none
+
+    def validate_workspace_binding_path(
+        self, path: str
+    ) -> tuple[bool, str | None]:
+        if not self.can_access_filesystem(path):
+            return False, "filesystem_capability_denied"
+        try:
+            resolved = Path(path).expanduser().resolve()
+        except (OSError, RuntimeError):
+            return False, "path_resolve_failed"
+        if not resolved.exists():
+            return False, "path_not_found"
+        if not resolved.is_dir():
+            return False, "path_not_directory"
+        try:
+            if resolved == Path.home().resolve():
+                return False, "home_root_forbidden"
+        except (OSError, RuntimeError):
+            return False, "home_resolve_failed"
+        for sensitive in self._sensitive_prefixes():
+            try:
+                resolved.relative_to(sensitive.resolve())
+                return False, f"sensitive_path:{sensitive}"
+            except ValueError:
+                continue
+            except (OSError, RuntimeError):
+                continue
+        if self._caps.filesystem_scope == "workspace_only":
+            try:
+                resolved.relative_to(self.workspace_root.resolve())
+            except ValueError:
+                return False, "workspace_scope_denied"
+        return True, None
+
+    def _sensitive_prefixes(self) -> list[Path]:
+        prefixes = [
+            Path("~/.ssh").expanduser(),
+            Path("~/.aws").expanduser(),
+            Path("~/.config/gh").expanduser(),
+            Path("~/.gnupg").expanduser(),
+        ]
+        system = platform.system()
+        if system == "Darwin":
+            prefixes.extend(
+                [
+                    Path("~/Library/Keychains").expanduser(),
+                    Path(
+                        "~/Library/Application Support/com.apple.TCC"
+                    ).expanduser(),
+                    Path("/etc"),
+                    Path("/System"),
+                    Path("/private"),
+                    Path("/var"),
+                    Path("/Library"),
+                ]
+            )
+        elif system == "Linux":
+            prefixes.extend(
+                [
+                    Path("/etc"),
+                    Path("/var"),
+                    Path("/sys"),
+                    Path("/proc"),
+                    Path("/boot"),
+                    Path("/root"),
+                ]
+            )
+        elif system == "Windows":
+            import os
+
+            for raw in (
+                r"C:\Windows",
+                r"C:\Program Files",
+                r"C:\Program Files (x86)",
+                r"%APPDATA%\Microsoft\Credentials",
+                r"%LOCALAPPDATA%\Microsoft\Credentials",
+            ):
+                prefixes.append(Path(os.path.expandvars(raw)))
+        return prefixes
 
     def can_use_mcp(self, mcp_name: str) -> bool:
         if self._caps.mcp_mode == "all":

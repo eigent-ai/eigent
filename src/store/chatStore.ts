@@ -27,7 +27,7 @@ import {
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
-import { generateUniqueId, uploadLog } from '@/lib';
+import { generateUniqueId } from '@/lib';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -581,11 +581,13 @@ function buildRemoteFileInfoPath({
   baseURL,
   email,
   projectId,
+  taskId,
   relativePath,
 }: {
   baseURL?: string;
   email?: string;
   projectId?: string;
+  taskId?: string;
   relativePath?: string;
 }): string | undefined {
   if (!baseURL || !email || !projectId || !relativePath) {
@@ -597,6 +599,9 @@ function buildRemoteFileInfoPath({
     project_id: projectId,
     email,
   });
+  if (taskId) {
+    params.set('task_id', taskId);
+  }
 
   return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
 }
@@ -605,7 +610,8 @@ function extractFinalOutputFileList(
   content: string,
   projectId?: string,
   email?: string,
-  baseURL?: string
+  baseURL?: string,
+  taskId?: string
 ): FileInfo[] {
   if (!content) {
     return [];
@@ -631,6 +637,7 @@ function extractFinalOutputFileList(
       baseURL,
       email,
       projectId,
+      taskId,
       relativePath,
     });
     const identity = normalizeOutputPath(relativePath || filePath);
@@ -2594,7 +2601,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             console.log('error', agentMessages.data);
             showCreditsToast();
             setStatus(currentTaskId, ChatTaskStatus.PAUSE);
-            uploadLog(currentTaskId, type);
             return;
           }
 
@@ -2616,7 +2622,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Set flag to block input and set status to pause
             setIsContextExceeded(currentTaskId, true);
             setStatus(currentTaskId, ChatTaskStatus.PAUSE);
-            uploadLog(currentTaskId, type);
             return;
           }
 
@@ -2683,7 +2688,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 role: 'agent',
                 content: `❌ **Error**: ${errorMessage}`,
               });
-              uploadLog(currentTaskId, type);
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
                 getCurrentChatStore(),
@@ -2820,69 +2824,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               )
             );
 
-            const uploadTargetId = (project_id ||
-              projectStore.activeProjectId) as string | undefined;
-            if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-              if (!uploadTargetId) {
-                console.warn(
-                  'Skip file upload because no active project ID was found'
-                );
-              } else {
-                const hostIpcRenderer = getHostIpcRenderer();
-                if (!hostIpcRenderer?.invoke) {
-                  console.warn(
-                    'Skip file upload because IPC renderer is unavailable'
-                  );
-                } else {
-                  try {
-                    const generatedFiles =
-                      ((await hostIpcRenderer.invoke(
-                        'get-file-list',
-                        email,
-                        currentTaskId,
-                        uploadTargetId
-                      )) as GeneratedUploadFile[]) || [];
-                    const filesToUpload = collectTaskUploadFiles(
-                      generatedFiles,
-                      tasks[currentTaskId].messages,
-                      tasks[currentTaskId].attaches,
-                      currentTaskId
-                    );
-
-                    if (filesToUpload.length > 0) {
-                      const uploadResults = await uploadTaskFiles(
-                        filesToUpload,
-                        uploadTargetId
-                      );
-                      const failedUploads = uploadResults.filter(
-                        (result) => !result.success
-                      );
-                      if (failedUploads.length > 0) {
-                        console.error('Failed to upload files:', failedUploads);
-                      }
-
-                      const generatedSuccessCount = uploadResults.filter(
-                        (result) =>
-                          result.success && result.source === 'project_output'
-                      ).length;
-
-                      if (generatedSuccessCount > 0) {
-                        proxyFetchPost(`/api/v1/user/stat`, {
-                          action: 'file_generate_count',
-                          value: generatedSuccessCount,
-                        });
-                      }
-                    }
-                  } catch (error) {
-                    console.error(
-                      'Failed to prepare task files for upload:',
-                      error
-                    );
-                  }
-                }
-              }
-            }
-
             if (!type && historyId) {
               try {
                 const st = tasks[currentTaskId].summaryTask || '';
@@ -2911,8 +2852,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 console.warn('History update failed on END:', e);
               }
             }
-            uploadLog(currentTaskId, type);
-
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             let taskAssigning = [...tasks[currentTaskId].taskAssigning];
             taskAssigning = taskAssigning.map((agent) => {
@@ -2992,7 +2931,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               endMessage,
               outputProjectId,
               email || undefined,
-              outputBaseURL || undefined
+              outputBaseURL || undefined,
+              currentTaskId
             );
             const mergedFileList = mergeFileInfoLists(
               fileList,

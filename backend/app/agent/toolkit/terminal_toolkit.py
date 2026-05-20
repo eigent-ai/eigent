@@ -33,9 +33,11 @@ from app.service.task import (
     ActionTerminalData,
     Agents,
     get_task_lock,
+    get_task_lock_if_exists,
     process_task,
 )
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
+from app.utils.workspace_paths import runtime_task_root
 
 logger = logging.getLogger("terminal_toolkit")
 
@@ -77,13 +79,29 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         if agent_name is not None:
             self.agent_name = agent_name
 
-        # Get base directory from environment
-        base_dir = env(
-            "file_save_path", os.path.expanduser("~/.eigent/terminal/")
+        task_lock = get_task_lock_if_exists(api_task_id)
+        current_task_id = (
+            getattr(task_lock, "current_task_id", None) if task_lock else None
         )
+        email = getattr(task_lock, "email", None) if task_lock else None
+        if email and current_task_id:
+            base_dir = str(
+                runtime_task_root(email, api_task_id, current_task_id)
+                / "venvs"
+            )
+        else:
+            base_dir = env(
+                "file_save_path", os.path.expanduser("~/.eigent/terminal/")
+            )
 
         if working_directory is None:
-            working_directory = base_dir
+            working_directory = (
+                getattr(task_lock, "working_directory", None)
+                if task_lock
+                else None
+            ) or env(
+                "file_save_path", os.path.expanduser("~/.eigent/terminal/")
+            )
         self._agent_venv_dir = os.path.join(base_dir, self.agent_name)
 
         logger.debug(
@@ -113,9 +131,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         )
 
         # Auto-register with TaskLock for cleanup when task ends
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(api_task_id)
         if task_lock:
             task_lock.register_toolkit(self)
             logger.info(

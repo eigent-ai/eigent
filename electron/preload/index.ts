@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 });
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  isDesktopShell: true,
   closeWindow: (isForceQuit?: boolean) =>
     ipcRenderer.send('window-close', {
       isForceQuit: isForceQuit ?? false,
@@ -53,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onExecuteAction: (callback: (action: string) => void) =>
     ipcRenderer.on('execute-action', (event, action) => callback(action)),
   getPlatform: () => process.platform,
+  selectFolder: (options?: any) => ipcRenderer.invoke('select-folder', options),
   getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
   createWebView: (id: string, url: string) =>
     ipcRenderer.invoke('create-webview', id, url),

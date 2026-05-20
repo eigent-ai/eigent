@@ -23,6 +23,7 @@ interface IpcRenderer {
 }
 
 interface ElectronAPI {
+  isDesktopShell: boolean;
   closeWindow: () => void;
   minimizeWindow: () => void;
   toggleMaximizeWindow: () => void;
@@ -35,6 +36,13 @@ interface ElectronAPI {
     }>;
     fileCount?: number;
     canceled?: boolean;
+  }>;
+  selectFolder: (options?: any) => Promise<{
+    success: boolean;
+    folderPath?: string;
+    folderName?: string;
+    canceled?: boolean;
+    error?: string;
   }>;
   processDroppedFiles: (
     fileData: Array<{ name: string; path?: string }>
