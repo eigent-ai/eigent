@@ -110,7 +110,7 @@ export const ExpandedInputBox = ({
     search_agent: <Globe className="h-3 w-3 text-blue-600" />,
     document_agent: <FileText className="h-3 w-3 text-yellow-600" />,
     multi_modal_agent: <Image className="h-3 w-3 text-fuchsia-600" />,
-    social_medium_agent: <Bird className="h-3 w-3 text-purple-600" />,
+    social_media_agent: <Bird className="h-3 w-3 text-purple-600" />,
   };
 
   // Build agent list same as WorkSpaceMenu
