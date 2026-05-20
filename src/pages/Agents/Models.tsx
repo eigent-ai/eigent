@@ -61,7 +61,7 @@ import {
   Server,
   Settings,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -72,6 +72,7 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 
+import { ConfigModelCard, type ConfigCardRingStatus } from './ConfigModelCard';
 import {
   fetchProviderModels,
   loadCachedModels,
@@ -152,6 +153,24 @@ export default function SettingModels() {
   );
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<number | null>(null);
+  const [configCardRing, setConfigCardRing] =
+    useState<ConfigCardRingStatus>('idle');
+  const configCardRingResetRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const showConfigCardRing = useCallback((status: ConfigCardRingStatus) => {
+    if (configCardRingResetRef.current) {
+      clearTimeout(configCardRingResetRef.current);
+      configCardRingResetRef.current = null;
+    }
+    setConfigCardRing(status);
+    if (status === 'success' || status === 'error') {
+      configCardRingResetRef.current = setTimeout(() => {
+        setConfigCardRing('idle');
+        configCardRingResetRef.current = null;
+      }, 1000);
+    }
+  }, []);
   const [errors, setErrors] = useState<
     {
       apiKey?: string;
@@ -447,6 +466,15 @@ export default function SettingModels() {
     }
   }, [items, modelType, fetchModelsForPlatform]);
 
+  useEffect(
+    () => () => {
+      if (configCardRingResetRef.current) {
+        clearTimeout(configCardRingResetRef.current);
+      }
+    },
+    []
+  );
+
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
     if (cloudPrefer) {
@@ -600,8 +628,12 @@ export default function SettingModels() {
       newErrors[idx].model_type = '';
     }
     setErrors(newErrors);
-    if (hasError) return;
+    if (hasError) {
+      showConfigCardRing('error');
+      return;
+    }
 
+    showConfigCardRing('configuring');
     setLoading(idx);
     const item = items[idx];
     let external: any = {};
@@ -637,6 +669,8 @@ export default function SettingModels() {
           next[idx].apiKey = getValidateMessage(res);
           return next;
         });
+        showConfigCardRing('error');
+        setLoading(null);
         return;
       }
       console.log(res);
@@ -649,9 +683,9 @@ export default function SettingModels() {
         next[idx].apiKey = getValidateMessage(e);
         return next;
       });
-      return;
-    } finally {
+      showConfigCardRing('error');
       setLoading(null);
+      return;
     }
 
     const data: any = {
@@ -719,12 +753,17 @@ export default function SettingModels() {
       } else {
         handleSwitch(idx, true);
       }
+      showConfigCardRing('success');
+    } catch (e) {
+      console.error('Error saving provider:', e);
+      showConfigCardRing('error');
     } finally {
       setLoading(null);
     }
   };
 
   const handleLocalVerify = async () => {
+    showConfigCardRing('configuring');
     setLocalVerifying(true);
     setLocalError(null);
     setLocalInputError(false);
@@ -751,12 +790,14 @@ export default function SettingModels() {
       setLocalError(t('setting.endpoint-url-can-not-be-empty'));
       setLocalInputError(true);
       setLocalVerifying(false);
+      showConfigCardRing('error');
       return;
     }
     if (!currentType) {
       setLocalError(t('setting.model-type-can-not-be-empty'));
       setLocalInputError(true);
       setLocalVerifying(false);
+      showConfigCardRing('error');
       return;
     }
     try {
@@ -830,6 +871,7 @@ export default function SettingModels() {
               },
             });
 
+            showConfigCardRing('error');
             return;
           }
           console.log(res);
@@ -844,6 +886,7 @@ export default function SettingModels() {
               },
             },
           });
+          showConfigCardRing('error');
           return;
         }
       }
@@ -895,11 +938,13 @@ export default function SettingModels() {
       }
 
       await fetchModelsForPlatform(localPlatform, currentEndpoint);
+      showConfigCardRing('success');
     } catch (e: any) {
       setLocalError(
         e.message || t('setting.verification-failed-please-check-endpoint-url')
       );
       setLocalInputError(true);
+      showConfigCardRing('error');
     } finally {
       setLocalVerifying(false);
     }
@@ -1482,7 +1527,7 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+        <ConfigModelCard status={configCardRing}>
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
@@ -1783,7 +1828,7 @@ export default function SettingModels() {
               {loading === idx ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
-        </div>
+        </ConfigModelCard>
       );
     }
 
@@ -1803,7 +1848,7 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+        <ConfigModelCard status={configCardRing}>
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">
@@ -2020,7 +2065,7 @@ export default function SettingModels() {
               {localVerifying ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
-        </div>
+        </ConfigModelCard>
       );
     }
 
