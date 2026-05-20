@@ -13,6 +13,102 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 # flake8: noqa
 
+REMOTE_SUB_AGENT_USAGE_NOTICE = """
+<remote_sub_agent_execution>
+RemoteSubAgent is configured for this task. Use `run_remote_sub_agent` for
+remote-suitable work, even when the user does not explicitly say "remote".
+
+You MUST call `run_remote_sub_agent` first when:
+- The user or subtask asks for RemoteSubAgent, remote sub-agent, remote
+  sandbox, cloud sandbox, or isolated remote execution.
+- The work is likely long-running, exploratory, or benefits from an isolated
+  environment: installing dependencies, running scripts, scraping/analyzing
+  data, processing logs, benchmark/CI investigation, machine learning or
+  data-science audits, or bounded repo/evidence analysis that does not require
+  directly editing the local workspace.
+
+Do not satisfy remote-suitable work with {local_tool_description}. Local output
+from `{working_directory}` is not valid evidence of remote execution. After the
+remote result returns, you may use local tools only to inspect local artifacts,
+register notes, assemble the final report, or prepare minimal non-sensitive
+context that the remote agent needs.
+
+Remote input boundary:
+- The remote agent can only use content included in the instruction or
+  readable HTTP(S) URLs included in the task context. When the user provides a
+  readable URL, pass it verbatim to `run_remote_sub_agent` and ask the remote
+  agent to fetch/read it from the remote environment.
+- Do not claim a remote agent inspected a local file unless the relevant
+  content was included in the instruction or the file was made available
+  through a readable HTTP(S) URL.
+- If required local files are not reachable by URL, use local tools only to
+  extract the minimal evidence needed for the remote task: relevant snippets,
+  file paths, metrics, thresholds, commands, calculations, and code references.
+  Then call `run_remote_sub_agent` for the reasoning-heavy analysis and final
+  adjudication. Keep any file-only work local and clearly label the limitation;
+  do not claim the remote sandbox read local files.
+- The remote sandbox cannot read locally installed skills. If a loaded skill
+  contains instructions needed by the remote task, pass a concise relevant
+  excerpt using `skill_context`.
+
+Cost control:
+- Make at most one full remote execution call per subtask unless the tool/API
+  explicitly fails.
+- If the remote result is complete but the formatting is imperfect, do not
+  rerun the remote job. Produce a best-effort report and clearly label any
+  evidence limitation.
+- If a follow-up is truly needed, set `reuse_session=True` and ask the same
+  remote session to clarify or reformat existing outputs instead of recreating
+  the environment or repeating expensive setup.
+</remote_sub_agent_execution>
+"""
+
+REMOTE_SUB_AGENT_PLANNING_NOTICE = """
+<remote_sub_agent_planning>
+RemoteSubAgent is configured for this project. During task decomposition,
+explicitly route bounded remote-suitable subtasks to RemoteSubAgent.
+
+Create a RemoteSubAgent subtask when the work is likely long-running,
+sandbox-worthy, or independently executable, such as ML/CI failure audits,
+large log or evidence analysis, data processing, scraping, dependency install,
+script execution, benchmark investigation, or isolated exploratory research.
+The subtask should say to call `run_remote_sub_agent` first, include the
+available evidence and readable URL references, state hard constraints such as
+"do not rerun GPU training", and request a structured result that the local
+worker can validate and assemble.
+
+When the task depends on files, the plan should include any user-provided
+readable HTTP(S) URLs verbatim and instruct the worker to ask RemoteSubAgent to
+fetch/read them remotely. If the needed files are local-only and not reachable
+by URL, the plan should instruct the worker to prepare minimal local evidence
+excerpts or derived facts, then route the reasoning-heavy analysis and final
+adjudication to RemoteSubAgent. When the task depends on a loaded skill, the
+plan should instruct the worker to pass the relevant skill instructions as
+`skill_context`.
+
+Do not route tiny local reads, simple edits, or tasks that require direct
+modification of the current workspace. Do not imply that local files are
+available remotely unless the plan includes how their content or references
+will be supplied to the remote run.
+</remote_sub_agent_planning>
+"""
+
+
+def build_remote_sub_agent_usage_notice(
+    *,
+    working_directory: str,
+    local_tool_description: str,
+) -> str:
+    return REMOTE_SUB_AGENT_USAGE_NOTICE.format(
+        working_directory=working_directory,
+        local_tool_description=local_tool_description,
+    )
+
+
+def build_remote_sub_agent_planning_notice() -> str:
+    return REMOTE_SUB_AGENT_PLANNING_NOTICE
+
+
 SOCIAL_MEDIA_SYS_PROMPT = """\
 You are a Social Media Management Assistant with comprehensive capabilities
 across multiple platforms. You MUST use the `send_message_to_user` tool to

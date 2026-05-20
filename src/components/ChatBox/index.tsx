@@ -24,7 +24,7 @@ import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
-import { generateUniqueId } from '@/lib';
+import { generateUniqueId, SITE_URL } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -49,6 +49,145 @@ import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
 /** Small gap between last message and BottomBox top. */
 const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
+
+const USAGE_WARNING_RATIO = 0.75;
+const FREE_STARTING_CREDITS = 500;
+
+interface SubscriptionLimitInfo {
+  plan_key?: string | null;
+  is_trialing?: boolean | null;
+  monthly_credits?: number | null;
+  trial_daily_credits_limit?: number | null;
+  trial_daily_credits_used?: number | null;
+  trial_daily_credits_remaining?: number | null;
+  trial_total_credits_limit?: number | null;
+  trial_total_credits_used?: number | null;
+  trial_total_credits_remaining?: number | null;
+}
+
+interface UsageLimitBannerState {
+  id: string;
+  message: string;
+  actionLabel: string;
+  severity: 'warning' | 'danger';
+}
+
+const toFiniteNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const usagePercent = (used: number, limit: number) =>
+  Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+
+const buildUsageLimitBannerState = (
+  subscription: SubscriptionLimitInfo | null,
+  currentCredits: number | null,
+  t: (key: string, options?: Record<string, unknown>) => string
+): UsageLimitBannerState | null => {
+  const actionLabel = t('chat.usage-limit-action');
+
+  if (subscription?.is_trialing) {
+    const trialCandidates = [
+      {
+        id: 'trial-daily',
+        warningKey: 'chat.usage-limit-trial-daily-warning',
+        exhaustedKey: 'chat.usage-limit-trial-daily-exhausted',
+        limit: toFiniteNumber(subscription.trial_daily_credits_limit),
+        used: toFiniteNumber(subscription.trial_daily_credits_used),
+        remaining: toFiniteNumber(subscription.trial_daily_credits_remaining),
+      },
+      {
+        id: 'trial-total',
+        warningKey: 'chat.usage-limit-trial-total-warning',
+        exhaustedKey: 'chat.usage-limit-trial-total-exhausted',
+        limit: toFiniteNumber(subscription.trial_total_credits_limit),
+        used: toFiniteNumber(subscription.trial_total_credits_used),
+        remaining: toFiniteNumber(subscription.trial_total_credits_remaining),
+      },
+    ]
+      .map((candidate) => {
+        if (!candidate.limit || candidate.limit <= 0 || candidate.used === null)
+          return null;
+
+        const remaining =
+          candidate.remaining ?? Math.max(candidate.limit - candidate.used, 0);
+        const ratio = candidate.used / candidate.limit;
+        const exhausted = remaining <= 0 || candidate.used >= candidate.limit;
+
+        if (!exhausted && ratio < USAGE_WARNING_RATIO) return null;
+
+        const percent = usagePercent(candidate.used, candidate.limit);
+        return {
+          id: `${candidate.id}:${exhausted ? 'exhausted' : 'warning'}`,
+          message: t(
+            exhausted ? candidate.exhaustedKey : candidate.warningKey,
+            {
+              percent,
+            }
+          ),
+          actionLabel,
+          severity: exhausted ? ('danger' as const) : ('warning' as const),
+          ratio,
+          exhausted,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a!.exhausted !== b!.exhausted) {
+          return a!.exhausted ? -1 : 1;
+        }
+        return b!.ratio - a!.ratio;
+      });
+
+    if (trialCandidates[0]) {
+      const {
+        ratio: _ratio,
+        exhausted: _exhausted,
+        ...banner
+      } = trialCandidates[0];
+      return banner;
+    }
+  }
+
+  if (currentCredits === null) return null;
+
+  if (currentCredits <= 0) {
+    const planKey = subscription?.plan_key?.toLowerCase() || 'free';
+    return {
+      id: `credits-exhausted:${planKey}`,
+      message: t(
+        planKey === 'free'
+          ? 'chat.usage-limit-free-exhausted'
+          : 'chat.usage-limit-monthly-exhausted'
+      ),
+      actionLabel,
+      severity: 'danger',
+    };
+  }
+
+  const planKey = subscription?.plan_key?.toLowerCase() || 'free';
+  const limit =
+    planKey === 'free'
+      ? FREE_STARTING_CREDITS
+      : toFiniteNumber(subscription?.monthly_credits);
+
+  if (!limit || limit <= 0) return null;
+
+  const remainingRatio = currentCredits / limit;
+  if (remainingRatio > 1 - USAGE_WARNING_RATIO) return null;
+
+  const percent = usagePercent(limit - currentCredits, limit);
+  return {
+    id: `${planKey === 'free' ? 'free' : 'monthly'}-credits:warning`,
+    message: t(
+      planKey === 'free'
+        ? 'chat.usage-limit-free-warning'
+        : 'chat.usage-limit-monthly-warning',
+      { percent }
+    ),
+    actionLabel,
+    severity: 'warning',
+  };
+};
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
   const host = useHost();
@@ -64,14 +203,106 @@ export default function ChatBox(): JSX.Element {
   const sessionSidePanelMode = usePageTabStore(
     (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
   );
-  const { hasModel, isConfigLoaded } = useModelConfigCheck();
+  const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
+    useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
   const [scrollBottomInsetPx, setScrollBottomInsetPx] = useState(
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType } = useAuthStore();
+  const { modelType, token } = useAuthStore();
+  const [subscriptionUsage, setSubscriptionUsage] =
+    useState<SubscriptionLimitInfo | null>(null);
+  const [currentCredits, setCurrentCredits] = useState<number | null>(null);
+  const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
+    useState<string | null>(null);
+
+  const refreshUsageLimits = useCallback(async () => {
+    if (modelType !== 'cloud' || !token) {
+      setSubscriptionUsage(null);
+      setCurrentCredits(null);
+      return;
+    }
+
+    const [subscriptionResult, creditsResult] = await Promise.allSettled([
+      proxyFetchGet('/api/v1/subscription'),
+      proxyFetchGet('/api/v1/user/current_credits'),
+    ]);
+
+    if (subscriptionResult.status === 'fulfilled') {
+      setSubscriptionUsage(subscriptionResult.value || null);
+    }
+
+    if (creditsResult.status === 'fulfilled') {
+      setCurrentCredits(toFiniteNumber(creditsResult.value?.credits));
+    }
+  }, [modelType, token]);
+
+  const scheduleUsageRefresh = useCallback(() => {
+    window.setTimeout(refreshUsageLimits, 2000);
+    window.setTimeout(refreshUsageLimits, 15000);
+  }, [refreshUsageLimits]);
+
+  const usageLimitBannerState = useMemo(
+    () => buildUsageLimitBannerState(subscriptionUsage, currentCredits, t),
+    [subscriptionUsage, currentCredits, t]
+  );
+
+  const cloudUsageLimitMessage = useMemo(() => {
+    if (modelType !== 'cloud' || !cloudUsageLimitReached) return null;
+    return [
+      usageLimitBannerState?.message ||
+        t('chat.usage-limit-trial-daily-exhausted'),
+      t('chat.usage-limit-switch-model-hint'),
+    ].join(' ');
+  }, [modelType, cloudUsageLimitReached, usageLimitBannerState, t]);
+
+  const effectiveUsageLimitBannerState = useMemo(() => {
+    if (!cloudUsageLimitMessage) return usageLimitBannerState;
+
+    return {
+      id: 'cloud-usage-limit-blocked',
+      message: cloudUsageLimitMessage,
+      actionLabel:
+        usageLimitBannerState?.actionLabel || t('chat.usage-limit-action'),
+      severity: 'danger' as const,
+    };
+  }, [cloudUsageLimitMessage, usageLimitBannerState, t]);
+
+  const usageLimitBanner = useMemo(() => {
+    if (
+      !effectiveUsageLimitBannerState ||
+      effectiveUsageLimitBannerState.id === dismissedUsageLimitBannerId
+    ) {
+      return null;
+    }
+
+    return {
+      ...effectiveUsageLimitBannerState,
+      onAction: () => {
+        window.location.href = `${SITE_URL}/pricing`;
+      },
+      onDismiss: () => {
+        setDismissedUsageLimitBannerId(effectiveUsageLimitBannerState.id);
+      },
+    };
+  }, [effectiveUsageLimitBannerState, dismissedUsageLimitBannerId]);
+
+  useEffect(() => {
+    refreshUsageLimits();
+
+    if (modelType !== 'cloud' || !token) return;
+
+    const intervalId = window.setInterval(refreshUsageLimits, 60000);
+    window.addEventListener('focus', refreshUsageLimits);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshUsageLimits);
+    };
+  }, [modelType, token, refreshUsageLimits]);
+
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
   useEffect(() => {
@@ -229,6 +460,8 @@ export default function ChatBox(): JSX.Element {
     );
   }, [chatStore?.activeTaskId, chatStore?.tasks]);
 
+  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
+
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return true;
@@ -240,7 +473,8 @@ export default function ChatBox(): JSX.Element {
 
     if (isTaskBusy) return true;
 
-    // Standard checks - model required
+    // Standard checks - check model
+    if (isCloudUsageLimited) return true;
     if (!hasModel) return true;
     if (useCloudModelInDev) return true;
     if (task.isContextExceeded) return true;
@@ -249,6 +483,7 @@ export default function ChatBox(): JSX.Element {
   }, [
     chatStore?.activeTaskId,
     chatStore?.tasks,
+    isCloudUsageLimited,
     hasModel,
     useCloudModelInDev,
     isTaskBusy,
@@ -265,6 +500,13 @@ export default function ChatBox(): JSX.Element {
 
       // Check model configuration before starting task
       if (!hasModel) {
+        if (isCloudUsageLimited) {
+          toast.error(
+            cloudUsageLimitMessage ||
+              t('chat.usage-limit-trial-daily-exhausted')
+          );
+          return;
+        }
         toast.error('Please select a model first.');
         navigate('/history?tab=agents');
         return;
@@ -298,7 +540,15 @@ export default function ChatBox(): JSX.Element {
         }
       }
     },
-    [chatStore, projectStore.activeProjectId, hasModel, navigate]
+    [
+      chatStore,
+      projectStore.activeProjectId,
+      hasModel,
+      isCloudUsageLimited,
+      cloudUsageLimitMessage,
+      navigate,
+      t,
+    ]
   );
 
   // Handle skill_prompt from URL - pre-fill message when navigating from Skills page
@@ -362,6 +612,12 @@ export default function ChatBox(): JSX.Element {
     if (message.trim() === '' && !messageStr) return;
 
     if (!hasModel) {
+      if (isCloudUsageLimited) {
+        toast.error(
+          cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
+        );
+        return;
+      }
       toast.error('Please select a model first.');
       navigate('/history?tab=agents');
       return;
@@ -596,6 +852,8 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
+    } finally {
+      scheduleUsageRefresh();
     }
   };
 
@@ -921,10 +1179,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -934,15 +1192,16 @@ export default function ChatBox(): JSX.Element {
               isPauseResumeLoading={isPauseResumeLoading}
             />
           ) : (
-            <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
+            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col pl-4 pr-2">
+              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
                   state="input"
                   queuedMessages={queuedMessages}
                   onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                  noModelOverlay={!hasModel}
+                  usageLimitBanner={usageLimitBanner}
+                  noModelOverlay={!hasModel && !isCloudUsageLimited}
                   onSelectModel={handleSelectModel}
                   inputProps={{
                     value: message,
@@ -981,14 +1240,15 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
-            <div className="px-sm pointer-events-auto w-full max-w-[600px]">
+            <div className="pointer-events-auto w-full max-w-[600px] px-sm">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
-                noModelOverlay={!hasModel}
+                usageLimitBanner={usageLimitBanner}
+                noModelOverlay={!hasModel && !isCloudUsageLimited}
                 onSelectModel={handleSelectModel}
                 subtitle={
                   getBottomBoxState() === 'confirm' ||
@@ -1059,7 +1319,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

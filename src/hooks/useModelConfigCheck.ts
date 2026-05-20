@@ -17,6 +17,13 @@ import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+const API_CODE_TRIAL_LIMIT = '22';
+
+const hasApiCode = (value: unknown, code: string) =>
+  typeof value === 'object' &&
+  value !== null &&
+  String((value as { code?: unknown }).code) === code;
+
 /**
  * Centralized model-configuration check.
  *
@@ -30,6 +37,7 @@ import { useLocation } from 'react-router-dom';
 export function useModelConfigCheck(): {
   hasModel: boolean;
   isConfigLoaded: boolean;
+  cloudUsageLimitReached: boolean;
 } {
   const modelType = useAuthStore((s) => s.modelType);
   const hasModel = useAuthStore((s) => s.hasModelConfigured);
@@ -39,21 +47,38 @@ export function useModelConfigCheck(): {
   // used by callers that need to wait for a fresh validation (e.g. share
   // token handling) rather than trusting the persisted optimistic value.
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+  const [cloudUsageLimitReached, setCloudUsageLimitReached] = useState(false);
 
   const checkModelConfig = useCallback(async () => {
     try {
       if (modelType === 'cloud') {
         const res = await proxyFetchGet('/api/v1/user/key');
+        if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
+          setCloudUsageLimitReached(true);
+          setHasModelConfigured(false);
+          return;
+        }
+        setCloudUsageLimitReached(false);
         setHasModelConfigured(!!res.value);
       } else if (modelType === 'local' || modelType === 'custom') {
+        setCloudUsageLimitReached(false);
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
         const providerList = res.items || [];
         setHasModelConfigured(providerList.length > 0);
       } else {
+        setCloudUsageLimitReached(false);
         setHasModelConfigured(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to check model config:', err);
+      if (
+        modelType === 'cloud' &&
+        (hasApiCode(err?.response?.data, API_CODE_TRIAL_LIMIT) ||
+          hasApiCode(err, API_CODE_TRIAL_LIMIT))
+      ) {
+        setCloudUsageLimitReached(true);
+        setHasModelConfigured(false);
+      }
     } finally {
       setIsConfigLoaded(true);
     }
@@ -79,5 +104,5 @@ export function useModelConfigCheck(): {
     };
   }, [checkModelConfig]);
 
-  return { hasModel, isConfigLoaded };
+  return { hasModel, isConfigLoaded, cloudUsageLimitReached };
 }

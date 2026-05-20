@@ -19,6 +19,10 @@ import { useTranslation } from 'react-i18next';
 import { BoxHeaderConfirm, BoxHeaderSave } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
+import {
+  UsageLimitBanner,
+  type UsageLimitBannerProps,
+} from './UsageLimitBanner';
 
 export type BottomBoxState =
   | 'input'
@@ -54,6 +58,7 @@ interface BottomBoxProps {
 
   // Input props
   inputProps: Omit<InputboxProps, 'className'> & { className?: string };
+  usageLimitBanner?: UsageLimitBannerProps | null;
 
   // Loading states
   loading?: boolean;
@@ -73,6 +78,7 @@ export default function BottomBox({
   onSavePlan,
   onEdit,
   inputProps,
+  usageLimitBanner,
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -86,10 +92,10 @@ export default function BottomBox({
     backgroundClass = 'bg-ds-bg-completed-subtle-default';
 
   return (
-    <div className="backdrop-blur-xl rounded-t-2xl bg-ds-bg-neutral-subtle-default relative z-50 flex w-full flex-col">
+    <div className="relative z-50 flex w-full flex-col rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
-        <div className="px-2 pointer-events-auto z-50">
+        <div className="pointer-events-auto z-50 px-2">
           <QueuedBox
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
@@ -98,7 +104,7 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`rounded-3xl mb-sm relative flex w-full flex-col ${backgroundClass}`}
+        className={`relative mb-sm flex w-full flex-col rounded-3xl ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
         {state === 'confirm' && (
@@ -120,15 +126,16 @@ export default function BottomBox({
         )}
 
         {/* Inputbox (always visible) */}
+        {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
         <Inputbox {...inputProps} />
 
         {noModelOverlay && onSelectModel ? (
           <div
-            className="inset-0 rounded-3xl gap-3 backdrop-blur-lg px-4 py-5 bg-ds-bg-warning-subtle-default absolute z-[15] flex flex-row items-center justify-center"
+            className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
             role="alert"
           >
             <TriangleAlert
-              className="h-4 w-4 text-ds-icon-warning-default-default shrink-0"
+              className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
             <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">

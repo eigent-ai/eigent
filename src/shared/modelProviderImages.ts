@@ -27,6 +27,7 @@ import moonshotImage from '@/assets/model/moonshot.svg';
 import ollamaImage from '@/assets/model/ollama.svg';
 import openaiImage from '@/assets/model/openai.svg';
 import openrouterImage from '@/assets/model/openrouter.svg';
+import orcarouterImage from '@/assets/model/orcarouter.svg';
 import qwenImage from '@/assets/model/qwen.svg';
 import sglangImage from '@/assets/model/sglang.svg';
 import vllmImage from '@/assets/model/vllm.svg';
@@ -43,6 +44,7 @@ const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   anthropic: anthropicImage,
   gemini: geminiImage,
   openrouter: openrouterImage,
+  orcarouter: orcarouterImage,
   'tongyi-qianwen': qwenImage,
   deepseek: deepseekImage,
   ernie: ernieImage,
@@ -54,6 +56,7 @@ const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   grok: PROVIDER_AVATAR_URLS.grok,
   mistral: PROVIDER_AVATAR_URLS.mistral,
   'aws-bedrock': bedrockImage,
+  'aws-bedrock-converse': bedrockImage,
   azure: azureImage,
   'openai-compatible-model': openaiImage,
   ollama: ollamaImage,
