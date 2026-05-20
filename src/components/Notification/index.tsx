@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 export type NotificationPanelProps = {
@@ -35,15 +36,15 @@ export default function NotificationPanel({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onOpenChange]);
 
-  if (!open) {
+  if (!open || typeof document === 'undefined') {
     return null;
   }
 
-  return (
+  return createPortal(
     <>
       <button
         type="button"
-        className="inset-0 fixed z-40 cursor-default bg-transparent backdrop-blur-[1px]"
+        className="inset-0 fixed z-[99] cursor-default bg-transparent backdrop-blur-[1px]"
         aria-label={t('layout.notification-panel-dismiss', {
           defaultValue: 'Dismiss',
         })}
@@ -54,7 +55,7 @@ export default function NotificationPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-panel-heading"
-        className="right-2 top-10 bottom-2 min-h-0 ease-out animate-in fade-in-0 slide-in-from-right-2 rounded-2xl bg-ds-bg-neutral-default-default fixed z-50 flex w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden duration-200"
+        className="right-3 top-12 bottom-3 min-h-0 ease-out animate-in fade-in-0 slide-in-from-right-2 rounded-2xl bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-disabled fixed z-[100] flex w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden border-[0.5px] border-solid duration-200"
       >
         <div className="min-h-0 pl-3 pr-1.5 py-3 flex flex-1 flex-col overflow-y-auto">
           <span
@@ -68,6 +69,7 @@ export default function NotificationPanel({
           </p>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
