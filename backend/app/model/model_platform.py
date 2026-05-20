@@ -22,6 +22,7 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
     "grok": "openai-compatible-model",
     "ernie": "qianfan",
     "llama.cpp": "openai-compatible-model",
+    "nebius": "openai-compatible-model",
     "orcarouter": "openai-compatible-model",
 }
 

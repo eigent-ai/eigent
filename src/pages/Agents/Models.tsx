@@ -222,7 +222,7 @@ export default function SettingModels() {
 
   // Per-cloud-provider model list state: { groups, loading, error } keyed by
   // provider id. Populated for providers whose `INIT_PROVODERS` entry declares
-  // a `modelsEndpoint` (today: only OrcaRouter).
+  // a `modelsEndpoint`.
   const [cloudModelsState, setCloudModelsState] = useState<
     Record<
       string,
@@ -1216,6 +1216,7 @@ export default function SettingModels() {
       openai: openaiImage,
       anthropic: anthropicImage,
       gemini: geminiImage,
+      nebius: PROVIDER_AVATAR_URLS.nebius,
       openrouter: openrouterImage,
       orcarouter: orcarouterImage,
       'tongyi-qianwen': qwenImage,
