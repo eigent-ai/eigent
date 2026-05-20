@@ -18,7 +18,11 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { ChatTaskStatus, SessionMode } from '@/types/constants';
+import {
+  ChatTaskStatus,
+  SessionMode,
+  type SessionModeType,
+} from '@/types/constants';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SessionSidePanel } from './SessionSidePanel';
 import {
@@ -36,15 +40,13 @@ export default function Session() {
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const sessionMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
+    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
   );
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
-  const effectiveSessionMode = inferSessionModeFromTask(
-    activeTask,
-    sessionMode
-  );
+  // `null` = mode not yet determined (session still loading its events).
+  const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
   const [isSidePanelVisible, setIsSidePanelVisible] = useState(true);
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
@@ -95,6 +97,12 @@ export default function Session() {
     }
   }, [hasSessionStarted, setActiveWorkspaceTab]);
 
+  // While a saved session is still loading, the mode is briefly unknown —
+  // render the side panel empty rather than defaulting to workforce and
+  // flickering once the real mode resolves. Fresh sessions use the toggle.
+  const effectiveSessionMode: SessionModeType | null =
+    inferredSessionMode ?? (hasSessionStarted ? null : sessionMode);
+
   useEffect(() => {
     setIsExpandedOverlayOpen(false);
   }, [projectStore.activeProjectId]);
@@ -122,8 +130,8 @@ export default function Session() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
@@ -135,22 +143,24 @@ export default function Session() {
       <div
         id="session-side-panel"
         className={cn(
-          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
           isSidePanelVisible
             ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
-        <SessionSidePanel
-          mode={effectiveSessionMode}
-          workforcePanelKey={workforcePanelKey}
-          hasAnyMessages={hasAnyMessages}
-          isSidePanelVisible={isSidePanelVisible}
-          onToggleSidePanel={toggleSidePanel}
-          isExpandedOverlayOpen={isExpandedOverlayOpen}
-          onToggleExpandedOverlay={toggleExpandedOverlay}
-          onCloseExpandedOverlay={closeExpandedOverlay}
-        />
+        {effectiveSessionMode ? (
+          <SessionSidePanel
+            mode={effectiveSessionMode}
+            workforcePanelKey={workforcePanelKey}
+            hasAnyMessages={hasAnyMessages}
+            isSidePanelVisible={isSidePanelVisible}
+            onToggleSidePanel={toggleSidePanel}
+            isExpandedOverlayOpen={isExpandedOverlayOpen}
+            onToggleExpandedOverlay={toggleExpandedOverlay}
+            onCloseExpandedOverlay={closeExpandedOverlay}
+          />
+        ) : null}
       </div>
     </div>
   );

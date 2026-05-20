@@ -21,6 +21,7 @@ import {
   AgentStep,
   ChatTaskStatus,
   type ChatTaskStatusType,
+  SessionMode,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -89,6 +90,12 @@ function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
 function titleCaseMethod(method: string): string {
   if (!method) return '';
   return method.charAt(0).toUpperCase() + method.slice(1);
+}
+
+/** Uppercase the first character of agent narration so rows read cleanly. */
+function capitalizeFirst(text: string): string {
+  if (!text) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function truncateText(text: string, max: number): string {
@@ -175,6 +182,7 @@ export type AgentBlock = {
 
 const PREPARATION_BLOCK_ID = 'b-prep';
 const PREPARATION_BLOCK_LABEL = 'Preparing agents';
+const PREPARATION_BLOCK_LABEL_SINGLE = 'Preparing agent';
 
 function pairKey(toolkit: string, method: string): string {
   return `${toolkit}::${method}`;
@@ -211,10 +219,16 @@ function isPreparationEvent(entry: AgentMessage): boolean {
  * `AgentBlock[]`, preserving the wall-clock order of messages and tools
  * inside each block.
  */
-export function buildAgentBlocks(tagged: TaggedLog[]): AgentBlock[] {
+export function buildAgentBlocks(
+  tagged: TaggedLog[],
+  isSingleAgent = false
+): AgentBlock[] {
   const blocks: AgentBlock[] = [];
   const cursor: { current: AgentBlock | null } = { current: null };
   let prep: AgentBlock | null = null;
+  const prepLabel = isSingleAgent
+    ? PREPARATION_BLOCK_LABEL_SINGLE
+    : PREPARATION_BLOCK_LABEL;
 
   // The workforce factory wires up agents via `register agent` toolkit calls.
   // Those calls can appear as a leading burst *and* sprinkled in mid-run
@@ -228,7 +242,7 @@ export function buildAgentBlocks(tagged: TaggedLog[]): AgentBlock[] {
         id: PREPARATION_BLOCK_ID,
         agentId: '__prep__',
         agentType: '__prep__',
-        agentName: PREPARATION_BLOCK_LABEL,
+        agentName: prepLabel,
         items: [],
         status: 'running',
         kind: 'preparation',
@@ -534,7 +548,8 @@ function useTaskWorkLogData(
   }
   const t = chatStore.getState().tasks[taskId];
   const tagged = mergeTaggedAgentLogs(t?.taskAssigning);
-  const blocks = buildAgentBlocks(tagged);
+  const isSingleAgent = t?.sessionMode === SessionMode.SINGLE_AGENT;
+  const blocks = buildAgentBlocks(tagged, isSingleAgent);
   return { task: t, blocks };
 }
 
@@ -661,10 +676,11 @@ const InlineMessageRow = memo(function InlineMessageRow({
   source: MessageItem['source'];
   running: boolean;
 }) {
-  const display =
+  const display = capitalizeFirst(
     source === 'toolkit_message'
       ? truncateText(text, TOOL_INLINE_PREVIEW_MAX)
-      : text;
+      : text
+  );
   // Reasoning is the agent's primary narration ("open DuckDuckGo to search
   // for…"); render at default text intensity. Notices and toolkit-message
   // narration stay subtle so the eye stays on tool titles + reasoning.
@@ -709,11 +725,15 @@ const AgentBlockRow = memo(function AgentBlockRow({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { agentLabel, detail, detailRunning } = getBlockHeaderParts(block);
+  const { agentLabel, detail } = getBlockHeaderParts(block);
 
-  // Agent label is static. The detail tracks the latest toolkit/method for
-  // this agent and shimmers while that tool is still running — that's the
-  // user's "live" cue, in the row that owns the work.
+  // While this block is the active, currently-running step, the whole header
+  // — agent name · toolkit · action — shimmers as one ShinyText so the
+  // gradient sweeps across all three as a continuous "running" indicator.
+  // (ShinyText needs `color: transparent`, so no text-color class here.)
+  const headerRunning = taskRunning && block.status === 'running';
+  const headerText = detail ? `${agentLabel} · ${detail}` : agentLabel;
+
   return (
     <div className="min-w-0 flex w-full flex-col">
       <button
@@ -723,27 +743,29 @@ const AgentBlockRow = memo(function AgentBlockRow({
         className="min-w-0 gap-2 py-1 px-0 my-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
       >
         <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
-          <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
-            {agentLabel}
-          </span>
-          {detail ? (
+          {headerRunning ? (
+            <ShinyText
+              text={headerText}
+              speed={2.5}
+              className="!text-label-sm font-normal truncate"
+            />
+          ) : (
             <>
-              <span className="text-label-sm text-ds-text-neutral-subtle-default">
-                ·
+              <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
+                {agentLabel}
               </span>
-              {detailRunning ? (
-                <ShinyText
-                  text={detail}
-                  speed={2.5}
-                  className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate"
-                />
-              ) : (
-                <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
-                  {detail}
-                </span>
-              )}
+              {detail ? (
+                <>
+                  <span className="text-label-sm text-ds-text-neutral-subtle-default">
+                    ·
+                  </span>
+                  <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
+                    {detail}
+                  </span>
+                </>
+              ) : null}
             </>
-          ) : null}
+          )}
         </span>
         {open ? (
           <ChevronDown
