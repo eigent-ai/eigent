@@ -26,6 +26,7 @@ from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
 )
+from app.remote_sub_agent.config import RemoteSubAgentConfig
 
 logger = logging.getLogger("chat_model")
 
@@ -81,6 +82,7 @@ class Chat(BaseModel):
     # Direct server API base URL (for example http://localhost:3001/api/v1)
     # used by standalone Brain to sync replay steps without Electron env injection.
     server_url: str | None = None
+    remote_sub_agent_config: RemoteSubAgentConfig | None = None
 
     @field_validator("model_type")
     @classmethod
@@ -119,7 +121,12 @@ class Chat(BaseModel):
         )
 
     def is_cloud(self):
-        return self.api_url is not None and "eigent-proxy" in self.api_url
+        if self.api_url is None:
+            return False
+        return any(
+            marker in self.api_url
+            for marker in ("eigent-proxy", "proxy.eigent.ai")
+        )
 
     def file_save_path(self, path: str | None = None):
         email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(

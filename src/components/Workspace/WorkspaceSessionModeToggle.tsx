@@ -16,12 +16,7 @@ import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
 import { SessionMode } from '@/types/constants';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
-import {
-  ChevronDown,
-  ChevronUp,
-  GamepadDirectional,
-  Joystick,
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, Gamepad2, Joystick } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -102,7 +97,7 @@ export function WorkspaceSessionModeToggle({
     })();
   }, [chevronScale]);
 
-  const LeadingIcon = isSingle ? Joystick : GamepadDirectional;
+  const LeadingIcon = isSingle ? Joystick : Gamepad2;
 
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
@@ -114,7 +109,7 @@ export function WorkspaceSessionModeToggle({
 
   const endChevrons = (
     <span
-      className="gap-0 inline-flex shrink-0 flex-col items-center justify-center leading-none"
+      className="inline-flex shrink-0 flex-col items-center justify-center gap-0 leading-none"
       aria-hidden
     >
       <ChevronUp className={cn(chevronClass, '-mb-1')} strokeWidth={2} />
@@ -129,7 +124,7 @@ export function WorkspaceSessionModeToggle({
         aria-label={modeAriaLabel}
         className={cn(shellClass, 'pointer-events-none bg-transparent')}
       >
-        <span className="gap-1.5 inline-flex min-h-[1.25rem] items-center overflow-hidden">
+        <span className="inline-flex min-h-[1.25rem] items-center gap-1.5 overflow-hidden">
           <LeadingIcon
             className="size-3.5 shrink-0"
             strokeWidth={2}
@@ -152,16 +147,16 @@ export function WorkspaceSessionModeToggle({
       className={cn(
         shellClass,
         'cursor-pointer border-0 text-left',
-        'focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
       )}
       onPointerDown={pulseChevrons}
       onClick={toggle}
     >
-      <span className="min-w-0 relative inline-flex min-h-[1.25rem] flex-1 items-center overflow-hidden">
+      <span className="relative inline-flex min-h-[1.25rem] min-w-0 flex-1 items-center overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={value}
-            className="gap-1.5 inline-flex items-center will-change-transform"
+            className="inline-flex items-center gap-1.5 will-change-transform"
             variants={ROLL}
             initial="initial"
             animate="animate"
@@ -172,7 +167,7 @@ export function WorkspaceSessionModeToggle({
               strokeWidth={2}
               aria-hidden
             />
-            <span className="!text-label-xs font-semibold whitespace-nowrap">
+            <span className="whitespace-nowrap !text-label-xs font-semibold">
               {label}
             </span>
           </motion.span>

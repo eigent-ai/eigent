@@ -1,6 +1,7 @@
 {
   "skills": "Fähigkeiten",
   "memory": "Speicher",
+  "sub-agents": "Sub-Agents",
   "preview": "Vorschau",
   "skills-description": "Fügen Sie benutzerdefinierte Fähigkeiten hinzu, um die Funktionen Ihres Agenten zu erweitern.",
   "memory-description": "Verwalten Sie den Speicher und die Wissensbasis Ihres Agenten.",

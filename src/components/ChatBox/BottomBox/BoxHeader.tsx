@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -26,16 +27,37 @@ export interface BoxHeaderConfirmProps {
   onEdit?: () => void;
   className?: string;
   loading?: boolean;
+  autoStartDeadline?: number | null;
 }
 
 export const BoxHeaderConfirm = ({
-  subtitle,
+  subtitle: _subtitle,
   onStartTask,
   onEdit,
   className,
   loading = false,
+  autoStartDeadline = null,
 }: BoxHeaderConfirmProps) => {
   const { t } = useTranslation();
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!autoStartDeadline) {
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const updateRemainingSeconds = () => {
+      setRemainingSeconds(
+        Math.max(0, Math.ceil((autoStartDeadline - Date.now()) / 1000))
+      );
+    };
+
+    updateRemainingSeconds();
+    const intervalId = window.setInterval(updateRemainingSeconds, 250);
+    return () => window.clearInterval(intervalId);
+  }, [autoStartDeadline]);
+
   return (
     <div
       className={cn(
@@ -56,15 +78,27 @@ export const BoxHeaderConfirm = ({
           <ChevronLeft />
         </Button>
 
-        <Button
-          variant="success"
-          size="sm"
-          className="rounded-full"
-          onClick={onStartTask}
-          disabled={loading}
-        >
-          {t('chat.start-task')}
-        </Button>
+        <div className="gap-2 flex items-center">
+          {remainingSeconds !== null && (
+            <span
+              className="text-body-xs font-medium text-ds-text-success-default-default whitespace-nowrap tabular-nums"
+              aria-label={t('chat.auto-start-in', {
+                seconds: remainingSeconds,
+              })}
+            >
+              {t('chat.auto-start-in', { seconds: remainingSeconds })}
+            </span>
+          )}
+          <Button
+            variant="success"
+            size="sm"
+            className="rounded-full"
+            onClick={onStartTask}
+            disabled={loading}
+          >
+            {t('chat.start-task')}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -85,7 +119,7 @@ export interface BoxHeaderSaveProps {
 }
 
 export const BoxHeaderSave = ({
-  subtitle,
+  subtitle: _subtitle,
   onSave,
   onEdit,
   className,

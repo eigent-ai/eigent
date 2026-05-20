@@ -18,7 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from app.component.environment import env_base_dir, sanitize_env_path
+from app.component.environment import (
+    _load_initial_env_files,
+    env_base_dir,
+    sanitize_env_path,
+)
 
 
 def test_none_input_returns_none():
@@ -185,3 +189,40 @@ def test_current_directory_traversal():
     result = sanitize_env_path("././project.env")
     assert result is not None
     assert result.startswith(env_base_dir)
+
+
+def test_initial_env_files_precedence(monkeypatch, temp_dir: Path):
+    """Standalone backend env loading should not depend on Electron."""
+    low_priority = temp_dir / "global.env"
+    high_priority = temp_dir / ".env.development"
+    low_priority.write_text(
+        "\n".join(
+            [
+                "SHARED_KEY=from_global",
+                "GLOBAL_ONLY=from_global",
+                "PROCESS_KEY=from_global",
+            ]
+        )
+    )
+    high_priority.write_text(
+        "\n".join(
+            [
+                "SHARED_KEY=from_development",
+                "DEVELOPMENT_ONLY=from_development",
+                "PROCESS_KEY=from_development",
+            ]
+        )
+    )
+
+    monkeypatch.delenv("SHARED_KEY", raising=False)
+    monkeypatch.delenv("GLOBAL_ONLY", raising=False)
+    monkeypatch.delenv("DEVELOPMENT_ONLY", raising=False)
+    monkeypatch.setenv("PROCESS_KEY", "from_process")
+
+    loaded_paths = _load_initial_env_files((low_priority, high_priority))
+
+    assert loaded_paths == [low_priority.resolve(), high_priority.resolve()]
+    assert os.environ["SHARED_KEY"] == "from_development"
+    assert os.environ["GLOBAL_ONLY"] == "from_global"
+    assert os.environ["DEVELOPMENT_ONLY"] == "from_development"
+    assert os.environ["PROCESS_KEY"] == "from_process"

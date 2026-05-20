@@ -36,6 +36,7 @@ export type WorkspaceMainBackground =
   | 'dashed';
 export type CloudModelType =
   | 'gemini-3.1-pro-preview'
+  | 'gemini-3.5-flash'
   | 'gemini-3-pro-preview'
   | 'gemini-3-flash-preview'
   | 'claude-haiku-4-5'
