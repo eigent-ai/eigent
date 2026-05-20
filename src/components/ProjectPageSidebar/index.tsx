@@ -25,12 +25,11 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Inbox, Plus, Zap, ZapOff } from 'lucide-react';
+import { Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { HeaderAction } from './HeaderAction';
 import { NavList } from './NavList';
 import {
   NavTab,
@@ -59,6 +58,9 @@ export default function ProjectPageSidebar({
 }: ProjectPageSidebarProps) {
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
   const requestOpenTriggerAddDialog = usePageTabStore(
     (s) => s.requestOpenTriggerAddDialog
   );
@@ -257,8 +259,9 @@ export default function ProjectPageSidebar({
 
   const handleNewSession = useCallback(() => {
     chatStore.create();
-    setActiveWorkspaceTab('session');
-  }, [chatStore, setActiveWorkspaceTab]);
+    setActiveWorkspaceTab('workforce');
+    requestWorkspaceChatFocus();
+  }, [chatStore, setActiveWorkspaceTab, requestWorkspaceChatFocus]);
 
   return (
     <>
@@ -276,9 +279,20 @@ export default function ProjectPageSidebar({
         <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
           <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <div className="gap-2 flex w-full shrink-0 flex-col">
-              <HeaderAction />
-
               <div className="gap-2 min-w-0 flex w-full flex-col">
+                <NavTab
+                  active={activeWorkspaceTab === 'workforce'}
+                  onClick={() => setActiveWorkspaceTab('workforce')}
+                  leading={
+                    <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
+                  }
+                  label="Workspace"
+                  tooltip="Workspace"
+                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
+                  folded={projectSidebarFolded}
+                  ariaLabel="Workspace"
+                  ariaCurrentPage={activeWorkspaceTab === 'workforce'}
+                />
                 <NavTab
                   active={activeWorkspaceTab === 'inbox'}
                   onClick={() => {
@@ -403,8 +417,6 @@ export default function ProjectPageSidebar({
                   setActiveWorkspaceTab('session');
                 }}
                 onDeleteSession={handleDeleteSession}
-                workspaceActive={activeWorkspaceTab === 'workforce'}
-                onWorkspaceClick={() => setActiveWorkspaceTab('workforce')}
                 onNewSession={handleNewSession}
                 folded={projectSidebarFolded}
               />

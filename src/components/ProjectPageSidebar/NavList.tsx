@@ -12,14 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { LayoutGrid, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
 import { NavListSessionRows, type NavListSession } from './NavListSessionRows';
-import { NavTab, workspaceTabButtonClass } from './NavTab';
+import { NavTab } from './NavTab';
 
 export {
   NAV_LIST_SESSIONS_RECENT_MAX,
@@ -32,33 +29,26 @@ export interface NavListProps {
   activeSessionId?: string | null;
   onSessionClick?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
-  /** Top row: workspace tab — switches to workforce view. */
-  workspaceActive: boolean;
-  onWorkspaceClick: () => void;
-  /** Trailing + control (e.g. create task + focus session). */
   onNewSession: () => void;
   /** Icon-only rail: match other sidebar `NavTab`s. */
   folded: boolean;
   className?: string;
 }
 
-/** Workspace row (split: tab + new session) and a flat scrollable session column. */
+/** New Session row and a flat scrollable session column. */
 export function NavList({
   sessions,
   activeSessionId,
   onSessionClick,
   onDeleteSession,
-  workspaceActive,
-  onWorkspaceClick,
   onNewSession,
   folded,
   className,
 }: NavListProps) {
   const { t } = useTranslation();
-  const workspaceLabel = t('triggers.workspace');
 
   const newSessionLabel = t('layout.sessions-start-new', {
-    defaultValue: 'Start new session',
+    defaultValue: 'New Session',
   });
 
   return (
@@ -70,62 +60,16 @@ export function NavList({
     >
       <div className="min-w-0 gap-2 flex w-full flex-col">
         <NavTab
-          layout="split"
-          active={workspaceActive}
-          onClick={onWorkspaceClick}
-          leading={<LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />}
-          label={workspaceLabel}
-          endAction={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              className={cn(
-                'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
-              )}
-              aria-label={newSessionLabel}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onNewSession();
-              }}
-            >
-              <Plus
-                className="h-4 w-4 text-ds-icon-neutral-muted-default"
-                aria-hidden
-              />
-            </Button>
-          }
-          tooltip={workspaceLabel}
+          active={false}
+          onClick={onNewSession}
+          leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
+          label={newSessionLabel}
+          tooltip={newSessionLabel}
           tooltipEnabledWhenCollapsed={!folded}
           folded={folded}
-          ariaLabel={workspaceLabel}
-          ariaCurrentPage={workspaceActive}
+          ariaLabel={newSessionLabel}
+          ariaCurrentPage={false}
         />
-
-        {folded ? (
-          <TooltipSimple
-            content={newSessionLabel}
-            side="right"
-            align="center"
-            enabled
-            className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
-          >
-            <button
-              type="button"
-              onClick={onNewSession}
-              className={cn(workspaceTabButtonClass(false), 'gap-0 w-full')}
-              aria-label={newSessionLabel}
-            >
-              <Plus
-                className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
-                aria-hidden
-              />
-            </button>
-          </TooltipSimple>
-        ) : null}
       </div>
 
       <div
