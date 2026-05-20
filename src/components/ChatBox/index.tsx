@@ -63,15 +63,18 @@ export default function ChatBox(): JSX.Element {
     (s) => s.workspaceChatFocusRequestId
   );
   const sessionSidePanelMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
+    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
   );
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
-  const effectiveSessionMode = inferSessionModeFromTask(
-    activeTask,
-    sessionSidePanelMode
-  );
+  // Session mode in three forms (see naming convention shared with
+  // Session/Workspace): `inferred` is the raw, nullable inference;
+  // `effective` always resolves to a concrete mode; `display` stays nullable
+  // so a still-loading session renders empty instead of the wrong mode.
+  const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
+  const effectiveSessionMode = inferredSessionMode ?? sessionSidePanelMode;
+  const displaySessionMode = inferredSessionMode ?? undefined;
   const { hasModel, isConfigLoaded } = useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomBoxOverlayRef = useRef<HTMLDivElement>(null);
@@ -933,10 +936,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -946,8 +949,8 @@ export default function ChatBox(): JSX.Element {
               isPauseResumeLoading={isPauseResumeLoading}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col pl-4 pr-2">
-              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
+            <div className="pl-4 pr-2 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -993,9 +996,9 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
           >
-            <div className="pointer-events-auto w-full max-w-[600px] px-sm">
+            <div className="px-sm pointer-events-auto w-full max-w-[600px]">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
@@ -1059,7 +1062,7 @@ export default function ChatBox(): JSX.Element {
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
-                  sessionMode: effectiveSessionMode,
+                  sessionMode: displaySessionMode,
                   sessionModeSelectInteractive: false,
                 }}
               />
@@ -1071,7 +1074,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

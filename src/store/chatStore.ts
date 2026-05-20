@@ -713,7 +713,7 @@ const ensureSingleAgentAssignment = (
   if (existingIndex !== -1) return existingIndex;
   taskAssigning.push({
     agent_id: agentId || `${taskId}-single-agent`,
-    name: 'Single Agent',
+    name: 'CAMEL Agent',
     type: 'single_agent',
     status: AgentStatusValue.RUNNING,
     tasks: [],
@@ -1130,9 +1130,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
       }
-      targetChatStore
-        .getState()
-        .setTaskSessionMode(newTaskId, sessionModeForRequest);
+      // For replay/share playback the real session mode is unknown until the
+      // playback re-emits `todo_state` / `to_sub_tasks`. Pre-setting it here
+      // would flash the wrong side panel when loading a saved session, so
+      // only seed it for live tasks; playback resolves it from the events.
+      if (!type || type === 'normal') {
+        targetChatStore
+          .getState()
+          .setTaskSessionMode(newTaskId, sessionModeForRequest);
+      }
 
       // Replay/share APIs live on the server side, not Brain.
       const serverBaseUrl = import.meta.env.DEV
@@ -1485,7 +1491,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             document_agent: 'Document Agent',
             multi_modal_agent: 'Multi Modal Agent',
             social_media_agent: 'Social Media Agent',
-            single_agent: 'Single Agent',
+            single_agent: 'CAMEL Agent',
           };
 
           /**
@@ -2035,7 +2041,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               existingIndex === -1
                 ? {
                     agent_id: agentId,
-                    name: 'Single Agent',
+                    name: 'CAMEL Agent',
                     type: 'single_agent',
                     tasks: todoTasks,
                     log: [],
@@ -2046,7 +2052,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 : {
                     ...existingAgents[existingIndex],
                     agent_id: existingAgents[existingIndex].agent_id || agentId,
-                    name: existingAgents[existingIndex].name || 'Single Agent',
+                    name: existingAgents[existingIndex].name || 'CAMEL Agent',
                     type: 'single_agent',
                     tasks: todoTasks,
                   };
@@ -2061,6 +2067,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskRunning(currentTaskId, todoTasks);
             setTaskAssigning(currentTaskId, existingAgents);
             if (tasks[currentTaskId].status !== ChatTaskStatus.FINISHED) {
+              // Single-agent tasks have no confirm step, so `taskTime` is never
+              // seeded by `handleConfirmTask`. Start the work-log clock here on
+              // the first `todo_state`; the `=== 0` guard keeps it idempotent.
+              if (tasks[currentTaskId].taskTime === 0) {
+                setTaskTime(currentTaskId, Date.now());
+              }
               setStatus(currentTaskId, ChatTaskStatus.RUNNING);
             }
             return;

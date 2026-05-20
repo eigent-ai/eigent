@@ -30,6 +30,7 @@ import {
 import type { ChatStore } from '@/store/chatStore';
 import {
   ChatTaskStatus,
+  SessionMode,
   TaskStatus,
   type TaskStatusType,
 } from '@/types/constants';
@@ -129,11 +130,17 @@ export function getSessionNavLeadPresentation(
   const errorSignal =
     isTaskListRowHardFailure(task) || wf.some((s) => s === TaskStatus.FAILED);
   const warningSignal = Boolean(task.isContextExceeded) && !errorSignal;
+  // Single agent runs directly — no splitting/confirm step. Its sidebar icon
+  // tracks the task status only: chat bubble while preparing, running spinner
+  // while executing, check when finished — matching the chat container.
+  const isSingleAgent = task.sessionMode === SessionMode.SINGLE_AGENT;
   const bottom = getBottomBoxStateForTask(task);
+  // Human-in-the-loop = an unconfirmed plan or an explicit `ask` / `wait_confirm`.
+  // A workforce subtask in WAITING means "assigned, not yet started" — a normal
+  // running-phase state — so it must NOT surface the Hand icon while running.
+  // Single agent has no plan/confirm step, so it never shows the HITL icon.
   const hitlSignal =
-    bottom === 'confirm' ||
-    task.hasWaitComfirm ||
-    wf.some((s) => s === TaskStatus.WAITING);
+    !isSingleAgent && (bottom === 'confirm' || Boolean(task.hasWaitComfirm));
   const blockedSignal = wf.some((s) => s === TaskStatus.BLOCKED);
   const shelf = getTaskListShelfTone(task);
 

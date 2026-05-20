@@ -21,6 +21,7 @@ import {
   AgentStep,
   ChatTaskStatus,
   type ChatTaskStatusType,
+  SessionMode,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -41,8 +42,6 @@ const HEIGHT_MOTION = {
   height: { duration: 0.22, ease: CONTENT_EASE },
   opacity: { duration: 0.16, ease: CONTENT_EASE },
 } as const;
-const MARKDOWN_DEFER_THRESHOLD = 1200;
-const MARKDOWN_DEFER_MS = 180;
 const TOOL_INLINE_PREVIEW_MAX = 200;
 
 function normalizeToolkitMessage(value: unknown): string {
@@ -89,6 +88,12 @@ function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
 function titleCaseMethod(method: string): string {
   if (!method) return '';
   return method.charAt(0).toUpperCase() + method.slice(1);
+}
+
+/** Uppercase the first character of agent narration so rows read cleanly. */
+function capitalizeFirst(text: string): string {
+  if (!text) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function truncateText(text: string, max: number): string {
@@ -175,6 +180,7 @@ export type AgentBlock = {
 
 const PREPARATION_BLOCK_ID = 'b-prep';
 const PREPARATION_BLOCK_LABEL = 'Preparing agents';
+const PREPARATION_BLOCK_LABEL_SINGLE = 'Preparing agent';
 
 function pairKey(toolkit: string, method: string): string {
   return `${toolkit}::${method}`;
@@ -211,10 +217,16 @@ function isPreparationEvent(entry: AgentMessage): boolean {
  * `AgentBlock[]`, preserving the wall-clock order of messages and tools
  * inside each block.
  */
-export function buildAgentBlocks(tagged: TaggedLog[]): AgentBlock[] {
+export function buildAgentBlocks(
+  tagged: TaggedLog[],
+  isSingleAgent = false
+): AgentBlock[] {
   const blocks: AgentBlock[] = [];
   const cursor: { current: AgentBlock | null } = { current: null };
   let prep: AgentBlock | null = null;
+  const prepLabel = isSingleAgent
+    ? PREPARATION_BLOCK_LABEL_SINGLE
+    : PREPARATION_BLOCK_LABEL;
 
   // The workforce factory wires up agents via `register agent` toolkit calls.
   // Those calls can appear as a leading burst *and* sprinkled in mid-run
@@ -228,7 +240,7 @@ export function buildAgentBlocks(tagged: TaggedLog[]): AgentBlock[] {
         id: PREPARATION_BLOCK_ID,
         agentId: '__prep__',
         agentType: '__prep__',
-        agentName: PREPARATION_BLOCK_LABEL,
+        agentName: prepLabel,
         items: [],
         status: 'running',
         kind: 'preparation',
@@ -534,7 +546,8 @@ function useTaskWorkLogData(
   }
   const t = chatStore.getState().tasks[taskId];
   const tagged = mergeTaggedAgentLogs(t?.taskAssigning);
-  const blocks = buildAgentBlocks(tagged);
+  const isSingleAgent = t?.sessionMode === SessionMode.SINGLE_AGENT;
+  const blocks = buildAgentBlocks(tagged, isSingleAgent);
   return { task: t, blocks };
 }
 
@@ -569,25 +582,6 @@ const ToolDetailRow = memo(function ToolDetailRow({
   status: 'running' | 'done';
 }) {
   const [open, setOpen] = useState(false);
-  const [renderMarkdown, setRenderMarkdown] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setRenderMarkdown(false);
-      return;
-    }
-
-    if (detail.length <= MARKDOWN_DEFER_THRESHOLD) {
-      setRenderMarkdown(true);
-      return;
-    }
-
-    const timer = window.setTimeout(
-      () => setRenderMarkdown(true),
-      MARKDOWN_DEFER_MS
-    );
-    return () => window.clearTimeout(timer);
-  }, [open, detail]);
 
   return (
     <div className="min-w-0 flex w-full flex-col items-start">
@@ -627,21 +621,15 @@ const ToolDetailRow = memo(function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="min-w-0 mt-1 w-full overflow-hidden"
+            className="min-w-0 w-full overflow-hidden"
           >
             {detail ? (
-              <div className="p-2 bg-ds-bg-neutral-muted-default rounded-md w-full opacity-60">
-                {renderMarkdown ? (
-                  <MarkDown
-                    content={detail}
-                    enableTypewriter={false}
-                    pTextSize="text-label-xs text-ds-text-neutral-default-default"
-                  />
-                ) : (
-                  <p className="text-label-xs text-ds-text-neutral-default-default m-0">
-                    Rendering details...
-                  </p>
-                )}
+              <div className="mt-1 p-2 bg-ds-bg-neutral-muted-default rounded-md w-full opacity-60">
+                <MarkDown
+                  content={detail}
+                  enableTypewriter={false}
+                  pTextSize="text-label-xs text-ds-text-neutral-default-default"
+                />
               </div>
             ) : null}
           </motion.div>
@@ -661,10 +649,11 @@ const InlineMessageRow = memo(function InlineMessageRow({
   source: MessageItem['source'];
   running: boolean;
 }) {
-  const display =
+  const display = capitalizeFirst(
     source === 'toolkit_message'
       ? truncateText(text, TOOL_INLINE_PREVIEW_MAX)
-      : text;
+      : text
+  );
   // Reasoning is the agent's primary narration ("open DuckDuckGo to search
   // for…"); render at default text intensity. Notices and toolkit-message
   // narration stay subtle so the eye stays on tool titles + reasoning.
@@ -709,11 +698,15 @@ const AgentBlockRow = memo(function AgentBlockRow({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { agentLabel, detail, detailRunning } = getBlockHeaderParts(block);
+  const { agentLabel, detail } = getBlockHeaderParts(block);
 
-  // Agent label is static. The detail tracks the latest toolkit/method for
-  // this agent and shimmers while that tool is still running — that's the
-  // user's "live" cue, in the row that owns the work.
+  // While this block is the active, currently-running step, the whole header
+  // — agent name · toolkit · action — shimmers as one ShinyText so the
+  // gradient sweeps across all three as a continuous "running" indicator.
+  // (ShinyText needs `color: transparent`, so no text-color class here.)
+  const headerRunning = taskRunning && block.status === 'running';
+  const headerText = detail ? `${agentLabel} · ${detail}` : agentLabel;
+
   return (
     <div className="min-w-0 flex w-full flex-col">
       <button
@@ -723,27 +716,29 @@ const AgentBlockRow = memo(function AgentBlockRow({
         className="min-w-0 gap-2 py-1 px-0 my-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
       >
         <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
-          <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
-            {agentLabel}
-          </span>
-          {detail ? (
+          {headerRunning ? (
+            <ShinyText
+              text={headerText}
+              speed={2.5}
+              className="!text-label-sm font-normal truncate"
+            />
+          ) : (
             <>
-              <span className="text-label-sm text-ds-text-neutral-subtle-default">
-                ·
+              <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
+                {agentLabel}
               </span>
-              {detailRunning ? (
-                <ShinyText
-                  text={detail}
-                  speed={2.5}
-                  className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate"
-                />
-              ) : (
-                <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
-                  {detail}
-                </span>
-              )}
+              {detail ? (
+                <>
+                  <span className="text-label-sm text-ds-text-neutral-subtle-default">
+                    ·
+                  </span>
+                  <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
+                    {detail}
+                  </span>
+                </>
+              ) : null}
             </>
-          ) : null}
+          )}
         </span>
         {open ? (
           <ChevronDown

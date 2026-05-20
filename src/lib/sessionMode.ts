@@ -45,10 +45,17 @@ function hasWorkforceAgent(agents: SessionModeAgent[] | undefined) {
   );
 }
 
+/**
+ * Resolve a task's session mode from its data.
+ *
+ * Pass `fallback: null` to detect the "not yet determined" case — useful
+ * while a project/session is still loading, so the UI can render a neutral
+ * state instead of flashing the wrong mode (workforce → single-agent).
+ */
 export function inferSessionModeFromTask(
   task: SessionModeTask | null | undefined,
-  fallback: SessionModeType = SessionMode.WORKFORCE
-): SessionModeType {
+  fallback: SessionModeType | null = SessionMode.WORKFORCE
+): SessionModeType | null {
   if (!task) return fallback;
   if (task.sessionMode) return task.sessionMode;
 

@@ -21,7 +21,7 @@ export function PreparingToExecuteTasks() {
 
   return (
     <div
-      className="my-2 min-w-0 flex w-full items-center"
+      className="py-2 min-w-0 flex w-full items-center"
       role="status"
       aria-live="polite"
     >
