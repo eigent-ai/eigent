@@ -121,7 +121,7 @@ export default function Setting() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="flex h-auto w-40 flex-shrink-0 flex-grow-0 flex-col self-start pr-6 pt-8">
+      <div className="w-40 pr-6 pt-8 flex h-auto flex-shrink-0 flex-grow-0 flex-col self-start">
         <VerticalNavigation
           items={
             settingMenus.map((menu) => {
@@ -135,7 +135,7 @@ export default function Setting() {
           }
           value={activeTab}
           onValueChange={handleTabChange}
-          className="h-fit min-h-0 w-full flex-none gap-0"
+          className="min-h-0 gap-0 h-fit w-full flex-none"
           listClassName="h-auto w-full"
           contentClassName="hidden"
         />
@@ -161,17 +161,17 @@ export default function Setting() {
           }}
           className={
             packageUpdateAvailable
-              ? 'no-drag mt-4 flex w-full min-w-0 cursor-pointer flex-row items-center justify-center gap-1.5 rounded-full bg-ds-bg-neutral-subtle-default px-5 py-1 transition-opacity duration-200 hover:opacity-90'
-              : 'no-drag mt-4 flex w-full min-w-0 cursor-pointer flex-row items-center justify-center gap-1.5 rounded-full bg-ds-bg-neutral-subtle-default px-5 py-1 transition-opacity duration-200 hover:opacity-60'
+              ? 'no-drag mt-4 min-w-0 gap-1.5 bg-ds-bg-neutral-subtle-default px-5 py-1 flex w-full cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-90'
+              : 'no-drag mt-4 min-w-0 gap-1.5 bg-ds-bg-neutral-subtle-default px-5 py-1 flex w-full cursor-pointer flex-row items-center justify-center rounded-full transition-opacity duration-200 hover:opacity-60'
           }
           aria-label={
             packageUpdateAvailable
-              ? t('update.new-version-available')
+              ? t('update.update')
               : version || t('setting.version', { defaultValue: 'Version' })
           }
           title={
             packageUpdateAvailable
-              ? [t('update.new-version-available'), packageNewVersion]
+              ? [t('update.update'), packageNewVersion]
                   .filter(Boolean)
                   .join(' ')
               : version
@@ -179,27 +179,23 @@ export default function Setting() {
         >
           {packageUpdateAvailable ? (
             <Download
-              className="h-4 w-4 shrink-0 stroke-2 text-ds-text-neutral-default-default"
+              className="h-4 w-4 text-ds-text-neutral-default-default shrink-0 stroke-2"
               aria-hidden
             />
           ) : (
             <TagIcon
-              className="h-4 w-4 shrink-0 stroke-2 text-ds-text-success-default-default"
+              className="h-4 w-4 text-ds-text-success-default-default shrink-0 stroke-2"
               aria-hidden
             />
           )}
-          <span className="min-w-0 flex-1 truncate text-left text-label-sm font-semibold text-ds-text-neutral-default-default">
-            {packageUpdateAvailable
-              ? [t('update.new-version-available'), packageNewVersion]
-                  .filter(Boolean)
-                  .join(' ')
-              : version}
+          <span className="min-w-0 text-label-sm font-semibold text-ds-text-neutral-default-default flex-1 truncate text-left">
+            {packageUpdateAvailable ? t('update.update') : version}
           </span>
         </button>
       </div>
 
       <div className="flex h-auto w-full flex-1 flex-col">
-        <div className="flex flex-col gap-4">
+        <div className="gap-4 flex flex-col">
           {activeTab === 'general' && <General />}
           {activeTab === 'appearance' && <Appearance />}
           {activeTab === 'privacy' && <Privacy />}

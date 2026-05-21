@@ -20,6 +20,7 @@ import {
   GridPatternBackground,
   RuledLinesBackground,
 } from '@/components/Background';
+import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import {
@@ -559,7 +560,9 @@ export default function Home() {
   const mainPanelShellClass = cn(mainPanelSurfaceClass);
 
   const useWorkspacePatternBg =
-    activeWorkspaceTab === 'workforce' || activeWorkspaceTab === 'session';
+    activeWorkspaceTab === 'workforce' ||
+    activeWorkspaceTab === 'session' ||
+    activeWorkspaceTab === 'new-session';
   const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
     if (!useWorkspacePatternBg) return 'empty';
     return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
@@ -614,6 +617,19 @@ export default function Home() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <Session />
+          </div>
+        );
+      case 'new-session':
+        return (
+          <div className={workspaceMainContentClass}>
+            {workspacePatternOverlayEl}
+            <Session isNewSession />
+          </div>
+        );
+      case 'dispatch':
+        return (
+          <div className={mainPanelContentClass}>
+            <WorkspaceDispatch />
           </div>
         );
       case 'inbox':

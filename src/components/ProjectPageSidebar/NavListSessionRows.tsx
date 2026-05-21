@@ -70,12 +70,8 @@ export function NavListSessionRows({
   showRowMenu = true,
 }: NavListSessionRowsProps) {
   const { t } = useTranslation();
-  const deleteLabel = t('layout.sessions-delete-session', {
-    defaultValue: 'Delete session',
-  });
-  const sessionMenuAria = t('layout.sessions-session-menu', {
-    defaultValue: 'Session options',
-  });
+  const deleteLabel = t('layout.sessions-delete-session');
+  const sessionMenuAria = t('layout.sessions-session-menu');
   const list = maxItems != null ? sessions.slice(0, maxItems) : sessions;
 
   return (

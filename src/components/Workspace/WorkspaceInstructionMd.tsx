@@ -55,10 +55,7 @@ export function WorkspaceInstructionMd({
         className="min-h-0 p-6 font-mono text-body-sm text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-muted-default max-w-3xl w-full flex-1 resize-none border-none bg-transparent outline-none"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        placeholder={t('layout.instruction-md-placeholder', {
-          defaultValue:
-            'Write your rules & tone instructions here in Markdown...',
-        })}
+        placeholder={t('layout.instruction-md-placeholder')}
         spellCheck={false}
       />
     </div>

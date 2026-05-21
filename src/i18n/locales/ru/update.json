@@ -1,6 +1,7 @@
 {
   "update-check-failed": "Проверка обновлений не удалась",
   "new-version-available": "Доступна новая версия",
+  "update": "Обновить",
   "download": "Скачать",
   "update-error": "Ошибка обновления",
   "downloading-update": "Загрузка обновления",

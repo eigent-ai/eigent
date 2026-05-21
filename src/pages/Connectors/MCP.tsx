@@ -1044,7 +1044,7 @@ export default function SettingMCP() {
 
       <div className="mb-12 gap-6 flex flex-col">
         <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default mb-4 gap-3 px-3 py-2 sticky top-[80px] z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+          <div className="border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default mb-4 gap-3 px-3 py-2 z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.connectors')}
             </div>
@@ -1247,7 +1247,7 @@ export default function SettingMCP() {
               </div>
             </div>
 
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+            <div className="min-w-0 sticky top-[80px] z-10 flex-1">
               {isLoadingIntegrations && !selected ? (
                 <div className="gap-4 flex w-full flex-col items-start justify-start">
                   {[1, 2, 3, 4].map((i) => (

@@ -1,6 +1,7 @@
 {
   "update-check-failed": "更新检查失败",
   "new-version-available": "新版本可用",
+  "update": "更新",
   "download": "下载",
   "update-error": "更新错误",
   "downloading-update": "下载更新",

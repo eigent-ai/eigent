@@ -73,16 +73,10 @@ export function WorkspaceSessionModeToggle({
   const { t } = useTranslation();
   const chevronScale = useAnimationControls();
 
-  const labelSingle = t('layout.workspace-session-single-agent', {
-    defaultValue: 'Single Agent',
-  });
-  const labelWorkforce = t('layout.workspace-session-workforce', {
-    defaultValue: 'Workforce',
-  });
+  const labelSingle = t('layout.workspace-session-single-agent');
+  const labelWorkforce = t('layout.workspace-session-workforce');
 
-  const modeAriaLabel = t('layout.workspace-session-mode-label', {
-    defaultValue: 'Session mode',
-  });
+  const modeAriaLabel = t('layout.workspace-session-mode-label');
 
   const isSingle = value === SessionMode.SINGLE_AGENT;
   const nextMode = isSingle ? SessionMode.WORKFORCE : SessionMode.SINGLE_AGENT;
@@ -109,7 +103,7 @@ export function WorkspaceSessionModeToggle({
 
   const endChevrons = (
     <span
-      className="inline-flex shrink-0 flex-col items-center justify-center gap-0 leading-none"
+      className="gap-0 inline-flex shrink-0 flex-col items-center justify-center leading-none"
       aria-hidden
     >
       <ChevronUp className={cn(chevronClass, '-mb-1')} strokeWidth={2} />
@@ -124,7 +118,7 @@ export function WorkspaceSessionModeToggle({
         aria-label={modeAriaLabel}
         className={cn(shellClass, 'pointer-events-none bg-transparent')}
       >
-        <span className="inline-flex min-h-[1.25rem] items-center gap-1.5 overflow-hidden">
+        <span className="gap-1.5 inline-flex min-h-[1.25rem] items-center overflow-hidden">
           <LeadingIcon
             className="size-3.5 shrink-0"
             strokeWidth={2}
@@ -136,9 +130,7 @@ export function WorkspaceSessionModeToggle({
     );
   }
 
-  const cycleHint = t('layout.workspace-session-mode-cycle-hint', {
-    defaultValue: 'Click to switch session mode',
-  });
+  const cycleHint = t('layout.workspace-session-mode-cycle-hint');
 
   return (
     <motion.button
@@ -147,16 +139,16 @@ export function WorkspaceSessionModeToggle({
       className={cn(
         shellClass,
         'cursor-pointer border-0 text-left',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
+        'focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
       )}
       onPointerDown={pulseChevrons}
       onClick={toggle}
     >
-      <span className="relative inline-flex min-h-[1.25rem] min-w-0 flex-1 items-center overflow-hidden">
+      <span className="min-w-0 relative inline-flex min-h-[1.25rem] flex-1 items-center overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={value}
-            className="inline-flex items-center gap-1.5 will-change-transform"
+            className="gap-1.5 inline-flex items-center will-change-transform"
             variants={ROLL}
             initial="initial"
             animate="animate"
@@ -167,7 +159,7 @@ export function WorkspaceSessionModeToggle({
               strokeWidth={2}
               aria-hidden
             />
-            <span className="whitespace-nowrap !text-label-xs font-semibold">
+            <span className="!text-label-xs font-semibold whitespace-nowrap">
               {label}
             </span>
           </motion.span>

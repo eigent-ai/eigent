@@ -14,6 +14,7 @@
 
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavListSessionRows, type NavListSession } from './NavListSessionRows';
 import { NavTab } from './NavTab';
@@ -30,6 +31,8 @@ export interface NavListProps {
   onSessionClick?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
   onNewSession: () => void;
+  /** Selected state for the New Session tab. */
+  newSessionActive?: boolean;
   /** Icon-only rail: match other sidebar `NavTab`s. */
   folded: boolean;
   className?: string;
@@ -42,14 +45,32 @@ export function NavList({
   onSessionClick,
   onDeleteSession,
   onNewSession,
+  newSessionActive = false,
   folded,
   className,
 }: NavListProps) {
   const { t } = useTranslation();
+  const sessionListRef = useRef<HTMLDivElement>(null);
+  const [sessionListOverflow, setSessionListOverflow] = useState(false);
 
-  const newSessionLabel = t('layout.sessions-start-new', {
-    defaultValue: 'New Session',
-  });
+  useEffect(() => {
+    const el = sessionListRef.current;
+    if (!el) return;
+
+    const checkOverflow = () => {
+      setSessionListOverflow(el.scrollHeight > el.clientHeight + 1);
+    };
+
+    checkOverflow();
+
+    const observer = new ResizeObserver(checkOverflow);
+    observer.observe(el);
+    Array.from(el.children).forEach((child) => observer.observe(child));
+
+    return () => observer.disconnect();
+  }, [sessions, folded]);
+
+  const newSessionLabel = t('layout.sessions-start-new');
 
   return (
     <div
@@ -60,7 +81,7 @@ export function NavList({
     >
       <div className="min-w-0 gap-2 flex w-full flex-col">
         <NavTab
-          active={false}
+          active={newSessionActive}
           onClick={onNewSession}
           leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
           label={newSessionLabel}
@@ -68,14 +89,21 @@ export function NavList({
           tooltipEnabledWhenCollapsed={!folded}
           folded={folded}
           ariaLabel={newSessionLabel}
-          ariaCurrentPage={false}
+          ariaCurrentPage={newSessionActive}
         />
       </div>
 
       <div
+        ref={sessionListRef}
         className={cn(
-          'm-0 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 flex-col overflow-y-auto',
-          folded ? 'mt-0.5' : 'mt-1'
+          'm-0 mt-1 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 flex-col',
+          folded
+            ? sessionListOverflow
+              ? 'scrollbar-hide overflow-y-auto'
+              : 'overflow-hidden'
+            : sessionListOverflow
+              ? 'scrollbar overflow-y-auto'
+              : 'overflow-hidden'
         )}
       >
         <NavListSessionRows

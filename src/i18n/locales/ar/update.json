@@ -1,6 +1,7 @@
 {
   "update-check-failed": "فشل التحقق من التحديث",
   "new-version-available": "في اصدار جديد",
+  "update": "تحديث",
   "download": "تنزيل",
   "update-error": "خطأ في التحديث",
   "downloading-update": "تنزيل التحديث",

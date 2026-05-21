@@ -26,31 +26,7 @@ import { useTranslation } from 'react-i18next';
 
 const ONBOARDING_KEY = 'eigent-workspace-onboarding-checked';
 
-const ONBOARDING_STEPS = [
-  {
-    id: 1,
-    title: 'Connect your everyday tools',
-    subtitle:
-      'The more Eigent understands your setup, the more useful it becomes.',
-  },
-  {
-    id: 2,
-    title: 'Build your workforce team',
-    subtitle: 'Add workers to shape a team of agents for your projects.',
-  },
-  {
-    id: 3,
-    title: 'Ask Eigent to create something',
-    subtitle:
-      'Ask Eigent to create a spreadsheet, document, presentation, dashboard, or anything else you need.',
-  },
-  {
-    id: 4,
-    title: 'Schedule a recurring task',
-    subtitle:
-      'Turn repeat work into automatic workflows. Great for reminders, reports, check-ins, and regular updates.',
-  },
-] as const;
+const ONBOARDING_STEP_IDS = [1, 2, 3, 4] as const;
 
 function readCheckedSteps(): Set<number> {
   try {
@@ -74,7 +50,7 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
     <button
       type="button"
       className={cn(
-        'group rounded-xl p-2 gap-2 flex w-full items-start text-left transition-colors',
+        'group rounded-xl p-2 gap-2 bg-ds-bg-neutral-subtle-default flex w-full items-start text-left transition-colors',
         checked
           ? 'cursor-default'
           : 'hover:bg-ds-bg-neutral-strong-default cursor-pointer'
@@ -87,13 +63,13 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
         className={cn(
           'mt-0.5 h-4 w-4 flex shrink-0 items-center justify-center rounded-full',
           checked
-            ? 'bg-ds-bg-status-completed-subtle-default'
+            ? 'bg-ds-bg-success-default-default'
             : 'bg-ds-bg-neutral-muted-default'
         )}
       >
         {checked ? (
           <Check
-            className="h-2.5 w-2.5 !text-ds-text-status-completed-strong-default"
+            className="h-2.5 w-2.5 !text-ds-text-success-inverse-default"
             aria-hidden
           />
         ) : (
@@ -143,7 +119,13 @@ export function WorkspaceCoworkPanel({
     undefined
   );
 
-  const allChecked = checkedSteps.size >= ONBOARDING_STEPS.length;
+  const onboardingSteps = ONBOARDING_STEP_IDS.map((id) => ({
+    id,
+    title: t(`layout.onboarding-step-${id}-title`),
+    subtitle: t(`layout.onboarding-step-${id}-subtitle`),
+  }));
+
+  const allChecked = checkedSteps.size >= onboardingSteps.length;
 
   useEffect(() => {
     localStorage.setItem(ONBOARDING_KEY, JSON.stringify([...checkedSteps]));
@@ -157,28 +139,24 @@ export function WorkspaceCoworkPanel({
     });
   };
 
-  const instructionsHint = t('layout.instructions-rules-tone', {
-    defaultValue: 'Rules & Tone',
-  });
-  const memoryLabel = t('layout.memory', { defaultValue: 'Memory' });
-  const memoryOnLabel = t('layout.memory-on', { defaultValue: 'On' });
-  const memoryOffLabel = t('layout.memory-off', { defaultValue: 'Off' });
-  const workforceSettingLabel = t('layout.workforce-setting', {
-    defaultValue: 'Workforce Setting',
-  });
-  const selectLabel = t('layout.select', { defaultValue: 'Select' });
-  const editInstructionsLabel = t('layout.edit-instructions', {
-    defaultValue: 'Edit instructions',
-  });
+  const instructionsTitle = t('layout.instructions');
+  const instructionsHint = t('layout.instructions-rules-tone');
+  const memoryLabel = t('layout.memory');
+  const memoryOnLabel = t('layout.memory-on');
+  const memoryOffLabel = t('layout.memory-off');
+  const workforceSettingLabel = t('layout.workforce-setting');
+  const selectLabel = t('layout.select');
+  const editInstructionsLabel = t('layout.edit-instructions');
+  const gettingStartedLabel = t('layout.getting-started');
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="pr-1 py-1 flex h-full flex-col overflow-hidden">
       {/* Settings area */}
       <div className="px-2 py-1 gap-0.5 rounded-2xl bg-ds-bg-neutral-default-default flex shrink-0 flex-col">
         {/* Panel title */}
         <div className="px-2 py-1.5 shrink-0">
           <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-            Welcome to Eigent
+            {instructionsTitle}
           </span>
         </div>
         <div className="min-w-0 gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default flex items-center justify-between">
@@ -231,7 +209,7 @@ export function WorkspaceCoworkPanel({
       </div>
 
       {/* Scrollable onboarding area */}
-      <div className="min-h-0 py-2 flex flex-col">
+      <div className="min-h-0 py-2 flex flex-1 flex-col overflow-y-auto">
         {allChecked ? (
           <Accordion
             type="single"
@@ -243,19 +221,19 @@ export function WorkspaceCoworkPanel({
               value="onboarding"
               className="rounded-xl data-[state=open]:bg-ds-bg-neutral-default-default overflow-hidden border-none"
             >
-              <AccordionTrigger className="px-4 py-2.5 text-body-sm font-medium hover:bg-ds-bg-neutral-strong-default rounded-xl [&>svg]:text-ds-icon-neutral-muted-default hover:no-underline data-[state=open]:rounded-b-none">
+              <AccordionTrigger className="px-4 py-2.5 text-body-sm font-medium hover:bg-ds-bg-neutral-default-default rounded-xl [&>svg]:text-ds-icon-neutral-muted-default hover:no-underline data-[state=open]:rounded-b-none">
                 <div className="gap-2 min-w-0 flex items-center">
-                  <span className="text-ds-text-neutral-default-default truncate">
-                    Getting started
+                  <span className="text-ds-text-neutral-default-default font-semibold truncate">
+                    {gettingStartedLabel}
                   </span>
                   <span className="text-body-xs text-ds-text-neutral-muted-default shrink-0">
-                    {checkedSteps.size}/{ONBOARDING_STEPS.length}
+                    {checkedSteps.size}/{onboardingSteps.length}
                   </span>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-2">
-                <div className="gap-1 pb-1 flex flex-col">
-                  {ONBOARDING_STEPS.map((step) => (
+                <div className="gap-2 pb-2 flex flex-col">
+                  {onboardingSteps.map((step) => (
                     <StepCard
                       key={step.id}
                       id={step.id}
@@ -270,8 +248,8 @@ export function WorkspaceCoworkPanel({
             </AccordionItem>
           </Accordion>
         ) : (
-          <div className="gap-1 flex flex-col">
-            {ONBOARDING_STEPS.map((step) => (
+          <div className="gap-2 flex flex-col">
+            {onboardingSteps.map((step) => (
               <StepCard
                 key={step.id}
                 id={step.id}

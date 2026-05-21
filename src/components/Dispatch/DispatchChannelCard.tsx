@@ -12,17 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import larkIcon from '@/assets/icon/lark.png';
-import telegramIcon from '@/assets/icon/telegram.svg';
-import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { WebSocketConnectionStatus } from '@/store/triggerStore';
-import { useTriggerStore } from '@/store/triggerStore';
-import { Copy, MonitorSmartphone } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 function statusDotClass(status: WebSocketConnectionStatus): string {
   switch (status) {
@@ -51,7 +44,7 @@ interface DispatchChannelCardProps {
   };
 }
 
-function DispatchChannelCard({
+export function DispatchChannelCard({
   name,
   icon,
   leading,
@@ -115,76 +108,6 @@ function DispatchChannelCard({
             {action.label}
           </Button>
         )}
-      </div>
-    </div>
-  );
-}
-
-export function WorkspaceDispatch() {
-  const { t } = useTranslation();
-  const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
-
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      toast.success(
-        t('layout.dispatch-link-copied', { defaultValue: 'Link copied' })
-      );
-    } catch {
-      toast.error(
-        t('layout.dispatch-copy-failed', {
-          defaultValue: 'Failed to copy link',
-        })
-      );
-    }
-  };
-
-  return (
-    <div className="min-h-0 flex h-full w-full flex-col overflow-y-auto">
-      <div className="gap-3 p-4 max-w-3xl mx-auto grid h-full w-full grid-cols-2 grid-rows-2">
-        <DispatchChannelCard
-          name={t('layout.workspace-work-with-remote-control', {
-            defaultValue: 'Remote control',
-          })}
-          leading={
-            <MonitorSmartphone
-              className="h-4 w-4 text-ds-text-neutral-muted-default shrink-0"
-              aria-hidden
-            />
-          }
-          connectionStatus={wsConnectionStatus}
-          action={{
-            label: t('layout.dispatch-copy-link', {
-              defaultValue: 'Copy link',
-            }),
-            icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
-            onClick: handleCopyLink,
-          }}
-        />
-        <DispatchChannelCard
-          icon={telegramIcon}
-          name={t('layout.channels-telegram', { defaultValue: 'Telegram' })}
-          disabled
-          badgeText={t('layout.dispatch-coming-soon', {
-            defaultValue: 'Coming soon',
-          })}
-        />
-        <DispatchChannelCard
-          icon={larkIcon}
-          name={t('layout.channels-lark', { defaultValue: 'Lark' })}
-          disabled
-          badgeText={t('layout.dispatch-coming-soon', {
-            defaultValue: 'Coming soon',
-          })}
-        />
-        <DispatchChannelCard
-          icon={whatsappIcon}
-          name={t('layout.channels-whatsapp', { defaultValue: 'WhatsApp' })}
-          disabled
-          badgeText={t('layout.dispatch-coming-soon', {
-            defaultValue: 'Coming soon',
-          })}
-        />
       </div>
     </div>
   );

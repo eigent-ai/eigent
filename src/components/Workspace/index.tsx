@@ -12,20 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import larkIcon from '@/assets/icon/lark.png';
-import telegramIcon from '@/assets/icon/telegram.svg';
-import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox from '@/components/ChatBox/BottomBox';
+import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
 import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import { WorkspaceAllSessions } from '@/components/Workspace/WorkspaceAllSessions';
 import { WorkspaceCoworkPanel } from '@/components/Workspace/WorkspaceCoworkPanel';
-import { WorkspaceDispatch } from '@/components/Workspace/WorkspaceDispatch';
 import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExamplePrompts';
 import { WorkspaceInstructionMd } from '@/components/Workspace/WorkspaceInstructionMd';
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
@@ -37,9 +33,8 @@ import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
-import { SessionMode } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Cast, MonitorSmartphone, ScrollText } from 'lucide-react';
+import { ChatTaskStatus, SessionMode } from '@/types/constants';
+import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -56,12 +51,22 @@ function readMemoryInitial(): boolean {
   return v === 'true';
 }
 
+interface WorkspaceProps {
+  /**
+   * `'workspace'` (default): full landing — header, composer, recent
+   * sessions, and the docked instructions panel.
+   * `'new-session'`: only the centered composer, for the New Session page.
+   */
+  variant?: 'workspace' | 'new-session';
+}
+
 /**
  * Workspace tab: project landing with a centered task input.
  * After the user starts a task, it switches to the session tab.
  */
-export default function Workspace() {
+export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   const { t } = useTranslation();
+  const isNewSessionVariant = variant === 'new-session';
   const navigate = useNavigate();
   const host = useHost();
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -83,6 +88,25 @@ export default function Workspace() {
     if (activeProject.metadata?.tags?.includes('replay')) return false;
     return true;
   }, [activeProject, customAgentFolderPath, isEmptyProject]);
+  /**
+   * True when the home workspace has no explicitly selected project (default
+   * "new project" shell). New Session keeps the interactive project picker in
+   * that case; once a project is selected (history, folder, or started work)
+   * the picker is display-only.
+   */
+  const isFreshProject = useMemo(() => {
+    if (!activeProject) return true;
+    if (activeProject.metadata?.historyId) return false;
+    if (customAgentFolderPath) return false;
+    const hasStartedWork = Object.values(chatStore?.tasks ?? {}).some(
+      (task) =>
+        (task.messages?.length || 0) > 0 ||
+        task.hasMessages ||
+        task.status !== ChatTaskStatus.PENDING
+    );
+    if (hasStartedWork) return false;
+    return true;
+  }, [activeProject, chatStore?.tasks, customAgentFolderPath]);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const workspaceChatFocusRequestId = usePageTabStore(
@@ -104,22 +128,12 @@ export default function Workspace() {
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
     null
   );
-  const [leftPanelTab, setLeftPanelTab] = useState<
-    'instructions' | 'workWith' | null
-  >(null);
-  type WorkspaceSubPage = 'all-sessions' | 'instruction-md' | 'dispatch' | null;
+  type WorkspaceSubPage = 'all-sessions' | 'instruction-md' | null;
   const [workspaceSubPage, setWorkspaceSubPage] =
     useState<WorkspaceSubPage>(null);
   const SUB_PAGE_TITLES: Record<NonNullable<WorkspaceSubPage>, string> = {
-    'all-sessions': t('layout.sessions-full-title', {
-      defaultValue: 'All sessions',
-    }),
-    'instruction-md': t('layout.instructions-rules-tone', {
-      defaultValue: 'Rules & Tone',
-    }),
-    dispatch: t('layout.workspace-work-with-title', {
-      defaultValue: 'Dispatch',
-    }),
+    'all-sessions': t('layout.sessions-full-title'),
+    'instruction-md': t('layout.instructions-rules-tone'),
   };
   const [memoryOn, setMemoryOn] = useState(readMemoryInitial);
   const textareaRef = useRef<HTMLDivElement>(null);
@@ -130,21 +144,16 @@ export default function Workspace() {
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
-    if (activeWorkspaceTab !== 'workforce') return;
+    if (
+      activeWorkspaceTab !== 'workforce' &&
+      activeWorkspaceTab !== 'new-session'
+    )
+      return;
     const focusTimer = window.setTimeout(() => {
       textareaRef.current?.focus();
     }, 180);
     return () => window.clearTimeout(focusTimer);
   }, [workspaceChatFocusRequestId, activeWorkspaceTab]);
-
-  useEffect(() => {
-    if (!leftPanelTab) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLeftPanelTab(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [leftPanelTab]);
 
   useEffect(() => {
     if (
@@ -167,7 +176,7 @@ export default function Workspace() {
     }
 
     if (!hasModel) {
-      toast.error('Please select a model first.');
+      toast.error(t('layout.please-select-model-first'));
       navigate('/history?tab=agents');
       return;
     }
@@ -197,12 +206,7 @@ export default function Workspace() {
       setActiveWorkspaceTab('workforce');
       console.error('Failed to start task:', err);
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t('layout.failed-to-start-task', {
-              defaultValue:
-                'Failed to start task. Please check your model configuration.',
-            })
+        err instanceof Error ? err.message : t('layout.failed-to-start-task')
       );
     }
   };
@@ -312,19 +316,118 @@ export default function Workspace() {
 
   const activeAgentId = chatStore.tasks[chatStore.activeTaskId]?.activeAgent;
 
-  const instructionsLabel = t('layout.instructions', {
-    defaultValue: 'Instructions',
-  });
-  const workWithLabel = t('layout.workspace-work-with-title', {
-    defaultValue: 'Work with',
-  });
+  const projectPicker =
+    isNewSessionVariant && !isFreshProject ? (
+      <WorkspaceProjectPicker readOnly />
+    ) : (
+      <WorkspaceProjectPicker />
+    );
+
+  const composer = (
+    <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
+      <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
+        <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
+        <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
+          {sessionSidePanelMode === SessionMode.SINGLE_AGENT
+            ? t('layout.workspace-cowork-single-agent')
+            : t('layout.workspace-cowork-workforce')}
+        </span>
+        <div className="mb-8 px-5 flex w-full justify-center">
+          {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
+            <SingleAgentList />
+          ) : (
+            <WorkforceAgentList
+              sortedAgents={sortedAgents}
+              activeAgentId={activeAgentId}
+              onSelectAgent={onSelectAgent}
+              onEditWorkerFromMenu={onEditWorkerFromMenu}
+              onDuplicateUserAgent={onDuplicateUserAgent}
+              onDeleteUserAgent={onDeleteUserAgent}
+              onAddWorker={() => setAddWorkerDialogOpen(true)}
+            />
+          )}
+        </div>
+        <div className="w-full">
+          <BottomBox
+            state="input"
+            queuedMessages={[]}
+            onRemoveQueuedMessage={() => {}}
+            noModelOverlay={!hasModel}
+            onSelectModel={() => navigate('/history?tab=agents')}
+            inputProps={{
+              value: message,
+              onChange: setMessage,
+              onSend: handleSend,
+              files:
+                chatStore.tasks[chatStore.activeTaskId]?.attaches?.map((f) => ({
+                  fileName: f.fileName,
+                  filePath: f.filePath,
+                })) || [],
+              onFilesChange: (files) =>
+                chatStore.setAttaches(
+                  chatStore.activeTaskId as string,
+                  files as any
+                ),
+              onAddFile: handleFileSelect,
+              disabled: !hasModel,
+              textareaRef,
+              allowDragDrop: true,
+              useCloudModelInDev,
+              placeholder: t('layout.project-task-placeholder'),
+              sessionMode: sessionSidePanelMode,
+              onSessionModeChange: setSessionSidePanelMode,
+              sessionModeSelectInteractive: true,
+            }}
+          />
+        </div>
+        <AddWorker
+          isOpen={addWorkerDialogOpen}
+          onOpenChange={setAddWorkerDialogOpen}
+        />
+        {editingWorkerAgent && (
+          <AddWorker
+            edit
+            workerInfo={editingWorkerAgent}
+            isOpen={true}
+            onOpenChange={(open) => {
+              if (!open) setEditingWorkerAgent(null);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+
+  if (isNewSessionVariant) {
+    return (
+      <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden">
+        {/* Empty header toolbar — matches the workspace page vertical structure */}
+        <div className="gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start" />
+        <div className="min-h-0 min-w-0 relative z-0 flex flex-1 flex-col items-stretch overflow-hidden">
+          <div className="min-h-0 flex w-full flex-1 flex-col">
+            {composer}
+            <div
+              className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+              id="workspace-bottom-group"
+            >
+              <WorkspaceExamplePrompts
+                onSelectPrompt={setMessage}
+                disabled={!hasModel}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-0 flex h-full w-full flex-col">
-      {/* Header toolbar */}
-      <div className="px-3 gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start">
-        {workspaceSubPage !== null && (
-          <>
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-row overflow-hidden">
+      {/* Center section: header + content */}
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+        {/* Header toolbar */}
+        <div className="px-3 gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start">
+          {workspaceSubPage !== null && (
             <Button
               type="button"
               variant="ghost"
@@ -332,213 +435,74 @@ export default function Workspace() {
               buttonContent="text"
               onClick={() => setWorkspaceSubPage(null)}
               className="no-drag shrink-0"
-              aria-label={t('layout.back-to-workspace-tooltip', {
-                defaultValue: 'Back to workspace',
-              })}
+              aria-label={t('layout.back-to-workspace-tooltip')}
             >
               <ArrowLeft aria-hidden />
-              Back
+              {t('layout.back')}
             </Button>
-          </>
-        )}
-        {workspaceSubPage !== null && (
-          <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-            <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
-              {SUB_PAGE_TITLES[workspaceSubPage]}
-            </span>
-          </div>
-        )}
-        <div className="flex-1" />
-        {workspaceSubPage === 'instruction-md' && activeProjectId && (
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            buttonContent="text"
-            className="no-drag shrink-0"
-            onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent('workspace-instruction-md-save', {
-                  detail: { projectId: activeProjectId },
-                })
-              );
-            }}
-          >
-            Save
-          </Button>
-        )}
-        {workspaceSubPage === null && (
-          <>
-            <TooltipSimple content={instructionsLabel} delayDuration={300}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                onClick={() =>
-                  setLeftPanelTab((prev) =>
-                    prev === 'instructions' ? null : 'instructions'
-                  )
-                }
-                aria-expanded={leftPanelTab === 'instructions'}
-                aria-controls="workspace-right-panel"
-                className={cn(
-                  'no-drag shrink-0',
-                  leftPanelTab === 'instructions'
-                    ? 'bg-ds-bg-neutral-strong-default'
-                    : 'hover:bg-ds-bg-neutral-strong-default'
-                )}
-                aria-label={instructionsLabel}
-              >
-                <ScrollText aria-hidden />
-              </Button>
-            </TooltipSimple>
+          )}
+          {workspaceSubPage !== null && (
+            <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
+                {SUB_PAGE_TITLES[workspaceSubPage]}
+              </span>
+            </div>
+          )}
+          <div className="flex-1" />
+          {workspaceSubPage === 'instruction-md' && activeProjectId && (
             <Button
               type="button"
-              variant="ghost"
+              variant="primary"
               size="sm"
               buttonContent="text"
-              tone="default"
-              textWeight="medium"
-              onClick={() =>
-                setLeftPanelTab((prev) =>
-                  prev === 'workWith' ? null : 'workWith'
-                )
-              }
-              aria-expanded={leftPanelTab === 'workWith'}
-              aria-controls="workspace-right-panel"
-              className={cn(
-                'no-drag !text-label-sm gap-2 shrink-0',
-                leftPanelTab === 'workWith'
-                  ? 'bg-ds-bg-neutral-subtle-default'
-                  : 'hover:bg-ds-bg-neutral-subtle-hover'
-              )}
-              aria-label="Dispatch"
+              className="no-drag shrink-0"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('workspace-instruction-md-save', {
+                    detail: { projectId: activeProjectId },
+                  })
+                );
+              }}
             >
-              <Cast aria-hidden />
-              Dispatch
+              Save
             </Button>
-          </>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Body: main content + right panel */}
-      <div className="min-h-0 flex flex-1 flex-row overflow-hidden">
-        {/* Sub-pages */}
-        {workspaceSubPage === 'all-sessions' && (
-          <WorkspaceAllSessions
-            tasks={chatStore.tasks}
-            activeTaskId={chatStore.activeTaskId}
-            onSelectSession={(id) => {
-              chatStore.setActiveTaskId(id);
-              setActiveWorkspaceTab('session');
-              setWorkspaceSubPage(null);
-            }}
-            onDeleteSession={(id) => {
-              if (!window.confirm(t('layout.delete-task-confirmation'))) return;
-              const wasActive = chatStore.activeTaskId === id;
-              chatStore.removeTask(id);
-              if (wasActive) setActiveWorkspaceTab('workforce');
-              setWorkspaceSubPage(null);
-            }}
-          />
-        )}
-        {workspaceSubPage === 'instruction-md' && activeProjectId && (
-          <WorkspaceInstructionMd
-            key={activeProjectId}
-            projectId={activeProjectId}
-          />
-        )}
-        {workspaceSubPage === 'dispatch' && <WorkspaceDispatch />}
+        {/* Content */}
+        <div className="min-h-0 flex w-full flex-1 flex-col overflow-hidden">
+          {/* Sub-pages */}
+          {workspaceSubPage === 'all-sessions' && (
+            <WorkspaceAllSessions
+              tasks={chatStore.tasks}
+              activeTaskId={chatStore.activeTaskId}
+              onSelectSession={(id) => {
+                chatStore.setActiveTaskId(id);
+                setActiveWorkspaceTab('session');
+                setWorkspaceSubPage(null);
+              }}
+              onDeleteSession={(id) => {
+                if (!window.confirm(t('layout.delete-task-confirmation')))
+                  return;
+                const wasActive = chatStore.activeTaskId === id;
+                chatStore.removeTask(id);
+                if (wasActive) setActiveWorkspaceTab('workforce');
+                setWorkspaceSubPage(null);
+              }}
+            />
+          )}
+          {workspaceSubPage === 'instruction-md' && activeProjectId && (
+            <WorkspaceInstructionMd
+              key={activeProjectId}
+              projectId={activeProjectId}
+            />
+          )}
 
-        {/* Main content + right panel (hidden when sub-page is active) */}
-        {workspaceSubPage === null && (
-          <>
+          {/* Main content (hidden when a sub-page is active) */}
+          {workspaceSubPage === null && (
             <div className="min-h-0 min-w-0 relative z-0 flex flex-1 flex-col items-stretch overflow-hidden">
               <div className="min-h-0 px-3 flex w-full flex-1 flex-col">
-                <div className="mx-auto flex w-full max-w-[600px] shrink-0 flex-col">
-                  <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
-                    <div className="mb-8 flex w-full justify-center">
-                      <WorkspaceProjectPicker />
-                    </div>
-                    <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
-                      {sessionSidePanelMode === SessionMode.SINGLE_AGENT
-                        ? t('layout.workspace-cowork-single-agent', {
-                            defaultValue: 'Cowork with Single Agent',
-                          })
-                        : t('layout.workspace-cowork-workforce', {
-                            defaultValue: 'Cowork with Workforce',
-                          })}
-                    </span>
-                    <div className="mb-8 px-5 flex w-full justify-center">
-                      {sessionSidePanelMode === SessionMode.SINGLE_AGENT ? (
-                        <SingleAgentList />
-                      ) : (
-                        <WorkforceAgentList
-                          sortedAgents={sortedAgents}
-                          activeAgentId={activeAgentId}
-                          onSelectAgent={onSelectAgent}
-                          onEditWorkerFromMenu={onEditWorkerFromMenu}
-                          onDuplicateUserAgent={onDuplicateUserAgent}
-                          onDeleteUserAgent={onDeleteUserAgent}
-                          onAddWorker={() => setAddWorkerDialogOpen(true)}
-                        />
-                      )}
-                    </div>
-                    <div className="w-full">
-                      <BottomBox
-                        state="input"
-                        queuedMessages={[]}
-                        onRemoveQueuedMessage={() => {}}
-                        noModelOverlay={!hasModel}
-                        onSelectModel={() => navigate('/history?tab=agents')}
-                        inputProps={{
-                          value: message,
-                          onChange: setMessage,
-                          onSend: handleSend,
-                          files:
-                            chatStore.tasks[
-                              chatStore.activeTaskId
-                            ]?.attaches?.map((f) => ({
-                              fileName: f.fileName,
-                              filePath: f.filePath,
-                            })) || [],
-                          onFilesChange: (files) =>
-                            chatStore.setAttaches(
-                              chatStore.activeTaskId as string,
-                              files as any
-                            ),
-                          onAddFile: handleFileSelect,
-                          disabled: !hasModel,
-                          textareaRef,
-                          allowDragDrop: true,
-                          useCloudModelInDev,
-                          placeholder: t('layout.project-task-placeholder', {
-                            defaultValue:
-                              'Describe what you want to accomplish...',
-                          }),
-                          sessionMode: sessionSidePanelMode,
-                          onSessionModeChange: setSessionSidePanelMode,
-                          sessionModeSelectInteractive: true,
-                        }}
-                      />
-                    </div>
-                    <AddWorker
-                      isOpen={addWorkerDialogOpen}
-                      onOpenChange={setAddWorkerDialogOpen}
-                    />
-                    {editingWorkerAgent && (
-                      <AddWorker
-                        edit
-                        workerInfo={editingWorkerAgent}
-                        isOpen={true}
-                        onOpenChange={(open) => {
-                          if (!open) setEditingWorkerAgent(null);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
+                {composer}
 
                 <div
                   className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
@@ -565,151 +529,28 @@ export default function Workspace() {
                 </div>
               </div>
             </div>
-
-            {/* Right slide-in panel */}
-            <AnimatePresence initial={false}>
-              {leftPanelTab !== null && (
-                <motion.div
-                  key="workspace-right-panel"
-                  id="workspace-right-panel"
-                  initial={{ width: 0 }}
-                  animate={{ width: 288 }}
-                  exit={{ width: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="pr-1 z-0 shrink-0 overflow-hidden"
-                >
-                  <div className="flex h-full w-[280px] flex-col overflow-hidden">
-                    <AnimatePresence mode="wait" initial={false}>
-                      <motion.div
-                        key={leftPanelTab}
-                        initial={{ x: 12, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: -12, opacity: 0 }}
-                        transition={{ duration: 0.18, ease: 'easeOut' }}
-                        className="flex h-full flex-col"
-                      >
-                        {leftPanelTab === 'instructions' ? (
-                          <WorkspaceCoworkPanel
-                            memoryOn={memoryOn}
-                            onMemoryToggle={() => setMemoryOn((v) => !v)}
-                            onEditInstructions={() => {
-                              setLeftPanelTab(null);
-                              setWorkspaceSubPage('instruction-md');
-                            }}
-                            onWorkforceSetting={() =>
-                              setActiveWorkspaceTab('workforce')
-                            }
-                          />
-                        ) : (
-                          <>
-                            <div className="px-2 py-1 rounded-2xl bg-ds-bg-neutral-default-default flex shrink-0 flex-col">
-                              <span className="px-2 py-1.5 text-body-sm font-semibold text-ds-text-neutral-default-default">
-                                {workWithLabel}
-                              </span>
-                              <div className="gap-2 py-1.5 flex flex-col">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  tone="default"
-                                  emphasis="default"
-                                  size="sm"
-                                  buttonContent="text"
-                                  className="no-drag gap-2 justify-start"
-                                  onClick={() => {
-                                    setLeftPanelTab(null);
-                                    setWorkspaceSubPage('dispatch');
-                                  }}
-                                >
-                                  <MonitorSmartphone
-                                    className="h-4 w-4 text-ds-text-neutral-muted-default shrink-0"
-                                    aria-hidden
-                                  />
-                                  {t(
-                                    'layout.workspace-work-with-remote-control',
-                                    {
-                                      defaultValue: 'Remote control',
-                                    }
-                                  )}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  tone="default"
-                                  emphasis="default"
-                                  size="sm"
-                                  buttonContent="text"
-                                  className="no-drag gap-2 justify-start"
-                                  aria-label={t('layout.channels-telegram', {
-                                    defaultValue: 'Telegram',
-                                  })}
-                                >
-                                  <img
-                                    src={telegramIcon}
-                                    alt=""
-                                    className="h-4 w-4 shrink-0 object-contain"
-                                    aria-hidden
-                                  />
-                                  {t('layout.channels-telegram', {
-                                    defaultValue: 'Telegram',
-                                  })}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  tone="default"
-                                  emphasis="default"
-                                  size="sm"
-                                  buttonContent="text"
-                                  className="no-drag gap-2 justify-start"
-                                  aria-label={t('layout.channels-lark', {
-                                    defaultValue: 'Lark',
-                                  })}
-                                >
-                                  <img
-                                    src={larkIcon}
-                                    alt=""
-                                    className="h-4 w-4 rounded-lg shrink-0 object-contain"
-                                    aria-hidden
-                                  />
-                                  {t('layout.channels-lark', {
-                                    defaultValue: 'Lark',
-                                  })}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  tone="default"
-                                  emphasis="default"
-                                  size="sm"
-                                  buttonContent="text"
-                                  className="no-drag gap-2 justify-start"
-                                  aria-label={t('layout.channels-whatsapp', {
-                                    defaultValue: 'WhatsApp',
-                                  })}
-                                >
-                                  <img
-                                    src={whatsappIcon}
-                                    alt=""
-                                    className="h-4 w-4 shrink-0 object-contain"
-                                    aria-hidden
-                                  />
-                                  {t('layout.channels-whatsapp', {
-                                    defaultValue: 'WhatsApp',
-                                  })}
-                                </Button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </>
-        )}
+          )}
+        </div>
       </div>
+
+      {/* Right section: instructions + onboarding panel */}
+      {workspaceSubPage === null && (
+        <div className="shrink-0 overflow-hidden">
+          <div
+            className={cn(
+              'flex h-full flex-col overflow-hidden',
+              SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
+            )}
+          >
+            <WorkspaceCoworkPanel
+              memoryOn={memoryOn}
+              onMemoryToggle={() => setMemoryOn((v) => !v)}
+              onEditInstructions={() => setWorkspaceSubPage('instruction-md')}
+              onWorkforceSetting={() => setActiveWorkspaceTab('workforce')}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

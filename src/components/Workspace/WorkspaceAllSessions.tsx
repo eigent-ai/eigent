@@ -63,9 +63,7 @@ export function WorkspaceAllSessions({
       <div className="m-0 min-h-0 gap-0.5 p-2 max-w-3xl mx-auto flex w-full flex-1 flex-col overflow-y-auto">
         {sessions.length === 0 ? (
           <p className="text-ds-text-neutral-muted-default m-0 px-3 py-6 text-body-sm text-center">
-            {t('layout.sessions-create-task-hint', {
-              defaultValue: 'Create a task to start a session',
-            })}
+            {t('layout.sessions-create-task-hint')}
           </p>
         ) : (
           <NavListSessionRows

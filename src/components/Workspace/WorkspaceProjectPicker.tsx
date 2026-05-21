@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { loadProjectFromHistory } from '@/lib';
+import { cn } from '@/lib/utils';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectGroup } from '@/types/history';
@@ -39,12 +40,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
+/** Shared chrome so read-only and dropdown trigger stay the same height (Button md = 32px). */
+const PROJECT_PICKER_SHELL_CLASS =
+  'bg-ds-bg-neutral-subtle-default shadow-workspace-project-picker box-border inline-flex h-8 min-h-8 w-fit min-w-[180px] max-w-[300px] items-center gap-2 rounded-full px-3 py-0 font-semibold';
+
+export interface WorkspaceProjectPickerProps {
+  /** Display-only: render the current project name without the dropdown. */
+  readOnly?: boolean;
+}
+
 /**
  * Project / task switcher for the workspace landing: opens the agent folder
  * tab, or picks a history project from a nested submenu (same data path as
- * HistorySidebar).
+ * HistorySidebar). When `readOnly`, renders the project name only.
  */
-export function WorkspaceProjectPicker() {
+export function WorkspaceProjectPicker({
+  readOnly = false,
+}: WorkspaceProjectPickerProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { chatStore, projectStore } = useChatStoreAdapter();
@@ -60,17 +72,22 @@ export function WorkspaceProjectPicker() {
 
   const summaryTask =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
+  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectName = activeProjectId
+    ? projectStore.getProjectById(activeProjectId)?.name
+    : undefined;
 
   const activeTaskTitle = useMemo(() => {
-    const defaultLabel = t('layout.workspace-select-project', {
-      defaultValue: 'Select a project',
-    });
+    const defaultLabel = t('layout.workspace-select-project');
+    if (activeProjectName && activeProjectName !== 'new project') {
+      return activeProjectName;
+    }
     if (!chatStore) return defaultLabel;
     if (chatStore.activeTaskId && summaryTask) {
       return summaryTask.split('|')[0];
     }
     return defaultLabel;
-  }, [chatStore, summaryTask, t]);
+  }, [activeProjectName, chatStore, summaryTask, t]);
 
   const handleLoadProject = async (
     projectId: string,
@@ -149,6 +166,23 @@ export function WorkspaceProjectPicker() {
     return null;
   }
 
+  if (readOnly) {
+    const projectName =
+      projectStore.getProjectById(projectStore.activeProjectId ?? '')?.name ||
+      activeTaskTitle;
+    return (
+      <div
+        className={cn(PROJECT_PICKER_SHELL_CLASS, 'justify-center')}
+        aria-label={projectName}
+      >
+        <FolderIcon className="size-4 shrink-0" aria-hidden />
+        <span className="text-ds-text-neutral-default-default min-w-0 text-label-sm truncate">
+          {projectName}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger asChild>
@@ -159,7 +193,10 @@ export function WorkspaceProjectPicker() {
           size="md"
           buttonContent="text"
           buttonRadius="full"
-          className="no-drag bg-ds-bg-neutral-subtle-default shadow-workspace-project-picker px-3 py-1 font-semibold hover:bg-ds-bg-neutral-default-hover inline-flex h-auto w-fit max-w-[300px] min-w-[180px] justify-between"
+          className={cn(
+            PROJECT_PICKER_SHELL_CLASS,
+            'no-drag hover:bg-ds-bg-neutral-default-hover justify-between'
+          )}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
@@ -183,9 +220,7 @@ export function WorkspaceProjectPicker() {
           }}
         >
           <PlusCircle className="h-4 w-4 shrink-0" aria-hidden />
-          {t('layout.workspace-start-from-scratch', {
-            defaultValue: 'Start from scratch',
-          })}
+          {t('layout.workspace-start-from-scratch')}
         </DropdownMenuItem>
 
         <DropdownMenuItem
@@ -196,9 +231,7 @@ export function WorkspaceProjectPicker() {
           }}
         >
           <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
-          {t('layout.workspace-select-folder', {
-            defaultValue: 'Select a folder',
-          })}
+          {t('layout.workspace-select-folder')}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
@@ -206,9 +239,7 @@ export function WorkspaceProjectPicker() {
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2">
             <FolderKanban className="h-4 w-4 shrink-0" aria-hidden />
-            {t('layout.workspace-project-submenu', {
-              defaultValue: 'Project',
-            })}
+            {t('layout.workspace-project-submenu')}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
             className="max-h-64 p-1 w-[min(100vw-2rem,280px)] overflow-y-auto"
@@ -217,9 +248,7 @@ export function WorkspaceProjectPicker() {
           >
             {historyTasks.length === 0 ? (
               <div className="text-ds-text-neutral-muted-default px-2 py-3 text-body-sm text-center">
-                {t('layout.workspace-no-history-projects', {
-                  defaultValue: 'No history projects yet',
-                })}
+                {t('layout.workspace-no-history-projects')}
               </div>
             ) : (
               historyTasks.map((project) => (

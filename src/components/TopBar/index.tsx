@@ -200,16 +200,23 @@ function HeaderWin() {
 
   const summaryTask =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
+  const activeProjectName = useProjectStore((s) =>
+    s.activeProjectId ? s.projects[s.activeProjectId]?.name : undefined
+  );
   const activeTaskTitle = useMemo(() => {
-    if (!chatStore) return t('layout.new-project');
+    const defaultLabel = t('layout.new-project');
+    if (activeProjectName && activeProjectName !== 'new project') {
+      return activeProjectName;
+    }
+    if (!chatStore) return defaultLabel;
     if (chatStore.activeTaskId && summaryTask) {
       return summaryTask.split('|')[0];
     }
-    return t('layout.new-project');
-  }, [chatStore, summaryTask, t]);
+    return defaultLabel;
+  }, [activeProjectName, chatStore, summaryTask, t]);
 
   if (!chatStore) {
-    return <div>Loading...</div>;
+    return <div>{t('layout.loading-page')}</div>;
   }
 
   const openInviteCodeDialog = () => {
@@ -289,7 +296,7 @@ function HeaderWin() {
   };
 
   if (!chatStore) {
-    return <div>Loading...</div>;
+    return <div>{t('layout.loading-page')}</div>;
   }
 
   return (
@@ -638,7 +645,7 @@ function HeaderWin() {
           </AnimatePresence>
           {packageUpdateAvailable && (
             <TooltipSimple
-              content={t('layout.update', { defaultValue: 'Update' })}
+              content={t('layout.update')}
               side="bottom"
               align="end"
             >
@@ -648,9 +655,9 @@ function HeaderWin() {
                 size="sm"
                 className="no-drag px-3 shrink-0 rounded-full"
                 onClick={handleStartDownload}
-                aria-label={t('layout.update', { defaultValue: 'Update' })}
+                aria-label={t('layout.update')}
               >
-                {t('layout.update', { defaultValue: 'Update' })}
+                {t('layout.update')}
               </Button>
             </TooltipSimple>
           )}

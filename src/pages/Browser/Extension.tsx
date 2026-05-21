@@ -31,7 +31,7 @@ export default function Extension() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="gap-4 mt-4 flex min-h-[200px] w-full flex-col">
+      <div className="gap-4 flex min-h-[200px] w-full flex-col">
         <div className="rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default px-6 py-16 flex flex-col items-center justify-center border">
           <Puzzle className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
           <div className="text-body-base font-bold text-ds-text-neutral-muted-default text-center">

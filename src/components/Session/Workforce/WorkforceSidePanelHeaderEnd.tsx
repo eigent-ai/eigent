@@ -14,7 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { Maximize2, X } from 'lucide-react';
+import { Maximize, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface WorkforceSidePanelHeaderEndProps {
@@ -58,7 +58,7 @@ export function WorkforceSidePanelHeaderEnd({
         {isExpandedOverlayOpen ? (
           <X className="h-4 w-4" />
         ) : (
-          <Maximize2 className="h-4 w-4" />
+          <Maximize className="h-4 w-4" />
         )}
       </Button>
     </TooltipSimple>

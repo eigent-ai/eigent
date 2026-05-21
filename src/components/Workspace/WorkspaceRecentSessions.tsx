@@ -34,27 +34,18 @@ function formatSessionStartedAgo(
   }
   const d = Date.now() - startedAtMs;
   if (d < 60_000) {
-    return t('layout.workspace-recent-session-now', { defaultValue: 'Now' });
+    return t('layout.workspace-recent-session-now');
   }
   if (d < 3600_000) {
     const m = Math.floor(d / 60_000);
-    return t('layout.workspace-recent-session-minutes', {
-      count: m,
-      defaultValue: `${m} min`,
-    });
+    return t('layout.workspace-recent-session-minutes', { count: m });
   }
   if (d < 86400_000) {
     const h = Math.floor(d / 3600_000);
-    return t('layout.workspace-recent-session-hours', {
-      count: h,
-      defaultValue: `${h}h`,
-    });
+    return t('layout.workspace-recent-session-hours', { count: h });
   }
   const days = Math.floor(d / 86400_000);
-  return t('layout.workspace-recent-session-days', {
-    count: days,
-    defaultValue: `${days}d`,
-  });
+  return t('layout.workspace-recent-session-days', { count: days });
 }
 
 export interface WorkspaceRecentSessionsProps {
@@ -108,18 +99,14 @@ export function WorkspaceRecentSessions({
     <div className="pb-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
       <div className="text-ds-text-neutral-muted-default mb-3 gap-2 px-3 min-w-0 flex w-full items-center justify-between">
         <h2 className="min-w-0 text-body-sm font-semibold text-left">
-          {t('layout.workspace-recent-sessions-heading', {
-            defaultValue: 'Recent',
-          })}
+          {t('layout.workspace-recent-sessions-heading')}
         </h2>
         <button
           type="button"
           onClick={onOpenAllSessions}
           className="text-ds-text-neutral-muted-default group text-body-sm font-medium gap-0.5 focus-visible:ring-ds-ring-neutral-default-focus focus-visible:rounded inline-flex shrink-0 items-center transition-colors outline-none hover:underline focus-visible:ring-2"
         >
-          {t('layout.sessions-full-title', {
-            defaultValue: 'All sessions',
-          })}
+          {t('layout.sessions-full-title')}
           <span
             className="max-w-0 ease-out group-hover:max-w-4 inline-flex overflow-hidden transition-[max-width] duration-200"
             aria-hidden

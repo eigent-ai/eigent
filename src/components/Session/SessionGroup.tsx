@@ -47,9 +47,7 @@ export default function Sessions({
 }: SessionsProps) {
   const { t } = useTranslation();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
-    defaultValue: 'Back to workspace',
-  });
+  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip');
 
   const sessions: NavListSession[] = useMemo(() => {
     const entries = Object.entries(tasks)
@@ -93,19 +91,13 @@ export default function Sessions({
           </Button>
         </TooltipSimple>
         <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
-          <span className="truncate">
-            {t('layout.sessions-full-title', {
-              defaultValue: 'All sessions',
-            })}
-          </span>
+          <span className="truncate">{t('layout.sessions-full-title')}</span>
         </div>
       </div>
       <div className="m-0 min-h-0 gap-0.5 p-2 mx-auto flex w-full max-w-[800px] flex-1 flex-col overflow-y-auto">
         {sessions.length === 0 ? (
           <p className="text-ds-text-neutral-muted-default m-0 px-3 py-6 text-body-sm text-center">
-            {t('layout.sessions-create-task-hint', {
-              defaultValue: 'Create a task to start a session',
-            })}
+            {t('layout.sessions-create-task-hint')}
           </p>
         ) : (
           <NavListSessionRows
