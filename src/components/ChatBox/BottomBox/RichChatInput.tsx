@@ -254,12 +254,16 @@ export const RichChatInput = React.forwardRef<
       return;
     }
     const plain = getPlainTextFromRoot(el);
-    internalUpdate.current = true;
-    onChange(plain, plain.length);
-    applyHtml(plain);
+    // Skip no-op syncs so blur from clicking elsewhere (e.g. example prompts)
+    // does not set internalUpdate and block the incoming value prop update.
+    if (plain !== value) {
+      internalUpdate.current = true;
+      onChange(plain, plain.length);
+      applyHtml(plain);
+    }
     resizeHeight();
     onBlur?.();
-  }, [applyHtml, onBlur, onChange, resizeHeight]);
+  }, [applyHtml, onBlur, onChange, resizeHeight, value]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -279,12 +283,16 @@ export const RichChatInput = React.forwardRef<
   }, []);
 
   useEffect(() => {
+    const el = rootRef.current;
     if (internalUpdate.current) {
       internalUpdate.current = false;
+      // External value may have changed in the same tick (e.g. example prompt click).
+      if (el && getPlainTextFromRoot(el) !== value) {
+        applyHtml(value);
+      }
       resizeHeight();
       return;
     }
-    const el = rootRef.current;
     if (!el) return;
     const current = getPlainTextFromRoot(el);
     if (current === value) {

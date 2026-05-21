@@ -20,6 +20,7 @@ import {
   GridPatternBackground,
   RuledLinesBackground,
 } from '@/components/Background';
+import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
 import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import {
@@ -68,10 +69,10 @@ import type {
 const HOME_MAIN_LAYOUT_SPRING = PROJECT_SIDEBAR_FOLD_SPRING;
 
 /** Sidebar width bounds (react-resizable-panels uses %; derived from shell width). */
-const SIDEBAR_MIN_PX = 240;
-const SIDEBAR_MAX_PX = 400;
+const SIDEBAR_MIN_PX = 230;
+const SIDEBAR_MAX_PX = 320;
 /** Default expanded sidebar width when nothing is stored (px). */
-const DEFAULT_SIDEBAR_WIDTH_PX = 288;
+const DEFAULT_SIDEBAR_WIDTH_PX = 230;
 const SIDEBAR_WIDTH_STORAGE_KEY = 'eigent-home-sidebar-width-px';
 
 function clampPct(n: number): number {
@@ -559,7 +560,9 @@ export default function Home() {
   const mainPanelShellClass = cn(mainPanelSurfaceClass);
 
   const useWorkspacePatternBg =
-    activeWorkspaceTab === 'workforce' || activeWorkspaceTab === 'session';
+    activeWorkspaceTab === 'workforce' ||
+    activeWorkspaceTab === 'session' ||
+    activeWorkspaceTab === 'new-session';
   const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
     if (!useWorkspacePatternBg) return 'empty';
     return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
@@ -614,6 +617,19 @@ export default function Home() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <Session />
+          </div>
+        );
+      case 'new-session':
+        return (
+          <div className={workspaceMainContentClass}>
+            {workspacePatternOverlayEl}
+            <Session isNewSession />
+          </div>
+        );
+      case 'dispatch':
+        return (
+          <div className={mainPanelContentClass}>
+            <WorkspaceDispatch />
           </div>
         );
       case 'inbox':

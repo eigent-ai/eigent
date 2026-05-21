@@ -25,12 +25,11 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Inbox, Plus, Zap, ZapOff } from 'lucide-react';
+import { Cast, Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { HeaderAction } from './HeaderAction';
 import { NavList } from './NavList';
 import {
   NavTab,
@@ -59,6 +58,9 @@ export default function ProjectPageSidebar({
 }: ProjectPageSidebarProps) {
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
   const requestOpenTriggerAddDialog = usePageTabStore(
     (s) => s.requestOpenTriggerAddDialog
   );
@@ -85,16 +87,17 @@ export default function ProjectPageSidebar({
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
 
-  const triggersTabTooltip = 'Scheduled';
+  const scheduledTabLabel = t('layout.scheduled-tab');
+  const triggersTabTooltip = scheduledTabLabel;
 
   const triggersTabAriaLabel = useMemo(() => {
-    const base = 'Scheduled';
+    const base = scheduledTabLabel;
     if (triggersListenerConnected) return base;
     if (wsConnectionStatus === 'connecting') {
       return `${base}, ${t('layout.triggers-connecting')}`;
     }
     return `${base}, ${t('layout.triggers-disconnected')}`;
-  }, [t, triggersListenerConnected, wsConnectionStatus]);
+  }, [scheduledTabLabel, t, triggersListenerConnected, wsConnectionStatus]);
 
   const email = useAuthStore((s) => s.email);
   const host = useHost();
@@ -257,8 +260,9 @@ export default function ProjectPageSidebar({
 
   const handleNewSession = useCallback(() => {
     chatStore.create();
-    setActiveWorkspaceTab('session');
-  }, [chatStore, setActiveWorkspaceTab]);
+    setActiveWorkspaceTab('new-session');
+    requestWorkspaceChatFocus();
+  }, [chatStore, setActiveWorkspaceTab, requestWorkspaceChatFocus]);
 
   return (
     <>
@@ -276,9 +280,20 @@ export default function ProjectPageSidebar({
         <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
           <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <div className="gap-2 flex w-full shrink-0 flex-col">
-              <HeaderAction />
-
               <div className="gap-2 min-w-0 flex w-full flex-col">
+                <NavTab
+                  active={activeWorkspaceTab === 'workforce'}
+                  onClick={() => setActiveWorkspaceTab('workforce')}
+                  leading={
+                    <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
+                  }
+                  label={t('layout.workspace-tab')}
+                  tooltip={t('layout.workspace-tab')}
+                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
+                  folded={projectSidebarFolded}
+                  ariaLabel={t('layout.workspace-tab')}
+                  ariaCurrentPage={activeWorkspaceTab === 'workforce'}
+                />
                 <NavTab
                   active={activeWorkspaceTab === 'inbox'}
                   onClick={() => {
@@ -300,7 +315,7 @@ export default function ProjectPageSidebar({
                       ) : null}
                     </span>
                   }
-                  label="Context"
+                  label={t('layout.context-tab')}
                   trailing={
                     <span
                       className="rounded-md px-1.5 font-medium leading-tight bg-ds-bg-neutral-default-default text-ds-text-neutral-subtle-default text-body-xs py-0.5 max-w-[5.5rem] shrink-0 truncate"
@@ -314,10 +329,10 @@ export default function ProjectPageSidebar({
                       {folderSettingTagLabel}
                     </span>
                   }
-                  tooltip="Context"
+                  tooltip={t('layout.context-tab')}
                   tooltipEnabledWhenCollapsed={!projectSidebarFolded}
                   folded={projectSidebarFolded}
-                  ariaLabel={`Context, ${folderSettingTagLabel}`}
+                  ariaLabel={`${t('layout.context-tab')}, ${folderSettingTagLabel}`}
                   ariaCurrentPage={activeWorkspaceTab === 'inbox'}
                 />
                 <NavTab
@@ -343,7 +358,7 @@ export default function ProjectPageSidebar({
                       />
                     )
                   }
-                  label="Scheduled"
+                  label={scheduledTabLabel}
                   showNotificationDot={unviewedTabs.has('triggers')}
                   notificationDotTone="attention"
                   notificationDotClassName="h-2 w-2"
@@ -383,15 +398,23 @@ export default function ProjectPageSidebar({
                   ariaLabel={triggersTabAriaLabel}
                   ariaCurrentPage={activeWorkspaceTab === 'triggers'}
                 />
+                <NavTab
+                  active={activeWorkspaceTab === 'dispatch'}
+                  onClick={() => setActiveWorkspaceTab('dispatch')}
+                  leading={<Cast className="h-4 w-4 shrink-0" aria-hidden />}
+                  label={t('layout.dispatch-tab')}
+                  tooltip={t('layout.dispatch-tab')}
+                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
+                  folded={projectSidebarFolded}
+                  ariaLabel={t('layout.dispatch-tab')}
+                  ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
+                />
               </div>
             </div>
 
             <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
               <NavList
-                className={cn(
-                  'min-h-0 flex flex-1 flex-col',
-                  projectSidebarFolded ? 'mt-2' : 'mt-6'
-                )}
+                className="min-h-0 mt-6 flex flex-1 flex-col"
                 sessions={navSessions}
                 activeSessionId={
                   activeWorkspaceTab === 'session'
@@ -403,9 +426,8 @@ export default function ProjectPageSidebar({
                   setActiveWorkspaceTab('session');
                 }}
                 onDeleteSession={handleDeleteSession}
-                workspaceActive={activeWorkspaceTab === 'workforce'}
-                onWorkspaceClick={() => setActiveWorkspaceTab('workforce')}
                 onNewSession={handleNewSession}
+                newSessionActive={activeWorkspaceTab === 'new-session'}
                 folded={projectSidebarFolded}
               />
             </div>

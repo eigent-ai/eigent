@@ -1,6 +1,7 @@
 {
   "update-check-failed": "업데이트 확인 실패",
   "new-version-available": "새 버전 사용 가능",
+  "update": "업데이트",
   "download": "다운로드",
   "update-error": "업데이트 오류",
   "downloading-update": "업데이트 다운로드 중",

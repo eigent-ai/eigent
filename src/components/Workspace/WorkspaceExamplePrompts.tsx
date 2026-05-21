@@ -66,7 +66,7 @@ export function WorkspaceExamplePrompts({
 
   return (
     <div className="pb-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-      <div className="gap-5 sm:grid-cols-2 lg:grid-cols-3 grid w-full grid-cols-1">
+      <div className="gap-4 flex w-full flex-col">
         {WORKSPACE_EXAMPLE_PROMPTS.map((item) => (
           <button
             key={item.id}

@@ -16,47 +16,36 @@ import {
   NavListSessionRows,
   type NavListSession,
 } from '@/components/ProjectPageSidebar/NavList';
-import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import { cn } from '@/lib/utils';
 import type { ChatStore } from '@/store/chatStore';
-import { usePageTabStore } from '@/store/pageTabStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { ArrowLeft } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-export { default as SessionWorkspace } from '.';
-
-type SessionsProps = {
-  className?: string;
+interface WorkspaceAllSessionsProps {
   tasks: ChatStore['tasks'];
-  activeSessionId?: string | null;
+  activeTaskId?: string | null;
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
-};
+}
 
-export default function Sessions({
-  className,
+export function WorkspaceAllSessions({
   tasks,
-  activeSessionId,
+  activeTaskId,
   onSelectSession,
   onDeleteSession,
-}: SessionsProps) {
+}: WorkspaceAllSessionsProps) {
   const { t } = useTranslation();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip');
 
   const sessions: NavListSession[] = useMemo(() => {
     const entries = Object.entries(tasks)
       .filter(([, task]) => {
-        const hasStarted =
+        return (
           (task.messages?.length || 0) > 0 ||
           task.hasMessages ||
-          task.status !== ChatTaskStatus.PENDING;
-        return hasStarted;
+          task.status !== ChatTaskStatus.PENDING
+        );
       })
       .map(([id, task]) => ({
         id,
@@ -70,31 +59,8 @@ export default function Sessions({
   }, [tasks, t]);
 
   return (
-    <div
-      className={cn(
-        'min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden',
-        className
-      )}
-    >
-      <div className="gap-2 px-2 py-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
-        <TooltipSimple content={backToWorkspaceTooltip}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            buttonContent="icon-only"
-            onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
-            aria-label={backToWorkspaceTooltip}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-          </Button>
-        </TooltipSimple>
-        <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
-          <span className="truncate">{t('layout.sessions-full-title')}</span>
-        </div>
-      </div>
-      <div className="m-0 min-h-0 gap-0.5 p-2 mx-auto flex w-full max-w-[800px] flex-1 flex-col overflow-y-auto">
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden">
+      <div className="m-0 min-h-0 gap-0.5 p-2 max-w-3xl mx-auto flex w-full flex-1 flex-col overflow-y-auto">
         {sessions.length === 0 ? (
           <p className="text-ds-text-neutral-muted-default m-0 px-3 py-6 text-body-sm text-center">
             {t('layout.sessions-create-task-hint')}
@@ -102,7 +68,7 @@ export default function Sessions({
         ) : (
           <NavListSessionRows
             sessions={sessions}
-            activeSessionId={activeSessionId}
+            activeSessionId={activeTaskId}
             onSessionClick={onSelectSession}
             onDeleteSession={onDeleteSession}
             folded={false}

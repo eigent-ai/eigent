@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { motion } from 'framer-motion';
@@ -55,6 +56,8 @@ export function FoldedView({
   const hasStreaming = streamingTasks.tasks.length > 0;
   const showPreview = hasTaskInfo || hasStreaming;
 
+  const headerText = summaryTask || t('chat.subtasks-planning');
+
   const previewRows = hasTaskInfo
     ? taskInfo
         .filter((t) => t.content !== '')
@@ -81,8 +84,18 @@ export function FoldedView({
       )}
     >
       <div className="gap-2 px-3 py-2 border-ds-border-neutral-subtle-default flex items-center border-x-0 border-t-0 border-b border-solid">
-        <div className="text-body-sm font-bold text-ds-text-neutral-default-default min-w-0 flex-1 truncate">
-          {summaryTask || t('chat.subtasks-planning')}
+        <div className="min-w-0 flex flex-1 items-center justify-start truncate text-left">
+          {isSplitting ? (
+            <ShinyText
+              text={headerText}
+              className="!text-body-sm !font-bold block w-full truncate text-left"
+              speed={3}
+            />
+          ) : (
+            <div className="text-body-sm font-bold text-ds-text-neutral-default-default w-full truncate text-left">
+              {headerText}
+            </div>
+          )}
         </div>
         {canExpand ? (
           <Button
