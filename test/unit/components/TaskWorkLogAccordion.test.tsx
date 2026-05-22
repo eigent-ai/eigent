@@ -374,6 +374,24 @@ describe('buildAgentBlocks — preparation phase', () => {
     expect(tools[1]?.status).toBe('running');
   });
 
+  it('uses the singular "Preparing agent" label in single-agent mode', () => {
+    const logs = [
+      tag(
+        'a-single',
+        'single_agent',
+        'CAMEL Agent',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'Todo Toolkit',
+          method_name: 'register agent',
+          message: 'ChatAgent(CAMEL Agent)',
+        })
+      ),
+    ];
+    const [prep] = buildAgentBlocks(logs, true);
+    expect(prep?.kind).toBe('preparation');
+    expect(prep?.agentName).toBe('Preparing agent');
+  });
+
   it('ends the Preparing block when a non-register event arrives', () => {
     const logs = [
       tag(

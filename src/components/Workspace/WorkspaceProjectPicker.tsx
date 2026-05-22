@@ -176,7 +176,7 @@ export function WorkspaceProjectPicker({
         aria-label={projectName}
       >
         <FolderIcon className="size-4 shrink-0" aria-hidden />
-        <span className="text-ds-text-neutral-default-default min-w-0 text-label-sm truncate">
+        <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
           {projectName}
         </span>
       </div>
@@ -195,13 +195,13 @@ export function WorkspaceProjectPicker({
           buttonRadius="full"
           className={cn(
             PROJECT_PICKER_SHELL_CLASS,
-            'no-drag hover:bg-ds-bg-neutral-default-hover justify-between'
+            'no-drag justify-between hover:bg-ds-bg-neutral-default-hover'
           )}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
           <FolderIcon className="size-4 shrink-0" aria-hidden />
-          <span className="text-ds-text-neutral-default-default min-w-0 text-label-sm truncate">
+          <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
             {activeTaskTitle}
           </span>
           <ChevronDown className="shrink-0 opacity-80" aria-hidden />
@@ -213,7 +213,7 @@ export function WorkspaceProjectPicker({
         sideOffset={6}
       >
         <DropdownMenuItem
-          className="gap-2 cursor-pointer"
+          className="cursor-pointer gap-2"
           onSelect={(e) => {
             e.preventDefault();
             handleStartFromScratch();
@@ -224,7 +224,7 @@ export function WorkspaceProjectPicker({
         </DropdownMenuItem>
 
         <DropdownMenuItem
-          className="gap-2 cursor-pointer"
+          className="cursor-pointer gap-2"
           onSelect={(e) => {
             e.preventDefault();
             openAgentFolderTab();
@@ -242,19 +242,19 @@ export function WorkspaceProjectPicker({
             {t('layout.workspace-project-submenu')}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
-            className="max-h-64 p-1 w-[min(100vw-2rem,280px)] overflow-y-auto"
+            className="max-h-64 w-[min(100vw-2rem,280px)] overflow-y-auto p-1"
             sideOffset={6}
             alignOffset={-4}
           >
             {historyTasks.length === 0 ? (
-              <div className="text-ds-text-neutral-muted-default px-2 py-3 text-body-sm text-center">
+              <div className="px-2 py-3 text-center text-body-sm text-ds-text-neutral-muted-default">
                 {t('layout.workspace-no-history-projects')}
               </div>
             ) : (
               historyTasks.map((project) => (
                 <DropdownMenuItem
                   key={project.project_id}
-                  className="min-h-9 gap-0.5 py-2 cursor-pointer flex-col items-start"
+                  className="min-h-9 cursor-pointer flex-col items-start gap-0.5 py-2"
                   onSelect={(e) => {
                     e.preventDefault();
                     onSelectHistoryProject(project);

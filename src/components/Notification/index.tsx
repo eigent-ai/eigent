@@ -44,7 +44,7 @@ export default function NotificationPanel({
     <>
       <button
         type="button"
-        className="inset-0 fixed z-[99] cursor-default bg-transparent backdrop-blur-[1px]"
+        className="fixed inset-0 z-[99] cursor-default bg-transparent backdrop-blur-[1px]"
         aria-label={t('layout.notification-panel-dismiss', {
           defaultValue: 'Dismiss',
         })}
@@ -55,16 +55,16 @@ export default function NotificationPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-panel-heading"
-        className="right-3 top-12 bottom-3 min-h-0 ease-out animate-in fade-in-0 slide-in-from-right-2 rounded-2xl bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-disabled fixed z-[100] flex w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden border-[0.5px] border-solid duration-200"
+        className="fixed bottom-3 right-3 top-12 z-[100] flex min-h-0 w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border-[0.5px] border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default duration-200 ease-out animate-in fade-in-0 slide-in-from-right-2"
       >
-        <div className="min-h-0 pl-3 pr-1.5 py-3 flex flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-3 pl-3 pr-1.5">
           <span
             id="notification-panel-heading"
-            className="text-ds-text-neutral-default-default text-body-md font-bold shrink-0"
+            className="shrink-0 text-body-md font-bold text-ds-text-neutral-default-default"
           >
             {t('layout.notifications')}
           </span>
-          <p className="text-ds-text-neutral-muted-default text-body-sm mt-3">
+          <p className="mt-3 text-body-sm text-ds-text-neutral-muted-default">
             {t('layout.notifications-empty')}
           </p>
         </div>

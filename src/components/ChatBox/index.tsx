@@ -25,6 +25,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
+import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -201,8 +202,18 @@ export default function ChatBox(): JSX.Element {
     (s) => s.workspaceChatFocusRequestId
   );
   const sessionSidePanelMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
+    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
   );
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+  // Session mode in three forms (see naming convention shared with
+  // Session/Workspace): `inferred` is the raw, nullable inference;
+  // `effective` always resolves to a concrete mode; `display` stays nullable
+  // so a still-loading session renders empty instead of the wrong mode.
+  const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
+  const effectiveSessionMode = inferredSessionMode ?? sessionSidePanelMode;
+  const displaySessionMode = inferredSessionMode ?? undefined;
   const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
     useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -774,7 +785,9 @@ export default function ChatBox(): JSX.Element {
                 undefined,
                 tempMessageContent,
                 attachesToSend,
-                executionId
+                executionId,
+                undefined,
+                effectiveSessionMode
               );
               chatStore.setAttaches(_taskId, []);
             } catch (err: any) {
@@ -836,7 +849,9 @@ export default function ChatBox(): JSX.Element {
               undefined,
               tempMessageContent,
               attachesToSend,
-              executionId
+              executionId,
+              undefined,
+              effectiveSessionMode
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
             chatStore.setAttaches(_taskId, []);
@@ -1179,10 +1194,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -1193,7 +1208,7 @@ export default function ChatBox(): JSX.Element {
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
+              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -1224,7 +1239,7 @@ export default function ChatBox(): JSX.Element {
                     textareaRef: textareaRef,
                     allowDragDrop: true,
                     useCloudModelInDev: useCloudModelInDev,
-                    sessionMode: sessionSidePanelMode,
+                    sessionMode: effectiveSessionMode,
                     sessionModeSelectInteractive: false,
                   }}
                 />
@@ -1240,7 +1255,7 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px]">
               <BottomBox
@@ -1307,7 +1322,7 @@ export default function ChatBox(): JSX.Element {
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
-                  sessionMode: sessionSidePanelMode,
+                  sessionMode: displaySessionMode,
                   sessionModeSelectInteractive: false,
                 }}
               />
@@ -1319,7 +1334,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

@@ -17,6 +17,8 @@ import {
   AgentStep,
   ChatTaskStatus,
   type ChatTaskStatusType,
+  SessionMode,
+  type SessionModeType,
 } from '@/types/constants';
 
 /** Minimal task shape for bottom-box / sidebar lifecycle (matches chatStore Task fields used). */
@@ -28,6 +30,7 @@ export interface TaskLifecycleFields {
   isTakeControl?: boolean;
   taskInfo?: { id: string; content: string }[];
   isContextExceeded?: boolean;
+  sessionMode?: SessionModeType;
 }
 
 function getTaskMessages(task: TaskLifecycleFields): Message[] {
@@ -47,6 +50,8 @@ function getTaskInfoRows(
  * via {@link isTaskInPlanPhase}.
  */
 function isTaskInPlanPhase(task: TaskLifecycleFields): boolean {
+  // Single agent runs directly — it has no task-splitting / confirm phase.
+  if (task.sessionMode === SessionMode.SINGLE_AGENT) return false;
   const messages = getTaskMessages(task);
   const status = task.status ?? ChatTaskStatus.PENDING;
   const hasWaitComfirm = Boolean(task.hasWaitComfirm);

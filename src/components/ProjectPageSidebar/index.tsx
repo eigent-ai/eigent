@@ -273,14 +273,14 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden py-1.5',
           className
         )}
       >
-        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-2 flex w-full shrink-0 flex-col">
-              <div className="gap-2 min-w-0 flex w-full flex-col">
+        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex w-full shrink-0 flex-col gap-2">
+              <div className="flex w-full min-w-0 flex-col gap-2">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -305,11 +305,11 @@ export default function ProjectPageSidebar({
                     });
                   }}
                   leading={
-                    <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <span className="relative inline-flex h-4 w-4 shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
+                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                           aria-hidden
                         />
                       ) : null}
@@ -318,7 +318,7 @@ export default function ProjectPageSidebar({
                   label={t('layout.context-tab')}
                   trailing={
                     <span
-                      className="rounded-md px-1.5 font-medium leading-tight bg-ds-bg-neutral-default-default text-ds-text-neutral-subtle-default text-body-xs py-0.5 max-w-[5.5rem] shrink-0 truncate"
+                      className="max-w-[5.5rem] shrink-0 truncate rounded-md bg-ds-bg-neutral-default-default px-1.5 py-0.5 text-body-xs font-medium leading-tight text-ds-text-neutral-subtle-default"
                       title={
                         customFolderPath &&
                         folderSettingTagLabel !== t('layout.default')
@@ -370,8 +370,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -412,9 +412,9 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <NavList
-                className="min-h-0 mt-6 flex flex-1 flex-col"
+                className="mt-6 flex min-h-0 flex-1 flex-col"
                 sessions={navSessions}
                 activeSessionId={
                   activeWorkspaceTab === 'session'

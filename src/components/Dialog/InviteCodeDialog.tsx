@@ -97,16 +97,16 @@ export default function InviteCodeDialog({
       <DialogContent
         size="sm"
         overlayClassName="pointer-events-none invisible backdrop-blur-none"
-        className="gap-0 !rounded-xl border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[360px] min-h-[360px] border"
+        className="min-h-[360px] gap-0 !rounded-xl border border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[360px]"
       >
-        <div className="gap-md bg-ds-bg-neutral-strong-default px-md pt-2 pb-md min-h-0 mt-10 flex h-full flex-1 flex-col items-center justify-center text-center">
-          <span className="text-heading-sm font-bold text-ds-text-neutral-default-default m-0">
+        <div className="mt-10 flex h-full min-h-0 flex-1 flex-col items-center justify-center gap-md bg-ds-bg-neutral-strong-default px-md pb-md pt-2 text-center">
+          <span className="m-0 text-heading-sm font-bold text-ds-text-neutral-default-default">
             {t('layout.invitation-code-copied-title')}
           </span>
-          <span className="text-body-sm text-ds-text-neutral-subtle-default m-0 max-w-60">
+          <span className="m-0 max-w-60 text-body-sm text-ds-text-neutral-subtle-default">
             {t('layout.invitation-code-copied-description')}
           </span>
-          <div className="gap-4 min-h-40 flex h-full w-full flex-1 flex-col items-center justify-center">
+          <div className="flex h-full min-h-40 w-full flex-1 flex-col items-center justify-center gap-4">
             {loading ? (
               <LoaderCircle
                 className="h-8 w-8 animate-spin text-ds-icon-neutral-muted-default"
@@ -114,9 +114,9 @@ export default function InviteCodeDialog({
               />
             ) : (
               inviteCode && (
-                <div className="gap-4 bg-ds-bg-neutral-subtle-default rounded-2xl px-8 py-4 flex flex-col items-center justify-center">
+                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-ds-bg-neutral-subtle-default px-8 py-4">
                   <p
-                    className="text-heading-base font-bold text-ds-text-brand-muted-default font-mono m-0 tracking-wide"
+                    className="m-0 font-mono text-heading-base font-bold tracking-wide text-ds-text-brand-muted-default"
                     aria-label={t('layout.invitation-code-label')}
                   >
                     {inviteCode}

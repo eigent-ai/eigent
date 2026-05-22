@@ -228,11 +228,30 @@ export const usePageTabStore = create<PageTabState>()(
             triggerAddDialogRequestId: state.triggerAddDialogRequestId + 1,
           };
         }),
-      sessionSidePanelMode: SessionMode.WORKFORCE,
+      // Single agent is the default mode for a new project; once the user
+      // toggles it, the choice persists (see partialize below).
+      sessionSidePanelMode: SessionMode.SINGLE_AGENT,
       setSessionSidePanelMode: (mode) => set({ sessionSidePanelMode: mode }),
     }),
     {
       name: 'eigent-page-tab',
+      version: 1,
+      // v1: single agent becomes the default session mode. Drop the legacy
+      // persisted preference (from when workforce was the only/default mode)
+      // so existing installs adopt the new default once; later user switches
+      // persist normally.
+      migrate: (persistedState, version) => {
+        if (
+          version < 1 &&
+          persistedState &&
+          typeof persistedState === 'object'
+        ) {
+          const next = { ...(persistedState as Record<string, unknown>) };
+          delete next.sessionSidePanelMode;
+          return next as unknown as PageTabState;
+        }
+        return persistedState as PageTabState;
+      },
       partialize: (state) => ({
         projectSidebarFolded: state.projectSidebarFolded,
         customAgentFolderPathByProjectId:

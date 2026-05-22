@@ -50,9 +50,9 @@ export function WorkspaceInstructionMd({
   }, [content, projectId]);
 
   return (
-    <div className="min-h-0 flex h-full w-full flex-col items-center justify-center overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden">
       <textarea
-        className="min-h-0 p-6 font-mono text-body-sm text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-muted-default max-w-3xl w-full flex-1 resize-none border-none bg-transparent outline-none"
+        className="min-h-0 w-full max-w-3xl flex-1 resize-none border-none bg-transparent p-6 font-mono text-body-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default"
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder={t('layout.instruction-md-placeholder')}

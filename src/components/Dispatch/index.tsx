@@ -35,21 +35,21 @@ export function WorkspaceDispatch() {
   };
 
   return (
-    <div className="min-h-0 flex h-full w-full flex-col overflow-hidden">
-      <div className="gap-2 px-2 border-ds-border-neutral-subtle-default box-border flex h-[45.5px] w-full shrink-0 items-center justify-between border-x-0 border-t-0 border-b-1 border-solid">
-        <div className="text-ds-text-neutral-muted-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <div className="border-b-1 box-border flex h-[45.5px] w-full shrink-0 items-center justify-between gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-1 text-body-md font-bold text-ds-text-neutral-muted-default">
           <span className="truncate">
             {t('layout.workspace-work-with-title')}
           </span>
         </div>
       </div>
-      <div className="min-h-0 flex w-full flex-1 flex-col overflow-y-auto">
-        <div className="gap-3 p-4 max-w-3xl mx-auto grid h-full w-full grid-cols-2 grid-rows-2">
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto grid h-full w-full max-w-3xl grid-cols-2 grid-rows-2 gap-3 p-4">
           <DispatchChannelCard
             name={t('layout.workspace-work-with-remote-control')}
             leading={
               <MonitorSmartphone
-                className="h-4 w-4 text-ds-text-neutral-muted-default shrink-0"
+                className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
                 aria-hidden
               />
             }

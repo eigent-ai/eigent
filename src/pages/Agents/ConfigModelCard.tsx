@@ -108,7 +108,7 @@ export function ConfigModelCard({
         {ringMotion && (
           <motion.div
             key="config-card-ring"
-            className="rounded-2xl pointer-events-none absolute z-0 border-2 border-solid"
+            className="pointer-events-none absolute z-0 rounded-2xl border-2 border-solid"
             initial={{
               inset: ringInset(RING_OFFSET_REST_PX),
               borderColor: BORDER_COLOR.configuring,
@@ -120,7 +120,7 @@ export function ConfigModelCard({
           />
         )}
       </AnimatePresence>
-      <div className="rounded-2xl bg-ds-bg-neutral-subtle-default relative z-[1] flex w-full flex-col">
+      <div className="relative z-[1] flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
         {children}
       </div>
     </div>

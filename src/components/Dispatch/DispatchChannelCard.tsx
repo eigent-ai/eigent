@@ -56,25 +56,25 @@ export function DispatchChannelCard({
   return (
     <div
       className={[
-        'gap-3 p-4 border-ds-border-neutral-subtle-default rounded-2xl bg-ds-bg-neutral-default-default border',
-        'min-h-40 flex flex-col justify-between',
+        'gap-3 rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-4',
+        'flex min-h-40 flex-col justify-between',
         disabled
-          ? 'pointer-events-none cursor-not-allowed opacity-50 select-none'
+          ? 'pointer-events-none cursor-not-allowed select-none opacity-50'
           : '',
       ].join(' ')}
     >
-      <div className="gap-2 min-w-0 flex w-full items-center justify-between">
-        <div className="gap-2 flex items-center">
+      <div className="flex w-full min-w-0 items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           {leading}
           {icon && (
             <img
               src={icon}
               alt=""
-              className="h-5 w-5 rounded shrink-0 object-contain"
+              className="h-5 w-5 shrink-0 rounded object-contain"
               aria-hidden
             />
           )}
-          <span className="text-body-sm font-semibold text-ds-text-neutral-default-default truncate">
+          <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
             {name}
           </span>
         </div>
@@ -86,7 +86,7 @@ export function DispatchChannelCard({
         )}
       </div>
 
-      <div className="gap-2 flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         {badgeText ? (
           <Badge variant="secondary" size="xs">
             {badgeText}
@@ -101,7 +101,7 @@ export function DispatchChannelCard({
             variant="secondary"
             size="xs"
             buttonContent="text"
-            className="no-drag gap-1.5 shrink-0"
+            className="no-drag shrink-0 gap-1.5"
             onClick={action.onClick}
           >
             {action.icon}

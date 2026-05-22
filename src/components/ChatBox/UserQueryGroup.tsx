@@ -12,10 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectStore } from '@/store/projectStore';
-import { AgentStep, ChatTaskStatus } from '@/types/constants';
+import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
 import { ChevronDown, FileText } from 'lucide-react';
 import React, {
@@ -201,27 +202,36 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         return false;
       })());
 
-  const isLastUserQuery =
+  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const lastUserMessageId = activeTask?.messages
+    .filter((m: any) => m.role === 'user')
+    .pop()?.id;
+  const isCurrentUserQuery = Boolean(
     !queryGroup.taskMessage &&
     !isHumanReply &&
-    activeTaskId &&
-    chatState.tasks[activeTaskId] &&
+    activeTask &&
     queryGroup.userMessage &&
-    queryGroup.userMessage.id ===
-      chatState.tasks[activeTaskId].messages
-        .filter((m: any) => m.role === 'user')
-        .pop()?.id &&
+    queryGroup.userMessage.id === lastUserMessageId
+  );
+  const isLastUserQuery =
+    isCurrentUserQuery &&
     // Only show during active phases (not finished)
-    chatState.tasks[activeTaskId].status !== ChatTaskStatus.FINISHED;
+    activeTask?.status !== ChatTaskStatus.FINISHED;
 
-  const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+  const isSingleAgentTask =
+    inferSessionModeFromTask(activeTask, SessionMode.WORKFORCE) ===
+    SessionMode.SINGLE_AGENT;
   const hasUnconfirmedPlan = Boolean(
     activeTask?.messages.some(
       (m: any) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
     )
   );
+  // Single agent has no task-splitting/confirm step — it runs directly — so it
+  // never has a planning phase. Skipping this avoids the splitting card
+  // showing during the PENDING window after the backend `confirmed` event.
   const isPlanningPhase = Boolean(
     activeTask &&
+    !isSingleAgentTask &&
     !activeTask.hasWaitComfirm &&
     (isPlanSplittingPhase(activeTask) ||
       streamingDecomposeText.length > 0 ||
@@ -233,9 +243,23 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // in the normal running/input path.
   const shouldShowFallbackTask =
     isLastUserQuery && activeTaskId && isPlanningPhase;
+  // Single agent has no split/confirm step: once the task is the current
+  // query and past planning, show its task-card area immediately — even while
+  // PENDING — so the "Preparing to execute" item can render before the work
+  // log. `TaskWorkLogAccordion` self-hides until the task reaches RUNNING.
+  const shouldShowSingleAgentWorkLog =
+    isCurrentUserQuery &&
+    activeTaskId &&
+    activeTask &&
+    isSingleAgentTask &&
+    !isPlanningPhase &&
+    !isHumanReply;
 
   const task =
-    (queryGroup.taskMessage || shouldShowFallbackTask) && activeTaskId
+    (queryGroup.taskMessage ||
+      shouldShowFallbackTask ||
+      shouldShowSingleAgentWorkLog) &&
+    activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
 
@@ -303,11 +327,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     };
   }, [task]);
 
-  // Check if we're in skeleton phase
-  const isSkeletonPhase = task && isPlanSplittingPhase(task);
+  // Check if we're in skeleton phase — never for single agent (no splitting).
+  const isSkeletonPhase =
+    task && !isSingleAgentTask && isPlanSplittingPhase(task);
 
   /** Task card visible (user message is sticky alone in this mode). */
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
+  const showTaskPlanCard = taskCardVisible && !shouldShowSingleAgentWorkLog;
 
   const hasConfirmedSubTasks = Boolean(
     task?.messages.some(
@@ -315,10 +341,12 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     )
   );
   const showPreparingExecute =
-    taskCardVisible &&
     Boolean(activeTaskId && task) &&
-    hasConfirmedSubTasks &&
-    task!.status === ChatTaskStatus.PENDING;
+    task!.status === ChatTaskStatus.PENDING &&
+    // Workforce: after the user confirms the plan, before the work log.
+    ((showTaskPlanCard && hasConfirmedSubTasks) ||
+      // Single agent: from submit until the first `todo_state` arrives.
+      shouldShowSingleAgentWorkLog);
 
   return (
     <motion.div
@@ -375,7 +403,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {taskCardVisible && activeTaskId && (
+      {showTaskPlanCard && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{

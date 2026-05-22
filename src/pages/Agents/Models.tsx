@@ -72,7 +72,6 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 
-import { ConfigModelCard, type ConfigCardRingStatus } from './ConfigModelCard';
 import {
   fetchProviderModels,
   loadCachedModels,
@@ -80,6 +79,7 @@ import {
   type ProviderModelGroup,
 } from '@/lib/providerModels';
 import { ProviderModelCombobox } from './components/ProviderModelCombobox';
+import { ConfigModelCard, type ConfigCardRingStatus } from './ConfigModelCard';
 import {
   appendV1ToEndpoint,
   canAutoFixOllamaEndpoint,

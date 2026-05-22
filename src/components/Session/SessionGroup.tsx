@@ -72,11 +72,11 @@ export default function Sessions({
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden',
+        'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden',
         className
       )}
     >
-      <div className="gap-2 px-2 py-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
+      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-2 py-2">
         <TooltipSimple content={backToWorkspaceTooltip}>
           <Button
             type="button"
@@ -84,19 +84,19 @@ export default function Sessions({
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
             aria-label={backToWorkspaceTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
-        <div className="text-ds-text-neutral-default-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-1 text-body-md font-bold text-ds-text-neutral-default-default">
           <span className="truncate">{t('layout.sessions-full-title')}</span>
         </div>
       </div>
-      <div className="m-0 min-h-0 gap-0.5 p-2 mx-auto flex w-full max-w-[800px] flex-1 flex-col overflow-y-auto">
+      <div className="m-0 mx-auto flex min-h-0 w-full max-w-[800px] flex-1 flex-col gap-0.5 overflow-y-auto p-2">
         {sessions.length === 0 ? (
-          <p className="text-ds-text-neutral-muted-default m-0 px-3 py-6 text-body-sm text-center">
+          <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
             {t('layout.sessions-create-task-hint')}
           </p>
         ) : (

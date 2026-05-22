@@ -59,10 +59,10 @@ export function WorkspaceAllSessions({
   }, [tasks, t]);
 
   return (
-    <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden">
-      <div className="m-0 min-h-0 gap-0.5 p-2 max-w-3xl mx-auto flex w-full flex-1 flex-col overflow-y-auto">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <div className="m-0 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-0.5 overflow-y-auto p-2">
         {sessions.length === 0 ? (
-          <p className="text-ds-text-neutral-muted-default m-0 px-3 py-6 text-body-sm text-center">
+          <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
             {t('layout.sessions-create-task-hint')}
           </p>
         ) : (

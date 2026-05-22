@@ -178,7 +178,7 @@ export function HistoryTabsNav({
     <div
       ref={navRef}
       className={cn(
-        'gap-2 pb-2 relative flex flex-row flex-wrap items-center',
+        'relative flex flex-row flex-wrap items-center gap-2 pb-2',
         className
       )}
       onMouseLeave={() => setHoveredTab(null)}
@@ -186,7 +186,7 @@ export function HistoryTabsNav({
     >
       <motion.div
         aria-hidden
-        className="rounded-lg bg-ds-bg-neutral-subtle-default ring-ds-border-neutral-default-default shadow-sm pointer-events-none absolute z-0 ring-1"
+        className="pointer-events-none absolute z-0 rounded-lg bg-ds-bg-neutral-subtle-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
         initial={false}
         animate={{
           left: hoverRect.left,
@@ -207,7 +207,7 @@ export function HistoryTabsNav({
       {activeLine.width > 0 && (
         <motion.div
           aria-hidden
-          className="bg-ds-bg-brand-default-default h-0.5 pointer-events-none absolute z-[11] rounded-full"
+          className="pointer-events-none absolute z-[11] h-0.5 rounded-full bg-ds-bg-brand-default-default"
           initial={false}
           animate={{
             left: activeLine.left,
@@ -244,7 +244,7 @@ export function HistoryTabsNav({
             }}
             className={cn(
               tabButtonClass,
-              'focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-default-default !text-body-sm gap-2 flex flex-row border-0 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+              'flex flex-row gap-2 border-0 bg-transparent !text-body-sm outline-none focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
               activeTab === id
                 ? 'text-ds-text-neutral-default-default'
                 : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'

@@ -227,20 +227,20 @@ export default function SubAgents() {
       <button
         key={REMOTE_SUB_AGENT_PROVIDER}
         onClick={() => setSelectedProvider(REMOTE_SUB_AGENT_PROVIDER)}
-        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
           isActive
             ? 'bg-fill-fill-transparent-active'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         }`}
       >
-        <div className="min-w-0 gap-3 flex items-center justify-center">
+        <div className="flex min-w-0 items-center justify-center gap-3">
           <img
             src={geminiImage}
             alt={t('setting.gemini-agent')}
             className="h-5 w-5 shrink-0"
           />
           <span
-            className={`text-body-sm font-medium truncate ${
+            className={`truncate text-body-sm font-medium ${
               isActive ? 'text-text-body' : 'text-text-label'
             }`}
           >
@@ -248,26 +248,26 @@ export default function SubAgents() {
           </span>
         </div>
         {isConfigured ? (
-          <div className="m-1 h-2 w-2 bg-text-success shrink-0 rounded-full" />
+          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-text-success" />
         ) : (
-          <div className="m-1 h-2 w-2 bg-text-label shrink-0 rounded-full opacity-10" />
+          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
         )}
       </button>
     );
   };
 
   const renderGeminiProviderContent = () => (
-    <div className="rounded-2xl bg-surface-tertiary flex w-full flex-col">
-      <div className="mx-6 mb-4 border-border-secondary pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-        <div className="gap-2 inline-flex items-center justify-between self-stretch">
+    <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
+      <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
+        <div className="inline-flex items-center justify-between gap-2 self-stretch">
           <div className="text-body-base my-2 font-bold text-text-heading">
             {t('setting.gemini-remote-sub-agent')}
           </div>
-          <div className="gap-3 flex items-center">
+          <div className="flex items-center gap-3">
             {isConfigured ? (
-              <div className="h-2 w-2 bg-text-success shrink-0 rounded-full" />
+              <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
             ) : (
-              <div className="h-2 w-2 bg-text-label shrink-0 rounded-full opacity-10" />
+              <div className="h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
             )}
             <Switch
               checked={remoteSubAgentForm.enabled}
@@ -281,7 +281,7 @@ export default function SubAgents() {
         </div>
       </div>
 
-      <div className="gap-4 px-6 flex w-full flex-col items-center">
+      <div className="flex w-full flex-col items-center gap-4 px-6">
         <Input
           size="default"
           title={t('setting.api-key-setting')}
@@ -340,7 +340,7 @@ export default function SubAgents() {
           }}
         />
 
-        <div className="gap-4 grid w-full grid-cols-2">
+        <div className="grid w-full grid-cols-2 gap-4">
           <Input
             size="default"
             title={t('setting.max-wall-time-seconds')}
@@ -366,13 +366,13 @@ export default function SubAgents() {
         </div>
 
         {remoteSubAgentError && (
-          <span className="text-label-sm text-text-error w-full">
+          <span className="w-full text-label-sm text-text-error">
             {remoteSubAgentError}
           </span>
         )}
       </div>
 
-      <div className="gap-2 px-6 py-4 flex justify-end">
+      <div className="flex justify-end gap-2 px-6 py-4">
         <Button
           variant="ghost"
           size="sm"
@@ -399,8 +399,8 @@ export default function SubAgents() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="bg-surface-primary px-6 pb-6 pt-8 flex w-full items-center justify-between">
-        <div className="gap-4 flex w-full flex-col items-start justify-between">
+      <div className="flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
+        <div className="flex w-full flex-col items-start justify-between gap-4">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-text-heading">
               {t('setting.sub-agents')}
@@ -409,16 +409,16 @@ export default function SubAgents() {
         </div>
       </div>
 
-      <div className="mb-8 gap-6 flex flex-col">
-        <div className="gap-2 rounded-2xl bg-surface-secondary px-6 py-4 flex w-full flex-col items-start justify-between">
-          <div className="text-body-base mb-2 border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+      <div className="mb-8 flex flex-col gap-6">
+        <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">
+          <div className="text-body-base sticky top-[48px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
             {t('setting.models-configuration')}
           </div>
 
           <div className="flex w-full flex-row items-start justify-between">
-            <div className="-ml-2 mr-4 rounded-2xl bg-surface-secondary h-full w-[240px]">
-              <div className="gap-4 flex flex-col">
-                <div className="gap-1 flex flex-col">
+            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-surface-secondary">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
                   <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
                     {t('setting.agent-provider')}
                   </div>
@@ -426,7 +426,7 @@ export default function SubAgents() {
                 </div>
               </div>
             </div>
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
               {renderGeminiProviderContent()}
             </div>
           </div>

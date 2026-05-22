@@ -27,6 +27,20 @@ function fileInfoDedupKey(f: FileInfo): string {
   return (f.name ?? '').trim();
 }
 
+export function mergeSidePanelOutputFiles(
+  ...sources: FileInfo[][]
+): FileInfo[] {
+  const seen = new Set<string>();
+  const out: FileInfo[] = [];
+  for (const f of sources.flat()) {
+    const k = fileInfoDedupKey(f);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(f);
+  }
+  return out;
+}
+
 export function collectSidePanelOutputFiles(
   task:
     | {
@@ -47,13 +61,5 @@ export function collectSidePanelOutputFiles(
   const running = (task.taskRunning ?? []).flatMap((t) => t.fileList ?? []);
   const messages = (task.messages ?? []).flatMap((m) => m.fileList ?? []);
   const top = task.fileList ?? [];
-  const seen = new Set<string>();
-  const out: FileInfo[] = [];
-  for (const f of [...top, ...assigned, ...planned, ...running, ...messages]) {
-    const k = fileInfoDedupKey(f);
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(f);
-  }
-  return out;
+  return mergeSidePanelOutputFiles(top, assigned, planned, running, messages);
 }

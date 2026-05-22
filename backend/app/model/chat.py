@@ -16,7 +16,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
@@ -82,6 +82,8 @@ class Chat(BaseModel):
     # Direct server API base URL (for example http://localhost:3001/api/v1)
     # used by standalone Brain to sync replay steps without Electron env injection.
     server_url: str | None = None
+    session_mode: Literal["workforce", "single-agent"] = "workforce"
+    toolkit_config: dict[str, Any] | None = None
     remote_sub_agent_config: RemoteSubAgentConfig | None = None
 
     @field_validator("model_type")

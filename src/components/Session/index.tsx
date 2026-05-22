@@ -16,9 +16,14 @@ import ChatBox from '@/components/ChatBox';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { ChatTaskStatus, SessionMode } from '@/types/constants';
+import {
+  ChatTaskStatus,
+  SessionMode,
+  type SessionModeType,
+} from '@/types/constants';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SessionSidePanel } from './SessionSidePanel';
 import {
@@ -41,8 +46,13 @@ export default function Session({ isNewSession = false }: SessionProps) {
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const sessionMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.WORKFORCE
+    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
   );
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
+  // `null` = mode not yet determined (session still loading its events).
+  const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
   const [isSidePanelVisible, setIsSidePanelVisible] = useState(true);
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
@@ -96,6 +106,14 @@ export default function Session({ isNewSession = false }: SessionProps) {
     }
   }, [isNewSession, hasSessionStarted, setActiveWorkspaceTab]);
 
+  // Nullable "display" form of the session mode (see the naming convention
+  // shared with ChatBox/Workspace). `null` while a saved session is still
+  // loading — the side panel renders empty rather than defaulting to
+  // workforce and flickering once the real mode resolves. Fresh sessions
+  // fall back to the toggle's mode.
+  const displaySessionMode: SessionModeType | null =
+    inferredSessionMode ?? (hasSessionStarted ? null : sessionMode);
+
   useEffect(() => {
     setIsExpandedOverlayOpen(false);
   }, [projectStore.activeProjectId]);
@@ -123,14 +141,14 @@ export default function Session({ isNewSession = false }: SessionProps) {
   }
 
   return (
-    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
           />
         )}
-        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {isNewSession ? <Workspace variant="new-session" /> : <ChatBox />}
         </div>
       </div>
@@ -138,22 +156,24 @@ export default function Session({ isNewSession = false }: SessionProps) {
       <div
         id="session-side-panel"
         className={cn(
-          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
+          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
           isSidePanelVisible
             ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
-        <SessionSidePanel
-          mode={sessionMode}
-          workforcePanelKey={workforcePanelKey}
-          hasAnyMessages={hasAnyMessages}
-          isSidePanelVisible={isSidePanelVisible}
-          onToggleSidePanel={toggleSidePanel}
-          isExpandedOverlayOpen={isExpandedOverlayOpen}
-          onToggleExpandedOverlay={toggleExpandedOverlay}
-          onCloseExpandedOverlay={closeExpandedOverlay}
-        />
+        {displaySessionMode ? (
+          <SessionSidePanel
+            mode={displaySessionMode}
+            workforcePanelKey={workforcePanelKey}
+            hasAnyMessages={hasAnyMessages}
+            isSidePanelVisible={isSidePanelVisible}
+            onToggleSidePanel={toggleSidePanel}
+            isExpandedOverlayOpen={isExpandedOverlayOpen}
+            onToggleExpandedOverlay={toggleExpandedOverlay}
+            onCloseExpandedOverlay={closeExpandedOverlay}
+          />
+        ) : null}
       </div>
     </div>
   );
