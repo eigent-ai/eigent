@@ -26,9 +26,18 @@ interface PageTabState {
     | 'inbox'
     | 'triggers'
     | 'sessions'
-    | 'session';
+    | 'session'
+    | 'dispatch'
+    | 'new-session';
   setActiveWorkspaceTab: (
-    tab: 'workforce' | 'inbox' | 'triggers' | 'sessions' | 'session',
+    tab:
+      | 'workforce'
+      | 'inbox'
+      | 'triggers'
+      | 'sessions'
+      | 'session'
+      | 'dispatch'
+      | 'new-session',
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;
@@ -197,7 +206,10 @@ export const usePageTabStore = create<PageTabState>()(
         set((state) => {
           const tab = state.activeWorkspaceTab;
           const alreadyOnWorkspaceChat =
-            tab === 'workforce' || tab === 'session' || tab === 'sessions';
+            tab === 'workforce' ||
+            tab === 'session' ||
+            tab === 'sessions' ||
+            tab === 'new-session';
           return {
             ...(alreadyOnWorkspaceChat
               ? {}

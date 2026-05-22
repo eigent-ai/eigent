@@ -1,6 +1,7 @@
 {
   "skills": "技能",
   "memory": "记忆",
+  "sub-agents": "子智能体",
   "preview": "预览",
   "skills-description": "添加自定义技能以扩展您的智能体能力。",
   "memory-description": "管理您的智能体的记忆和知识库。",

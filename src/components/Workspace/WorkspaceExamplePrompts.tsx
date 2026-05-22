@@ -65,8 +65,8 @@ export function WorkspaceExamplePrompts({
   const { t } = useTranslation();
 
   return (
-    <div className="pb-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-      <div className="gap-5 sm:grid-cols-2 lg:grid-cols-3 grid w-full grid-cols-1">
+    <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col pb-4">
+      <div className="flex w-full flex-col gap-4">
         {WORKSPACE_EXAMPLE_PROMPTS.map((item) => (
           <button
             key={item.id}
@@ -77,9 +77,9 @@ export function WorkspaceExamplePrompts({
               )
             }
             disabled={disabled}
-            className="rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default p-3 hover:bg-ds-bg-neutral-strong-default/40 focus-visible:ring-ds-ring-neutral-default-focus border border-solid text-center opacity-50 transition-opacity duration-200 hover:opacity-100 focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30"
+            className="hover:bg-ds-bg-neutral-strong-default/40 rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-strong-default p-3 text-center opacity-50 transition-opacity duration-200 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-default-focus disabled:pointer-events-none disabled:opacity-30"
           >
-            <span className="text-ds-text-neutral-default-default text-body-sm font-semibold leading-snug block">
+            <span className="block text-body-sm font-semibold leading-snug text-ds-text-neutral-default-default">
               {t(item.titleKey, { defaultValue: item.titleDefault })}
             </span>
           </button>

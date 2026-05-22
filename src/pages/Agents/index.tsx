@@ -21,8 +21,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Memory from './Memory';
 import Models from './Models';
 import Skills from './Skills';
+import SubAgents from './SubAgents';
 
-const AGENT_SECTIONS = ['models', 'skills', 'memory'] as const;
+const AGENT_SECTIONS = ['models', 'skills', 'sub-agents', 'memory'] as const;
 type AgentSection = (typeof AGENT_SECTIONS)[number];
 
 function isAgentSection(value: string | null): value is AgentSection {
@@ -55,6 +56,10 @@ export default function Capabilities() {
       name: t('agents.skills'),
     },
     {
+      id: 'sub-agents',
+      name: t('agents.sub-agents'),
+    },
+    {
       id: 'memory',
       name: t('agents.memory'),
     },
@@ -68,7 +73,7 @@ export default function Capabilities() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
+      <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
         <VerticalNavigation
           items={
             menuItems.map((menu) => ({
@@ -80,16 +85,17 @@ export default function Capabilities() {
           }
           value={activeTab}
           onValueChange={handleTabChange}
-          className="min-h-0 gap-0 h-full w-full flex-1"
+          className="h-full min-h-0 w-full flex-1 gap-0"
           listClassName="w-full h-full overflow-y-auto"
           contentClassName="hidden"
         />
       </div>
 
       <div className="flex h-auto w-full flex-1 flex-col">
-        <div className="gap-4 flex flex-col">
+        <div className="flex flex-col gap-4">
           {activeTab === 'models' && <Models />}
           {activeTab === 'skills' && <Skills />}
+          {activeTab === 'sub-agents' && <SubAgents />}
           {activeTab === 'memory' && <Memory />}
         </div>
       </div>

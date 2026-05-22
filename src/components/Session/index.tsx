@@ -14,6 +14,7 @@
 
 import ChatBox from '@/components/ChatBox';
 import { HeaderBox } from '@/components/Session/HeaderBox';
+import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
@@ -35,7 +36,12 @@ import {
  * The side panel is selected by `sessionSidePanelMode` in the page tab store
  * (Workspace toggle: Single Agent vs Workforce).
  */
-export default function Session() {
+interface SessionProps {
+  /** New Session shell: empty session that promotes to a live session on send. */
+  isNewSession?: boolean;
+}
+
+export default function Session({ isNewSession = false }: SessionProps) {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -92,10 +98,13 @@ export default function Session() {
   }, [chatStore]);
 
   useEffect(() => {
+    // The New Session shell stays selected on its own tab — never redirect
+    // away from it (it is empty until the user sends the first message).
+    if (isNewSession) return;
     if (!hasSessionStarted) {
       setActiveWorkspaceTab('workforce');
     }
-  }, [hasSessionStarted, setActiveWorkspaceTab]);
+  }, [isNewSession, hasSessionStarted, setActiveWorkspaceTab]);
 
   // Nullable "display" form of the session mode (see the naming convention
   // shared with ChatBox/Workspace). `null` while a saved session is still
@@ -132,20 +141,22 @@ export default function Session() {
   }
 
   return (
-    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
           />
         )}
-        <ChatBox />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {isNewSession ? <Workspace variant="new-session" /> : <ChatBox />}
+        </div>
       </div>
 
       <div
         id="session-side-panel"
         className={cn(
-          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
+          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
           isSidePanelVisible
             ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')

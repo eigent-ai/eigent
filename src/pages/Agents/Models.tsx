@@ -21,6 +21,13 @@ import {
 } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogContentSection,
+  DialogFooter,
+  DialogHeader,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -54,7 +61,7 @@ import {
   Server,
   Settings,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -65,6 +72,14 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 
+import {
+  fetchProviderModels,
+  loadCachedModels,
+  saveCachedModels,
+  type ProviderModelGroup,
+} from '@/lib/providerModels';
+import { ProviderModelCombobox } from './components/ProviderModelCombobox';
+import { ConfigModelCard, type ConfigCardRingStatus } from './ConfigModelCard';
 import {
   appendV1ToEndpoint,
   canAutoFixOllamaEndpoint,
@@ -92,6 +107,11 @@ type SidebarTab =
   | 'local-sglang'
   | 'local-lmstudio'
   | 'local-llama.cpp';
+
+const PLAN_CREDITS_BY_KEY: Record<string, number> = {
+  plus: 2000,
+  pro: 10000,
+};
 
 export default function SettingModels() {
   const {
@@ -133,6 +153,24 @@ export default function SettingModels() {
   );
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<number | null>(null);
+  const [configCardRing, setConfigCardRing] =
+    useState<ConfigCardRingStatus>('idle');
+  const configCardRingResetRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const showConfigCardRing = useCallback((status: ConfigCardRingStatus) => {
+    if (configCardRingResetRef.current) {
+      clearTimeout(configCardRingResetRef.current);
+      configCardRingResetRef.current = null;
+    }
+    setConfigCardRing(status);
+    if (status === 'success' || status === 'error') {
+      configCardRingResetRef.current = setTimeout(() => {
+        setConfigCardRing('idle');
+        configCardRingResetRef.current = null;
+      }, 1000);
+    }
+  }, []);
   const [errors, setErrors] = useState<
     {
       apiKey?: string;
@@ -182,6 +220,72 @@ export default function SettingModels() {
   >({});
   const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
     useState(false);
+
+  // Per-cloud-provider model list state: { groups, loading, error } keyed by
+  // provider id. Populated for providers whose `INIT_PROVODERS` entry declares
+  // a `modelsEndpoint` (today: only OrcaRouter).
+  const [cloudModelsState, setCloudModelsState] = useState<
+    Record<
+      string,
+      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+    >
+  >(() => {
+    const initial: Record<
+      string,
+      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+    > = {};
+    for (const p of INIT_PROVODERS) {
+      if (!p.modelsEndpoint) continue;
+      const cached = loadCachedModels(p.id);
+      if (cached) {
+        initial[p.id] = { groups: cached, loading: false, error: null };
+      }
+    }
+    return initial;
+  });
+
+  const fetchCloudProviderModels = useCallback(
+    async (idx: number) => {
+      const item = items[idx];
+      if (!item?.modelsEndpoint) return;
+      const apiKey = form[idx]?.apiKey;
+      const apiHost = form[idx]?.apiHost || item.apiHost;
+      if (!apiKey) return;
+      setCloudModelsState((prev) => ({
+        ...prev,
+        [item.id]: {
+          groups: prev[item.id]?.groups || [],
+          loading: true,
+          error: null,
+        },
+      }));
+      try {
+        const groups = await fetchProviderModels(
+          apiHost,
+          item.modelsEndpoint,
+          apiKey
+        );
+        setCloudModelsState((prev) => ({
+          ...prev,
+          [item.id]: { groups, loading: false, error: null },
+        }));
+        saveCachedModels(item.id, groups);
+      } catch (err: any) {
+        setCloudModelsState((prev) => ({
+          ...prev,
+          [item.id]: {
+            groups: prev[item.id]?.groups || [],
+            loading: false,
+            error:
+              typeof err?.message === 'string'
+                ? err.message
+                : 'Failed to fetch models.',
+          },
+        }));
+      }
+    },
+    [items, form]
+  );
 
   // Generic model fetcher driven by LOCAL_MODEL_OPTIONS config.
   // Only fetches for providers that define fetchPath and parseModels.
@@ -257,6 +361,7 @@ export default function SettingModels() {
       try {
         const res = await proxyFetchGet('/api/v1/providers');
         const providerList = Array.isArray(res) ? res : res.items || [];
+
         // Handle custom models
         setForm((f) =>
           f.map((fi, idx) => {
@@ -360,6 +465,15 @@ export default function SettingModels() {
       updateCredits();
     }
   }, [items, modelType, fetchModelsForPlatform]);
+
+  useEffect(
+    () => () => {
+      if (configCardRingResetRef.current) {
+        clearTimeout(configCardRingResetRef.current);
+      }
+    },
+    []
+  );
 
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
@@ -473,6 +587,7 @@ export default function SettingModels() {
 
   // Cloud model options
   const cloudModelOptions = [
+    { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
     { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
@@ -513,8 +628,12 @@ export default function SettingModels() {
       newErrors[idx].model_type = '';
     }
     setErrors(newErrors);
-    if (hasError) return;
+    if (hasError) {
+      showConfigCardRing('error');
+      return;
+    }
 
+    showConfigCardRing('configuring');
     setLoading(idx);
     const item = items[idx];
     let external: any = {};
@@ -550,6 +669,8 @@ export default function SettingModels() {
           next[idx].apiKey = getValidateMessage(res);
           return next;
         });
+        showConfigCardRing('error');
+        setLoading(null);
         return;
       }
       console.log(res);
@@ -562,9 +683,9 @@ export default function SettingModels() {
         next[idx].apiKey = getValidateMessage(e);
         return next;
       });
-      return;
-    } finally {
+      showConfigCardRing('error');
       setLoading(null);
+      return;
     }
 
     const data: any = {
@@ -632,12 +753,17 @@ export default function SettingModels() {
       } else {
         handleSwitch(idx, true);
       }
+      showConfigCardRing('success');
+    } catch (e) {
+      console.error('Error saving provider:', e);
+      showConfigCardRing('error');
     } finally {
       setLoading(null);
     }
   };
 
   const handleLocalVerify = async () => {
+    showConfigCardRing('configuring');
     setLocalVerifying(true);
     setLocalError(null);
     setLocalInputError(false);
@@ -664,12 +790,14 @@ export default function SettingModels() {
       setLocalError(t('setting.endpoint-url-can-not-be-empty'));
       setLocalInputError(true);
       setLocalVerifying(false);
+      showConfigCardRing('error');
       return;
     }
     if (!currentType) {
       setLocalError(t('setting.model-type-can-not-be-empty'));
       setLocalInputError(true);
       setLocalVerifying(false);
+      showConfigCardRing('error');
       return;
     }
     try {
@@ -743,6 +871,7 @@ export default function SettingModels() {
               },
             });
 
+            showConfigCardRing('error');
             return;
           }
           console.log(res);
@@ -757,6 +886,7 @@ export default function SettingModels() {
               },
             },
           });
+          showConfigCardRing('error');
           return;
         }
       }
@@ -808,11 +938,13 @@ export default function SettingModels() {
       }
 
       await fetchModelsForPlatform(localPlatform, currentEndpoint);
+      showConfigCardRing('success');
     } catch (e: any) {
       setLocalError(
         e.message || t('setting.verification-failed-please-check-endpoint-url')
       );
       setLocalInputError(true);
+      showConfigCardRing('error');
     } finally {
       setLocalVerifying(false);
     }
@@ -942,6 +1074,7 @@ export default function SettingModels() {
       toast.error(t('setting.reset-failed'));
     }
   };
+
   const handleDelete = async (idx: number) => {
     try {
       const { provider_id } = form[idx];
@@ -999,6 +1132,8 @@ export default function SettingModels() {
   };
 
   const [subscription, setSubscription] = useState<any>(null);
+  const [trialUpgradeDialogOpen, setTrialUpgradeDialogOpen] = useState(false);
+  const [upgradingTrial, setUpgradingTrial] = useState(false);
   const fetchSubscription = async () => {
     const res = await proxyFetchGet('/api/v1/subscription');
     console.log(res);
@@ -1018,6 +1153,72 @@ export default function SettingModels() {
       console.error(error);
     } finally {
       setLoadingCredits(false);
+    }
+  };
+
+  const formatCredits = (value: unknown): string => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return String(value ?? 0);
+    }
+    return new Intl.NumberFormat().format(numericValue);
+  };
+
+  const getPlanKey = () =>
+    typeof subscription?.plan_key === 'string'
+      ? subscription.plan_key.toLowerCase()
+      : '';
+
+  const getPlanName = () => {
+    const planKey = getPlanKey();
+    if (!planKey) {
+      return '';
+    }
+    return planKey.charAt(0).toUpperCase() + planKey.slice(1);
+  };
+
+  const getSelectedPlanCredits = () => {
+    const planKey = getPlanKey();
+    const monthlyCredits = Number(subscription?.monthly_credits);
+    return (
+      PLAN_CREDITS_BY_KEY[planKey] ??
+      (Number.isFinite(monthlyCredits) ? monthlyCredits : 0)
+    );
+  };
+
+  const handleTrialUpgrade = async () => {
+    try {
+      setUpgradingTrial(true);
+      await proxyFetchPost('/api/v1/upgrade-trial-to-paid');
+      toast.success(
+        t('setting.trial-upgrade-success', {
+          defaultValue: 'Your full plan credits are unlocked.',
+        })
+      );
+      setTrialUpgradeDialogOpen(false);
+      await Promise.all([fetchSubscription(), updateCredits()]);
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const recoveryUrl =
+        detail && typeof detail === 'object' ? detail.recovery_url : undefined;
+      const message =
+        detail && typeof detail === 'object'
+          ? detail.message
+          : detail || error?.message;
+
+      if (recoveryUrl) {
+        window.location.href = recoveryUrl;
+        return;
+      }
+
+      toast.error(
+        message ||
+          t('setting.trial-upgrade-failed', {
+            defaultValue: 'Upgrade failed. Please try again.',
+          })
+      );
+    } finally {
+      setUpgradingTrial(false);
     }
   };
 
@@ -1047,13 +1248,13 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="gap-3 flex items-center justify-center">
+        <div className="flex items-center justify-center gap-3">
           {modelImage ? (
             <img
               src={modelImage}
@@ -1079,7 +1280,7 @@ export default function SettingModels() {
           </span>
         </div>
         {isConfigured && (
-          <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
         )}
       </button>
     );
@@ -1091,16 +1292,22 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="h-64 text-ds-text-neutral-muted-default flex items-center justify-center">
+          <div className="flex h-64 items-center justify-center text-ds-text-neutral-muted-default">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
+      const isTrialing = Boolean(subscription?.is_trialing);
+      const selectedPlanCredits = getSelectedPlanCredits();
+      const trialDailyLimit =
+        Number(subscription?.trial_daily_credits_limit) || 300;
+      const trialTotalLimit =
+        Number(subscription?.trial_total_credits_limit) || 1000;
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 inline-flex items-center justify-start self-stretch">
-              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default flex-1 justify-center">
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+            <div className="inline-flex items-center justify-start gap-2 self-stretch">
+              <div className="text-body-base my-2 flex-1 justify-center font-bold text-ds-text-neutral-default-default">
                 {t('setting.eigent-cloud')}
               </div>
               {cloudPrefer ? (
@@ -1139,15 +1346,13 @@ export default function SettingModels() {
             <div className="justify-center self-stretch">
               <span className="text-body-sm text-ds-text-neutral-muted-default">
                 {t('setting.you-are-currently-subscribed-to-the')}{' '}
-                {subscription?.plan_key?.charAt(0).toUpperCase() +
-                  subscription?.plan_key?.slice(1)}
-                . {t('setting.discover-more-about-our')}{' '}
+                {getPlanName()}. {t('setting.discover-more-about-our')}{' '}
               </span>
               <span
                 onClick={() => {
                   window.location.href = `${SITE_URL}/pricing`;
                 }}
-                className="text-body-sm text-ds-text-neutral-muted-default cursor-pointer underline"
+                className="cursor-pointer text-body-sm text-ds-text-neutral-muted-default underline"
               >
                 {t('setting.pricing-options')}
               </span>
@@ -1157,13 +1362,38 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="gap-4 px-6 pb-4 flex w-full flex-row items-center justify-between">
-            <div className="text-body-sm text-ds-text-neutral-default-default">
-              {t('setting.credits')}:{' '}
-              {loadingCredits ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                credits
+          <div className="flex w-full flex-row items-start justify-between gap-4 px-6 pb-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex items-center gap-1 text-body-sm text-text-body">
+                <span>{t('setting.credits')}:</span>
+                {loadingCredits ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <span>{formatCredits(credits)}</span>
+                )}
+              </div>
+              {isTrialing && (
+                <p className="m-0 max-w-[560px] text-label-sm leading-5 text-text-label">
+                  {t('setting.trial-plan-notice-before-upgrade', {
+                    defaultValue:
+                      "You're on a trial. Your {{planName}} plan includes {{planCredits}} credits; the trial unlocks {{daily}} credits/day (up to {{total}}) before you upgrade.",
+                    planName: getPlanName(),
+                    planCredits: formatCredits(selectedPlanCredits),
+                    daily: formatCredits(trialDailyLimit),
+                    total: formatCredits(trialTotalLimit),
+                  })}{' '}
+                  <button
+                    type="button"
+                    onClick={() => setTrialUpgradeDialogOpen(true)}
+                    className="cursor-pointer border-0 bg-transparent p-0 text-label-sm font-medium text-text-body underline"
+                  >
+                    {t('setting.upgrade', { defaultValue: 'Upgrade' })}
+                  </button>{' '}
+                  {t('setting.trial-plan-notice-after-upgrade', {
+                    defaultValue:
+                      'anytime to unlock the full plan credits and get the most out of your plan.',
+                  })}
+                </p>
               )}
             </div>
             <Button
@@ -1180,15 +1410,54 @@ export default function SettingModels() {
               {loadingCredits ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                subscription?.plan_key?.charAt(0).toUpperCase() +
-                subscription?.plan_key?.slice(1)
+                getPlanName()
               )}
               <Settings />
             </Button>
           </div>
-          <div className="px-6 pb-4 flex w-full flex-1 items-center justify-between">
-            <div className="min-w-0 flex flex-1 items-center">
-              <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
+          <Dialog
+            open={trialUpgradeDialogOpen}
+            onOpenChange={setTrialUpgradeDialogOpen}
+          >
+            <DialogContent
+              size="sm"
+              overlayVariant="dark"
+              onClose={() => setTrialUpgradeDialogOpen(false)}
+            >
+              <DialogHeader
+                title={t('setting.trial-upgrade-title', {
+                  defaultValue: 'Upgrade plan',
+                })}
+              />
+              <DialogContentSection className="px-4 py-4">
+                <p className="m-0 text-body-sm text-text-body">
+                  {t('setting.trial-upgrade-body', {
+                    defaultValue:
+                      'Upgrade now to unlock full credits instantly.',
+                  })}
+                </p>
+              </DialogContentSection>
+              <DialogFooter
+                showCancelButton
+                showConfirmButton
+                cancelButtonText={t('setting.not-now', {
+                  defaultValue: 'Not Now',
+                })}
+                confirmButtonText={
+                  upgradingTrial
+                    ? t('setting.upgrading', { defaultValue: 'Upgrading...' })
+                    : t('setting.upgrade', { defaultValue: 'Upgrade' })
+                }
+                onCancel={() => setTrialUpgradeDialogOpen(false)}
+                onConfirm={handleTrialUpgrade}
+                confirmButtonDisabled={upgradingTrial}
+                cancelButtonDisabled={upgradingTrial}
+              />
+            </DialogContent>
+          </Dialog>
+          <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
+            <div className="flex min-w-0 flex-1 items-center">
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
                 {t('setting.select-model-type')}
               </span>
             </div>
@@ -1201,6 +1470,9 @@ export default function SettingModels() {
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini-3.5-flash">
+                    {t('setting.gemini-3.5-flash-name')}
+                  </SelectItem>
                   <SelectItem value="gemini-3.1-pro-preview">
                     {t('setting.gemini-3.1-pro-preview-name')}
                   </SelectItem>
@@ -1255,13 +1527,13 @@ export default function SettingModels() {
       const canSwitch = !!form[idx].provider_id;
 
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+        <ConfigModelCard status={configCardRing}>
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+            <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
-              <div className="gap-2 flex items-center">
+              <div className="flex items-center gap-2">
                 {form[idx].prefer ? (
                   <Button
                     variant="primary"
@@ -1301,17 +1573,30 @@ export default function SettingModels() {
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
                 ) : (
-                  <div className="h-2 w-2 bg-ds-text-neutral-default-default shrink-0 rounded-full opacity-10" />
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-neutral-default-default opacity-10" />
                 )}
               </div>
             </div>
             <div className="text-body-sm text-ds-text-neutral-muted-default">
               {item.description}
+              {item.websiteUrl ? (
+                <>
+                  {' '}
+                  <a
+                    href={item.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text-information hover:underline"
+                  >
+                    Visit {item.name}
+                  </a>
+                </>
+              ) : null}
             </div>
           </div>
-          <div className="gap-4 px-6 flex w-full flex-col items-center">
+          <div className="flex w-full flex-col items-center gap-4 px-6">
             {/* API Key Setting */}
             <Input
               id={`apiKey-${item.id}`}
@@ -1366,33 +1651,68 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <Input
-              id={`modelType-${item.id}`}
-              size="default"
-              title={t('setting.model-type-setting')}
-              state={errors[idx]?.model_type ? 'error' : 'default'}
-              note={errors[idx]?.model_type ?? undefined}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
-              value={form[idx].model_type}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) =>
-                  f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
-                );
-                setErrors((errs) =>
-                  errs.map((er, i) =>
-                    i === idx ? { ...er, model_type: '' } : er
-                  )
-                );
-              }}
-            />
+            {item.modelsEndpoint ? (
+              <ProviderModelCombobox
+                providerName={item.name}
+                title={t('setting.model-type-setting')}
+                value={form[idx].model_type || ''}
+                onChange={(v) => {
+                  setForm((f) =>
+                    f.map((fi, i) =>
+                      i === idx ? { ...fi, model_type: v } : fi
+                    )
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+                groups={cloudModelsState[item.id]?.groups || []}
+                loading={cloudModelsState[item.id]?.loading || false}
+                error={
+                  cloudModelsState[item.id]?.error ??
+                  errors[idx]?.model_type ??
+                  null
+                }
+                disabled={!form[idx].apiKey}
+                disabledReason="Enter API Key first."
+                onRefresh={() => void fetchCloudProviderModels(idx)}
+                triggerPlaceholder={`${t('setting.enter-your-model-type')} ${
+                  item.name
+                } ${t('setting.model-type')}`}
+              />
+            ) : (
+              <Input
+                id={`modelType-${item.id}`}
+                size="default"
+                title={t('setting.model-type-setting')}
+                state={errors[idx]?.model_type ? 'error' : 'default'}
+                note={errors[idx]?.model_type ?? undefined}
+                placeholder={`${t('setting.enter-your-model-type')} ${
+                  item.name
+                } ${t('setting.model-type')}`}
+                value={form[idx].model_type}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((f) =>
+                    f.map((fi, i) =>
+                      i === idx ? { ...fi, model_type: v } : fi
+                    )
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+              />
+            )}
             {/* externalConfig render */}
             {item.externalConfig &&
               form[idx].externalConfig &&
               form[idx].externalConfig.map((ec, ecIdx) => (
-                <div key={ec.key} className="gap-4 flex h-full w-full flex-col">
+                <div key={ec.key} className="flex h-full w-full flex-col gap-4">
                   {ec.options && ec.options.length > 0 ? (
                     <Select
                       value={ec.value}
@@ -1483,7 +1803,7 @@ export default function SettingModels() {
               ))}
           </div>
           {/* Action Button */}
-          <div className="gap-2 px-6 py-4 flex justify-end">
+          <div className="flex justify-end gap-2 px-6 py-4">
             <Button
               variant="ghost"
               tone="neutral"
@@ -1508,7 +1828,7 @@ export default function SettingModels() {
               {loading === idx ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
-        </div>
+        </ConfigModelCard>
       );
     }
 
@@ -1528,10 +1848,10 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 inline-flex items-center justify-between self-stretch">
-              <div className="gap-2 flex items-center">
+        <ConfigModelCard status={configCardRing}>
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+            <div className="inline-flex items-center justify-between gap-2 self-stretch">
+              <div className="flex items-center gap-2">
                 <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {getLocalPlatformName(platform)}
                 </div>
@@ -1561,7 +1881,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active shadow-none'
+                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default shadow-none hover:bg-ds-bg-neutral-default-active'
                         : ''
                     }
                   >
@@ -1572,14 +1892,14 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 bg-text-success rounded-full" />
+                <div className="h-2 w-2 rounded-full bg-text-success" />
               ) : (
-                <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
               )}
             </div>
           </div>
           {/* Model Endpoint URL Setting */}
-          <div className="gap-4 px-6 flex w-full flex-col items-center">
+          <div className="flex w-full flex-col items-center gap-4 px-6">
             <Input
               size="default"
               title={t('setting.model-endpoint-url')}
@@ -1621,8 +1941,8 @@ export default function SettingModels() {
               note={localError ?? undefined}
             />
             {isModelListPlatform ? (
-              <div className="gap-1 flex w-full flex-col">
-                <div className="gap-2 flex w-full items-end">
+              <div className="flex w-full flex-col gap-1">
+                <div className="flex w-full items-end gap-2">
                   <div className="flex-1">
                     <Select
                       value={currentType}
@@ -1720,7 +2040,7 @@ export default function SettingModels() {
             )}
           </div>
           {/* Action Button */}
-          <div className="gap-2 px-6 py-4 flex justify-end">
+          <div className="flex justify-end gap-2 px-6 py-4">
             <Button
               variant="ghost"
               tone="neutral"
@@ -1745,7 +2065,7 @@ export default function SettingModels() {
               {localVerifying ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
-        </div>
+        </ConfigModelCard>
       );
     }
 
@@ -1755,8 +2075,8 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
-        <div className="gap-4 flex w-full flex-col items-start justify-between">
+      <div className="z-10 flex w-full items-center justify-between px-6 pb-6 pt-8">
+        <div className="flex w-full flex-col items-start justify-between gap-4">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.models')}
@@ -1765,10 +2085,10 @@ export default function SettingModels() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 gap-6 flex flex-col">
+      <div className="mb-8 flex flex-col gap-6">
         {/* Default Model Cascading Dropdown */}
-        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
-          <div className="gap-1 flex w-full flex-col items-start justify-center">
+        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
+          <div className="flex w-full flex-col items-start justify-center gap-1">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.models-default-setting-title')}
             </div>
@@ -1778,11 +2098,11 @@ export default function SettingModels() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="gap-2 rounded-lg border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default hover:bg-ds-bg-brand-default-hover hover:border-ds-bg-brand-default-hover active:bg-ds-bg-brand-default-active active:border-ds-bg-brand-default-active flex w-fit items-center border-[0.5px] border-solid transition-colors outline-none focus:outline-none focus-visible:outline-none">
-                <span className="text-body-sm leading-none whitespace-nowrap">
+              <button className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-solid border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default outline-none transition-colors hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover focus:outline-none focus-visible:outline-none active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active">
+                <span className="whitespace-nowrap text-body-sm leading-none">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 !text-ds-text-brand-inverse-default flex-shrink-0" />
+                <ChevronDown className="h-4 w-4 flex-shrink-0 !text-ds-text-brand-inverse-default" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1836,7 +2156,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="gap-2 flex items-center">
+                        <div className="flex items-center gap-2">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1857,15 +2177,15 @@ export default function SettingModels() {
                             {item.name}
                           </span>
                         </div>
-                        <div className="gap-1 flex items-center">
+                        <div className="flex items-center gap-1">
                           {!isConfigured && (
-                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 bg-text-success rounded-full" />
+                            <div className="h-2 w-2 rounded-full bg-text-success" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1897,7 +2217,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="gap-2 flex items-center">
+                        <div className="flex items-center gap-2">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1918,15 +2238,15 @@ export default function SettingModels() {
                             {model.name}
                           </span>
                         </div>
-                        <div className="gap-1 flex items-center">
+                        <div className="flex items-center gap-1">
                           {!isConfigured && (
-                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
+                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 bg-text-success rounded-full" />
+                            <div className="h-2 w-2 rounded-full bg-text-success" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1939,17 +2259,17 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
+        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
+          <div className="text-body-base sticky top-[48px] z-10 mb-4 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default">
             {t('setting.models-configuration')}
           </div>
 
-          <div className="px-3 flex w-full flex-row items-start justify-between">
+          <div className="flex w-full flex-row items-start justify-between px-3">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px]">
-              <div className="gap-4 flex flex-col">
+            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-ds-bg-neutral-default-default">
+              <div className="flex flex-col gap-4">
                 {/* Eigent Cloud Section */}
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
                     {t('setting.eigent-cloud')}
                   </div>
@@ -1964,10 +2284,10 @@ export default function SettingModels() {
                     )}
                 </div>
                 {/* Bring Your Own Key Section */}
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.custom-model')}
@@ -1979,7 +2299,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       byokCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -1999,10 +2319,10 @@ export default function SettingModels() {
                 </div>
 
                 {/* Local Model Section */}
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.local-model')}
@@ -2014,7 +2334,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -2065,7 +2385,7 @@ export default function SettingModels() {
               </div>
             </div>
             {/* Main Content */}
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
               {renderContent()}
             </div>
           </div>

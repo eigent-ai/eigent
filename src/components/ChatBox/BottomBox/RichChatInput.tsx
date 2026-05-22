@@ -254,12 +254,16 @@ export const RichChatInput = React.forwardRef<
       return;
     }
     const plain = getPlainTextFromRoot(el);
-    internalUpdate.current = true;
-    onChange(plain, plain.length);
-    applyHtml(plain);
+    // Skip no-op syncs so blur from clicking elsewhere (e.g. example prompts)
+    // does not set internalUpdate and block the incoming value prop update.
+    if (plain !== value) {
+      internalUpdate.current = true;
+      onChange(plain, plain.length);
+      applyHtml(plain);
+    }
     resizeHeight();
     onBlur?.();
-  }, [applyHtml, onBlur, onChange, resizeHeight]);
+  }, [applyHtml, onBlur, onChange, resizeHeight, value]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -279,12 +283,16 @@ export const RichChatInput = React.forwardRef<
   }, []);
 
   useEffect(() => {
+    const el = rootRef.current;
     if (internalUpdate.current) {
       internalUpdate.current = false;
+      // External value may have changed in the same tick (e.g. example prompt click).
+      if (el && getPlainTextFromRoot(el) !== value) {
+        applyHtml(value);
+      }
       resizeHeight();
       return;
     }
-    const el = rootRef.current;
     if (!el) return;
     const current = getPlainTextFromRoot(el);
     if (current === value) {
@@ -359,16 +367,16 @@ export const RichChatInput = React.forwardRef<
     : undefined;
 
   return (
-    <div className="min-w-0 relative isolate w-full flex-1">
+    <div className="relative isolate w-full min-w-0 flex-1">
       <div
         aria-hidden
-        className="left-1 top-0 pointer-events-none absolute z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
+        className="pointer-events-none absolute left-1 top-0 z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
       >
         <AnimatePresence mode="wait">
           {showPlaceholder ? (
             <motion.span
               key={placeholders[placeholderCycleIndex % placeholders.length]}
-              className="text-ds-text-neutral-subtle-disabled text-body-sm block w-full"
+              className="block w-full text-body-sm text-ds-text-neutral-subtle-disabled"
               initial={{
                 opacity: 0,
                 filter: 'blur(8px)',
@@ -414,8 +422,8 @@ export const RichChatInput = React.forwardRef<
         }}
         className={cn(
           'w-full flex-1 resize-none overflow-auto outline-none',
-          'pl-1 py-0 scrollbar max-h-[200px] min-h-[40px]',
-          'relative break-words whitespace-pre-wrap',
+          'scrollbar max-h-[200px] min-h-[40px] py-0 pl-1',
+          'relative whitespace-pre-wrap break-words',
           disabled && 'cursor-not-allowed opacity-60',
           textClassName,
           className

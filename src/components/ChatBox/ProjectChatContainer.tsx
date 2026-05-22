@@ -187,7 +187,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div className={`relative z-10 w-full ${className}`}>
       <div
-        className="pl-3 pr-1 pt-0 mx-auto w-full max-w-[600px]"
+        className="mx-auto w-full max-w-[600px] pt-0"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">

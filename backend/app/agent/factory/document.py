@@ -17,6 +17,9 @@ from camel.messages import BaseMessage
 from camel.toolkits import ToolkitMessageIntegration
 
 from app.agent.agent_model import agent_model
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+)
 from app.agent.listen_chat_agent import logger
 from app.agent.prompt import DOCUMENT_SYS_PROMPT
 from app.agent.toolkit.excel_toolkit import ExcelToolkit
@@ -150,6 +153,18 @@ async def document_agent(
         platform_machine=platform.machine(),
         working_directory=working_directory,
         now_str=NOW_STR,
+    )
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=Agents.document_agent,
+        working_directory=working_directory,
+        tools=tools,
+        tool_names=tool_names,
+        system_message=system_message,
+        local_tool_description=(
+            "local document, file, terminal, or search tools"
+        ),
+        message_integration=message_integration,
     )
 
     return agent_model(

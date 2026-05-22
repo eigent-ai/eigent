@@ -25,6 +25,15 @@ import type { ReactNode } from 'react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+const underlineSlideTransition = {
+  type: 'spring' as const,
+  stiffness: 420,
+  damping: 34,
+  mass: 0.55,
+};
+
+const underlineInstantTransition = { duration: 0 };
+
 export const HISTORY_TAB_IDS = [
   'projects',
   'agents',
@@ -86,6 +95,9 @@ export function HistoryTabsNav({
     top: 0,
     width: 0,
   });
+  /** False until first layout; enter uses fade-in instead of spring from (0,0). */
+  const [underlineEntered, setUnderlineEntered] = useState(false);
+  const isFirstUnderlinePositionRef = useRef(true);
 
   const updateActiveLine = useCallback(() => {
     const nav = navRef.current;
@@ -97,11 +109,17 @@ export function HistoryTabsNav({
     const r = el.getBoundingClientRect();
     const nr = nav.getBoundingClientRect();
     const gapPx = 8;
-    setActiveLine({
+    const next = {
       left: r.left - nr.left,
       top: r.bottom - nr.top + gapPx,
       width: r.width,
-    });
+    };
+    if (next.width <= 0) return;
+    setActiveLine(next);
+    if (isFirstUnderlinePositionRef.current) {
+      isFirstUnderlinePositionRef.current = false;
+      requestAnimationFrame(() => setUnderlineEntered(true));
+    }
   }, [activeTab]);
 
   useLayoutEffect(() => {
@@ -160,7 +178,7 @@ export function HistoryTabsNav({
     <div
       ref={navRef}
       className={cn(
-        'gap-2 pb-2 relative flex flex-row flex-wrap items-center',
+        'relative flex flex-row flex-wrap items-center gap-2 pb-2',
         className
       )}
       onMouseLeave={() => setHoveredTab(null)}
@@ -168,7 +186,7 @@ export function HistoryTabsNav({
     >
       <motion.div
         aria-hidden
-        className="rounded-lg bg-ds-bg-neutral-subtle-default ring-ds-border-neutral-default-default shadow-sm pointer-events-none absolute z-0 ring-1"
+        className="pointer-events-none absolute z-0 rounded-lg bg-ds-bg-neutral-subtle-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
         initial={false}
         animate={{
           left: hoverRect.left,
@@ -186,23 +204,32 @@ export function HistoryTabsNav({
         }}
         style={{ position: 'absolute' }}
       />
-      <motion.div
-        aria-hidden
-        className="bg-ds-bg-brand-default-default h-0.5 pointer-events-none absolute z-[11] rounded-full"
-        initial={false}
-        animate={{
-          left: activeLine.left,
-          top: activeLine.top,
-          width: activeLine.width,
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: 420,
-          damping: 34,
-          mass: 0.55,
-        }}
-        style={{ position: 'absolute' }}
-      />
+      {activeLine.width > 0 && (
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute z-[11] h-0.5 rounded-full bg-ds-bg-brand-default-default"
+          initial={false}
+          animate={{
+            left: activeLine.left,
+            top: activeLine.top,
+            width: activeLine.width,
+            opacity: underlineEntered ? 1 : 0,
+          }}
+          transition={{
+            left: underlineEntered
+              ? underlineSlideTransition
+              : underlineInstantTransition,
+            top: underlineEntered
+              ? underlineSlideTransition
+              : underlineInstantTransition,
+            width: underlineEntered
+              ? underlineSlideTransition
+              : underlineInstantTransition,
+            opacity: { duration: 0.2, ease: 'easeOut' },
+          }}
+          style={{ position: 'absolute' }}
+        />
+      )}
       {HISTORY_TABS.map(({ id, icon, iconAnimateOnHover }) => (
         <AnimateIcon key={id} animateOnHover={iconAnimateOnHover} asChild>
           <button
@@ -217,7 +244,7 @@ export function HistoryTabsNav({
             }}
             className={cn(
               tabButtonClass,
-              'focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-default-default !text-body-sm gap-2 flex flex-row border-0 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+              'flex flex-row gap-2 border-0 bg-transparent !text-body-sm outline-none focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
               activeTab === id
                 ? 'text-ds-text-neutral-default-default'
                 : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'

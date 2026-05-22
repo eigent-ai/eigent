@@ -78,17 +78,17 @@ export function ExpandedOverlay({
       animate={planOverlayScaleMotion.animate}
       exit={planOverlayScaleMotion.exit}
       transition={planOverlayScaleMotion.transition}
-      className="inset-x-0 absolute z-30 flex justify-center"
+      className="absolute inset-x-0 z-30 flex justify-center"
       style={{
         top: 0,
         bottom: bottomOffsetPx + 8,
         transformOrigin: 'bottom center',
       }}
     >
-      <div className="px-sm flex w-full max-w-[600px] flex-col">
-        <div className="rounded-2xl bg-ds-bg-splitting-subtle-default border-ds-border-neutral-subtle-disabled min-h-0 flex h-full flex-col overflow-hidden border border-solid">
-          <div className="gap-2 px-3 pt-2 flex shrink-0 items-center">
-            <div className="text-body-sm font-bold text-ds-text-neutral-default-default min-w-0 flex-1">
+      <div className="flex w-full max-w-[600px] flex-col">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-splitting-subtle-default">
+          <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
+            <div className="min-w-0 flex-1 text-body-sm font-bold text-ds-text-neutral-default-default">
               {t('chat.subtasks-planning')}
             </div>
             <Button
@@ -104,7 +104,7 @@ export function ExpandedOverlay({
           </div>
 
           {userPrompt ? (
-            <div className="px-3 py-2 shrink-0">
+            <div className="shrink-0 px-3 py-2">
               <UserMessageRichContent
                 content={userPrompt}
                 variant="compact"
@@ -114,12 +114,12 @@ export function ExpandedOverlay({
           ) : null}
 
           {isSplitting && (
-            <div className="px-3 py-2 shrink-0">
+            <div className="shrink-0 px-3 py-2">
               <StatusRow chatStore={chatStore} taskId={taskId} />
             </div>
           )}
 
-          <div className="scrollbar px-2 min-h-0 border-ds-border-neutral-subtle-disabled flex-1 overflow-y-auto border border-x-0 border-t-1 border-b-0 border-solid bg-transparent">
+          <div className="scrollbar scrollbar-always-visible border-t-1 min-h-0 flex-1 overflow-y-auto overflow-x-hidden border border-x-0 border-b-0 border-solid border-ds-border-neutral-subtle-disabled bg-transparent px-2">
             {hasTaskInfo ? (
               <SubtaskEditor
                 taskInfo={taskInfo}
@@ -129,16 +129,16 @@ export function ExpandedOverlay({
                 onMarkDirty={onMarkDirty}
               />
             ) : (
-              <div className="px-3 py-2 flex flex-col">
+              <div className="flex flex-col px-3 py-2">
                 {streamingTasks.tasks.map((content, i) => {
                   const isLast = i === streamingTasks.tasks.length - 1;
                   const streaming = isLast && streamingTasks.isStreaming;
                   return (
                     <div
                       key={`s-${i}`}
-                      className="gap-2 py-1.5 animate-in fade-in-0 slide-in-from-left-2 flex items-start duration-300"
+                      className="flex items-start gap-2 py-1.5 duration-300 animate-in fade-in-0 slide-in-from-left-2"
                     >
-                      <div className="h-4 pt-0.5 flex flex-shrink-0 items-center justify-center">
+                      <div className="flex h-4 flex-shrink-0 items-center justify-center pt-0.5">
                         {streaming ? (
                           <LoaderCircle
                             size={13}
@@ -151,7 +151,7 @@ export function ExpandedOverlay({
                           />
                         )}
                       </div>
-                      <span className="text-label-xs text-ds-text-neutral-default-default min-w-0 flex-1">
+                      <span className="min-w-0 flex-1 text-label-xs text-ds-text-neutral-default-default">
                         {content}
                       </span>
                     </div>

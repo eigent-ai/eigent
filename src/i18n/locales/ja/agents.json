@@ -1,6 +1,7 @@
 {
   "skills": "スキル",
   "memory": "メモリ",
+  "sub-agents": "サブエージェント",
   "preview": "プレビュー",
   "skills-description": "カスタムスキルを追加してエージェントの能力を拡張します。",
   "memory-description": "エージェントのメモリとナレッジベースを管理します。",

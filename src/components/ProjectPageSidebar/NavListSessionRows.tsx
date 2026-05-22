@@ -70,12 +70,8 @@ export function NavListSessionRows({
   showRowMenu = true,
 }: NavListSessionRowsProps) {
   const { t } = useTranslation();
-  const deleteLabel = t('layout.sessions-delete-session', {
-    defaultValue: 'Delete session',
-  });
-  const sessionMenuAria = t('layout.sessions-session-menu', {
-    defaultValue: 'Session options',
-  });
+  const deleteLabel = t('layout.sessions-delete-session');
+  const sessionMenuAria = t('layout.sessions-session-menu');
   const list = maxItems != null ? sessions.slice(0, maxItems) : sessions;
 
   return (
@@ -103,7 +99,7 @@ export function NavListSessionRows({
                   onClick={() => onSessionClick?.(session.id)}
                   className={cn(
                     workspaceTabButtonClass(active),
-                    'gap-0 min-w-0 w-full'
+                    'w-full min-w-0 gap-0'
                   )}
                   aria-label={session.title}
                   aria-current={active ? 'true' : undefined}
@@ -118,7 +114,7 @@ export function NavListSessionRows({
           <div key={session.id} className="min-w-0">
             <div
               className={cn(
-                'group/session-item min-w-0 h-8 gap-1 rounded-xl pl-3 relative flex w-full items-center overflow-hidden',
+                'group/session-item relative flex h-8 w-full min-w-0 items-center gap-1 overflow-hidden rounded-xl pl-3',
                 showRowMenu ? 'pr-1' : 'pr-3',
                 'transition-colors duration-150',
                 active
@@ -126,27 +122,27 @@ export function NavListSessionRows({
                     ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
                     : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
                   : !panelListHover
-                    ? 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
-                    : 'hover:bg-ds-bg-neutral-default-default bg-transparent'
+                    ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
+                    : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
               )}
             >
               <button
                 type="button"
                 onClick={() => onSessionClick?.(session.id)}
                 className={cn(
-                  'no-drag min-h-0 min-w-0 gap-3 py-1 px-0 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                  'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                  'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
                 )}
               >
                 <LeadIcon className={leadClassName} aria-hidden />
                 <span
-                  className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 truncate"
+                  className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default"
                   title={session.title}
                 >
                   {session.title}
                 </span>
                 {session.trailing ? (
-                  <span className="text-ds-text-neutral-muted-default text-body-xs pl-1 shrink-0 tabular-nums">
+                  <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
                     {session.trailing}
                   </span>
                 ) : null}
@@ -156,7 +152,7 @@ export function NavListSessionRows({
                 <>
                   <span
                     className={cn(
-                      'top-0 bottom-0 right-7 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
+                      'pointer-events-none absolute bottom-0 right-7 top-0 z-[1] w-14 bg-gradient-to-l to-transparent',
                       active
                         ? panelListHover
                           ? 'from-ds-bg-neutral-muted-default group-hover/session-item:from-ds-bg-neutral-default-default'
@@ -177,18 +173,18 @@ export function NavListSessionRows({
                         <button
                           type="button"
                           className={cn(
-                            'no-drag h-7 w-7 rounded-lg text-ds-icon-neutral-muted-default flex shrink-0 items-center justify-center transition-opacity duration-150 outline-none',
+                            'no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-muted-default outline-none transition-opacity duration-150',
                             active
                               ? panelListHover
                                 ? 'bg-transparent opacity-100'
-                                : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default opacity-100'
+                                : 'bg-ds-bg-neutral-subtle-default opacity-100 hover:bg-ds-bg-neutral-subtle-default'
                               : [
-                                  'md:opacity-0 bg-transparent opacity-100',
+                                  'bg-transparent opacity-100 md:opacity-0',
                                   'md:group-hover/session-item:opacity-100',
                                   'md:group-focus-within/session-item:opacity-100',
                                   'data-[state=open]:opacity-100',
                                 ],
-                            'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
                           )}
                           aria-label={sessionMenuAria}
                           onClick={(e) => e.stopPropagation()}
@@ -198,7 +194,7 @@ export function NavListSessionRows({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="min-w-[9rem]">
                         <DropdownMenuItem
-                          className="text-ds-text-error-default-default focus:text-ds-text-error-default-default cursor-pointer"
+                          className="cursor-pointer text-ds-text-error-default-default focus:text-ds-text-error-default-default"
                           onClick={() => onDeleteSession?.(session.id)}
                         >
                           {deleteLabel}

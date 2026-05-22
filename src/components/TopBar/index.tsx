@@ -12,24 +12,19 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
+import { fetchDelete, fetchPut, proxyFetchDelete } from '@/api/http';
 import giftWhiteIcon from '@/assets/gift-white.svg';
 import giftIcon from '@/assets/gift.svg';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
+import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import NotificationPanel from '@/components/Notification';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import { SITE_URL } from '@/lib';
 import { share } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -41,8 +36,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Archive,
   Bell,
-  ChevronLeft,
-  ChevronRight,
   CircleHelp,
   Minus,
   PanelLeft,
@@ -132,8 +125,9 @@ function HeaderWin() {
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
-  const { canGoBack, canGoForward } = useStackNavigationBounds();
+  const { canGoBack } = useStackNavigationBounds();
   const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
   //Get Chatstore for the active project's task
@@ -206,32 +200,27 @@ function HeaderWin() {
 
   const summaryTask =
     chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
+  const activeProjectName = useProjectStore((s) =>
+    s.activeProjectId ? s.projects[s.activeProjectId]?.name : undefined
+  );
   const activeTaskTitle = useMemo(() => {
-    if (!chatStore) return t('layout.new-project');
+    const defaultLabel = t('layout.new-project');
+    if (activeProjectName && activeProjectName !== 'new project') {
+      return activeProjectName;
+    }
+    if (!chatStore) return defaultLabel;
     if (chatStore.activeTaskId && summaryTask) {
       return summaryTask.split('|')[0];
     }
-    return t('layout.new-project');
-  }, [chatStore, summaryTask, t]);
+    return defaultLabel;
+  }, [activeProjectName, chatStore, summaryTask, t]);
 
   if (!chatStore) {
-    return <div>Loading...</div>;
+    return <div>{t('layout.loading-page')}</div>;
   }
 
-  const getReferFriendsLink = async () => {
-    try {
-      const res: any = await proxyFetchGet('/api/v1/user/invite_code');
-      if (res?.invite_code) {
-        const inviteLink = `${SITE_URL}/signup?invite_code=${res.invite_code}`;
-        await navigator.clipboard.writeText(inviteLink);
-        toast.success(t('layout.invitation-link-copied'));
-      } else {
-        toast.error(t('layout.failed-to-get-invite-code'));
-      }
-    } catch (error) {
-      console.error('Failed to get referral link:', error);
-      toast.error(t('layout.failed-to-get-invitation-link'));
-    }
+  const openInviteCodeDialog = () => {
+    setInviteCodeDialogOpen(true);
   };
 
   const handleShare = async (taskId: string) => {
@@ -307,13 +296,13 @@ function HeaderWin() {
   };
 
   if (!chatStore) {
-    return <div>Loading...</div>;
+    return <div>{t('layout.loading-page')}</div>;
   }
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-10 py-1 min-w-0 absolute z-50 flex items-center ${
-        platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
+      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1 ${
+        platform === 'darwin' ? 'pl-[68px] pr-[2px]' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
@@ -395,7 +384,7 @@ function HeaderWin() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={topBarCrossfade}
-                  className="gap-1.5 min-w-0 flex items-center"
+                  className="flex min-w-0 items-center gap-1.5"
                 >
                   <img
                     src={
@@ -404,14 +393,14 @@ function HeaderWin() {
                         : eigentAppIconBlack
                     }
                     alt=""
-                    className="h-6 w-6 mt-[2px] select-none"
+                    className="mt-[2px] h-6 w-6 select-none"
                     width={16}
                     height={16}
                     draggable={false}
                   />
                   {t('layout.new-project')}
                   <Plus
-                    className="h-4 w-4 text-ds-icon-neutral-muted-default ml-1 shrink-0"
+                    className="ml-1 h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
                     aria-hidden
                   />
                 </motion.span>
@@ -422,7 +411,7 @@ function HeaderWin() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={topBarCrossfade}
-                  className="gap-1.5 min-w-0 flex items-center"
+                  className="flex min-w-0 items-center gap-1.5"
                 >
                   <img
                     src={
@@ -431,7 +420,7 @@ function HeaderWin() {
                         : eigentAppIconBlack
                     }
                     alt=""
-                    className="h-6 w-6 mt-[2px] select-none"
+                    className="mt-[2px] h-6 w-6 select-none"
                     width={16}
                     height={16}
                     draggable={false}
@@ -444,8 +433,8 @@ function HeaderWin() {
         </TooltipSimple>
       </div>
 
-      {/* Middle: full width on project home only (/) — left: nav + title; right: project + utilities */}
-      <div className="min-h-0 min-w-0 relative z-0 flex h-full flex-1">
+      {/* Middle: full width on project home only (/) — nav + title */}
+      <div className="no-drag relative z-50 flex h-7 min-h-0 w-full min-w-0">
         <AnimatePresence initial={false}>
           {isHomeRoute && (
             <motion.div
@@ -454,173 +443,27 @@ function HeaderWin() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={topBarCrossfade}
-              className="drag inset-0 min-w-0 gap-2 absolute z-10 flex items-center justify-between"
+              className="drag absolute inset-0 z-10 flex min-w-0 items-center"
             >
-              <div className="min-w-0 min-h-0 relative z-50 flex h-full items-center">
-                <div className="no-drag min-w-0 flex items-center">
+              <div className="relative z-50 ml-1 flex h-full min-h-0 min-w-0 items-center border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1">
+                <div className="min-w-0 flex-1 overflow-hidden rounded-full">
                   <TooltipSimple
-                    content={t('layout.back')}
+                    content={activeTaskTitle}
                     side="bottom"
                     align="center"
                   >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      className="no-drag shrink-0 rounded-full"
-                      disabled={!canGoBack}
-                      onClick={() => navigate(-1)}
-                      aria-label={t('layout.back')}
-                    >
-                      <ChevronLeft aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={t('layout.forward')}
-                    side="bottom"
-                    align="center"
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      className="no-drag shrink-0 rounded-full"
-                      disabled={!canGoForward}
-                      onClick={() => navigate(1)}
-                      aria-label={t('layout.forward')}
-                    >
-                      <ChevronRight aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                  <div className="min-w-0 flex-1 overflow-hidden rounded-full">
-                    <TooltipSimple
-                      content={
-                        activeTaskTitle === t('layout.new-project')
-                          ? t('layout.new-project')
-                          : activeTaskTitle
-                      }
-                      side="bottom"
-                      align="center"
-                    >
-                      <button
-                        id="active-task-title-btn"
-                        type="button"
-                        className="no-drag min-w-0 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus/50 hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] max-w-[300px] flex-1 items-center text-left outline-none focus-visible:ring-[3px]"
-                        onClick={toggleHistorySidebar}
-                        aria-expanded={historySidebarOpen}
-                        aria-haspopup="dialog"
-                      >
-                        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                          {activeTaskTitle}
-                        </span>
-                      </button>
-                    </TooltipSimple>
-                  </div>
-                </div>
-              </div>
-
-              <div className="no-drag gap-0 z-50 flex h-full shrink-0 items-center">
-                <div className="gap-1 pr-2 border-ds-border-neutral-subtle-default flex items-center border-y-0 border-r border-l-0 border-solid">
-                  {showEndProject && (
-                    <TooltipSimple
-                      content={t('layout.achieve-project')}
-                      side="bottom"
-                      align="end"
-                    >
-                      <Button
-                        type="button"
-                        onClick={() => setEndDialogOpen(true)}
-                        variant="ghost"
-                        size="sm"
-                        buttonContent="icon-only"
-                        buttonRadius="full"
-                        tone="error"
-                        aria-label={t('layout.achieve-project')}
-                      >
-                        <Archive aria-hidden />
-                      </Button>
-                    </TooltipSimple>
-                  )}
-                  {chatStore.activeTaskId &&
-                    chatStore.tasks[chatStore.activeTaskId as string]
-                      ?.status === ChatTaskStatus.FINISHED && (
-                      <TooltipSimple
-                        content={t('layout.share')}
-                        side="bottom"
-                        align="end"
-                      >
-                        <Button
-                          onClick={() =>
-                            handleShare(chatStore.activeTaskId as string)
-                          }
-                          variant="ghost"
-                          size="sm"
-                          buttonContent="icon-only"
-                          buttonRadius="full"
-                          tone="information"
-                          aria-label={t('layout.share')}
-                        >
-                          <Share aria-hidden />
-                        </Button>
-                      </TooltipSimple>
-                    )}
-                </div>
-                <div className="gap-1 pl-2 flex items-center">
-                  <TooltipSimple
-                    content={t('layout.notifications')}
-                    side="bottom"
-                    align="end"
-                  >
-                    <Button
+                    <button
+                      id="active-task-title-btn"
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="no-drag rounded-full"
-                      aria-label={t('layout.notifications')}
-                      aria-expanded={notificationPanelOpen}
-                      aria-controls="notification-panel"
-                      onClick={() => setNotificationPanelOpen((open) => !open)}
-                      buttonContent="icon-only"
+                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] min-w-0 max-w-[300px] flex-1 items-center px-2 text-left text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
+                      onClick={toggleHistorySidebar}
+                      aria-expanded={historySidebarOpen}
+                      aria-haspopup="dialog"
                     >
-                      <Bell aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={t('layout.support')}
-                    side="bottom"
-                    align="end"
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="no-drag rounded-full"
-                      aria-label={t('layout.support')}
-                      onClick={() => setReportBugOpen(true)}
-                      buttonContent="icon-only"
-                    >
-                      <CircleHelp aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={t('layout.refer-friends')}
-                    side="bottom"
-                    align="end"
-                  >
-                    <Button
-                      onClick={getReferFriendsLink}
-                      variant="ghost"
-                      size="sm"
-                      className="no-drag rounded-full"
-                      buttonContent="icon-only"
-                    >
-                      <img
-                        src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                        alt="gift-icon"
-                        width={16}
-                        height={16}
-                      />
-                    </Button>
+                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {activeTaskTitle}
+                      </span>
+                    </button>
                   </TooltipSimple>
                 </div>
               </div>
@@ -632,31 +475,118 @@ function HeaderWin() {
         )}
       </div>
 
-      {/* Trailing: update + settings (home) or back (history) — always at the end */}
+      {/* Trailing: project actions (home only) + utilities + settings/back + update */}
       <div
         className={`${
           platform === 'darwin' && 'px-1'
-        } no-drag gap-1 relative z-50 flex h-full shrink-0 items-center`}
+        } no-drag relative z-50 flex h-7 shrink-0 items-center`}
       >
-        {packageUpdateAvailable && (
+        {isHomeRoute && (
+          <div className="mr-2 flex items-center gap-1 border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-2">
+            {showEndProject && (
+              <TooltipSimple
+                content={t('layout.achieve-project')}
+                side="bottom"
+                align="end"
+              >
+                <Button
+                  type="button"
+                  onClick={() => setEndDialogOpen(true)}
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  buttonRadius="full"
+                  tone="error"
+                  aria-label={t('layout.achieve-project')}
+                >
+                  <Archive aria-hidden />
+                </Button>
+              </TooltipSimple>
+            )}
+            {chatStore.activeTaskId &&
+              chatStore.tasks[chatStore.activeTaskId as string]?.status ===
+                ChatTaskStatus.FINISHED && (
+                <TooltipSimple
+                  content={t('layout.share')}
+                  side="bottom"
+                  align="end"
+                >
+                  <Button
+                    onClick={() =>
+                      handleShare(chatStore.activeTaskId as string)
+                    }
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="icon-only"
+                    buttonRadius="full"
+                    tone="information"
+                    aria-label={t('layout.share')}
+                  >
+                    <Share aria-hidden />
+                  </Button>
+                </TooltipSimple>
+              )}
+          </div>
+        )}
+        <div className="flex h-full shrink-0 items-center gap-1">
           <TooltipSimple
-            content={t('layout.update', { defaultValue: 'Update' })}
+            content={t('layout.notifications')}
             side="bottom"
             align="end"
           >
             <Button
               type="button"
-              variant="primary"
+              variant="ghost"
               size="sm"
-              className="no-drag px-3 shrink-0 rounded-full"
-              onClick={handleStartDownload}
-              aria-label={t('layout.update', { defaultValue: 'Update' })}
+              className="no-drag rounded-full"
+              aria-label={t('layout.notifications')}
+              aria-expanded={notificationPanelOpen}
+              aria-controls="notification-panel"
+              onClick={() => setNotificationPanelOpen((open) => !open)}
+              buttonContent="icon-only"
             >
-              {t('layout.update', { defaultValue: 'Update' })}
+              <Bell aria-hidden />
             </Button>
           </TooltipSimple>
-        )}
-        <div className="flex h-full shrink-0 items-center">
+          <TooltipSimple
+            content={t('layout.support')}
+            side="bottom"
+            align="end"
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="no-drag rounded-full"
+              aria-label={t('layout.support')}
+              onClick={() => setReportBugOpen(true)}
+              buttonContent="icon-only"
+            >
+              <CircleHelp aria-hidden />
+            </Button>
+          </TooltipSimple>
+          <TooltipSimple
+            content={t('layout.refer-friends')}
+            side="bottom"
+            align="end"
+          >
+            <Button
+              onClick={openInviteCodeDialog}
+              variant="ghost"
+              size="sm"
+              className="no-drag rounded-full"
+              buttonContent="icon-only"
+              aria-label={t('layout.refer-friends')}
+            >
+              <img
+                src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
+                alt=""
+                width={16}
+                height={16}
+                aria-hidden
+              />
+            </Button>
+          </TooltipSimple>
           <AnimatePresence mode="wait" initial={false}>
             {isHomeRoute ? (
               <motion.div
@@ -713,6 +643,24 @@ function HeaderWin() {
               </motion.div>
             )}
           </AnimatePresence>
+          {packageUpdateAvailable && (
+            <TooltipSimple
+              content={t('layout.update')}
+              side="bottom"
+              align="end"
+            >
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className="no-drag shrink-0 rounded-full px-3"
+                onClick={handleStartDownload}
+                aria-label={t('layout.update')}
+              >
+                {t('layout.update')}
+              </Button>
+            </TooltipSimple>
+          )}
         </div>
       </div>
 
@@ -724,19 +672,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />
@@ -754,6 +702,10 @@ function HeaderWin() {
         onOpenChange={setNotificationPanelOpen}
       />
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
+      <InviteCodeDialog
+        open={inviteCodeDialogOpen}
+        onOpenChange={setInviteCodeDialogOpen}
+      />
     </div>
   );
 }

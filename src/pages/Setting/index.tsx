@@ -166,12 +166,12 @@ export default function Setting() {
           }
           aria-label={
             packageUpdateAvailable
-              ? t('update.new-version-available')
+              ? t('update.update')
               : version || t('setting.version', { defaultValue: 'Version' })
           }
           title={
             packageUpdateAvailable
-              ? [t('update.new-version-available'), packageNewVersion]
+              ? [t('update.update'), packageNewVersion]
                   .filter(Boolean)
                   .join(' ')
               : version
@@ -189,11 +189,7 @@ export default function Setting() {
             />
           )}
           <span className="min-w-0 flex-1 truncate text-left text-label-sm font-semibold text-ds-text-neutral-default-default">
-            {packageUpdateAvailable
-              ? [t('update.new-version-available'), packageNewVersion]
-                  .filter(Boolean)
-                  .join(' ')
-              : version}
+            {packageUpdateAvailable ? t('update.update') : version}
           </span>
         </button>
       </div>

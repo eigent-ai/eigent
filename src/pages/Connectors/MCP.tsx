@@ -581,13 +581,13 @@ export default function SettingMCP() {
         key={tabId}
         type="button"
         onClick={onSelect}
-        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="gap-3 min-w-0 flex items-center justify-center">
+        <div className="flex min-w-0 items-center justify-center gap-3">
           {kind === 'web' ? (
             assetUrl ? (
               <img
@@ -608,16 +608,16 @@ export default function SettingMCP() {
               />
             )
           ) : (
-            <Wrench className="h-5 w-5 text-ds-icon-neutral-muted-default shrink-0" />
+            <Wrench className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
           )}
           <span
-            className={`text-body-sm font-medium truncate text-left ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+            className={`truncate text-left text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
           >
             {label}
           </span>
         </div>
         {kind === 'your' && yourEnabled ? (
-          <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
         ) : null}
       </button>
     );
@@ -683,7 +683,7 @@ export default function SettingMCP() {
   const renderConnectionPanel = () => {
     if (!selected) {
       return (
-        <div className="text-body-md text-ds-text-neutral-muted-default py-16 text-center">
+        <div className="py-16 text-center text-body-md text-ds-text-neutral-muted-default">
           {t('setting.mcp-select-connection')}
         </div>
       );
@@ -701,11 +701,11 @@ export default function SettingMCP() {
       const headerAssetUrl = integrationLeadingIconUrl(item.key);
 
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-          <div className="mx-6 border-ds-border-neutral-default-default gap-4 py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="gap-2 min-w-0 flex items-center">
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+            <div className="flex min-w-0 items-center gap-2">
               {headerAssetUrl ? (
-                <div className="bg-ds-bg-neutral-default-default h-7 w-7 rounded-lg p-1 flex shrink-0 items-center justify-center">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
                   <img
                     src={headerAssetUrl}
                     alt=""
@@ -713,7 +713,7 @@ export default function SettingMCP() {
                   />
                 </div>
               ) : (
-                <div className="bg-ds-bg-neutral-default-default h-7 w-7 rounded-lg p-1 flex shrink-0 items-center justify-center">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
                   <img
                     src={ellipseIcon}
                     alt=""
@@ -726,11 +726,11 @@ export default function SettingMCP() {
                   />
                 </div>
               )}
-              <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
+              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
             </div>
-            <div className="gap-2 flex shrink-0 flex-wrap items-center justify-end">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 disabled={isComingSoon}
@@ -766,9 +766,9 @@ export default function SettingMCP() {
               ) : null}
             </div>
           </div>
-          <div className="gap-3 px-6 py-4 flex flex-col">
+          <div className="flex flex-col gap-3 px-6 py-4">
             {typeof item.desc === 'string' ? (
-              <span className="text-body-sm text-ds-text-neutral-muted-default whitespace-pre-wrap">
+              <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
                 {item.desc || '—'}
               </span>
             ) : (
@@ -779,18 +779,18 @@ export default function SettingMCP() {
             <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.tools')}
             </div>
-            <div className="gap-2 flex flex-col">
+            <div className="flex flex-col gap-2">
               {item.env_vars && item.env_vars.length > 0 ? (
                 item.env_vars.map((ev) => (
                   <div
                     key={ev}
-                    className="text-body-sm text-ds-text-neutral-default-default rounded-lg bg-ds-bg-neutral-default-default px-4 py-3"
+                    className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-default-default"
                   >
                     {ev}
                   </div>
                 ))
               ) : (
-                <div className="text-body-sm text-ds-text-neutral-muted-default rounded-lg bg-ds-bg-neutral-default-default px-4 py-3">
+                <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
                   {isConn
                     ? t('setting.configured')
                     : t('setting.not-configured')}
@@ -808,15 +808,15 @@ export default function SettingMCP() {
     const argRows = userItem.args ? parseArgsToArray(userItem.args) : [];
 
     return (
-      <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-        <div className="mx-6 border-ds-border-neutral-default-default gap-4 py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-          <div className="gap-2 min-w-0 flex items-center">
-            <Wrench className="h-7 w-7 text-ds-icon-neutral-muted-default bg-ds-bg-neutral-default-default p-1 rounded-lg shrink-0" />
-            <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
+      <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+        <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Wrench className="h-7 w-7 shrink-0 rounded-lg bg-ds-bg-neutral-default-default p-1 text-ds-icon-neutral-muted-default" />
+            <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
               {capitalizeFirstLetter(userItem.mcp_name || '')}
             </div>
           </div>
-          <div className="gap-2 flex shrink-0 flex-wrap items-center justify-end">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <Switch
               size="default"
               checked={enabled}
@@ -848,34 +848,34 @@ export default function SettingMCP() {
             </TooltipSimple>
           </div>
         </div>
-        <div className="gap-3 px-6 py-4 flex flex-col">
-          <span className="text-body-sm text-ds-text-neutral-muted-default whitespace-pre-wrap">
+        <div className="flex flex-col gap-3 px-6 py-4">
+          <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
             {userItem.mcp_desc || '—'}
           </span>
           <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
             {t('setting.tools')}
           </div>
-          <div className="gap-2 flex flex-col">
+          <div className="flex flex-col gap-2">
             {userItem.command ? (
-              <div className="text-body-sm font-mono text-ds-text-neutral-default-default rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 break-all">
+              <div className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 font-mono text-body-sm text-ds-text-neutral-default-default">
                 {userItem.command}
               </div>
             ) : null}
             {argRows.map((arg, idx) => (
               <div
                 key={`${idx}-${arg}`}
-                className="text-body-sm font-mono text-ds-text-neutral-default-default rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 break-all"
+                className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 font-mono text-body-sm text-ds-text-neutral-default-default"
               >
                 {arg}
               </div>
             ))}
             {!userItem.command && argRows.length === 0 && userItem.mcp_key ? (
-              <div className="text-body-sm text-ds-text-neutral-default-default rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 break-all">
+              <div className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-default-default">
                 {userItem.mcp_key}
               </div>
             ) : null}
             {!userItem.command && argRows.length === 0 && !userItem.mcp_key ? (
-              <div className="text-body-sm text-ds-text-neutral-muted-default rounded-lg bg-ds-bg-neutral-default-default px-4 py-3">
+              <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
                 —
               </div>
             ) : null}
@@ -1036,19 +1036,19 @@ export default function SettingMCP() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('setting.mcps-and-tools')}
         </div>
       </div>
 
-      <div className="mb-12 gap-6 flex flex-col">
-        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default mb-4 gap-3 px-3 py-2 sticky top-[80px] z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+      <div className="mb-12 flex flex-col gap-6">
+        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
+          <div className="z-10 mb-4 flex w-full flex-wrap items-center justify-between gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.connectors')}
             </div>
-            <div className="gap-2 flex items-center">
+            <div className="flex items-center gap-2">
               <SearchInput
                 variant="icon"
                 value={searchQuery}
@@ -1066,14 +1066,14 @@ export default function SettingMCP() {
             </div>
           </div>
 
-          <div className="px-3 gap-4 flex w-full flex-row items-start justify-between">
-            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px] shrink-0">
-              <div className="gap-4 flex flex-col">
-                <div className="gap-1 flex flex-col">
+          <div className="flex w-full flex-row items-start justify-between gap-4 px-3">
+            <div className="-ml-2 mr-4 h-full w-[240px] shrink-0 rounded-2xl bg-ds-bg-neutral-default-default">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
                     onClick={() => setWebCollapsed(!webCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.mcp-sidebar-web')}
@@ -1085,14 +1085,14 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       webCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
                     }`}
                   >
                     {isLoadingIntegrations ? (
-                      <div className="gap-2 px-1 flex flex-col">
+                      <div className="flex flex-col gap-2 px-1">
                         {[1, 2, 3].map((i) => (
                           <div
                             key={i}
@@ -1101,7 +1101,7 @@ export default function SettingMCP() {
                         ))}
                       </div>
                     ) : webConnected.length === 0 ? (
-                      <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
+                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
                         {searchQuery.trim()
                           ? t('dashboard.no-results')
                           : integrations.length === 0
@@ -1125,11 +1125,11 @@ export default function SettingMCP() {
                   </div>
                 </div>
 
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
                     onClick={() => setYourCollapsed(!yourCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.your-own-mcps')}
@@ -1141,22 +1141,22 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       yourCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
                     }`}
                   >
                     {isLoading ? (
-                      <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
+                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
                         {t('setting.loading')}
                       </div>
                     ) : error ? (
-                      <div className="text-body-xs text-ds-text-status-error-strong-default px-3 py-1">
+                      <div className="px-3 py-1 text-body-xs text-ds-text-status-error-strong-default">
                         {error}
                       </div>
                     ) : filteredItems.length === 0 ? (
-                      <div className="gap-2 px-3 py-2 flex flex-col items-start">
+                      <div className="flex flex-col items-start gap-2 px-3 py-2">
                         <p className="text-body-xs text-ds-text-neutral-muted-default">
                           {items.length === 0
                             ? t('setting.no-mcp-servers')
@@ -1189,13 +1189,13 @@ export default function SettingMCP() {
                   </div>
                 </div>
 
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
                     onClick={() =>
                       setNotConnectedCollapsed(!notConnectedCollapsed)
                     }
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.mcp-sidebar-not-connected')}
@@ -1207,14 +1207,14 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       notConnectedCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
                     }`}
                   >
                     {isLoadingIntegrations ? (
-                      <div className="gap-2 px-1 flex flex-col">
+                      <div className="flex flex-col gap-2 px-1">
                         {[1, 2, 3].map((i) => (
                           <div
                             key={i}
@@ -1223,7 +1223,7 @@ export default function SettingMCP() {
                         ))}
                       </div>
                     ) : webNotConnected.length === 0 ? (
-                      <div className="text-body-xs text-ds-text-neutral-muted-default px-3 py-1">
+                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
                         {searchQuery.trim()
                           ? t('dashboard.no-results')
                           : t('setting.configured')}
@@ -1247,23 +1247,23 @@ export default function SettingMCP() {
               </div>
             </div>
 
-            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
+            <div className="sticky top-[80px] z-10 min-w-0 flex-1">
               {isLoadingIntegrations && !selected ? (
-                <div className="gap-4 flex w-full flex-col items-start justify-start">
+                <div className="flex w-full flex-col items-start justify-start gap-4">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4 relative w-full overflow-hidden"
+                      className="relative w-full overflow-hidden rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4"
                     >
-                      <div className="gap-xs flex w-full flex-row items-center justify-between">
-                        <div className="gap-xs flex flex-row items-center">
-                          <div className="mr-2 h-3 w-3 bg-ds-bg-neutral-default-hover rounded-full" />
+                      <div className="flex w-full flex-row items-center justify-between gap-xs">
+                        <div className="flex flex-row items-center gap-xs">
+                          <div className="mr-2 h-3 w-3 rounded-full bg-ds-bg-neutral-default-hover" />
                           <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
                         </div>
                         <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
                       </div>
                       <motion.div
-                        className="via-white/20 inset-0 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
+                        className="via-white/20 absolute inset-0 w-1/2 bg-gradient-to-r from-transparent to-transparent"
                         initial={{ x: '-100%' }}
                         animate={{ x: '200%' }}
                         transition={{

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { cn } from '@/lib/utils';
 import type { VanillaChatStore } from '@/store/chatStore';
 import { motion } from 'framer-motion';
@@ -55,6 +56,8 @@ export function FoldedView({
   const hasStreaming = streamingTasks.tasks.length > 0;
   const showPreview = hasTaskInfo || hasStreaming;
 
+  const headerText = summaryTask || t('chat.subtasks-planning');
+
   const previewRows = hasTaskInfo
     ? taskInfo
         .filter((t) => t.content !== '')
@@ -77,12 +80,22 @@ export function FoldedView({
       exit={planBlurFadeMotion.exit}
       transition={planBlurFadeMotion.transition}
       className={cn(
-        'rounded-2xl bg-ds-bg-splitting-subtle-default mx-sm relative flex flex-col overflow-hidden'
+        'relative mx-sm flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
       )}
     >
-      <div className="gap-2 px-3 py-2 border-ds-border-neutral-subtle-default flex items-center border-x-0 border-t-0 border-b border-solid">
-        <div className="text-body-sm font-bold text-ds-text-neutral-default-default min-w-0 flex-1 truncate">
-          {summaryTask || t('chat.subtasks-planning')}
+      <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2">
+        <div className="flex min-w-0 flex-1 items-center justify-start truncate text-left">
+          {isSplitting ? (
+            <ShinyText
+              text={headerText}
+              className="block w-full truncate text-left !text-body-sm !font-bold"
+              speed={3}
+            />
+          ) : (
+            <div className="w-full truncate text-left text-body-sm font-bold text-ds-text-neutral-default-default">
+              {headerText}
+            </div>
+          )}
         </div>
         {canExpand ? (
           <Button
@@ -106,16 +119,16 @@ export function FoldedView({
 
       {showPreview && (
         <div
-          className="scrollbar m-2 rounded-xl relative overflow-y-auto bg-transparent"
+          className="scrollbar relative m-2 overflow-y-auto rounded-xl bg-transparent"
           style={{ height: PREVIEW_MAX_HEIGHT_PX }}
         >
-          <div className="px-3 py-2 flex flex-col">
+          <div className="flex flex-col px-3 py-2">
             {previewRows.map((row) => (
               <div
                 key={row.key}
-                className="gap-2 py-1.5 animate-in fade-in-0 slide-in-from-left-2 flex items-start duration-300"
+                className="flex items-start gap-2 py-1.5 duration-300 animate-in fade-in-0 slide-in-from-left-2"
               >
-                <div className="h-4 pt-0.5 flex flex-shrink-0 items-center justify-center">
+                <div className="flex h-4 flex-shrink-0 items-center justify-center pt-0.5">
                   {row.streaming ? (
                     <Circle
                       size={13}
@@ -128,21 +141,21 @@ export function FoldedView({
                     />
                   )}
                 </div>
-                <span className="text-label-xs text-ds-text-neutral-default-default min-w-0 flex-1">
+                <span className="min-w-0 flex-1 text-label-xs text-ds-text-neutral-default-default">
                   {row.content}
                 </span>
               </div>
             ))}
           </div>
           {canExpand ? (
-            <div className="to-ds-bg-status-splitting-subtle-default bottom-0 -mx-2 h-16 pointer-events-none absolute left-1/2 w-full -translate-x-1/2 bg-gradient-to-b from-transparent">
+            <div className="pointer-events-none absolute bottom-0 left-1/2 -mx-2 h-16 w-full -translate-x-1/2 bg-gradient-to-b from-transparent to-ds-bg-status-splitting-subtle-default">
               <Button
                 variant="secondary"
                 size="xs"
                 buttonRadius="full"
                 onClick={onExpand}
                 aria-label={t('chat.expand-subtasks')}
-                className="bottom-3 pointer-events-auto absolute left-1/2 -translate-x-1/2"
+                className="pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2"
               >
                 {t('chat.expand-subtasks')}
               </Button>
