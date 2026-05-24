@@ -14,12 +14,18 @@
 
 from app.agent.agent_model import agent_model
 from app.agent.prompt import TASK_SUMMARY_SYS_PROMPT
+from app.agent.toolkit.runtime_ui_toolkit import RuntimeUIToolkit
 from app.model.chat import Chat
+from app.service.task import Agents
 
 
 def task_summary_agent(options: Chat):
     return agent_model(
-        "task_summary_agent",
+        Agents.task_summary_agent,
         TASK_SUMMARY_SYS_PROMPT,
         options,
+        RuntimeUIToolkit.get_can_use_tools(
+            options.project_id, Agents.task_summary_agent
+        ),
+        tool_names=[RuntimeUIToolkit.toolkit_name()],
     )

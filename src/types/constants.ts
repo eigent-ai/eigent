@@ -30,6 +30,7 @@ export const AgentStep = {
   ACTIVATE_TOOLKIT: 'activate_toolkit',
   DEACTIVATE_TOOLKIT: 'deactivate_toolkit',
   TERMINAL: 'terminal',
+  UI_ARTIFACT: 'ui_artifact',
   WRITE_FILE: 'write_file',
   TODO_STATE: 'todo_state',
   BUDGET_NOT_ENOUGH: 'budget_not_enough',

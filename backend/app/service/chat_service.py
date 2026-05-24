@@ -20,10 +20,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from camel.models import ModelProcessingError
-from camel.tasks import Task
-from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -42,10 +38,12 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
     remote_sub_agent_enabled,
 )
+from app.agent.factory.toolkit_assembler import RUNTIME_UI_TOOLKIT_CONFIG
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.agent.prompt import build_remote_sub_agent_planning_notice
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.runtime_ui_toolkit import RuntimeUIToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
@@ -75,6 +73,10 @@ from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
+from camel.models import ModelProcessingError
+from camel.tasks import Task
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
 
 logger = logging.getLogger("chat_service")
 
@@ -303,6 +305,57 @@ def build_context_for_workforce(
     )
 
 
+_RUNTIME_UI_PHRASES = (
+    "report panel",
+    "decision ui",
+    "workflow panel",
+    "approval surface",
+    "runtime ui toolkit",
+    "selection panel",
+    "pick one of",
+    "approve before",
+    "render_ui_artifact",
+    "release dashboard",
+    "sprint dashboard",
+    "status dashboard",
+    # Phase 4 — expanded phrases
+    "show analytics",
+    "analytics for",
+    "summary view",
+    "give me a summary",
+    "give me a dashboard",
+    "compare these",
+    "compare the",
+    "velocity report",
+    "weekly report",
+    "sprint report",
+    "status report",
+)
+
+# Code-generation signals that override the phrase match.
+_CODE_GEN_SIGNALS = (
+    "implement",
+    "build a",
+    "write a",
+    "create a",
+    "component",
+    "react",
+    "nextjs",
+    "vue",
+    "html",
+    "css",
+    "widget",
+)
+
+
+def _is_runtime_ui_intent(question: str) -> bool:
+    """Return True when the question clearly targets a Runtime UI artifact."""
+    lower = question.lower()
+    if not any(phrase in lower for phrase in _RUNTIME_UI_PHRASES):
+        return False
+    return not any(signal in lower for signal in _CODE_GEN_SIGNALS)
+
+
 @sync_step
 async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     """Main task execution loop. Called when POST /chat endpoint
@@ -379,6 +432,31 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     if options.session_mode == "single-agent":
         async for chunk in single_agent_solve(
             options, request, task_lock, hands=hands
+        ):
+            yield chunk
+        return
+
+    if _is_runtime_ui_intent(options.question):
+        matched = next(
+            p for p in _RUNTIME_UI_PHRASES if p in options.question.lower()
+        )
+        logger.info(
+            "Runtime UI intent detected (phrase=%r), routing to restricted single agent",
+            matched,
+            extra={
+                "project_id": options.project_id,
+                "task_id": options.task_id,
+            },
+        )
+        merged_config = {
+            **(options.toolkit_config or {}),
+            **RUNTIME_UI_TOOLKIT_CONFIG,
+        }
+        restricted_options = options.model_copy(
+            update={"toolkit_config": merged_config}
+        )
+        async for chunk in single_agent_solve(
+            restricted_options, request, task_lock, hands=hands
         ):
             yield chunk
         return
@@ -1608,6 +1686,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         "process_task_id": item.process_task_id,
                     },
                 )
+            elif item.action == Action.ui_artifact:
+                yield sse_json("ui_artifact", item.data)
             elif item.action == Action.pause:
                 if workforce is not None:
                     workforce.pause()
@@ -2286,15 +2366,9 @@ async def construct_workforce(
 
     def _create_coordinator_and_task_agents() -> list[ListenChatAgent]:
         """Create coordinator and task agents (sync, runs in thread pool)."""
-        return [
-            agent_model(
-                key,
-                prompt,
-                options,
-                [],
-            )
-            for key, prompt in {
-                Agents.coordinator_agent: f"""
+        agents: list[ListenChatAgent] = []
+        for key, prompt in {
+            Agents.coordinator_agent: f"""
 You are a helpful coordinator.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory \
@@ -2306,9 +2380,15 @@ precision and avoid ambiguity.
 The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
+If the user asks for a dashboard, report panel, decision UI, workflow panel, \
+approval surface, or explicitly says "Runtime UI Toolkit", call \
+`render_ui_artifact` directly with structured data and allowed actions. \
+This is not a frontend build task: do not decompose it into a developer \
+subtask, do not call skills, and do not ask a worker to generate HTML, React, \
+CSS, or scripts unless the user explicitly asks to modify source code.
 {remote_sub_agent_planning_notice}
             """,
-                Agents.task_agent: f"""
+            Agents.task_agent: f"""
 You are a helpful task planner.
 - You are now working in system {platform.system()} with architecture
 {platform.machine()} at working directory \
@@ -2320,10 +2400,27 @@ precision and avoid ambiguity.
 The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
+If the task asks for a dashboard, report panel, decision UI, workflow panel, \
+approval surface, or explicitly says "Runtime UI Toolkit", call \
+`render_ui_artifact` directly with structured data and allowed actions. \
+Do not plan a developer/widget/build task for this; the runtime renders \
+approved Eigent components from the validated schema.
 {remote_sub_agent_planning_notice}
         """,
-            }.items()
-        ]
+        }.items():
+            runtime_ui_tools = RuntimeUIToolkit.get_can_use_tools(
+                options.project_id, key
+            )
+            agents.append(
+                agent_model(
+                    key,
+                    prompt,
+                    options,
+                    runtime_ui_tools,
+                    tool_names=[RuntimeUIToolkit.toolkit_name()],
+                )
+            )
+        return agents
 
     def _create_new_worker_agent() -> ListenChatAgent:
         """Create new worker agent (sync, runs in thread pool)."""

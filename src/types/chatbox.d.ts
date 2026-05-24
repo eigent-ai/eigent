@@ -18,6 +18,7 @@ import type {
   AgentStepType,
   TaskStatusType,
 } from './constants';
+import type { RuntimeUiArtifactPayload } from './runtimeArtifact';
 
 // Global type definitions for ChatBox component
 
@@ -117,6 +118,7 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    uiArtifact?: RuntimeUiArtifactPayload;
   }
 
   interface AgentMessage {
@@ -146,6 +148,9 @@ declare global {
       process_task_id?: string;
       output?: string;
       result?: string;
+      artifact?: RuntimeUiArtifactPayload['artifact'];
+      data?: RuntimeUiArtifactPayload['data'];
+      state?: RuntimeUiArtifactPayload['state'];
       tools?: string[];
       todos?: {
         id: string;

@@ -14,9 +14,6 @@
 
 import platform
 
-from camel.messages import BaseMessage
-from camel.toolkits import ToolkitMessageIntegration
-
 from app.agent.agent_model import agent_model
 from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
@@ -27,6 +24,7 @@ from app.agent.toolkit.human_toolkit import HumanToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
+from app.agent.toolkit.runtime_ui_toolkit import RuntimeUIToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -37,6 +35,8 @@ from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
+from camel.messages import BaseMessage
+from camel.toolkits import ToolkitMessageIntegration
 
 
 async def developer_agent(
@@ -93,6 +93,9 @@ async def developer_agent(
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.developer_agent
         ),
+        *RuntimeUIToolkit.get_can_use_tools(
+            options.project_id, Agents.developer_agent
+        ),
         *note_toolkit.get_tools(),
         *web_deploy_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
@@ -101,6 +104,7 @@ async def developer_agent(
     ]
     tool_names = [
         HumanToolkit.toolkit_name(),
+        RuntimeUIToolkit.toolkit_name(),
         NoteTakingToolkit.toolkit_name(),
         WebDeployToolkit.toolkit_name(),
         ScreenshotToolkit.toolkit_name(),

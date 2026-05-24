@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { ArtifactRenderer } from '@/components/Artifacts/ArtifactRenderer';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -470,6 +471,19 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
+        if (message.step === AgentStep.UI_ARTIFACT && message.uiArtifact) {
+          return (
+            <motion.div
+              key={`ui-artifact-${message.id}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <ArtifactRenderer payload={message.uiArtifact} />
+            </motion.div>
+          );
+        }
+
         if (message.content.length > 0) {
           if (message.step === AgentStep.END) {
             return (

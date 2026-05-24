@@ -21,7 +21,6 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
-from camel.tasks import Task
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -33,6 +32,7 @@ from app.model.chat import (
     UpdateData,
 )
 from app.model.enums import Status
+from camel.tasks import Task
 
 logger = logging.getLogger("task_service")
 
@@ -61,6 +61,7 @@ class Action(str, Enum):
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
     todo_state = "todo_state"  # backend -> user
+    ui_artifact = "ui_artifact"  # backend -> user
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -227,6 +228,11 @@ class ActionTodoStateData(BaseModel):
     data: dict
 
 
+class ActionUiArtifactData(BaseModel):
+    action: Literal[Action.ui_artifact] = Action.ui_artifact
+    data: dict[str, Any]
+
+
 class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
 
@@ -305,6 +311,7 @@ ActionData = (
     | ActionInstallMcpData
     | ActionTerminalData
     | ActionTodoStateData
+    | ActionUiArtifactData
     | ActionStopData
     | ActionEndData
     | ActionTimeoutData
@@ -322,6 +329,7 @@ ActionData = (
 
 class Agents(str, Enum):
     task_agent = "task_agent"
+    task_summary_agent = "task_summary_agent"
     coordinator_agent = "coordinator_agent"
     new_worker_agent = "new_worker_agent"
     developer_agent = "developer_agent"

@@ -18,21 +18,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from camel.toolkits import (
-    FunctionTool,
-    MCPToolkit,
-    PlanningWorktreeToolkit,
-    RegisteredAgentToolkit,
-    ToolkitMessageIntegration,
-    WebFetchToolkit,
-)
-
 from app.agent.toolkit.depth_limited_agent_toolkit import (
     DepthLimitedAgentToolkit,
 )
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
+from app.agent.toolkit.runtime_ui_toolkit import RuntimeUIToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -42,11 +34,20 @@ from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
+from camel.toolkits import (
+    FunctionTool,
+    MCPToolkit,
+    PlanningWorktreeToolkit,
+    RegisteredAgentToolkit,
+    ToolkitMessageIntegration,
+    WebFetchToolkit,
+)
 
 logger = logging.getLogger("toolkit_assembler")
 
 DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG: dict[str, Any] = {
     "human": {"enabled": True},
+    "runtime_ui": {"enabled": True},
     "file": {"enabled": True},
     "web_deploy": {"enabled": True},
     "screenshot": {"enabled": True},
@@ -58,6 +59,19 @@ DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG: dict[str, Any] = {
     "planning_worktree": {"enabled": True},
     "mcp": {"enabled": True},
     "agent": {"enabled": True},
+}
+
+# Restricted profile for runtime-UI-only requests.
+# Disables code-generation and browsing paths so the agent calls
+# render_ui_artifact directly instead of searching for skills or writing code.
+RUNTIME_UI_TOOLKIT_CONFIG: dict[str, Any] = {
+    "skill": {"enabled": False},
+    "web_deploy": {"enabled": False},
+    "screenshot": {"enabled": False},
+    "mcp": {"enabled": False},
+    "agent": {"enabled": False},
+    "terminal": {"enabled": False},
+    "planning_worktree": {"enabled": False},
 }
 
 
@@ -162,6 +176,10 @@ async def assemble_single_agent_toolkits(
 ) -> ToolkitAssembly:
     config = _merged_config(options)
     assembly = ToolkitAssembly()
+    logger.info(
+        "Assembling toolkits",
+        extra={"task_id": task_id, "toolkit_config": options.toolkit_config},
+    )
 
     human_toolkit = HumanToolkit(options.project_id, Agents.single_agent)
     message_integration = ToolkitMessageIntegration(
@@ -171,6 +189,14 @@ async def assemble_single_agent_toolkits(
     if _enabled(config, "human"):
         assembly.add_tools(
             human_toolkit.get_tools(), HumanToolkit.toolkit_name()
+        )
+
+    if _enabled(config, "runtime_ui"):
+        assembly.add_tools(
+            RuntimeUIToolkit.get_can_use_tools(
+                options.project_id, Agents.single_agent
+            ),
+            RuntimeUIToolkit.toolkit_name(),
         )
 
     if _enabled(config, "file"):

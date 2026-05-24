@@ -1501,7 +1501,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const isTaskSwitchingEvent =
             agentMessages.step === AgentStep.CONFIRMED ||
             agentMessages.step === AgentStep.NEW_TASK_STATE ||
-            agentMessages.step === AgentStep.END;
+            agentMessages.step === AgentStep.END ||
+            agentMessages.step === AgentStep.UI_ARTIFACT;
 
           const isMultiTurnSimpleAnswer =
             agentMessages.step === AgentStep.WAIT_CONFIRM;
@@ -2762,6 +2763,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               resolvedProcessTaskId,
               agentMessages.data.output as string
             );
+            return;
+          }
+          // Runtime UI artifact
+          if (agentMessages.step === AgentStep.UI_ARTIFACT) {
+            const artifactPayload =
+              agentMessages.data as unknown as Message['uiArtifact'];
+            addMessages(currentTaskId, {
+              id: generateUniqueId(),
+              role: 'agent',
+              step: AgentStep.UI_ARTIFACT,
+              content: artifactPayload?.artifact?.title || '',
+              uiArtifact: artifactPayload,
+            });
             return;
           }
           // Write File

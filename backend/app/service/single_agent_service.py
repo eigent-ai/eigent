@@ -17,7 +17,6 @@ import logging
 from typing import Any
 
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
-from camel.responses import ChatAgentResponse
 from fastapi import Request
 
 from app.agent.factory.single_agent import single_agent
@@ -37,6 +36,7 @@ from app.utils.agent_memory import (
     record_agent_memory_snapshot,
 )
 from app.utils.file_utils import get_working_directory
+from camel.responses import ChatAgentResponse
 
 logger = logging.getLogger("single_agent_service")
 
@@ -152,6 +152,8 @@ def _action_to_sse(item: ActionData) -> str | None:
         )
     if item.action == Action.todo_state:
         return sse_json("todo_state", item.data)
+    if item.action == Action.ui_artifact:
+        return sse_json("ui_artifact", item.data)
     if item.action == Action.budget_not_enough:
         return sse_json(
             Action.budget_not_enough, {"message": "budget not enough"}
