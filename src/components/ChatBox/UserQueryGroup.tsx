@@ -27,11 +27,17 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import { QuestionBlock } from './MessageItem/blocks/QuestionBlock';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
 import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
+import {
+  detectInputType,
+  extractChoices,
+} from './renderSession/normalizeMessages';
+import type { QuestionChatBlock } from './renderSession/types';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
 import { TaskCard } from './TaskBox/TaskCard';
@@ -537,6 +543,39 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   content="No reply received, task continues..."
                   onTyping={() => {}}
                 />
+              </motion.div>
+            );
+          } else if (message.step === AgentStep.ASK) {
+            const taskMessages = task?.messages || [];
+            const myIndex = taskMessages.findIndex(
+              (m: any) => m.id === message.id
+            );
+            const hasUserAfter = taskMessages
+              .slice(myIndex + 1)
+              .some((m: any) => m.role === 'user');
+            const inputType = detectInputType(message.content);
+            const askBlock: QuestionChatBlock = {
+              type: 'question',
+              id: message.id,
+              content: message.content,
+              agentName: message.agent_name || task?.activeAsk || '',
+              inputType,
+              choices:
+                inputType === 'choice_input'
+                  ? extractChoices(message.content)
+                  : undefined,
+              isActive: !hasUserAfter && Boolean(task?.activeAsk),
+              taskId: activeTaskId || '',
+            };
+            return (
+              <motion.div
+                key={`ask-${message.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="px-sm"
+              >
+                <QuestionBlock block={askBlock} />
               </motion.div>
             );
           } else if (message.step === AgentStep.AGENT_END) {

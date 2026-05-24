@@ -17,6 +17,7 @@ import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { FloatingAction } from './MessageItem/FloatingAction';
+import { RenderSessionProvider } from './renderSession/RenderSessionProvider';
 import { UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
@@ -96,41 +97,43 @@ export const ProjectSection = React.forwardRef<
     }
 
     return (
-      <motion.div
-        ref={ref}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3 }}
-        className="relative"
-      >
-        {/* User Query Groups */}
-        <div className="space-y-0">
-          {queryGroups.map((group, index) => (
-            <UserQueryGroup
-              key={`${chatId}-${group.queryId}`}
-              chatId={chatId}
-              chatStore={chatStore}
-              queryGroup={group}
-              isActive={activeQueryId === group.queryId}
-              onQueryActive={onQueryActive}
-              index={index}
-            />
-          ))}
-        </div>
+      <RenderSessionProvider chatStore={chatStore}>
+        <motion.div
+          ref={ref}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3 }}
+          className="relative"
+        >
+          {/* User Query Groups */}
+          <div className="space-y-0">
+            {queryGroups.map((group, index) => (
+              <UserQueryGroup
+                key={`${chatId}-${group.queryId}`}
+                chatId={chatId}
+                chatStore={chatStore}
+                queryGroup={group}
+                isActive={activeQueryId === group.queryId}
+                onQueryActive={onQueryActive}
+                index={index}
+              />
+            ))}
+          </div>
 
-        {/* Floating Action Button - positioned at project level */}
-        {activeTaskId && (
-          <FloatingAction
-            status={task.status}
-            // onPause={onPauseResume}  // Commented out - temporary not needed
-            // onResume={onPauseResume}  // Commented out - temporary not needed
-            onSkip={onSkip}
-            loading={isPauseResumeLoading}
-            hideStop={false}
-          />
-        )}
-      </motion.div>
+          {/* Floating Action Button - positioned at project level */}
+          {activeTaskId && (
+            <FloatingAction
+              status={task.status}
+              // onPause={onPauseResume}  // Commented out - temporary not needed
+              // onResume={onPauseResume}  // Commented out - temporary not needed
+              onSkip={onSkip}
+              loading={isPauseResumeLoading}
+              hideStop={false}
+            />
+          )}
+        </motion.div>
+      </RenderSessionProvider>
     );
   }
 );
