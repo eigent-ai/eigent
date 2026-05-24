@@ -43,7 +43,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
-import { ProjectChatContainer } from './ProjectChatContainer';
+import { legacyAskPayload } from './renderSession/normalizeMessages';
+import { SessionStackContainer } from './shell/SessionStackContainer';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -479,6 +480,19 @@ export default function ChatBox(): JSX.Element {
     useCloudModelInDev,
     isTaskBusy,
   ]);
+
+  // Derive the current active HITL question for the BottomBox ask mode.
+  const activeQuestion = useMemo(() => {
+    if (!chatStore?.activeTaskId) return null;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    if (!task?.activeAsk) return null;
+    const askMsg = [...task.messages]
+      .reverse()
+      .find((m) => m.step === AgentStep.ASK);
+    if (!askMsg) return null;
+    // Use structured payload if the backend sent one; otherwise build from heuristics.
+    return askMsg.askPayload ?? legacyAskPayload(askMsg, task.activeAsk);
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
 
   const handleSendShare = useCallback(
     async (token: string) => {
@@ -1180,7 +1194,7 @@ export default function ChatBox(): JSX.Element {
           className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
-            <ProjectChatContainer
+            <SessionStackContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onSkip={handleSkip}
@@ -1192,7 +1206,13 @@ export default function ChatBox(): JSX.Element {
 
               {chatStore.activeTaskId && (
                 <BottomBox
-                  state="input"
+                  state={activeQuestion ? 'ask' : 'input'}
+                  askQuestion={activeQuestion ?? undefined}
+                  onSubmitAskReply={
+                    activeQuestion
+                      ? (reply) => handleSend(reply, chatStore.activeTaskId!)
+                      : undefined
+                  }
                   queuedMessages={queuedMessages}
                   onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                   usageLimitBanner={usageLimitBanner}
@@ -1239,7 +1259,13 @@ export default function ChatBox(): JSX.Element {
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px]">
               <BottomBox
-                state={getBottomBoxState()}
+                state={activeQuestion ? 'ask' : getBottomBoxState()}
+                askQuestion={activeQuestion ?? undefined}
+                onSubmitAskReply={
+                  activeQuestion
+                    ? (reply) => handleSend(reply, chatStore.activeTaskId!)
+                    : undefined
+                }
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                 usageLimitBanner={usageLimitBanner}

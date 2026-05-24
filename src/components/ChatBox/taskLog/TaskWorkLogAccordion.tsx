@@ -16,7 +16,7 @@ import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { cn } from '@/lib/utils';
-import type { VanillaChatStore } from '@/store/chatStore';
+import type { VanillaChatStore, WorkLogCursor } from '@/store/chatStore';
 import {
   AgentStep,
   ChatTaskStatus,
@@ -55,7 +55,7 @@ function normalizeToolkitMessage(value: unknown): string {
 }
 
 /** Matches `getFormattedTaskTime` / task timer fields on the chat task. */
-function getTaskElapsedMs(task: {
+export function getTaskElapsedMs(task: {
   status: ChatTaskStatusType;
   taskTime: number;
   elapsed: number;
@@ -73,16 +73,36 @@ type TaggedLog = {
   agentName: string;
 };
 
-function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
+/**
+ * Exported for unit tests and for cursor-slicing by query group.
+ *
+ * When `startCursor` / `endCursor` are provided each agent's log is sliced to
+ * only the entries produced while that query group was active:
+ *   - start  = startCursor[agentId] ?? 0
+ *   - end    = endCursor   === undefined  → a.log.length   (active group)
+ *              endCursor[agentId] ?? 0   (closed group; 0 for agents that
+ *                                         didn't exist yet when group closed)
+ */
+export function mergeTaggedAgentLogs(
+  taskAssigning: Agent[] | undefined,
+  startCursor?: WorkLogCursor,
+  endCursor?: WorkLogCursor
+): TaggedLog[] {
   if (!taskAssigning?.length) return [];
-  return taskAssigning.flatMap((a) =>
-    (a.log ?? []).map((entry) => ({
+  return taskAssigning.flatMap((a) => {
+    const start = startCursor?.[a.agent_id] ?? 0;
+    const end =
+      endCursor !== undefined
+        ? (endCursor[a.agent_id] ?? 0)
+        : (a.log ?? []).length;
+    if (end <= start) return [];
+    return (a.log ?? []).slice(start, end).map((entry) => ({
       entry,
       agentId: a.agent_id,
       agentType: a.type,
       agentName: agentMap[a.type as WorkflowAgentType]?.name ?? a.name,
-    }))
-  );
+    }));
+  });
 }
 
 function titleCaseMethod(method: string): string {
@@ -538,14 +558,16 @@ function useTaskWorkStoreSnapshot(
 function useTaskWorkLogData(
   chatStore: VanillaChatStore,
   taskId: string | null,
-  _snapshot: string
+  _snapshot: string,
+  startCursor?: WorkLogCursor,
+  endCursor?: WorkLogCursor
 ) {
   void _snapshot;
   if (!taskId) {
     return { task: undefined, blocks: [] as AgentBlock[] };
   }
   const t = chatStore.getState().tasks[taskId];
-  const tagged = mergeTaggedAgentLogs(t?.taskAssigning);
+  const tagged = mergeTaggedAgentLogs(t?.taskAssigning, startCursor, endCursor);
   const isSingleAgent = t?.sessionMode === SessionMode.SINGLE_AGENT;
   const blocks = buildAgentBlocks(tagged, isSingleAgent);
   return { task: t, blocks };
@@ -554,22 +576,35 @@ function useTaskWorkLogData(
 function useWorkLogElapsedMs(
   chatStore: VanillaChatStore,
   taskId: string | null,
-  snapshot: string
+  snapshot: string,
+  groupStartElapsedMs?: number,
+  groupEndElapsedMs?: number
 ): number {
   const [now, setNow] = useState(() => Date.now());
 
+  // Frozen groups don't need a ticking timer
+  const isFrozen = groupEndElapsedMs !== undefined;
+
   useEffect(() => {
+    if (isFrozen) return;
     const t = taskId ? chatStore.getState().tasks[taskId] : null;
     if (t?.status !== ChatTaskStatus.RUNNING) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [chatStore, taskId, snapshot]);
+  }, [chatStore, taskId, snapshot, isFrozen]);
+
+  // Per-group frozen duration
+  if (isFrozen) {
+    return Math.max(0, groupEndElapsedMs - (groupStartElapsedMs ?? 0));
+  }
 
   void now;
   if (!taskId) return 0;
   const t = chatStore.getState().tasks[taskId];
   if (!t) return 0;
-  return getTaskElapsedMs(t);
+  const total = getTaskElapsedMs(t);
+  // Subtract the elapsed at group start so this group shows its own duration
+  return Math.max(0, total - (groupStartElapsedMs ?? 0));
 }
 
 const ToolDetailRow = memo(function ToolDetailRow({
@@ -884,23 +919,49 @@ export interface TaskWorkLogAccordionProps {
   chatStore: VanillaChatStore;
   taskId: string | null;
   className?: string;
+  /** Show only log entries produced after this cursor (inclusive). */
+  startCursor?: WorkLogCursor;
+  /** Show only log entries produced before this cursor (exclusive). Absent = active group (show to current end). */
+  endCursor?: WorkLogCursor;
+  /** task.elapsed at the moment this group opened (for per-group timer). */
+  groupStartElapsedMs?: number;
+  /** task.elapsed at the moment this group closed (undefined = still active). */
+  groupEndElapsedMs?: number;
 }
 
 export function TaskWorkLogAccordion({
   chatStore,
   taskId,
   className,
+  startCursor,
+  endCursor,
+  groupStartElapsedMs,
+  groupEndElapsedMs,
 }: TaskWorkLogAccordionProps) {
   const { t: _t } = useTranslation();
   const snapshot = useTaskWorkStoreSnapshot(chatStore, taskId);
-  const { task, blocks } = useTaskWorkLogData(chatStore, taskId, snapshot);
+  const { task, blocks } = useTaskWorkLogData(
+    chatStore,
+    taskId,
+    snapshot,
+    startCursor,
+    endCursor
+  );
   const status = task?.status;
-  const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
-  const taskRunning = status === ChatTaskStatus.RUNNING;
+  const elapsedMs = useWorkLogElapsedMs(
+    chatStore,
+    taskId,
+    snapshot,
+    groupStartElapsedMs,
+    groupEndElapsedMs
+  );
 
-  // Normalize block status with task-level context — once the task stops,
-  // every block (and any running message/tool) is done regardless of whether
-  // DEACTIVATE_AGENT / DEACTIVATE_TOOLKIT actually arrived.
+  // A group is frozen once its endCursor is set — it no longer receives new logs.
+  const frozen = endCursor !== undefined;
+  const taskRunning = status === ChatTaskStatus.RUNNING && !frozen;
+
+  // Normalize block status with task-level context — once the task stops (or
+  // the group is frozen), every block is done regardless of DEACTIVATE events.
   const effectiveBlocks = useMemo(() => {
     if (taskRunning) return blocks;
     return blocks.map((b) => ({
@@ -916,15 +977,20 @@ export function TaskWorkLogAccordion({
 
   const { isOpen, toggle } = useBlockOpenState(effectiveBlocks);
 
-  const [outerOpen, setOuterOpen] = useState(() => taskRunning);
+  // Frozen groups start collapsed so they don't visually dominate the chat.
+  const [outerOpen, setOuterOpen] = useState(() => !frozen && taskRunning);
 
   useEffect(() => {
+    if (frozen) {
+      setOuterOpen(false);
+      return;
+    }
     if (status === ChatTaskStatus.FINISHED) {
       setOuterOpen(false);
     } else if (status === ChatTaskStatus.RUNNING) {
       setOuterOpen(true);
     }
-  }, [status]);
+  }, [status, frozen]);
 
   if (!taskId || !task) return null;
 
@@ -947,8 +1013,9 @@ export function TaskWorkLogAccordion({
         className="gap-1 py-2 px-0 min-w-0 flex w-full items-center justify-start text-left"
       >
         <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
-          {status === ChatTaskStatus.RUNNING ||
-          status === ChatTaskStatus.PAUSE ? (
+          {!frozen &&
+          (status === ChatTaskStatus.RUNNING ||
+            status === ChatTaskStatus.PAUSE) ? (
             <Trans
               i18nKey="chat.working-on-tasks-for"
               values={{ time: timeLabel }}

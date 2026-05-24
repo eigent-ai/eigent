@@ -14,6 +14,7 @@
 
 import { AgentStep } from '@/types/constants';
 import type {
+  AskPayload,
   ChatBlock,
   ChatTurn,
   CompletionBlock,
@@ -27,12 +28,50 @@ import type {
 // Question type detection
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Enumerated option extraction helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts option text from a numbered list embedded in a question string.
+ * Matches patterns like "1. Foo\n2. Bar" or "1) Foo\n2) Bar".
+ * Returns the labels in order, or an empty array if fewer than 2 found.
+ */
+function extractNumberedOptions(text: string): string[] {
+  // Match "1. label" or "1) label" (label up to next numbered item or double-newline)
+  const matches = [
+    ...text.matchAll(/(?:^|\n)\s*\d+[.)]\s+(.+?)(?=\n\s*\d+[.)]|\n\n|$)/gs),
+  ];
+  return matches.length >= 2 ? matches.map((m) => m[1]!.trim()) : [];
+}
+
+/**
+ * Extracts option text from a lettered list embedded in a question string.
+ * Matches patterns like "A. Foo\nB. Bar" or "a) Foo\nb) Bar".
+ * Returns the labels in order, or an empty array if fewer than 2 found.
+ */
+function extractLetteredOptions(text: string): string[] {
+  const matches = [
+    ...text.matchAll(
+      /(?:^|\n)\s*[A-Da-d][.)]\s+(.+?)(?=\n\s*[A-Da-d][.)]|\n\n|$)/gs
+    ),
+  ];
+  return matches.length >= 2 ? matches.map((m) => m[1]!.trim()) : [];
+}
+
 /** Detect the appropriate HITL control type from the question text. */
 export function detectInputType(
   question: string
 ): 'text_input' | 'choice_input' | 'context_input' {
+  // Numbered list (1. 2. 3. or 1) 2) 3)) — highest priority
+  if (extractNumberedOptions(question).length >= 2) return 'choice_input';
+
+  // Lettered list (A. B. C. or a) b) c))
+  if (extractLetteredOptions(question).length >= 2) return 'choice_input';
+
   const lower = question.toLowerCase();
 
+  // Classic binary keywords
   const isChoice =
     (lower.includes('yes') && lower.includes('no')) ||
     (lower.includes('approve') && lower.includes('reject')) ||
@@ -53,8 +92,17 @@ export function detectInputType(
   return 'text_input';
 }
 
-/** Extract explicit choice labels from the question text. */
+/** Extract choice labels from the question text, including enumerated lists. */
 export function extractChoices(question: string): string[] {
+  // Try numbered options first
+  const numbered = extractNumberedOptions(question);
+  if (numbered.length >= 2) return numbered;
+
+  // Try lettered options
+  const lettered = extractLetteredOptions(question);
+  if (lettered.length >= 2) return lettered;
+
+  // Classic binary fallbacks
   const lower = question.toLowerCase();
   if (lower.includes('approve') && lower.includes('reject'))
     return ['Approve', 'Reject'];
@@ -63,6 +111,39 @@ export function extractChoices(question: string): string[] {
   if (lower.includes('confirm') && lower.includes('cancel'))
     return ['Confirm', 'Cancel'];
   return ['Yes', 'No'];
+}
+
+/**
+ * Converts a legacy plain-text ASK message into a structured `AskPayload`.
+ * Used when the backend hasn't sent an explicit `askPayload` yet.
+ */
+export function legacyAskPayload(
+  msg: { content: string; agent_name?: string },
+  agentName?: string
+): AskPayload {
+  const inputType = detectInputType(msg.content);
+  const options =
+    inputType === 'choice_input'
+      ? extractChoices(msg.content).map((v) => ({ value: v, label: v }))
+      : [];
+
+  const block =
+    inputType === 'choice_input'
+      ? ({ kind: 'choice' as const, id: 'legacy-choice', options } as const)
+      : ({
+          kind: 'text' as const,
+          id: 'legacy-text',
+          placeholder:
+            inputType === 'context_input'
+              ? 'Add more context… (Shift+Enter for new line)'
+              : 'Type your reply…',
+        } as const);
+
+  return {
+    prompt: msg.content,
+    agentName: agentName ?? msg.agent_name,
+    inputs: [block],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +230,7 @@ interface NormalizeOptions {
 
 /**
  * Convert a flat Message[] into a list of ChatTurn objects, one per user query.
- * Preserves the grouping logic from ProjectSection.groupMessagesByQuery while
+ * Preserves the grouping logic from SessionView.groupMessagesByQuery while
  * adding block-type annotations for downstream renderers.
  */
 export function normalizeMessagesToChatTurns({

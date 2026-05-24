@@ -96,9 +96,9 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
   }),
 }));
 
-// Mock ProjectChatContainer to avoid scrollTo issues
-vi.mock('../../../src/components/ChatBox/ProjectChatContainer', () => ({
-  ProjectChatContainer: vi.fn(() => (
+// Mock SessionStackContainer to avoid scrollTo issues
+vi.mock('../../../src/components/ChatBox/shell/SessionStackContainer', () => ({
+  SessionStackContainer: vi.fn(() => (
     <div data-testid="project-chat-container">Chat Container</div>
   )),
 }));
@@ -441,7 +441,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, task cards are rendered inside ProjectChatContainer
+      // With the new architecture, task cards are rendered inside SessionStackContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
 
@@ -471,7 +471,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, notice cards are rendered inside ProjectChatContainer
+      // With the new architecture, notice cards are rendered inside SessionStackContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
   });
@@ -502,7 +502,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, loading states are handled inside ProjectChatContainer
+      // With the new architecture, loading states are handled inside SessionStackContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
   });
@@ -539,7 +539,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, file lists are rendered inside ProjectChatContainer
+      // With the new architecture, file lists are rendered inside SessionStackContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
 
@@ -574,7 +574,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, file lists are rendered inside ProjectChatContainer
+      // With the new architecture, file lists are rendered inside SessionStackContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
   });

@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { renderReplyBlock } from '@/components/ChatBox/messages/replyBlocks';
+import type { ReplyPayload } from '@/components/ChatBox/renderSession/types';
 import { useHost } from '@/host';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
@@ -28,6 +30,8 @@ interface AgentMessageCardProps {
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
+  /** Structured reply blocks — when present, renders via block registry instead of single-markdown path. */
+  replyPayload?: ReplyPayload;
   /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
   deferredFooter?: ReactNode;
   onTyping?: () => void;
@@ -45,6 +49,7 @@ export function AgentMessageCard({
   onMarkdownRenderComplete,
   className,
   attaches,
+  replyPayload,
   deferredFooter,
 }: AgentMessageCardProps) {
   const host = useHost();
@@ -97,12 +102,24 @@ export function AgentMessageCard({
       key={id}
       className={`rounded-xl px-sm py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
     >
-      <MarkDown
-        content={content}
-        onTyping={handleTypingComplete}
-        onMarkdownRenderComplete={handleMarkdownRenderComplete}
-        enableTypewriter={enableTypewriter && typewriter}
-      />
+      {replyPayload ? (
+        <div className="gap-4 flex flex-col">
+          {replyPayload.blocks.map((block) =>
+            renderReplyBlock(block, {
+              typewriter: enableTypewriter && typewriter,
+              onTyping: handleTypingComplete,
+              onMarkdownRenderComplete: handleMarkdownRenderComplete,
+            })
+          )}
+        </div>
+      ) : (
+        <MarkDown
+          content={content}
+          onTyping={handleTypingComplete}
+          onMarkdownRenderComplete={handleMarkdownRenderComplete}
+          enableTypewriter={enableTypewriter && typewriter}
+        />
+      )}
       {showDeferredFileUi && attaches && attaches.length > 0 && (
         <div className="gap-2 mt-[10px] flex flex-wrap">
           {attaches?.map((file) => {
@@ -113,11 +130,11 @@ export function AgentMessageCard({
                   ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
-                className="gap-2 rounded-2xl py-1 pl-2 flex w-full cursor-pointer items-center border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
+                className="gap-2 rounded-2xl py-1 pl-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default flex w-full cursor-pointer items-center border border-solid"
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
+                  <div className="text-body max-w-48 text-sm font-bold text-ds-text-neutral-default-default overflow-hidden text-ellipsis whitespace-nowrap">
                     {file?.fileName?.split('.')[0]}
                   </div>
                   <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">

@@ -166,6 +166,22 @@ async function resolveCdpBrowsersForRequest(
   return { browser_port, cdp_browsers };
 }
 
+/** agentId → log.length snapshot at a point in time, for work-log cursor slicing. */
+export type WorkLogCursor = Record<string, number>;
+
+/** Persisted per-user-message metadata for splitting the work log by query group. */
+export interface RenderGroupMeta {
+  id: string;
+  kind: 'initial_query' | 'human_reply' | 'follow_up' | 'orphan';
+  userMessageId: string | null;
+  startCursor: WorkLogCursor;
+  endCursor?: WorkLogCursor;
+  /** task.elapsed snapshot when this group opened, for per-group timer. */
+  startElapsedMs: number;
+  /** task.elapsed snapshot when this group closed. Absent = still active. */
+  endElapsedMs?: number;
+}
+
 interface Task {
   sessionMode?: SessionModeType;
   messages: Message[];
@@ -205,6 +221,9 @@ interface Task {
   // Trigger execution ID for tracking trigger task completion
   executionId?: string;
   nextExecutionId?: string;
+  // Frontend-owned query-group render metadata
+  renderGroups: RenderGroupMeta[];
+  activeRenderGroupId: string | null;
 }
 
 type UploadFileSource = 'project_output' | 'camel_log' | 'user_attachment';
@@ -920,6 +939,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             autoConfirmDeadline: null,
             streamingDecomposeText: '',
             executionId: undefined,
+            renderGroups: [],
+            activeRenderGroupId: null,
           },
         },
       }));
@@ -3523,16 +3544,75 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
     },
     addMessages(taskId, message) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            messages: [...state.tasks[taskId].messages, message],
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+
+        let renderGroups: RenderGroupMeta[] = task.renderGroups ?? [];
+        let activeRenderGroupId: string | null =
+          task.activeRenderGroupId ?? null;
+
+        if (message.role === 'user') {
+          // Snapshot the current work-log cursor for each agent
+          const cursor: WorkLogCursor = {};
+          for (const agent of task.taskAssigning ?? []) {
+            cursor[agent.agent_id] = agent.log.length;
+          }
+
+          // Snapshot elapsed time for per-group timer
+          const nowElapsed =
+            task.status === ChatTaskStatus.RUNNING && task.taskTime !== 0
+              ? Math.max(0, Date.now() - task.taskTime + task.elapsed)
+              : Math.max(0, task.elapsed);
+
+          // Close the active group with the current cursor and elapsed
+          if (activeRenderGroupId !== null) {
+            renderGroups = renderGroups.map((g) =>
+              g.id === activeRenderGroupId
+                ? { ...g, endCursor: cursor, endElapsedMs: nowElapsed }
+                : g
+            );
+          }
+
+          // Determine the kind of this new group
+          const hasPrevUser = task.messages.some((m) => m.role === 'user');
+          const lastAgentMsg = task.messages
+            .filter((m) => m.role === 'agent')
+            .at(-1);
+          let kind: RenderGroupMeta['kind'];
+          if (!hasPrevUser) {
+            kind = 'initial_query';
+          } else if (lastAgentMsg?.step === AgentStep.ASK) {
+            kind = 'human_reply';
+          } else {
+            kind = 'follow_up';
+          }
+
+          const newGroup: RenderGroupMeta = {
+            id: message.id,
+            kind,
+            userMessageId: message.id,
+            startCursor: cursor,
+            startElapsedMs: nowElapsed,
+          };
+
+          renderGroups = [...renderGroups, newGroup];
+          activeRenderGroupId = newGroup.id;
+        }
+
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              messages: [...task.messages, message],
+              renderGroups,
+              activeRenderGroupId,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setAttaches(taskId, attaches) {
       set((state) => ({

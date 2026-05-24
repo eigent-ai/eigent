@@ -85,6 +85,23 @@ describe('detectInputType', () => {
   it('returns text_input for open-ended questions', () => {
     expect(detectInputType('What is the target audience?')).toBe('text_input');
   });
+
+  it('returns choice_input for numbered list options', () => {
+    const q =
+      'Which approach?\n1. Research competitors\n2. Start writing\n3. Gather feedback';
+    expect(detectInputType(q)).toBe('choice_input');
+  });
+
+  it('returns choice_input for lettered list options', () => {
+    const q =
+      'Select a format:\nA. Detailed report\nB. Executive summary\nC. Slide deck';
+    expect(detectInputType(q)).toBe('choice_input');
+  });
+
+  it('returns choice_input for numbered options with parenthesis separator', () => {
+    const q = 'Choose one:\n1) Option Alpha\n2) Option Beta\n3) Option Gamma';
+    expect(detectInputType(q)).toBe('choice_input');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -108,6 +125,31 @@ describe('extractChoices', () => {
       'Continue',
       'Stop',
     ]);
+  });
+
+  it('extracts three numbered options', () => {
+    const q =
+      'Which approach?\n1. Research competitors\n2. Start writing\n3. Gather feedback';
+    expect(extractChoices(q)).toEqual([
+      'Research competitors',
+      'Start writing',
+      'Gather feedback',
+    ]);
+  });
+
+  it('extracts lettered options (A/B/C)', () => {
+    const q =
+      'Select a format:\nA. Detailed report\nB. Executive summary\nC. Slide deck';
+    expect(extractChoices(q)).toEqual([
+      'Detailed report',
+      'Executive summary',
+      'Slide deck',
+    ]);
+  });
+
+  it('extracts two numbered options with parenthesis', () => {
+    const q = 'Choose:\n1) Option One\n2) Option Two';
+    expect(extractChoices(q)).toEqual(['Option One', 'Option Two']);
   });
 });
 

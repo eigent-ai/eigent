@@ -31,6 +31,79 @@ export interface UserMessageBlock {
   attaches?: File[];
 }
 
+// ---------------------------------------------------------------------------
+// Rich HITL input schema (Stage B)
+// ---------------------------------------------------------------------------
+
+/**
+ * One input control inside a structured ASK turn.
+ * The `kind` field drives the renderer registry in `hitlInputs/`.
+ */
+export type HitlInputBlock =
+  | {
+      kind: 'text';
+      id: string;
+      label?: string;
+      placeholder?: string;
+      multiline?: boolean;
+    }
+  | {
+      kind: 'choice';
+      id: string;
+      label?: string;
+      options: Array<{ value: string; label: string }>;
+      multiSelect?: boolean;
+    }
+  | { kind: 'key_value'; id: string; label?: string; secret?: boolean }
+  | { kind: 'model'; id: string; label?: string; category?: string }
+  | { kind: 'mcp'; id: string; label?: string }
+  | { kind: 'skill_upload'; id: string; label?: string }
+  | { kind: 'file_upload'; id: string; label?: string; accept?: string[] }
+  | { kind: 'redirect'; id: string; label: string; href: string };
+
+/** Structured payload for an `AgentStep.ASK` message (optional — plain text is the fallback). */
+export interface AskPayload {
+  prompt: string;
+  agentName?: string;
+  inputs: HitlInputBlock[];
+  submitLabel?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Rich reply block schema (Stage C)
+// ---------------------------------------------------------------------------
+
+export type ReplyBlock =
+  | { kind: 'markdown'; id: string; content: string }
+  | {
+      kind: 'table';
+      id: string;
+      title?: string;
+      columns: string[];
+      rows: Array<Array<string | number>>;
+    }
+  | {
+      kind: 'chart';
+      id: string;
+      title?: string;
+      chartType: 'line' | 'bar' | 'pie';
+      series: Array<{ name: string; data: Array<[string | number, number]> }>;
+    }
+  | { kind: 'dashboard'; id: string; title?: string; widgets: ReplyBlock[] }
+  | { kind: 'files'; id: string; files: FileInfo[] }
+  | {
+      kind: 'trigger_suggestion';
+      id: string;
+      prompt: string;
+      reason?: string;
+      schedule?: string;
+    };
+
+/** Structured payload for an `AgentStep.END` message (optional — markdown+fileList is the fallback). */
+export interface ReplyPayload {
+  blocks: ReplyBlock[];
+}
+
 /** An inline HITL question emitted by AgentStep.ASK. */
 export interface QuestionChatBlock {
   type: 'question';
@@ -41,6 +114,8 @@ export interface QuestionChatBlock {
   choices?: string[];
   isActive: boolean;
   taskId: string;
+  /** Structured payload — present when the backend sent an explicit AskPayload. */
+  askPayload?: AskPayload;
 }
 
 /** The user's reply to a question (rendered after the question block). */

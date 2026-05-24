@@ -26,21 +26,21 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { AgentMessageCard } from './MessageItem/AgentMessageCard';
-import { QuestionBlock } from './MessageItem/blocks/QuestionBlock';
-import { NoticeCard } from './MessageItem/NoticeCard';
-import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
-import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
-import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
-import { UserMessageCard } from './MessageItem/UserMessageCard';
+import { AgentMessageCard } from '../messages/AgentMessageCard';
+import { QuestionBlock } from '../messages/askBlocks/QuestionBlock';
+import { UserMessageCard } from '../messages/UserMessageCard';
+import { NoticeCard } from '../notices/NoticeCard';
 import {
   detectInputType,
   extractChoices,
-} from './renderSession/normalizeMessages';
-import type { QuestionChatBlock } from './renderSession/types';
-import { PlanTaskBox } from './TaskBox/PlanTaskBox';
-import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
-import { TaskCard } from './TaskBox/TaskCard';
+} from '../renderSession/normalizeMessages';
+import type { ChatQueryGroup } from '../renderSession/queryGroups';
+import type { QuestionChatBlock } from '../renderSession/types';
+import { PlanTaskBox } from '../TaskBox/PlanTaskBox';
+import { isPlanSplittingPhase } from '../TaskBox/PlanTaskBox/utils';
+import { TaskCard } from '../TaskBox/TaskCard';
+import { PreparingToExecuteTasks } from '../taskLog/PreparingToExecuteTasks';
+import { TaskWorkLogAccordion } from '../taskLog/TaskWorkLogAccordion';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
 const AgentResultCard: React.FC<{
@@ -108,23 +108,16 @@ function shouldUseLiveAgentTypewriter(
   return last.role === 'agent' && last.id === messageId;
 }
 
-interface QueryGroup {
-  queryId: string;
-  userMessage: any;
-  taskMessage?: any;
-  otherMessages: any[];
-}
-
-interface UserQueryGroupProps {
+interface QueryGroupProps {
   chatId: string;
   chatStore: VanillaChatStore;
-  queryGroup: QueryGroup;
+  queryGroup: ChatQueryGroup;
   isActive: boolean;
   onQueryActive: (queryId: string | null) => void;
   index: number;
 }
 
-export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
+export const QueryGroup: React.FC<QueryGroupProps> = ({
   chatId,
   chatStore,
   queryGroup,
@@ -135,23 +128,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
   const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
-  const [taskCompletionMarkdownReady, setTaskCompletionMarkdownReady] =
-    useState(false);
-  const [taskCompletionDismissed, setTaskCompletionDismissed] = useState(false);
   const chatState = chatStore.getState();
-
-  const completionEndMessage = queryGroup.otherMessages.find(
-    (m: any) => m.step === AgentStep.END && m.content.length > 0
-  );
-
-  useEffect(() => {
-    setTaskCompletionMarkdownReady(false);
-    setTaskCompletionDismissed(false);
-  }, [queryGroup.queryId, completionEndMessage?.id]);
-
-  const onTaskCompletionMarkdownReady = useCallback(() => {
-    setTaskCompletionMarkdownReady(true);
-  }, []);
   const activeTaskId = chatState.activeTaskId;
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const setActiveWorkspaceTab = usePageTabStore(
@@ -184,45 +161,35 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     }
   );
 
-  // Show task if this query group has a task message OR if it's the most recent user query during splitting
-  // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
-  // Exclude human-reply scenarios (when user is replying to an activeAsk)
-  const isHumanReply =
-    queryGroup.userMessage &&
-    activeTaskId &&
-    chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk ||
-      // Check if this user message follows an 'ask' message in the message sequence
-      (() => {
-        const messages = chatState.tasks[activeTaskId].messages;
-        const userMessageIndex = messages.findIndex(
-          (m: any) => m.id === queryGroup.userMessage.id
-        );
-        if (userMessageIndex > 0) {
-          // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
-          const prevMessage = messages[userMessageIndex - 1];
-          return (
-            prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK
-          );
-        }
-        return false;
-      })());
-
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
+
+  // A human_reply group never shows its own planning/task-log section —
+  // those belong to the prior initial_query or follow_up group.
+  const isHumanReply = queryGroup.kind === 'human_reply';
+
+  // This group is the current active group if the store marks it so.
+  const activeRenderGroupId = activeTask?.activeRenderGroupId ?? null;
+  const isActiveGroup = queryGroup.id === activeRenderGroupId;
+
+  // Legacy compat: when renderGroups is empty (old data / replay without metadata),
+  // fall back to the last-user-message heuristic.
+  const hasRenderGroups =
+    !!activeTask?.renderGroups && activeTask.renderGroups.length > 0;
   const lastUserMessageId = activeTask?.messages
     .filter((m: any) => m.role === 'user')
     .pop()?.id;
-  const isCurrentUserQuery = Boolean(
-    !queryGroup.taskMessage &&
-    !isHumanReply &&
-    activeTask &&
-    queryGroup.userMessage &&
-    queryGroup.userMessage.id === lastUserMessageId
-  );
+  const isCurrentUserQuery = hasRenderGroups
+    ? isActiveGroup
+    : Boolean(
+        !queryGroup.taskMessage &&
+        !isHumanReply &&
+        activeTask &&
+        queryGroup.userMessage &&
+        queryGroup.userMessage.id === lastUserMessageId
+      );
+
   const isLastUserQuery =
-    isCurrentUserQuery &&
-    // Only show during active phases (not finished)
-    activeTask?.status !== ChatTaskStatus.FINISHED;
+    isCurrentUserQuery && activeTask?.status !== ChatTaskStatus.FINISHED;
 
   const isSingleAgentTask =
     inferSessionModeFromTask(activeTask, SessionMode.WORKFORCE) ===
@@ -277,7 +244,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            onQueryActive(queryGroup.queryId);
+            onQueryActive(queryGroup.id);
           }
         });
       },
@@ -292,7 +259,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [queryGroup.queryId, onQueryActive]);
+  }, [queryGroup.id, onQueryActive]);
 
   // Set up intersection observer for sticky detection
   useEffect(() => {
@@ -347,17 +314,23 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     )
   );
   const showPreparingExecute =
-    Boolean(activeTaskId && task) &&
-    task!.status === ChatTaskStatus.PENDING &&
+    Boolean(activeTaskId && activeTask) &&
+    activeTask!.status === ChatTaskStatus.PENDING &&
     // Workforce: after the user confirms the plan, before the work log.
     ((showTaskPlanCard && hasConfirmedSubTasks) ||
       // Single agent: from submit until the first `todo_state` arrives.
       shouldShowSingleAgentWorkLog);
 
+  // Show the work log whenever this group has cursor data — including human_reply
+  // groups. After a user answers a question the agent continues working, and that
+  // work log belongs to the second (human_reply) group.
+  const shouldShowWorkLog =
+    Boolean(queryGroup.workLog) && Boolean(activeTaskId);
+
   return (
     <motion.div
       ref={groupRef}
-      data-query-id={queryGroup.queryId}
+      data-query-id={queryGroup.id}
       data-task-card={taskCardVisible ? 'true' : undefined}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -429,7 +402,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           >
             {hasConfirmedSubTasks ? (
               <TaskCard
-                key={`task-${activeTaskId}-${queryGroup.queryId}`}
+                key={`task-${activeTaskId}-${queryGroup.id}`}
                 chatId={chatId}
                 taskInfo={task?.taskInfo || []}
                 taskType={queryGroup.taskMessage?.taskType || 1}
@@ -462,7 +435,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {taskCardVisible && activeTaskId && (
+      {shouldShowWorkLog && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -470,12 +443,19 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           className="px-sm"
         >
           {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
-          <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
+          <TaskWorkLogAccordion
+            chatStore={chatStore}
+            taskId={activeTaskId}
+            startCursor={queryGroup.workLog!.startCursor}
+            endCursor={queryGroup.workLog!.endCursor}
+            groupStartElapsedMs={queryGroup.workLog!.startElapsedMs}
+            groupEndElapsedMs={queryGroup.workLog!.endElapsedMs}
+          />
         </motion.div>
       )}
 
-      {/* Other Messages */}
-      {queryGroup.otherMessages.map((message) => {
+      {/* Output Messages */}
+      {queryGroup.outputMessages.map((message) => {
         if (message.content.length > 0) {
           if (message.step === AgentStep.END) {
             return (
@@ -487,13 +467,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 className="gap-4 flex flex-col"
               >
                 <AgentMessageCard
-                  typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
+                  typewriter={shouldUseLiveAgentTypewriter(
+                    isCurrentUserQuery ? (activeTask ?? null) : null,
+                    message.id
+                  )}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
-                  onMarkdownRenderComplete={onTaskCompletionMarkdownReady}
+                  replyPayload={message.replyPayload}
                   deferredFooter={
-                    message.fileList?.length ? (
+                    !message.replyPayload && message.fileList?.length ? (
                       <div className="my-2 gap-2 flex flex-wrap">
                         {message.fileList.map(
                           (file: any, fileIndex: number) => (
@@ -546,7 +529,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               </motion.div>
             );
           } else if (message.step === AgentStep.ASK) {
-            const taskMessages = task?.messages || [];
+            // Use activeTask (always populated) not task (null when isHumanReply)
+            const taskMessages = activeTask?.messages || [];
             const myIndex = taskMessages.findIndex(
               (m: any) => m.id === message.id
             );
@@ -558,14 +542,15 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               type: 'question',
               id: message.id,
               content: message.content,
-              agentName: message.agent_name || task?.activeAsk || '',
+              agentName: message.agent_name || activeTask?.activeAsk || '',
               inputType,
               choices:
                 inputType === 'choice_input'
                   ? extractChoices(message.content)
                   : undefined,
-              isActive: !hasUserAfter && Boolean(task?.activeAsk),
+              isActive: !hasUserAfter && Boolean(activeTask?.activeAsk),
               taskId: activeTaskId || '',
+              askPayload: message.askPayload,
             };
             return (
               <motion.div
@@ -607,7 +592,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               >
                 <AgentMessageCard
                   key={message.id}
-                  typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
+                  typewriter={shouldUseLiveAgentTypewriter(
+                    isCurrentUserQuery ? (activeTask ?? null) : null,
+                    message.id
+                  )}
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
@@ -661,40 +649,15 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         // Notice Card
         if (
           message.step === AgentStep.NOTICE_CARD &&
-          !task?.isTakeControl &&
-          task?.cotList &&
-          task.cotList.length > 0
+          !activeTask?.isTakeControl &&
+          activeTask?.cotList &&
+          activeTask.cotList.length > 0
         ) {
           return <NoticeCard key={`notice-${message.id}`} />;
         }
 
         return null;
       })}
-
-      {task?.status === ChatTaskStatus.FINISHED &&
-        completionEndMessage &&
-        taskCompletionMarkdownReady &&
-        !taskCompletionDismissed && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="mb-md gap-4 px-sm flex flex-col"
-          >
-            <TaskCompletionCard
-              taskPrompt={queryGroup.userMessage?.content}
-              onRerun={() => {
-                const inputElement = document.querySelector(
-                  '[data-chat-input]'
-                ) as HTMLInputElement;
-                if (inputElement) {
-                  inputElement.focus();
-                }
-              }}
-              onDismiss={() => setTaskCompletionDismissed(true)}
-            />
-          </motion.div>
-        )}
 
       {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (

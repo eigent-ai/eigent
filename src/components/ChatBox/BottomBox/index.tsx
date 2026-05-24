@@ -12,11 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { AskPayload } from '@/components/ChatBox/renderSession/types';
 import { Button } from '@/components/ui/button';
 import { type ChatTaskStatusType } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BoxHeaderConfirm, BoxHeaderSave } from './BoxHeader';
+import { BoxHeaderAsk } from './BoxHeaderAsk';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
 import {
@@ -29,7 +31,8 @@ export type BottomBoxState =
   | 'confirm'
   | 'save'
   | 'running'
-  | 'finished';
+  | 'finished'
+  | 'ask';
 
 interface BottomBoxProps {
   // General state
@@ -66,6 +69,10 @@ interface BottomBoxProps {
   /** Full-area warning overlay on the input card when no model is configured. */
   noModelOverlay?: boolean;
   onSelectModel?: () => void;
+
+  /** Active HITL question — required when state === 'ask'. */
+  askQuestion?: AskPayload;
+  onSubmitAskReply?: (reply: string) => void;
 }
 
 export default function BottomBox({
@@ -82,6 +89,8 @@ export default function BottomBox({
   loading = false,
   noModelOverlay = false,
   onSelectModel,
+  askQuestion,
+  onSubmitAskReply,
 }: BottomBoxProps) {
   const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
@@ -90,12 +99,26 @@ export default function BottomBox({
   let backgroundClass = 'bg-ds-bg-neutral-subtle-default';
   if (state === 'confirm' || state === 'save')
     backgroundClass = 'bg-ds-bg-completed-subtle-default';
+  if (state === 'ask') backgroundClass = 'bg-ds-bg-neutral-subtle-default';
+
+  // Ask mode: render the question + controls in place of the normal input box
+  if (state === 'ask' && askQuestion && onSubmitAskReply) {
+    return (
+      <div className="rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl relative z-50 flex w-full flex-col">
+        <div
+          className={`mb-sm rounded-3xl relative flex w-full flex-col ${backgroundClass}`}
+        >
+          <BoxHeaderAsk askPayload={askQuestion} onSubmit={onSubmitAskReply} />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative z-50 flex w-full flex-col rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl">
+    <div className="rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl relative z-50 flex w-full flex-col">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
-        <div className="pointer-events-auto z-50 px-2">
+        <div className="px-2 pointer-events-auto z-50">
           <QueuedBox
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
@@ -104,7 +127,7 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`relative mb-sm flex w-full flex-col rounded-3xl ${backgroundClass}`}
+        className={`mb-sm rounded-3xl relative flex w-full flex-col ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
         {state === 'confirm' && (
@@ -131,11 +154,11 @@ export default function BottomBox({
 
         {noModelOverlay && onSelectModel ? (
           <div
-            className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
+            className="inset-0 gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg absolute z-[15] flex flex-row items-center justify-center"
             role="alert"
           >
             <TriangleAlert
-              className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
+              className="h-4 w-4 text-ds-icon-warning-default-default shrink-0"
               aria-hidden
             />
             <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">

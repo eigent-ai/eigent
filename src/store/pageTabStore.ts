@@ -73,7 +73,7 @@ interface PageTabState {
   setScrollToQueryId: (queryId: string | null) => void;
   /**
    * Bumped when the side-panel Progress section asks the chat to surface
-   * the task box: TaskCard expands itself, ProjectChatContainer scrolls
+   * the task box: TaskCard expands itself, SessionStackContainer scrolls
    * the active query group so the task box sits at the top.
    */
   taskBoxFocusRequestId: number;

@@ -12,34 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { QuestionBlock } from '@/components/ChatBox/MessageItem/blocks/QuestionBlock';
-import { RenderSessionContext } from '@/components/ChatBox/renderSession/RenderSessionProvider';
+import { QuestionBlock } from '@/components/ChatBox/messages/askBlocks/QuestionBlock';
 import type { QuestionChatBlock } from '@/components/ChatBox/renderSession/types';
-import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
-
-const mockSubmitReply = vi.fn().mockResolvedValue(undefined);
-
-function renderWithContext(block: QuestionChatBlock) {
-  const ctx = {
-    chatTurns: [],
-    projectId: 'proj-1',
-    taskId: 'task-1',
-    activeAsk: block.isActive ? block.agentName : '',
-    submitReply: mockSubmitReply,
-  };
-
-  return render(
-    <RenderSessionContext.Provider value={ctx}>
-      <QuestionBlock block={block} />
-    </RenderSessionContext.Provider>
-  );
-}
 
 function makeBlock(overrides?: Partial<QuestionChatBlock>): QuestionChatBlock {
   return {
@@ -58,64 +38,32 @@ function makeBlock(overrides?: Partial<QuestionChatBlock>): QuestionChatBlock {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('QuestionBlock — text submit', () => {
-  it('calls submitReply with the typed text', async () => {
-    renderWithContext(makeBlock());
-
-    const textarea = screen.getByRole('textbox');
-    await userEvent.type(textarea, 'Young adults');
-
-    const sendBtn = screen.getByRole('button');
-    await userEvent.click(sendBtn);
-
-    expect(mockSubmitReply).toHaveBeenCalledWith(
-      'Young adults',
-      'browser_agent'
-    );
+describe('QuestionBlock — view-only display', () => {
+  it('renders the question text', () => {
+    render(<QuestionBlock block={makeBlock()} />);
+    expect(
+      screen.getByText('What is the target audience?')
+    ).toBeInTheDocument();
   });
-});
 
-describe('QuestionBlock — choice_input', () => {
-  it('renders choice buttons and calls submitReply on click', async () => {
-    renderWithContext(
-      makeBlock({
-        inputType: 'choice_input',
-        choices: ['Yes', 'No'],
-        content: 'Should I continue? Yes or No',
-      })
-    );
-
-    const yesBtn = screen.getByRole('button', { name: 'Yes' });
-    await userEvent.click(yesBtn);
-
-    expect(mockSubmitReply).toHaveBeenCalledWith('Yes', 'browser_agent');
+  it('renders the agent label', () => {
+    render(<QuestionBlock block={makeBlock()} />);
+    expect(screen.getByText(/browser_agent asks/i)).toBeInTheDocument();
   });
-});
 
-describe('QuestionBlock — disabled when inactive', () => {
-  it('disables the input and shows Answered label when not active', () => {
-    renderWithContext(makeBlock({ isActive: false }));
-    const textarea = screen.queryByRole('textbox');
-    if (textarea) {
-      expect(textarea).toBeDisabled();
-    }
+  it('shows "Reply below" hint when active', () => {
+    render(<QuestionBlock block={makeBlock({ isActive: true })} />);
+    expect(screen.getByText(/reply below/i)).toBeInTheDocument();
+  });
+
+  it('shows "Answered" label when inactive', () => {
+    render(<QuestionBlock block={makeBlock({ isActive: false })} />);
     expect(screen.getByText('Answered')).toBeInTheDocument();
   });
-});
 
-describe('QuestionBlock — skipped state', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('shows the skipped label after auto-skip fires', async () => {
-    vi.useFakeTimers();
-    renderWithContext(makeBlock());
-
-    await act(async () => {
-      vi.advanceTimersByTime(30_000);
-    });
-
-    expect(screen.getByText(/skipped — task continues/i)).toBeInTheDocument();
+  it('renders no input controls', () => {
+    render(<QuestionBlock block={makeBlock()} />);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

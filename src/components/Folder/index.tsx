@@ -54,7 +54,7 @@ import {
 import FolderComponent from './FolderComponent';
 
 import { fetchGet, getBaseURL } from '@/api/http';
-import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { MarkDown } from '@/components/ChatBox/messages/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import {
