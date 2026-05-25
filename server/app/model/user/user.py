@@ -83,6 +83,16 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class BillingSummaryOut(BaseModel):
+    email: EmailStr
+    subscription_mode: str
+    plan_name: str
+    credits_total: int
+    credits_daily: int
+    credits_monthly: int
+    credits_permanent: int
+
+
 class UpdatePassword(BaseModel):
     password: str
     new_password: str

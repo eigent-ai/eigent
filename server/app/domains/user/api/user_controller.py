@@ -22,8 +22,11 @@ from app.model.chat.chat_snpshot import ChatSnapshot
 from app.model.config.config import Config
 from app.model.mcp.mcp_user import McpUser
 from app.model.user.privacy import UserPrivacy, UserPrivacySettings
-from app.model.user.user import User, UserIn, UserOut, UserProfile
+from app.model.user.user import User, UserIn, UserOut, UserProfile, BillingSummaryOut
 from app.model.user.user_stat import UserStat, UserStatActionIn, UserStatOut
+from app.model.user.user_credits_record import CreditsChannel, UserCreditsRecord
+from app.model.pay.order import Order, OrderStatus, OrderType
+from app.model.config.plan import Plan
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
 
@@ -114,3 +117,62 @@ def record_user_stat(
     data.user_id = auth.id
     stat = UserStat.record_action(db_session, data)
     return stat
+
+
+def _available_credit_amount(record: UserCreditsRecord) -> int:
+    return max(0, (record.amount or 0) - (record.balance or 0))
+
+
+@router.get("/user/billing-summary", name="get billing summary", response_model=BillingSummaryOut)
+def get_billing_summary(db_session: Session = Depends(session), auth: V1UserAuth = Depends(auth_must)):
+    user: User = auth.user
+    db_session.refresh(user)
+
+    daily_record = UserCreditsRecord.get_daily_balance(user.id)
+    credits_daily = _available_credit_amount(daily_record) if daily_record else 0
+
+    monthly_records = db_session.exec(
+        select(UserCreditsRecord).where(
+            UserCreditsRecord.user_id == user.id,
+            UserCreditsRecord.channel == CreditsChannel.monthly,
+            UserCreditsRecord.used == False,
+        )
+    ).all()
+    credits_monthly = sum(_available_credit_amount(record) for record in monthly_records)
+
+    credits_permanent = UserCreditsRecord.get_permanent_credits(user.id)
+    credits_total = user.credits + credits_daily + credits_monthly
+
+    subscription_mode = "free"
+    plan_name = "Free"
+    if user.email.endswith("@local.eigent.ai"):
+        subscription_mode = "local"
+        plan_name = "Local"
+
+    latest_plan_order = db_session.exec(
+        select(Order)
+        .where(
+            Order.user_id == user.id,
+            Order.order_type == OrderType.plan,
+            Order.status == OrderStatus.success,
+        )
+        .order_by(Order.created_at.desc())
+    ).first()
+
+    if latest_plan_order:
+        subscription_mode = "paid"
+        plan_name = (latest_plan_order.extra or {}).get("plan_name", plan_name)
+        if latest_plan_order.plan_id:
+            plan = db_session.get(Plan, latest_plan_order.plan_id)
+            if plan:
+                plan_name = plan.name
+
+    return BillingSummaryOut(
+        email=user.email,
+        subscription_mode=subscription_mode,
+        plan_name=plan_name,
+        credits_total=credits_total,
+        credits_daily=credits_daily,
+        credits_monthly=credits_monthly,
+        credits_permanent=credits_permanent,
+    )

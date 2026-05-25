@@ -17,7 +17,7 @@ import logging
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from app.component.environment import sanitize_env_path, set_user_env_path
@@ -33,6 +33,7 @@ from app.service.task import (
     get_task_lock_if_exists,
     task_locks,
 )
+from app.utils.brain_auth import require_brain_token
 
 logger = logging.getLogger("task_controller")
 
@@ -86,7 +87,11 @@ class TakeControl(BaseModel):
 @router.put(
     "/task/{id}/take-control", name="take control pause, resume or stop"
 )
-def take_control(id: str, data: TakeControl):
+def take_control(
+    id: str,
+    data: TakeControl,
+    claimed_email: str = Depends(require_brain_token),
+):
     logger.info(
         "Task control action", extra={"task_id": id, "action": data.action}
     )
@@ -97,6 +102,12 @@ def take_control(id: str, data: TakeControl):
             extra={"task_id": id},
         )
         return Response(status_code=204)
+    owner = getattr(task_lock, "owner_email", None)
+    if owner and claimed_email.lower() != owner.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to control this task",
+        )
     if data.action == Action.stop:
         asyncio.run(task_lock.put_queue(ActionStopData(action=Action.stop)))
     else:

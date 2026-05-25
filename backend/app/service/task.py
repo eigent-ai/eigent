@@ -21,7 +21,6 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
-from camel.tasks import Task
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -33,6 +32,7 @@ from app.model.chat import (
     UpdateData,
 )
 from app.model.enums import Status
+from camel.tasks import Task
 
 logger = logging.getLogger("task_service")
 
@@ -365,6 +365,8 @@ class TaskLock:
     """Track if summary has been generated for this project"""
     current_task_id: str | None
     """Current task ID to be used in SSE responses"""
+    owner_email: str | None
+    """Email of the user who created this task lock, used for ownership validation"""
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -385,6 +387,7 @@ class TaskLock:
         self.last_task_summary = ""
         self.question_agent = None
         self.current_task_id = None
+        self.owner_email = None
 
         logger.info(
             "Task lock initialized",

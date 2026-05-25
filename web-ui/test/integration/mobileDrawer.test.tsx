@@ -1,0 +1,89 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import ProjectDetailPage from '@web/pages/ProjectDetailPage';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@web/hooks/useWebAuth', () => ({
+  useIsMobile: () => true,
+  useIsTablet: () => false,
+  useMediaQuery: () => true,
+}));
+
+vi.mock('@web/hooks/useProjectDetail', () => ({
+  useProjectDetail: () => ({
+    project: {
+      projectId: 'p1',
+      name: 'Alpha',
+      sessionCount: 1,
+      totalTokens: 10,
+      latestActivity: '2026-05-20T10:00:00Z',
+      lastPrompt: 'Do work',
+      ongoingCount: 0,
+      completedCount: 1,
+      sessions: [
+        {
+          id: 1,
+          taskId: 't1',
+          projectId: 'p1',
+          question: 'Do work',
+          status: 'done',
+          tokens: 10,
+        },
+      ],
+    },
+    loading: false,
+    error: null,
+    reload: vi.fn(),
+  }),
+  useSessionPanel: () => ({
+    panel: {
+      taskId: 't1',
+      status: 'done',
+      question: 'Do work',
+      tokens: 10,
+      timeline: [],
+      snapshots: [],
+      resultFiles: [],
+    },
+    loading: false,
+  }),
+  createEmptyProject: vi.fn(),
+  toWebSession: vi.fn(),
+}));
+
+describe('mobile drawer behavior', () => {
+  it('opens session side panel drawer on mobile', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/sessions/t1']}>
+        <Routes>
+          <Route
+            path="/projects/:projectId/sessions/:taskId"
+            element={<ProjectDetailPage />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /details/i }));
+    expect(screen.getByText('Session details')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Close session panel' })
+    );
+    expect(screen.queryByText('Session details')).not.toBeInTheDocument();
+  });
+});

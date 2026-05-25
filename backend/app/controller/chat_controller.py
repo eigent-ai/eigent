@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.component import code
@@ -54,6 +54,7 @@ from app.service.task import (
     set_current_task_id,
     task_locks,
 )
+from app.utils.brain_auth import require_brain_token
 from app.utils.browser_launcher import (
     ensure_cdp_browser_endpoint,
     is_cdp_url_available,
@@ -261,6 +262,7 @@ async def start_chat_stream(data: Chat, request: Request):
     )
 
     task_lock = get_or_create_task_lock(data.project_id)
+    task_lock.owner_email = data.email
 
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
@@ -340,7 +342,16 @@ async def start_chat_stream(data: Chat, request: Request):
 
 
 @router.post("/chat", name="start chat")
-async def post(data: Chat, request: Request):
+async def post(
+    data: Chat,
+    request: Request,
+    claimed_email: str = Depends(require_brain_token),
+):
+    if claimed_email.lower() != data.email.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Token email does not match request email",
+        )
     stream = await start_chat_stream(data, request)
     return StreamingResponse(
         stream,
