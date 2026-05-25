@@ -15,7 +15,7 @@
 import {
   AnimatedTokenNumber,
   formatSplittingElapsed,
-} from '@/components/ChatBox/MessageItem/TokenUtils';
+} from '@/components/ChatBox/taskLog/TokenUtils';
 import { ClipboardList } from '@/components/ui/animate-ui/icons/clipboard-list';
 import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
 import { cn } from '@/lib/utils';

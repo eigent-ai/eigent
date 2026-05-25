@@ -91,12 +91,12 @@ export function FeedbackCard({
       </div>
 
       {/* Title */}
-      <p className="font-inter text-sm font-bold leading-normal w-full text-ds-text-neutral-default-default">
+      <p className="font-inter text-sm font-bold leading-normal text-ds-text-neutral-default-default w-full">
         {title}
       </p>
 
       {/* Content */}
-      <p className="font-inter text-sm font-medium leading-normal w-full text-ds-text-neutral-default-default">
+      <p className="font-inter text-sm font-medium leading-normal text-ds-text-neutral-default-default w-full">
         {content}
       </p>
 

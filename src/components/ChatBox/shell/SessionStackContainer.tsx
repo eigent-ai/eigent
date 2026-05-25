@@ -16,9 +16,9 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { AnimatePresence } from 'framer-motion';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ProjectSection } from './ProjectSection';
+import { SessionView } from './SessionView';
 
-interface ProjectChatContainerProps {
+interface SessionStackContainerProps {
   className?: string;
   /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -28,7 +28,7 @@ interface ProjectChatContainerProps {
   isPauseResumeLoading: boolean;
 }
 
-export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
+export const SessionStackContainer: React.FC<SessionStackContainerProps> = ({
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
@@ -159,7 +159,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     }
 
     setScrollToQueryId(null);
-  }, [scrollToQueryId, setScrollToQueryId]);
+  }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
 
   // Surface the task box when the side-panel Progress section asks for it.
   // TaskCard listens to the same counter to expand itself; we own the
@@ -187,7 +187,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div className={`relative z-10 w-full ${className}`}>
       <div
-        className="mx-auto w-full max-w-[600px] pt-0"
+        className="pt-0 mx-auto w-full max-w-[600px]"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">
@@ -212,7 +212,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
             }
 
             return (
-              <ProjectSection
+              <SessionView
                 key={chatId}
                 chatId={chatId}
                 chatStore={chatStore}

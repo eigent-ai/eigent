@@ -17,7 +17,7 @@ import {
   getBlockHeaderParts,
   type AgentBlock,
   type TimelineItem,
-} from '@/components/ChatBox/MessageItem/TaskWorkLogAccordion';
+} from '@/components/ChatBox/taskLog/TaskWorkLogAccordion';
 import { AgentStep, type AgentStepType } from '@/types/constants';
 import { describe, expect, it } from 'vitest';
 

@@ -14,7 +14,7 @@
 
 import tokenDarkIcon from '@/assets/token-dark.svg';
 import tokenLightIcon from '@/assets/token-light.svg';
-import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { AnimatedTokenNumber } from '@/components/ChatBox/taskLog/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';

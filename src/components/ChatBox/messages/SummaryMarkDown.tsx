@@ -67,7 +67,7 @@ export const SummaryMarkDown = ({
       .trim();
     return (
       <div className="prose prose-sm max-w-none">
-        <pre className="mb-3 rounded-lg p-3 font-mono text-xs overflow-x-auto border border-ds-border-status-completed-default-default bg-ds-bg-completed-subtle-default whitespace-pre-wrap text-ds-text-neutral-default-default">
+        <pre className="mb-3 rounded-lg p-3 font-mono text-xs border-ds-border-status-completed-default-default bg-ds-bg-completed-subtle-default text-ds-text-neutral-default-default overflow-x-auto border whitespace-pre-wrap">
           <code>{formattedHtml}</code>
         </pre>
       </div>
@@ -79,12 +79,12 @@ export const SummaryMarkDown = ({
       <ReactMarkdown
         components={{
           h1: ({ children }) => (
-            <h1 className="mb-3 gap-2 pb-2 text-xl font-bold flex items-center border-b border-ds-border-status-completed-default-default text-ds-text-success-default-default">
+            <h1 className="mb-3 gap-2 pb-2 text-xl font-bold border-ds-border-status-completed-default-default text-ds-text-success-default-default flex items-center border-b">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mb-3 mt-4 gap-2 text-lg font-semibold flex items-center text-ds-text-status-completed-muted-default">
+            <h2 className="mb-3 mt-4 gap-2 text-lg font-semibold text-ds-text-status-completed-muted-default flex items-center">
               {children}
             </h2>
           ),
@@ -94,17 +94,17 @@ export const SummaryMarkDown = ({
             </h3>
           ),
           p: ({ children }) => (
-            <p className="m-0 mb-3 text-sm font-normal leading-relaxed whitespace-pre-wrap text-ds-text-neutral-default-default">
+            <p className="m-0 mb-3 text-sm font-normal leading-relaxed text-ds-text-neutral-default-default whitespace-pre-wrap">
               {children}
             </p>
           ),
           ul: ({ children }) => (
-            <ul className="mb-3 ml-2 space-y-1 text-sm list-inside list-disc text-ds-text-neutral-default-default">
+            <ul className="mb-3 ml-2 space-y-1 text-sm text-ds-text-neutral-default-default list-inside list-disc">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="mb-3 ml-2 space-y-1 text-sm list-inside list-decimal text-ds-text-neutral-default-default">
+            <ol className="mb-3 ml-2 space-y-1 text-sm text-ds-text-neutral-default-default list-inside list-decimal">
               {children}
             </ol>
           ),
@@ -119,12 +119,12 @@ export const SummaryMarkDown = ({
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="mb-3 rounded-lg p-3 font-mono text-xs overflow-x-auto border border-ds-border-status-completed-default-default bg-ds-bg-completed-subtle-default whitespace-pre-wrap text-ds-text-neutral-default-default">
+            <pre className="mb-3 rounded-lg p-3 font-mono text-xs border-ds-border-status-completed-default-default bg-ds-bg-completed-subtle-default text-ds-text-neutral-default-default overflow-x-auto border whitespace-pre-wrap">
               {children}
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="mb-3 rounded-r-lg py-2 pl-4 border-l-4 border-ds-border-status-completed-default-default bg-ds-bg-completed-subtle-default text-ds-text-status-completed-muted-default italic">
+            <blockquote className="mb-3 rounded-r-lg py-2 pl-4 border-ds-border-status-completed-default-default bg-ds-bg-completed-subtle-default text-ds-text-status-completed-muted-default border-l-4 italic">
               {children}
             </blockquote>
           ),

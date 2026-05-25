@@ -13,6 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type {
+  AskPayload,
+  ReplyPayload,
+} from '@/components/ChatBox/renderSession/types';
+import type {
   AgentMessageStatusType,
   AgentStatusType,
   AgentStepType,
@@ -117,6 +121,10 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    /** Structured ASK payload (Stage B). If absent, renderer falls back to detectInputType heuristic. */
+    askPayload?: AskPayload;
+    /** Structured reply payload (Stage C). If absent, renderer falls back to markdown + fileList. */
+    replyPayload?: ReplyPayload;
   }
 
   interface AgentMessage {

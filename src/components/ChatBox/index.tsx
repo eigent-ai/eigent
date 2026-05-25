@@ -43,7 +43,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
-import { ProjectChatContainer } from './ProjectChatContainer';
+import { legacyAskPayload } from './renderSession/normalizeMessages';
+import { SessionStackContainer } from './shell/SessionStackContainer';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -363,9 +364,6 @@ export default function ChatBox(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
-  const activeTaskId = chatStore?.activeTaskId;
-  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
-
   useEffect(() => {
     if (!chatStore?.activeTaskId) return;
     const interval = setInterval(() => {
@@ -375,25 +373,8 @@ export default function ChatBox(): JSX.Element {
     }, 500);
     return () => clearInterval(interval);
   }, [chatStore?.activeTaskId, chatStore]);
-
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, chatStore, activeTaskId]);
+  // Note: 30-second HITL auto-skip timer has moved into QuestionBlock so it is
+  // scoped to the inline question and its countdown is visible to the user.
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -499,6 +480,19 @@ export default function ChatBox(): JSX.Element {
     useCloudModelInDev,
     isTaskBusy,
   ]);
+
+  // Derive the current active HITL question for the BottomBox ask mode.
+  const activeQuestion = useMemo(() => {
+    if (!chatStore?.activeTaskId) return null;
+    const task = chatStore.tasks[chatStore.activeTaskId];
+    if (!task?.activeAsk) return null;
+    const askMsg = [...task.messages]
+      .reverse()
+      .find((m) => m.step === AgentStep.ASK);
+    if (!askMsg) return null;
+    // Use structured payload if the backend sent one; otherwise build from heuristics.
+    return askMsg.askPayload ?? legacyAskPayload(askMsg, task.activeAsk);
+  }, [chatStore?.activeTaskId, chatStore?.tasks]);
 
   const handleSendShare = useCallback(
     async (token: string) => {
@@ -1194,13 +1188,13 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
+          className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
-            <ProjectChatContainer
+            <SessionStackContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onSkip={handleSkip}
@@ -1208,11 +1202,17 @@ export default function ChatBox(): JSX.Element {
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
+              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
-                  state="input"
+                  state={activeQuestion ? 'ask' : 'input'}
+                  askQuestion={activeQuestion ?? undefined}
+                  onSubmitAskReply={
+                    activeQuestion
+                      ? (reply) => handleSend(reply, chatStore.activeTaskId!)
+                      : undefined
+                  }
                   queuedMessages={queuedMessages}
                   onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                   usageLimitBanner={usageLimitBanner}
@@ -1255,11 +1255,17 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px]">
               <BottomBox
-                state={getBottomBoxState()}
+                state={activeQuestion ? 'ask' : getBottomBoxState()}
+                askQuestion={activeQuestion ?? undefined}
+                onSubmitAskReply={
+                  activeQuestion
+                    ? (reply) => handleSend(reply, chatStore.activeTaskId!)
+                    : undefined
+                }
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                 usageLimitBanner={usageLimitBanner}
@@ -1334,7 +1340,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

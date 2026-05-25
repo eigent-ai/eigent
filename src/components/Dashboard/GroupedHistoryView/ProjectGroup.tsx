@@ -14,7 +14,7 @@
 
 import tokenDarkIcon from '@/assets/token-dark.svg';
 import tokenLightIcon from '@/assets/token-light.svg';
-import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { formatTokenCount } from '@/components/ChatBox/taskLog/TokenUtils';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
