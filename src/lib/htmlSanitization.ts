@@ -155,3 +155,13 @@ export function sanitizeHtmlStrict(html: string): string {
   }
   return sanitizeHtml(html);
 }
+
+/** Skip JS template literal expressions such as `${escapeHtml(node.image)}`. */
+export function isStaticImageSrc(src: string): boolean {
+  return !src.includes('${');
+}
+
+/** Remove script blocks so img tag scans match real HTML, not JS template strings. */
+export function stripScriptBlocks(html: string): string {
+  return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+}

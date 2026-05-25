@@ -168,6 +168,7 @@ export const MarkDown = memo(
             // Check if it's a relative path
             const isRelative =
               src &&
+              !src.includes('${') &&
               !src.startsWith('http://') &&
               !src.startsWith('https://') &&
               !src.startsWith('data:');

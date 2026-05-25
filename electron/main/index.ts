@@ -2894,7 +2894,8 @@ app.whenReady().then(async () => {
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
     const url = decodeURIComponent(request.url.replace('localfile://', ''));
-    const filePath = path.resolve(path.normalize(url));
+    const normalizedUrl = url.replace(/^\/([A-Za-z]:[\\/])/, '$1');
+    const filePath = path.resolve(path.normalize(normalizedUrl));
 
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
     log.info(`[PROTOCOL] Resolved path: ${filePath}`);
