@@ -23,6 +23,7 @@ from pathlib import Path
 from app.component.environment import env
 from app.exception.exception import PathEscapesBaseError
 from app.model.chat import Chat
+from app.run_context import get_current_run_context
 
 logger = logging.getLogger("file_utils")
 
@@ -31,7 +32,7 @@ MAX_PATH_LENGTH_WIN = 260
 MAX_PATH_LENGTH_UNIX = 4096
 # Default directory names to skip when listing (list_files)
 DEFAULT_SKIP_DIRS = frozenset(
-    {".git", "node_modules", "__pycache__", "venv", ".venv"}
+    {".git", "node_modules", "__pycache__", "venv", ".venv", "camel_logs"}
 )
 # Default file extensions to skip when listing (list_files)
 DEFAULT_SKIP_EXTENSIONS: tuple[str, ...] = (".pyc", ".tmp", ".temp")
@@ -228,7 +229,7 @@ def list_files(
     except OSError:
         return []
     base_real = os.path.realpath(resolve_base)
-    skip_dirs = set(DEFAULT_SKIP_DIRS) if skip_dirs is None else skip_dirs
+    skip_dirs = set(DEFAULT_SKIP_DIRS).union(skip_dirs or set())
     result: list[str] = []
     try:
         for root, dirs, files in os.walk(resolved_dir, followlinks=False):
@@ -280,6 +281,12 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
         and task_lock.new_folder_path
     ):
         raw = Path(task_lock.new_folder_path)
+    elif task_lock and getattr(task_lock, "working_directory", None):
+        raw = Path(task_lock.working_directory)
+    elif (
+        context := get_current_run_context()
+    ) is not None and context.project_id == options.project_id:
+        raw = context.working_directory
     else:
         raw = Path(env("file_save_path", options.file_save_path()))
 

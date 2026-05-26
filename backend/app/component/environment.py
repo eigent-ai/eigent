@@ -213,6 +213,23 @@ def env(key: str, default=None):
 
     Security: Re-validates path at point of use to ensure integrity.
     """
+    # Run-scoped values are the first source of truth for mutable runtime
+    # settings. This keeps legacy `env("file_save_path")` call sites working
+    # without relying on process-global os.environ during concurrent runs.
+    try:
+        # Inline import avoids a startup cycle: run_context imports no env
+        # helpers, but many early modules import env before the runtime package.
+        from app.run_context import get_run_env_override
+
+        run_value = get_run_env_override(key)
+        if run_value is not None:
+            logger.debug(
+                f"Environment variable retrieved from RunContext: key={key}"
+            )
+            return run_value
+    except ImportError:
+        pass
+
     # If we have a user-specific environment path, try to reload it
     # to get latest values.
     if hasattr(_thread_local, "env_path"):
