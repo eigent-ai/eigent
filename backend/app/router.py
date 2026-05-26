@@ -19,8 +19,9 @@ for better visibility and maintainability.
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
+from app.auth import get_brain_auth_context
 from app.controller import (
     chat_controller,
     file_controller,
@@ -32,6 +33,7 @@ from app.controller import (
     skill_controller,
     task_controller,
     tool_controller,
+    workspace_controller,
 )
 
 logger = logging.getLogger("router")
@@ -101,6 +103,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "tags": ["tool"],
             "description": "Tool installation and management",
         },
+        {
+            "router": workspace_controller.router,
+            "tags": ["workspace"],
+            "description": "Space-level local workspace binding",
+        },
     ]
 
     app.include_router(health_controller.router, tags=["Health"])
@@ -109,8 +116,16 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
     )
 
     for config in routers_config:
+        dependencies = (
+            []
+            if config["tags"] == ["Health"]
+            else [Depends(get_brain_auth_context)]
+        )
         app.include_router(
-            config["router"], prefix=prefix, tags=config["tags"]
+            config["router"],
+            prefix=prefix,
+            tags=config["tags"],
+            dependencies=dependencies,
         )
         route_count = len(config["router"].routes)
         logger.info(

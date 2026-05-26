@@ -15,12 +15,12 @@
 """Default Message Router implementation for Phase 2."""
 
 import logging
-import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 
+from app.component.environment import env
 from app.router_layer.interface import (
     InboundMessage,
     IRouter,
@@ -169,10 +169,9 @@ class DefaultMessageRouter(IRouter):
             attaches=attaches,
             model_platform=payload.get("model_platform") or "openai",
             model_type=payload.get("model_type") or "gpt-4o",
-            # TODO(multi-tenant): falling back to os.environ inherits whatever
-            # the last /chat request wrote – unsafe under concurrent sessions.
-            api_key=payload.get("api_key")
-            or os.environ.get("OPENAI_API_KEY", ""),
+            # RunContext-aware env() keeps this fallback task-scoped when
+            # route_in is called from an active RunContext.
+            api_key=payload.get("api_key") or env("OPENAI_API_KEY", ""),
             api_url=payload.get("api_url"),
             user_id=msg.user_id,
         )
