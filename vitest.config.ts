@@ -32,6 +32,14 @@ export default defineConfig({
     testTimeout: 1000 * 29,
     globals: true,
     setupFiles: ['test/setup.ts'],
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        maxForks: 2,
+        minForks: 1,
+        isolate: true,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -140,7 +140,7 @@ describe('Integration Test: Replay Functionality', () => {
     mockFetchEventSource.mockImplementation(
       async (url: string, options: any) => {
         console.log('SSE URL called:', url);
-        if (url.includes('/api/chat/steps/playback/') && options.onmessage) {
+        if (url.includes('/chat/steps/playback/') && options.onmessage) {
           await replayEventSequence(options.onmessage);
         }
       }
@@ -252,7 +252,7 @@ describe('Integration Test: Replay Functionality', () => {
 
     mockFetchEventSource.mockImplementation(
       async (url: string, options: any) => {
-        if (url.includes('/api/chat/steps/playback/') && options.onmessage) {
+        if (url.includes('/chat/steps/playback/') && options.onmessage) {
           await replayEventSequence(options.onmessage);
         }
       }
@@ -334,7 +334,7 @@ describe('Integration Test: Replay Functionality', () => {
 
     mockFetchEventSource.mockImplementation(
       async (url: string, options: any) => {
-        if (url.includes('/api/chat/steps/playback/') && options.onmessage) {
+        if (url.includes('/chat/steps/playback/') && options.onmessage) {
           await replayEventSequence(options.onmessage);
         }
       }
@@ -389,7 +389,7 @@ describe('Integration Test: Replay Functionality', () => {
     // Update mock for post-replay events
     mockFetchEventSource.mockImplementation(
       async (url: string, options: any) => {
-        if (!url.includes('/api/chat/steps/playback/') && options.onmessage) {
+        if (!url.includes('/chat/steps/playback/') && options.onmessage) {
           await postReplayEventSequence(options.onmessage);
         }
       }
@@ -499,7 +499,7 @@ describe('Integration Test: Replay Functionality', () => {
     mockFetchEventSource.mockImplementation(
       async (url: string, options: any) => {
         console.log('Mock SSE called with URL:', url);
-        if (url.includes('/api/chat/steps/playback/') && options.onmessage) {
+        if (url.includes('/chat/steps/playback/') && options.onmessage) {
           // This is replay SSE
           console.log('Processing replay events');
           await replayEventSequence(options.onmessage);
@@ -659,7 +659,7 @@ describe('Issue #619 - Duplicate Task Boxes after replay', () => {
 
         if (options.onmessage) {
           // First simulate replay of previous event to establish context
-          if (sseCallCount === 1 && url.includes('/api/chat/steps/playback/')) {
+          if (sseCallCount === 1 && url.includes('/chat/steps/playback/')) {
             console.log(
               'Simulating replay mechanism for previous calendar task'
             );
@@ -875,7 +875,7 @@ describe('Issue #619 - Duplicate Task Boxes after replay', () => {
             // First call: initial task
             console.log('Processing initial task events');
             await initialSequence(options.onmessage);
-          } else if (url.includes('/api/chat/steps/playback/')) {
+          } else if (url.includes('/chat/steps/playback/')) {
             // Subsequent calls: replay
             console.log('Processing replay events');
             await replaySequence(options.onmessage);
