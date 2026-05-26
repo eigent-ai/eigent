@@ -28,7 +28,9 @@ import { generateUniqueId, SITE_URL } from '@/lib';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
@@ -201,19 +203,36 @@ export default function ChatBox(): JSX.Element {
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const sessionSidePanelMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
+  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectMeta = useSpaceStore((s) =>
+    activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
+  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
+  const activeProject = activeProjectId
+    ? projectStore.getProjectById(activeProjectId)
+    : null;
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
-  // Session mode in three forms (see naming convention shared with
-  // Session/Workspace): `inferred` is the raw, nullable inference;
+  // Project mode in three forms: `inferred` is a legacy Run fallback;
   // `effective` always resolves to a concrete mode; `display` stays nullable
-  // so a still-loading session renders empty instead of the wrong mode.
+  // so a still-loading Project renders empty instead of the wrong mode.
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
-  const effectiveSessionMode = inferredSessionMode ?? sessionSidePanelMode;
-  const displaySessionMode = inferredSessionMode ?? undefined;
+  const activeProjectMode = activeProjectMeta?.mode ?? activeProject?.mode;
+  const effectiveSessionMode =
+    activeProjectMode ?? inferredSessionMode ?? SessionMode.SINGLE_AGENT;
+  const displaySessionMode =
+    activeProjectMode ?? inferredSessionMode ?? undefined;
+  const ensureActiveProjectMode = useCallback(() => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId || activeProjectMode) return;
+    updateProjectMeta(projectId, { mode: effectiveSessionMode });
+  }, [
+    activeProjectMode,
+    effectiveSessionMode,
+    projectStore,
+    updateProjectMeta,
+  ]);
   const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
     useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -778,6 +797,7 @@ export default function ChatBox(): JSX.Element {
               JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
               [];
             try {
+              ensureActiveProjectMode();
               await chatStore.startTask(
                 _taskId,
                 undefined,
@@ -819,6 +839,10 @@ export default function ChatBox(): JSX.Element {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              project_context: buildProjectContinuationContext(
+                projectStore.activeProjectId,
+                nextTaskId
+              ),
               target: undefined,
             });
             chatStore.setIsPending(_taskId, true);
@@ -842,6 +866,7 @@ export default function ChatBox(): JSX.Element {
             [];
           setMessage('');
           try {
+            ensureActiveProjectMode();
             await chatStore.startTask(
               _taskId,
               undefined,

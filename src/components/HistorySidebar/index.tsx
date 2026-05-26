@@ -24,6 +24,7 @@ import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { HistoryTask, ProjectGroup } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -106,11 +107,12 @@ export default function HistorySidebar() {
   } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [currentProjectId, setCurrentProjectId] = useState('');
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
 
   useEffect(() => {
     if (!chatStore) return;
-    fetchGroupedHistoryTasks(setHistoryTasks);
-  }, [chatStore, chatStore?.updateCount]);
+    fetchGroupedHistoryTasks(setHistoryTasks, { spaceId: activeSpaceId });
+  }, [chatStore, chatStore?.updateCount, activeSpaceId]);
 
   // Group ongoing tasks by project
   const ongoingProjects = useMemo(() => {
@@ -118,7 +120,7 @@ export default function HistorySidebar() {
     const projectMap = new Map<string, any>();
 
     // Iterate through all projects
-    const allProjects = projectStore.getAllProjects();
+    const allProjects = projectStore.getAllProjects(activeSpaceId ?? undefined);
     allProjects.forEach((project) => {
       // Get all chat stores for this project
       const chatStores = projectStore.getAllChatStores(project.id);
@@ -158,6 +160,7 @@ export default function HistorySidebar() {
           total_triggers:
             historyTasks.find((item) => item.project_id === project.id)
               ?.total_triggers || 0,
+          space_id: project.spaceId,
           last_prompt: lastPrompt,
           isOngoing: true,
         });
@@ -165,7 +168,7 @@ export default function HistorySidebar() {
     });
 
     return Array.from(projectMap.values());
-  }, [projectStore, chatStore, historyTasks]);
+  }, [projectStore, chatStore, historyTasks, activeSpaceId]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.value) {

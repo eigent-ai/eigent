@@ -29,11 +29,11 @@ import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentS
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
-import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useProjectStore } from '@/store/projectStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ChatTaskStatus, SessionMode } from '@/types/constants';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -54,28 +54,34 @@ function readMemoryInitial(): boolean {
 
 interface WorkspaceProps {
   /**
-   * `'workspace'` (default): full landing — header, composer, recent
-   * sessions, and the docked instructions panel.
-   * `'new-session'`: only the centered composer, for the New Session page.
+   * `'workspace'` (default): full landing — header, composer, recent runs,
+   * and the docked instructions panel.
+   * `'new-project'`: only the centered composer, for the New Project page.
    */
-  variant?: 'workspace' | 'new-session';
+  variant?: 'workspace' | 'new-project';
 }
 
 /**
  * Workspace tab: project landing with a centered task input.
- * After the user starts a task, it switches to the session tab.
+ * After the user starts a task, it switches to the Project chat tab.
  */
 export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   const { t } = useTranslation();
-  const isNewSessionVariant = variant === 'new-session';
+  const isNewProjectVariant = variant === 'new-project';
   const navigate = useNavigate();
   const host = useHost();
-  const { chatStore, projectStore } = useChatStoreAdapter();
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeProject = useProjectStore((s) =>
+  const { chatStore } = useChatStoreAdapter();
+  const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
+  const activeProject = useProjectRuntimeStore((s) =>
     s.activeProjectId ? s.projects[s.activeProjectId] : null
   );
-  const isEmptyProject = useProjectStore((s) => s.isEmptyProject);
+  const activeProjectMeta = useSpaceStore((s) =>
+    activeProjectId ? s.getProjectMeta(activeProjectId) : null
+  );
+  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
+  const activeProjectMetadata =
+    activeProjectMeta?.metadata ?? activeProject?.metadata;
+  const isEmptyProject = useProjectRuntimeStore((s) => s.isEmptyProject);
   const customAgentFolderPath = usePageTabStore((s) =>
     activeProjectId
       ? s.customAgentFolderPathByProjectId[activeProjectId]
@@ -85,19 +91,24 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
     if (!activeProject) return false;
     if (customAgentFolderPath) return false;
     if (!isEmptyProject(activeProject)) return false;
-    if (activeProject.metadata?.historyId) return false;
-    if (activeProject.metadata?.tags?.includes('replay')) return false;
+    if (activeProjectMetadata?.historyId) return false;
+    if (activeProjectMetadata?.tags?.includes('replay')) return false;
     return true;
-  }, [activeProject, customAgentFolderPath, isEmptyProject]);
+  }, [
+    activeProject,
+    activeProjectMetadata,
+    customAgentFolderPath,
+    isEmptyProject,
+  ]);
   /**
    * True when the home workspace has no explicitly selected project (default
-   * "new project" shell). New Session keeps the interactive project picker in
+   * "new project" shell). New Project keeps the interactive project picker in
    * that case; once a project is selected (history, folder, or started work)
    * the picker is display-only.
    */
   const isFreshProject = useMemo(() => {
     if (!activeProject) return true;
-    if (activeProject.metadata?.historyId) return false;
+    if (activeProjectMetadata?.historyId) return false;
     if (customAgentFolderPath) return false;
     const hasStartedWork = Object.values(chatStore?.tasks ?? {}).some(
       (task) =>
@@ -107,28 +118,32 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
     );
     if (hasStartedWork) return false;
     return true;
-  }, [activeProject, chatStore?.tasks, customAgentFolderPath]);
+  }, [
+    activeProject,
+    activeProjectMetadata,
+    chatStore?.tasks,
+    customAgentFolderPath,
+  ]);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const sessionSidePanelMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
-  );
-  const setSessionSidePanelMode = usePageTabStore(
-    (s) => s.setSessionSidePanelMode
-  );
   const workerList = useWorkerList();
   const { modelType, setWorkerList } = useAuthStore();
-  const activeTask = chatStore?.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId]
-    : undefined;
-  // Workspace is the pre-session landing — always resolve to a concrete mode
-  // so the interactive toggle and start-task call never see a null.
+  // Workspace is the pre-Run Project landing. Project.mode is the source of
+  // truth; the old sessionSidePanelMode global is retained only as a migration
+  // shim in pageTabStore.
   const effectiveSessionMode =
-    inferSessionModeFromTask(activeTask, sessionSidePanelMode) ??
-    sessionSidePanelMode;
+    activeProjectMeta?.mode ?? activeProject?.mode ?? SessionMode.SINGLE_AGENT;
+
+  const setActiveProjectMode = useCallback(
+    (mode: typeof effectiveSessionMode) => {
+      if (!activeProjectId) return;
+      updateProjectMeta(activeProjectId, { mode });
+    },
+    [activeProjectId, updateProjectMeta]
+  );
 
   const [message, setMessage] = useState('');
   const { hasModel } = useModelConfigCheck();
@@ -155,7 +170,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
     if (workspaceChatFocusRequestId === 0) return;
     if (
       activeWorkspaceTab !== 'workforce' &&
-      activeWorkspaceTab !== 'new-session'
+      activeWorkspaceTab !== 'new-project'
     )
       return;
     const focusTimer = window.setTimeout(() => {
@@ -176,11 +191,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   }, [modelType]);
 
   const handleSend = async () => {
-    if (
-      !message.trim() ||
-      !chatStore?.activeTaskId ||
-      !projectStore.activeProjectId
-    ) {
+    if (!message.trim() || !chatStore?.activeTaskId || !activeProjectId) {
       return;
     }
 
@@ -191,12 +202,17 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
     }
 
     const taskId = chatStore.activeTaskId;
+    if (activeProjectId && !(activeProjectMeta?.mode ?? activeProject?.mode)) {
+      updateProjectMeta(activeProjectId, {
+        mode: effectiveSessionMode,
+      });
+    }
     chatStore.setHasMessages(taskId, true);
     const attachesToSend =
       JSON.parse(JSON.stringify(chatStore.tasks[taskId]?.attaches)) || [];
 
-    // Enter the live session immediately; task startup continues in the background.
-    setActiveWorkspaceTab('session');
+    // Enter the live Project immediately; task startup continues in the background.
+    setActiveWorkspaceTab('project');
 
     try {
       await chatStore.startTask(
@@ -328,7 +344,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   const activeAgentId = chatStore.tasks[chatStore.activeTaskId]?.activeAgent;
 
   const projectPicker =
-    isNewSessionVariant && !isFreshProject ? (
+    isNewProjectVariant && !isFreshProject ? (
       <WorkspaceProjectPicker readOnly />
     ) : (
       <WorkspaceProjectPicker />
@@ -386,7 +402,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
               useCloudModelInDev,
               placeholder: t('layout.project-task-placeholder'),
               sessionMode: effectiveSessionMode,
-              onSessionModeChange: setSessionSidePanelMode,
+              onSessionModeChange: setActiveProjectMode,
               sessionModeSelectInteractive: true,
             }}
           />
@@ -409,7 +425,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
     </div>
   );
 
-  if (isNewSessionVariant) {
+  if (isNewProjectVariant) {
     return (
       <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
         {/* Empty header toolbar — matches the workspace page vertical structure */}
@@ -489,7 +505,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
               activeTaskId={chatStore.activeTaskId}
               onSelectSession={(id) => {
                 chatStore.setActiveTaskId(id);
-                setActiveWorkspaceTab('session');
+                setActiveWorkspaceTab('project');
                 setWorkspaceSubPage(null);
               }}
               onDeleteSession={(id) => {
@@ -530,7 +546,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
                       activeTaskId={chatStore.activeTaskId}
                       onSelectSession={(id) => {
                         chatStore.setActiveTaskId(id);
-                        setActiveWorkspaceTab('session');
+                        setActiveWorkspaceTab('project');
                       }}
                       onOpenAllSessions={() =>
                         setWorkspaceSubPage('all-sessions')

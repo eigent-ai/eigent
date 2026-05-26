@@ -19,6 +19,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   ChatTaskStatus,
   SessionMode,
@@ -32,21 +33,22 @@ import {
 } from './sessionSidePanelLayout';
 
 /**
- * Active session: header + chat (left) and a mode-dependent side panel (right).
- * The side panel is selected by `sessionSidePanelMode` in the page tab store
- * (Workspace toggle: Single Agent vs Workforce).
+ * Active Project: header + chat (left) and a mode-dependent side panel (right).
+ * The side panel is selected from Project.mode. Task/session mode fields are
+ * retained only to render legacy runs that do not have a Project mode yet.
  */
 interface SessionProps {
-  /** New Session shell: empty session that promotes to a live session on send. */
-  isNewSession?: boolean;
+  /** New Project shell: empty Project that promotes to a live Project on send. */
+  isNewProject?: boolean;
 }
 
-export default function Session({ isNewSession = false }: SessionProps) {
+export default function Session({ isNewProject = false }: SessionProps) {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const sessionMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
+  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectMeta = useSpaceStore((s) =>
+    activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
@@ -98,28 +100,29 @@ export default function Session({ isNewSession = false }: SessionProps) {
   }, [chatStore]);
 
   useEffect(() => {
-    // The New Session shell stays selected on its own tab — never redirect
+    // The New Project shell stays selected on its own tab — never redirect
     // away from it (it is empty until the user sends the first message).
-    if (isNewSession) return;
+    if (isNewProject) return;
     if (!hasSessionStarted) {
       setActiveWorkspaceTab('workforce');
     }
-  }, [isNewSession, hasSessionStarted, setActiveWorkspaceTab]);
+  }, [isNewProject, hasSessionStarted, setActiveWorkspaceTab]);
 
-  // Nullable "display" form of the session mode (see the naming convention
-  // shared with ChatBox/Workspace). `null` while a saved session is still
-  // loading — the side panel renders empty rather than defaulting to
-  // workforce and flickering once the real mode resolves. Fresh sessions
-  // fall back to the toggle's mode.
+  // Nullable "display" form of the Project mode. `null` while a saved Project
+  // is still loading — the side panel renders empty rather than defaulting and
+  // flickering once the real mode resolves. Fresh Projects default to single
+  // agent until the Project mode toggle writes a value.
   const displaySessionMode: SessionModeType | null =
-    inferredSessionMode ?? (hasSessionStarted ? null : sessionMode);
+    activeProjectMeta?.mode ??
+    inferredSessionMode ??
+    (hasSessionStarted ? null : SessionMode.SINGLE_AGENT);
 
   useEffect(() => {
     setIsExpandedOverlayOpen(false);
   }, [projectStore.activeProjectId]);
 
   useEffect(() => {
-    if (activeWorkspaceTab !== 'session') {
+    if (activeWorkspaceTab !== 'project') {
       setIsExpandedOverlayOpen(false);
     }
   }, [activeWorkspaceTab]);
@@ -149,7 +152,7 @@ export default function Session({ isNewSession = false }: SessionProps) {
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {isNewSession ? <Workspace variant="new-session" /> : <ChatBox />}
+          {isNewProject ? <Workspace variant="new-project" /> : <ChatBox />}
         </div>
       </div>
 

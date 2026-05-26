@@ -12,30 +12,65 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchDelete, fetchPut, proxyFetchDelete } from '@/api/http';
+import {
+  fetchDelete,
+  fetchPut,
+  proxyFetchDelete,
+  proxyFetchGet,
+} from '@/api/http';
 import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useHost } from '@/host';
+import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import {
+  createSyncedProjectInSpace,
+  resolveServerBackedSpaceId,
+} from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useProjectStore } from '@/store/projectStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import {
+  getVisibleProjectMetasForSpace,
+  isDisposableBlankSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Cast, Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
+import {
+  Cast,
+  Check,
+  ChevronDown,
+  FolderKanban,
+  Inbox,
+  LayoutGrid,
+  MessageCircle,
+  Plus,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { NavList } from './NavList';
 import {
   NavTab,
   NavTabReconnectSuffix,
+  WORKSPACE_TAB_LABEL_CLASS,
   triggerListenerLeadIconClass,
+  workspaceTabButtonClass,
 } from './NavTab';
+import { ProjectNavList } from './ProjectNavList';
 
 function normalizeFolderPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -47,8 +82,14 @@ function folderPathBasename(path: string): string {
   return parts[parts.length - 1] || normalized;
 }
 
+const PROJECT_NAV_IDLE_LEAD: SessionNavLeadPresentation = {
+  kind: 'idle',
+  Icon: MessageCircle,
+  iconClassName: '!text-ds-icon-neutral-default-default',
+};
+
 export interface ProjectPageSidebarProps {
-  chatStore: ChatStore;
+  chatStore: ChatStore | null;
   className?: string;
 }
 
@@ -72,8 +113,17 @@ export default function ProjectPageSidebar({
   const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
   const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
   const triggersListenerConnected = wsConnectionStatus === 'connected';
-  const projectStore = useProjectStore();
+  const projectStore = useProjectRuntimeStore();
   const activeProjectId = projectStore.activeProjectId;
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const spacesById = useSpaceStore((s) => s.spaces);
+  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
+  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
+  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
+  const projectMetasForActiveSpace = useMemo(() => {
+    if (!activeSpaceId) return [];
+    return getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId);
+  }, [activeSpaceId, projectsBySpaceId]);
   const folderTabHasUnviewedFiles =
     !!activeProjectId && inboxUnviewedForProjects.has(activeProjectId);
   const customFolderPath = usePageTabStore((s) =>
@@ -152,10 +202,10 @@ export default function ProjectPageSidebar({
   }, [customFolderPath, resolvedDefaultFolderPath, t]);
 
   const handleEndProject = async () => {
-    const taskId = chatStore.activeTaskId;
+    const taskId = chatStore?.activeTaskId;
     const projectId = projectStore.activeProjectId;
 
-    if (!taskId) {
+    if (!chatStore || !taskId) {
       toast.error(t('layout.no-active-project-to-end'));
       return;
     }
@@ -208,61 +258,227 @@ export default function ProjectPageSidebar({
     }
   };
 
-  const activeTask = chatStore.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId as string]
-    : undefined;
-  const showEndProject = Boolean(
-    chatStore.activeTaskId &&
-    activeTask &&
-    ((activeTask.messages?.length || 0) > 0 ||
-      activeTask.hasMessages ||
-      activeTask.status !== ChatTaskStatus.PENDING)
-  );
-
-  const navSessions = useMemo(
+  const activeSpaces = useMemo(
     () =>
-      Object.entries(chatStore.tasks)
-        .filter(([, task]) => {
-          const hasStarted =
-            (task.messages?.length || 0) > 0 ||
-            task.hasMessages ||
-            task.status !== ChatTaskStatus.PENDING;
-          return hasStarted;
-        })
-        .map(([id, task]) => ({
-          id,
-          title:
-            task.summaryTask?.trim() ||
-            t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
-          sessionLead: getSessionNavLeadPresentation(task),
-        })),
-    [chatStore.tasks, t]
+      Object.values(spacesById)
+        .filter(
+          (space) =>
+            space.status !== 'archived' &&
+            !(
+              space.id === 'legacy_local' &&
+              activeSpaceId !== 'legacy_local' &&
+              getVisibleProjectMetasForSpace(projectsBySpaceId, space.id)
+                .length === 0
+            ) &&
+            (space.id === activeSpaceId ||
+              !isDisposableBlankSpace(space, projectsBySpaceId))
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [activeSpaceId, projectsBySpaceId, spacesById]
   );
 
-  const handleDeleteSession = useCallback(
-    (sessionId: string) => {
-      if (!window.confirm(t('layout.delete-task-confirmation'))) return;
-      const otherIds = Object.keys(chatStore.tasks).filter(
-        (id) => id !== sessionId
+  const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
+  const rawActiveSpaceName = activeSpace?.name?.trim();
+  const activeSpaceLabel =
+    rawActiveSpaceName === t('layout.new-project') ||
+    rawActiveSpaceName === 'New Project'
+      ? t('layout.spaces-new-space')
+      : rawActiveSpaceName || t('layout.spaces-select-space');
+
+  const projectHasStarted = useCallback(
+    (projectId: string) => {
+      const projectChatStore = projectStore.peekActiveChatStore(projectId);
+      const projectChatState = projectChatStore?.getState();
+      const projectTask = projectChatState?.activeTaskId
+        ? projectChatState.tasks[projectChatState.activeTaskId]
+        : undefined;
+      return Boolean(
+        projectTask &&
+        ((projectTask.messages?.length || 0) > 0 ||
+          projectTask.hasMessages ||
+          projectTask.status !== ChatTaskStatus.PENDING)
       );
-      const wasActive = chatStore.activeTaskId === sessionId;
-      chatStore.removeTask(sessionId);
-      if (wasActive) {
-        if (otherIds.length > 0) {
-          chatStore.setActiveTaskId(otherIds[0]);
-        } else {
-          chatStore.create();
+    },
+    [projectStore]
+  );
+
+  const selectProject = useCallback(
+    async (projectId: string) => {
+      projectStore.setActiveProject(projectId);
+      setActiveWorkspaceTab('project');
+
+      if (projectStore.peekActiveChatStore(projectId)) {
+        return;
+      }
+
+      try {
+        const historyProject = await proxyFetchGet(
+          `/api/v1/chat/histories/grouped/${projectId}`,
+          { include_tasks: true }
+        );
+        const taskIdsList = (historyProject?.tasks ?? [])
+          .map((task: { task_id?: string | null }) => task.task_id)
+          .filter((taskId: string | null | undefined): taskId is string =>
+            Boolean(taskId)
+          );
+
+        if (taskIdsList.length === 0) {
+          projectStore.appendInitChatStore(projectId);
+          setActiveWorkspaceTab('new-project');
+          return;
         }
+
+        const firstTask = historyProject.tasks[0];
+        await projectStore.loadProjectFromHistory(
+          taskIdsList,
+          firstTask?.question || historyProject.last_prompt || '',
+          projectId,
+          firstTask?.id != null ? String(firstTask.id) : undefined,
+          historyProject.project_name
+        );
+        setActiveWorkspaceTab('project');
+      } catch (error) {
+        console.error(
+          `Failed to load Project ${projectId} from history:`,
+          error
+        );
+        if (!projectStore.peekActiveChatStore(projectId)) {
+          projectStore.appendInitChatStore(projectId);
+        }
+        setActiveWorkspaceTab(
+          projectHasStarted(projectId) ? 'project' : 'new-project'
+        );
       }
     },
-    [chatStore, t]
+    [projectHasStarted, projectStore, setActiveWorkspaceTab]
   );
 
-  const handleNewSession = useCallback(() => {
-    chatStore.create();
-    setActiveWorkspaceTab('new-session');
-    requestWorkspaceChatFocus();
-  }, [chatStore, setActiveWorkspaceTab, requestWorkspaceChatFocus]);
+  const navProjects = useMemo(
+    () =>
+      projectMetasForActiveSpace.map((project) => {
+        const projectChatStore = projectStore.peekActiveChatStore(project.id);
+        const projectChatState = projectChatStore?.getState();
+        const activeTask = projectChatState?.activeTaskId
+          ? projectChatState.tasks[projectChatState.activeTaskId]
+          : undefined;
+        return {
+          id: project.id,
+          title:
+            project.name && project.name !== 'new project'
+              ? project.name
+              : t('layout.new-project'),
+          sessionLead: activeTask
+            ? getSessionNavLeadPresentation(activeTask)
+            : PROJECT_NAV_IDLE_LEAD,
+        };
+      }),
+    [projectMetasForActiveSpace, projectStore, t]
+  );
+
+  const handleNewProject = useCallback(async () => {
+    if (!activeSpaceId) {
+      return;
+    }
+    const space = useSpaceStore.getState().getSpaceById(activeSpaceId);
+    try {
+      const result = await createSyncedProjectInSpace({
+        projectStore,
+        spaceId: activeSpaceId,
+        workdirMode: space?.sourceType === 'folder' ? 'copy' : 'artifact-only',
+        metadata: {
+          createdFrom: 'project_sidebar',
+        },
+      });
+      setActiveSpace(result.spaceId);
+      setActiveWorkspaceTab('new-project');
+      requestWorkspaceChatFocus();
+    } catch (error) {
+      console.error('Failed to create Project:', error);
+      toast.error(t('layout.spaces-create-failed'), {
+        closeButton: true,
+      });
+    }
+  }, [
+    activeSpaceId,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveSpace,
+    setActiveWorkspaceTab,
+    t,
+  ]);
+
+  const handleSpaceSelect = useCallback(
+    async (spaceId: string) => {
+      try {
+        const resolvedSpaceId = await resolveServerBackedSpaceId(
+          projectStore,
+          spaceId
+        );
+        const spaceStore = useSpaceStore.getState();
+        if (
+          resolvedSpaceId.startsWith('legacy_') ||
+          spaceStore.shouldSyncProjects(resolvedSpaceId)
+        ) {
+          await spaceStore.syncProjectsFromServer(resolvedSpaceId);
+        }
+        const projectsInSpace = useSpaceStore
+          .getState()
+          .getProjectsForSpace(resolvedSpaceId);
+        if (projectsInSpace.length > 0) {
+          setActiveSpace(resolvedSpaceId);
+          await selectProject(projectsInSpace[0].id);
+          return;
+        }
+        setActiveSpace(resolvedSpaceId);
+        projectStore.setActiveProject(null);
+        setActiveWorkspaceTab('new-project');
+        requestWorkspaceChatFocus();
+      } catch (error) {
+        console.error('Failed to create Project for Space:', error);
+        toast.error(t('layout.spaces-create-failed'), {
+          closeButton: true,
+        });
+      }
+    },
+    [
+      projectStore,
+      requestWorkspaceChatFocus,
+      selectProject,
+      setActiveSpace,
+      setActiveWorkspaceTab,
+      t,
+    ]
+  );
+
+  const handleNewSpace = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceOnServer({
+        name: t('layout.spaces-new-space'),
+        sourceType: 'blank',
+        setActive: false,
+        metadata: {
+          createdFrom: 'project_sidebar_space_selector',
+          autoCreatedPlaceholder: true,
+        },
+      });
+      setActiveSpace(spaceId);
+      projectStore.setActiveProject(null);
+      setActiveWorkspaceTab('new-project');
+      requestWorkspaceChatFocus();
+    } catch (error) {
+      console.error('Failed to create Space:', error);
+      toast.error(t('layout.spaces-create-failed'), {
+        closeButton: true,
+      });
+    }
+  }, [
+    createSpaceOnServer,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveSpace,
+    setActiveWorkspaceTab,
+    t,
+  ]);
 
   return (
     <>
@@ -280,6 +496,67 @@ export default function ProjectPageSidebar({
         <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="flex w-full shrink-0 flex-col gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(workspaceTabButtonClass(false), 'mb-1')}
+                    aria-label={t('layout.spaces-switch-space')}
+                    title={projectSidebarFolded ? activeSpaceLabel : undefined}
+                  >
+                    <FolderKanban
+                      className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                      aria-hidden
+                    />
+                    <span
+                      className={cn(
+                        WORKSPACE_TAB_LABEL_CLASS,
+                        projectSidebarFolded && 'hidden'
+                      )}
+                    >
+                      {activeSpaceLabel}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        'ml-auto h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default',
+                        projectSidebarFolded && 'hidden'
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-56">
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => void handleNewSpace()}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    <span>{t('layout.spaces-new-space')}</span>
+                  </DropdownMenuItem>
+                  {activeSpaces.length > 0 ? <DropdownMenuSeparator /> : null}
+                  {activeSpaces.map((space) => (
+                    <DropdownMenuItem
+                      key={space.id}
+                      className="cursor-pointer"
+                      onClick={() => void handleSpaceSelect(space.id)}
+                    >
+                      <Check
+                        className={cn(
+                          'h-4 w-4',
+                          activeSpaceId === space.id
+                            ? 'opacity-100'
+                            : 'opacity-0'
+                        )}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {space.name?.trim() || t('layout.spaces-untitled')}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <div className="flex w-full min-w-0 flex-col gap-2">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
@@ -297,7 +574,7 @@ export default function ProjectPageSidebar({
                 <NavTab
                   active={activeWorkspaceTab === 'inbox'}
                   onClick={() => {
-                    if (chatStore.activeTaskId) {
+                    if (chatStore?.activeTaskId) {
                       chatStore.setNuwFileNum(chatStore.activeTaskId, 0);
                     }
                     setActiveWorkspaceTab('inbox', {
@@ -413,21 +690,13 @@ export default function ProjectPageSidebar({
             </div>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <NavList
+              <ProjectNavList
                 className="mt-6 flex min-h-0 flex-1 flex-col"
-                sessions={navSessions}
-                activeSessionId={
-                  activeWorkspaceTab === 'session'
-                    ? chatStore.activeTaskId
-                    : null
-                }
-                onSessionClick={(id) => {
-                  chatStore.setActiveTaskId(id);
-                  setActiveWorkspaceTab('session');
-                }}
-                onDeleteSession={handleDeleteSession}
-                onNewSession={handleNewSession}
-                newSessionActive={activeWorkspaceTab === 'new-session'}
+                projects={navProjects}
+                activeProjectId={activeProjectId}
+                onProjectClick={selectProject}
+                onNewProject={() => void handleNewProject()}
+                newProjectActive={activeWorkspaceTab === 'new-project'}
                 folded={projectSidebarFolded}
               />
             </div>

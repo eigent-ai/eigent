@@ -33,6 +33,7 @@ import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
+import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -49,6 +50,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
   type TriggerSortKey,
@@ -99,6 +101,11 @@ export default function Home() {
   const electronAPI = host?.electronAPI;
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
+  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectMeta = useSpaceStore((state) =>
+    activeProjectId ? state.getProjectMeta(activeProjectId) : null
+  );
 
   const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
     usePageTabStore();
@@ -395,7 +402,9 @@ export default function Home() {
           email,
           projectStore.activeProjectId
         );
-        setHasAgentFiles(files && files.length > 0);
+        setHasAgentFiles(
+          Array.isArray(files) && filterVisibleAgentFiles(files).length > 0
+        );
       } catch (error) {
         console.error('Error detecting agent files:', error);
       }
@@ -491,8 +500,13 @@ export default function Home() {
                 taskAssigning[browserAgentIndex].activeWebviewIds![
                   webview.index
                 ];
+              const projectId = activeProjectId || undefined;
               chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
                 api_task_id: chatStore.activeTaskId,
+                run_id: chatStore.activeTaskId,
+                space_id:
+                  activeProjectMeta?.spaceId || activeSpaceId || undefined,
+                project_id: projectId,
                 camel_task_id: processTaskId,
                 browser_url: url,
                 image_base64: base64,
@@ -519,7 +533,14 @@ export default function Home() {
         clearInterval(intervalTimer);
       }
     };
-  }, [chatStore, taskAssigning, ipc]);
+  }, [
+    activeProjectId,
+    activeProjectMeta,
+    activeSpaceId,
+    chatStore,
+    taskAssigning,
+    ipc,
+  ]);
 
   const getSize = useCallback(() => {
     const webviewContainer = document.getElementById('webview-container');
@@ -537,10 +558,6 @@ export default function Home() {
   useEffect(() => {
     if (!chatStore) return;
 
-    if (!chatStore.activeTaskId) {
-      projectStore?.createProject('new project');
-    }
-
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const resizeObserver = new ResizeObserver(() => {
@@ -552,7 +569,7 @@ export default function Home() {
         resizeObserver.disconnect();
       };
     }
-  }, [chatStore, projectStore, getSize]);
+  }, [chatStore, getSize]);
 
   const mainPanelSurfaceClass =
     'rounded-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
@@ -561,8 +578,8 @@ export default function Home() {
 
   const useWorkspacePatternBg =
     activeWorkspaceTab === 'workforce' ||
-    activeWorkspaceTab === 'session' ||
-    activeWorkspaceTab === 'new-session';
+    activeWorkspaceTab === 'project' ||
+    activeWorkspaceTab === 'new-project';
   const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
     if (!useWorkspacePatternBg) return 'empty';
     return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
@@ -612,18 +629,18 @@ export default function Home() {
             <Workspace />
           </div>
         );
-      case 'session':
+      case 'project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <Session />
           </div>
         );
-      case 'new-session':
+      case 'new-project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Session isNewSession />
+            <Session isNewProject />
           </div>
         );
       case 'dispatch':
@@ -652,15 +669,16 @@ export default function Home() {
             onDialogOpenChange={setTriggerDialogOpen}
           />
         );
-      case 'sessions':
+      case 'runs':
         return (
           <SessionGroup
             className={mainPanelContentClass}
-            tasks={chatStore.tasks}
-            activeSessionId={chatStore.activeTaskId}
+            tasks={chatStore?.tasks ?? {}}
+            activeSessionId={chatStore?.activeTaskId ?? undefined}
             onSelectSession={(sessionId) => {
+              if (!chatStore) return;
               chatStore.setActiveTaskId(sessionId);
-              setActiveWorkspaceTab('session');
+              setActiveWorkspaceTab('project');
             }}
             onDeleteSession={handleSessionGroupDeleteSession}
           />
@@ -669,10 +687,6 @@ export default function Home() {
         return null;
     }
   };
-
-  if (!chatStore) {
-    return <div>{t('triggers.loading')}</div>;
-  }
 
   return (
     <ReactFlowProvider>
