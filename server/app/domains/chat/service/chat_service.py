@@ -138,6 +138,7 @@ class ChatService:
         project_map: Dict[str, Dict] = defaultdict(
             lambda: {
                 "project_id": "",
+                "space_id": None,
                 "project_name": None,
                 "total_tokens": 0,
                 "task_count": 0,
@@ -157,6 +158,7 @@ class ChatService:
 
             if not project_data["project_id"]:
                 project_data["project_id"] = project_id
+                project_data["space_id"] = history.space_id
                 project_data["project_name"] = history.project_name or f"Project {project_id}"
                 project_data["latest_task_date"] = history.created_at.isoformat() if history.created_at else ""
                 project_data["last_prompt"] = history.question
@@ -191,7 +193,12 @@ class ChatService:
         return projects
 
     @staticmethod
-    def get_grouped_histories(user_id: int, include_tasks: bool, s: Session) -> GroupedHistoryResponse:
+    def get_grouped_histories(
+        user_id: int,
+        include_tasks: bool,
+        s: Session,
+        space_id: str | None = None,
+    ) -> GroupedHistoryResponse:
         """Get all chat histories grouped by project for a user."""
         stmt = (
             select(ChatHistory)
@@ -202,6 +209,8 @@ class ChatService:
                 desc(ChatHistory.id),
             )
         )
+        if space_id:
+            stmt = stmt.where(ChatHistory.space_id == space_id)
         histories = s.exec(stmt).all()
 
         trigger_count_stmt = (
