@@ -59,7 +59,7 @@ def _is_running_in_docker() -> bool:
 
 def _probe_cdp_browser() -> bool:
     """Check if CDP browser is configured/available."""
-    if os.environ.get("EIGENT_CDP_URL"):
+    if env("EIGENT_CDP_URL"):
         return True
     cdp_json = Path.home() / ".eigent" / "cdp.json"
     if cdp_json.exists():

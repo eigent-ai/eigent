@@ -87,4 +87,32 @@ async def single_agent(
     if assembly.observable_todo_toolkit is not None:
         assembly.observable_todo_toolkit.agent_id = agent.agent_id
     agent._observable_todo_toolkit = assembly.observable_todo_toolkit
+
+    if assembly.browser_toolkit is not None:
+        agent._browser_toolkit = assembly.browser_toolkit
+        agent._cdp_port = assembly.browser_port
+        agent._cdp_url = assembly.browser_cdp_url
+        agent._cdp_session_id = assembly.browser_session_id
+        agent._cdp_task_id = options.task_id
+        agent._cdp_options = options
+        agent._cdp_owned_by_hands = assembly.browser_owned_by_hands
+
+        def release_cdp_from_agent(agent_instance):
+            port = getattr(agent_instance, "_cdp_port", None)
+            session_id = getattr(agent_instance, "_cdp_session_id", None)
+            if port is not None and session_id is not None:
+                if options.cdp_browsers:
+                    from app.agent.factory.browser import _cdp_pool_manager
+
+                    _cdp_pool_manager.release_browser(port, session_id)
+                elif hands is not None and getattr(
+                    agent_instance, "_cdp_owned_by_hands", False
+                ):
+                    try:
+                        hands.release_resource("browser", session_id)
+                    except Exception:
+                        pass
+
+        agent._cdp_acquire_callback = None
+        agent._cdp_release_callback = release_cdp_from_agent
     return agent

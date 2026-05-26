@@ -63,8 +63,11 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
     def _ensure_local_no_proxy(self) -> None:
         local_hosts = ["localhost", "127.0.0.1", "::1"]
         for key in ("NO_PROXY", "no_proxy"):
-            current = os.environ.get(key, "")
+            current = env(key, "")
             if not current:
+                # Process-level proxy bypass for local CDP/WebSocket traffic.
+                # This is intentionally static host configuration, not
+                # per-run mutable state like API keys or artifact paths.
                 os.environ[key] = ",".join(local_hosts)
                 continue
             parts = [

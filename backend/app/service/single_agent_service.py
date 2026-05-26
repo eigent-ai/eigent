@@ -41,36 +41,47 @@ from app.utils.file_utils import get_working_directory
 logger = logging.getLogger("single_agent_service")
 
 
-def _build_single_agent_context(task_lock: TaskLock) -> str:
-    if not getattr(task_lock, "conversation_history", None):
-        return ""
+def _build_single_agent_context(
+    task_lock: TaskLock,
+    project_context: str | None = None,
+) -> str:
+    if getattr(task_lock, "conversation_history", None):
+        lines = ["=== Previous Conversation ==="]
+        for entry in task_lock.conversation_history:
+            role = entry.get("role", "")
+            content = entry.get("content", "")
+            if role == "task_result" and isinstance(content, dict):
+                task_content = content.get("task_content")
+                task_result = content.get("task_result")
+                if task_content:
+                    lines.append(f"Previous task: {task_content}")
+                if task_result:
+                    lines.append(f"Previous result: {task_result}")
+            elif content:
+                lines.append(f"{role}: {content}")
+        memory_context = build_memory_context(task_lock)
+        if memory_context:
+            lines.append(memory_context.rstrip())
+        lines.append("=== End Previous Conversation ===")
+        return "\n".join(lines) + "\n\n"
 
-    lines = ["=== Previous Conversation ==="]
-    for entry in task_lock.conversation_history:
-        role = entry.get("role", "")
-        content = entry.get("content", "")
-        if role == "task_result" and isinstance(content, dict):
-            task_content = content.get("task_content")
-            task_result = content.get("task_result")
-            if task_content:
-                lines.append(f"Previous task: {task_content}")
-            if task_result:
-                lines.append(f"Previous result: {task_result}")
-        elif content:
-            lines.append(f"{role}: {content}")
-    memory_context = build_memory_context(task_lock)
-    if memory_context:
-        lines.append(memory_context.rstrip())
-    lines.append("=== End Previous Conversation ===")
-    return "\n".join(lines) + "\n\n"
+    durable_context = (project_context or "").strip()
+    if not durable_context:
+        return ""
+    return (
+        "=== Persisted Project Context ===\n"
+        f"{durable_context}\n"
+        "=== End Persisted Project Context ===\n\n"
+    )
 
 
 def _build_single_agent_prompt(
     task_lock: TaskLock,
     question: str,
     attaches: list[str],
+    project_context: str | None = None,
 ) -> str:
-    context = _build_single_agent_context(task_lock)
+    context = _build_single_agent_context(task_lock, project_context)
     attachment_context = ""
     if attaches:
         attachment_context = "Attachments:\n" + "\n".join(
@@ -188,11 +199,19 @@ async def single_agent_solve(
         return agent
 
     async def run_turn(
-        question: str, attaches: list[str], task_id: str
+        question: str,
+        attaches: list[str],
+        task_id: str,
+        project_context: str | None = None,
     ) -> tuple[str, int]:
         turn_agent = await ensure_agent(task_id)
         turn_agent.process_task_id = task_id
-        prompt = _build_single_agent_prompt(task_lock, question, attaches)
+        prompt = _build_single_agent_prompt(
+            task_lock,
+            question,
+            attaches,
+            project_context,
+        )
         response = await turn_agent.astep(prompt)
         content, total_tokens = await _response_content(response)
         record_agent_memory_snapshot(
@@ -217,127 +236,157 @@ async def single_agent_solve(
         task_lock.get_queue()
     )
 
-    while True:
-        if await request.is_disconnected():
-            logger.info(
-                "Single Agent client disconnected; pausing session",
-                extra={"project_id": options.project_id},
+    try:
+        while True:
+            if await request.is_disconnected():
+                logger.info(
+                    "Single Agent client disconnected; pausing session",
+                    extra={"project_id": options.project_id},
+                )
+                pause_event.clear()
+                task_lock.status = Status.confirming
+                if running_turn and not running_turn.done():
+                    running_turn.cancel()
+                break
+
+            wait_for = {pending_queue_get}
+            if running_turn is not None:
+                wait_for.add(running_turn)
+
+            done, _ = await asyncio.wait(
+                wait_for,
+                timeout=1.0,
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            pause_event.clear()
-            task_lock.status = Status.confirming
-            if running_turn and not running_turn.done():
-                running_turn.cancel()
-            break
+            if not done:
+                continue
 
-        wait_for = {pending_queue_get}
-        if running_turn is not None:
-            wait_for.add(running_turn)
+            if pending_queue_get in done:
+                item = pending_queue_get.result()
+                pending_queue_get = asyncio.create_task(task_lock.get_queue())
 
-        done, _ = await asyncio.wait(
-            wait_for,
-            timeout=1.0,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        if not done:
-            continue
+                if item.action == Action.improve:
+                    assert isinstance(item, ActionImproveData)
+                    if item.new_task_id:
+                        current_task_id = item.new_task_id
+                        set_current_task_id(
+                            options.project_id, current_task_id
+                        )
 
-        if pending_queue_get in done:
-            item = pending_queue_get.result()
-            pending_queue_get = asyncio.create_task(task_lock.get_queue())
+                    if running_turn is not None and not running_turn.done():
+                        yield sse_json(
+                            "error",
+                            {
+                                "message": (
+                                    "Single Agent is already processing a task."
+                                )
+                            },
+                        )
+                        continue
 
-            if item.action == Action.improve:
-                assert isinstance(item, ActionImproveData)
-                if item.new_task_id:
-                    current_task_id = item.new_task_id
-                    set_current_task_id(options.project_id, current_task_id)
-
-                if running_turn is not None and not running_turn.done():
+                    pause_event.set()
+                    task_lock.status = Status.processing
                     yield sse_json(
-                        "error",
-                        {
-                            "message": (
-                                "Single Agent is already processing a task."
-                            )
-                        },
+                        "confirmed", {"question": item.data.question}
+                    )
+                    running_turn = asyncio.create_task(
+                        run_turn(
+                            item.data.question,
+                            item.data.attaches or [],
+                            current_task_id,
+                            item.data.project_context
+                            or options.project_context,
+                        )
+                    )
+                    task_lock.add_background_task(running_turn)
+                    continue
+
+                if item.action == Action.pause:
+                    pause_event.clear()
+                    task_lock.status = Status.confirming
+                    continue
+
+                if item.action == Action.resume:
+                    pause_event.set()
+                    task_lock.status = Status.processing
+                    continue
+
+                if item.action == Action.skip_task:
+                    pause_event.clear()
+                    if running_turn is not None and not running_turn.done():
+                        running_turn.cancel()
+                    task_lock.status = Status.done
+                    yield sse_json(
+                        "end",
+                        "<summary>Task stopped</summary>Task stopped by user",
                     )
                     continue
 
-                pause_event.set()
-                task_lock.status = Status.processing
-                yield sse_json("confirmed", {"question": item.data.question})
-                running_turn = asyncio.create_task(
-                    run_turn(
-                        item.data.question,
-                        item.data.attaches or [],
-                        current_task_id,
+                if item.action == Action.stop:
+                    pause_event.clear()
+                    if agent is not None and getattr(
+                        agent, "stop_event", None
+                    ):
+                        agent.stop_event.set()
+                    if running_turn is not None and not running_turn.done():
+                        running_turn.cancel()
+                    await delete_task_lock(task_lock.id)
+                    break
+
+                payload = _action_to_sse(item)
+                if payload is not None:
+                    if item.action == Action.budget_not_enough:
+                        pause_event.clear()
+                        task_lock.status = Status.confirming
+                    yield payload
+                continue
+
+            if running_turn is not None and running_turn in done:
+                try:
+                    final_result, total_tokens = running_turn.result()
+                except asyncio.CancelledError:
+                    final_result = "<summary>Task paused</summary>Task paused"
+                    total_tokens = 0
+                except Exception as e:
+                    logger.error(
+                        "Single Agent turn failed",
+                        extra={
+                            "project_id": options.project_id,
+                            "task_id": current_task_id,
+                        },
+                        exc_info=True,
                     )
-                )
-                task_lock.add_background_task(running_turn)
-                continue
-
-            if item.action == Action.pause:
-                pause_event.clear()
-                task_lock.status = Status.confirming
-                continue
-
-            if item.action == Action.resume:
-                pause_event.set()
-                task_lock.status = Status.processing
-                continue
-
-            if item.action == Action.skip_task:
-                pause_event.clear()
-                if running_turn is not None and not running_turn.done():
-                    running_turn.cancel()
-                task_lock.status = Status.done
-                yield sse_json(
-                    "end",
-                    "<summary>Task stopped</summary>Task stopped by user",
-                )
-                continue
-
-            if item.action == Action.stop:
-                pause_event.clear()
-                if agent is not None and getattr(agent, "stop_event", None):
-                    agent.stop_event.set()
-                if running_turn is not None and not running_turn.done():
-                    running_turn.cancel()
-                await delete_task_lock(task_lock.id)
-                break
-
-            payload = _action_to_sse(item)
-            if payload is not None:
-                if item.action == Action.budget_not_enough:
                     pause_event.clear()
                     task_lock.status = Status.confirming
-                yield payload
-            continue
+                    yield sse_json("error", {"message": str(e)})
+                    running_turn = None
+                    continue
 
-        if running_turn is not None and running_turn in done:
-            try:
-                final_result, total_tokens = running_turn.result()
-            except asyncio.CancelledError:
-                final_result = "<summary>Task paused</summary>Task paused"
-                total_tokens = 0
-            except Exception as e:
-                logger.error(
-                    "Single Agent turn failed",
-                    extra={
-                        "project_id": options.project_id,
-                        "task_id": current_task_id,
-                    },
-                    exc_info=True,
-                )
-                pause_event.clear()
-                task_lock.status = Status.confirming
-                yield sse_json("error", {"message": str(e)})
+                task_lock.status = Status.done
                 running_turn = None
+                yield sse_json(
+                    "end",
+                    {"message": final_result, "tokens": total_tokens},
+                )
                 continue
-
-            task_lock.status = Status.done
-            running_turn = None
-            yield sse_json(
-                "end",
-                {"message": final_result, "tokens": total_tokens},
-            )
-            continue
+    finally:
+        if pending_queue_get is not None and not pending_queue_get.done():
+            pending_queue_get.cancel()
+        if running_turn is not None and not running_turn.done():
+            pause_event.clear()
+            task_lock.status = Status.confirming
+            running_turn.cancel()
+        if agent is not None:
+            release_cdp = getattr(agent, "_cdp_release_callback", None)
+            if callable(release_cdp):
+                try:
+                    release_cdp(agent)
+                except Exception:
+                    logger.warning(
+                        "Failed to release Single Agent browser resource",
+                        extra={
+                            "project_id": options.project_id,
+                            "task_id": current_task_id,
+                        },
+                        exc_info=True,
+                    )
