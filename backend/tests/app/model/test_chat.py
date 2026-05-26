@@ -13,6 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """Unit tests for Chat and AgentModelConfig model configuration."""
 
+from pathlib import Path
+
 from app.model.chat import AgentModelConfig, Chat, NewAgent
 
 
@@ -193,3 +195,61 @@ class TestIsCloud:
 
     def test_is_cloud_false_when_url_missing(self):
         assert not self._chat_with_url(None).is_cloud()
+
+
+class TestFileSavePath:
+    """Tests for Chat file output path compatibility."""
+
+    def _chat(self) -> Chat:
+        return Chat(
+            task_id="task-1",
+            run_id="run-1",
+            project_id="project-1",
+            question="q",
+            email="alice@example.com",
+            user_id="42",
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="k",
+        )
+
+    def test_file_save_path_prefers_user_id_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        resolved = Path(self._chat().file_save_path())
+
+        assert resolved == (
+            tmp_path
+            / "eigent"
+            / "user_42"
+            / "project_project-1"
+            / "task_run-1"
+        )
+        assert resolved.exists()
+
+    def test_file_save_path_falls_back_to_legacy_email_root(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        legacy_path = (
+            tmp_path / "eigent" / "alice" / "project_project-1" / "task_run-1"
+        )
+        legacy_path.mkdir(parents=True)
+
+        resolved = Path(self._chat().file_save_path())
+
+        assert resolved == legacy_path
+
+    def test_file_save_path_keeps_legacy_root_for_subpaths(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        legacy_path = (
+            tmp_path / "eigent" / "alice" / "project_project-1" / "task_run-1"
+        )
+        legacy_path.mkdir(parents=True)
+
+        resolved = Path(self._chat().file_save_path("screenshots"))
+
+        assert resolved == legacy_path / "screenshots"
+        assert resolved.exists()

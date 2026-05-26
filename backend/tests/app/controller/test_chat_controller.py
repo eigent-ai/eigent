@@ -75,10 +75,10 @@ class TestChatController:
             assert response.media_type == "text/event-stream"
 
     @pytest.mark.asyncio
-    async def test_post_chat_sets_environment_variables(
+    async def test_post_chat_sets_run_context_and_third_party_env(
         self, sample_chat_data, mock_request, mock_task_lock
     ):
-        """Test that environment variables are properly set."""
+        """Run-scoped values stay in RunContext; CAMEL path keys are published."""
         chat_data = Chat(**sample_chat_data)
 
         with (
@@ -107,14 +107,16 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            # Check environment variables were set
-            assert os.environ.get("OPENAI_API_KEY") == "test_key"
-            assert (
-                os.environ.get("OPENAI_API_BASE_URL")
-                == "https://api.openai.com/v1"
+            run_context = mock_task_lock.run_context
+            assert run_context.api_key == "test_key"
+            assert run_context.api_base_url == "https://api.openai.com/v1"
+            assert run_context.browser_port == 8080
+            assert os.environ.get("CAMEL_LOG_DIR") == str(
+                run_context.camel_log_dir
             )
-            assert os.environ.get("CAMEL_MODEL_LOG_ENABLED") == "true"
-            assert os.environ.get("browser_port") == "8080"
+            assert os.environ.get("CAMEL_WORKDIR") == str(
+                run_context.task_output_root
+            )
 
     @pytest.mark.asyncio
     async def test_post_chat_sets_cdp_url_when_browser_ready(
@@ -154,8 +156,10 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            assert os.environ.get("EIGENT_CDP_URL") == "http://127.0.0.1:8080"
-            assert os.environ.get("browser_port") == "8080"
+            assert (
+                mock_task_lock.run_context.cdp_url == "http://127.0.0.1:8080"
+            )
+            assert mock_task_lock.run_context.browser_port == 8080
             assert mock_request.state.browser_available is True
 
     @pytest.mark.asyncio
@@ -200,7 +204,8 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            assert "EIGENT_CDP_URL" not in os.environ
+            assert mock_task_lock.run_context.cdp_url is None
+            assert mock_task_lock.run_context.browser_port == 8080
             assert mock_request.state.browser_available is False
 
     @pytest.mark.asyncio
@@ -243,8 +248,10 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            assert os.environ.get("EIGENT_CDP_URL") == "http://worker-17:9222"
-            assert os.environ.get("browser_port") == "9222"
+            assert (
+                mock_task_lock.run_context.cdp_url == "http://worker-17:9222"
+            )
+            assert mock_task_lock.run_context.browser_port == 9222
             assert mock_request.state.browser_available is True
             mock_ensure_browser.assert_not_called()
 
