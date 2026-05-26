@@ -34,46 +34,53 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="gap-4 flex h-full w-full flex-col overflow-y-auto">
-      <div className="gap-3 sm:flex-row sm:items-center sm:justify-between flex flex-col">
-        <div>
-          <h1 className="text-heading-md font-semibold text-ds-text-neutral-default-default">
-            Projects
-          </h1>
-          <p className="text-body-md text-ds-text-neutral-muted-default">
-            Browse and open projects for remote control.
-          </p>
+    <div className="flex h-full w-full flex-col overflow-y-auto">
+      <div className="flex-1">
+        <div className="max-w-xl mb-4 relative">
+          <Search className="left-3 h-4 w-4 text-ds-icon-neutral-muted-default pointer-events-none absolute top-1/2 -translate-y-1/2" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search projects and sessions…"
+            className="pl-9"
+          />
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="mr-2 h-4 w-4" />
+
+        <ProjectList
+          projects={projects}
+          loading={loading}
+          error={error}
+          onSelectProject={(projectId) => navigate(`/projects/${projectId}`)}
+          onCreate={handleCreate}
+        />
+
+        {error ? (
+          <div className="mt-4 flex justify-center">
+            <Button
+              variant="outline"
+              size="md"
+              buttonContent="text"
+              onClick={() => void reload()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="bottom-0 px-4 py-4 sticky z-10 flex justify-center">
+        <Button
+          variant="primary"
+          size="md"
+          buttonContent="text"
+          buttonRadius="full"
+          className="w-fit"
+          onClick={handleCreate}
+        >
+          <Plus />
           New project
         </Button>
       </div>
-
-      <div className="max-w-xl relative">
-        <Search className="left-3 h-4 w-4 text-ds-icon-neutral-muted-default pointer-events-none absolute top-1/2 -translate-y-1/2" />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search projects and sessions…"
-          className="pl-9"
-        />
-      </div>
-
-      <ProjectList
-        projects={projects}
-        loading={loading}
-        error={error}
-        onCreate={handleCreate}
-      />
-
-      {error ? (
-        <div className="flex justify-center">
-          <Button variant="outline" onClick={() => void reload()}>
-            Retry
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }

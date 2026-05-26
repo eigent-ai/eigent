@@ -45,7 +45,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  'fixed z-50 gap-4 bg-ds-bg-neutral-subtle-default p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out',
+  'fixed z-50 gap-4 p-6 transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out',
   {
     variants: {
       side: {
@@ -56,37 +56,50 @@ const sheetVariants = cva(
         right:
           'inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm',
       },
+      variant: {
+        default: 'bg-ds-bg-neutral-subtle-default shadow-lg',
+        ghost: '!bg-transparent border-0 p-0 shadow-none gap-0',
+      },
     },
     defaultVariants: {
       side: 'right',
+      variant: 'default',
     },
   }
 );
 
 interface SheetContentProps
   extends
-    React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+    Omit<
+      React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+      keyof VariantProps<typeof sheetVariants>
+    >,
     VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      <SheetPrimitive.Close className="right-4 top-4 rounded-sm ring-offset-ds-bg-neutral-subtle-default focus:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default absolute opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:pointer-events-none">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-      {children}
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+>(
+  (
+    { side = 'right', variant = 'default', className, children, ...props },
+    ref
+  ) => (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side, variant }), className)}
+        {...props}
+      >
+        <SheetPrimitive.Close className="right-4 top-4 rounded-sm ring-offset-ds-bg-neutral-subtle-default focus:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default absolute opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:pointer-events-none">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+        {children}
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  )
+);
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({

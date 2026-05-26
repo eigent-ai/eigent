@@ -14,7 +14,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { normalizeBillingSummary } from '@web/lib/viewModels';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@web/hooks/useWebAuth', () => ({
@@ -45,15 +45,34 @@ vi.mock('@web/api/server', async () => {
   };
 });
 
-import ProfilePage from '@web/pages/ProfilePage';
+import { ProfileSettingsHub } from '@web/components/profile/ProfileSettingsHub';
+import { ProfileManageSection } from '@web/components/profile/sections/ProfileManageSection';
 
-describe('ProfilePage billing summary', () => {
-  it('renders credits with partial data fallbacks', async () => {
+describe('Profile settings pages', () => {
+  it('renders the profile settings hub', () => {
     render(
-      <MemoryRouter>
-        <ProfilePage />
+      <MemoryRouter initialEntries={['/profile']}>
+        <Routes>
+          <Route path="/profile" element={<ProfileSettingsHub />} />
+        </Routes>
       </MemoryRouter>
     );
+
+    expect(screen.getByText('Profile')).toBeInTheDocument();
+    expect(screen.getByText('Model')).toBeInTheDocument();
+    expect(screen.getByText('Log Out')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage' })).toBeInTheDocument();
+  });
+
+  it('renders credits with partial data fallbacks on manage page', async () => {
+    render(
+      <MemoryRouter initialEntries={['/profile/manage']}>
+        <Routes>
+          <Route path="/profile/manage" element={<ProfileManageSection />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
     expect(await screen.findByText('Free')).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();

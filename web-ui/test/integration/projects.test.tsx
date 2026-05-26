@@ -14,7 +14,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ProjectsPage from '@web/pages/ProjectsPage';
+import DispatchPage from '@web/pages/DispatchPage';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -24,8 +24,46 @@ vi.mock('@web/api/server', () => ({
   fetchGroupedProjects: (...args: unknown[]) => fetchGroupedProjects(...args),
 }));
 
+vi.mock('@web/hooks/useProjectDetail', () => ({
+  useProjectDetail: () => ({
+    project: {
+      projectId: 'p1',
+      name: 'Alpha',
+      sessionCount: 1,
+      totalTokens: 10,
+      latestActivity: '2026-05-20T10:00:00Z',
+      lastPrompt: 'Do work',
+      ongoingCount: 0,
+      completedCount: 1,
+      sessions: [],
+    },
+    loading: false,
+    error: null,
+    reload: vi.fn(),
+  }),
+  createEmptyProject: vi.fn(),
+}));
+
+vi.mock('@web/hooks/useWebProjectTask', () => ({
+  useWebProjectTask: () => ({ loading: false, error: null }),
+}));
+
+vi.mock('@/hooks/useChatStoreAdapter', () => ({
+  default: () => ({
+    chatStore: {
+      activeTaskId: 't1',
+      tasks: { t1: { messages: [], hasMessages: false } },
+    },
+    projectStore: {},
+  }),
+}));
+
+vi.mock('@/components/ChatBox', () => ({
+  default: () => <div>Chat workspace</div>,
+}));
+
 describe('projects integration', () => {
-  it('loads grouped projects and navigates on card click', async () => {
+  it('loads grouped projects and navigates on item click', async () => {
     fetchGroupedProjects.mockResolvedValue([
       {
         project_id: 'p1',
@@ -58,8 +96,8 @@ describe('projects integration', () => {
     render(
       <MemoryRouter initialEntries={['/projects']}>
         <Routes>
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<div>Detail</div>} />
+          <Route path="/projects" element={<DispatchPage />} />
+          <Route path="/projects/:projectId" element={<DispatchPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -67,7 +105,9 @@ describe('projects integration', () => {
     expect(await screen.findByText('Alpha')).toBeInTheDocument();
     await userEvent.click(screen.getByText('Alpha'));
     await waitFor(() => {
-      expect(screen.getByText('Detail')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Back to projects' })
+      ).toBeInTheDocument();
     });
   });
 });

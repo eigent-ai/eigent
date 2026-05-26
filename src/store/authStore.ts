@@ -24,7 +24,7 @@ import { persist } from 'zustand/middleware';
 type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
-type AppearanceMode = Mode | 'system';
+export type AppearanceMode = Mode | 'system';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =

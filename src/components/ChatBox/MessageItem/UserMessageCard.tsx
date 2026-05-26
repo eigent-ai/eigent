@@ -131,9 +131,9 @@ export function UserMessageCard({
 
   return (
     <div key={id} className={cn('group/msg relative w-full', className)}>
-      <div className="w-full overflow-visible rounded-xl border border-solid border-ds-border-neutral-muted-default bg-ds-bg-neutral-subtle-default px-4 py-2">
+      <div className="border-ds-bg-neutral-strong-default bg-ds-bg-neutral-strong-default rounded-xl px-4 py-2 w-full overflow-visible border border-solid">
         {attaches && attaches.length > 0 && (
-          <div className="relative mb-2 box-border flex w-full flex-wrap items-start gap-1">
+          <div className="mb-2 gap-1 relative box-border flex w-full flex-wrap items-start">
             {(() => {
               // Show max 2 files + count indicator
               const maxVisibleFiles = 2;
@@ -150,7 +150,7 @@ export function UserMessageCard({
                       <div
                         key={'attache-' + file.fileName}
                         className={cn(
-                          'relative box-border flex h-auto max-w-24 cursor-pointer items-center gap-0.5 rounded-lg bg-ds-bg-neutral-default-default transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover'
+                          'max-w-24 gap-0.5 rounded-lg bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover relative box-border flex h-auto cursor-pointer items-center transition-colors duration-300'
                         )}
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
@@ -167,14 +167,14 @@ export function UserMessageCard({
                         }}
                       >
                         {/* File icon */}
-                        <div className="flex h-6 w-6 items-center justify-center rounded-md">
+                        <div className="h-6 w-6 rounded-md flex items-center justify-center">
                           {getFileIcon(file.fileName)}
                         </div>
 
                         {/* File Name */}
                         <p
                           className={cn(
-                            "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                            "my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
                           )}
                           title={file.fileName}
                         >
@@ -195,14 +195,14 @@ export function UserMessageCard({
                           size="xs"
                           buttonContent="text"
                           variant="ghost"
-                          className="relative flex items-center rounded-lg bg-ds-bg-neutral-strong-default"
+                          className="rounded-lg bg-ds-bg-neutral-strong-default relative flex items-center"
                           onMouseEnter={openRemainingPopover}
                           onMouseLeave={scheduleCloseRemainingPopover}
                           onClick={(e) => {
                             e.stopPropagation();
                           }}
                         >
-                          <span className="whitespace-nowrap font-['Inter'] text-label-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                          <span className="text-label-xs font-bold leading-tight text-ds-text-neutral-default-default font-['Inter'] whitespace-nowrap">
                             {remainingCount}+
                           </span>
                         </Button>
@@ -210,16 +210,16 @@ export function UserMessageCard({
                       <PopoverContent
                         align="end"
                         sideOffset={4}
-                        className="!w-auto max-w-40 rounded-md border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect"
+                        className="max-w-40 rounded-md border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect !w-auto border"
                         onMouseEnter={openRemainingPopover}
                         onMouseLeave={scheduleCloseRemainingPopover}
                       >
-                        <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
+                        <div className="scrollbar-hide gap-1 flex max-h-[176px] flex-col overflow-auto">
                           {attaches.slice(maxVisibleFiles).map((file) => {
                             return (
                               <div
                                 key={file.filePath}
-                                className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default py-0.5 transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                                className="gap-1 rounded-lg bg-ds-bg-neutral-strong-default py-0.5 hover:bg-ds-bg-neutral-default-hover flex cursor-pointer items-center transition-colors duration-300"
                                 onMouseLeave={() =>
                                   setHoveredFilePath((prev) =>
                                     prev === file.filePath ? null : prev
@@ -234,10 +234,10 @@ export function UserMessageCard({
                                   setIsRemainingOpen(false);
                                 }}
                               >
-                                <div className="flex h-6 w-6 items-center justify-center rounded-md">
+                                <div className="h-6 w-6 rounded-md flex items-center justify-center">
                                   {getFileIcon(file.fileName)}
                                 </div>
-                                <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                                <p className="my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap">
                                   {file.fileName}
                                 </p>
                               </div>
@@ -263,14 +263,14 @@ export function UserMessageCard({
             <UserMessageRichContent content={content} variant="card" />
             {canClamp && !expanded && (
               <div
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-bg-neutral-subtle-default"
+                className="inset-x-0 bottom-0 h-14 bg-ds-bg-neutral-strong-default pointer-events-none absolute z-[1]"
                 style={USER_MESSAGE_FOLD_FADE_STYLE}
                 aria-hidden
               />
             )}
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-1 right-2 z-10 flex w-full shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
+        <div className="bottom-1 right-2 gap-0.5 pointer-events-none absolute z-10 flex w-full shrink-0 items-center justify-end opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
           {canClamp && !expanded && (
             <Button
               type="button"

@@ -32,3 +32,9 @@ Object.defineProperty(window, 'matchMedia', {
 vi.mock('@/host/createHost', () => ({
   createHost: () => ({ electronAPI: null, ipcRenderer: null }),
 }));
+
+global.ResizeObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));

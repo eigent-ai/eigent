@@ -14,6 +14,12 @@
 
 export type SessionStatus = 'ongoing' | 'done' | 'unknown';
 
+export interface WebSpace {
+  id: string;
+  name: string;
+  folderPath: string;
+}
+
 export interface WebSession {
   id: number;
   taskId: string;

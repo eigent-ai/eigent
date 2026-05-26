@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const API_CODE_TRIAL_LIMIT = '22';
+const isWebUiMockMode = import.meta.env.VITE_WEB_UI_MOCK === 'true';
 
 const hasApiCode = (value: unknown, code: string) =>
   typeof value === 'object' &&
@@ -50,6 +51,13 @@ export function useModelConfigCheck(): {
   const [cloudUsageLimitReached, setCloudUsageLimitReached] = useState(false);
 
   const checkModelConfig = useCallback(async () => {
+    if (isWebUiMockMode) {
+      setCloudUsageLimitReached(false);
+      setHasModelConfigured(true);
+      setIsConfigLoaded(true);
+      return;
+    }
+
     try {
       if (modelType === 'cloud') {
         const res = await proxyFetchGet('/api/v1/user/key');
@@ -104,5 +112,9 @@ export function useModelConfigCheck(): {
     };
   }, [checkModelConfig]);
 
-  return { hasModel, isConfigLoaded, cloudUsageLimitReached };
+  return {
+    hasModel: isWebUiMockMode ? true : hasModel,
+    isConfigLoaded,
+    cloudUsageLimitReached: isWebUiMockMode ? false : cloudUsageLimitReached,
+  };
 }

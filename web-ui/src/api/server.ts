@@ -25,6 +25,8 @@ import {
   parseLoginResponse,
   setRefreshToken,
 } from '@web/lib/authTokens';
+import { isWebUiMock } from '@web/lib/mockMode';
+import { getMockGroupedProjects, getMockProjectGroup } from '@web/mock/state';
 import type { BillingSummary, UserAccount, UserProfile } from '@web/types';
 
 export async function loginWithPassword(
@@ -90,6 +92,9 @@ export async function fetchBillingSummary(): Promise<BillingSummary> {
 }
 
 export async function fetchGroupedProjects(): Promise<ProjectGroup[]> {
+  if (isWebUiMock()) {
+    return getMockGroupedProjects();
+  }
   const response: GroupedHistoryResponse = await proxyFetchGet(
     '/api/v1/chat/histories/grouped?include_tasks=true'
   );
@@ -99,6 +104,9 @@ export async function fetchGroupedProjects(): Promise<ProjectGroup[]> {
 export async function fetchProjectGroup(
   projectId: string
 ): Promise<ProjectGroup | null> {
+  if (isWebUiMock()) {
+    return getMockProjectGroup(projectId);
+  }
   try {
     return await proxyFetchGet(
       `/api/v1/chat/histories/grouped/${encodeURIComponent(projectId)}`

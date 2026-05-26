@@ -9,3 +9,19 @@ body,
 body {
   margin: 0;
 }
+
+.web-toaster-toast {
+  width: min(calc(100vw - 2rem), 320px) !important;
+  max-width: min(calc(100vw - 2rem), 320px);
+}
+
+@media (min-width: 768px) {
+  /* Align toast stack to the dispatch task panel (right of the 380px project column). */
+  .web-toaster-task-page {
+    left: min(380px, 100vw) !important;
+    right: 0 !important;
+    width: auto !important;
+    transform: none !important;
+    align-items: center !important;
+  }
+}

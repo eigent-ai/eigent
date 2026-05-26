@@ -12,33 +12,82 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  NavList,
+  type NavListSession,
+} from '@/components/ProjectPageSidebar/NavList';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import type { WebProject } from '@web/types';
 import { formatDistanceToNow } from 'date-fns';
-import { ChevronRight, FolderOpen } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import {
+  CircleCheckBig,
+  FolderOpen,
+  LoaderCircle,
+  MessageCircle,
+} from 'lucide-react';
+import { useMemo } from 'react';
 
-function statusLabel(project: WebProject): string {
-  if (project.ongoingCount > 0) return 'Running';
-  if (project.sessionCount === 0) return 'Empty';
-  return 'Idle';
+function getProjectNavLead(project: WebProject): SessionNavLeadPresentation {
+  if (project.ongoingCount > 0) {
+    return {
+      kind: 'running',
+      Icon: LoaderCircle,
+      iconClassName: '!text-ds-icon-information-default-default',
+      spin: true,
+    };
+  }
+  if (project.completedCount > 0) {
+    return {
+      kind: 'finished',
+      Icon: CircleCheckBig,
+      iconClassName: '!text-ds-icon-status-completed-default-default',
+    };
+  }
+  return {
+    kind: 'idle',
+    Icon: MessageCircle,
+    iconClassName: '!text-ds-icon-neutral-default-default',
+  };
+}
+
+function toNavListSession(project: WebProject): NavListSession {
+  return {
+    id: project.projectId,
+    title: project.name,
+    sessionLead: getProjectNavLead(project),
+    trailing: formatDistanceToNow(new Date(project.latestActivity), {
+      addSuffix: false,
+    }),
+  };
 }
 
 export function ProjectList({
   projects,
   loading,
   error,
+  activeProjectId,
+  onSelectProject,
   onCreate,
+  showNewSession = true,
+  searchQuery = '',
+  hasUnfilteredProjects = false,
 }: {
   projects: WebProject[];
   loading: boolean;
   error: string | null;
+  activeProjectId?: string;
+  onSelectProject: (projectId: string) => void;
   onCreate: () => void;
+  showNewSession?: boolean;
+  searchQuery?: string;
+  hasUnfilteredProjects?: boolean;
 }) {
+  const sessions = useMemo(() => projects.map(toNavListSession), [projects]);
+
   if (loading) {
     return (
-      <div className="rounded-xl border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default p-8 text-ds-text-neutral-muted-default border text-center">
+      <div className="rounded-xl border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default p-8 text-ds-text-neutral-muted-default border text-center">
         Loading projects…
       </div>
     );
@@ -53,61 +102,46 @@ export function ProjectList({
   }
 
   if (projects.length === 0) {
+    const trimmedSearch = searchQuery.trim();
+    if (hasUnfilteredProjects && trimmedSearch) {
+      return (
+        <div className="px-2 py-8 text-ds-text-neutral-muted-default text-center">
+          No projects match &ldquo;{trimmedSearch}&rdquo;.
+        </div>
+      );
+    }
+
     return (
-      <div className="rounded-xl border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default p-10 border border-dashed text-center">
+      <div className="rounded-xl border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default p-10 border border-dashed text-center">
         <FolderOpen className="mb-3 h-10 w-10 text-ds-icon-neutral-muted-default mx-auto" />
         <p className="mb-4 text-ds-text-neutral-muted-default">
-          No projects yet. Create one to start remote control.
+          No projects yet. Create a task to get started.
         </p>
-        <Button onClick={onCreate}>Create project</Button>
+        <Button
+          variant="primary"
+          size="md"
+          buttonContent="text"
+          onClick={onCreate}
+        >
+          New task
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="gap-3 md:grid-cols-2 xl:grid-cols-3 grid">
-      {projects.map((project) => (
-        <Link
-          key={project.projectId}
-          to={`/projects/${project.projectId}`}
-          className="group rounded-xl border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default p-4 hover:shadow-md border transition-shadow"
-        >
-          <div className="mb-2 gap-2 flex items-start justify-between">
-            <div>
-              <h3 className="text-heading-sm font-semibold text-ds-text-neutral-default-default">
-                {project.name}
-              </h3>
-              <p className="text-body-sm text-ds-text-neutral-muted-default line-clamp-2">
-                {project.lastPrompt || 'No recent activity'}
-              </p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-ds-icon-neutral-muted-default group-hover:translate-x-0.5 shrink-0 transition-transform" />
-          </div>
-          <div className="gap-2 text-body-sm flex flex-wrap items-center">
-            <span
-              className={cn(
-                'px-2 py-0.5 rounded-full',
-                project.ongoingCount > 0
-                  ? 'bg-ds-bg-status-running-subtle-default text-ds-text-status-running-default-default'
-                  : 'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default'
-              )}
-            >
-              {statusLabel(project)}
-            </span>
-            <span className="text-ds-text-neutral-muted-default">
-              {project.sessionCount} sessions
-            </span>
-            <span className="text-ds-text-neutral-muted-default">
-              {project.totalTokens.toLocaleString()} tokens
-            </span>
-          </div>
-          <div className="mt-3 text-body-sm text-ds-text-neutral-muted-default">
-            {formatDistanceToNow(new Date(project.latestActivity), {
-              addSuffix: true,
-            })}
-          </div>
-        </Link>
-      ))}
+    <div className="min-h-0 flex flex-1 flex-col">
+      <NavList
+        sessions={sessions}
+        activeSessionId={activeProjectId ?? null}
+        onSessionClick={onSelectProject}
+        onNewSession={onCreate}
+        folded={false}
+        panelListHover
+        showRowMenu={false}
+        showNewSession={showNewSession}
+        className="min-h-0 flex-1"
+      />
     </div>
   );
 }

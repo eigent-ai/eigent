@@ -30,6 +30,7 @@ const proxyHttpAgent = new http.Agent({
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.join(__dirname, '..'), '');
   const repoRoot = path.join(__dirname, '..');
+  const useMockApi = env.VITE_WEB_UI_MOCK === 'true';
 
   return {
     root: __dirname,
@@ -39,6 +40,11 @@ export default defineConfig(({ mode }) => {
         '@web': path.join(__dirname, 'src'),
         '@desktop': path.join(repoRoot, 'src'),
         '@': path.join(repoRoot, 'src'),
+        ...(useMockApi
+          ? {
+              '@/api/http': path.join(__dirname, 'src/mock/http.ts'),
+            }
+          : {}),
       },
     },
     plugins: [react()],
@@ -56,17 +62,18 @@ export default defineConfig(({ mode }) => {
       fs: {
         allow: [repoRoot],
       },
-      proxy: env.VITE_PROXY_URL
-        ? {
-            '/api': {
-              target: env.VITE_PROXY_URL,
-              changeOrigin: true,
-              agent: env.VITE_PROXY_URL.startsWith('https')
-                ? proxyHttpsAgent
-                : proxyHttpAgent,
+      proxy:
+        useMockApi || !env.VITE_PROXY_URL
+          ? undefined
+          : {
+              '/api': {
+                target: env.VITE_PROXY_URL,
+                changeOrigin: true,
+                agent: env.VITE_PROXY_URL.startsWith('https')
+                  ? proxyHttpsAgent
+                  : proxyHttpAgent,
+              },
             },
-          }
-        : undefined,
     },
     publicDir: path.join(repoRoot, 'public'),
   };

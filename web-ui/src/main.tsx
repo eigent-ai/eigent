@@ -16,17 +16,31 @@ import { ThemeProvider } from '@/components/Layout/ThemeProvider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConnectionProvider } from '@/context/ConnectionContext';
 import { createHost, HostProvider } from '@/host';
+import '@/i18n';
+import { injectHost } from '@/store/chatStore';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import App from '@web/App';
+import { isWebUiMock } from '@web/lib/mockMode';
+import { mockBootstrapAuth } from '@web/mock/auth';
 import '@web/styles.css';
 import { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
 const host = createHost();
+injectHost(host);
+
+if (isWebUiMock()) {
+  mockBootstrapAuth();
+  if (import.meta.env.DEV) {
+    console.info(
+      '[Eigent Dispatch] Running in mock mode — no server connection.'
+    );
+  }
+}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <Suspense

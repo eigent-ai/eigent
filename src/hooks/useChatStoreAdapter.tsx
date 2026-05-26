@@ -41,6 +41,10 @@ const useChatStoreAdapter = (): {
   chatStore: ChatStore;
 } => {
   const projectStore = useProjectStore();
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeChatId = useProjectStore((state) =>
+    activeProjectId ? state.projects[activeProjectId]?.activeChatId : null
+  );
 
   // Get the active chat store from project store
   // This creates a hook-like interface for the vanilla store
@@ -68,7 +72,7 @@ const useChatStoreAdapter = (): {
     dispatch({ type: 'UPDATE_STATE', payload: initialState });
 
     return unsubscribe;
-  }, [activeChatStore]);
+  }, [activeChatStore, activeChatId, activeProjectId]);
 
   // Create a chatStore-like object that mimics the original interface
   const chatStore = useMemo(() => {

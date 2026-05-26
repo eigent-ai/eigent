@@ -35,6 +35,12 @@ export interface NavListProps {
   newSessionActive?: boolean;
   /** Icon-only rail: match other sidebar `NavTab`s. */
   folded: boolean;
+  /** Main-panel lists use neutral hover fill instead of sidebar subtle fill. */
+  panelListHover?: boolean;
+  /** When false, hide the trailing row menu on each session. */
+  showRowMenu?: boolean;
+  /** When false, hide the New Session row (e.g. when a header action exists). */
+  showNewSession?: boolean;
   className?: string;
 }
 
@@ -47,6 +53,9 @@ export function NavList({
   onNewSession,
   newSessionActive = false,
   folded,
+  panelListHover = false,
+  showRowMenu = true,
+  showNewSession = true,
   className,
 }: NavListProps) {
   const { t } = useTranslation();
@@ -75,28 +84,31 @@ export function NavList({
   return (
     <div
       className={cn(
-        'flex min-h-0 w-full min-w-0 flex-col overflow-hidden',
+        'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
         className
       )}
     >
-      <div className="flex w-full min-w-0 flex-col gap-2">
-        <NavTab
-          active={newSessionActive}
-          onClick={onNewSession}
-          leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
-          label={newSessionLabel}
-          tooltip={newSessionLabel}
-          tooltipEnabledWhenCollapsed={!folded}
-          folded={folded}
-          ariaLabel={newSessionLabel}
-          ariaCurrentPage={newSessionActive}
-        />
-      </div>
+      {showNewSession ? (
+        <div className="min-w-0 gap-2 flex w-full flex-col">
+          <NavTab
+            active={newSessionActive}
+            onClick={onNewSession}
+            leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
+            label={newSessionLabel}
+            tooltip={newSessionLabel}
+            tooltipEnabledWhenCollapsed={!folded}
+            folded={folded}
+            ariaLabel={newSessionLabel}
+            ariaCurrentPage={newSessionActive}
+          />
+        </div>
+      ) : null}
 
       <div
         ref={sessionListRef}
         className={cn(
-          'm-0 mt-1 flex min-h-0 min-w-0 flex-1 flex-col gap-0.5 p-0 pb-1',
+          'm-0 min-h-0 min-w-0 gap-2 px-0 pt-1 pb-1 flex flex-1 flex-col',
+          showNewSession ? 'mt-1' : null,
           folded
             ? sessionListOverflow
               ? 'scrollbar-hide overflow-y-auto'
@@ -112,6 +124,8 @@ export function NavList({
           onSessionClick={onSessionClick}
           onDeleteSession={onDeleteSession}
           folded={folded}
+          panelListHover={panelListHover}
+          showRowMenu={showRowMenu}
         />
       </div>
     </div>

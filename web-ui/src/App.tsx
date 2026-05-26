@@ -12,16 +12,26 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useExecutionSubscription } from '@/hooks/useExecutionSubscription';
 import { queryClient } from '@/lib/queryClient';
+import { useAuthStore } from '@/store/authStore';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { WebToaster } from '@web/components/layout/WebToaster';
+import { isWebUiMock } from '@web/lib/mockMode';
 import WebRoutes from '@web/routes';
-import { Toaster } from 'sonner';
+
+function WebExecutionSubscription() {
+  const token = useAuthStore((state) => state.token);
+  useExecutionSubscription(Boolean(token) && !isWebUiMock());
+  return null;
+}
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <WebExecutionSubscription />
       <WebRoutes />
-      <Toaster position="top-center" richColors />
+      <WebToaster />
     </QueryClientProvider>
   );
 }

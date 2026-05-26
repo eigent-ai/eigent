@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useAuthStore } from '@/store/authStore';
-import { refreshAccessToken } from '@web/api/server';
+import { autoLoginLocal, refreshAccessToken } from '@web/api/server';
+import { isWebUiMock } from '@web/lib/mockMode';
+import { mockBootstrapAuth } from '@web/mock/auth';
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 
@@ -22,11 +24,24 @@ export function ProtectedRoute() {
   const [checking, setChecking] = useState(!token);
 
   useEffect(() => {
+    if (isWebUiMock()) {
+      mockBootstrapAuth();
+      setChecking(false);
+      return;
+    }
+
     if (token) {
       setChecking(false);
       return;
     }
-    void refreshAccessToken().finally(() => setChecking(false));
+    void refreshAccessToken()
+      .then((ok) => {
+        if (ok || !import.meta.env.DEV) return;
+        return autoLoginLocal()
+          .then(() => true)
+          .catch(() => false);
+      })
+      .finally(() => setChecking(false));
   }, [token]);
 
   if (checking) {

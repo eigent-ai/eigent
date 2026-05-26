@@ -117,7 +117,12 @@ export default function ProjectDetailPage() {
     return (
       <div className="gap-3 flex h-full w-full flex-col items-center justify-center">
         <p className="text-ds-text-error-default-default">{error}</p>
-        <Button variant="outline" onClick={() => void reload()}>
+        <Button
+          variant="outline"
+          size="md"
+          buttonContent="text"
+          onClick={() => void reload()}
+        >
           Retry
         </Button>
       </div>
@@ -136,9 +141,15 @@ export default function ProjectDetailPage() {
     <div className="gap-4 flex h-full w-full flex-col overflow-hidden">
       <div className="gap-3 flex flex-wrap items-center justify-between">
         <div className="gap-3 flex items-center">
-          <Button variant="ghost" size="icon" asChild>
+          <Button
+            variant="ghost"
+            size="md"
+            buttonContent="icon-only"
+            buttonRadius="full"
+            asChild
+          >
             <Link to="/projects" aria-label="Back to projects">
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft />
             </Link>
           </Button>
           <div>
@@ -155,9 +166,10 @@ export default function ProjectDetailPage() {
           <Button
             variant="outline"
             size="sm"
+            buttonContent="text"
             onClick={() => setPanelOpen(true)}
           >
-            <PanelRightOpen className="mr-2 h-4 w-4" />
+            <PanelRightOpen />
             Details
           </Button>
         ) : null}

@@ -43,11 +43,13 @@ export function SessionSidePanel({
         {onClose ? (
           <Button
             variant="ghost"
-            size="icon"
+            size="sm"
+            buttonContent="icon-only"
+            buttonRadius="full"
             aria-label="Close session panel"
             onClick={onClose}
           >
-            <X className="h-4 w-4" />
+            <X />
           </Button>
         ) : null}
       </div>

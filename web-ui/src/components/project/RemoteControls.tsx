@@ -50,28 +50,32 @@ export function RemoteControls({
       <Button
         variant="outline"
         size="sm"
+        buttonContent="text"
         disabled={!!busy}
         onClick={() => void runAction('pause')}
       >
-        <Pause className="mr-1 h-4 w-4" />
+        <Pause />
         Pause
       </Button>
       <Button
         variant="outline"
         size="sm"
+        buttonContent="text"
         disabled={!!busy}
         onClick={() => void runAction('resume')}
       >
-        <Play className="mr-1 h-4 w-4" />
+        <Play />
         Resume
       </Button>
       <Button
-        variant="destructive"
+        variant="primary"
+        tone="error"
         size="sm"
+        buttonContent="text"
         disabled={!!busy}
         onClick={() => void runAction('stop')}
       >
-        <Square className="mr-1 h-4 w-4" />
+        <Square />
         Stop
       </Button>
       {error ? (

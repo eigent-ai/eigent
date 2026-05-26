@@ -14,7 +14,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ProjectDetailPage from '@web/pages/ProjectDetailPage';
+import DispatchPage from '@web/pages/DispatchPage';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +22,7 @@ vi.mock('@web/hooks/useWebAuth', () => ({
   useIsMobile: () => true,
   useIsTablet: () => false,
   useMediaQuery: () => true,
+  useLogout: () => vi.fn(),
 }));
 
 vi.mock('@web/hooks/useProjectDetail', () => ({
@@ -50,40 +51,43 @@ vi.mock('@web/hooks/useProjectDetail', () => ({
     error: null,
     reload: vi.fn(),
   }),
-  useSessionPanel: () => ({
-    panel: {
-      taskId: 't1',
-      status: 'done',
-      question: 'Do work',
-      tokens: 10,
-      timeline: [],
-      snapshots: [],
-      resultFiles: [],
-    },
-    loading: false,
-  }),
   createEmptyProject: vi.fn(),
   toWebSession: vi.fn(),
 }));
 
-describe('mobile drawer behavior', () => {
-  it('opens session side panel drawer on mobile', async () => {
+vi.mock('@web/hooks/useWebProjectTask', () => ({
+  useWebProjectTask: () => ({ loading: false, error: null }),
+}));
+
+vi.mock('@/hooks/useChatStoreAdapter', () => ({
+  default: () => ({
+    chatStore: {
+      activeTaskId: 't1',
+      tasks: { t1: { messages: [], hasMessages: false } },
+    },
+    projectStore: {},
+  }),
+}));
+
+vi.mock('@web/components/dispatch/WebTaskChatBox', () => ({
+  WebTaskChatBox: () => <div>Chat workspace</div>,
+}));
+
+describe('mobile dispatch layout', () => {
+  it('shows task panel on mobile and returns to project list', async () => {
     render(
-      <MemoryRouter initialEntries={['/projects/p1/sessions/t1']}>
+      <MemoryRouter initialEntries={['/projects/p1']}>
         <Routes>
-          <Route
-            path="/projects/:projectId/sessions/:taskId"
-            element={<ProjectDetailPage />}
-          />
+          <Route path="/projects" element={<DispatchPage />} />
+          <Route path="/projects/:projectId" element={<DispatchPage />} />
         </Routes>
       </MemoryRouter>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /details/i }));
-    expect(screen.getByText('Session details')).toBeInTheDocument();
+    expect(screen.getByText('Chat workspace')).toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Close session panel' })
+      screen.getByRole('button', { name: 'Back to projects' })
     );
-    expect(screen.queryByText('Session details')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search projects…')).toBeInTheDocument();
   });
 });

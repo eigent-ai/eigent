@@ -106,6 +106,8 @@ export function ThemeSettings() {
 
       <Button
         variant="outline"
+        size="md"
+        buttonContent="text"
         onClick={() => {
           setAppearanceMode('system');
           setColorThemeForMode('light', DEFAULT_COLOR_THEME_ID);

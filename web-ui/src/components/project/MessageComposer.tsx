@@ -68,14 +68,13 @@ export function MessageComposer({
       ) : null}
       <div className="mt-3 flex justify-end">
         <Button
+          variant="primary"
+          size="md"
+          buttonContent="text"
           onClick={() => void handleSubmit()}
           disabled={disabled || sending || !message.trim()}
         >
-          {sending ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="mr-2 h-4 w-4" />
-          )}
+          {sending ? <Loader2 className="animate-spin" /> : <Send />}
           Send
         </Button>
       </div>
