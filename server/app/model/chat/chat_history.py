@@ -21,6 +21,7 @@ from sqlalchemy_utils import ChoiceType
 from sqlmodel import JSON, Column, Field, SmallInteger, String
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
+from app.shared.types.space_types import SkipReason
 
 
 class ChatStatus(IntEnum):
@@ -44,6 +45,8 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
     user_id: int = Field(index=True)
     task_id: str = Field(index=True, unique=True)
     project_id: str = Field(index=True, unique=False, nullable=True)
+    space_id: str | None = Field(default=None, index=True)
+    run_id: str | None = Field(default=None, index=True)
     question: str
     language: str
     model_platform: str
@@ -58,11 +61,14 @@ class ChatHistory(AbstractModel, DefaultTimes, table=True):
     tokens: int = Field(default=0, sa_column=(Column(Integer, server_default="0")))
     spend: float = Field(default=0, sa_column=(Column(Float, server_default="0")))
     status: int = Field(default=1, sa_column=Column(ChoiceType(ChatStatus, SmallInteger())))
+    skip_reason: SkipReason | None = Field(default=None, sa_column=Column(JSON))
 
 
 class ChatHistoryIn(BaseModel):
     task_id: str
     project_id: str | None = None
+    space_id: str | None = None
+    run_id: str | None = None
     user_id: int | None = None
     question: str
     language: str
@@ -78,12 +84,16 @@ class ChatHistoryIn(BaseModel):
     tokens: int = 0
     spend: float = 0
     status: int = ChatStatus.ongoing.value
+    skip_reason: SkipReason | None = None
+    workdir_mode: str | None = None
 
 
 class ChatHistoryOut(BaseModel):
     id: int
     task_id: str
     project_id: str | None = None
+    space_id: str | None = None
+    run_id: str | None = None
     question: str
     language: str
     model_platform: str
@@ -97,6 +107,7 @@ class ChatHistoryOut(BaseModel):
     summary: str | None = None
     tokens: int
     status: int
+    skip_reason: SkipReason | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -105,6 +116,8 @@ class ChatHistoryOut(BaseModel):
         """Fill project_id from task_id when project_id is None"""
         if self.project_id is None:
             self.project_id = self.task_id
+        if self.run_id is None:
+            self.run_id = self.task_id
         return self
 
     @model_validator(mode="after")
@@ -121,3 +134,6 @@ class ChatHistoryUpdate(BaseModel):
     tokens: int | None = None
     status: int | None = None
     project_id: str | None = None
+    space_id: str | None = None
+    run_id: str | None = None
+    skip_reason: SkipReason | None = None
