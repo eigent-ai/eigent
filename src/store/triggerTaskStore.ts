@@ -37,6 +37,8 @@ export interface TriggeredTask {
    * If null, creates a new project or uses active project.
    */
   projectId: string | null;
+  /** Target Space ID for the project, when supplied by the backend event. */
+  spaceId?: string | null;
   /** Input data from webhook request or scheduled context */
   inputData: Record<string, any>;
   /** Timestamp when the task was triggered */

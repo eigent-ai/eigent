@@ -53,6 +53,9 @@ function persistSessionIdFromResponse(response: Response): void {
 }
 
 function shouldAttachAuthHeader(url: string): boolean {
+  // This runs before getBaseURL() prefixes Brain-relative paths. Relative
+  // routes are our Brain calls and should carry auth; absolute URLs may point
+  // at third-party targets and must not receive the user's token.
   return !url.includes('http://') && !url.includes('https://');
 }
 
@@ -61,7 +64,7 @@ function buildBrainHeaders(
   customHeaders: Record<string, string> = {},
   includeContentType = true
 ): Record<string, string> {
-  const { token } = getAuthStore();
+  const { token, user_id } = getAuthStore();
   const conn = getConnectionConfig();
   const headers: Record<string, string> = {
     ...(includeContentType ? defaultHeaders : {}),
@@ -73,6 +76,9 @@ function buildBrainHeaders(
   }
   if (token && shouldAttachAuthHeader(url)) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (user_id != null) {
+    headers['X-User-ID'] = String(user_id);
   }
   return headers;
 }
@@ -105,7 +111,7 @@ export async function getBaseURL() {
 }
 
 async function fetchRequest(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
   customHeaders: Record<string, string> = {}
@@ -238,6 +244,9 @@ export const fetchPost = (url: string, data?: any, headers?: any) =>
 export const fetchPut = (url: string, data?: any, headers?: any) =>
   fetchRequest('PUT', url, data, headers);
 
+export const fetchPatch = (url: string, data?: any, headers?: any) =>
+  fetchRequest('PATCH', url, data, headers);
+
 export const fetchDelete = (url: string, data?: any, headers?: any) =>
   fetchRequest('DELETE', url, data, headers);
 
@@ -333,7 +342,7 @@ async function getProxyBaseURL() {
 }
 
 async function proxyFetchRequest(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
   customHeaders: Record<string, string> = {}
@@ -391,6 +400,9 @@ export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
 
 export const proxyFetchPut = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('PUT', url, data, headers);
+
+export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
+  proxyFetchRequest('PATCH', url, data, headers);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('DELETE', url, data, headers);

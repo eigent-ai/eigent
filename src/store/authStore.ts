@@ -19,6 +19,7 @@ import {
 import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useSpaceStore } from './spaceStore';
 
 // type definition
 type InitState = 'carousel' | 'done';
@@ -158,6 +159,15 @@ const isSupportedCloudModelType = (value: unknown): value is CloudModelType =>
   typeof value === 'string' &&
   SUPPORTED_CLOUD_MODEL_TYPES.has(value as CloudModelType);
 
+const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
+  if (userId === null || userId === undefined || userId === '') {
+    useSpaceStore.getState().ensureLegacySpace();
+    return;
+  }
+  useSpaceStore.getState().ensureLegacySpace(userId);
+  void useSpaceStore.getState().hydrateFromServer(userId);
+};
+
 // create store
 const authStore = create<AuthState>()(
   persist(
@@ -189,8 +199,10 @@ const authStore = create<AuthState>()(
       workerListData: {},
 
       // auth related methods
-      setAuth: ({ token, username, email, user_id }) =>
-        set({ token, username, email, user_id }),
+      setAuth: ({ token, username, email, user_id }) => {
+        set({ token, username, email, user_id });
+        hydrateSpacesForUser(user_id);
+      },
 
       logout: () =>
         set({
@@ -425,6 +437,15 @@ export const useAuthStore = authStore;
 
 // export non-Hook version for non-components
 export const getAuthStore = () => authStore.getState();
+
+queueMicrotask(() => {
+  const { token, user_id } = authStore.getState();
+  if (token) {
+    hydrateSpacesForUser(user_id);
+  } else {
+    useSpaceStore.getState().ensureLegacySpace(user_id);
+  }
+});
 
 // constant definition
 const EMPTY_LIST: Agent[] = [];

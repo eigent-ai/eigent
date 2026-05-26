@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ChatStore } from '@/store/chatStore';
-import { ProjectStore } from '@/store/projectStore';
+import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { NavigateFunction } from 'react-router-dom';
 
 /**
@@ -30,7 +30,7 @@ import { NavigateFunction } from 'react-router-dom';
  * @param projectName - Optional project display name
  */
 export const loadProjectFromHistory = async (
-  projectStore: ProjectStore,
+  projectStore: ProjectRuntimeStore,
   navigate: NavigateFunction,
   projectId: string,
   question: string,
@@ -61,7 +61,7 @@ export const loadProjectFromHistory = async (
  * @param historyId - The history ID for the replay
  */
 export const replayProject = async (
-  projectStore: ProjectStore,
+  projectStore: ProjectRuntimeStore,
   navigate: NavigateFunction,
   projectId: string,
   question: string,
@@ -83,7 +83,7 @@ export const replayProject = async (
  */
 export const replayActiveTask = async (
   chatStore: ChatStore,
-  projectStore: ProjectStore,
+  projectStore: ProjectRuntimeStore,
   navigate: NavigateFunction
 ) => {
   const taskId = chatStore.activeTaskId as string;
