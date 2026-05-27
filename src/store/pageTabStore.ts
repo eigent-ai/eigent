@@ -15,27 +15,30 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+/**
+ * Identifiers for the right-pane tabs in the workspace shell. Centralized so
+ * typos surface as TypeScript errors at call sites that previously passed
+ * raw string literals.
+ */
+export const WorkspaceTab = {
+  Workforce: 'workforce',
+  Inbox: 'inbox',
+  Triggers: 'triggers',
+  Runs: 'runs',
+  Project: 'project',
+  Dispatch: 'dispatch',
+  NewProject: 'new-project',
+} as const;
+
+export type WorkspaceTabId = (typeof WorkspaceTab)[keyof typeof WorkspaceTab];
+
 interface PageTabState {
   activeTab: 'tasks' | 'trigger';
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
   // Workspace tabs within the Tasks page (sidebar → main panel)
-  activeWorkspaceTab:
-    | 'workforce'
-    | 'inbox'
-    | 'triggers'
-    | 'runs'
-    | 'project'
-    | 'dispatch'
-    | 'new-project';
+  activeWorkspaceTab: WorkspaceTabId;
   setActiveWorkspaceTab: (
-    tab:
-      | 'workforce'
-      | 'inbox'
-      | 'triggers'
-      | 'runs'
-      | 'project'
-      | 'dispatch'
-      | 'new-project',
+    tab: WorkspaceTabId,
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;
@@ -94,6 +97,10 @@ interface PageTabState {
   /** Incremented to open the add-trigger dialog from the sidebar (Home owns dialog state). */
   triggerAddDialogRequestId: number;
   requestOpenTriggerAddDialog: () => void;
+  /** Pending trigger to select after navigating to the triggers workspace tab. */
+  pendingTriggerSelectId: number | null;
+  triggerSelectRequestId: number;
+  requestSelectTrigger: (triggerId: number) => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -223,6 +230,13 @@ export const usePageTabStore = create<PageTabState>()(
             triggerAddDialogRequestId: state.triggerAddDialogRequestId + 1,
           };
         }),
+      pendingTriggerSelectId: null,
+      triggerSelectRequestId: 0,
+      requestSelectTrigger: (triggerId) =>
+        set((state) => ({
+          pendingTriggerSelectId: triggerId,
+          triggerSelectRequestId: state.triggerSelectRequestId + 1,
+        })),
     }),
     {
       name: 'eigent-page-tab',
