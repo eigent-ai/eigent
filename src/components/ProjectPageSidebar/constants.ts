@@ -14,7 +14,7 @@
 
 import type { Transition } from 'framer-motion';
 
-/** Keep in sync with `HOME_MAIN_LAYOUT_SPRING` in `pages/Home.tsx`. */
+/** Keep in sync with `HOME_MAIN_LAYOUT_SPRING` in `pages/Workspace.tsx`. */
 export const PROJECT_SIDEBAR_FOLD_SPRING: Transition = {
   type: 'spring',
   stiffness: 380,

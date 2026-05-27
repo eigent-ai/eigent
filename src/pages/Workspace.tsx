@@ -94,7 +94,7 @@ function readStoredSidebarWidthPx(): number {
   }
 }
 
-export default function Home() {
+export default function WorkspacePage() {
   const { t } = useTranslation();
   const host = useHost();
   const ipc = host?.ipcRenderer;
@@ -111,6 +111,12 @@ export default function Home() {
     usePageTabStore();
   const triggerAddDialogRequestId = usePageTabStore(
     (s) => s.triggerAddDialogRequestId
+  );
+  const triggerSelectRequestId = usePageTabStore(
+    (s) => s.triggerSelectRequestId
+  );
+  const pendingTriggerSelectId = usePageTabStore(
+    (s) => s.pendingTriggerSelectId
   );
   const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
   const setProjectSidebarFolded = usePageTabStore(
@@ -389,20 +395,55 @@ export default function Home() {
   }, [projectStore.activeProjectId]);
 
   useEffect(() => {
+    if (triggerSelectRequestId === 0) return;
+    if (pendingTriggerSelectId != null) {
+      setTriggerSelectedId(pendingTriggerSelectId);
+    }
+  }, [pendingTriggerSelectId, triggerSelectRequestId]);
+
+  useEffect(() => {
     checkLocalServerStale();
   }, []);
 
-  useEffect(() => {
-    if (
-      !activeProjectId &&
-      (activeWorkspaceTab === 'project' ||
-        activeWorkspaceTab === 'new-project' ||
-        activeWorkspaceTab === 'inbox' ||
-        activeWorkspaceTab === 'runs')
-    ) {
+  // Project-scoped tabs (except new-project shell) require an active project.
+  // When opening inbox/runs/project from the workspace tab without a selection,
+  // fall back to the last visited (or first) project in the space instead of
+  // bouncing back to workforce.
+  useLayoutEffect(() => {
+    const isProjectScopedTab =
+      activeWorkspaceTab === 'project' ||
+      activeWorkspaceTab === 'inbox' ||
+      activeWorkspaceTab === 'runs';
+
+    if (!isProjectScopedTab || activeProjectId) return;
+
+    const spaceStore = useSpaceStore.getState();
+    const spaceId = activeSpaceId ?? spaceStore.activeSpaceId;
+    if (!spaceId) {
       setActiveWorkspaceTab('workforce');
+      return;
     }
-  }, [activeProjectId, activeWorkspaceTab, setActiveWorkspaceTab]);
+
+    const projectsInSpace = spaceStore.getProjectsForSpace(spaceId);
+    if (projectsInSpace.length > 0) {
+      const lastVisitedProjectId =
+        spaceStore.lastVisitedProjectBySpace[spaceId];
+      const targetProject =
+        projectsInSpace.find(
+          (project) => project.id === lastVisitedProjectId
+        ) ?? projectsInSpace[0];
+      projectStore.setActiveProject(targetProject.id);
+      return;
+    }
+
+    setActiveWorkspaceTab('workforce');
+  }, [
+    activeProjectId,
+    activeSpaceId,
+    activeWorkspaceTab,
+    projectStore,
+    setActiveWorkspaceTab,
+  ]);
 
   // Detect files and triggers when project loads
   useEffect(() => {
@@ -702,16 +743,16 @@ export default function Home() {
 
   return (
     <ReactFlowProvider>
-      <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
+      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-default-default"
+          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
             id="home-shell-panel-group"
             direction="horizontal"
-            className="h-full min-h-0 w-full gap-0"
+            className="min-h-0 gap-0 h-full w-full"
             onLayout={handleShellPanelLayout}
           >
             <ResizablePanel
@@ -725,8 +766,8 @@ export default function Home() {
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-1 shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-colors',
-                'transition-colors hover:after:bg-ds-bg-brand-default-focus',
+                'w-1 after:bg-ds-bg-neutral-default-default shrink-0 bg-transparent after:transition-colors',
+                'hover:after:bg-ds-bg-brand-default-focus transition-colors',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />
@@ -739,7 +780,7 @@ export default function Home() {
               <motion.div
                 layout
                 transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-                className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden"
+                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
               >
                 <div className={mainPanelShellClass}>
                   {renderActiveWorkspaceTab()}

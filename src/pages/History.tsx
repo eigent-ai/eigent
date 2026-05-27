@@ -17,10 +17,9 @@ import {
   isHistoryTabId,
   type HistoryTabId,
 } from '@/components/Dashboard/HistoryTabsNav';
-import SpacesHub from '@/components/SpacesHub';
 import AlertDialog from '@/components/ui/alertDialog';
 import WordCarousel from '@/components/ui/WordCarousel';
-import Project from '@/pages/Projects/Project';
+import HomeHub from '@/pages/Home';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -33,9 +32,11 @@ import Connectors from './Connectors';
 
 const TAB_ALIASES: Record<string, HistoryTabId> = {
   mcp_tools: 'connectors',
+  projects: 'home',
+  spaces: 'home',
 };
 
-export default function Home() {
+export default function History() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -44,7 +45,6 @@ export default function Home() {
   const { username, email } = useAuthStore();
   const displayName = username || email || '';
 
-  // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
   const activeTab = useMemo(() => {
     const tabFromUrl = searchParams.get('tab');
     if (tabFromUrl) {
@@ -53,7 +53,7 @@ export default function Home() {
         return normalizedTab;
       }
     }
-    return 'projects' as HistoryTabId;
+    return 'home' as HistoryTabId;
   }, [searchParams]);
 
   /** Mount each tab once when first opened; keep mounted and hide inactive so lists do not refetch on every tab switch. */
@@ -67,8 +67,29 @@ export default function Home() {
     );
   }, [activeTab]);
 
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    const section = searchParams.get('section');
+    if ((tabFromUrl === 'spaces' || tabFromUrl === 'projects') && !section) {
+      const legacySection = tabFromUrl === 'spaces' ? 'spaces' : 'projects';
+      navigate(`?tab=home&section=${legacySection}`, { replace: true });
+      return;
+    }
+    // When landing on Home with no section, default to Spaces so the
+    // URL is always self-describing (lets HomeHub render directly from
+    // searchParams without an internal default).
+    const isHomeTab = tabFromUrl === 'home' || tabFromUrl === null;
+    if (isHomeTab && !section) {
+      navigate(`?tab=home&section=spaces`, { replace: true });
+    }
+  }, [navigate, searchParams]);
+
   const handleTabChange = (value: string) => {
     if (value) {
+      if (value === 'home') {
+        navigate(`?tab=home&section=spaces`, { replace: true });
+        return;
+      }
       navigate(`?tab=${value}`, { replace: true });
     }
   };
@@ -102,10 +123,10 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-full w-full flex-1 flex-col px-1 pb-1 pt-10">
+    <div className="px-1 pb-1 pt-10 flex h-full w-full flex-1 flex-col">
       <div
         ref={scrollContainerRef}
-        className="scrollbar-hide h-full overflow-y-auto rounded-2xl bg-ds-bg-neutral-subtle-default"
+        className="scrollbar-hide rounded-2xl bg-ds-bg-neutral-subtle-default h-full overflow-y-auto"
       >
         {/* alert dialog */}
         <AlertDialog
@@ -118,17 +139,17 @@ export default function Home() {
           cancelText={t('layout.cancel')}
         />
         {/* welcome text */}
-        <div className="flex w-full flex-row bg-gradient-to-b from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-[74px] py-8">
-          <p className="m-0 inline-flex flex-wrap items-baseline gap-2">
+        <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default py-8 flex w-full flex-row bg-gradient-to-b px-[74px]">
+          <p className="m-0 gap-2 inline-flex flex-wrap items-baseline">
             <WordCarousel
               words={[t(timeGreetingKey)]}
-              className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
+              className="history-welcome-headline text-heading-xl font-bold tracking-tight not-italic"
               rotateIntervalMs={100}
               sweepDurationMs={2000}
               sweepOnce
               gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
             />
-            <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
+            <span className="history-welcome-headline text-heading-xl font-bold tracking-tight text-ds-text-brand-default-default italic">
               {`, ${welcomeName} !`}
             </span>
           </p>
@@ -136,28 +157,20 @@ export default function Home() {
         {/* Navbar */}
         {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
         <div
-          className={`border-b-1 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default px-[70px] pt-2`}
+          className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default pt-2 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid px-[70px]`}
         >
           <div className="mx-auto flex w-full flex-row items-center">
             <HistoryTabsNav activeTab={activeTab} onChange={handleTabChange} />
           </div>
         </div>
         <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
-          <div className="flex h-auto min-h-[calc(100vh-80px)] w-full px-6">
-            {visitedTabs.includes('spaces') && (
+          <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
+            {visitedTabs.includes('home') && (
               <div
-                className={activeTab === 'spaces' ? 'contents' : 'hidden'}
-                aria-hidden={activeTab !== 'spaces'}
+                className={activeTab === 'home' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'home'}
               >
-                <SpacesHub />
-              </div>
-            )}
-            {visitedTabs.includes('projects') && (
-              <div
-                className={activeTab === 'projects' ? 'contents' : 'hidden'}
-                aria-hidden={activeTab !== 'projects'}
-              >
-                <Project />
+                <HomeHub />
               </div>
             )}
             {visitedTabs.includes('agents') && (

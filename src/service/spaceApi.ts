@@ -135,6 +135,7 @@ export interface ProjectPayload {
   name: string;
   description?: string;
   mode?: ProjectMode | null;
+  status?: 'active' | 'archived';
   workdir_mode?: ProjectWorkdirMode | null;
   metadata?: Record<string, unknown> | null;
 }

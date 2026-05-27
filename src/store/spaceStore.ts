@@ -14,6 +14,14 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
+import {
+  getSessionNavLeadFromHistoryProject,
+  type SessionNavLeadPresentation,
+} from '@/lib/sessionNavLead';
+import {
+  isPlaceholderProjectName,
+  isPlaceholderSpaceNameStatic,
+} from '@/lib/spaceLabel';
 import type { ServerProject } from '@/service/spaceApi';
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
@@ -183,19 +191,6 @@ export const projectMetaFromServer = (
 const normalizedProjectName = (name?: string | null) =>
   (name ?? '').trim().toLowerCase();
 
-const isPlaceholderProjectName = (
-  name: string | null | undefined,
-  projectId: string
-) => {
-  const normalized = normalizedProjectName(name);
-  return (
-    !normalized ||
-    normalized === 'new project' ||
-    normalized === 'new space' ||
-    normalized === `project ${projectId}`.toLowerCase()
-  );
-};
-
 const isAutoCreatedProjectMeta = (project: SpaceProjectMeta) =>
   project.metadata?.serverSynced !== true &&
   (project.metadata?.autoCreatedPlaceholder === true ||
@@ -242,16 +237,6 @@ const DISPOSABLE_BLANK_SPACE_CREATED_FROM = new Set([
   'workspace_space_picker',
 ]);
 
-const normalizedSpaceName = (name?: string | null) =>
-  (name ?? '').trim().toLowerCase();
-
-const isPlaceholderSpaceName = (name?: string | null) => {
-  const normalized = normalizedSpaceName(name);
-  return (
-    !normalized || normalized === 'new space' || normalized === 'new project'
-  );
-};
-
 export const isDisposableBlankSpace = (
   space: Space | null | undefined,
   projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
@@ -269,7 +254,7 @@ export const isDisposableBlankSpace = (
       : '';
   return (
     DISPOSABLE_BLANK_SPACE_CREATED_FROM.has(createdFrom) &&
-    isPlaceholderSpaceName(space.name)
+    isPlaceholderSpaceNameStatic(space.name)
   );
 };
 
@@ -358,30 +343,38 @@ const projectDisplayNameFromHistory = (project: ProjectGroup) => {
   return prompt ? truncateProjectDisplayName(prompt) : null;
 };
 
-const fetchHistoryProjectNameMap = async (spaceId: string) => {
+const fetchHistoryProjectSidebarMetaMap = async (spaceId: string) => {
   const params = new URLSearchParams({
-    include_tasks: 'false',
+    include_tasks: 'true',
     space_id: spaceId,
   });
   const response = (await proxyFetchGet(
     `/api/v1/chat/histories/grouped?${params.toString()}`
   )) as { projects?: ProjectGroup[] } | null;
-  const names = new Map<string, string>();
+  const metaByProjectId = new Map<
+    string,
+    { displayName?: string; navLead: SessionNavLeadPresentation }
+  >();
   for (const project of response?.projects ?? []) {
-    const displayName = projectDisplayNameFromHistory(project);
-    if (displayName) {
-      names.set(project.project_id, displayName);
-    }
+    const displayName = projectDisplayNameFromHistory(project) ?? undefined;
+    metaByProjectId.set(project.project_id, {
+      displayName,
+      navLead: getSessionNavLeadFromHistoryProject(project),
+    });
   }
-  return names;
+  return metaByProjectId;
 };
 
 const withHistoryProjectNames = (
   projects: ServerProject[],
-  historyNameByProjectId: Map<string, string>
+  historyMetaByProjectId: Map<
+    string,
+    { displayName?: string; navLead: SessionNavLeadPresentation }
+  >
 ): ServerProject[] =>
   projects.map((project) => {
-    const historyName = historyNameByProjectId.get(project.id);
+    const historyMeta = historyMetaByProjectId.get(project.id);
+    const historyName = historyMeta?.displayName;
     if (!historyName || !isPlaceholderProjectName(project.name, project.id)) {
       return project;
     }
@@ -666,19 +659,22 @@ export const useSpaceStore = create<SpaceStore>()(
             }
           }
 
-          const [serverProjects, historyNameByProjectId] = await Promise.all([
+          const [serverProjects, historyMetaByProjectId] = await Promise.all([
             proxyFetchSpaceProjects(targetSpaceId),
-            fetchHistoryProjectNameMap(targetSpaceId).catch((error) => {
+            fetchHistoryProjectSidebarMetaMap(targetSpaceId).catch((error) => {
               console.warn(
-                `[spaceStore] Failed to fetch history display names for Space ${targetSpaceId}:`,
+                `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
                 error
               );
-              return new Map<string, string>();
+              return new Map<
+                string,
+                { displayName?: string; navLead: SessionNavLeadPresentation }
+              >();
             }),
           ]);
           const namedProjects = withHistoryProjectNames(
             serverProjects,
-            historyNameByProjectId
+            historyMetaByProjectId
           );
           const activeNamedProjects = namedProjects.filter(
             (project) => project.status !== 'archived'
@@ -691,9 +687,15 @@ export const useSpaceStore = create<SpaceStore>()(
               syncedAt: Date.now(),
             }
           );
-          projectModule.useProjectRuntimeStore
-            .getState()
-            .upsertProjectsFromServer(activeNamedProjects);
+          const projectStore = projectModule.useProjectRuntimeStore.getState();
+          projectStore.upsertProjectsFromServer(activeNamedProjects);
+          if (historyMetaByProjectId.size > 0) {
+            const navLeads: Record<string, SessionNavLeadPresentation> = {};
+            for (const [projectId, meta] of historyMetaByProjectId) {
+              navLeads[projectId] = meta.navLead;
+            }
+            projectStore.setProjectNavLeads(navLeads);
+          }
         } catch (error) {
           console.warn(
             `[spaceStore] Failed to sync projects for Space ${spaceId}:`,
@@ -814,9 +816,16 @@ export const useSpaceStore = create<SpaceStore>()(
           nextBySpaceId[spaceId] = nextSpaceProjects;
           const nextIndex = { ...state.projectIdIndex };
           delete nextIndex[projectId];
+          const nextLastVisitedProjectBySpace = {
+            ...state.lastVisitedProjectBySpace,
+          };
+          if (nextLastVisitedProjectBySpace[spaceId] === projectId) {
+            delete nextLastVisitedProjectBySpace[spaceId];
+          }
           return {
             projectsBySpaceId: nextBySpaceId,
             projectIdIndex: nextIndex,
+            lastVisitedProjectBySpace: nextLastVisitedProjectBySpace,
           };
         }),
 

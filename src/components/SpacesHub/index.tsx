@@ -15,6 +15,7 @@
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -47,9 +48,6 @@ const pathBasename = (path?: string | null) => {
   const parts = value.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || value;
 };
-
-const isLegacySpace = (space: Space) =>
-  space.metadata?.legacy === true || space.sourceType === 'legacy';
 
 const projectTitle = (project: SpaceProjectMeta, fallback: string) => {
   const name = project.name?.trim();
@@ -203,8 +201,8 @@ export default function SpacesHub() {
 
   if (spaceSections.length === 0) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center px-6">
-        <div className="flex max-w-md flex-col items-center gap-3 text-center">
+      <div className="min-h-0 px-6 flex h-full items-center justify-center">
+        <div className="max-w-md gap-3 flex flex-col items-center text-center">
           <FolderKanban
             className="h-10 w-10 text-ds-icon-neutral-muted-default"
             aria-hidden
@@ -221,8 +219,8 @@ export default function SpacesHub() {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-end justify-between gap-4 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-8 py-6">
+    <div className="min-h-0 relative flex h-full flex-col overflow-hidden">
+      <div className="gap-4 border-ds-border-neutral-subtle-default px-8 py-6 flex shrink-0 items-end justify-between border-0 border-b border-solid">
         <div className="min-w-0">
           <h1 className="text-heading-2xl m-0 font-semibold text-ds-text-neutral-default-default">
             {t('layout.spaces-hub-title')}
@@ -231,7 +229,7 @@ export default function SpacesHub() {
             {t('layout.spaces-hub-description')}
           </p>
         </div>
-        <div className="hidden shrink-0 items-center gap-2 text-body-sm text-ds-text-neutral-subtle-default md:flex">
+        <div className="gap-2 text-body-sm text-ds-text-neutral-subtle-default md:flex hidden shrink-0 items-center">
           <FolderKanban className="h-4 w-4" aria-hidden />
           <span>
             {t('layout.spaces-hub-space-count', {
@@ -241,8 +239,8 @@ export default function SpacesHub() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+      <div className="min-h-0 px-8 py-6 flex-1 overflow-y-auto">
+        <div className="gap-4 xl:grid-cols-2 2xl:grid-cols-3 grid grid-cols-1">
           {spaceSections.map(({ space, projects }) => {
             const isActive = space.id === activeSpaceId;
             const subtitle =
@@ -259,15 +257,15 @@ export default function SpacesHub() {
                   isActive && 'border-ds-border-brand-default-default'
                 )}
               >
-                <div className="flex shrink-0 items-start justify-between gap-3 border-0 border-b border-solid border-ds-border-neutral-subtle-default p-4">
+                <div className="gap-3 border-ds-border-neutral-subtle-default p-4 flex shrink-0 items-start justify-between border-0 border-b border-solid">
                   <button
                     type="button"
-                    className="flex min-w-0 flex-1 cursor-pointer flex-col items-start gap-1 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus"
+                    className="min-w-0 gap-1 rounded-md focus-visible:ring-ds-border-brand-default-focus flex flex-1 cursor-pointer flex-col items-start text-left outline-none focus-visible:ring-2"
                     onClick={() => openSpace(space.id)}
                   >
-                    <span className="flex min-w-0 max-w-full items-center gap-2">
-                      <Folder className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default" />
-                      <span className="truncate text-body-md font-semibold text-ds-text-neutral-default-default">
+                    <span className="min-w-0 gap-2 flex max-w-full items-center">
+                      <Folder className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0" />
+                      <span className="text-body-md font-semibold text-ds-text-neutral-default-default truncate">
                         {space.name?.trim() || t('layout.spaces-untitled')}
                       </span>
                       {isLegacySpace(space) ? (
@@ -279,7 +277,7 @@ export default function SpacesHub() {
                         />
                       ) : null}
                     </span>
-                    <span className="max-w-full truncate text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="text-body-xs text-ds-text-neutral-muted-default max-w-full truncate">
                       {subtitle}
                     </span>
                   </button>
@@ -300,11 +298,11 @@ export default function SpacesHub() {
                   </Button>
                 </div>
 
-                <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
+                <div className="min-h-0 gap-1 p-2 flex flex-1 flex-col overflow-y-auto">
                   {projects.length === 0 ? (
                     <button
                       type="button"
-                      className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-ds-border-neutral-subtle-default px-4 py-5 text-center text-body-sm text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-subtle-default"
+                      className="min-h-20 gap-2 rounded-lg border-ds-border-neutral-subtle-default px-4 py-5 text-body-sm text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default flex cursor-pointer flex-col items-center justify-center border border-dashed text-center transition-colors"
                       onClick={() => void createProject(space)}
                     >
                       <Plus className="h-4 w-4" aria-hidden />
@@ -320,8 +318,8 @@ export default function SpacesHub() {
                           key={project.id}
                           type="button"
                           className={cn(
-                            'group flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition-colors',
-                            'hover:bg-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus',
+                            'group min-h-11 gap-3 rounded-md px-3 py-2 flex w-full cursor-pointer items-center text-left transition-colors',
+                            'hover:bg-ds-bg-neutral-subtle-default focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-2 focus-visible:outline-none',
                             isActiveProject &&
                               'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default'
                           )}
@@ -329,23 +327,23 @@ export default function SpacesHub() {
                         >
                           {isProjectLoading ? (
                             <Loader2
-                              className="h-4 w-4 shrink-0 animate-spin text-ds-icon-neutral-muted-default"
+                              className="h-4 w-4 animate-spin text-ds-icon-neutral-muted-default shrink-0"
                               aria-hidden
                             />
                           ) : (
                             <History
-                              className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                              className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                               aria-hidden
                             />
                           )}
-                          <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default">
+                          <span className="min-w-0 text-body-sm text-ds-text-neutral-default-default flex-1 truncate">
                             {projectTitle(
                               project,
                               t('layout.sessions-start-new')
                             )}
                           </span>
                           <ArrowRight
-                            className="h-4 w-4 shrink-0 text-ds-icon-neutral-subtle-default opacity-0 transition-opacity group-hover:opacity-100"
+                            className="h-4 w-4 text-ds-icon-neutral-subtle-default shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                             aria-hidden
                           />
                         </button>

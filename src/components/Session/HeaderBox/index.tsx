@@ -27,9 +27,15 @@ export interface HeaderBoxProps {
   totalTokens?: number;
   /** Optional extra class names for the outer container */
   className?: string;
+  /** Reserve header height without controls or token count. */
+  empty?: boolean;
 }
 
-export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
+export function HeaderBox({
+  totalTokens = 0,
+  className,
+  empty = false,
+}: HeaderBoxProps) {
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -37,6 +43,15 @@ export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
     defaultValue: 'Back to workspace',
   });
+
+  if (empty) {
+    return (
+      <div
+        className={`px-3 flex h-[44px] w-full shrink-0 flex-row items-center justify-between ${className || ''}`}
+        aria-hidden
+      />
+    );
+  }
 
   return (
     <div

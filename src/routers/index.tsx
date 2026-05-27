@@ -21,7 +21,7 @@ import Layout from '@/components/Layout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
-const Home = lazy(() => import('@/pages/Home'));
+const Workspace = lazy(() => import('@/pages/Workspace'));
 const History = lazy(() => import('@/pages/History'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
@@ -125,7 +125,7 @@ const ProtectedRoute = () => {
   if (state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin border-blue-600 rounded-full border-b-2"></div>
       </div>
     );
   }
@@ -139,7 +139,7 @@ const AppRoutes = () => (
     <Route path="/signup" element={<Signup />} />
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Workspace />} />
         <Route path="/history" element={<History />} />
         <Route
           path="/setting"
