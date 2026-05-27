@@ -12,13 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
+import { proxyFetchGet } from '@/api/http';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { Button } from '@/components/ui/button';
 import {
@@ -54,6 +48,7 @@ import {
   FolderKanban,
   Inbox,
   LayoutGrid,
+  Loader2,
   MessageCircle,
   Plus,
   Zap,
@@ -61,7 +56,6 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   NavTab,
@@ -132,10 +126,8 @@ export default function ProjectPageSidebar({
       : undefined
   );
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [endDialogOpen, setEndDialogOpen] = useState(false);
-  const [endProjectLoading, setEndProjectLoading] = useState(false);
+  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
 
   const scheduledTabLabel = t('layout.scheduled-tab');
   const triggersTabTooltip = scheduledTabLabel;
@@ -200,63 +192,6 @@ export default function ProjectPageSidebar({
     }
     return folderPathBasename(custom);
   }, [customFolderPath, resolvedDefaultFolderPath, t]);
-
-  const handleEndProject = async () => {
-    const taskId = chatStore?.activeTaskId;
-    const projectId = projectStore.activeProjectId;
-
-    if (!chatStore || !taskId) {
-      toast.error(t('layout.no-active-project-to-end'));
-      return;
-    }
-
-    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
-
-    setEndProjectLoading(true);
-    try {
-      const task = chatStore.tasks[taskId];
-
-      if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
-          action: 'stop',
-        });
-      }
-
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch {
-        /* Backend may already have removed the chat */
-      }
-
-      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          chatStore.removeTask(taskId);
-        } catch {
-          /* History may already be deleted */
-        }
-      } else {
-        console.warn(
-          'No historyId found for project or task finished, skipping history deletion'
-        );
-      }
-
-      projectStore.createProject('new project');
-      navigate('/', { replace: true });
-
-      toast.success(t('layout.project-ended-successfully'), {
-        closeButton: true,
-      });
-    } catch (error) {
-      console.error('Failed to end project:', error);
-      toast.error(t('layout.failed-to-end-project'), {
-        closeButton: true,
-      });
-    } finally {
-      setEndProjectLoading(false);
-      setEndDialogOpen(false);
-    }
-  };
 
   const activeSpaces = useMemo(
     () =>
@@ -370,6 +305,7 @@ export default function ProjectPageSidebar({
           sessionLead: activeTask
             ? getSessionNavLeadPresentation(activeTask)
             : PROJECT_NAV_IDLE_LEAD,
+          source: activeTask?.source,
         };
       }),
     [projectMetasForActiveSpace, projectStore, t]
@@ -409,6 +345,7 @@ export default function ProjectPageSidebar({
 
   const handleSpaceSelect = useCallback(
     async (spaceId: string) => {
+      setSwitchingSpaceId(spaceId);
       try {
         const resolvedSpaceId = await resolveServerBackedSpaceId(
           projectStore,
@@ -438,6 +375,8 @@ export default function ProjectPageSidebar({
         toast.error(t('layout.spaces-create-failed'), {
           closeButton: true,
         });
+      } finally {
+        setSwitchingSpaceId(null);
       }
     },
     [
@@ -538,17 +477,22 @@ export default function ProjectPageSidebar({
                     <DropdownMenuItem
                       key={space.id}
                       className="cursor-pointer"
+                      disabled={switchingSpaceId !== null}
                       onClick={() => void handleSpaceSelect(space.id)}
                     >
-                      <Check
-                        className={cn(
-                          'h-4 w-4',
-                          activeSpaceId === space.id
-                            ? 'opacity-100'
-                            : 'opacity-0'
-                        )}
-                        aria-hidden
-                      />
+                      {switchingSpaceId === space.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Check
+                          className={cn(
+                            'h-4 w-4',
+                            activeSpaceId === space.id
+                              ? 'opacity-100'
+                              : 'opacity-0'
+                          )}
+                          aria-hidden
+                        />
+                      )}
                       <span className="min-w-0 flex-1 truncate">
                         {space.name?.trim() || t('layout.spaces-untitled')}
                       </span>
@@ -703,13 +647,6 @@ export default function ProjectPageSidebar({
           </div>
         </div>
       </aside>
-
-      <EndNoticeDialog
-        open={endDialogOpen}
-        onOpenChange={setEndDialogOpen}
-        onConfirm={handleEndProject}
-        loading={endProjectLoading}
-      />
     </>
   );
 }

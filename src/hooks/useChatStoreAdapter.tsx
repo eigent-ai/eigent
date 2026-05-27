@@ -41,6 +41,9 @@ const chatStateReducer = (
 
 const useChatStoreAdapter = (): {
   projectStore: ProjectRuntimeStore;
+  // TODO(PR-X3): This can be null while a Space is selected but no Project
+  // runtime is active. Existing legacy consumers still assume a ChatStore;
+  // finish nullable typing when projectRuntimeStore is fully split.
   chatStore: ChatStore;
 } => {
   const projectStore = useProjectRuntimeStore();

@@ -22,6 +22,7 @@ import { UserQueryGroup } from './UserQueryGroup';
 interface ProjectSectionProps {
   chatId: string;
   chatStore: VanillaChatStore;
+  taskId?: string;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
   // onPauseResume: () => void;  // Commented out - temporary not needed
@@ -37,6 +38,7 @@ export const ProjectSection = React.forwardRef<
     {
       chatId,
       chatStore,
+      taskId,
       activeQueryId,
       onQueryActive,
       // onPauseResume,  // Commented out - temporary not needed
@@ -80,7 +82,7 @@ export const ProjectSection = React.forwardRef<
       };
     }, [chatStore]);
 
-    const activeTaskId = chatState.activeTaskId;
+    const activeTaskId = taskId ?? chatState.activeTaskId;
     const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
     const messages = React.useMemo(() => {

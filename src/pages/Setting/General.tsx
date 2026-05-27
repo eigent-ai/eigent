@@ -179,15 +179,11 @@ export default function SettingGeneral() {
     }
   };
 
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
   return (
     <div className="m-auto h-auto w-full flex-1">
       {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 mx-auto flex w-full max-w-[900px] items-center justify-between">
-        <div className="gap-4 flex w-full flex-row items-center justify-between">
+      <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-6 pt-8">
+        <div className="flex w-full flex-row items-center justify-between gap-4">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.general')}
@@ -196,10 +192,10 @@ export default function SettingGeneral() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-xl gap-6 flex flex-col">
+      <div className="mb-xl flex flex-col gap-6">
         {/* Profile Section */}
-        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
-          <div className="gap-2 flex flex-col">
+        <div className="item-center flex flex-row justify-between rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
+          <div className="flex flex-col gap-2">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.profile')}
             </div>
@@ -215,7 +211,7 @@ export default function SettingGeneral() {
               />
             </div>
           </div>
-          <div className="gap-sm flex items-center">
+          <div className="flex items-center gap-sm">
             <Button
               onClick={() => {
                 window.location.href = `${SITE_URL}/dashboard?email=${authStore.email}`;
@@ -238,7 +234,7 @@ export default function SettingGeneral() {
               tone="neutral"
               size="sm"
               onClick={() => {
-                chatStore.clearTasks();
+                chatStore?.clearTasks?.();
 
                 resetInstallation(); // Reset installation state for new account
                 setNeedsBackendRestart(true); // Mark that backend is restarting
@@ -254,7 +250,7 @@ export default function SettingGeneral() {
         </div>
 
         {/* Language Section */}
-        <div className="item-center rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-row justify-between">
+        <div className="item-center flex flex-row justify-between rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="flex flex-1 items-center">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.language')}
@@ -264,7 +260,7 @@ export default function SettingGeneral() {
             <SelectTrigger variant="secondary" className="w-48">
               <SelectValue placeholder={t('setting.select-language')} />
             </SelectTrigger>
-            <SelectContent className="bg-input-bg-default border">
+            <SelectContent className="border bg-input-bg-default">
               <SelectGroup>
                 <SelectItem value="system">
                   {t('setting.system-default')}
@@ -280,8 +276,8 @@ export default function SettingGeneral() {
         </div>
 
         {/* Network Proxy Section */}
-        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex flex-col">
-          <div className="gap-1 flex flex-col">
+        <div className="flex flex-col gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
+          <div className="flex flex-col gap-1">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.network-proxy')}
             </div>

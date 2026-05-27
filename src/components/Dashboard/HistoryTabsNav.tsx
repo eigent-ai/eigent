@@ -21,6 +21,7 @@ import { Radio } from '@/components/ui/animate-ui/icons/radio';
 import { Settings } from '@/components/ui/animate-ui/icons/settings';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { FolderKanban } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +36,7 @@ const underlineSlideTransition = {
 const underlineInstantTransition = { duration: 0 };
 
 export const HISTORY_TAB_IDS = [
+  'spaces',
   'projects',
   'agents',
   'channels',
@@ -56,6 +58,10 @@ type TabConfig = {
 };
 
 const HISTORY_TABS: TabConfig[] = [
+  // TODO(design): swap to an AnimateIcon (e.g. animate-ui/folder-kanban) when
+  // designer provides a Spaces-themed asset; lucide FolderKanban is a stand-in
+  // matching the SpacesHub header icon today.
+  { id: 'spaces', icon: <FolderKanban />, iconAnimateOnHover: false },
   { id: 'projects', icon: <Blocks />, iconAnimateOnHover: 'default' },
   { id: 'agents', icon: <Bot />, iconAnimateOnHover: 'default' },
   { id: 'channels', icon: <Radio />, iconAnimateOnHover: 'default' },

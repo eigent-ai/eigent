@@ -421,26 +421,19 @@ export default function ChatBox(): JSX.Element {
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
-    if (!chatStore) return false;
-    // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
-    }
+    const hasMessages = (store: typeof chatStore) =>
+      !!store &&
+      Object.values(store.tasks).some(
+        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
+      );
+
+    if (hasMessages(chatStore)) return true;
 
     // Then check all other chat stores in the project
     return getAllChatStoresMemoized.some(({ chatStore: store }) => {
       const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
+      return Object.values(state.tasks).some(
+        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);

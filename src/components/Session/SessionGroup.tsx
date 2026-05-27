@@ -64,6 +64,7 @@ export default function Sessions({
           task.summaryTask?.trim() ||
           t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
         sessionLead: getSessionNavLeadPresentation(task),
+        source: task.source,
       }));
     entries.sort((a, b) => taskIdToCreatedMs(b.id) - taskIdToCreatedMs(a.id));
     return entries;

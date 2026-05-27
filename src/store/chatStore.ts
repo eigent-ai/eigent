@@ -226,6 +226,7 @@ async function resolveCdpBrowsersForRequest(
 }
 
 interface Task {
+  source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
   messages: Message[];
   type: string;
@@ -636,6 +637,7 @@ export interface ChatStore {
   setStreamingDecomposeText: (taskId: string, text: string) => void;
   clearStreamingDecomposeText: (taskId: string) => void;
   setExecutionId: (taskId: string, executionId: string | undefined) => void;
+  setTaskSource: (taskId: string, source: 'user' | 'trigger') => void;
   setNextExecutionId: (
     taskId: string,
     nextExecutionId: string | undefined
@@ -1018,6 +1020,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             type: type,
+            source: 'user',
             messages: [],
             summaryTask: '',
             taskInfo: [],
@@ -1264,6 +1267,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // Set executionId if this is a trigger-initiated task
           if (executionId) {
             targetChatStore.getState().setExecutionId(newTaskId, executionId);
+            targetChatStore.getState().setTaskSource(newTaskId, 'trigger');
+          } else {
+            targetChatStore.getState().setTaskSource(newTaskId, 'user');
           }
 
           //From handleSend if message is given
@@ -4523,6 +4529,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...state.tasks[taskId],
               executionId,
+            },
+          },
+        };
+      });
+    },
+    setTaskSource: (taskId, source) => {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              source,
             },
           },
         };

@@ -21,7 +21,7 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
 import { workspaceTabButtonClass } from './NavTab';
@@ -31,6 +31,7 @@ export interface ProjectNavItem {
   title: string;
   /** Leading icon + color from `getSessionNavLeadPresentation`. */
   sessionLead: SessionNavLeadPresentation;
+  source?: 'user' | 'trigger';
   /** e.g. relative time, shown before the row menu. */
   trailing?: string;
 }
@@ -71,6 +72,7 @@ export function ProjectNavListRows({
   const { t } = useTranslation();
   const deleteLabel = t('layout.sessions-delete-session');
   const sessionMenuAria = t('layout.sessions-session-menu');
+  const triggerSourceLabel = t('layout.task-source-trigger');
   const list = maxItems != null ? projects.slice(0, maxItems) : projects;
 
   return (
@@ -140,6 +142,12 @@ export function ProjectNavListRows({
                 >
                   {project.title}
                 </span>
+                {project.source === 'trigger' ? (
+                  <Zap
+                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
+                    aria-label={triggerSourceLabel}
+                  />
+                ) : null}
                 {project.trailing ? (
                   <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
                     {project.trailing}

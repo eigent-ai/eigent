@@ -214,9 +214,10 @@ function HeaderWin() {
     if (canGoBack) {
       navigate(-1);
     } else {
+      setActiveWorkspaceTab('workforce');
       navigate('/');
     }
-  }, [canGoBack, navigate]);
+  }, [canGoBack, navigate, setActiveWorkspaceTab]);
 
   const activeSpaceTitle = useMemo(() => {
     const defaultLabel = t('layout.spaces-new-space');

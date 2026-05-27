@@ -182,7 +182,8 @@ export default function ProjectGroup({
             question,
             historyId,
             taskIdsList,
-            project.project_name
+            project.project_name,
+            project.space_id
           );
         } catch (error) {
           console.error('Failed to load project:', error);

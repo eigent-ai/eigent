@@ -49,7 +49,11 @@ export function SearchHistoryDialog() {
     projectId: string,
     question: string,
     historyId: string,
-    project?: { tasks: { task_id: string }[]; project_name?: string }
+    project?: {
+      tasks: { task_id: string }[];
+      project_name?: string;
+      space_id?: string;
+    }
   ) => {
     const existingProject = projectStore.getProjectById(projectId);
     if (existingProject) {
@@ -69,7 +73,8 @@ export function SearchHistoryDialog() {
         question,
         historyId,
         taskIdsList,
-        project?.project_name
+        project?.project_name,
+        project?.space_id
       );
     }
   };
@@ -96,7 +101,7 @@ export function SearchHistoryDialog() {
     <>
       <Button
         variant="ghost"
-        className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default h-[32px] border border-solid"
+        className="h-[32px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default"
         size="sm"
         onClick={() => setOpen(true)}
       >

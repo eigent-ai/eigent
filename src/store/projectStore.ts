@@ -156,9 +156,12 @@ interface Project {
   updatedAt: number;
   mode?: ProjectMode | null;
   workdirMode?: ProjectWorkdirMode | null;
-  chatStores: { [chatId: string]: VanillaChatStore }; // Multiple chat stores for this project
-  chatStoreTimestamps: { [chatId: string]: number }; // Track creation time of each chat store
-  activeChatId: string | null; // ID of the currently active chat store
+  // PR-X4 bridge: a Project is the durable session and new Runs append to the
+  // primary chatStore. The map stays for old persisted Projects until the
+  // runtime store is fully migrated.
+  chatStores: { [chatId: string]: VanillaChatStore };
+  chatStoreTimestamps: { [chatId: string]: number };
+  activeChatId: string | null;
   queuedMessages: Array<TaskQueue>; // Project-level queued messages
   metadata?: ProjectMetadata;
 }
@@ -230,6 +233,21 @@ const mergeProjectMeta = (
   };
 };
 
+const getPrimaryChatId = (project: Project): string | null => {
+  if (project.activeChatId && project.chatStores[project.activeChatId]) {
+    return project.activeChatId;
+  }
+
+  const chatIds = Object.keys(project.chatStores);
+  if (chatIds.length === 0) return null;
+
+  return chatIds.sort(
+    (a, b) =>
+      (project.chatStoreTimestamps?.[a] ?? project.createdAt) -
+      (project.chatStoreTimestamps?.[b] ?? project.createdAt)
+  )[0];
+};
+
 const upsertSpaceProjectMetaFromProject = (project: Project) => {
   const meta = projectToSpaceProjectMeta(project);
   if (meta) {
@@ -291,7 +309,8 @@ interface ProjectStore {
     question: string,
     projectId: string,
     historyId?: string,
-    projectName?: string
+    projectName?: string,
+    spaceId?: string
   ) => Promise<string>;
 
   // Project-level queued messages management
@@ -694,6 +713,21 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return null;
     }
 
+    const existingPrimaryChatId = getPrimaryChatId(projects[projectId]);
+    if (existingPrimaryChatId) {
+      set((state) => ({
+        projects: {
+          ...state.projects,
+          [projectId]: {
+            ...state.projects[projectId],
+            activeChatId: existingPrimaryChatId,
+            updatedAt: Date.now(),
+          },
+        },
+      }));
+      return existingPrimaryChatId;
+    }
+
     const chatId = generateUniqueId();
     const newChatStore = createChatStoreInstance();
     const now = Date.now();
@@ -1015,7 +1049,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     question: string,
     projectId: string,
     historyId?: string,
-    projectName?: string
+    projectName?: string,
+    spaceId?: string
   ) => {
     const { projects, removeProject, createProject, createChatStore } = get();
     const existingProject = projects[projectId];
@@ -1050,7 +1085,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       historyId,
       true,
       {
-        spaceId: existingMeta?.spaceId ?? existingProject?.spaceId,
+        spaceId: existingMeta?.spaceId ?? existingProject?.spaceId ?? spaceId,
         mode: existingMeta?.mode ?? existingProject?.mode ?? null,
         workdirMode:
           existingMeta?.workdirMode ?? existingProject?.workdirMode ?? null,

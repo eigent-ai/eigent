@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import threading
@@ -23,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.domains.space.service.space_service import SpaceService
@@ -48,17 +50,89 @@ _APPLY_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
     weakref.WeakValueDictionary()
 )
 _APPLY_LOCKS_GUARD = threading.Lock()
+_LOGGER = logging.getLogger(__name__)
 
 
-def space_write_lock(space_id: str) -> threading.Lock:
-    """Canonical Space write lock; overlay writers and Apply must both use it."""
-
+def _thread_space_lock(space_id: str) -> threading.Lock:
     with _APPLY_LOCKS_GUARD:
         lock = _APPLY_LOCKS.get(space_id)
         if lock is None:
             lock = threading.Lock()
             _APPLY_LOCKS[space_id] = lock
         return lock
+
+
+def _advisory_lock_key(space_id: str) -> int:
+    digest = hashlib.sha256(f"eigent-space:{space_id}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+class SpaceWriteLock:
+    """Canonical Space write lock shared by overlay writers and Apply.
+
+    The thread lock protects single-process local Electron runs. When the
+    server uses Postgres, we also take a connection-scoped advisory lock so
+    multiple API workers cannot write the same Space concurrently.
+    """
+
+    def __init__(self, space_id: str) -> None:
+        self.space_id = space_id
+        self._thread_lock: threading.Lock | None = None
+        self._connection = None
+        self._lock_key = _advisory_lock_key(space_id)
+
+    def __enter__(self) -> "SpaceWriteLock":
+        self._thread_lock = _thread_space_lock(self.space_id)
+        self._thread_lock.acquire()
+        try:
+            self._acquire_postgres_advisory_lock()
+        except Exception:
+            self._thread_lock.release()
+            self._thread_lock = None
+            raise
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            self._release_postgres_advisory_lock()
+        finally:
+            if self._thread_lock is not None:
+                self._thread_lock.release()
+                self._thread_lock = None
+
+    def _acquire_postgres_advisory_lock(self) -> None:
+        from app.core.database import engine
+
+        if engine.url.get_backend_name() not in {"postgresql", "postgres"}:
+            return
+        self._connection = engine.connect()
+        self._connection.execute(
+            text("SELECT pg_advisory_lock(:lock_key)"),
+            {"lock_key": self._lock_key},
+        )
+
+    def _release_postgres_advisory_lock(self) -> None:
+        if self._connection is None:
+            return
+        try:
+            self._connection.execute(
+                text("SELECT pg_advisory_unlock(:lock_key)"),
+                {"lock_key": self._lock_key},
+            )
+        except Exception as exc:  # noqa: BLE001 - unlock failure should not mask caller errors.
+            _LOGGER.warning(
+                "Failed to release Space advisory lock",
+                extra={"space_id": self.space_id, "lock_key": self._lock_key, "error": str(exc)},
+            )
+        finally:
+            self._connection.close()
+            self._connection = None
+
+
+def space_write_lock(space_id: str) -> SpaceWriteLock:
+    """Return the canonical Space write lock context manager."""
+
+    return SpaceWriteLock(space_id)
 
 
 def sha256_of_file(path: Path) -> str | None:

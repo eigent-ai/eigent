@@ -392,6 +392,18 @@ export default function Home() {
     checkLocalServerStale();
   }, []);
 
+  useEffect(() => {
+    if (
+      !activeProjectId &&
+      (activeWorkspaceTab === 'project' ||
+        activeWorkspaceTab === 'new-project' ||
+        activeWorkspaceTab === 'inbox' ||
+        activeWorkspaceTab === 'runs')
+    ) {
+      setActiveWorkspaceTab('workforce');
+    }
+  }, [activeProjectId, activeWorkspaceTab, setActiveWorkspaceTab]);
+
   // Detect files and triggers when project loads
   useEffect(() => {
     const detectAgentFiles = async () => {

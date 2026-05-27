@@ -214,7 +214,8 @@ export default function HistorySidebar() {
       question,
       historyId,
       taskIdsList,
-      project?.project_name
+      project?.project_name,
+      project?.space_id
     );
   };
 

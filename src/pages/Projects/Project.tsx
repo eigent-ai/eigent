@@ -36,9 +36,6 @@ export default function Project() {
     (() => Promise<void>) | null
   >(null);
 
-  if (!chatStore || !projectStore) {
-    return <div>Loading...</div>;
-  }
   const handleDelete = (id: string, callback?: () => void) => {
     setCurHistoryId(id);
     setDeleteModalOpen(true);
@@ -50,7 +47,7 @@ export default function Project() {
     if (!id) return;
     try {
       await proxyFetchDelete(`/api/v1/chat/history/${id}`);
-      if (chatStore.tasks[id]) {
+      if (chatStore?.tasks?.[id]) {
         chatStore.removeTask(id);
       }
     } catch (error) {
@@ -95,7 +92,11 @@ export default function Project() {
     projectId: string,
     question: string,
     historyId: string,
-    project?: { tasks: { task_id: string }[]; project_name?: string }
+    project?: {
+      tasks: { task_id: string }[];
+      project_name?: string;
+      space_id?: string;
+    }
   ) => {
     const existingProject = projectStore.getProjectById(projectId);
     if (existingProject) {
@@ -113,12 +114,15 @@ export default function Project() {
         question,
         historyId,
         taskIdsList,
-        project?.project_name
+        project?.project_name,
+        project?.space_id
       );
     }
   };
 
   const handleTakeControl = (type: 'pause' | 'resume', taskId: string) => {
+    if (!chatStore?.tasks?.[taskId]) return;
+
     if (type === 'pause') {
       let { taskTime, elapsed } = chatStore.tasks[taskId];
 
@@ -166,10 +170,10 @@ export default function Project() {
         cancelText={t('layout.cancel')}
       />
 
-      <div className="min-w-0 flex h-auto min-h-[calc(100vh-86px)] w-full flex-col">
+      <div className="flex h-auto min-h-[calc(100vh-86px)] w-full min-w-0 flex-col">
         {/* Header Section */}
-        <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
-          <div className="gap-4 flex w-full flex-col items-start justify-between">
+        <div className="z-10 flex w-full items-center justify-between px-6 pb-6 pt-8">
+          <div className="flex w-full flex-col items-start justify-between gap-4">
             <div className="flex flex-col">
               <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
                 {t('layout.projects-hub')}
@@ -179,14 +183,15 @@ export default function Project() {
         </div>
 
         <div className="flex w-full">
-          <div className="pb-8 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start">
+          <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-col items-start justify-start pb-8">
             <GroupedHistoryView
               onTaskSelect={handleSetActive}
               onTaskDelete={handleDelete}
               onTaskShare={handleShare}
-              activeTaskId={chatStore.activeTaskId || undefined}
-              ongoingTasks={chatStore.tasks}
+              activeTaskId={chatStore?.activeTaskId || undefined}
+              ongoingTasks={chatStore?.tasks ?? {}}
               onOngoingTaskClick={(taskId) => {
+                if (!chatStore) return;
                 chatStore.setActiveTaskId(taskId);
                 navigate(`/`);
               }}

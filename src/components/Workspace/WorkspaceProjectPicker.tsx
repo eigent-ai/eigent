@@ -559,19 +559,19 @@ export function WorkspaceProjectPicker({
     const text = typeof detail === 'string' ? detail : err.message || '';
 
     if (code === 'workspace_binding_disabled' || err.status === 412) {
-      return 'Folder binding is only available with a local Brain.';
+      return t('layout.workspace-folder-binding-local-only');
     }
     if (
       code === 'folder_already_bound_to_other_space' ||
       text.includes('already bound') ||
       err.status === 409
     ) {
-      return 'That folder is already used by another Space.';
+      return t('layout.workspace-folder-already-bound');
     }
     if (code === 'invalid_workspace_path' || err.status === 403) {
-      return 'That folder is not available to this Brain.';
+      return t('layout.workspace-folder-unavailable');
     }
-    return 'Failed to create a folder Space.';
+    return t('layout.workspace-folder-space-create-failed');
   };
 
   const handleCreateSpaceFromFolder = async () => {
