@@ -21,7 +21,6 @@ import { Radio } from '@/components/ui/animate-ui/icons/radio';
 import { Settings } from '@/components/ui/animate-ui/icons/settings';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
-import { FolderKanban } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -36,8 +35,7 @@ const underlineSlideTransition = {
 const underlineInstantTransition = { duration: 0 };
 
 export const HISTORY_TAB_IDS = [
-  'spaces',
-  'projects',
+  'home',
   'agents',
   'channels',
   'connectors',
@@ -58,11 +56,7 @@ type TabConfig = {
 };
 
 const HISTORY_TABS: TabConfig[] = [
-  // TODO(design): swap to an AnimateIcon (e.g. animate-ui/folder-kanban) when
-  // designer provides a Spaces-themed asset; lucide FolderKanban is a stand-in
-  // matching the SpacesHub header icon today.
-  { id: 'spaces', icon: <FolderKanban />, iconAnimateOnHover: false },
-  { id: 'projects', icon: <Blocks />, iconAnimateOnHover: 'default' },
+  { id: 'home', icon: <Blocks />, iconAnimateOnHover: 'default' },
   { id: 'agents', icon: <Bot />, iconAnimateOnHover: 'default' },
   { id: 'channels', icon: <Radio />, iconAnimateOnHover: 'default' },
   { id: 'connectors', icon: <Hammer />, iconAnimateOnHover: 'default' },
@@ -184,7 +178,7 @@ export function HistoryTabsNav({
     <div
       ref={navRef}
       className={cn(
-        'relative flex flex-row flex-wrap items-center gap-2 pb-2',
+        'gap-2 pb-2 relative flex flex-row flex-wrap items-center',
         className
       )}
       onMouseLeave={() => setHoveredTab(null)}
@@ -192,7 +186,7 @@ export function HistoryTabsNav({
     >
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute z-0 rounded-lg bg-ds-bg-neutral-subtle-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
+        className="rounded-lg bg-ds-bg-neutral-subtle-default shadow-sm ring-ds-border-neutral-default-default pointer-events-none absolute z-0 ring-1"
         initial={false}
         animate={{
           left: hoverRect.left,
@@ -213,7 +207,7 @@ export function HistoryTabsNav({
       {activeLine.width > 0 && (
         <motion.div
           aria-hidden
-          className="pointer-events-none absolute z-[11] h-0.5 rounded-full bg-ds-bg-brand-default-default"
+          className="h-0.5 bg-ds-bg-brand-default-default pointer-events-none absolute z-[11] rounded-full"
           initial={false}
           animate={{
             left: activeLine.left,
@@ -250,7 +244,7 @@ export function HistoryTabsNav({
             }}
             className={cn(
               tabButtonClass,
-              'flex flex-row gap-2 border-0 bg-transparent !text-body-sm outline-none focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
+              'gap-2 !text-body-sm focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-default-default flex flex-row border-0 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
               activeTab === id
                 ? 'text-ds-text-neutral-default-default'
                 : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'

@@ -72,7 +72,7 @@ export function VerticalNavigation({
             value={item.value}
             disabled={item.disabled}
             className={cn(
-              'gap-2 rounded-lg px-5 py-1.5 text-body-sm w-full justify-start',
+              'gap-2 rounded-xl px-3 py-1.5 text-body-sm w-full justify-start',
               'bg-transparent data-[state=inactive]:bg-transparent',
               'data-[state=inactive]:text-ds-text-neutral-muted-default data-[state=inactive]:opacity-70',
               'data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100',
@@ -85,7 +85,9 @@ export function VerticalNavigation({
                 {item.icon}
               </span>
             ) : null}
-            <span className="truncate">{item.label}</span>
+            <span className="min-w-0 w-full truncate text-left">
+              {item.label}
+            </span>
           </TabsTrigger>
         ))}
       </TabsList>

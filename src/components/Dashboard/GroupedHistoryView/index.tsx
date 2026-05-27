@@ -16,6 +16,7 @@ import { proxyFetchDelete, proxyFetchPut } from '@/api/http';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tag } from '@/components/ui/tag';
 import { useHost } from '@/host';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
@@ -408,8 +409,7 @@ export default function GroupedHistoryView({
   >((acc, project) => {
     const spaceId = project.space_id || activeSpaceId || 'unknown';
     const space = spacesById[spaceId];
-    const isLegacy =
-      space?.metadata?.legacy === true || space?.sourceType === 'legacy';
+    const isLegacy = space ? isLegacySpace(space) : false;
     const latestDate = new Date(project.latest_task_date || 0).getTime();
     if (!acc[spaceId]) {
       acc[spaceId] = {
@@ -446,35 +446,35 @@ export default function GroupedHistoryView({
 
   // Skeleton component for list card loading state
   const ListCardSkeleton = () => (
-    <div className="overflow-hidden rounded-xl bg-ds-bg-neutral-default-default">
-      <div className="flex w-full items-center justify-between px-6 py-4">
+    <div className="rounded-xl bg-ds-bg-neutral-default-default overflow-hidden">
+      <div className="px-6 py-4 flex w-full items-center justify-between">
         {/* Start: Folder icon and project name skeleton */}
-        <div className="flex w-48 flex-shrink-0 items-center gap-3">
-          <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="w-48 gap-3 flex flex-shrink-0 items-center">
+          <div className="h-5 w-5 rounded bg-ds-bg-neutral-subtle-default relative flex-shrink-0 overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-5 w-32 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-5 w-32 rounded bg-ds-bg-neutral-subtle-default relative overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
 
         {/* Middle: Tags skeleton */}
-        <div className="flex flex-1 items-center justify-end gap-4">
-          <div className="relative h-6 w-16 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="gap-4 flex flex-1 items-center justify-end">
+          <div className="h-6 w-16 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
-          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
 
         {/* End: Menu skeleton */}
-        <div className="ml-4 flex min-w-32 items-center justify-end gap-2 pl-4">
-          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-ds-bg-neutral-subtle-default">
-            <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="ml-4 min-w-32 gap-2 pl-4 flex items-center justify-end">
+          <div className="h-8 w-8 rounded-md bg-ds-bg-neutral-subtle-default relative overflow-hidden">
+            <div className="inset-0 absolute" style={shimmerStyle} />
           </div>
         </div>
       </div>
@@ -483,7 +483,7 @@ export default function GroupedHistoryView({
 
   if (loading) {
     return (
-      <div className="flex w-full flex-col gap-4 pb-40">
+      <div className="gap-4 pb-40 flex w-full flex-col">
         {/* Keyframe animation for shimmer effect */}
         <style>
           {`
@@ -495,24 +495,24 @@ export default function GroupedHistoryView({
         </style>
 
         {/* Summary skeleton */}
-        <div className="flex items-center justify-between pb-4">
-          <div className="flex items-center gap-2">
-            <div className="relative h-7 w-28 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+        <div className="pb-4 flex items-center justify-between">
+          <div className="gap-2 flex items-center">
+            <div className="h-7 w-28 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
-            <div className="relative h-7 w-32 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+            <div className="h-7 w-32 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
           </div>
-          <div className="flex items-center gap-md">
-            <div className="relative h-9 w-40 overflow-hidden rounded-lg bg-ds-bg-neutral-strong-default">
-              <div className="absolute inset-0" style={shimmerStyle} />
+          <div className="gap-md flex items-center">
+            <div className="h-9 w-40 rounded-lg bg-ds-bg-neutral-strong-default relative overflow-hidden">
+              <div className="inset-0 absolute" style={shimmerStyle} />
             </div>
           </div>
         </div>
 
         {/* List skeleton cards */}
-        <div className="flex flex-col gap-3">
+        <div className="gap-3 flex flex-col">
           {[1, 2, 3, 4, 5].map((i) => (
             <ListCardSkeleton key={i} />
           ))}
@@ -523,7 +523,7 @@ export default function GroupedHistoryView({
 
   if (allProjects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
+      <div className="p-8 flex flex-col items-center justify-center text-center">
         <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
         <div className="text-sm text-ds-text-neutral-muted-default">
           {searchValue
@@ -561,12 +561,12 @@ export default function GroupedHistoryView({
   );
 
   return (
-    <div className="flex w-full flex-col gap-4 pb-40">
+    <div className="gap-4 pb-40 flex w-full flex-col">
       {/* Summary */}
       <div
-        className={`flex items-center pb-4 ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
+        className={`pb-4 flex items-center ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
       >
-        <div className="flex items-center gap-2">
+        <div className="gap-2 flex items-center">
           <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
             <Folder />
             <span className="text-body-sm"> {t('layout.projects')}</span>
@@ -595,7 +595,7 @@ export default function GroupedHistoryView({
             )}
           </Tag>
         </div>
-        <div className="flex items-center gap-md">
+        <div className="gap-md flex items-center">
           {!hideViewSwitcher && (
             <Tabs
               value={viewType}
@@ -605,13 +605,13 @@ export default function GroupedHistoryView({
             >
               <TabsList>
                 <TabsTrigger value="grid">
-                  <div className="flex items-center gap-1 text-label-sm">
+                  <div className="gap-1 text-label-sm flex items-center">
                     <LayoutGrid size={16} />
                     <span>{t('dashboard.grid')}</span>
                   </div>
                 </TabsTrigger>
                 <TabsTrigger value="list">
-                  <div className="flex items-center gap-1 text-label-sm">
+                  <div className="gap-1 text-label-sm flex items-center">
                     <List size={16} />
                     <span>{t('dashboard.list')}</span>
                   </div>
@@ -633,7 +633,7 @@ export default function GroupedHistoryView({
           {viewType === 'grid' ? (
             // Grid layout for project cards
             <motion.div
-              className="flex flex-col gap-6"
+              className="gap-6 flex flex-col"
               initial="hidden"
               animate="visible"
               variants={{
@@ -670,14 +670,14 @@ export default function GroupedHistoryView({
                       },
                     }}
                     layout
-                    className="flex flex-col gap-3"
+                    className="gap-3 flex flex-col"
                   >
-                    <div className="flex items-center gap-2 px-1">
+                    <div className="gap-2 px-1 flex items-center">
                       <FolderKanban
-                        className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                        className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                         aria-hidden
                       />
-                      <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                      <span className="text-body-sm font-semibold text-ds-text-neutral-default-default truncate">
                         {section.spaceName}
                       </span>
                       {section.isLegacy ? (
@@ -692,7 +692,7 @@ export default function GroupedHistoryView({
                         {section.projects.length}
                       </span>
                     </div>
-                    <div className="grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="gap-4 md:grid-cols-2 grid auto-rows-fr grid-cols-1">
                       {section.projects.map((project) => (
                         <div key={project.project_id}>
                           {renderProjectGroup(project, 'grid')}
@@ -706,7 +706,7 @@ export default function GroupedHistoryView({
           ) : (
             // List layout for projects
             <motion.div
-              className="flex flex-col gap-3"
+              className="gap-3 flex flex-col"
               initial="hidden"
               animate="visible"
               variants={{
@@ -742,14 +742,14 @@ export default function GroupedHistoryView({
                       },
                     }}
                     layout
-                    className="flex flex-col gap-3"
+                    className="gap-3 flex flex-col"
                   >
-                    <div className="flex items-center gap-2 px-1">
+                    <div className="gap-2 px-1 flex items-center">
                       <FolderKanban
-                        className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                        className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                         aria-hidden
                       />
-                      <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                      <span className="text-body-sm font-semibold text-ds-text-neutral-default-default truncate">
                         {section.spaceName}
                       </span>
                       {section.isLegacy ? (
