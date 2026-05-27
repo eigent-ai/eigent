@@ -33,6 +33,7 @@ export interface ProjectNavListProps {
   activeProjectId?: string | null;
   onProjectClick?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => void;
+  onAchieveProject?: (projectId: string) => void;
   onNewProject: () => void;
   /** Selected state for the New Project row. */
   newProjectActive?: boolean;
@@ -47,6 +48,7 @@ export function ProjectNavList({
   activeProjectId,
   onProjectClick,
   onDeleteProject,
+  onAchieveProject,
   onNewProject,
   newProjectActive = false,
   folded,
@@ -78,11 +80,11 @@ export function ProjectNavList({
   return (
     <div
       className={cn(
-        'flex min-h-0 w-full min-w-0 flex-col overflow-hidden',
+        'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
         className
       )}
     >
-      <div className="flex w-full min-w-0 flex-col gap-2">
+      <div className="min-w-0 gap-2 flex w-full flex-col">
         <NavTab
           active={newProjectActive}
           onClick={onNewProject}
@@ -99,7 +101,7 @@ export function ProjectNavList({
       <div
         ref={projectListRef}
         className={cn(
-          'm-0 mt-1 flex min-h-0 min-w-0 flex-1 flex-col gap-0.5 p-0 pb-1',
+          'm-0 mt-1 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 flex-col',
           folded
             ? projectListOverflow
               ? 'scrollbar-hide overflow-y-auto'
@@ -114,6 +116,7 @@ export function ProjectNavList({
           activeProjectId={activeProjectId}
           onProjectClick={onProjectClick}
           onDeleteProject={onDeleteProject}
+          onAchieveProject={onAchieveProject}
           folded={folded}
         />
       </div>
