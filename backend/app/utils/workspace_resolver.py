@@ -14,8 +14,10 @@
 
 import json
 import logging
+import os
 import shutil
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +37,11 @@ from app.utils.workspace_paths import (
     workspace_state_root,
 )
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
+
 logger = logging.getLogger("workspace_resolver")
 BindingSource = Literal["space_local_brain", "default"]
 WORKDIR_MARKER = ".eigent-workdir.json"
@@ -52,6 +59,32 @@ COPY_IGNORE_DIRS = {
     "__pycache__",
 }
 MAX_COPY_FILE_SIZE = 25 * 1024 * 1024
+
+
+@contextmanager
+def _filesystem_space_lock(source_root: Path):
+    """Cooperate with server-side Apply while copying a live Space root.
+
+    This uses an advisory lock on the root directory itself, so it does not add
+    files to the user's repository. It only coordinates with processes that
+    take the same lock; unsupported platforms fall back to no-op locking.
+    """
+
+    if fcntl is None:
+        yield
+        return
+
+    fd: int | None = None
+    try:
+        fd = os.open(source_root, os.O_RDONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
 
 
 def _binding_enabled_for_current_environment() -> bool:
@@ -106,29 +139,30 @@ def _read_workdir_marker(workdir: Path) -> dict[str, Any] | None:
 
 
 def _copy_space_baseline(source_root: Path, workdir: Path) -> str:
-    existing_marker = _read_workdir_marker(workdir)
-    if existing_marker and existing_marker.get("base_snapshot_id"):
-        return str(existing_marker["base_snapshot_id"])
+    with _filesystem_space_lock(source_root):
+        existing_marker = _read_workdir_marker(workdir)
+        if existing_marker and existing_marker.get("base_snapshot_id"):
+            return str(existing_marker["base_snapshot_id"])
 
-    workdir.mkdir(parents=True, exist_ok=True)
-    _copy_tree_limited(source_root, workdir)
+        workdir.mkdir(parents=True, exist_ok=True)
+        _copy_tree_limited(source_root, workdir)
 
-    base_snapshot_id = f"snapshot_{uuid4().hex}"
-    marker = workdir / WORKDIR_MARKER
-    marker.write_text(
-        json.dumps(
-            {
-                "base_snapshot_id": base_snapshot_id,
-                "source_root": str(source_root),
-                "created_at": datetime.now(UTC).isoformat(),
-                "copy_ignore_dirs": sorted(COPY_IGNORE_DIRS),
-                "max_copy_file_size": MAX_COPY_FILE_SIZE,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    return base_snapshot_id
+        base_snapshot_id = f"snapshot_{uuid4().hex}"
+        marker = workdir / WORKDIR_MARKER
+        marker.write_text(
+            json.dumps(
+                {
+                    "base_snapshot_id": base_snapshot_id,
+                    "source_root": str(source_root),
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "copy_ignore_dirs": sorted(COPY_IGNORE_DIRS),
+                    "max_copy_file_size": MAX_COPY_FILE_SIZE,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return base_snapshot_id
 
 
 def _copy_tree_limited(source_root: Path, target_root: Path) -> None:

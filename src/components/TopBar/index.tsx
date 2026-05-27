@@ -21,6 +21,7 @@ import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import NotificationPanel from '@/components/Notification';
+import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -57,6 +59,7 @@ import {
   Minus,
   PanelLeft,
   PanelLeftClose,
+  Pencil,
   Plus,
   Settings,
   Share,
@@ -147,6 +150,9 @@ function HeaderWin() {
   const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [endProjectLoading, setEndProjectLoading] = useState(false);
+  const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
+  const [renameSpaceValue, setRenameSpaceValue] = useState('');
+  const [renamingSpace, setRenamingSpace] = useState(false);
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
@@ -155,6 +161,7 @@ function HeaderWin() {
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
   const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
+  const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
   const toggleProjectSidebarFolded = usePageTabStore(
@@ -228,6 +235,14 @@ function HeaderWin() {
     }
     return name;
   }, [activeSpaceId, spacesById, t]);
+
+  const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
+  const canRenameActiveSpace = Boolean(
+    activeSpace &&
+    activeSpace.status === 'active' &&
+    activeSpace.sourceType !== 'legacy' &&
+    activeSpace.metadata?.legacy !== true
+  );
 
   const activeSpaces = useMemo(
     () =>
@@ -333,6 +348,28 @@ function HeaderWin() {
     [navigate, projectStore, setActiveSpace, setActiveWorkspaceTab, t]
   );
 
+  const openRenameSpaceDialog = useCallback(() => {
+    if (!canRenameActiveSpace || !activeSpace) return;
+    setRenameSpaceValue(activeSpace.name?.trim() || '');
+    setRenameSpaceDialogOpen(true);
+  }, [activeSpace, canRenameActiveSpace]);
+
+  const handleRenameSpace = useCallback(async () => {
+    const nextName = renameSpaceValue.trim();
+    if (!activeSpaceId || !nextName || renamingSpace) return;
+    setRenamingSpace(true);
+    try {
+      await renameSpaceOnServer(activeSpaceId, nextName);
+      toast.success(t('layout.spaces-rename-success'));
+      setRenameSpaceDialogOpen(false);
+    } catch (error) {
+      console.warn('[TopBar] Failed to rename Space:', error);
+      toast.error(t('layout.spaces-rename-failed'));
+    } finally {
+      setRenamingSpace(false);
+    }
+  }, [activeSpaceId, renameSpaceOnServer, renameSpaceValue, renamingSpace, t]);
+
   const handleShare = async (taskId: string) => {
     share(taskId);
   };
@@ -428,6 +465,28 @@ function HeaderWin() {
       id="titlebar"
       ref={titlebarRef}
     >
+      <AlertDialog
+        isOpen={renameSpaceDialogOpen}
+        onClose={() => setRenameSpaceDialogOpen(false)}
+        onConfirm={() => void handleRenameSpace()}
+        title={t('layout.spaces-rename-title')}
+        confirmText={t('layout.save')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmDisabled={!renameSpaceValue.trim() || renamingSpace}
+      >
+        <Input
+          autoFocus
+          value={renameSpaceValue}
+          placeholder={t('layout.spaces-rename-placeholder')}
+          onChange={(event) => setRenameSpaceValue(event.target.value)}
+          onEnter={() => {
+            if (renameSpaceValue.trim() && !renamingSpace) {
+              void handleRenameSpace();
+            }
+          }}
+        />
+      </AlertDialog>
       {/* Leading: home ↔ dashboard / new Space */}
       <div className="no-drag flex shrink-0 items-center justify-center">
         {isHistoryRoute ? (
@@ -602,6 +661,14 @@ function HeaderWin() {
                       >
                         <Plus className="h-4 w-4" aria-hidden />
                         <span>{t('layout.spaces-new-space')}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="cursor-pointer"
+                        disabled={!canRenameActiveSpace}
+                        onClick={openRenameSpaceDialog}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                        <span>{t('layout.spaces-rename-space')}</span>
                       </DropdownMenuItem>
                       {activeSpaces.length > 0 ? (
                         <DropdownMenuSeparator />

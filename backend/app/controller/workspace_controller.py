@@ -19,7 +19,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.model.enums import Status
 from app.router_layer.hands_resolver import get_environment_hands
+from app.service.task import get_task_lock_if_exists
 from app.utils.space_overlay_client import overlay_sync_failure_count
 from app.utils.workspace_resolver import (
     _same_workspace_path,
@@ -68,6 +70,15 @@ def _manifest_from_request(request: Request) -> dict[str, Any]:
 
 def _binding_enabled(manifest: dict[str, Any]) -> bool:
     return manifest.get("deployment") == "local"
+
+
+def _project_has_active_run(project_id: str) -> bool:
+    task_lock = get_task_lock_if_exists(project_id)
+    if task_lock is None:
+        return False
+    if task_lock.status != Status.done:
+        return True
+    return any(not task.done() for task in task_lock.background_tasks)
 
 
 def _capability_payload(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -337,6 +348,14 @@ async def workspace_project_refresh(
                     "Brain workdir refresh must be called only after the "
                     "control server has checked pending overlays."
                 ),
+            },
+        )
+    if _project_has_active_run(project_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "project_running",
+                "message": "Project workdir cannot be refreshed while a run is active.",
             },
         )
     resolver = get_workspace_resolver()

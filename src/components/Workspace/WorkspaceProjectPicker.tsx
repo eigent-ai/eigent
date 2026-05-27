@@ -115,7 +115,7 @@ export function WorkspaceProjectPicker({
   const deleteSpaceOnServer = useSpaceStore((s) => s.deleteSpaceOnServer);
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const refreshProjectOnServer = useSpaceStore((s) => s.refreshProjectOnServer);
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -142,6 +142,20 @@ export function WorkspaceProjectPicker({
   const activeProject = activeProjectId
     ? projectStore.getProjectById(activeProjectId)
     : null;
+  const activeProjectChatStore = activeProjectId
+    ? projectStore.peekActiveChatStore(activeProjectId)
+    : null;
+  const activeProjectChatState = activeProjectChatStore?.getState();
+  const activeProjectTask =
+    activeProjectChatState?.activeTaskId &&
+    activeProjectChatState.tasks[activeProjectChatState.activeTaskId]
+      ? activeProjectChatState.tasks[activeProjectChatState.activeTaskId]
+      : null;
+  const activeProjectRunActive = Boolean(
+    activeProjectTask &&
+    (activeProjectTask.status === ChatTaskStatus.RUNNING ||
+      activeProjectTask.isPending)
+  );
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -524,6 +538,10 @@ export function WorkspaceProjectPicker({
 
   const handleRefreshWorkdir = async () => {
     if (!activeProjectSpaceId || !activeProjectId) return;
+    if (activeProjectRunActive) {
+      toast.error(t('layout.workspace-refresh-failed'));
+      return;
+    }
     setPendingAction('refresh');
     try {
       await refreshProjectOnServer(activeProjectSpaceId, activeProjectId);
@@ -666,10 +684,6 @@ export function WorkspaceProjectPicker({
     });
     setMenuOpen(false);
   };
-
-  if (!chatStore) {
-    return null;
-  }
 
   if (readOnly) {
     return (
@@ -873,7 +887,9 @@ export function WorkspaceProjectPicker({
                   <DropdownMenuItem
                     className="cursor-pointer gap-2"
                     disabled={
-                      pendingOverlays.length > 0 || pendingAction !== null
+                      pendingOverlays.length > 0 ||
+                      pendingAction !== null ||
+                      activeProjectRunActive
                     }
                     onSelect={(e) => {
                       e.preventDefault();

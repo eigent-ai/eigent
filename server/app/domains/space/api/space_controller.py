@@ -154,11 +154,16 @@ def relocate_space(
                 auth.id,
                 db_session,
                 force=data.force,
+                root_fingerprint=data.root_fingerprint,
             )
         )
     except ValueError as exc:
         detail = str(exc)
-        if "already bound" in detail or "identity" in detail:
+        if (
+            "already bound" in detail
+            or "identity" in detail
+            or "cannot be verified" in detail
+        ):
             raise HTTPException(status_code=409, detail=detail) from exc
         raise HTTPException(status_code=404, detail=detail) from exc
 

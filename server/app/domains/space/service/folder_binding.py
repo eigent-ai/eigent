@@ -12,8 +12,35 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import os
 from pathlib import Path
 from typing import Any
+
+
+def normalize_folder_root_reference(root_path: str) -> str:
+    """Normalize a folder reference without touching the local filesystem.
+
+    Space is a cloud-owned logical layer. A folder root may live on the user's
+    desktop Brain, a Docker host, or a future cloud workspace, so the server
+    must not require the path to exist in its own filesystem namespace during
+    Space creation. Local readability is validated by the environment-specific
+    Brain binding path.
+
+    Normalization is intentionally string-only: collapse "./" / "//" / trailing
+    separators via os.path.normpath, but never expand "~", resolve symlinks, or
+    stat the path. That keeps "/Users/alice/./repo" and "/Users/alice/repo/"
+    deduplicated without leaking the server's filesystem state.
+    """
+
+    value = str(root_path or "").strip()
+    if not value:
+        raise ValueError("Folder Space requires root_path")
+    if "\x00" in value:
+        raise ValueError("Space root_path contains an invalid character")
+    normalized = os.path.normpath(value)
+    if normalized in {"", "."}:
+        raise ValueError("Folder Space requires root_path")
+    return normalized.rstrip("/\\") or normalized
 
 
 def resolve_folder_root(root_path: str) -> Path:
@@ -36,6 +63,15 @@ def folder_fingerprint(root: Path) -> dict[str, Any]:
         "mtime_ns": stat.st_mtime_ns,
         "ctime_ns": stat.st_ctime_ns,
     }
+
+
+def same_folder_reference(left: str, right: str) -> bool:
+    try:
+        return normalize_folder_root_reference(left) == normalize_folder_root_reference(
+            right
+        )
+    except ValueError:
+        return False
 
 
 def same_folder_path(left: str, right: str) -> bool:

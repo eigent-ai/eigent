@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AddWorker } from '@/components/AddWorker';
-import BottomBox from '@/components/ChatBox/BottomBox';
+import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
 import { Button } from '@/components/ui/button';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
@@ -29,12 +29,17 @@ import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentS
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
+import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { ChatTaskStatus, SessionMode } from '@/types/constants';
+import {
+  ChatTaskStatus,
+  SessionMode,
+  type SessionModeType,
+} from '@/types/constants';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -74,6 +79,10 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
   const activeProject = useProjectRuntimeStore((s) =>
     s.activeProjectId ? s.projects[s.activeProjectId] : null
+  );
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const activeSpace = useSpaceStore((s) =>
+    s.activeSpaceId ? s.spaces[s.activeSpaceId] : null
   );
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
@@ -131,21 +140,29 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   );
   const workerList = useWorkerList();
   const { modelType, setWorkerList } = useAuthStore();
+  const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
+    SessionMode.SINGLE_AGENT
+  );
   // Workspace is the pre-Run Project landing. Project.mode is the source of
   // truth; the old sessionSidePanelMode global is retained only as a migration
   // shim in pageTabStore.
   const effectiveSessionMode =
-    activeProjectMeta?.mode ?? activeProject?.mode ?? SessionMode.SINGLE_AGENT;
+    activeProjectMeta?.mode ?? activeProject?.mode ?? draftSessionMode;
 
   const setActiveProjectMode = useCallback(
-    (mode: typeof effectiveSessionMode) => {
-      if (!activeProjectId) return;
+    (mode: SessionModeType) => {
+      if (!activeProjectId) {
+        setDraftSessionMode(mode);
+        return;
+      }
       updateProjectMeta(activeProjectId, { mode });
     },
     [activeProjectId, updateProjectMeta]
   );
 
   const [message, setMessage] = useState('');
+  const directProjectStartRef = useRef(false);
+  const [isStartingDirectProject, setIsStartingDirectProject] = useState(false);
   const { hasModel } = useModelConfigCheck();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
@@ -191,7 +208,8 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   }, [modelType]);
 
   const handleSend = async () => {
-    if (!message.trim() || !chatStore?.activeTaskId || !activeProjectId) {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
       return;
     }
 
@@ -201,33 +219,82 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
       return;
     }
 
-    const taskId = chatStore.activeTaskId;
-    if (activeProjectId && !(activeProjectMeta?.mode ?? activeProject?.mode)) {
-      updateProjectMeta(activeProjectId, {
-        mode: effectiveSessionMode,
-      });
+    const needsProjectBootstrap = !activeProjectId || !chatStore?.activeTaskId;
+    if (needsProjectBootstrap) {
+      if (directProjectStartRef.current) {
+        return;
+      }
+      directProjectStartRef.current = true;
+      setIsStartingDirectProject(true);
     }
-    chatStore.setHasMessages(taskId, true);
-    const attachesToSend =
-      JSON.parse(JSON.stringify(chatStore.tasks[taskId]?.attaches)) || [];
-
-    // Enter the live Project immediately; task startup continues in the background.
-    setActiveWorkspaceTab('project');
 
     try {
-      await chatStore.startTask(
+      let targetProjectId = activeProjectId;
+      let targetChatStore: typeof chatStore | null = chatStore;
+
+      if (!targetProjectId || !targetChatStore?.activeTaskId) {
+        if (!activeSpaceId) {
+          toast.error(t('layout.spaces-create-failed'));
+          return;
+        }
+
+        const projectStore = useProjectRuntimeStore.getState();
+        const syncedProject = await createSyncedProjectInSpace({
+          projectStore,
+          spaceId: activeSpaceId,
+          name: trimmedMessage.slice(0, 120),
+          mode: effectiveSessionMode,
+          workdirMode:
+            activeSpace?.sourceType === 'folder' ? 'copy' : 'artifact-only',
+          metadata: {
+            createdFrom: 'workspace_direct_chat',
+          },
+        });
+        useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
+        targetProjectId = syncedProject.projectId;
+        targetChatStore =
+          useProjectRuntimeStore
+            .getState()
+            .getActiveChatStore(targetProjectId)
+            ?.getState() ?? null;
+      }
+
+      if (!targetProjectId || !targetChatStore?.activeTaskId) {
+        throw new Error('No active Project chat available');
+      }
+
+      const taskId = targetChatStore.activeTaskId;
+      const targetProjectMeta = useSpaceStore
+        .getState()
+        .getProjectMeta(targetProjectId);
+      const targetProject =
+        useProjectRuntimeStore.getState().projects[targetProjectId];
+      if (!(targetProjectMeta?.mode ?? targetProject?.mode)) {
+        updateProjectMeta(targetProjectId, {
+          mode: effectiveSessionMode,
+        });
+      }
+      targetChatStore.setHasMessages(taskId, true);
+      const attachesToSend =
+        JSON.parse(JSON.stringify(targetChatStore.tasks[taskId]?.attaches)) ||
+        [];
+
+      // Enter the live Project immediately; task startup continues in the background.
+      setActiveWorkspaceTab('project');
+
+      await targetChatStore.startTask(
         taskId,
         undefined,
         undefined,
         undefined,
-        message.trim(),
+        trimmedMessage,
         attachesToSend,
         undefined,
-        undefined,
+        targetProjectId,
         effectiveSessionMode
       );
-      chatStore.setHasWaitComfirm(taskId, true);
-      chatStore.setAttaches(taskId, []);
+      targetChatStore.setHasWaitComfirm(taskId, true);
+      targetChatStore.setAttaches(taskId, []);
       setMessage('');
     } catch (err: unknown) {
       setActiveWorkspaceTab('workforce');
@@ -235,6 +302,11 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
       toast.error(
         err instanceof Error ? err.message : t('layout.failed-to-start-task')
       );
+    } finally {
+      if (needsProjectBootstrap) {
+        directProjectStartRef.current = false;
+        setIsStartingDirectProject(false);
+      }
     }
   };
 
@@ -263,6 +335,40 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
       console.error('Select File Error:', error);
     }
   }, [chatStore, host, t]);
+
+  const buildComposerInputProps = (
+    targetChatStore: typeof chatStore | null = chatStore
+  ) => ({
+    value: message,
+    onChange: setMessage,
+    onSend: handleSend,
+    files:
+      targetChatStore?.activeTaskId &&
+      targetChatStore.tasks[targetChatStore.activeTaskId]
+        ? targetChatStore.tasks[targetChatStore.activeTaskId]?.attaches?.map(
+            (f) => ({
+              fileName: f.fileName,
+              filePath: f.filePath,
+            })
+          ) || []
+        : [],
+    onFilesChange: (files: FileAttachment[]) => {
+      if (!targetChatStore?.activeTaskId) return;
+      targetChatStore.setAttaches(
+        targetChatStore.activeTaskId as string,
+        files as any
+      );
+    },
+    onAddFile: handleFileSelect,
+    disabled: !hasModel || isStartingDirectProject,
+    textareaRef,
+    allowDragDrop: true,
+    useCloudModelInDev,
+    placeholder: t('layout.project-task-placeholder'),
+    sessionMode: effectiveSessionMode,
+    onSessionModeChange: setActiveProjectMode,
+    sessionModeSelectInteractive: true,
+  });
 
   const taskAssigning =
     chatStore?.activeTaskId != null
@@ -337,18 +443,75 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
     [workerList, setWorkerList]
   );
 
-  if (!chatStore?.activeTaskId) {
-    return null;
-  }
-
-  const activeAgentId = chatStore.tasks[chatStore.activeTaskId]?.activeAgent;
-
   const projectPicker =
     isNewProjectVariant && !isFreshProject ? (
       <WorkspaceProjectPicker readOnly />
     ) : (
       <WorkspaceProjectPicker />
     );
+
+  if (!chatStore?.activeTaskId) {
+    return (
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+        <div className="relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1" />
+        <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
+          <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
+            <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
+              <div className="mb-8 flex w-full justify-center">
+                {projectPicker}
+              </div>
+              <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
+                {effectiveSessionMode === SessionMode.SINGLE_AGENT
+                  ? t('layout.workspace-cowork-single-agent')
+                  : t('layout.workspace-cowork-workforce')}
+              </span>
+              <div className="mb-8 flex w-full justify-center px-5">
+                {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
+                  <SingleAgentList />
+                ) : (
+                  <WorkforceAgentList
+                    sortedAgents={sortedAgents}
+                    activeAgentId={undefined}
+                    onSelectAgent={onSelectAgent}
+                    onEditWorkerFromMenu={onEditWorkerFromMenu}
+                    onDuplicateUserAgent={onDuplicateUserAgent}
+                    onDeleteUserAgent={onDeleteUserAgent}
+                    onAddWorker={() => setAddWorkerDialogOpen(true)}
+                  />
+                )}
+              </div>
+              <div className="w-full">
+                <BottomBox
+                  state="input"
+                  queuedMessages={[]}
+                  onRemoveQueuedMessage={() => {}}
+                  noModelOverlay={!hasModel}
+                  onSelectModel={() => navigate('/history?tab=agents')}
+                  inputProps={buildComposerInputProps()}
+                />
+              </div>
+              <AddWorker
+                isOpen={addWorkerDialogOpen}
+                onOpenChange={setAddWorkerDialogOpen}
+              />
+              {editingWorkerAgent && (
+                <AddWorker
+                  edit
+                  workerInfo={editingWorkerAgent}
+                  isOpen={true}
+                  onOpenChange={(open) => {
+                    if (!open) setEditingWorkerAgent(null);
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const activeAgentId = chatStore.tasks[chatStore.activeTaskId]?.activeAgent;
 
   const composer = (
     <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
@@ -381,30 +544,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
             onRemoveQueuedMessage={() => {}}
             noModelOverlay={!hasModel}
             onSelectModel={() => navigate('/history?tab=agents')}
-            inputProps={{
-              value: message,
-              onChange: setMessage,
-              onSend: handleSend,
-              files:
-                chatStore.tasks[chatStore.activeTaskId]?.attaches?.map((f) => ({
-                  fileName: f.fileName,
-                  filePath: f.filePath,
-                })) || [],
-              onFilesChange: (files) =>
-                chatStore.setAttaches(
-                  chatStore.activeTaskId as string,
-                  files as any
-                ),
-              onAddFile: handleFileSelect,
-              disabled: !hasModel,
-              textareaRef,
-              allowDragDrop: true,
-              useCloudModelInDev,
-              placeholder: t('layout.project-task-placeholder'),
-              sessionMode: effectiveSessionMode,
-              onSessionModeChange: setActiveProjectMode,
-              sessionModeSelectInteractive: true,
-            }}
+            inputProps={buildComposerInputProps(chatStore)}
           />
         </div>
         <AddWorker

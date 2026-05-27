@@ -1238,10 +1238,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       //ProjectStore must exist as chatStore is already
       const projectStore = useProjectStore.getState();
-      const project_id = projectId || projectStore.activeProjectId;
+      const isLiveTask = !type || type === 'normal';
+      const project_id = isLiveTask
+        ? projectId
+        : projectId || projectStore.activeProjectId;
+      if (isLiveTask && !project_id) {
+        throw new Error('No active Project selected.');
+      }
       const project = project_id
         ? projectStore.getProjectById(project_id)
         : null;
+      if (isLiveTask && !project) {
+        throw new Error('Selected Project is not available.');
+      }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
       if (project_id && !project?.mode) {
@@ -1307,7 +1316,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null = projectStore.getHistoryId(project_id);
+      let historyId: string | null = project_id
+        ? projectStore.getHistoryId(project_id)
+        : null;
       let snapshots: any = [];
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;

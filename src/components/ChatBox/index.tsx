@@ -646,12 +646,18 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
+    const targetProjectId = projectStore.activeProjectId;
+    if (!targetProjectId) {
+      toast.error('No active Project selected.');
+      return;
+    }
+
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
     const displayContent = tempMessageContent;
 
-    if (executionId && projectStore.activeProjectId) {
-      const project = projectStore.getProjectById(projectStore.activeProjectId);
+    if (executionId && targetProjectId) {
+      const project = projectStore.getProjectById(targetProjectId);
       const isInQueue = project?.queuedMessages?.some(
         (m) => m.executionId === executionId
       );
@@ -717,7 +723,7 @@ export default function ChatBox(): JSX.Element {
 
         chatStore.setIsPending(_taskId, true);
 
-        await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
+        await fetchPost(`/chat/${targetProjectId}/human-reply`, {
           agent: chatStore.tasks[_taskId].activeAsk,
           reply: tempMessageContent,
         });
@@ -799,7 +805,7 @@ export default function ChatBox(): JSX.Element {
                 tempMessageContent,
                 attachesToSend,
                 executionId,
-                undefined,
+                targetProjectId,
                 effectiveSessionMode
               );
               chatStore.setAttaches(_taskId, []);
@@ -828,12 +834,12 @@ export default function ChatBox(): JSX.Element {
             chatStore.setNextExecutionId(_taskId as string, executionId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            fetchPost(`/chat/${projectStore.activeProjectId}`, {
+            fetchPost(`/chat/${targetProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
               project_context: buildProjectContinuationContext(
-                projectStore.activeProjectId,
+                targetProjectId,
                 nextTaskId
               ),
               target: undefined,
@@ -868,7 +874,7 @@ export default function ChatBox(): JSX.Element {
               tempMessageContent,
               attachesToSend,
               executionId,
-              undefined,
+              targetProjectId,
               effectiveSessionMode
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);

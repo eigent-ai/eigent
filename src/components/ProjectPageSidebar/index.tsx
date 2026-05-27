@@ -14,6 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
+import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { useHost } from '@/host';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
@@ -50,6 +52,7 @@ import {
   LayoutGrid,
   Loader2,
   MessageCircle,
+  Pencil,
   Plus,
   Zap,
   ZapOff,
@@ -114,6 +117,7 @@ export default function ProjectPageSidebar({
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
   const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
+  const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const projectMetasForActiveSpace = useMemo(() => {
     if (!activeSpaceId) return [];
     return getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId);
@@ -128,6 +132,9 @@ export default function ProjectPageSidebar({
   const { t } = useTranslation();
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
+  const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
+  const [renameSpaceValue, setRenameSpaceValue] = useState('');
+  const [renamingSpace, setRenamingSpace] = useState(false);
 
   const scheduledTabLabel = t('layout.scheduled-tab');
   const triggersTabTooltip = scheduledTabLabel;
@@ -219,6 +226,12 @@ export default function ProjectPageSidebar({
     rawActiveSpaceName === 'New Project'
       ? t('layout.spaces-new-space')
       : rawActiveSpaceName || t('layout.spaces-select-space');
+  const canRenameActiveSpace = Boolean(
+    activeSpace &&
+    activeSpace.status === 'active' &&
+    activeSpace.sourceType !== 'legacy' &&
+    activeSpace.metadata?.legacy !== true
+  );
 
   const projectHasStarted = useCallback(
     (projectId: string) => {
@@ -419,12 +432,56 @@ export default function ProjectPageSidebar({
     t,
   ]);
 
+  const openRenameSpaceDialog = useCallback(() => {
+    if (!canRenameActiveSpace || !activeSpace) return;
+    setRenameSpaceValue(activeSpace.name?.trim() || '');
+    setRenameSpaceDialogOpen(true);
+  }, [activeSpace, canRenameActiveSpace]);
+
+  const handleRenameSpace = useCallback(async () => {
+    const nextName = renameSpaceValue.trim();
+    if (!activeSpaceId || !nextName || renamingSpace) return;
+    setRenamingSpace(true);
+    try {
+      await renameSpaceOnServer(activeSpaceId, nextName);
+      toast.success(t('layout.spaces-rename-success'));
+      setRenameSpaceDialogOpen(false);
+    } catch (error) {
+      console.warn('[ProjectPageSidebar] Failed to rename Space:', error);
+      toast.error(t('layout.spaces-rename-failed'));
+    } finally {
+      setRenamingSpace(false);
+    }
+  }, [activeSpaceId, renameSpaceOnServer, renameSpaceValue, renamingSpace, t]);
+
   return (
     <>
       <GlobalSearchDialog
         open={globalSearchOpen}
         onOpenChange={setGlobalSearchOpen}
       />
+      <AlertDialog
+        isOpen={renameSpaceDialogOpen}
+        onClose={() => setRenameSpaceDialogOpen(false)}
+        onConfirm={() => void handleRenameSpace()}
+        title={t('layout.spaces-rename-title')}
+        confirmText={t('layout.save')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmDisabled={!renameSpaceValue.trim() || renamingSpace}
+      >
+        <Input
+          autoFocus
+          value={renameSpaceValue}
+          placeholder={t('layout.spaces-rename-placeholder')}
+          onChange={(event) => setRenameSpaceValue(event.target.value)}
+          onEnter={() => {
+            if (renameSpaceValue.trim() && !renamingSpace) {
+              void handleRenameSpace();
+            }
+          }}
+        />
+      </AlertDialog>
 
       <aside
         className={cn(
@@ -471,6 +528,14 @@ export default function ProjectPageSidebar({
                   >
                     <Plus className="h-4 w-4" aria-hidden />
                     <span>{t('layout.spaces-new-space')}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    disabled={!canRenameActiveSpace}
+                    onClick={openRenameSpaceDialog}
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden />
+                    <span>{t('layout.spaces-rename-space')}</span>
                   </DropdownMenuItem>
                   {activeSpaces.length > 0 ? <DropdownMenuSeparator /> : null}
                   {activeSpaces.map((space) => (

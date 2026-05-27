@@ -106,16 +106,17 @@ class ProjectOut(BaseModel):
 
     @classmethod
     def from_model(cls, project: Project) -> "ProjectOut":
+        metadata = project.metadata_json if isinstance(project.metadata_json, dict) else None
         return cls(
             id=project.id,
             user_id=project.user_id,
             space_id=project.space_id,
-            name=project.name,
+            name=project.name or f"Project {project.id}",
             description=project.description,
             mode=project.mode,
-            status=project.status,
+            status=project.status or ProjectStatus.ACTIVE,
             workdir_mode=project.workdir_mode,
-            metadata=project.metadata_json,
+            metadata=metadata,
             created_at=project.created_at,
             updated_at=project.updated_at,
         )

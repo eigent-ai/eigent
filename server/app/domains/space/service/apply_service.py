@@ -20,6 +20,7 @@ import os
 import shutil
 import threading
 import weakref
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -44,6 +45,11 @@ from app.model.space import (
     SpaceProjectApplyResponse,
     SpaceSourceType,
 )
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 _HASH_CHUNK_SIZE = 1024 * 1024
 _APPLY_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
@@ -133,6 +139,27 @@ def space_write_lock(space_id: str) -> SpaceWriteLock:
     """Return the canonical Space write lock context manager."""
 
     return SpaceWriteLock(space_id)
+
+
+@contextmanager
+def filesystem_space_lock(root: Path):
+    """Coordinate Space root filesystem reads/writes with Brain workdir copies."""
+
+    if fcntl is None:
+        yield
+        return
+
+    fd: int | None = None
+    try:
+        fd = os.open(root, os.O_RDONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
 
 
 def sha256_of_file(path: Path) -> str | None:
@@ -236,7 +263,7 @@ class SpaceApplyService:
             for resolution in data.force_resolutions or []
         }
 
-        with space_write_lock(space_id):
+        with space_write_lock(space_id), filesystem_space_lock(root):
             actions: list[tuple[SpaceFileIndexOverlay, str, ApplyResolutionIn | None]] = []
             for row in rows:
                 resolution = resolutions.get(row.path)

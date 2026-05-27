@@ -91,6 +91,11 @@ class SpaceUpdate(BaseModel):
 class SpaceRelocateIn(BaseModel):
     root_path: str
     force: bool = False
+    # Optional client-supplied fingerprint of the new root. When present, the
+    # server uses it for identity comparison instead of stat-ing root_path
+    # locally — required for cloud / multi-host Brain deployments where the
+    # server cannot resolve the user's filesystem path.
+    root_fingerprint: dict[str, Any] | None = None
 
 
 class SpaceOut(BaseModel):

@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
 from datetime import datetime
 from uuid import uuid4
 
@@ -19,9 +20,8 @@ from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.domains.space.service.folder_binding import (
-    folder_fingerprint,
-    resolve_folder_root,
-    same_folder_path,
+    normalize_folder_root_reference,
+    same_folder_reference,
 )
 from app.model.chat.chat_history import ChatHistory
 from app.model.project import (
@@ -32,6 +32,8 @@ from app.model.project import (
     ProjectWorkdirMode,
 )
 from app.model.space import Space, SpaceIn, SpaceOut, SpaceSourceType, SpaceStatus, SpaceUpdate
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class SpaceHasProjectsError(ValueError):
@@ -99,7 +101,12 @@ class SpaceService:
         ).all()
         name_by_project_id: dict[str, str] = {}
         for history in histories:
-            project_id = history.project_id or history.task_id
+            if history.project_id in project_ids:
+                project_id = history.project_id
+            elif history.task_id in project_ids:
+                project_id = history.task_id
+            else:
+                continue
             if project_id in name_by_project_id:
                 continue
             display_name = SpaceService._history_project_display_name(history)
@@ -171,11 +178,11 @@ class SpaceService:
             raise ValueError("Invalid Space status")
 
     @staticmethod
-    def _prepare_space_root(data: SpaceIn, user_id: str, s: Session) -> tuple[str | None, dict | None]:
+    def _prepare_space_root(
+        data: SpaceIn, user_id: str, s: Session
+    ) -> tuple[str | None, dict | None]:
         if data.source_type == SpaceSourceType.FOLDER:
-            if not data.root_path:
-                raise ValueError("Folder Space requires root_path")
-            resolved = resolve_folder_root(data.root_path)
+            root_ref = normalize_folder_root_reference(data.root_path or "")
             existing_spaces = s.exec(
                 select(Space).where(
                     Space.user_id == user_id,
@@ -184,9 +191,15 @@ class SpaceService:
                 )
             ).all()
             for existing in existing_spaces:
-                if existing.root_path and same_folder_path(existing.root_path, str(resolved)):
+                if existing.root_path and same_folder_reference(existing.root_path, root_ref):
                     raise ValueError("Folder is already bound to another Space")
-            return str(resolved), folder_fingerprint(resolved)
+                if (
+                    existing.root_fingerprint
+                    and data.root_fingerprint
+                    and existing.root_fingerprint == data.root_fingerprint
+                ):
+                    raise ValueError("Folder is already bound to another Space")
+            return root_ref, data.root_fingerprint
 
         if data.root_path or data.root_fingerprint:
             raise ValueError("root_path is only valid for folder Spaces")
@@ -209,7 +222,7 @@ class SpaceService:
             )
         ).all()
         for existing in existing_spaces:
-            if existing.root_path and same_folder_path(existing.root_path, root_path):
+            if existing.root_path and same_folder_reference(existing.root_path, root_path):
                 raise ValueError("Folder is already bound to another Space")
 
     @staticmethod
@@ -299,9 +312,6 @@ class SpaceService:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
         space = SpaceService._get_owned_space(space_id, canonical_user_id, s)
         if space.source_type == SpaceSourceType.FOLDER and space.root_path:
-            resolved = resolve_folder_root(space.root_path)
-            space.root_path = str(resolved)
-            space.root_fingerprint = folder_fingerprint(resolved)
             SpaceService._assert_folder_not_bound_to_other_space(
                 user_id=canonical_user_id,
                 root_path=space.root_path,
@@ -322,27 +332,45 @@ class SpaceService:
         s: Session,
         *,
         force: bool = False,
+        root_fingerprint: dict | None = None,
     ) -> Space:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
         space = SpaceService._get_owned_space(space_id, canonical_user_id, s)
         if space.source_type != SpaceSourceType.FOLDER:
             raise ValueError("Only folder Spaces can be relocated")
 
-        resolved = resolve_folder_root(root_path)
-        fingerprint = folder_fingerprint(resolved)
-        if (
-            not force
-            and not SpaceService._folder_identity_matches(space.root_fingerprint, fingerprint)
-        ):
-            raise ValueError("Relocated folder identity does not match this Space")
+        # Reference-only mode: the server never stats the new root path.
+        # Identity comparison uses the client-supplied fingerprint when
+        # available; without one we fall back to a string-equality check so
+        # the operation still degrades gracefully on cloud Brain deployments
+        # where fingerprints are unavailable.
+        root_ref = normalize_folder_root_reference(root_path)
+        if not force:
+            if root_fingerprint and space.root_fingerprint:
+                if not SpaceService._folder_identity_matches(
+                    space.root_fingerprint, root_fingerprint
+                ):
+                    raise ValueError(
+                        "Relocated folder identity does not match this Space"
+                    )
+            elif space.root_path and not same_folder_reference(
+                space.root_path, root_ref
+            ):
+                # No fingerprint available on either side: require the caller
+                # to acknowledge the change with force=True.
+                raise ValueError(
+                    "Relocated folder identity cannot be verified; "
+                    "supply root_fingerprint or use force=True"
+                )
         SpaceService._assert_folder_not_bound_to_other_space(
             user_id=canonical_user_id,
-            root_path=str(resolved),
+            root_path=root_ref,
             space_id=space.id,
             s=s,
         )
-        space.root_path = str(resolved)
-        space.root_fingerprint = fingerprint
+        space.root_path = root_ref
+        if root_fingerprint:
+            space.root_fingerprint = root_fingerprint
         space.status = SpaceStatus.ACTIVE
         s.add(space)
         s.commit()
@@ -439,11 +467,22 @@ class SpaceService:
             .where(Project.user_id == canonical_user_id, Project.space_id == space_id)
             .order_by(Project.created_at.desc(), Project.id.desc())
         ).all()
-        SpaceService._backfill_project_names_from_history(
-            projects,
-            user_id=canonical_user_id,
-            s=s,
-        )
+        try:
+            SpaceService._backfill_project_names_from_history(
+                projects,
+                user_id=canonical_user_id,
+                s=s,
+            )
+        except Exception:
+            s.rollback()
+            _LOGGER.warning(
+                "Failed to backfill project display names while listing projects",
+                exc_info=True,
+                extra={
+                    "space_id": space_id,
+                    "user_id": canonical_user_id,
+                },
+            )
         return [ProjectOut.from_model(project) for project in projects]
 
     @staticmethod
