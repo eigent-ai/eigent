@@ -61,16 +61,26 @@ interface WorkspaceProps {
   /**
    * `'workspace'` (default): full landing — header, composer, recent runs,
    * and the docked instructions panel.
-   * `'new-project'`: only the centered composer, for the New Project page.
+   * `'new-project'`: composer-first layout; use with `embedded` inside Session.
    */
   variant?: 'workspace' | 'new-project';
+  /** When true, render only the centered composer block (for Session shell). */
+  embedded?: boolean;
+  /** Controlled session mode when embedded in the new-project Session shell. */
+  sessionMode?: SessionModeType;
+  onSessionModeChange?: (mode: SessionModeType) => void;
 }
 
 /**
  * Workspace tab: project landing with a centered task input.
  * After the user starts a task, it switches to the Project chat tab.
  */
-export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
+export default function Workspace({
+  variant = 'workspace',
+  embedded = false,
+  sessionMode: controlledSessionMode,
+  onSessionModeChange,
+}: WorkspaceProps) {
   const { t } = useTranslation();
   const isNewProjectVariant = variant === 'new-project';
   const navigate = useNavigate();
@@ -147,17 +157,24 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   // truth; the old sessionSidePanelMode global is retained only as a migration
   // shim in pageTabStore.
   const effectiveSessionMode =
-    activeProjectMeta?.mode ?? activeProject?.mode ?? draftSessionMode;
+    controlledSessionMode ??
+    activeProjectMeta?.mode ??
+    activeProject?.mode ??
+    draftSessionMode;
 
   const setActiveProjectMode = useCallback(
     (mode: SessionModeType) => {
+      if (onSessionModeChange) {
+        onSessionModeChange(mode);
+        return;
+      }
       if (!activeProjectId) {
         setDraftSessionMode(mode);
         return;
       }
       updateProjectMeta(activeProjectId, { mode });
     },
-    [activeProjectId, updateProjectMeta]
+    [activeProjectId, onSessionModeChange, updateProjectMeta]
   );
 
   const [message, setMessage] = useState('');
@@ -444,157 +461,130 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
   );
 
   const projectPicker =
-    isNewProjectVariant && !isFreshProject ? (
+    isNewProjectVariant && (embedded || !isFreshProject) ? (
       <WorkspaceProjectPicker readOnly />
     ) : (
       <WorkspaceProjectPicker />
     );
 
-  if (!chatStore?.activeTaskId) {
-    return (
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
-        <div className="relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1" />
-        <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
-          <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-            <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
-              <div className="mb-8 flex w-full justify-center">
-                {projectPicker}
-              </div>
-              <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
-                {effectiveSessionMode === SessionMode.SINGLE_AGENT
-                  ? t('layout.workspace-cowork-single-agent')
-                  : t('layout.workspace-cowork-workforce')}
-              </span>
-              <div className="mb-8 flex w-full justify-center px-5">
-                {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-                  <SingleAgentList />
-                ) : (
-                  <WorkforceAgentList
-                    sortedAgents={sortedAgents}
-                    activeAgentId={undefined}
-                    onSelectAgent={onSelectAgent}
-                    onEditWorkerFromMenu={onEditWorkerFromMenu}
-                    onDuplicateUserAgent={onDuplicateUserAgent}
-                    onDeleteUserAgent={onDeleteUserAgent}
-                    onAddWorker={() => setAddWorkerDialogOpen(true)}
-                  />
-                )}
-              </div>
-              <div className="w-full">
-                <BottomBox
-                  state="input"
-                  queuedMessages={[]}
-                  onRemoveQueuedMessage={() => {}}
-                  noModelOverlay={!hasModel}
-                  onSelectModel={() => navigate('/history?tab=agents')}
-                  inputProps={buildComposerInputProps()}
-                />
-              </div>
-              <AddWorker
-                isOpen={addWorkerDialogOpen}
-                onOpenChange={setAddWorkerDialogOpen}
-              />
-              {editingWorkerAgent && (
-                <AddWorker
-                  edit
-                  workerInfo={editingWorkerAgent}
-                  isOpen={true}
-                  onOpenChange={(open) => {
-                    if (!open) setEditingWorkerAgent(null);
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const activeAgentId = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]?.activeAgent
+    : undefined;
 
-  const activeAgentId = chatStore.tasks[chatStore.activeTaskId]?.activeAgent;
+  const composerTop = (
+    <>
+      <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
+      <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
+        {effectiveSessionMode === SessionMode.SINGLE_AGENT
+          ? t('layout.workspace-cowork-single-agent')
+          : t('layout.workspace-cowork-workforce')}
+      </span>
+      <div className="mb-8 px-5 flex w-full justify-center">
+        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
+          <SingleAgentList />
+        ) : (
+          <WorkforceAgentList
+            sortedAgents={sortedAgents}
+            activeAgentId={activeAgentId}
+            onSelectAgent={onSelectAgent}
+            onEditWorkerFromMenu={onEditWorkerFromMenu}
+            onDuplicateUserAgent={onDuplicateUserAgent}
+            onDeleteUserAgent={onDeleteUserAgent}
+            onAddWorker={() => setAddWorkerDialogOpen(true)}
+          />
+        )}
+      </div>
+    </>
+  );
+
+  const composerInput = (
+    <>
+      <div className="w-full">
+        <BottomBox
+          state="input"
+          queuedMessages={[]}
+          onRemoveQueuedMessage={() => {}}
+          noModelOverlay={!hasModel}
+          onSelectModel={() => navigate('/history?tab=agents')}
+          inputProps={buildComposerInputProps(chatStore ?? undefined)}
+        />
+      </div>
+      <AddWorker
+        isOpen={addWorkerDialogOpen}
+        onOpenChange={setAddWorkerDialogOpen}
+      />
+      {editingWorkerAgent && (
+        <AddWorker
+          edit
+          workerInfo={editingWorkerAgent}
+          isOpen={true}
+          onOpenChange={(open) => {
+            if (!open) setEditingWorkerAgent(null);
+          }}
+        />
+      )}
+    </>
+  );
 
   const composer = (
     <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-      <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
-        <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
-        <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
-          {effectiveSessionMode === SessionMode.SINGLE_AGENT
-            ? t('layout.workspace-cowork-single-agent')
-            : t('layout.workspace-cowork-workforce')}
-        </span>
-        <div className="mb-8 flex w-full justify-center px-5">
-          {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-            <SingleAgentList />
-          ) : (
-            <WorkforceAgentList
-              sortedAgents={sortedAgents}
-              activeAgentId={activeAgentId}
-              onSelectAgent={onSelectAgent}
-              onEditWorkerFromMenu={onEditWorkerFromMenu}
-              onDuplicateUserAgent={onDuplicateUserAgent}
-              onDeleteUserAgent={onDeleteUserAgent}
-              onAddWorker={() => setAddWorkerDialogOpen(true)}
-            />
-          )}
-        </div>
-        <div className="w-full">
-          <BottomBox
-            state="input"
-            queuedMessages={[]}
-            onRemoveQueuedMessage={() => {}}
-            noModelOverlay={!hasModel}
-            onSelectModel={() => navigate('/history?tab=agents')}
-            inputProps={buildComposerInputProps(chatStore)}
-          />
-        </div>
-        <AddWorker
-          isOpen={addWorkerDialogOpen}
-          onOpenChange={setAddWorkerDialogOpen}
-        />
-        {editingWorkerAgent && (
-          <AddWorker
-            edit
-            workerInfo={editingWorkerAgent}
-            isOpen={true}
-            onOpenChange={(open) => {
-              if (!open) setEditingWorkerAgent(null);
-            }}
-          />
-        )}
+      <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
+        {composerTop}
+        {composerInput}
       </div>
     </div>
   );
 
-  if (isNewProjectVariant) {
+  const showBottomExamplePrompts =
+    !embedded &&
+    (isNewProjectVariant ||
+      !chatStore?.activeTaskId ||
+      showWorkspaceExamplePrompts);
+
+  if (embedded && isNewProjectVariant) {
     return (
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
-        {/* Empty header toolbar — matches the workspace page vertical structure */}
-        <div className="relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1" />
-        <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
-          <div className="flex min-h-0 w-full flex-1 flex-col">
-            {composer}
-            <div
-              className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
-              id="workspace-bottom-group"
-            >
-              <WorkspaceExamplePrompts
-                onSelectPrompt={setMessage}
-                disabled={!hasModel}
-              />
-            </div>
-          </div>
-        </div>
+      <div className="min-h-0 min-w-0 px-3 flex flex-1 flex-col overflow-hidden">
+        {composer}
+        <div
+          className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+          id="workspace-bottom-group"
+          aria-hidden
+        />
       </div>
     );
   }
 
+  const sidePanel =
+    workspaceSubPage === null ? (
+      <div className="shrink-0 overflow-hidden">
+        <div
+          className={cn(
+            'flex h-full flex-col overflow-hidden',
+            SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
+          )}
+        >
+          <WorkspaceCoworkPanel
+            memoryOn={memoryOn}
+            onMemoryToggle={() => setMemoryOn((v) => !v)}
+            onEditInstructions={() => setWorkspaceSubPage('instruction-md')}
+            onWorkforceSetting={() => setActiveWorkspaceTab('workforce')}
+          />
+        </div>
+      </div>
+    ) : null;
+
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-row overflow-hidden">
       {/* Center section: header + content */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
         {/* Header toolbar */}
-        <div className="relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1 px-3">
-          {workspaceSubPage !== null && (
+        <div
+          className={cn(
+            'gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start',
+            !isNewProjectVariant && 'px-3'
+          )}
+        >
+          {!isNewProjectVariant && workspaceSubPage !== null && (
             <Button
               type="button"
               variant="ghost"
@@ -608,79 +598,90 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
               {t('layout.back')}
             </Button>
           )}
-          {workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
+          {!isNewProjectVariant && workspaceSubPage !== null && (
+            <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
                 {SUB_PAGE_TITLES[workspaceSubPage]}
               </span>
             </div>
           )}
           <div className="flex-1" />
-          {workspaceSubPage === 'instruction-md' && activeProjectId && (
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              buttonContent="text"
-              className="no-drag shrink-0"
-              onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent('workspace-instruction-md-save', {
-                    detail: { projectId: activeProjectId },
-                  })
-                );
-              }}
-            >
-              Save
-            </Button>
-          )}
+          {!isNewProjectVariant &&
+            workspaceSubPage === 'instruction-md' &&
+            activeProjectId && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                buttonContent="text"
+                className="no-drag shrink-0"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('workspace-instruction-md-save', {
+                      detail: { projectId: activeProjectId },
+                    })
+                  );
+                }}
+              >
+                Save
+              </Button>
+            )}
         </div>
 
         {/* Content */}
-        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex w-full flex-1 flex-col overflow-hidden">
           {/* Sub-pages */}
-          {workspaceSubPage === 'all-sessions' && (
-            <WorkspaceAllSessions
-              tasks={chatStore.tasks}
-              activeTaskId={chatStore.activeTaskId}
-              onSelectSession={(id) => {
-                chatStore.setActiveTaskId(id);
-                setActiveWorkspaceTab('project');
-                setWorkspaceSubPage(null);
-              }}
-              onDeleteSession={(id) => {
-                if (!window.confirm(t('layout.delete-task-confirmation')))
-                  return;
-                const wasActive = chatStore.activeTaskId === id;
-                chatStore.removeTask(id);
-                if (wasActive) setActiveWorkspaceTab('workforce');
-                setWorkspaceSubPage(null);
-              }}
-            />
-          )}
-          {workspaceSubPage === 'instruction-md' && activeProjectId && (
-            <WorkspaceInstructionMd
-              key={activeProjectId}
-              projectId={activeProjectId}
-            />
-          )}
+          {!isNewProjectVariant &&
+            workspaceSubPage === 'all-sessions' &&
+            chatStore && (
+              <WorkspaceAllSessions
+                tasks={chatStore.tasks}
+                activeTaskId={chatStore.activeTaskId}
+                onSelectSession={(id) => {
+                  chatStore.setActiveTaskId(id);
+                  setActiveWorkspaceTab('project');
+                  setWorkspaceSubPage(null);
+                }}
+                onDeleteSession={(id) => {
+                  if (!window.confirm(t('layout.delete-task-confirmation')))
+                    return;
+                  const wasActive = chatStore.activeTaskId === id;
+                  chatStore.removeTask(id);
+                  if (wasActive) setActiveWorkspaceTab('workforce');
+                  setWorkspaceSubPage(null);
+                }}
+              />
+            )}
+          {!isNewProjectVariant &&
+            workspaceSubPage === 'instruction-md' &&
+            activeProjectId && (
+              <WorkspaceInstructionMd
+                key={activeProjectId}
+                projectId={activeProjectId}
+              />
+            )}
 
           {/* Main content (hidden when a sub-page is active) */}
           {workspaceSubPage === null && (
-            <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
-              <div className="flex min-h-0 w-full flex-1 flex-col px-3">
+            <div className="min-h-0 min-w-0 relative z-0 flex flex-1 flex-col items-stretch overflow-hidden">
+              <div
+                className={cn(
+                  'min-h-0 flex w-full flex-1 flex-col',
+                  !isNewProjectVariant && 'px-3'
+                )}
+              >
                 {composer}
 
                 <div
-                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
+                  className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
                   id="workspace-bottom-group"
                 >
-                  {showWorkspaceExamplePrompts ? (
+                  {showBottomExamplePrompts ? (
                     <WorkspaceExamplePrompts
                       onSelectPrompt={setMessage}
                       disabled={!hasModel}
                     />
-                  ) : (
+                  ) : chatStore ? (
                     <WorkspaceRecentSessions
                       tasks={chatStore.tasks}
                       activeTaskId={chatStore.activeTaskId}
@@ -692,7 +693,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
                         setWorkspaceSubPage('all-sessions')
                       }
                     />
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -700,24 +701,7 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
         </div>
       </div>
 
-      {/* Right section: instructions + onboarding panel */}
-      {workspaceSubPage === null && (
-        <div className="shrink-0 overflow-hidden">
-          <div
-            className={cn(
-              'flex h-full flex-col overflow-hidden',
-              SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
-            )}
-          >
-            <WorkspaceCoworkPanel
-              memoryOn={memoryOn}
-              onMemoryToggle={() => setMemoryOn((v) => !v)}
-              onEditInstructions={() => setWorkspaceSubPage('instruction-md')}
-              onWorkforceSetting={() => setActiveWorkspaceTab('workforce')}
-            />
-          </div>
-        </div>
-      )}
+      {sidePanel}
     </div>
   );
 }
