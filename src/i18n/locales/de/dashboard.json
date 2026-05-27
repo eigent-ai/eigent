@@ -23,5 +23,6 @@
   "document-agent": "Dokument-Agent",
   "multi-modal-agent": "Multi-Modal-Agent",
   "social-media-agent": "Social-Media-Agent",
-  "no-projects-found": "Keine Projekte gefunden."
+  "no-projects-found": "Keine Projekte gefunden.",
+  "no-tasks-found": "Keine Aufgaben gefunden."
 }
