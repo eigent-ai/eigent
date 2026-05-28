@@ -391,6 +391,10 @@ class TaskLock:
     """Project workdir baseline snapshot id, when available."""
     new_folder_path: Any | None
     """Legacy cleanup marker for default output directories."""
+    memory_service: Any | None
+    """MemoryService bound for this Run; used by single_agent_service for on_run_end."""
+    _memory_finalized_runs: set[str]
+    """Run ids whose durable memory lifecycle has already been finalized."""
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -423,6 +427,8 @@ class TaskLock:
         self.workdir_mode = None
         self.base_snapshot_id = None
         self.new_folder_path = None
+        self.memory_service = None
+        self._memory_finalized_runs = set()
 
         logger.info(
             "Task lock initialized",

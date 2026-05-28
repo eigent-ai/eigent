@@ -202,10 +202,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   if (isNewProject) {
     return (
-      <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <HeaderBox empty />
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Workspace
               variant="new-project"
               embedded
@@ -218,7 +218,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
         <div
           id="session-side-panel"
           className={cn(
-            'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
+            'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
             isSidePanelVisible
               ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
               : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
@@ -231,14 +231,14 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }
 
   return (
-    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
           />
         )}
-        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ChatBox />
         </div>
       </div>
@@ -246,7 +246,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
       <div
         id="session-side-panel"
         className={cn(
-          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
+          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
           isSidePanelVisible
             ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')

@@ -227,18 +227,18 @@ export default function HomeHub() {
       />
 
       <div className="flex h-auto w-full">
-        <div className="top-20 w-40 pr-6 pt-8 sticky flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
+        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
           <VerticalNavigation
             items={
               menuItems.map((menu) => ({
                 value: menu.id,
                 label: (
                   <div className="flex w-full items-center justify-between">
-                    <span className="text-body-sm font-bold w-full text-left">
+                    <span className="w-full text-left text-body-sm font-bold">
                       {menu.name}
                     </span>
-                    <div className="bg-ds-bg-brand-subtle-disabled px-1 flex items-center justify-center rounded-full">
-                      <span className="font-normal text-label-xs text-ds-text-brand-strong-default tabular-nums">
+                    <div className="flex items-center justify-center rounded-full bg-ds-bg-brand-subtle-disabled px-1">
+                      <span className="text-label-xs font-normal tabular-nums text-ds-text-brand-strong-default">
                         {menu.count}
                       </span>
                     </div>
@@ -248,13 +248,13 @@ export default function HomeHub() {
             }
             value={activeTab}
             onValueChange={handleTabChange}
-            className="min-h-0 gap-0 h-full w-full flex-1"
+            className="h-full min-h-0 w-full flex-1 gap-0"
             listClassName="w-full h-full overflow-y-auto"
             contentClassName="hidden"
           />
         </div>
 
-        <div className="min-w-0 mx-auto flex min-h-[calc(100vh-86px)] w-full max-w-[940px] flex-1 flex-col">
+        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full min-w-0 max-w-[940px] flex-1 flex-col">
           {activeTab === 'spaces' && <Spaces />}
           {activeTab === 'projects' && <Projects />}
           {activeTab === 'tasks' && <Tasks />}

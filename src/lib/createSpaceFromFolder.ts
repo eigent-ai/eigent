@@ -134,7 +134,7 @@ export async function createSpaceFromFolderPicker({
     syncedProject = await createSyncedProjectInSpace({
       projectStore,
       spaceId,
-      workdirMode: 'copy',
+      workdirMode: 'direct-write',
       metadata: {
         createdFrom,
         ...projectMetadata,

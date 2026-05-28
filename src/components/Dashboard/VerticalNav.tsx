@@ -62,7 +62,7 @@ export function VerticalNavigation({
     >
       <TabsList
         className={cn(
-          'gap-1.5 p-0 flex w-full flex-col rounded-none border-none bg-transparent',
+          'flex w-full flex-col gap-1.5 rounded-none border-none bg-transparent p-0',
           listClassName
         )}
       >
@@ -72,7 +72,7 @@ export function VerticalNavigation({
             value={item.value}
             disabled={item.disabled}
             className={cn(
-              'gap-2 rounded-xl px-3 py-1.5 text-body-sm w-full justify-start',
+              'w-full justify-start gap-2 rounded-xl px-3 py-1.5 text-body-sm',
               'bg-transparent data-[state=inactive]:bg-transparent',
               'data-[state=inactive]:text-ds-text-neutral-muted-default data-[state=inactive]:opacity-70',
               'data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100',
@@ -81,11 +81,11 @@ export function VerticalNavigation({
             )}
           >
             {item.icon ? (
-              <span className="h-4 w-4 inline-flex items-center justify-center">
+              <span className="inline-flex h-4 w-4 items-center justify-center">
                 {item.icon}
               </span>
             ) : null}
-            <span className="min-w-0 w-full truncate text-left">
+            <span className="w-full min-w-0 truncate text-left">
               {item.label}
             </span>
           </TabsTrigger>

@@ -262,7 +262,9 @@ export default function Workspace({
           name: trimmedMessage.slice(0, 120),
           mode: effectiveSessionMode,
           workdirMode:
-            activeSpace?.sourceType === 'folder' ? 'copy' : 'artifact-only',
+            activeSpace?.sourceType === 'folder'
+              ? 'direct-write'
+              : 'artifact-only',
           metadata: {
             createdFrom: 'workspace_direct_chat',
           },
@@ -474,12 +476,12 @@ export default function Workspace({
   const composerTop = (
     <>
       <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
-      <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
+      <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT
           ? t('layout.workspace-cowork-single-agent')
           : t('layout.workspace-cowork-workforce')}
       </span>
-      <div className="mb-8 px-5 flex w-full justify-center">
+      <div className="mb-8 flex w-full justify-center px-5">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <SingleAgentList />
         ) : (
@@ -528,7 +530,7 @@ export default function Workspace({
 
   const composer = (
     <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-      <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
+      <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
         {composerTop}
         {composerInput}
       </div>
@@ -543,10 +545,10 @@ export default function Workspace({
 
   if (embedded && isNewProjectVariant) {
     return (
-      <div className="min-h-0 min-w-0 px-3 flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
         {composer}
         <div
-          className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+          className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
           id="workspace-bottom-group"
           aria-hidden
         />
@@ -574,13 +576,13 @@ export default function Workspace({
     ) : null;
 
   return (
-    <div className="min-h-0 min-w-0 flex h-full w-full flex-row overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
       {/* Center section: header + content */}
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header toolbar */}
         <div
           className={cn(
-            'gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start',
+            'relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1',
             !isNewProjectVariant && 'px-3'
           )}
         >
@@ -599,8 +601,8 @@ export default function Workspace({
             </Button>
           )}
           {!isNewProjectVariant && workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
                 {SUB_PAGE_TITLES[workspaceSubPage]}
               </span>
             </div>
@@ -629,7 +631,7 @@ export default function Workspace({
         </div>
 
         {/* Content */}
-        <div className="min-h-0 flex w-full flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           {/* Sub-pages */}
           {!isNewProjectVariant &&
             workspaceSubPage === 'all-sessions' &&
@@ -663,17 +665,17 @@ export default function Workspace({
 
           {/* Main content (hidden when a sub-page is active) */}
           {workspaceSubPage === null && (
-            <div className="min-h-0 min-w-0 relative z-0 flex flex-1 flex-col items-stretch overflow-hidden">
+            <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
               <div
                 className={cn(
-                  'min-h-0 flex w-full flex-1 flex-col',
+                  'flex min-h-0 w-full flex-1 flex-col',
                   !isNewProjectVariant && 'px-3'
                 )}
               >
                 {composer}
 
                 <div
-                  className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
                   id="workspace-bottom-group"
                 >
                   {showBottomExamplePrompts ? (

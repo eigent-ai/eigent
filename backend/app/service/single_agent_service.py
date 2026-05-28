@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
@@ -22,6 +23,10 @@ from fastapi import Request
 
 from app.agent.factory.single_agent import single_agent
 from app.hands.interface import IHands
+from app.memory import (
+    build_durable_context_for_task_lock,
+    finalize_task_lock_run_memory,
+)
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
 from app.service.task import (
@@ -40,11 +45,32 @@ from app.utils.file_utils import get_working_directory
 
 logger = logging.getLogger("single_agent_service")
 
+# Char budget for the durable memory bundle (~32k chars at 4 chars/token).
+# Override via EIGENT_MEMORY_TOKEN_BUDGET if you need to tune in the field.
+try:
+    _MEMORY_TOKEN_BUDGET = int(
+        os.environ.get("EIGENT_MEMORY_TOKEN_BUDGET", "8000")
+    )
+except ValueError:
+    _MEMORY_TOKEN_BUDGET = 8000
+
 
 def _build_single_agent_context(
     task_lock: TaskLock,
     project_context: str | None = None,
+    current_user_prompt: str = "",
 ) -> str:
+    # 1. Durable cross-restart context from LocalMemoryStore (M4 path).
+    durable = build_durable_context_for_task_lock(
+        task_lock,
+        mode="single_agent",
+        current_user_prompt=current_user_prompt,
+        token_budget=_MEMORY_TOKEN_BUDGET,
+    )
+    if durable:
+        return durable + "\n\n"
+
+    # 2. In-process conversation history (hot follow-up turns).
     if getattr(task_lock, "conversation_history", None):
         lines = ["=== Previous Conversation ==="]
         for entry in task_lock.conversation_history:
@@ -65,6 +91,7 @@ def _build_single_agent_context(
         lines.append("=== End Previous Conversation ===")
         return "\n".join(lines) + "\n\n"
 
+    # 3. Phase-0 bridge fallback (frontend-sent project_context).
     durable_context = (project_context or "").strip()
     if not durable_context:
         return ""
@@ -75,13 +102,32 @@ def _build_single_agent_context(
     )
 
 
+def _finalize_memory_for_turn(
+    task_lock: TaskLock,
+    *,
+    state: str,
+    final_result: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Best-effort end-of-run memory write."""
+
+    finalize_task_lock_run_memory(
+        task_lock,
+        state=state,  # type: ignore[arg-type]
+        final_result=final_result,
+        error=error,
+    )
+
+
 def _build_single_agent_prompt(
     task_lock: TaskLock,
     question: str,
     attaches: list[str],
     project_context: str | None = None,
 ) -> str:
-    context = _build_single_agent_context(task_lock, project_context)
+    context = _build_single_agent_context(
+        task_lock, project_context, current_user_prompt=question
+    )
     attachment_context = ""
     if attaches:
         attachment_context = "Attachments:\n" + "\n".join(
@@ -313,13 +359,43 @@ async def single_agent_solve(
 
                 if item.action == Action.skip_task:
                     pause_event.clear()
-                    if running_turn is not None and not running_turn.done():
-                        running_turn.cancel()
-                    task_lock.status = Status.done
-                    yield sse_json(
-                        "end",
-                        "<summary>Task stopped</summary>Task stopped by user",
+                    stop_message = (
+                        "<summary>Task stopped</summary>Task stopped by user"
                     )
+                    cancelled_turn = running_turn
+                    # Drop our reference first so the next asyncio.wait does
+                    # not block on the cancelled task, and so the duplicate
+                    # "end" path further down cannot re-surface it.
+                    running_turn = None
+                    if (
+                        cancelled_turn is not None
+                        and not cancelled_turn.done()
+                    ):
+                        cancelled_turn.cancel()
+
+                        # Attach a done callback that swallows CancelledError /
+                        # whatever exception the turn surfaces post-cancel, so
+                        # the asyncio loop does not log "Task exception was
+                        # never retrieved". We deliberately do NOT await the
+                        # task here: model HTTP calls, browser actions, or
+                        # MCP tool calls may not propagate CancelledError
+                        # promptly, and awaiting would block the SSE response
+                        # generator -- the user would press Skip and see
+                        # nothing happen.
+                        def _swallow(task: asyncio.Task) -> None:
+                            try:
+                                task.result()
+                            except (asyncio.CancelledError, Exception):
+                                pass
+
+                        cancelled_turn.add_done_callback(_swallow)
+                    task_lock.status = Status.done
+                    _finalize_memory_for_turn(
+                        task_lock,
+                        state="cancelled",
+                        final_result=stop_message,
+                    )
+                    yield sse_json("end", stop_message)
                     continue
 
                 if item.action == Action.stop:
@@ -358,12 +434,20 @@ async def single_agent_solve(
                     )
                     pause_event.clear()
                     task_lock.status = Status.confirming
+                    _finalize_memory_for_turn(
+                        task_lock, state="failed", error=str(e)
+                    )
                     yield sse_json("error", {"message": str(e)})
                     running_turn = None
                     continue
 
                 task_lock.status = Status.done
                 running_turn = None
+                _finalize_memory_for_turn(
+                    task_lock,
+                    state="done",
+                    final_result=final_result,
+                )
                 yield sse_json(
                     "end",
                     {"message": final_result, "tokens": total_tokens},
@@ -376,6 +460,12 @@ async def single_agent_solve(
             pause_event.clear()
             task_lock.status = Status.confirming
             running_turn.cancel()
+        # If the loop exits without a clean done/failed end-of-turn (client
+        # disconnect, stop, exception), record a cancelled run. The
+        # `_memory_finalized_runs` set on task_lock makes this idempotent:
+        # a prior done/failed write wins, this only catches the unfinished
+        # case.
+        _finalize_memory_for_turn(task_lock, state="cancelled")
         if agent is not None:
             release_cdp = getattr(agent, "_cdp_release_callback", None)
             if callable(release_cdp):

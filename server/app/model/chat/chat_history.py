@@ -14,6 +14,7 @@
 
 from datetime import datetime
 from enum import IntEnum
+from typing import Literal
 
 from pydantic import BaseModel, model_validator
 from sqlalchemy import Float, Integer
@@ -86,6 +87,14 @@ class ChatHistoryIn(BaseModel):
     status: int = ChatStatus.ongoing.value
     skip_reason: SkipReason | None = None
     workdir_mode: str | None = None
+    # Project execution mode reported by the client when starting the chat.
+    # Persisted on the Project row so reload reflects the user's last choice
+    # (single-agent vs workforce) — without this, Project.mode stays NULL and
+    # reload defaults the UI back to single-agent.
+    # Constrained to a Literal so a bad value gets a 422 from pydantic instead
+    # of bubbling up as "Space not found" through ensure_project's ValueError
+    # → 404 mapping in history_controller.
+    mode: Literal["single-agent", "workforce"] | None = None
 
 
 class ChatHistoryOut(BaseModel):

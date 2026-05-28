@@ -31,11 +31,11 @@ export default function SectionHeader({
   const { viewMode, setViewMode, searchQuery, setSearchQuery } = useHomeHub();
 
   return (
-    <div className="pb-6 pt-8 pl-6 flex w-full items-center justify-between">
+    <div className="flex w-full items-center justify-between pb-6 pl-6 pt-8">
       <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
         {title}
       </div>
-      <div className="gap-2 flex items-center">
+      <div className="flex items-center gap-2">
         <SearchInput
           variant="icon"
           value={searchQuery}
@@ -48,13 +48,13 @@ export default function SectionHeader({
         >
           <TabsList>
             <TabsTrigger value="grid">
-              <div className="gap-1 text-label-sm flex items-center">
+              <div className="flex items-center gap-1 text-label-sm">
                 <LayoutGrid size={16} />
                 <span>{t('dashboard.grid')}</span>
               </div>
             </TabsTrigger>
             <TabsTrigger value="list">
-              <div className="gap-1 text-label-sm flex items-center">
+              <div className="flex items-center gap-1 text-label-sm">
                 <List size={16} />
                 <span>{t('dashboard.list')}</span>
               </div>

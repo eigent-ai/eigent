@@ -220,10 +220,10 @@ export function SpaceSwitchDropdown({
       <DropdownMenuContent
         align={contentAlign}
         sideOffset={contentSideOffset}
-        className={cn('p-0 min-w-[280px] overflow-hidden', contentClassName)}
+        className={cn('min-w-[280px] overflow-hidden p-0', contentClassName)}
         onMouseEnter={openOnHover ? openFromHover : undefined}
       >
-        <div className="p-1 gap-1 flex flex-col">
+        <div className="flex flex-col gap-1 p-1">
           <Input
             ref={searchInputRef}
             size="sm"
@@ -244,7 +244,7 @@ export function SpaceSwitchDropdown({
             )}
           >
             {filteredSpaces.length === 0 ? (
-              <div className="px-2 py-3 text-body-sm text-ds-text-neutral-muted-default text-center">
+              <div className="px-2 py-3 text-center text-body-sm text-ds-text-neutral-muted-default">
                 {t('layout.search-no-results')}
               </div>
             ) : (
@@ -279,24 +279,24 @@ export function SpaceSwitchDropdown({
           </div>
         </div>
 
-        <DropdownMenuSeparator className="bg-ds-border-neutral-default-default my-0" />
+        <DropdownMenuSeparator className="my-0 bg-ds-border-neutral-default-default" />
 
-        <div className={cn('px-1 pt-1 mb-1')}>
+        <div className={cn('mb-1 px-1 pt-1')}>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2 text-ds-text-brand-default-default">
               <Plus
-                className="h-4 w-4 text-ds-text-brand-default-default shrink-0"
+                className="h-4 w-4 shrink-0 text-ds-text-brand-default-default"
                 aria-hidden
               />
               {t('layout.spaces-create-new-space')}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
-              className="p-1 w-52"
+              className="w-52 p-1"
               sideOffset={6}
               alignOffset={-4}
             >
               <DropdownMenuItem
-                className="gap-2 cursor-pointer"
+                className="cursor-pointer gap-2"
                 onSelect={(event) => {
                   event.preventDefault();
                   navigateToWorkspaceTab();
@@ -308,7 +308,7 @@ export function SpaceSwitchDropdown({
                 {t('layout.workspace-start-from-scratch')}
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="gap-2 cursor-pointer"
+                className="cursor-pointer gap-2"
                 onSelect={(event) => {
                   event.preventDefault();
                   navigateToWorkspaceTab();
@@ -327,7 +327,7 @@ export function SpaceSwitchDropdown({
               <DropdownMenuSubTrigger className="gap-2">
                 {pendingChangesMenu.loading ? (
                   <Loader2
-                    className="h-4 w-4 animate-spin shrink-0"
+                    className="h-4 w-4 shrink-0 animate-spin"
                     aria-hidden
                   />
                 ) : pendingChangesMenu.loadFailed ? (
@@ -341,21 +341,21 @@ export function SpaceSwitchDropdown({
                   : ''}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                className="p-1 w-52"
+                className="w-52 p-1"
                 sideOffset={6}
                 alignOffset={-4}
               >
                 {pendingChangesMenu.loadFailed ? (
-                  <div className="gap-2 px-2 py-2 text-body-sm text-ds-text-neutral-muted-default flex items-start">
+                  <div className="flex items-start gap-2 px-2 py-2 text-body-sm text-ds-text-neutral-muted-default">
                     <TriangleAlert
-                      className="mt-0.5 h-4 w-4 text-ds-icon-warning-default-default shrink-0"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
                       aria-hidden
                     />
                     <span>{t('layout.workspace-pending-load-stale')}</span>
                   </div>
                 ) : null}
                 <DropdownMenuItem
-                  className="gap-2 cursor-pointer"
+                  className="cursor-pointer gap-2"
                   disabled={pendingChangesMenu.applyDisabled}
                   onSelect={(event) => {
                     event.preventDefault();
@@ -371,7 +371,7 @@ export function SpaceSwitchDropdown({
                     : t('layout.workspace-apply-pending-changes')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="gap-2 cursor-pointer"
+                  className="cursor-pointer gap-2"
                   disabled={pendingChangesMenu.discardDisabled}
                   onSelect={(event) => {
                     event.preventDefault();
@@ -382,7 +382,7 @@ export function SpaceSwitchDropdown({
                   {t('layout.workspace-discard-pending-changes')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="gap-2 cursor-pointer"
+                  className="cursor-pointer gap-2"
                   disabled={pendingChangesMenu.refreshDisabled}
                   onSelect={(event) => {
                     event.preventDefault();

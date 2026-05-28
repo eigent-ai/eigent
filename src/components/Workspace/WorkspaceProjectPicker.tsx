@@ -127,6 +127,14 @@ export function WorkspaceProjectPicker({
     activeProject?.spaceId ||
     activeSpaceId ||
     null;
+  const activeProjectSpace = activeProjectSpaceId
+    ? spacesById[activeProjectSpaceId]
+    : null;
+  const activeProjectWorkdirMode =
+    activeProjectMeta?.workdirMode || activeProject?.workdirMode || null;
+  const activeProjectDirectWrite =
+    activeProjectWorkdirMode === 'direct-write' ||
+    (!activeProjectWorkdirMode && activeProjectSpace?.sourceType === 'folder');
   const activeProjectServerBacked = Boolean(
     activeProjectMeta?.metadata?.serverSynced ||
     activeProjectMeta?.metadata?.historyId ||
@@ -160,15 +168,13 @@ export function WorkspaceProjectPicker({
   );
 
   const loadPendingOverlays = useCallback(async () => {
-    const activeProjectSpace = activeProjectSpaceId
-      ? useSpaceStore.getState().getSpaceById(activeProjectSpaceId)
-      : null;
     if (
       !activeProjectSpaceId ||
       !activeProjectId ||
       !activeProjectServerBacked ||
       activeProjectSpaceId.startsWith('legacy_') ||
-      !activeProjectSpace
+      !activeProjectSpace ||
+      activeProjectDirectWrite
     ) {
       setPendingOverlays([]);
       setPendingLoadFailed(false);
@@ -192,7 +198,13 @@ export function WorkspaceProjectPicker({
     } finally {
       setPendingLoading(false);
     }
-  }, [activeProjectId, activeProjectServerBacked, activeProjectSpaceId]);
+  }, [
+    activeProjectDirectWrite,
+    activeProjectId,
+    activeProjectServerBacked,
+    activeProjectSpace,
+    activeProjectSpaceId,
+  ]);
 
   useEffect(() => {
     void loadPendingOverlays();
@@ -510,7 +522,7 @@ export function WorkspaceProjectPicker({
         aria-label={activeSpaceTitle}
       >
         <FolderIcon className="size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 text-label-sm text-ds-text-neutral-default-default truncate">
+        <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
           {activeSpaceTitle}
         </span>
       </div>
@@ -581,13 +593,13 @@ export function WorkspaceProjectPicker({
             buttonRadius="full"
             className={cn(
               PROJECT_PICKER_SHELL_CLASS,
-              'no-drag hover:bg-ds-bg-neutral-default-hover justify-between'
+              'no-drag justify-between hover:bg-ds-bg-neutral-default-hover'
             )}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
           >
             <FolderIcon className="size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 text-label-sm text-ds-text-neutral-default-default truncate">
+            <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
               {activeSpaceTitle}
             </span>
             <ChevronsUpDown
@@ -607,7 +619,7 @@ export function WorkspaceProjectPicker({
         onRenameSpace={openRenameDialog}
         onSpaceSelect={activateSpace}
         pendingChangesMenu={
-          activeProjectId
+          activeProjectId && !activeProjectDirectWrite
             ? {
                 loading: pendingLoading,
                 loadFailed: pendingLoadFailed,

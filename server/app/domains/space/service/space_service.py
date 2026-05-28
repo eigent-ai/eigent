@@ -138,6 +138,12 @@ class SpaceService:
         return str(user_id)
 
     @staticmethod
+    def _default_project_workdir_mode(space: Space) -> str:
+        if space.source_type == SpaceSourceType.FOLDER:
+            return ProjectWorkdirMode.DIRECT_WRITE
+        return ProjectWorkdirMode.ARTIFACT_ONLY
+
+    @staticmethod
     def legacy_space_id(user_id: int | str) -> str:
         return f"legacy_{SpaceService.canonical_user_id(user_id)}"
 
@@ -386,11 +392,12 @@ class SpaceService:
         s: Session,
         *,
         description: str | None = None,
+        mode: str | None = None,
         workdir_mode: str | None = None,
         metadata: dict | None = None,
     ) -> Project:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
-        SpaceService._validate_project_payload(workdir_mode=workdir_mode)
+        SpaceService._validate_project_payload(mode=mode, workdir_mode=workdir_mode)
         target_space_id = space_id or SpaceService.legacy_space_id(canonical_user_id)
         legacy_space_id = SpaceService.legacy_space_id(canonical_user_id)
         space = s.get(Space, target_space_id)
@@ -416,8 +423,14 @@ class SpaceService:
             ):
                 project.name = display_name[:255]
                 changed = True
+            # Persist mode the first time we learn it. We do NOT silently
+            # overwrite an existing mode mid-Project -- mode switches must be
+            # explicit (via update_project) so reload state matches what the
+            # user last set in the UI.
+            if mode and not project.mode:
+                project.mode = mode
+                changed = True
             if workdir_mode and project.workdir_mode != workdir_mode:
-                SpaceService._validate_project_payload(workdir_mode=workdir_mode)
                 project.workdir_mode = workdir_mode
                 changed = True
             if metadata:
@@ -439,7 +452,9 @@ class SpaceService:
             space_id=target_space_id,
             name=display_name[:255] or f"Project {project_id}",
             description=description,
-            workdir_mode=workdir_mode,
+            mode=mode,
+            workdir_mode=workdir_mode
+            or SpaceService._default_project_workdir_mode(space),
             metadata_json=metadata,
         )
         s.add(project)
@@ -493,7 +508,7 @@ class SpaceService:
         s: Session,
     ) -> Project:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
-        SpaceService._get_owned_space(space_id, canonical_user_id, s)
+        space = SpaceService._get_owned_space(space_id, canonical_user_id, s)
         SpaceService._validate_project_payload(data.mode, data.status, data.workdir_mode)
 
         project_id = data.id or f"project_{uuid4().hex}"
@@ -505,7 +520,8 @@ class SpaceService:
             description=data.description,
             mode=data.mode,
             status=data.status,
-            workdir_mode=data.workdir_mode or ProjectWorkdirMode.ARTIFACT_ONLY,
+            workdir_mode=data.workdir_mode
+            or SpaceService._default_project_workdir_mode(space),
             metadata_json=data.metadata,
         )
         s.add(project)

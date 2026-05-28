@@ -95,7 +95,7 @@ export default function Tasks() {
 
   if (projectsLoading) {
     return (
-      <div className="min-w-0 flex w-full flex-col">
+      <div className="flex w-full min-w-0 flex-col">
         <SectionHeader
           title={capitalizeLabel(t('layout.tasks'))}
           searchPlaceholder={t('layout.search-tasks')}
@@ -108,28 +108,28 @@ export default function Tasks() {
   }
 
   return (
-    <div className="min-w-0 flex w-full flex-col">
+    <div className="flex w-full min-w-0 flex-col">
       <SectionHeader
         title={capitalizeLabel(t('layout.tasks'))}
         searchPlaceholder={t('layout.search-tasks')}
       />
 
-      <div className="mb-12 min-w-0 w-full">
+      <div className="mb-12 w-full min-w-0">
         {tasks.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <ListChecks className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('dashboard.no-tasks-found') || t('layout.total-tasks')}
             </div>
           </div>
         ) : filteredTasks.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="gap-4 sm:grid-cols-2 grid auto-rows-fr grid-cols-1">
+          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
             {filteredTasks.map((task) => (
               <TaskRow
                 key={task.id}
@@ -149,7 +149,7 @@ export default function Tasks() {
             ))}
           </div>
         ) : (
-          <div className="gap-3 flex flex-col">
+          <div className="flex flex-col gap-3">
             {filteredTasks.map((task) => (
               <TaskRow
                 key={task.id}

@@ -82,8 +82,8 @@ export function NavTabReconnectSuffix({
       <button
         type="button"
         className={cn(
-          'no-drag h-8 w-8 rounded-xl text-ds-icon-neutral-muted-default hover:bg-ds-bg-neutral-strong-default flex shrink-0 items-center justify-center transition-colors outline-none',
-          'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+          'no-drag flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ds-icon-neutral-muted-default outline-none transition-colors hover:bg-ds-bg-neutral-strong-default',
+          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
         )}
         aria-label={reconnectLabel}
         onClick={(e) => {
@@ -163,7 +163,7 @@ function tabMainInner({
     <>
       {leading}
       <motion.div
-        className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden"
+        className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden"
         initial={false}
         animate={{
           opacity: folded ? 0 : 1,
@@ -267,7 +267,7 @@ export function NavTab({
           </button>
           {suffix || endAction ? (
             <motion.div
-              className="min-h-8 min-w-0 flex items-stretch overflow-hidden"
+              className="flex min-h-8 min-w-0 items-stretch overflow-hidden"
               initial={false}
               animate={{
                 opacity: folded ? 0 : 1,
@@ -281,7 +281,7 @@ export function NavTab({
               {endAction ? (
                 <div
                   className={cn(
-                    'max-w-0 ease-out flex shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150',
+                    'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 ease-out',
                     'pointer-events-none opacity-0',
                     'group-hover:pointer-events-auto group-hover:opacity-100',
                     endActionMaxWidthClass ??

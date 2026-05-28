@@ -791,13 +791,13 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden py-1.5',
           className
         )}
       >
-        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-2 flex w-full shrink-0 flex-col">
+        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex w-full shrink-0 flex-col gap-2">
               <SpaceSwitchDropdown
                 trigger={
                   <button
@@ -807,7 +807,7 @@ export default function ProjectPageSidebar({
                     title={projectSidebarFolded ? activeSpaceLabel : undefined}
                   >
                     <FolderIcon
-                      className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
+                      className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
                       aria-hidden
                     />
                     <span
@@ -820,7 +820,7 @@ export default function ProjectPageSidebar({
                     </span>
                     <ChevronsUpDown
                       className={cn(
-                        'h-4 w-4 text-ds-icon-neutral-subtle-default ml-auto shrink-0',
+                        'ml-auto h-4 w-4 shrink-0 text-ds-icon-neutral-subtle-default',
                         projectSidebarFolded && 'hidden'
                       )}
                       aria-hidden
@@ -839,7 +839,7 @@ export default function ProjectPageSidebar({
                 onSpaceSelect={handleSpaceSelect}
               />
 
-              <div className="min-w-0 gap-2 flex w-full flex-col">
+              <div className="flex w-full min-w-0 flex-col gap-2">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -858,11 +858,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <span className="relative inline-flex h-4 w-4 shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
+                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                           aria-hidden
                         />
                       ) : null}
@@ -873,7 +873,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'bg-ds-bg-neutral-muted-default rounded-xl px-1.5 flex shrink-0 flex-col items-center',
+                          'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -948,8 +948,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -990,9 +990,9 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="mt-6 min-h-0 flex flex-1 flex-col"
+                className="mt-6 flex min-h-0 flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null

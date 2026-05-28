@@ -67,7 +67,7 @@ export function HomeHubHeaderTag({ label }: { label: string }) {
       emphasis="muted"
       variant="primary"
       text={label}
-      className="rounded-md max-w-[12rem] truncate"
+      className="max-w-[12rem] truncate rounded-md"
     />
   );
 }
@@ -174,17 +174,17 @@ export function HomeHubItemBody({
           <HomeHubHeaderTag label={headerTag} />
         </div>
         <div className="min-w-0">
-          <span className="text-body-md font-semibold text-ds-text-neutral-default-default block truncate">
+          <span className="block truncate text-body-md font-semibold text-ds-text-neutral-default-default">
             {title}
           </span>
-          <span className="text-body-xs text-ds-text-neutral-muted-default mt-1 block truncate">
+          <span className="mt-1 block truncate text-body-xs text-ds-text-neutral-muted-default">
             {subtitle}
           </span>
         </div>
-        <span className="text-body-xs text-ds-text-neutral-subtle-default whitespace-nowrap">
+        <span className="whitespace-nowrap text-body-xs text-ds-text-neutral-subtle-default">
           {createdText}
         </span>
-        <div className="gap-2 flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <HomeHubStatTags stats={stats} />
         </div>
         <HomeHubCardMenu items={menuItems} />
@@ -194,25 +194,25 @@ export function HomeHubItemBody({
 
   return (
     <>
-      <div className="gap-3 -ml-2 flex items-center justify-between">
+      <div className="-ml-2 flex items-center justify-between gap-3">
         <HomeHubHeaderTag label={headerTag} />
         <HomeHubCardMenu items={menuItems} />
       </div>
 
       <div className="mt-3 min-h-0 flex-1">
-        <span className="text-body-md font-semibold text-ds-text-neutral-default-default min-w-0 line-clamp-2 block overflow-hidden text-ellipsis">
+        <span className="line-clamp-2 block min-w-0 overflow-hidden text-ellipsis text-body-md font-semibold text-ds-text-neutral-default-default">
           {title}
         </span>
-        <span className="mt-2 text-body-xs text-ds-text-neutral-muted-default line-clamp-3">
+        <span className="mt-2 line-clamp-3 text-body-xs text-ds-text-neutral-muted-default">
           {subtitle}
         </span>
       </div>
 
-      <div className="gap-3 pt-2 mt-auto flex items-center justify-between">
-        <span className="text-body-xs text-ds-text-neutral-subtle-default min-w-0 truncate">
+      <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+        <span className="min-w-0 truncate text-body-xs text-ds-text-neutral-subtle-default">
           {createdText}
         </span>
-        <div className="gap-2 flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <HomeHubStatTags stats={stats} />
         </div>
       </div>
@@ -250,7 +250,7 @@ export function HomeHubItemShell({
         homeHubSurfaceClass,
         layout === 'card'
           ? 'relative flex h-full min-h-[11rem] flex-col'
-          : 'gap-4 grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center',
+          : 'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center gap-4',
         className
       )}
     >

@@ -47,21 +47,29 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
     [activeProjectId, projectStore]
   );
-  const taskSections = chatStores.flatMap(({ chatId, chatStore }) => {
+  // Defensive dedup: if the same taskId surfaces through more than one
+  // chatStore (which can happen during the multi-chatStore -> single-chatStore
+  // transition, see PR-X4 in space-frontend-refactor-consolidated-review.md),
+  // render it exactly once. The earliest chatStore (sorted by createdAt in
+  // getAllChatStores) wins, matching insertion order.
+  const taskSections: Array<{
+    chatId: string;
+    chatStore: (typeof chatStores)[number]['chatStore'];
+    taskId: string;
+  }> = [];
+  const seenTaskIds = new Set<string>();
+  for (const { chatId, chatStore } of chatStores) {
     const chatState = chatStore.getState();
-    return Object.entries(chatState.tasks)
-      .filter(([, task]) =>
-        (task.messages || []).some(
-          (msg: any) => msg.role === 'user' && msg.content
-        )
-      )
-      .map(([taskId]) => ({
-        chatId,
-        chatStore,
-        taskId,
-      }));
-  });
-
+    for (const [taskId, task] of Object.entries(chatState.tasks)) {
+      if (seenTaskIds.has(taskId)) continue;
+      const hasUserMessage = (task.messages || []).some(
+        (msg: any) => msg.role === 'user' && msg.content
+      );
+      if (!hasUserMessage) continue;
+      seenTaskIds.add(taskId);
+      taskSections.push({ chatId, chatStore, taskId });
+    }
+  }
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
     const scheduleRefresh = () => {

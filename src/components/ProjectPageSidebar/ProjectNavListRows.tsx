@@ -106,7 +106,7 @@ export function ProjectNavListRows({
                   onClick={() => onProjectClick?.(project.id)}
                   className={cn(
                     workspaceTabButtonClass(active),
-                    'min-w-0 gap-0 w-full'
+                    'w-full min-w-0 gap-0'
                   )}
                   aria-label={project.title}
                   aria-current={active ? 'true' : undefined}
@@ -121,41 +121,41 @@ export function ProjectNavListRows({
           <div key={project.id} className="min-w-0">
             <div
               className={cn(
-                'group/session-item group h-8 min-w-0 gap-1 rounded-xl pl-3 relative flex w-full items-center',
-                showRowMenu ? 'pr-1 overflow-visible' : 'pr-3 overflow-hidden',
+                'group/session-item group relative flex h-8 w-full min-w-0 items-center gap-1 rounded-xl pl-3',
+                showRowMenu ? 'overflow-visible pr-1' : 'overflow-hidden pr-3',
                 'transition-colors duration-150',
                 active
                   ? panelListHover
                     ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
                     : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
                   : !panelListHover
-                    ? 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
-                    : 'hover:bg-ds-bg-neutral-default-default bg-transparent'
+                    ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
+                    : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
               )}
             >
               <button
                 type="button"
                 onClick={() => onProjectClick?.(project.id)}
                 className={cn(
-                  'no-drag min-h-0 min-w-0 gap-3 px-0 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                  'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                  'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
                 )}
               >
                 <LeadIcon className={leadClassName} aria-hidden />
                 <span
-                  className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 truncate"
+                  className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default"
                   title={project.title}
                 >
                   {project.title}
                 </span>
                 {project.source === 'trigger' ? (
                   <Zap
-                    className="h-3.5 w-3.5 text-ds-icon-warning-default-default shrink-0"
+                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
                     aria-label={triggerSourceLabel}
                   />
                 ) : null}
                 {project.trailing ? (
-                  <span className="pl-1 text-body-xs text-ds-text-neutral-muted-default shrink-0 tabular-nums">
+                  <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
                     {project.trailing}
                   </span>
                 ) : null}
@@ -165,7 +165,7 @@ export function ProjectNavListRows({
                 <>
                   <span
                     className={cn(
-                      'bottom-0 right-7 top-0 w-14 pointer-events-none absolute z-[1] bg-gradient-to-l to-transparent',
+                      'pointer-events-none absolute bottom-0 right-7 top-0 z-[1] w-14 bg-gradient-to-l to-transparent',
                       active
                         ? panelListHover
                           ? 'from-ds-bg-neutral-muted-default group-hover/session-item:from-ds-bg-neutral-default-default'
@@ -183,14 +183,14 @@ export function ProjectNavListRows({
                   <div className="relative z-[2] flex shrink-0 items-stretch">
                     <div
                       className={cn(
-                        'max-w-0 ease-out flex shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150',
+                        'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 ease-out',
                         'pointer-events-none',
                         'group-hover/session-item:pointer-events-auto group-hover/session-item:opacity-100',
                         'group-hover/session-item:max-w-10',
                         'group-focus-within/session-item:pointer-events-auto group-focus-within/session-item:opacity-100',
                         'group-focus-within/session-item:max-w-10',
-                        'has-[[data-state=open]]:max-w-10 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100',
-                        active && 'max-w-10 pointer-events-auto opacity-100'
+                        'has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:max-w-10 has-[[data-state=open]]:opacity-100',
+                        active && 'pointer-events-auto max-w-10 opacity-100'
                       )}
                     >
                       <DropdownMenu>
@@ -201,8 +201,8 @@ export function ProjectNavListRows({
                             size="sm"
                             buttonContent="icon-only"
                             className={cn(
-                              'no-drag mr-0.5 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                              'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                              'no-drag mr-0.5 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                              'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                             )}
                             aria-label={sessionMenuAria}
                             onClick={(e) => e.stopPropagation()}
@@ -215,7 +215,7 @@ export function ProjectNavListRows({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="min-w-0 w-max"
+                          className="w-max min-w-0"
                         >
                           <DropdownMenuItem
                             className="cursor-pointer"
@@ -230,7 +230,7 @@ export function ProjectNavListRows({
                             {pinLabel}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            className="text-ds-text-error-default-default focus:text-ds-text-error-default-default [&>svg]:!text-ds-icon-error-default-default cursor-pointer"
+                            className="cursor-pointer text-ds-text-error-default-default focus:text-ds-text-error-default-default [&>svg]:!text-ds-icon-error-default-default"
                             disabled={!onDeleteProject}
                             onClick={() => onDeleteProject?.(project.id)}
                           >

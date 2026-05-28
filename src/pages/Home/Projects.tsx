@@ -74,7 +74,7 @@ export default function Projects() {
 
   if (projectsLoading) {
     return (
-      <div className="min-w-0 flex w-full flex-col">
+      <div className="flex w-full min-w-0 flex-col">
         <SectionHeader
           title={capitalizeLabel(t('layout.projects'))}
           searchPlaceholder={t('layout.search-projects')}
@@ -87,28 +87,28 @@ export default function Projects() {
   }
 
   return (
-    <div className="min-w-0 flex w-full flex-col">
+    <div className="flex w-full min-w-0 flex-col">
       <SectionHeader
         title={capitalizeLabel(t('layout.projects'))}
         searchPlaceholder={t('layout.search-projects')}
       />
 
-      <div className="mb-12 min-w-0 w-full">
+      <div className="mb-12 w-full min-w-0">
         {projects.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('dashboard.no-projects-found')}
             </div>
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="gap-4 sm:grid-cols-2 grid auto-rows-fr grid-cols-1">
+          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
             {filteredProjects.map((project) => (
               <ProjectRow
                 key={project.project_id}
@@ -120,7 +120,7 @@ export default function Projects() {
             ))}
           </div>
         ) : (
-          <div className="gap-3 flex flex-col">
+          <div className="flex flex-col gap-3">
             {filteredProjects.map((project) => (
               <ProjectRow
                 key={project.project_id}

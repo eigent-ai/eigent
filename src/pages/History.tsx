@@ -123,10 +123,10 @@ export default function History() {
   };
 
   return (
-    <div className="px-1 pb-1 pt-10 flex h-full w-full flex-1 flex-col">
+    <div className="flex h-full w-full flex-1 flex-col px-1 pb-1 pt-10">
       <div
         ref={scrollContainerRef}
-        className="scrollbar-hide rounded-2xl bg-ds-bg-neutral-subtle-default h-full overflow-y-auto"
+        className="scrollbar-hide h-full overflow-y-auto rounded-2xl bg-ds-bg-neutral-subtle-default"
       >
         {/* alert dialog */}
         <AlertDialog
@@ -139,17 +139,17 @@ export default function History() {
           cancelText={t('layout.cancel')}
         />
         {/* welcome text */}
-        <div className="from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default py-8 flex w-full flex-row bg-gradient-to-b px-[74px]">
-          <p className="m-0 gap-2 inline-flex flex-wrap items-baseline">
+        <div className="flex w-full flex-row bg-gradient-to-b from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-[74px] py-8">
+          <p className="m-0 inline-flex flex-wrap items-baseline gap-2">
             <WordCarousel
               words={[t(timeGreetingKey)]}
-              className="history-welcome-headline text-heading-xl font-bold tracking-tight not-italic"
+              className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
               rotateIntervalMs={100}
               sweepDurationMs={2000}
               sweepOnce
               gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
             />
-            <span className="history-welcome-headline text-heading-xl font-bold tracking-tight text-ds-text-brand-default-default italic">
+            <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
               {`, ${welcomeName} !`}
             </span>
           </p>
@@ -157,14 +157,14 @@ export default function History() {
         {/* Navbar */}
         {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
         <div
-          className={`border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default pt-2 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-b-1 border-solid px-[70px]`}
+          className={`border-b-1 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default px-[70px] pt-2`}
         >
           <div className="mx-auto flex w-full flex-row items-center">
             <HistoryTabsNav activeTab={activeTab} onChange={handleTabChange} />
           </div>
         </div>
         <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
-          <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
+          <div className="flex h-auto min-h-[calc(100vh-80px)] w-full px-6">
             {visitedTabs.includes('home') && (
               <div
                 className={activeTab === 'home' ? 'contents' : 'hidden'}

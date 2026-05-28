@@ -80,11 +80,11 @@ export function ProjectNavList({
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
+        'flex min-h-0 w-full min-w-0 flex-col overflow-hidden',
         className
       )}
     >
-      <div className="min-w-0 gap-2 flex w-full flex-col">
+      <div className="flex w-full min-w-0 flex-col gap-2">
         <NavTab
           active={newProjectActive}
           onClick={onNewProject}
@@ -101,7 +101,7 @@ export function ProjectNavList({
       <div
         ref={projectListRef}
         className={cn(
-          'm-0 mt-1 min-h-0 min-w-0 gap-0.5 p-0 pb-1 flex flex-1 flex-col',
+          'm-0 mt-1 flex min-h-0 min-w-0 flex-1 flex-col gap-0.5 p-0 pb-1',
           folded
             ? projectListOverflow
               ? 'scrollbar-hide overflow-y-auto'

@@ -122,28 +122,28 @@ export default function Spaces() {
   }, [searchQuery, spaceSections, t]);
 
   return (
-    <div className="min-w-0 flex w-full flex-col">
+    <div className="flex w-full min-w-0 flex-col">
       <SectionHeader
         title={capitalizeLabel(t('layout.spaces'))}
         searchPlaceholder={t('layout.search-spaces')}
       />
 
-      <div className="mb-12 min-w-0 w-full">
+      <div className="mb-12 w-full min-w-0">
         {spaceSections.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <FolderKanban className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.spaces-hub-empty-title')}
             </div>
           </div>
         ) : filteredSpaceSections.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="gap-4 sm:grid-cols-2 grid auto-rows-fr grid-cols-1">
+          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
             {filteredSpaceSections.map(({ space, projects }) => {
               const stats = getSpaceStats(space.id, projects.length);
               return (
@@ -161,7 +161,7 @@ export default function Spaces() {
             })}
           </div>
         ) : (
-          <div className="gap-3 flex flex-col">
+          <div className="flex flex-col gap-3">
             {filteredSpaceSections.map(({ space, projects }) => {
               const stats = getSpaceStats(space.id, projects.length);
               return (

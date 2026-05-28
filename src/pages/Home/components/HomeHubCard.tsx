@@ -263,7 +263,7 @@ function ProjectItemContent({
         className="relative"
       >
         {loading ? (
-          <div className="inset-0 absolute z-10 flex items-center justify-center">
+          <div className="absolute inset-0 z-10 flex items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-default-default" />
           </div>
         ) : null}
@@ -338,7 +338,7 @@ function TaskItemContent({
       className={loading ? 'relative' : undefined}
     >
       {loading ? (
-        <div className="inset-0 absolute z-10 flex items-center justify-center">
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-default-default" />
         </div>
       ) : null}

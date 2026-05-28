@@ -1128,6 +1128,15 @@ export const useSpaceStore = create<SpaceStore>()(
       },
 
       refreshProjectOnServer: async (spaceId, projectId, force = false) => {
+        const project = get().getProjectMeta(projectId);
+        const space = get().getSpaceById(spaceId);
+        const workdirMode = project?.workdirMode ?? null;
+        const isDirectWrite =
+          workdirMode === 'direct-write' ||
+          (!workdirMode && space?.sourceType === 'folder');
+        if (isDirectWrite) {
+          return;
+        }
         const [
           { proxyRefreshSpaceProject },
           { refreshWorkspaceProject },
