@@ -1810,7 +1810,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     typeof lastMessage.content === 'string' &&
                     lastMessage.content) ||
                   (messageContent as string) ||
-                  question;
+                  question ||
+                  '';
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',

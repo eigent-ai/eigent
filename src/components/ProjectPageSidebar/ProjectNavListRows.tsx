@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +22,7 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
-import { MoreHorizontal, Zap } from 'lucide-react';
+import { Archive, MoreHorizontal, Pin, Trash2, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
 import { workspaceTabButtonClass } from './NavTab';
@@ -41,6 +42,8 @@ export interface ProjectNavListRowsProps {
   activeProjectId?: string | null;
   onProjectClick?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => void;
+  /** Previous end-project / achieve flow. */
+  onAchieveProject?: (projectId: string) => void;
   /** Icon rail: one icon per row. */
   folded: boolean;
   /** If set, only the first N projects are rendered. */
@@ -64,13 +67,16 @@ export function ProjectNavListRows({
   activeProjectId,
   onProjectClick,
   onDeleteProject,
+  onAchieveProject,
   folded,
   maxItems,
   panelListHover = false,
   showRowMenu = true,
 }: ProjectNavListRowsProps) {
   const { t } = useTranslation();
-  const deleteLabel = t('layout.sessions-delete-session');
+  const achieveLabel = t('layout.achieve', { defaultValue: 'Achieve' });
+  const pinLabel = t('layout.pin', { defaultValue: 'Pin' });
+  const deleteLabel = t('layout.delete');
   const sessionMenuAria = t('layout.sessions-session-menu');
   const triggerSourceLabel = t('layout.task-source-trigger');
   const list = maxItems != null ? projects.slice(0, maxItems) : projects;
@@ -115,8 +121,8 @@ export function ProjectNavListRows({
           <div key={project.id} className="min-w-0">
             <div
               className={cn(
-                'group/session-item relative flex h-8 w-full min-w-0 items-center gap-1 overflow-hidden rounded-xl pl-3',
-                showRowMenu ? 'pr-1' : 'pr-3',
+                'group/session-item group relative flex h-8 w-full min-w-0 items-center gap-1 rounded-xl pl-3',
+                showRowMenu ? 'overflow-visible pr-1' : 'overflow-hidden pr-3',
                 'transition-colors duration-150',
                 active
                   ? panelListHover
@@ -155,7 +161,7 @@ export function ProjectNavListRows({
                 ) : null}
               </button>
 
-              {showRowMenu && onDeleteProject ? (
+              {showRowMenu ? (
                 <>
                   <span
                     className={cn(
@@ -174,40 +180,66 @@ export function ProjectNavListRows({
                     aria-hidden
                   />
 
-                  <div className="relative z-[2] shrink-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            'no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-muted-default outline-none transition-opacity duration-150',
-                            active
-                              ? panelListHover
-                                ? 'bg-transparent opacity-100'
-                                : 'bg-ds-bg-neutral-subtle-default opacity-100 hover:bg-ds-bg-neutral-subtle-default'
-                              : [
-                                  'bg-transparent opacity-100 md:opacity-0',
-                                  'md:group-hover/session-item:opacity-100',
-                                  'md:group-focus-within/session-item:opacity-100',
-                                  'data-[state=open]:opacity-100',
-                                ],
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
-                          )}
-                          aria-label={sessionMenuAria}
-                          onClick={(e) => e.stopPropagation()}
+                  <div className="relative z-[2] flex shrink-0 items-stretch">
+                    <div
+                      className={cn(
+                        'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 ease-out',
+                        'pointer-events-none',
+                        'group-hover/session-item:pointer-events-auto group-hover/session-item:opacity-100',
+                        'group-hover/session-item:max-w-10',
+                        'group-focus-within/session-item:pointer-events-auto group-focus-within/session-item:opacity-100',
+                        'group-focus-within/session-item:max-w-10',
+                        'has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:max-w-10 has-[[data-state=open]]:opacity-100',
+                        active && 'pointer-events-auto max-w-10 opacity-100'
+                      )}
+                    >
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            buttonContent="icon-only"
+                            className={cn(
+                              'no-drag mr-0.5 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                              'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
+                            )}
+                            aria-label={sessionMenuAria}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal
+                              className="h-4 w-4 text-ds-icon-neutral-muted-default"
+                              aria-hidden
+                            />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="w-max min-w-0"
                         >
-                          <MoreHorizontal className="h-4 w-4" aria-hidden />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[9rem]">
-                        <DropdownMenuItem
-                          className="cursor-pointer text-ds-text-error-default-default focus:text-ds-text-error-default-default"
-                          onClick={() => onDeleteProject?.(project.id)}
-                        >
-                          {deleteLabel}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            disabled={!onAchieveProject}
+                            onClick={() => onAchieveProject?.(project.id)}
+                          >
+                            <Archive aria-hidden />
+                            {achieveLabel}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="cursor-pointer" disabled>
+                            <Pin aria-hidden />
+                            {pinLabel}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer text-ds-text-error-default-default focus:text-ds-text-error-default-default [&>svg]:!text-ds-icon-error-default-default"
+                            disabled={!onDeleteProject}
+                            onClick={() => onDeleteProject?.(project.id)}
+                          >
+                            <Trash2 aria-hidden />
+                            {deleteLabel}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </>
               ) : null}

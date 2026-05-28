@@ -15,6 +15,7 @@
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -47,9 +48,6 @@ const pathBasename = (path?: string | null) => {
   const parts = value.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || value;
 };
-
-const isLegacySpace = (space: Space) =>
-  space.metadata?.legacy === true || space.sourceType === 'legacy';
 
 const projectTitle = (project: SpaceProjectMeta, fallback: string) => {
   const name = project.name?.trim();

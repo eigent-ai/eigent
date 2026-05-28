@@ -594,14 +594,16 @@ export function AddWorker({
             }
           : undefined;
 
-      fetchPost(`/task/${activeProjectId}/add-agent`, {
-        name: workerName,
-        description: workerDescription,
-        tools: localTool,
-        mcp_tools: mcpLocal,
-        email: email,
-        custom_model_config: customModelConfig,
-      });
+      if (activeProjectId) {
+        fetchPost(`/task/${activeProjectId}/add-agent`, {
+          name: workerName,
+          description: workerDescription,
+          tools: localTool,
+          mcp_tools: mcpLocal,
+          email: email,
+          custom_model_config: customModelConfig,
+        });
+      }
       const worker: Agent = {
         tasks: [],
         agent_id: workerName,
@@ -625,10 +627,6 @@ export function AddWorker({
     // reset form
     resetForm();
   };
-
-  if (!chatStore) {
-    return null;
-  }
 
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -17,10 +17,9 @@ import {
   isHistoryTabId,
   type HistoryTabId,
 } from '@/components/Dashboard/HistoryTabsNav';
-import SpacesHub from '@/components/SpacesHub';
 import AlertDialog from '@/components/ui/alertDialog';
 import WordCarousel from '@/components/ui/WordCarousel';
-import Project from '@/pages/Projects/Project';
+import HomeHub from '@/pages/Home';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -33,9 +32,11 @@ import Connectors from './Connectors';
 
 const TAB_ALIASES: Record<string, HistoryTabId> = {
   mcp_tools: 'connectors',
+  projects: 'home',
+  spaces: 'home',
 };
 
-export default function Home() {
+export default function History() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -44,7 +45,6 @@ export default function Home() {
   const { username, email } = useAuthStore();
   const displayName = username || email || '';
 
-  // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
   const activeTab = useMemo(() => {
     const tabFromUrl = searchParams.get('tab');
     if (tabFromUrl) {
@@ -53,7 +53,7 @@ export default function Home() {
         return normalizedTab;
       }
     }
-    return 'projects' as HistoryTabId;
+    return 'home' as HistoryTabId;
   }, [searchParams]);
 
   /** Mount each tab once when first opened; keep mounted and hide inactive so lists do not refetch on every tab switch. */
@@ -67,8 +67,29 @@ export default function Home() {
     );
   }, [activeTab]);
 
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    const section = searchParams.get('section');
+    if ((tabFromUrl === 'spaces' || tabFromUrl === 'projects') && !section) {
+      const legacySection = tabFromUrl === 'spaces' ? 'spaces' : 'projects';
+      navigate(`?tab=home&section=${legacySection}`, { replace: true });
+      return;
+    }
+    // When landing on Home with no section, default to Spaces so the
+    // URL is always self-describing (lets HomeHub render directly from
+    // searchParams without an internal default).
+    const isHomeTab = tabFromUrl === 'home' || tabFromUrl === null;
+    if (isHomeTab && !section) {
+      navigate(`?tab=home&section=spaces`, { replace: true });
+    }
+  }, [navigate, searchParams]);
+
   const handleTabChange = (value: string) => {
     if (value) {
+      if (value === 'home') {
+        navigate(`?tab=home&section=spaces`, { replace: true });
+        return;
+      }
       navigate(`?tab=${value}`, { replace: true });
     }
   };
@@ -144,20 +165,12 @@ export default function Home() {
         </div>
         <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
           <div className="flex h-auto min-h-[calc(100vh-80px)] w-full px-6">
-            {visitedTabs.includes('spaces') && (
+            {visitedTabs.includes('home') && (
               <div
-                className={activeTab === 'spaces' ? 'contents' : 'hidden'}
-                aria-hidden={activeTab !== 'spaces'}
+                className={activeTab === 'home' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'home'}
               >
-                <SpacesHub />
-              </div>
-            )}
-            {visitedTabs.includes('projects') && (
-              <div
-                className={activeTab === 'projects' ? 'contents' : 'hidden'}
-                aria-hidden={activeTab !== 'projects'}
-              >
-                <Project />
+                <HomeHub />
               </div>
             )}
             {visitedTabs.includes('agents') && (

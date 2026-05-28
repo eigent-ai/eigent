@@ -14,6 +14,9 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
+import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import type { ServerProject } from '@/service/spaceApi';
 import {
   ChatTaskStatus,
@@ -267,6 +270,10 @@ interface CreateProjectOptions {
 interface ProjectStore {
   activeProjectId: string | null;
   projects: { [projectId: string]: Project };
+  /** Preloaded sidebar icon state from history (stable while hydrating). */
+  navLeadByProjectId: Record<string, SessionNavLeadPresentation>;
+  /** Projects currently replaying history at delay 0 — sidebar uses cached lead. */
+  historyLoadingProjectIds: Record<string, true>;
 
   // Project management
   /**
@@ -312,6 +319,14 @@ interface ProjectStore {
     projectName?: string,
     spaceId?: string
   ) => Promise<string>;
+  setProjectNavLead: (
+    projectId: string,
+    lead: SessionNavLeadPresentation
+  ) => void;
+  setProjectNavLeads: (
+    leads: Record<string, SessionNavLeadPresentation>
+  ) => void;
+  setHistoryLoadingProject: (projectId: string, loading: boolean) => void;
 
   // Project-level queued messages management
   addQueuedMessage: (
@@ -427,19 +442,6 @@ const isEmptyProject = (project: Project): boolean => {
 const normalizedText = (value?: string | null) =>
   (value ?? '').trim().toLowerCase();
 
-const isPlaceholderProjectName = (
-  name: string | null | undefined,
-  projectId: string
-) => {
-  const normalized = normalizedText(name);
-  return (
-    !normalized ||
-    normalized === 'new project' ||
-    normalized === 'new space' ||
-    normalized === `project ${projectId}`.toLowerCase()
-  );
-};
-
 const isAutoCreatedEmptyProject = (project: Project): boolean =>
   project.metadata?.serverSynced !== true &&
   (project.metadata?.autoCreatedPlaceholder === true ||
@@ -450,6 +452,41 @@ const isAutoCreatedEmptyProject = (project: Project): boolean =>
 const projectStore = create<ProjectStore>()((set, get) => ({
   activeProjectId: null,
   projects: {},
+  navLeadByProjectId: {},
+  historyLoadingProjectIds: {},
+
+  setProjectNavLead: (projectId, lead) =>
+    set((state) => ({
+      navLeadByProjectId: {
+        ...state.navLeadByProjectId,
+        [projectId]: lead,
+      },
+    })),
+
+  setProjectNavLeads: (leads) =>
+    set((state) => ({
+      navLeadByProjectId: {
+        ...state.navLeadByProjectId,
+        ...leads,
+      },
+    })),
+
+  setHistoryLoadingProject: (projectId, loading) =>
+    set((state) => {
+      if (loading) {
+        if (state.historyLoadingProjectIds[projectId]) return state;
+        return {
+          historyLoadingProjectIds: {
+            ...state.historyLoadingProjectIds,
+            [projectId]: true,
+          },
+        };
+      }
+      if (!state.historyLoadingProjectIds[projectId]) return state;
+      const next = { ...state.historyLoadingProjectIds };
+      delete next[projectId];
+      return { historyLoadingProjectIds: next };
+    }),
 
   createProject: (
     name: string,
@@ -889,22 +926,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return;
     }
 
-    // If removing the active project, switch to another project or set to null
-    let newActiveId = activeProjectId;
-    if (activeProjectId === projectId) {
-      const remainingProjects = Object.keys(projects).filter(
-        (id) => id !== projectId
-      );
-      newActiveId = remainingProjects.length > 0 ? remainingProjects[0] : null;
-    }
+    const newActiveId = activeProjectId === projectId ? null : activeProjectId;
 
     set((state) => {
       const newProjects = { ...state.projects };
       delete newProjects[projectId];
+      const nextNavLeadByProjectId = { ...state.navLeadByProjectId };
+      delete nextNavLeadByProjectId[projectId];
 
       return {
         projects: newProjects,
         activeProjectId: newActiveId,
+        navLeadByProjectId: nextNavLeadByProjectId,
       };
     });
     useSpaceStore.getState().removeProjectMeta(projectId);
@@ -1099,81 +1132,105 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     set({ activeProjectId: loadProjectId });
+    get().setHistoryLoadingProject(loadProjectId, true);
     console.log(
       `[ProjectStore] Loading project ${loadProjectId} with ${taskIds.length} tasks (final state, no replay)`
     );
 
     let cancelled = false;
     const loadedChatStoresByTaskId = new Map<string, VanillaChatStore>();
-    for (let index = 0; index < taskIds.length; index++) {
-      if (get().activeProjectId !== loadProjectId) {
+    try {
+      for (let index = 0; index < taskIds.length; index++) {
+        if (get().activeProjectId !== loadProjectId) {
+          console.log(
+            `[ProjectStore] Cancelled loading: active project changed from ${loadProjectId}`
+          );
+          cancelled = true;
+          break;
+        }
+        const taskId = taskIds[index];
         console.log(
-          `[ProjectStore] Cancelled loading: active project changed from ${loadProjectId}`
+          `[ProjectStore] Loading task ${index + 1}/${taskIds.length}: ${taskId}`
         );
-        cancelled = true;
-        break;
+        const chatId = createChatStore(loadProjectId, `Task ${taskId}`);
+        if (chatId) {
+          const project = get().projects[loadProjectId];
+          const chatStore = project.chatStores[chatId];
+          if (chatStore) {
+            try {
+              await chatStore.getState().replay(taskId, question, 0);
+              loadedChatStoresByTaskId.set(taskId, chatStore);
+              console.log(`[ProjectStore] Loaded task ${taskId}`);
+            } catch (error) {
+              console.error(
+                `[ProjectStore] Failed to load task ${taskId}:`,
+                error
+              );
+            }
+          }
+        }
       }
-      const taskId = taskIds[index];
-      console.log(
-        `[ProjectStore] Loading task ${index + 1}/${taskIds.length}: ${taskId}`
-      );
-      const chatId = createChatStore(loadProjectId, `Task ${taskId}`);
-      if (chatId) {
+
+      // Polish leftover non-terminal subtask statuses for tasks that the
+      // server marks as done. See `polishCompletedHistoryTask` above for why.
+      if (!cancelled && loadedChatStoresByTaskId.size > 0) {
+        try {
+          const grouped = await proxyFetchGet(
+            `/api/v1/chat/histories/grouped/${projectId}`,
+            { include_tasks: true }
+          );
+          const doneTaskIds = new Set<string>();
+          for (const t of grouped?.tasks ?? []) {
+            if (!t?.task_id || t?.status !== HISTORY_STATUS_DONE) continue;
+            // Skip the polish for tasks the user explicitly stopped — the
+            // skip_task backend path also marks status=done, but the run
+            // genuinely didn't complete and the unfinished subtasks should
+            // stay Pending.
+            if (
+              typeof t?.summary === 'string' &&
+              t.summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)
+            ) {
+              continue;
+            }
+            doneTaskIds.add(t.task_id);
+          }
+          for (const [taskId, chatStore] of loadedChatStoresByTaskId) {
+            if (doneTaskIds.has(taskId)) {
+              polishCompletedHistoryTask(chatStore, taskId);
+            }
+          }
+        } catch (error) {
+          console.warn(
+            '[ProjectStore] Failed to polish history subtask statuses:',
+            error
+          );
+        }
+      }
+
+      if (!cancelled) {
         const project = get().projects[loadProjectId];
-        const chatStore = project.chatStores[chatId];
-        if (chatStore) {
-          try {
-            await chatStore.getState().replay(taskId, question, 0);
-            loadedChatStoresByTaskId.set(taskId, chatStore);
-            console.log(`[ProjectStore] Loaded task ${taskId}`);
-          } catch (error) {
-            console.error(
-              `[ProjectStore] Failed to load task ${taskId}:`,
-              error
-            );
-          }
+        const chatStore =
+          (project?.activeChatId
+            ? project.chatStores[project.activeChatId]
+            : null) ??
+          loadedChatStoresByTaskId.values().next().value ??
+          null;
+        const chatState = chatStore?.getState();
+        const activeTask = chatState?.activeTaskId
+          ? chatState.tasks[chatState.activeTaskId]
+          : undefined;
+        if (activeTask) {
+          get().setProjectNavLead(
+            loadProjectId,
+            getSessionNavLeadPresentation(activeTask)
+          );
         }
-      }
-    }
-
-    // Polish leftover non-terminal subtask statuses for tasks that the
-    // server marks as done. See `polishCompletedHistoryTask` above for why.
-    if (!cancelled && loadedChatStoresByTaskId.size > 0) {
-      try {
-        const grouped = await proxyFetchGet(
-          `/api/v1/chat/histories/grouped/${projectId}`,
-          { include_tasks: true }
-        );
-        const doneTaskIds = new Set<string>();
-        for (const t of grouped?.tasks ?? []) {
-          if (!t?.task_id || t?.status !== HISTORY_STATUS_DONE) continue;
-          // Skip the polish for tasks the user explicitly stopped — the
-          // skip_task backend path also marks status=done, but the run
-          // genuinely didn't complete and the unfinished subtasks should
-          // stay Pending.
-          if (
-            typeof t?.summary === 'string' &&
-            t.summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)
-          ) {
-            continue;
-          }
-          doneTaskIds.add(t.task_id);
-        }
-        for (const [taskId, chatStore] of loadedChatStoresByTaskId) {
-          if (doneTaskIds.has(taskId)) {
-            polishCompletedHistoryTask(chatStore, taskId);
-          }
-        }
-      } catch (error) {
-        console.warn(
-          '[ProjectStore] Failed to polish history subtask statuses:',
-          error
+        console.log(
+          `[ProjectStore] Completed loading project ${loadProjectId}`
         );
       }
-    }
-
-    if (!cancelled) {
-      console.log(`[ProjectStore] Completed loading project ${loadProjectId}`);
+    } finally {
+      get().setHistoryLoadingProject(loadProjectId, false);
     }
     return loadProjectId;
   },
@@ -1624,6 +1681,70 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 }));
 
 export const useProjectStore = projectStore;
+
+/**
+ * Centralized live nav-lead subscription registry.
+ *
+ * For every Project that has an active chat store, subscribe to that chat
+ * store and push the derived `SessionNavLeadPresentation` into
+ * `navLeadByProjectId`. This makes the sidebar row icons react to live task
+ * status changes (running → finished, etc.) without requiring each consumer
+ * to subscribe to chat-store internals.
+ *
+ * The registry is reconciled whenever `projectStore.projects` changes (chat
+ * store swap, project add/remove). Stale subscriptions are torn down.
+ */
+const navLeadSubscriptions = new Map<
+  string,
+  { chatStore: VanillaChatStore; unsubscribe: () => void }
+>();
+
+const navLeadsEqual = (
+  a: SessionNavLeadPresentation | undefined,
+  b: SessionNavLeadPresentation
+) => !!a && a.kind === b.kind && a.Icon === b.Icon && a.spin === b.spin;
+
+const pushLiveNavLead = (projectId: string, chatStore: VanillaChatStore) => {
+  const chatState = chatStore.getState();
+  const activeTask = chatState.activeTaskId
+    ? chatState.tasks[chatState.activeTaskId]
+    : undefined;
+  if (!activeTask) return;
+  const lead = getSessionNavLeadPresentation(activeTask);
+  const current = projectStore.getState().navLeadByProjectId[projectId];
+  if (navLeadsEqual(current, lead)) return;
+  projectStore.getState().setProjectNavLead(projectId, lead);
+};
+
+const reconcileNavLeadSubscriptions = (state: ProjectStore) => {
+  const seen = new Set<string>();
+  for (const [projectId, project] of Object.entries(state.projects)) {
+    const activeChatId = project.activeChatId;
+    const chatStore = activeChatId
+      ? project.chatStores[activeChatId]
+      : Object.values(project.chatStores ?? {})[0];
+    if (!chatStore) continue;
+    seen.add(projectId);
+
+    const existing = navLeadSubscriptions.get(projectId);
+    if (existing?.chatStore === chatStore) continue;
+    existing?.unsubscribe();
+
+    pushLiveNavLead(projectId, chatStore);
+    const unsubscribe = chatStore.subscribe(() =>
+      pushLiveNavLead(projectId, chatStore)
+    );
+    navLeadSubscriptions.set(projectId, { chatStore, unsubscribe });
+  }
+  for (const [projectId, entry] of navLeadSubscriptions) {
+    if (seen.has(projectId)) continue;
+    entry.unsubscribe();
+    navLeadSubscriptions.delete(projectId);
+  }
+};
+
+projectStore.subscribe(reconcileNavLeadSubscriptions);
+reconcileNavLeadSubscriptions(projectStore.getState());
 
 if (typeof queueMicrotask === 'function') {
   queueMicrotask(() => {

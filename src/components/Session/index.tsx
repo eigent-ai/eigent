@@ -19,6 +19,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   ChatTaskStatus,
@@ -47,8 +48,17 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeProjectId = projectStore.activeProjectId;
+  const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
+    activeProjectId
+      ? Boolean(s.historyLoadingProjectIds[activeProjectId])
+      : false
+  );
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
+  );
+  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
+  const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
+    SessionMode.SINGLE_AGENT
   );
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
@@ -56,8 +66,17 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // `null` = mode not yet determined (session still loading its events).
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
-  const [isSidePanelVisible, setIsSidePanelVisible] = useState(true);
+  const [isSidePanelVisible, setIsSidePanelVisible] = useState(!isNewProject);
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
+
+  // Default fold state is tab-specific. React reuses this component when switching
+  // between `project` and `new-project`, so reset when the shell or project changes.
+  useEffect(() => {
+    setIsSidePanelVisible(!isNewProject);
+    if (isNewProject) {
+      setIsExpandedOverlayOpen(false);
+    }
+  }, [isNewProject, activeProjectId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -96,19 +115,50 @@ export default function Session({ isNewProject = false }: SessionProps) {
     // The New Project shell stays selected on its own tab — never redirect
     // away from it (it is empty until the user sends the first message).
     if (isNewProject) return;
+    // Only redirect while the live project tab is active; ignore inbox/triggers/etc.
+    if (activeWorkspaceTab !== 'project') return;
+    // Wait until the project chat store is ready (selectProject still loading).
+    if (!chatStore) return;
+    // While history is still replaying, the chat store exists but messages
+    // haven't been written yet. Don't bounce away — selectProject will pick
+    // the correct shell ('project' vs 'new-project') once loading settles.
+    if (isHistoryLoadingActiveProject) return;
     if (!hasSessionStarted) {
       setActiveWorkspaceTab('workforce');
     }
-  }, [isNewProject, hasSessionStarted, setActiveWorkspaceTab]);
+  }, [
+    activeWorkspaceTab,
+    chatStore,
+    hasSessionStarted,
+    isHistoryLoadingActiveProject,
+    isNewProject,
+    setActiveWorkspaceTab,
+  ]);
+
+  useEffect(() => {
+    if (!isNewProject) return;
+    setDraftSessionMode(activeProjectMeta?.mode ?? SessionMode.SINGLE_AGENT);
+  }, [activeProjectId, activeProjectMeta?.mode, isNewProject]);
+
+  const handleNewProjectSessionModeChange = useCallback(
+    (mode: SessionModeType) => {
+      setDraftSessionMode(mode);
+      if (activeProjectId) {
+        updateProjectMeta(activeProjectId, { mode });
+      }
+    },
+    [activeProjectId, updateProjectMeta]
+  );
 
   // Nullable "display" form of the Project mode. `null` while a saved Project
   // is still loading — the side panel renders empty rather than defaulting and
   // flickering once the real mode resolves. Fresh Projects default to single
   // agent until the Project mode toggle writes a value.
-  const displaySessionMode: SessionModeType | null =
-    activeProjectMeta?.mode ??
-    inferredSessionMode ??
-    (hasSessionStarted ? null : SessionMode.SINGLE_AGENT);
+  const displaySessionMode: SessionModeType | null = isNewProject
+    ? (activeProjectMeta?.mode ?? draftSessionMode)
+    : (activeProjectMeta?.mode ??
+      inferredSessionMode ??
+      (hasSessionStarted ? null : SessionMode.SINGLE_AGENT));
 
   useEffect(() => {
     setIsExpandedOverlayOpen(false);
@@ -132,8 +182,52 @@ export default function Session({ isNewProject = false }: SessionProps) {
     setIsExpandedOverlayOpen(false);
   }, []);
 
-  if (!chatStore) {
+  if (!isNewProject && !chatStore) {
     return null;
+  }
+
+  const sessionSidePanel = displaySessionMode ? (
+    <SessionSidePanel
+      key={displaySessionMode}
+      mode={displaySessionMode}
+      workforcePanelKey={workforcePanelKey}
+      hasAnyMessages={hasAnyMessages}
+      isSidePanelVisible={isSidePanelVisible}
+      onToggleSidePanel={toggleSidePanel}
+      isExpandedOverlayOpen={isExpandedOverlayOpen}
+      onToggleExpandedOverlay={toggleExpandedOverlay}
+      onCloseExpandedOverlay={closeExpandedOverlay}
+    />
+  ) : null;
+
+  if (isNewProject) {
+    return (
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <HeaderBox empty />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <Workspace
+              variant="new-project"
+              embedded
+              sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
+              onSessionModeChange={handleNewProjectSessionModeChange}
+            />
+          </div>
+        </div>
+
+        <div
+          id="session-side-panel"
+          className={cn(
+            'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+            isSidePanelVisible
+              ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
+              : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
+          )}
+        >
+          {sessionSidePanel}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -145,7 +239,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
           />
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {isNewProject ? <Workspace variant="new-project" /> : <ChatBox />}
+          <ChatBox />
         </div>
       </div>
 
@@ -158,18 +252,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
-        {displaySessionMode ? (
-          <SessionSidePanel
-            mode={displaySessionMode}
-            workforcePanelKey={workforcePanelKey}
-            hasAnyMessages={hasAnyMessages}
-            isSidePanelVisible={isSidePanelVisible}
-            onToggleSidePanel={toggleSidePanel}
-            isExpandedOverlayOpen={isExpandedOverlayOpen}
-            onToggleExpandedOverlay={toggleExpandedOverlay}
-            onCloseExpandedOverlay={closeExpandedOverlay}
-          />
-        ) : null}
+        {sessionSidePanel}
       </div>
     </div>
   );

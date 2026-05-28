@@ -33,6 +33,7 @@ export interface ProjectNavListProps {
   activeProjectId?: string | null;
   onProjectClick?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => void;
+  onAchieveProject?: (projectId: string) => void;
   onNewProject: () => void;
   /** Selected state for the New Project row. */
   newProjectActive?: boolean;
@@ -47,6 +48,7 @@ export function ProjectNavList({
   activeProjectId,
   onProjectClick,
   onDeleteProject,
+  onAchieveProject,
   onNewProject,
   newProjectActive = false,
   folded,
@@ -114,6 +116,7 @@ export function ProjectNavList({
           activeProjectId={activeProjectId}
           onProjectClick={onProjectClick}
           onDeleteProject={onDeleteProject}
+          onAchieveProject={onAchieveProject}
           folded={folded}
         />
       </div>

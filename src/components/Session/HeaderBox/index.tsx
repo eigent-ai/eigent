@@ -27,9 +27,15 @@ export interface HeaderBoxProps {
   totalTokens?: number;
   /** Optional extra class names for the outer container */
   className?: string;
+  /** Reserve header height without controls or token count. */
+  empty?: boolean;
 }
 
-export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
+export function HeaderBox({
+  totalTokens = 0,
+  className,
+  empty = false,
+}: HeaderBoxProps) {
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -38,12 +44,21 @@ export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
     defaultValue: 'Back to workspace',
   });
 
+  if (empty) {
+    return (
+      <div
+        className={`flex h-[44px] w-full shrink-0 flex-row items-center justify-between px-3 ${className || ''}`}
+        aria-hidden
+      />
+    );
+  }
+
   return (
     <div
-      className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
+      className={`flex h-[44px] w-full flex-row items-center justify-between px-3 ${className || ''}`}
     >
       {/* Left: return to project workspace */}
-      <div className="gap-2 flex items-center">
+      <div className="flex items-center gap-2">
         <TooltipSimple content={backToWorkspaceTooltip}>
           <Button
             type="button"
@@ -51,7 +66,7 @@ export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
             aria-label={backToWorkspaceTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -60,8 +75,8 @@ export function HeaderBox({ totalTokens = 0, className }: HeaderBoxProps) {
       </div>
 
       {/* Right: project total token count */}
-      <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
-        <div className="gap-1 flex items-center">
+      <div className="flex items-center gap-2 text-ds-text-neutral-muted-default">
+        <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
             {t('chat.token-total-label')}{' '}

@@ -16,6 +16,7 @@ import { proxyFetchDelete, proxyFetchPut } from '@/api/http';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tag } from '@/components/ui/tag';
 import { useHost } from '@/host';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
@@ -408,8 +409,7 @@ export default function GroupedHistoryView({
   >((acc, project) => {
     const spaceId = project.space_id || activeSpaceId || 'unknown';
     const space = spacesById[spaceId];
-    const isLegacy =
-      space?.metadata?.legacy === true || space?.sourceType === 'legacy';
+    const isLegacy = space ? isLegacySpace(space) : false;
     const latestDate = new Date(project.latest_task_date || 0).getTime();
     if (!acc[spaceId]) {
       acc[spaceId] = {

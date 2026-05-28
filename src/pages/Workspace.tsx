@@ -94,7 +94,7 @@ function readStoredSidebarWidthPx(): number {
   }
 }
 
-export default function Home() {
+export default function WorkspacePage() {
   const { t } = useTranslation();
   const host = useHost();
   const ipc = host?.ipcRenderer;
@@ -111,6 +111,12 @@ export default function Home() {
     usePageTabStore();
   const triggerAddDialogRequestId = usePageTabStore(
     (s) => s.triggerAddDialogRequestId
+  );
+  const triggerSelectRequestId = usePageTabStore(
+    (s) => s.triggerSelectRequestId
+  );
+  const pendingTriggerSelectId = usePageTabStore(
+    (s) => s.pendingTriggerSelectId
   );
   const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
   const setProjectSidebarFolded = usePageTabStore(
@@ -389,20 +395,55 @@ export default function Home() {
   }, [projectStore.activeProjectId]);
 
   useEffect(() => {
+    if (triggerSelectRequestId === 0) return;
+    if (pendingTriggerSelectId != null) {
+      setTriggerSelectedId(pendingTriggerSelectId);
+    }
+  }, [pendingTriggerSelectId, triggerSelectRequestId]);
+
+  useEffect(() => {
     checkLocalServerStale();
   }, []);
 
-  useEffect(() => {
-    if (
-      !activeProjectId &&
-      (activeWorkspaceTab === 'project' ||
-        activeWorkspaceTab === 'new-project' ||
-        activeWorkspaceTab === 'inbox' ||
-        activeWorkspaceTab === 'runs')
-    ) {
+  // Project-scoped tabs (except new-project shell) require an active project.
+  // When opening inbox/runs/project from the workspace tab without a selection,
+  // fall back to the last visited (or first) project in the space instead of
+  // bouncing back to workforce.
+  useLayoutEffect(() => {
+    const isProjectScopedTab =
+      activeWorkspaceTab === 'project' ||
+      activeWorkspaceTab === 'inbox' ||
+      activeWorkspaceTab === 'runs';
+
+    if (!isProjectScopedTab || activeProjectId) return;
+
+    const spaceStore = useSpaceStore.getState();
+    const spaceId = activeSpaceId ?? spaceStore.activeSpaceId;
+    if (!spaceId) {
       setActiveWorkspaceTab('workforce');
+      return;
     }
-  }, [activeProjectId, activeWorkspaceTab, setActiveWorkspaceTab]);
+
+    const projectsInSpace = spaceStore.getProjectsForSpace(spaceId);
+    if (projectsInSpace.length > 0) {
+      const lastVisitedProjectId =
+        spaceStore.lastVisitedProjectBySpace[spaceId];
+      const targetProject =
+        projectsInSpace.find(
+          (project) => project.id === lastVisitedProjectId
+        ) ?? projectsInSpace[0];
+      projectStore.setActiveProject(targetProject.id);
+      return;
+    }
+
+    setActiveWorkspaceTab('workforce');
+  }, [
+    activeProjectId,
+    activeSpaceId,
+    activeWorkspaceTab,
+    projectStore,
+    setActiveWorkspaceTab,
+  ]);
 
   // Detect files and triggers when project loads
   useEffect(() => {

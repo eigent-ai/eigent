@@ -744,6 +744,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
+  const activeSpace = useSpaceStore((s) => {
+    const spaceId = activeProjectMeta?.spaceId || s.activeSpaceId;
+    return spaceId ? (s.spaces[spaceId] ?? null) : null;
+  });
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
@@ -1339,9 +1343,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     }
   };
 
-  const folderHeaderTitle = workingFolderPath
-    ? workingFolderBasename(workingFolderPath)
-    : t('chat.agent-folder');
+  const folderHeaderTitle =
+    activeSpace?.name?.trim() || t('layout.spaces-untitled');
   const canOpenInExternalEditor =
     electronAPI?.getProjectFolderPath && electronAPI?.openInIDE;
 
@@ -1385,7 +1388,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           </Button>
           <span
             className="min-w-0 truncate text-body-sm font-semibold leading-none text-ds-text-neutral-default-default"
-            title={workingFolderPath ?? undefined}
+            title={folderHeaderTitle}
           >
             {folderHeaderTitle}
           </span>

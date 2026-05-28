@@ -1281,7 +1281,7 @@ export default function ChatBox(): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px]">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] px-2">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}

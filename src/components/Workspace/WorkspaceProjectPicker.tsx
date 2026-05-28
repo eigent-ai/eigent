@@ -12,25 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import {
-  createSyncedProjectInSpace,
-  resolveServerBackedSpaceId,
-} from '@/lib/spaceProject';
+  createSpaceFromFolderPicker,
+  getFolderSpaceErrorMessage,
+} from '@/lib/createSpaceFromFolder';
+import {
+  getActiveSpaceTriggerLabel,
+  getDefaultNewSpaceName,
+} from '@/lib/spaceLabel';
+import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import {
   proxyApplySpaceProjectRun,
@@ -38,10 +34,6 @@ import {
   proxyFetchSpaceProjectOverlays,
   type SpaceOverlay,
 } from '@/service/spaceApi';
-import {
-  bindWorkspaceToSpace,
-  fetchWorkspaceCapabilities,
-} from '@/service/workspaceApi';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import {
@@ -50,20 +42,7 @@ import {
   useSpaceStore,
 } from '@/store/spaceStore';
 import { ChatTaskStatus } from '@/types/constants';
-import {
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  FolderIcon,
-  FolderKanban,
-  FolderOpen,
-  Loader2,
-  Pencil,
-  PlusCircle,
-  RefreshCw,
-  Trash2,
-  TriangleAlert,
-} from 'lucide-react';
+import { ChevronsUpDown, FolderIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -72,22 +51,6 @@ import { toast } from 'sonner';
 /** Shared chrome so read-only and dropdown trigger stay the same height (Button md = 32px). */
 const PROJECT_PICKER_SHELL_CLASS =
   'bg-ds-bg-neutral-subtle-default shadow-workspace-project-picker box-border inline-flex h-8 min-h-8 w-fit min-w-[180px] max-w-[300px] items-center gap-2 rounded-full px-3 py-0 font-semibold';
-
-const normalizedProjectName = (name?: string | null) =>
-  (name ?? '').trim().toLowerCase();
-
-const isPlaceholderProjectName = (
-  name: string | null | undefined,
-  projectId: string
-) => {
-  const normalized = normalizedProjectName(name);
-  return (
-    !normalized ||
-    normalized === 'new project' ||
-    normalized === 'new space' ||
-    normalized === `project ${projectId}`.toLowerCase()
-  );
-};
 
 export interface WorkspaceProjectPickerProps {
   /** Display-only: render the current project name without the dropdown. */
@@ -112,13 +75,13 @@ export function WorkspaceProjectPicker({
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
   const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
-  const deleteSpaceOnServer = useSpaceStore((s) => s.deleteSpaceOnServer);
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const refreshProjectOnServer = useSpaceStore((s) => s.refreshProjectOnServer);
   const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
   const [pendingOverlays, setPendingOverlays] = useState<SpaceOverlay[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [pendingLoadFailed, setPendingLoadFailed] = useState(false);
@@ -179,44 +142,6 @@ export function WorkspaceProjectPicker({
     activeProject?.metadata?.historyId
   );
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
-  const activeSpaceProjects = useMemo(
-    () =>
-      activeSpaceId
-        ? getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId)
-        : [],
-    [activeSpaceId, projectsBySpaceId]
-  );
-  const activeSpaceHasValidProject = useMemo(
-    () =>
-      activeSpaceProjects.some((project) => {
-        const historyDisplayName =
-          typeof project.metadata?.historyDisplayName === 'string'
-            ? project.metadata.historyDisplayName.trim()
-            : '';
-        if (historyDisplayName) return true;
-        if (!isPlaceholderProjectName(project.name, project.id)) return true;
-
-        const projectChatStore = projectStore.peekActiveChatStore(project.id);
-        const projectChatState = projectChatStore?.getState();
-        const tasks = projectChatState
-          ? Object.values(projectChatState.tasks)
-          : [];
-        return tasks.some(
-          (task) =>
-            (task.messages?.length || 0) > 0 ||
-            task.hasMessages ||
-            task.status !== ChatTaskStatus.PENDING
-        );
-      }),
-    [activeSpaceProjects, projectStore]
-  );
-  const canInitializeActiveSpaceSource = Boolean(
-    activeSpace &&
-    activeSpace.status === 'active' &&
-    activeSpace.sourceType === 'blank' &&
-    !activeSpace.rootPath &&
-    !activeSpaceHasValidProject
-  );
   const canRenameActiveSpace = Boolean(
     activeSpace &&
     activeSpace.status === 'active' &&
@@ -291,22 +216,19 @@ export function WorkspaceProjectPicker({
     }
   }, [loadPendingOverlays, menuOpen]);
 
-  const activeSpaceTitle = useMemo(() => {
-    const name = activeSpace?.name?.trim();
-    if (!name) return t('layout.spaces-select-space');
-    if (
-      name === t('layout.spaces-new-space') ||
-      name === t('layout.new-project') ||
-      name === 'New Space' ||
-      name === 'New Project'
-    ) {
-      return t('layout.spaces-select-space');
-    }
-    return name;
-  }, [activeSpace, t]);
+  const activeSpaceTitle = useMemo(
+    () =>
+      getActiveSpaceTriggerLabel(activeSpace?.name, t, {
+        emptyLabelKey: activeSpaceId
+          ? 'layout.spaces-untitled'
+          : 'layout.spaces-select-space',
+      }),
+    [activeSpace, activeSpaceId, t]
+  );
 
   const activateSpace = useCallback(
     async (spaceId: string) => {
+      setSwitchingSpaceId(spaceId);
       try {
         const resolvedSpaceId = await resolveServerBackedSpaceId(
           projectStore,
@@ -326,55 +248,42 @@ export function WorkspaceProjectPicker({
           setActiveSpace(resolvedSpaceId);
           const nextProject = projectsInSpace[0];
           projectStore.setActiveProject(nextProject.id);
-          const projectChatStore = projectStore.peekActiveChatStore(
-            nextProject.id
-          );
-          const projectChatState = projectChatStore?.getState();
-          const projectTask = projectChatState?.activeTaskId
-            ? projectChatState.tasks[projectChatState.activeTaskId]
-            : undefined;
-          const hasStarted = Boolean(
-            projectTask &&
-            ((projectTask.messages?.length || 0) > 0 ||
-              projectTask.hasMessages ||
-              projectTask.status !== ChatTaskStatus.PENDING)
-          );
-          setActiveWorkspaceTab(hasStarted ? 'project' : 'new-project');
         } else {
           setActiveSpace(resolvedSpaceId);
           projectStore.setActiveProject(null);
-          setActiveWorkspaceTab('new-project');
         }
         navigate('/');
         setMenuOpen(false);
       } catch (error) {
         console.warn('[WorkspaceProjectPicker] Failed to switch Space:', error);
         toast.error(t('layout.spaces-create-failed'));
+      } finally {
+        setSwitchingSpaceId(null);
       }
     },
-    [navigate, projectStore, setActiveSpace, setActiveWorkspaceTab, t]
+    [navigate, projectStore, setActiveSpace, t]
   );
 
-  const handleStartFromScratch = async () => {
-    if (!canInitializeActiveSpaceSource || !activeSpaceId) return;
+  const handleNewSpace = useCallback(async () => {
     try {
-      const syncedProject = await createSyncedProjectInSpace({
-        projectStore,
-        spaceId: activeSpaceId,
-        workdirMode: 'artifact-only',
+      const spaceId = await createSpaceOnServer({
+        name: getDefaultNewSpaceName(t),
+        sourceType: 'blank',
+        setActive: false,
         metadata: {
           createdFrom: 'workspace_space_picker',
+          autoCreatedPlaceholder: true,
         },
       });
-      setActiveSpace(syncedProject.spaceId);
+      setActiveSpace(spaceId);
+      projectStore.setActiveProject(null);
       navigate('/');
-      setActiveWorkspaceTab('new-project');
       setMenuOpen(false);
     } catch (error) {
       console.error('Failed to create Space:', error);
       toast.error(t('layout.spaces-create-failed'));
     }
-  };
+  }, [createSpaceOnServer, navigate, projectStore, setActiveSpace, t]);
 
   const openRenameDialog = () => {
     if (!canRenameActiveSpace || !activeSpace) return;
@@ -575,109 +484,18 @@ export function WorkspaceProjectPicker({
     }
   };
 
-  const folderSpaceErrorMessage = (error: unknown) => {
-    const err = error as {
-      status?: number;
-      response?: { data?: { detail?: unknown } };
-      message?: string;
-    };
-    const detail = err.response?.data?.detail;
-    const code =
-      typeof detail === 'object' && detail !== null
-        ? String((detail as { code?: unknown }).code || '')
-        : '';
-    const text = typeof detail === 'string' ? detail : err.message || '';
-
-    if (code === 'workspace_binding_disabled' || err.status === 412) {
-      return t('layout.workspace-folder-binding-local-only');
-    }
-    if (
-      code === 'folder_already_bound_to_other_space' ||
-      text.includes('already bound') ||
-      err.status === 409
-    ) {
-      return t('layout.workspace-folder-already-bound');
-    }
-    if (code === 'invalid_workspace_path' || err.status === 403) {
-      return t('layout.workspace-folder-unavailable');
-    }
-    return t('layout.workspace-folder-space-create-failed');
-  };
-
   const handleCreateSpaceFromFolder = async () => {
-    if (!canInitializeActiveSpaceSource) return;
-    const previousEmptySpaceId = activeSpaceId;
-    const selectFile = host?.electronAPI?.selectFile;
-    if (!selectFile || !email) {
-      openAgentFolderTab();
-      return;
-    }
-
     try {
-      const capabilities = await fetchWorkspaceCapabilities();
-      if (!capabilities.binding_enabled) {
-        throw new Error('Workspace folder binding is not available');
-      }
-
-      const result = await selectFile({
-        properties: ['openDirectory'],
-      });
-      const folderPath = result?.files?.[0]?.filePath;
-      if (!result?.success || !folderPath) {
-        return;
-      }
-
-      const folderName =
-        folderPath.split(/[\\/]/).filter(Boolean).at(-1) || 'Folder Space';
-      let createdSpaceId: string | null = null;
-      const spaceId = await createSpaceOnServer({
-        name: folderName,
-        sourceType: 'folder',
-        rootPath: folderPath,
-        setActive: false,
-        metadata: {
-          bindingSource: 'space_local_brain',
-        },
-      });
-      createdSpaceId = spaceId;
-      try {
-        await bindWorkspaceToSpace({
-          space_id: spaceId,
-          email,
-          user_id: userId,
-          path: folderPath,
-        });
-      } catch (bindError) {
-        await deleteSpaceOnServer(createdSpaceId).catch((rollbackError) => {
-          console.warn(
-            '[WorkspaceProjectPicker] Failed to roll back folder Space:',
-            rollbackError
-          );
-        });
-        throw bindError;
-      }
-      const syncedProject = await createSyncedProjectInSpace({
+      const spaceId = await createSpaceFromFolderPicker({
+        host,
+        email,
+        userId,
+        activeSpaceId,
         projectStore,
-        spaceId,
-        workdirMode: 'direct-write',
-        metadata: {
-          createdFrom: 'workspace_folder_space_picker',
-        },
+        createdFrom: 'workspace_folder_space_picker',
+        onUnavailable: openAgentFolderTab,
       });
-      setActiveSpace(syncedProject.spaceId);
-      if (
-        previousEmptySpaceId &&
-        previousEmptySpaceId !== syncedProject.spaceId
-      ) {
-        await deleteSpaceOnServer(previousEmptySpaceId).catch(
-          (cleanupError) => {
-            console.warn(
-              '[WorkspaceProjectPicker] Failed to clean up previous empty blank Space:',
-              cleanupError
-            );
-          }
-        );
-      }
+      if (!spaceId) return;
       navigate('/');
       setMenuOpen(false);
     } catch (error) {
@@ -685,7 +503,7 @@ export function WorkspaceProjectPicker({
         '[WorkspaceProjectPicker] Failed to create folder Space:',
         error
       );
-      toast.error(folderSpaceErrorMessage(error));
+      toast.error(getFolderSpaceErrorMessage(error, t));
     }
   };
 
@@ -758,8 +576,14 @@ export function WorkspaceProjectPicker({
           }}
         />
       </AlertDialog>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenuTrigger asChild>
+      <SpaceSwitchDropdown
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        openOnHover
+        contentAlign="center"
+        contentSideOffset={6}
+        triggerWrapperClassName="w-fit"
+        trigger={
           <Button
             id="workspace-project-picker-trigger"
             type="button"
@@ -778,186 +602,45 @@ export function WorkspaceProjectPicker({
             <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
               {activeSpaceTitle}
             </span>
-            <ChevronDown className="shrink-0 opacity-80" aria-hidden />
+            <ChevronsUpDown
+              className="size-4 shrink-0 opacity-80"
+              aria-hidden
+            />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-[min(100vw-2rem,180px)]"
-          align="end"
-          sideOffset={6}
-        >
-          <DropdownMenuItem
-            className={cn(
-              'gap-2',
-              canInitializeActiveSpaceSource && 'cursor-pointer'
-            )}
-            disabled={!canInitializeActiveSpaceSource}
-            onSelect={(e) => {
-              e.preventDefault();
-              void handleStartFromScratch();
-            }}
-          >
-            <PlusCircle className="h-4 w-4 shrink-0" aria-hidden />
-            {t('layout.workspace-start-from-scratch')}
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
-            className={cn(
-              'gap-2',
-              canInitializeActiveSpaceSource && 'cursor-pointer'
-            )}
-            disabled={!canInitializeActiveSpaceSource}
-            onSelect={(e) => {
-              e.preventDefault();
-              void handleCreateSpaceFromFolder();
-            }}
-          >
-            <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
-            {t('layout.workspace-select-folder')}
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
-
-          <DropdownMenuItem
-            className={cn('gap-2', canRenameActiveSpace && 'cursor-pointer')}
-            disabled={!canRenameActiveSpace}
-            onSelect={(e) => {
-              e.preventDefault();
-              openRenameDialog();
-            }}
-          >
-            <Pencil className="h-4 w-4 shrink-0" aria-hidden />
-            {t('layout.spaces-rename-space')}
-          </DropdownMenuItem>
-
-          {activeProjectId && !activeProjectDirectWrite && (
-            <>
-              <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  {pendingLoading ? (
-                    <Loader2
-                      className="h-4 w-4 shrink-0 animate-spin"
-                      aria-hidden
-                    />
-                  ) : pendingLoadFailed ? (
-                    <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                  )}
-                  {t('layout.workspace-pending-changes')}
-                  {pendingOverlays.length > 0
-                    ? ` (${pendingOverlays.length})`
-                    : ''}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  className="w-[min(100vw-2rem,260px)] p-1"
-                  sideOffset={6}
-                  alignOffset={-4}
-                >
-                  {pendingLoadFailed && (
-                    <div className="flex items-start gap-2 px-2 py-2 text-body-sm text-ds-text-neutral-muted-default">
-                      <TriangleAlert
-                        className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
-                        aria-hidden
-                      />
-                      <span>{t('layout.workspace-pending-load-stale')}</span>
-                    </div>
-                  )}
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2"
-                    disabled={
-                      pendingOverlays.length === 0 || pendingAction !== null
-                    }
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      void handleApplyPending();
-                    }}
-                  >
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                    {applyProgress
-                      ? t('layout.workspace-apply-progress', {
-                          current: applyProgress.current,
-                          total: applyProgress.total,
-                        })
-                      : t('layout.workspace-apply-pending-changes')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2"
-                    disabled={
-                      pendingOverlays.length === 0 || pendingAction !== null
-                    }
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      handleDiscardPending();
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
-                    {t('layout.workspace-discard-pending-changes')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2"
-                    disabled={
-                      pendingOverlays.length > 0 ||
-                      pendingAction !== null ||
-                      activeProjectRunActive
-                    }
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      void handleRefreshWorkdir();
-                    }}
-                  >
-                    <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
-                    {t('layout.workspace-refresh-workdir')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
-            </>
-          )}
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
-              <FolderKanban className="h-4 w-4 shrink-0" aria-hidden />
-              {t('layout.spaces-switch-space')}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent
-              className="max-h-64 w-[min(100vw-2rem,280px)] overflow-y-auto p-1"
-              sideOffset={6}
-              alignOffset={-4}
-            >
-              {activeSpaces.length === 0 ? (
-                <div className="px-2 py-3 text-center text-body-sm text-ds-text-neutral-muted-default">
-                  {t('layout.spaces-select-space')}
-                </div>
-              ) : (
-                activeSpaces.map((space) => (
-                  <DropdownMenuItem
-                    key={space.id}
-                    className="min-h-9 cursor-pointer gap-2 py-2"
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      void activateSpace(space.id);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        activeSpaceId === space.id ? 'opacity-100' : 'opacity-0'
-                      )}
-                      aria-hidden
-                    />
-                    <span className="min-w-0 truncate text-body-sm font-medium leading-tight text-ds-text-neutral-default-default">
-                      {space.name?.trim() || t('layout.spaces-untitled')}
-                    </span>
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        }
+        spaces={activeSpaces}
+        activeSpaceId={activeSpaceId}
+        switchingSpaceId={switchingSpaceId}
+        canRenameActiveSpace={canRenameActiveSpace}
+        createSpaceMenu={{
+          onStartFromScratch: handleNewSpace,
+          onSelectFolder: handleCreateSpaceFromFolder,
+        }}
+        onRenameSpace={openRenameDialog}
+        onSpaceSelect={activateSpace}
+        pendingChangesMenu={
+          activeProjectId && !activeProjectDirectWrite
+            ? {
+                loading: pendingLoading,
+                loadFailed: pendingLoadFailed,
+                overlayCount: pendingOverlays.length,
+                action: pendingAction,
+                applyProgress,
+                applyDisabled:
+                  pendingOverlays.length === 0 || pendingAction !== null,
+                discardDisabled:
+                  pendingOverlays.length === 0 || pendingAction !== null,
+                refreshDisabled:
+                  pendingOverlays.length > 0 ||
+                  pendingAction !== null ||
+                  activeProjectRunActive,
+                onApply: handleApplyPending,
+                onDiscard: handleDiscardPending,
+                onRefresh: handleRefreshWorkdir,
+              }
+            : undefined
+        }
+      />
     </>
   );
 }
