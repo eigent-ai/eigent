@@ -117,6 +117,7 @@ export const ProjectSection = React.forwardRef<
               isActive={activeQueryId === group.queryId}
               onQueryActive={onQueryActive}
               index={index}
+              taskId={activeTaskId}
             />
           ))}
         </div>

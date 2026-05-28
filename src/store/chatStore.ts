@@ -1482,6 +1482,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           task_id: newTaskId,
           run_id: newTaskId,
           user_id: authStore.user_id,
+          // Persist Project execution mode on the server so reload reflects
+          // the user's last choice (workforce vs single-agent). Without this
+          // Project.mode stays NULL and the picker defaults back to single.
+          mode: sessionModeForRequest,
           workdir_mode: project?.workdirMode || undefined,
           question:
             messageContent ||
@@ -1785,12 +1789,32 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         ...(messageAttaches || []),
                       ];
 
-                //Trick: by the time the question is retrieved from event,
-                //the last message from previous chatStore is at display
+                // Three candidate sources for the user prompt body, in
+                // descending order of trustworthiness:
+                //   1. lastMessage.content -- the prompt ChatBox.handleSend
+                //      just added to the previous chatStore. This is what
+                //      the user actually typed *this turn* and is therefore
+                //      authoritative for both startTask and improve flows.
+                //   2. messageContent -- the closure-captured arg passed to
+                //      startTask. Stale for improve turns (the SSE consumer
+                //      keeps the first prompt forever) but accurate for the
+                //      startTask path that drove this handler.
+                //   3. question -- the SSE CONFIRMED event's question field.
+                //      Drifts in Workforce when backend reuses task_lock
+                //      across turns; correct in Single Agent improve.
+                // Falling back from (1) → (2) → (3) covers replay (no
+                // optimistic message exists) and any unexpected paths
+                // without ever silently injecting the first-turn prompt.
+                const userMessageContent =
+                  (lastMessage?.role === 'user' &&
+                    typeof lastMessage.content === 'string' &&
+                    lastMessage.content) ||
+                  (messageContent as string) ||
+                  question;
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',
-                  content: question || (messageContent as string),
+                  content: userMessageContent,
                   attaches: attachesForNewMessage,
                 });
                 console.log('[NEW CHATSTORE] Created for ', project_id);
@@ -1805,12 +1829,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     task_id: newTaskId,
                     run_id: newTaskId,
                     user_id: authStore.user_id,
+                    mode: sessionModeForRequest,
+                    // Mirror the user-message-content priority above: prefer
+                    // what we just wrote into the new task (the prompt the
+                    // user actually typed), and only fall back to SSE
+                    // `question` / closure `messageContent` if the new task
+                    // somehow has no user message yet.
                     question:
-                      question ||
-                      messageContent ||
                       (targetChatStore.getState().tasks[newTaskId]?.messages[0]
-                        ?.content ??
-                        ''),
+                        ?.content as string) ||
+                      userMessageContent ||
+                      '',
                     language: systemLanguage,
                     model_platform: apiModel.model_platform,
                     model_type: apiModel.model_type,

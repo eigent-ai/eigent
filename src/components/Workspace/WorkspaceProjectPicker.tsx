@@ -164,6 +164,14 @@ export function WorkspaceProjectPicker({
     activeProject?.spaceId ||
     activeSpaceId ||
     null;
+  const activeProjectSpace = activeProjectSpaceId
+    ? spacesById[activeProjectSpaceId]
+    : null;
+  const activeProjectWorkdirMode =
+    activeProjectMeta?.workdirMode || activeProject?.workdirMode || null;
+  const activeProjectDirectWrite =
+    activeProjectWorkdirMode === 'direct-write' ||
+    (!activeProjectWorkdirMode && activeProjectSpace?.sourceType === 'folder');
   const activeProjectServerBacked = Boolean(
     activeProjectMeta?.metadata?.serverSynced ||
     activeProjectMeta?.metadata?.historyId ||
@@ -235,15 +243,13 @@ export function WorkspaceProjectPicker({
   );
 
   const loadPendingOverlays = useCallback(async () => {
-    const activeProjectSpace = activeProjectSpaceId
-      ? useSpaceStore.getState().getSpaceById(activeProjectSpaceId)
-      : null;
     if (
       !activeProjectSpaceId ||
       !activeProjectId ||
       !activeProjectServerBacked ||
       activeProjectSpaceId.startsWith('legacy_') ||
-      !activeProjectSpace
+      !activeProjectSpace ||
+      activeProjectDirectWrite
     ) {
       setPendingOverlays([]);
       setPendingLoadFailed(false);
@@ -267,7 +273,13 @@ export function WorkspaceProjectPicker({
     } finally {
       setPendingLoading(false);
     }
-  }, [activeProjectId, activeProjectServerBacked, activeProjectSpaceId]);
+  }, [
+    activeProjectDirectWrite,
+    activeProjectId,
+    activeProjectServerBacked,
+    activeProjectSpace,
+    activeProjectSpaceId,
+  ]);
 
   useEffect(() => {
     void loadPendingOverlays();
@@ -647,7 +659,7 @@ export function WorkspaceProjectPicker({
       const syncedProject = await createSyncedProjectInSpace({
         projectStore,
         spaceId,
-        workdirMode: 'copy',
+        workdirMode: 'direct-write',
         metadata: {
           createdFrom: 'workspace_folder_space_picker',
         },
@@ -818,10 +830,9 @@ export function WorkspaceProjectPicker({
             {t('layout.spaces-rename-space')}
           </DropdownMenuItem>
 
-          <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
-
-          {activeProjectId && (
+          {activeProjectId && !activeProjectDirectWrite && (
             <>
+              <DropdownMenuSeparator className="bg-ds-border-neutral-default-default" />
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
                   {pendingLoading ? (

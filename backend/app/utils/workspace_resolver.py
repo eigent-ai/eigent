@@ -564,7 +564,9 @@ class WorkspaceResolver:
             task_output = run_output_root(
                 email, space_id, project_id, task_id, user_id
             )
-            workdir_mode = getattr(task_lock, "workdir_mode", None)
+            workdir_mode = (
+                getattr(task_lock, "workdir_mode", None) or "direct-write"
+            )
             if workdir_mode == "artifact-only":
                 working_directory = task_output
                 base_snapshot_id = None
@@ -581,7 +583,6 @@ class WorkspaceResolver:
                 base_snapshot_id = _copy_space_baseline(
                     source_root, working_directory
                 )
-                workdir_mode = workdir_mode or "copy"
             binding_source: BindingSource = "space_local_brain"
         elif fallback_task_root is not None:
             working_directory = Path(fallback_task_root).expanduser()

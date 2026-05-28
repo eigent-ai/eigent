@@ -15,15 +15,51 @@
 import datetime
 import json
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger("agent_memory")
+
+
+# Per-message snapshot caps (override via env). The defaults are tuned so a
+# workforce single-task snapshot stays well under the 200K in-process budget
+# even with 6+ agents + accumulator duplication. Apply only to the snapshot
+# accumulator, NOT to what's fed to the live agent (live prompts keep full
+# fidelity via memory.get_context()).
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; falling back to default %d", name, raw, default
+        )
+        return default
+
+
+_SNAPSHOT_MESSAGE_CONTENT_CAP = _env_int("EIGENT_SNAPSHOT_MESSAGE_CAP", 4000)
+_SNAPSHOT_TOOL_ARG_CAP = _env_int("EIGENT_SNAPSHOT_TOOL_ARG_CAP", 2000)
+_SNAPSHOT_TASK_FIELD_CAP = _env_int("EIGENT_SNAPSHOT_TASK_FIELD_CAP", 8000)
+_TRUNCATION_MARKER = "... [snapshot truncated]"
 
 
 def _value(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _truncate_for_snapshot(text: str, cap: int) -> str:
+    """Cap a single string at `cap` chars. Live prompts go through the
+    untruncated `memory.get_context()`; only the snapshot copy gets trimmed.
+    """
+
+    if cap <= 0 or len(text) <= cap:
+        return text
+    keep = max(0, cap - len(_TRUNCATION_MARKER))
+    return text[:keep] + _TRUNCATION_MARKER
 
 
 def _stringify_content(content: Any) -> str:
@@ -37,6 +73,24 @@ def _stringify_content(content: Any) -> str:
         return str(content)
 
 
+def _shrink_tool_arguments(arguments: Any) -> Any:
+    """Recursively cap long string fields inside tool_call arguments.
+
+    Tool calls like ``write_file(content=<full file>)`` or screenshot tools
+    that pass base64 blobs in their arguments are the dominant contributors
+    to snapshot bloat -- a single tool call can be tens of kB. We keep the
+    structure intact so the snapshot is still readable.
+    """
+
+    if isinstance(arguments, str):
+        return _truncate_for_snapshot(arguments, _SNAPSHOT_TOOL_ARG_CAP)
+    if isinstance(arguments, dict):
+        return {k: _shrink_tool_arguments(v) for k, v in arguments.items()}
+    if isinstance(arguments, list):
+        return [_shrink_tool_arguments(v) for v in arguments]
+    return arguments
+
+
 def serialize_tool_call(tool_call: Any) -> dict[str, Any]:
     function = _value(tool_call, "function", tool_call)
     arguments = _value(function, "arguments", {})
@@ -45,6 +99,7 @@ def serialize_tool_call(tool_call: Any) -> dict[str, Any]:
             arguments = json.loads(arguments)
         except json.JSONDecodeError:
             arguments = {"raw": arguments}
+    arguments = _shrink_tool_arguments(arguments)
 
     return {
         "id": _value(tool_call, "id"),
@@ -57,9 +112,12 @@ def serialize_tool_call(tool_call: Any) -> dict[str, Any]:
 
 def serialize_message(message: Any) -> dict[str, Any]:
     tool_calls = _value(message, "tool_calls", None) or []
+    content_str = _stringify_content(_value(message, "content", ""))
     result = {
         "role": _value(message, "role", "assistant"),
-        "content": _stringify_content(_value(message, "content", "")),
+        "content": _truncate_for_snapshot(
+            content_str, _SNAPSHOT_MESSAGE_CONTENT_CAP
+        ),
         "tool_calls": [
             serialize_tool_call(tool_call) for tool_call in tool_calls
         ],
@@ -109,8 +167,16 @@ def build_agent_memory_snapshot(
         or getattr(agent, "role_name", None)
         or agent.__class__.__name__,
         "agent_id": getattr(agent, "agent_id", None),
-        "task_content": task_content,
-        "task_result": task_result,
+        "task_content": _truncate_for_snapshot(
+            task_content or "", _SNAPSHOT_TASK_FIELD_CAP
+        )
+        if task_content
+        else task_content,
+        "task_result": _truncate_for_snapshot(
+            task_result or "", _SNAPSHOT_TASK_FIELD_CAP
+        )
+        if task_result
+        else task_result,
         "messages": messages,
         "timestamp": datetime.datetime.now().isoformat(),
     }
@@ -165,6 +231,23 @@ def _iter_workforce_agents(workforce: Any):
             yield "workforce_worker_accumulator", accumulator
 
 
+def _message_dedup_key(msg: dict[str, Any]) -> str:
+    return json.dumps(msg, ensure_ascii=False, sort_keys=True)
+
+
+def _append_snapshot_to_task_lock(
+    task_lock: Any, snapshot: dict[str, Any]
+) -> None:
+    add_snapshot = getattr(task_lock, "add_agent_memory_snapshot", None)
+    if callable(add_snapshot):
+        add_snapshot(snapshot)
+        return
+    task_lock.agent_memory_history = (
+        getattr(task_lock, "agent_memory_history", None) or []
+    )
+    task_lock.agent_memory_history.append(snapshot)
+
+
 def record_workforce_memory_snapshot(
     task_lock: Any,
     workforce: Any,
@@ -173,18 +256,48 @@ def record_workforce_memory_snapshot(
     task_content: str | None = None,
     task_result: str | None = None,
 ) -> list[dict[str, Any]]:
-    snapshots = []
+    """Snapshot every workforce-side agent, with cross-agent message dedup.
+
+    Workforce enumerates ~6 agents (coordinator / planner / template worker /
+    per-child worker + accumulator). Most of them re-record the same
+    conversation under different scopes -- accumulators are near-clones of
+    their workers, and coordinator/planner often echo each other. Without
+    dedup this is the dominant bloat source in `agent_memory_history`.
+
+    Strategy: build all snapshots first; for each subsequent agent keep only
+    messages we have NOT already seen in an earlier scope. Append only the
+    dedup'd snapshot to `task_lock.agent_memory_history`, so the in-process
+    history matches what we return.
+    """
+
+    snapshots: list[dict[str, Any]] = []
+    seen_message_keys: set[str] = set()
     for scope, agent in _iter_workforce_agents(workforce):
-        snapshot = record_agent_memory_snapshot(
-            task_lock,
+        snapshot = build_agent_memory_snapshot(
             agent,
             scope=scope,
             task_id=task_id,
             task_content=task_content,
             task_result=task_result,
         )
-        if snapshot is not None:
-            snapshots.append(snapshot)
+        if snapshot is None:
+            continue
+        if seen_message_keys:
+            original_count = len(snapshot["messages"])
+            snapshot["messages"] = [
+                msg
+                for msg in snapshot["messages"]
+                if _message_dedup_key(msg) not in seen_message_keys
+            ]
+            dropped = original_count - len(snapshot["messages"])
+            if dropped:
+                snapshot["dedup_dropped_from_earlier_agent"] = dropped
+            if not snapshot["messages"]:
+                continue
+        for msg in snapshot["messages"]:
+            seen_message_keys.add(_message_dedup_key(msg))
+        _append_snapshot_to_task_lock(task_lock, snapshot)
+        snapshots.append(snapshot)
     return snapshots
 
 

@@ -245,7 +245,9 @@ export default function Workspace({ variant = 'workspace' }: WorkspaceProps) {
           name: trimmedMessage.slice(0, 120),
           mode: effectiveSessionMode,
           workdirMode:
-            activeSpace?.sourceType === 'folder' ? 'copy' : 'artifact-only',
+            activeSpace?.sourceType === 'folder'
+              ? 'direct-write'
+              : 'artifact-only',
           metadata: {
             createdFrom: 'workspace_direct_chat',
           },

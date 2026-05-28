@@ -182,7 +182,8 @@ export default function SpacesHub() {
         const result = await createSyncedProjectInSpace({
           projectStore,
           spaceId: space.id,
-          workdirMode: space.sourceType === 'folder' ? 'copy' : 'artifact-only',
+          workdirMode:
+            space.sourceType === 'folder' ? 'direct-write' : 'artifact-only',
           metadata: {
             createdFrom: 'spaces_hub',
           },

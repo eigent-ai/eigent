@@ -333,7 +333,8 @@ export default function ProjectPageSidebar({
       const result = await createSyncedProjectInSpace({
         projectStore,
         spaceId: activeSpaceId,
-        workdirMode: space?.sourceType === 'folder' ? 'copy' : 'artifact-only',
+        workdirMode:
+          space?.sourceType === 'folder' ? 'direct-write' : 'artifact-only',
         metadata: {
           createdFrom: 'project_sidebar',
         },

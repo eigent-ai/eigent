@@ -77,12 +77,13 @@ def create_chat_history(data: ChatHistoryIn, db_session: Session = Depends(sessi
             data.space_id,
             project_display_name,
             db_session,
+            mode=data.mode,
             workdir_mode=data.workdir_mode,
             metadata={"createdFrom": "chat_history"},
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    chat_history = ChatHistory(**data.model_dump(exclude={"workdir_mode"}))
+    chat_history = ChatHistory(**data.model_dump(exclude={"workdir_mode", "mode"}))
     db_session.add(chat_history)
     db_session.commit()
     db_session.refresh(chat_history)

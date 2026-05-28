@@ -116,6 +116,13 @@ interface UserQueryGroupProps {
   isActive: boolean;
   onQueryActive: (queryId: string | null) => void;
   index: number;
+  /**
+   * The task this query group belongs to. When provided, all task-derived
+   * UI (TaskCard summary, PlanTaskBox state, work log) reflects THIS task
+   * instead of `chatStore.activeTaskId` (which is the latest task and would
+   * make every historic group repaint with the newest summary).
+   */
+  taskId?: string;
 }
 
 export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
@@ -125,6 +132,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   isActive: _isActive,
   onQueryActive,
   index,
+  taskId: scopedTaskId,
 }) => {
   const groupRef = useRef<HTMLDivElement>(null);
   const taskBoxRef = useRef<HTMLDivElement>(null);
@@ -146,7 +154,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const onTaskCompletionMarkdownReady = useCallback(() => {
     setTaskCompletionMarkdownReady(true);
   }, []);
-  const activeTaskId = chatState.activeTaskId;
+  const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
   const activeProjectId = useProjectRuntimeStore(
     (state) => state.activeProjectId
   );
@@ -330,8 +338,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   }, [task]);
 
   // Check if we're in skeleton phase — never for single agent (no splitting).
+  // Gate on `isLastUserQuery`: historic turns that quit before emitting
+  // `to_sub_tasks` (e.g. context_too_long, browser-aborted, parent killed)
+  // would otherwise satisfy `isPlanSplittingPhase` forever and each render
+  // its own "Subtasks Planning" spinner. Only the current/latest turn should
+  // show the live splitting UI; abandoned turns fall through to taskCardVisible
+  // and the conditional below renders nothing instead of a stale spinner.
   const isSkeletonPhase =
-    task && !isSingleAgentTask && isPlanSplittingPhase(task);
+    task && !isSingleAgentTask && isPlanSplittingPhase(task) && isLastUserQuery;
 
   /** Task card visible (user message is sticky alone in this mode). */
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
@@ -423,37 +437,40 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               transformOrigin: 'top',
             }}
           >
-            {hasConfirmedSubTasks ? (
-              <TaskCard
-                key={`task-${activeTaskId}-${queryGroup.queryId}`}
-                chatId={chatId}
-                taskInfo={task?.taskInfo || []}
-                taskType={queryGroup.taskMessage?.taskType || 1}
-                taskAssigning={task?.taskAssigning || []}
-                taskRunning={task?.taskRunning || []}
-                progressValue={task?.progressValue || 0}
-                summaryTask={task?.summaryTask || ''}
-                onAddTask={() => {
-                  chatState.addTaskInfo();
-                }}
-                onUpdateTask={(taskIndex, content) => {
-                  chatState.updateTaskInfo(taskIndex, content);
-                }}
-                onSaveTask={() => {
-                  chatState.saveTaskInfo();
-                }}
-                onDeleteTask={(taskIndex) => {
-                  chatState.deleteTaskInfo(taskIndex);
-                }}
-                clickable={true}
-              />
-            ) : (
-              <PlanTaskBox
-                chatStore={chatStore}
-                taskId={activeTaskId}
-                userPrompt={queryGroup.userMessage?.content}
-              />
-            )}
+            {
+              hasConfirmedSubTasks ? (
+                <TaskCard
+                  key={`task-${activeTaskId}-${queryGroup.queryId}`}
+                  chatId={chatId}
+                  taskInfo={task?.taskInfo || []}
+                  taskType={queryGroup.taskMessage?.taskType || 1}
+                  taskAssigning={task?.taskAssigning || []}
+                  taskRunning={task?.taskRunning || []}
+                  progressValue={task?.progressValue || 0}
+                  summaryTask={task?.summaryTask || ''}
+                  onAddTask={() => {
+                    chatState.addTaskInfo();
+                  }}
+                  onUpdateTask={(taskIndex, content) => {
+                    chatState.updateTaskInfo(taskIndex, content);
+                  }}
+                  onSaveTask={() => {
+                    chatState.saveTaskInfo();
+                  }}
+                  onDeleteTask={(taskIndex) => {
+                    chatState.deleteTaskInfo(taskIndex);
+                  }}
+                  clickable={true}
+                />
+              ) : isLastUserQuery ? (
+                // Live planning UI: only on the most recent turn.
+                <PlanTaskBox
+                  chatStore={chatStore}
+                  taskId={activeTaskId}
+                  userPrompt={queryGroup.userMessage?.content}
+                />
+              ) : null /* historic turn that never confirmed a plan: skip the stale spinner */
+            }
           </div>
         </motion.div>
       )}

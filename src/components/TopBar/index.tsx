@@ -431,7 +431,7 @@ function HeaderWin() {
           spaceId: activeSpaceId,
           workdirMode:
             spacesById[activeSpaceId].sourceType === 'folder'
-              ? 'copy'
+              ? 'direct-write'
               : 'artifact-only',
           metadata: {
             createdFrom: 'end_project',

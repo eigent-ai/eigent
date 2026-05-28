@@ -50,6 +50,10 @@ from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.hands.interface import IHands
+from app.memory import (
+    build_durable_context_for_task_lock,
+    finalize_task_lock_run_memory,
+)
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
@@ -221,6 +225,48 @@ def check_conversation_history_length(
     return is_exceeded, total_length
 
 
+def _trim_in_process_history(task_lock: TaskLock, keep_recent: int = 4) -> int:
+    """Compact in-process conversation + agent snapshot history.
+
+    Memory feature already persists the full transcript to
+    ``~/.eigent/memory/<...>/conversation.jsonl`` at every Run end; the
+    in-process ``conversation_history`` and ``agent_memory_history`` lists
+    exist only to feed the next workforce turn's prompt. When they grow past
+    the 200K-char guard we drop the older entries here and append a marker
+    to ``memory_summary`` so subsequent prompts still know that earlier
+    context exists (and where to recover it from).
+
+    Returns the number of entries dropped across both lists. Returns 0 when
+    nothing needed trimming, which lets callers distinguish "compaction
+    bought us space" from "single turn alone is already over budget".
+    """
+
+    convo = getattr(task_lock, "conversation_history", None) or []
+    snaps = getattr(task_lock, "agent_memory_history", None) or []
+    dropped = 0
+    if len(convo) > keep_recent:
+        dropped += len(convo) - keep_recent
+        task_lock.conversation_history = convo[-keep_recent:]
+    if len(snaps) > keep_recent:
+        dropped += len(snaps) - keep_recent
+        task_lock.agent_memory_history = snaps[-keep_recent:]
+    if dropped == 0:
+        return 0
+    marker = (
+        f"\n[memory] Compacted {dropped} older in-process turn(s); the full "
+        f"transcript is preserved in ~/.eigent/memory under this Project."
+    )
+    summary = getattr(task_lock, "memory_summary", "") or ""
+    if marker.strip() not in summary:
+        task_lock.memory_summary = (summary + marker).strip()
+    logger.info(
+        f"Compacted {dropped} in-process history entries; "
+        f"conversation_history kept={len(task_lock.conversation_history)} "
+        f"agent_memory_history kept={len(task_lock.agent_memory_history)}"
+    )
+    return dropped
+
+
 def build_conversation_context(
     task_lock: TaskLock, header: str = "=== CONVERSATION HISTORY ==="
 ) -> str:
@@ -296,11 +342,26 @@ def build_context_for_workforce(
     task_content: str | None = None,
 ) -> str:
     """Build context information for workforce.
-    Instructs coordinator to actively load skills using list_skills/load_skill tools.
+
+    Prepends durable Project memory (from LocalMemoryStore) when available so
+    Workforce recovers cross-restart context the same way Single Agent does
+    via _build_single_agent_context. The in-process conversation_history is
+    still appended afterward because it is the live state for the current
+    session and may contain turns not yet flushed to disk.
     """
-    return build_conversation_context(
+    durable = build_durable_context_for_task_lock(
+        task_lock,
+        mode="workforce_coordinator",
+        current_user_prompt=task_content or "",
+    )
+    in_process = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
+    if durable and in_process:
+        return durable + "\n\n" + in_process
+    if durable:
+        return durable + "\n\n"
+    return in_process
 
 
 @sync_step
@@ -416,6 +477,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             else:
                 logger.info("[LIFECYCLE] Workforce is None, no need to stop")
             task_lock.status = Status.done
+            finalize_task_lock_run_memory(
+                task_lock,
+                state="cancelled",
+                final_result="<summary>Client disconnected</summary>Client disconnected",
+            )
             try:
                 await delete_task_lock(task_lock.id)
                 logger.info(
@@ -507,26 +573,39 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_lock
                 )
                 if is_exceeded:
+                    # The durable transcript on disk already has everything;
+                    # drop older in-process turns and try again before we
+                    # refuse the user's prompt.
+                    dropped = _trim_in_process_history(task_lock)
+                    if dropped:
+                        is_exceeded, total_length = (
+                            check_conversation_history_length(task_lock)
+                        )
+                if is_exceeded:
                     logger.error(
-                        "Conversation history too long",
+                        "Conversation history too long even after compaction",
                         extra={
                             "project_id": options.project_id,
                             "current_length": total_length,
-                            "max_length": 100000,
+                            "max_length": 200000,
                         },
                     )
                     ctx_msg = (
-                        "The conversation history "
-                        "is too long. Please create"
-                        " a new project to continue."
+                        "This single turn is larger than the per-Run budget."
+                        " Try breaking the prompt into smaller steps."
                     )
                     yield sse_json(
                         "context_too_long",
                         {
                             "message": ctx_msg,
                             "current_length": total_length,
-                            "max_length": 100000,
+                            "max_length": 200000,
                         },
+                    )
+                    finalize_task_lock_run_memory(
+                        task_lock,
+                        state="failed",
+                        error="conversation_history_too_long",
                     )
                     continue
 
@@ -1071,6 +1150,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ),
                     },
                 )
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="done",
+                    final_result=end_message,
+                    summary=getattr(task_lock, "summary_task_content", ""),
+                )
 
                 # Clear camel_task as well
                 # (workforce is cleared, so
@@ -1098,25 +1183,33 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     task_lock
                 )
                 if is_exceeded:
+                    dropped = _trim_in_process_history(task_lock)
+                    if dropped:
+                        is_exceeded, total_length = (
+                            check_conversation_history_length(task_lock)
+                        )
+                if is_exceeded:
                     logger.error(
-                        "Cannot start task: "
-                        "conversation history too "
-                        f"long ({total_length} chars)"
-                        " for project "
-                        f"{options.project_id}"
+                        "Cannot start task: conversation history too long"
+                        f" even after compaction ({total_length} chars)"
+                        f" for project {options.project_id}"
                     )
                     ctx_msg = (
-                        "The conversation history "
-                        "is too long. Please create"
-                        " a new project to continue."
+                        "This single turn is larger than the per-Run budget."
+                        " Try breaking the prompt into smaller steps."
                     )
                     yield sse_json(
                         "context_too_long",
                         {
                             "message": ctx_msg,
                             "current_length": total_length,
-                            "max_length": 100000,
+                            "max_length": 200000,
                         },
+                    )
+                    finalize_task_lock_run_memory(
+                        task_lock,
+                        state="failed",
+                        error="conversation_history_too_long",
                     )
                     continue
 
@@ -1766,6 +1859,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ),
                     },
                 )
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="done",
+                    final_result=final_result,
+                    summary=getattr(task_lock, "summary_task_content", ""),
+                )
 
                 yield sse_json("end", final_result)
 
@@ -1880,6 +1979,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         " at stop action for project"
                         f" {options.project_id}"
                     )
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="cancelled",
+                    final_result="<summary>Task stopped</summary>Task stopped by user",
+                )
                 logger.info("[LIFECYCLE] Deleting task lock")
                 await delete_task_lock(task_lock.id)
                 logger.info(
@@ -1910,6 +2014,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     exc_info=True,
                 )
                 yield sse_json("error", {"message": str(e)})
+                finalize_task_lock_run_memory(
+                    task_lock,
+                    state="failed",
+                    error=str(e),
+                )
                 if (
                     "workforce" in locals()
                     and workforce is not None
@@ -1924,6 +2033,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 exc_info=True,
             )
             yield sse_json("error", {"message": str(e)})
+            finalize_task_lock_run_memory(
+                task_lock,
+                state="failed",
+                error=str(e),
+            )
             # Continue processing other items instead of breaking
 
 
@@ -2192,6 +2306,59 @@ async def _run_agent_step(agent: ListenChatAgent, prompt: str):
     raise AttributeError("Agent has neither step nor astep")
 
 
+def _render_subtask_report(task: Task, *, is_failure: bool) -> str:
+    """Build a per-subtask report.
+
+    Used in two places:
+    - Partial-failure aggregation when Workforce stops on a failed subtask --
+      ``task.result`` is often empty there and the UI would otherwise render
+      nothing. ``is_failure=True`` adds the warning banner.
+    - Successful single-subtask fallback when Workforce leaves ``task.result``
+      empty even though the lone subtask succeeded. ``is_failure=False``
+      keeps the banner off so the user does not see a misleading
+      "partially failed" header on a healthy run.
+    """
+
+    def _state_name(state: object) -> str:
+        if state is None:
+            return "UNKNOWN"
+        return str(getattr(state, "name", state) or "UNKNOWN")
+
+    def _is_failed(state: object) -> bool:
+        return "fail" in _state_name(state).lower()
+
+    subtasks = list(task.subtasks or [])
+    lines: list[str] = []
+    if is_failure:
+        lines.append(
+            "⚠️ Task partially failed — showing the subtasks that did finish:"
+        )
+        lines.append("")
+    for idx, subtask in enumerate(subtasks, 1):
+        state = getattr(subtask, "state", None)
+        state_label = _state_name(state)
+        emoji = "❌" if _is_failed(state) else "✅"
+        content = str(getattr(subtask, "content", "") or "").strip()
+        sub_result = str(getattr(subtask, "result", "") or "").strip()
+        lines.append(f"{emoji} **Subtask {idx} ({state_label})**")
+        if content:
+            preview = content if len(content) <= 200 else content[:200] + "…"
+            lines.append(f"_Task:_ {preview}")
+        if sub_result:
+            lines.append("")
+            lines.append(sub_result)
+        else:
+            lines.append("_No output captured._")
+        lines.append("")
+    parent_result = str(task.result or "").strip()
+    if parent_result:
+        lines.append("---")
+        lines.append("**Overall task result**")
+        lines.append("")
+        lines.append(parent_result)
+    return "\n".join(lines).rstrip() + "\n"
+
+
 async def get_task_result_with_optional_summary(
     task: Task, options: Chat
 ) -> str:
@@ -2220,10 +2387,10 @@ async def get_task_result_with_optional_summary(
 
     if has_failed_subtask:
         logger.info(
-            "Task %s has failed subtasks, skipping LLM summary to finish quickly",
+            "Task %s has failed subtasks, concatenating per-subtask results",
             task.id,
         )
-        return result
+        return _render_subtask_report(task, is_failure=True)
 
     if task.subtasks and len(task.subtasks) > 1:
         logger.info(
@@ -2246,6 +2413,16 @@ async def get_task_result_with_optional_summary(
             parts = result.split("Result ---", 1)
             if len(parts) > 1:
                 result = parts[1].strip()
+        if not result.strip():
+            # Workforce sometimes leaves task.result empty even when the lone
+            # subtask succeeded -- the user then sees a "Done 1" task card with
+            # no body text and memory skips the assistant turn. Fall back to
+            # the per-subtask render so the UI always gets something.
+            logger.info(
+                "Task %s has empty task.result; falling back to subtask render",
+                task.id,
+            )
+            result = _render_subtask_report(task, is_failure=False)
 
     return result
 
