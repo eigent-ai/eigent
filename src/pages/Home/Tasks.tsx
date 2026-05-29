@@ -14,28 +14,34 @@
 
 import { HistoryTask, ProjectGroup as ProjectGroupType } from '@/types/history';
 import { ListChecks } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import HomeHubBoard from './components/HomeHubBoard';
+import HomeHubBoardCard from './components/HomeHubBoardCard';
 import HomeHubCard from './components/HomeHubCard';
+import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
-import SectionHeader from './components/SectionHeader';
+import HomeHubListTable from './components/HomeHubListTable';
 import { useHomeHub } from './context';
 import { useSpaceLabel } from './hooks/useSpaceLabel';
-import { capitalizeLabel, matchesHubNameSearch } from './utils';
+import {
+  compareHubByName,
+  compareHubByTimestamp,
+  matchesHubNameSearch,
+} from './utils';
+import { getTaskBoardColumn, groupByBoardColumn } from './utils/boardStatus';
 
 type TaskWithContext = HistoryTask & { projectName?: string };
 
 function TaskRow({
   task,
   viewMode,
-  subtitle,
   project,
   onDelete,
   onShare,
 }: {
   task: TaskWithContext;
-  viewMode: 'grid' | 'list';
-  subtitle: string;
+  viewMode: 'grid' | 'list' | 'board';
   project?: ProjectGroupType;
   onDelete: () => void;
   onShare: () => void;
@@ -45,16 +51,17 @@ function TaskRow({
     kind: 'task' as const,
     task,
     spaceLabel,
-    subtitle,
     project,
     onDelete,
     onShare,
   };
 
-  return viewMode === 'grid' ? (
-    <HomeHubCard {...sharedProps} />
-  ) : (
+  return viewMode === 'list' ? (
     <HomeHubListItem {...sharedProps} />
+  ) : viewMode === 'board' ? (
+    <HomeHubBoardCard {...sharedProps} />
+  ) : (
+    <HomeHubCard {...sharedProps} />
   );
 }
 
@@ -63,43 +70,92 @@ export default function Tasks() {
   const {
     viewMode,
     searchQuery,
+    sortBy,
+    sortDirection,
     projects,
     projectsLoading,
     onTaskDelete,
     onTaskShare,
+    chatTasks,
   } = useHomeHub();
 
   const tasks = useMemo<TaskWithContext[]>(() => {
-    return projects
-      .flatMap((project) =>
-        project.tasks.map((task) => ({
-          ...task,
-          projectName: project.project_name,
-          space_id: task.space_id || project.space_id,
-        }))
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.updated_at || b.created_at || 0).getTime() -
-          new Date(a.updated_at || a.created_at || 0).getTime()
-      );
+    return projects.flatMap((project) =>
+      project.tasks.map((task) => ({
+        ...task,
+        projectName: project.project_name,
+        space_id: task.space_id || project.space_id,
+      }))
+    );
   }, [projects]);
 
+  const projectsById = useMemo(
+    () => new Map(projects.map((project) => [project.project_id, project])),
+    [projects]
+  );
+
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return tasks;
-    const fallbackName = t('layout.new-project');
-    return tasks.filter((task) =>
-      matchesHubNameSearch(searchQuery, task.question?.trim() || fallbackName)
+    const filtered = !searchQuery.trim()
+      ? tasks
+      : tasks.filter((task) => {
+          const fallbackName = t('layout.new-project');
+          return matchesHubNameSearch(
+            searchQuery,
+            task.question?.trim() || fallbackName
+          );
+        });
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'name') {
+        const fallbackName = t('layout.new-project');
+        return compareHubByName(
+          a.question?.trim() || fallbackName,
+          b.question?.trim() || fallbackName,
+          sortDirection
+        );
+      }
+      if (sortBy === 'updated') {
+        return compareHubByTimestamp(
+          a.updated_at || a.created_at,
+          b.updated_at || b.created_at,
+          sortDirection
+        );
+      }
+      return compareHubByTimestamp(a.created_at, b.created_at, sortDirection);
+    });
+  }, [tasks, searchQuery, sortBy, sortDirection, t]);
+
+  const renderTaskRow = useCallback(
+    (task: TaskWithContext, mode: 'grid' | 'list' | 'board') => (
+      <TaskRow
+        key={task.id}
+        task={task}
+        viewMode={mode}
+        project={projectsById.get(task.project_id)}
+        onDelete={() => onTaskDelete(String(task.id))}
+        onShare={() => onTaskShare(task.task_id)}
+      />
+    ),
+    [onTaskDelete, onTaskShare, projectsById]
+  );
+
+  const boardColumns = useMemo(() => {
+    const grouped = groupByBoardColumn(filteredTasks, (task) =>
+      getTaskBoardColumn(task, chatTasks)
     );
-  }, [tasks, searchQuery, t]);
+
+    return {
+      default: grouped.default.map((task) => renderTaskRow(task, 'board')),
+      running: grouped.running.map((task) => renderTaskRow(task, 'board')),
+      awaiting_review: grouped.awaiting_review.map((task) =>
+        renderTaskRow(task, 'board')
+      ),
+    };
+  }, [chatTasks, filteredTasks, renderTaskRow]);
 
   if (projectsLoading) {
     return (
-      <div className="flex w-full min-w-0 flex-col">
-        <SectionHeader
-          title={capitalizeLabel(t('layout.tasks'))}
-          searchPlaceholder={t('layout.search-tasks')}
-        />
+      <div className="min-w-0 flex w-full flex-col">
         <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">
           {t('layout.loading')}
         </div>
@@ -108,66 +164,31 @@ export default function Tasks() {
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
-      <SectionHeader
-        title={capitalizeLabel(t('layout.tasks'))}
-        searchPlaceholder={t('layout.search-tasks')}
-      />
-
-      <div className="mb-12 w-full min-w-0">
+    <div className="min-w-0 flex w-full flex-col">
+      <div className="mb-12 min-w-0 w-full">
         {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <ListChecks className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('dashboard.no-tasks-found') || t('layout.total-tasks')}
             </div>
           </div>
         ) : filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
+        ) : viewMode === 'board' ? (
+          <HomeHubBoard columns={boardColumns} />
         ) : viewMode === 'grid' ? (
-          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
-            {filteredTasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                viewMode={viewMode}
-                subtitle={
-                  task.summary?.trim() ||
-                  task.projectName ||
-                  t('layout.no-description', {
-                    defaultValue: 'No description yet.',
-                  })
-                }
-                project={projects.find((p) => p.project_id === task.project_id)}
-                onDelete={() => onTaskDelete(String(task.id))}
-                onShare={() => onTaskShare(task.task_id)}
-              />
-            ))}
-          </div>
+          <HomeHubGrid>
+            {filteredTasks.map((task) => renderTaskRow(task, 'grid'))}
+          </HomeHubGrid>
         ) : (
-          <div className="flex flex-col gap-3">
-            {filteredTasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                viewMode={viewMode}
-                subtitle={
-                  task.summary?.trim() ||
-                  task.projectName ||
-                  t('layout.no-description', {
-                    defaultValue: 'No description yet.',
-                  })
-                }
-                project={projects.find((p) => p.project_id === task.project_id)}
-                onDelete={() => onTaskDelete(String(task.id))}
-                onShare={() => onTaskShare(task.task_id)}
-              />
-            ))}
-          </div>
+          <HomeHubListTable kind="task">
+            {filteredTasks.map((task) => renderTaskRow(task, 'list'))}
+          </HomeHubListTable>
         )}
       </div>
     </div>

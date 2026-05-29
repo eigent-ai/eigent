@@ -16,19 +16,26 @@ import {
   proxyActivateTrigger,
   proxyDeactivateTrigger,
   proxyDeleteTrigger,
-  proxyFetchTriggers,
 } from '@/service/triggerApi';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
 import { Zap } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import HomeHubBoard from './components/HomeHubBoard';
+import HomeHubBoardCard from './components/HomeHubBoardCard';
 import HomeHubCard from './components/HomeHubCard';
+import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
-import SectionHeader from './components/SectionHeader';
+import HomeHubListTable from './components/HomeHubListTable';
 import { useHomeHub } from './context';
 import { useHomeHubNavigation } from './hooks/useHomeHubNavigation';
 import { useSpaceLabel } from './hooks/useSpaceLabel';
-import { capitalizeLabel, matchesHubNameSearch } from './utils';
+import {
+  compareHubByName,
+  compareHubByTimestamp,
+  matchesHubNameSearch,
+} from './utils';
+import { getTriggerBoardColumn, groupByBoardColumn } from './utils/boardStatus';
 
 function getTriggerTypeLabel(
   trigger: Trigger,
@@ -48,7 +55,7 @@ function TriggerRow({
   onToggleActive,
 }: {
   trigger: Trigger;
-  viewMode: 'grid' | 'list';
+  viewMode: 'grid' | 'list' | 'board';
   onEdit: (trigger: Trigger) => void;
   onDelete: (trigger: Trigger) => void;
   onToggleActive: (trigger: Trigger) => void;
@@ -65,43 +72,49 @@ function TriggerRow({
     onToggleActive,
   };
 
-  return viewMode === 'grid' ? (
-    <HomeHubCard {...sharedProps} />
-  ) : (
+  return viewMode === 'list' ? (
     <HomeHubListItem {...sharedProps} />
+  ) : viewMode === 'board' ? (
+    <HomeHubBoardCard {...sharedProps} />
+  ) : (
+    <HomeHubCard {...sharedProps} />
   );
 }
 
 export default function Triggers() {
   const { t } = useTranslation();
-  const { viewMode, searchQuery } = useHomeHub();
+  const {
+    viewMode,
+    searchQuery,
+    sortBy,
+    sortDirection,
+    triggers,
+    triggersLoading,
+    reloadTriggers,
+  } = useHomeHub();
   const { openTrigger } = useHomeHubNavigation();
-  const [triggers, setTriggers] = useState<Trigger[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const loadTriggers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await proxyFetchTriggers(undefined, undefined, 1, 100);
-      setTriggers(response?.items ?? response ?? []);
-    } catch (error) {
-      console.error('Failed to load triggers:', error);
-      setTriggers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadTriggers();
-  }, [loadTriggers]);
 
   const filteredTriggers = useMemo(() => {
-    if (!searchQuery.trim()) return triggers;
-    return triggers.filter((trigger) =>
-      matchesHubNameSearch(searchQuery, trigger.name)
-    );
-  }, [triggers, searchQuery]);
+    const filtered = !searchQuery.trim()
+      ? triggers
+      : triggers.filter((trigger) =>
+          matchesHubNameSearch(searchQuery, trigger.name)
+        );
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'name') {
+        return compareHubByName(a.name, b.name, sortDirection);
+      }
+      if (sortBy === 'updated') {
+        return compareHubByTimestamp(
+          a.updated_at || a.last_executed_at || a.created_at,
+          b.updated_at || b.last_executed_at || b.created_at,
+          sortDirection
+        );
+      }
+      return compareHubByTimestamp(a.created_at, b.created_at, sortDirection);
+    });
+  }, [triggers, searchQuery, sortBy, sortDirection]);
 
   const handleEditTrigger = useCallback(
     (trigger: Trigger) => {
@@ -110,35 +123,67 @@ export default function Triggers() {
     [openTrigger]
   );
 
-  const handleToggleActive = async (trigger: Trigger) => {
-    try {
-      if (trigger.status === TriggerStatus.Active) {
-        await proxyDeactivateTrigger(trigger.id);
-      } else {
-        await proxyActivateTrigger(trigger.id);
+  const handleToggleActive = useCallback(
+    async (trigger: Trigger) => {
+      try {
+        if (trigger.status === TriggerStatus.Active) {
+          await proxyDeactivateTrigger(trigger.id);
+        } else {
+          await proxyActivateTrigger(trigger.id);
+        }
+        void reloadTriggers();
+      } catch (error) {
+        console.error('Failed to toggle trigger:', error);
       }
-      void loadTriggers();
-    } catch (error) {
-      console.error('Failed to toggle trigger:', error);
-    }
-  };
+    },
+    [reloadTriggers]
+  );
 
-  const handleDelete = async (trigger: Trigger) => {
-    try {
-      await proxyDeleteTrigger(trigger.id);
-      void loadTriggers();
-    } catch (error) {
-      console.error('Failed to delete trigger:', error);
-    }
-  };
+  const handleDelete = useCallback(
+    async (trigger: Trigger) => {
+      try {
+        await proxyDeleteTrigger(trigger.id);
+        void reloadTriggers();
+      } catch (error) {
+        console.error('Failed to delete trigger:', error);
+      }
+    },
+    [reloadTriggers]
+  );
 
-  if (loading) {
+  const renderTriggerRow = useCallback(
+    (trigger: Trigger, mode: 'grid' | 'list' | 'board') => (
+      <TriggerRow
+        key={trigger.id}
+        trigger={trigger}
+        viewMode={mode}
+        onEdit={handleEditTrigger}
+        onDelete={handleDelete}
+        onToggleActive={handleToggleActive}
+      />
+    ),
+    [handleDelete, handleEditTrigger, handleToggleActive]
+  );
+
+  const boardColumns = useMemo(() => {
+    const grouped = groupByBoardColumn(filteredTriggers, getTriggerBoardColumn);
+
+    return {
+      default: grouped.default.map((trigger) =>
+        renderTriggerRow(trigger, 'board')
+      ),
+      running: grouped.running.map((trigger) =>
+        renderTriggerRow(trigger, 'board')
+      ),
+      awaiting_review: grouped.awaiting_review.map((trigger) =>
+        renderTriggerRow(trigger, 'board')
+      ),
+    };
+  }, [filteredTriggers, renderTriggerRow]);
+
+  if (triggersLoading) {
     return (
-      <div className="flex w-full min-w-0 flex-col">
-        <SectionHeader
-          title={capitalizeLabel(t('layout.triggers'))}
-          searchPlaceholder={t('layout.search-triggers')}
-        />
+      <div className="min-w-0 flex w-full flex-col">
         <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">
           {t('layout.loading')}
         </div>
@@ -147,52 +192,35 @@ export default function Triggers() {
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
-      <SectionHeader
-        title={capitalizeLabel(t('layout.triggers'))}
-        searchPlaceholder={t('layout.search-triggers')}
-      />
-
-      <div className="mb-12 w-full min-w-0">
+    <div className="min-w-0 flex w-full flex-col">
+      <div className="mb-12 min-w-0 w-full">
         {triggers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <Zap className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('triggers.no-triggers') || t('layout.triggers')}
             </div>
           </div>
         ) : filteredTriggers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
+        ) : viewMode === 'board' ? (
+          <HomeHubBoard columns={boardColumns} />
         ) : viewMode === 'grid' ? (
-          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
-            {filteredTriggers.map((trigger) => (
-              <TriggerRow
-                key={trigger.id}
-                trigger={trigger}
-                viewMode={viewMode}
-                onEdit={handleEditTrigger}
-                onDelete={handleDelete}
-                onToggleActive={handleToggleActive}
-              />
-            ))}
-          </div>
+          <HomeHubGrid>
+            {filteredTriggers.map((trigger) =>
+              renderTriggerRow(trigger, 'grid')
+            )}
+          </HomeHubGrid>
         ) : (
-          <div className="flex flex-col gap-3">
-            {filteredTriggers.map((trigger) => (
-              <TriggerRow
-                key={trigger.id}
-                trigger={trigger}
-                viewMode={viewMode}
-                onEdit={handleEditTrigger}
-                onDelete={handleDelete}
-                onToggleActive={handleToggleActive}
-              />
-            ))}
-          </div>
+          <HomeHubListTable kind="trigger">
+            {filteredTriggers.map((trigger) =>
+              renderTriggerRow(trigger, 'list')
+            )}
+          </HomeHubListTable>
         )}
       </div>
     </div>

@@ -11,6 +11,7 @@
   "grid": "Cuadrícula",
   "table": "Tabla",
   "list": "Lista",
+  "board": "Tablero",
   "search-dialog": "Buscar Dialog",
   "search-dialog-placeholder": "Buscar o preguntar una pregunta",
   "no-results": "No se encontraron resultados.",

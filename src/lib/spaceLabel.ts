@@ -136,3 +136,18 @@ export function getSpaceKindLabel(space: Space, t: TFunction) {
   }
   return t('layout.spaces-hub-remote-tag', { defaultValue: 'Remote' });
 }
+
+export function getSpaceStatusLabel(
+  status: Space['status'],
+  t: TFunction
+): string {
+  switch (status) {
+    case 'disconnected':
+      return t('layout.home-space-status-disconnected');
+    case 'archived':
+      return t('layout.home-space-status-archived');
+    case 'active':
+    default:
+      return t('layout.home-space-status-active');
+  }
+}

@@ -16,12 +16,31 @@ import type { ProjectGroup } from '@/types/history';
 import { FolderOpen } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import HomeHubBoard from './components/HomeHubBoard';
+import HomeHubBoardCard from './components/HomeHubBoardCard';
 import HomeHubCard from './components/HomeHubCard';
+import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
-import SectionHeader from './components/SectionHeader';
+import HomeHubListTable from './components/HomeHubListTable';
 import { useHomeHub } from './context';
 import { useSpaceLabel } from './hooks/useSpaceLabel';
-import { capitalizeLabel, matchesHubNameSearch } from './utils';
+import {
+  compareHubByName,
+  compareHubByTimestamp,
+  matchesHubNameSearch,
+  timestampFromHubValue,
+} from './utils';
+import { getProjectBoardColumn, groupByBoardColumn } from './utils/boardStatus';
+
+function getProjectCreatedTime(project: ProjectGroup): string | number {
+  const taskCreatedTimes = project.tasks
+    .map((task) => timestampFromHubValue(task.created_at))
+    .filter((time) => time > 0);
+  if (taskCreatedTimes.length > 0) {
+    return Math.min(...taskCreatedTimes);
+  }
+  return project.latest_task_date;
+}
 
 function ProjectRow({
   project,
@@ -30,7 +49,7 @@ function ProjectRow({
   onProjectRename,
 }: {
   project: ProjectGroup;
-  viewMode: 'grid' | 'list';
+  viewMode: 'grid' | 'list' | 'board';
   onProjectDelete?: (projectId: string) => void;
   onProjectRename?: (projectId: string, newName: string) => void;
 }) {
@@ -43,10 +62,12 @@ function ProjectRow({
     onProjectRename,
   };
 
-  return viewMode === 'grid' ? (
-    <HomeHubCard {...sharedProps} />
-  ) : (
+  return viewMode === 'list' ? (
     <HomeHubListItem {...sharedProps} />
+  ) : viewMode === 'board' ? (
+    <HomeHubBoardCard {...sharedProps} />
+  ) : (
+    <HomeHubCard {...sharedProps} />
   );
 }
 
@@ -55,30 +76,89 @@ export default function Projects() {
   const {
     viewMode,
     searchQuery,
+    sortBy,
+    sortDirection,
     projects,
     projectsLoading,
     onProjectDelete,
     onProjectRename,
+    chatTasks,
   } = useHomeHub();
 
   const filteredProjects = useMemo(() => {
-    if (!searchQuery.trim()) return projects;
-    const fallbackName = t('layout.new-project');
-    return projects.filter((project) =>
-      matchesHubNameSearch(
-        searchQuery,
-        project.project_name?.trim() || fallbackName
-      )
+    const filtered = !searchQuery.trim()
+      ? projects
+      : projects.filter((project) => {
+          const fallbackName = t('layout.new-project');
+          return matchesHubNameSearch(
+            searchQuery,
+            project.project_name?.trim() || fallbackName
+          );
+        });
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'name') {
+        const fallbackName = t('layout.new-project');
+        return compareHubByName(
+          a.project_name?.trim() || fallbackName,
+          b.project_name?.trim() || fallbackName,
+          sortDirection
+        );
+      }
+      if (sortBy === 'updated') {
+        return compareHubByTimestamp(
+          a.latest_task_date,
+          b.latest_task_date,
+          sortDirection
+        );
+      }
+      return compareHubByTimestamp(
+        getProjectCreatedTime(a),
+        getProjectCreatedTime(b),
+        sortDirection
+      );
+    });
+  }, [projects, searchQuery, sortBy, sortDirection, t]);
+
+  const boardColumns = useMemo(() => {
+    const grouped = groupByBoardColumn(filteredProjects, (project) =>
+      getProjectBoardColumn(project, chatTasks)
     );
-  }, [projects, searchQuery, t]);
+
+    return {
+      default: grouped.default.map((project) => (
+        <ProjectRow
+          key={project.project_id}
+          project={project}
+          viewMode="board"
+          onProjectDelete={onProjectDelete}
+          onProjectRename={onProjectRename}
+        />
+      )),
+      running: grouped.running.map((project) => (
+        <ProjectRow
+          key={project.project_id}
+          project={project}
+          viewMode="board"
+          onProjectDelete={onProjectDelete}
+          onProjectRename={onProjectRename}
+        />
+      )),
+      awaiting_review: grouped.awaiting_review.map((project) => (
+        <ProjectRow
+          key={project.project_id}
+          project={project}
+          viewMode="board"
+          onProjectDelete={onProjectDelete}
+          onProjectRename={onProjectRename}
+        />
+      )),
+    };
+  }, [chatTasks, filteredProjects, onProjectDelete, onProjectRename]);
 
   if (projectsLoading) {
     return (
-      <div className="flex w-full min-w-0 flex-col">
-        <SectionHeader
-          title={capitalizeLabel(t('layout.projects'))}
-          searchPlaceholder={t('layout.search-projects')}
-        />
+      <div className="min-w-0 flex w-full flex-col">
         <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">
           {t('layout.loading')}
         </div>
@@ -87,28 +167,25 @@ export default function Projects() {
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
-      <SectionHeader
-        title={capitalizeLabel(t('layout.projects'))}
-        searchPlaceholder={t('layout.search-projects')}
-      />
-
-      <div className="mb-12 w-full min-w-0">
+    <div className="min-w-0 flex w-full flex-col">
+      <div className="mb-12 min-w-0 w-full">
         {projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('dashboard.no-projects-found')}
             </div>
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
+        ) : viewMode === 'board' ? (
+          <HomeHubBoard columns={boardColumns} />
         ) : viewMode === 'grid' ? (
-          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
+          <HomeHubGrid>
             {filteredProjects.map((project) => (
               <ProjectRow
                 key={project.project_id}
@@ -118,9 +195,9 @@ export default function Projects() {
                 onProjectRename={onProjectRename}
               />
             ))}
-          </div>
+          </HomeHubGrid>
         ) : (
-          <div className="flex flex-col gap-3">
+          <HomeHubListTable kind="project">
             {filteredProjects.map((project) => (
               <ProjectRow
                 key={project.project_id}
@@ -130,7 +207,7 @@ export default function Projects() {
                 onProjectRename={onProjectRename}
               />
             ))}
-          </div>
+          </HomeHubListTable>
         )}
       </div>
     </div>

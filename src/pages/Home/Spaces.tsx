@@ -22,11 +22,19 @@ import {
 import { FolderKanban } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import HomeHubBoard from './components/HomeHubBoard';
+import HomeHubBoardCard from './components/HomeHubBoardCard';
 import HomeHubCard from './components/HomeHubCard';
+import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
-import SectionHeader from './components/SectionHeader';
+import HomeHubListTable from './components/HomeHubListTable';
 import { useHomeHub } from './context';
-import { capitalizeLabel, matchesHubNameSearch } from './utils';
+import {
+  compareHubByName,
+  compareHubByTimestamp,
+  matchesHubNameSearch,
+} from './utils';
+import { getSpaceBoardColumn, groupByBoardColumn } from './utils/boardStatus';
 
 const pathBasename = (path?: string | null) => {
   const value = path?.trim();
@@ -37,7 +45,15 @@ const pathBasename = (path?: string | null) => {
 
 export default function Spaces() {
   const { t } = useTranslation();
-  const { viewMode, searchQuery, projects: hubProjects } = useHomeHub();
+  const {
+    viewMode,
+    searchQuery,
+    projects: hubProjects,
+    sortBy,
+    sortDirection,
+    triggers,
+    chatTasks,
+  } = useHomeHub();
   const spacesById = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
@@ -54,13 +70,7 @@ export default function Spaces() {
         .map((space) => ({
           space,
           projects: getVisibleProjectMetasForSpace(projectsBySpaceId, space.id),
-        }))
-        .sort((a, b) => {
-          const legacyDelta =
-            Number(isLegacySpace(b.space)) - Number(isLegacySpace(a.space));
-          if (legacyDelta !== 0) return legacyDelta;
-          return b.space.updatedAt - a.space.updatedAt;
-        }),
+        })),
     [activeSpaceId, projectsBySpaceId, spacesById]
   );
 
@@ -83,15 +93,46 @@ export default function Spaces() {
     }
   }, [spaceIdsKey]);
 
-  const getSubtitle = (space: Space) => {
-    if (space.sourceType === 'folder') {
-      return pathBasename(space.rootPath) || space.rootPath || '';
+  const getSubtitle = useCallback(
+    (space: Space) => {
+      if (space.sourceType === 'folder') {
+        return pathBasename(space.rootPath) || space.rootPath || '';
+      }
+      if (isLegacySpace(space)) {
+        return t('layout.spaces-hub-legacy-description');
+      }
+      return t('layout.spaces-hub-blank-description');
+    },
+    [t]
+  );
+
+  const hubProjectsBySpaceId = useMemo(() => {
+    const map = new Map<string, typeof hubProjects>();
+    for (const project of hubProjects) {
+      if (!project.space_id) continue;
+      const list = map.get(project.space_id);
+      if (list) {
+        list.push(project);
+      } else {
+        map.set(project.space_id, [project]);
+      }
     }
-    if (isLegacySpace(space)) {
-      return t('layout.spaces-hub-legacy-description');
+    return map;
+  }, [hubProjects]);
+
+  const triggersBySpaceId = useMemo(() => {
+    const map = new Map<string, typeof triggers>();
+    for (const trigger of triggers) {
+      if (!trigger.space_id) continue;
+      const list = map.get(trigger.space_id);
+      if (list) {
+        list.push(trigger);
+      } else {
+        map.set(trigger.space_id, [trigger]);
+      }
     }
-    return t('layout.spaces-hub-blank-description');
-  };
+    return map;
+  }, [triggers]);
 
   const getSpaceStats = useCallback(
     (spaceId: string, projectCount: number) => {
@@ -114,36 +155,102 @@ export default function Spaces() {
   );
 
   const filteredSpaceSections = useMemo(() => {
-    if (!searchQuery.trim()) return spaceSections;
-    const untitled = t('layout.spaces-untitled');
-    return spaceSections.filter(({ space }) =>
-      matchesHubNameSearch(searchQuery, space.name?.trim() || untitled)
+    const filtered = !searchQuery.trim()
+      ? spaceSections
+      : spaceSections.filter(({ space }) => {
+          const untitled = t('layout.spaces-untitled');
+          return matchesHubNameSearch(
+            searchQuery,
+            space.name?.trim() || untitled
+          );
+        });
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'name') {
+        const untitled = t('layout.spaces-untitled');
+        return compareHubByName(
+          a.space.name?.trim() || untitled,
+          b.space.name?.trim() || untitled,
+          sortDirection
+        );
+      }
+      if (sortBy === 'updated') {
+        return compareHubByTimestamp(
+          a.space.updatedAt,
+          b.space.updatedAt,
+          sortDirection
+        );
+      }
+      return compareHubByTimestamp(
+        a.space.createdAt,
+        b.space.createdAt,
+        sortDirection
+      );
+    });
+  }, [searchQuery, sortBy, sortDirection, spaceSections, t]);
+
+  const boardColumns = useMemo(() => {
+    const grouped = groupByBoardColumn(filteredSpaceSections, ({ space }) =>
+      getSpaceBoardColumn(
+        hubProjectsBySpaceId.get(space.id) ?? [],
+        triggersBySpaceId.get(space.id) ?? [],
+        chatTasks
+      )
     );
-  }, [searchQuery, spaceSections, t]);
+
+    const renderSpaceCard = ({
+      space,
+      projects,
+    }: (typeof filteredSpaceSections)[number]) => {
+      const stats = getSpaceStats(space.id, projects.length);
+      return (
+        <HomeHubBoardCard
+          key={space.id}
+          kind="space"
+          space={space}
+          subtitle={getSubtitle(space)}
+          isLegacy={isLegacySpace(space)}
+          projectCount={stats.projectCount}
+          taskCount={stats.taskCount}
+          triggerCount={stats.triggerCount}
+        />
+      );
+    };
+
+    return {
+      default: grouped.default.map(renderSpaceCard),
+      running: grouped.running.map(renderSpaceCard),
+      awaiting_review: grouped.awaiting_review.map(renderSpaceCard),
+    };
+  }, [
+    chatTasks,
+    filteredSpaceSections,
+    getSpaceStats,
+    getSubtitle,
+    hubProjectsBySpaceId,
+    triggersBySpaceId,
+  ]);
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
-      <SectionHeader
-        title={capitalizeLabel(t('layout.spaces'))}
-        searchPlaceholder={t('layout.search-spaces')}
-      />
-
-      <div className="mb-12 w-full min-w-0">
+    <div className="min-w-0 flex w-full flex-col">
+      <div className="mb-12 min-w-0 w-full">
         {spaceSections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <FolderKanban className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.spaces-hub-empty-title')}
             </div>
           </div>
         ) : filteredSpaceSections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="p-8 flex flex-col items-center justify-center text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>
+        ) : viewMode === 'board' ? (
+          <HomeHubBoard columns={boardColumns} />
         ) : viewMode === 'grid' ? (
-          <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
+          <HomeHubGrid>
             {filteredSpaceSections.map(({ space, projects }) => {
               const stats = getSpaceStats(space.id, projects.length);
               return (
@@ -159,9 +266,9 @@ export default function Spaces() {
                 />
               );
             })}
-          </div>
+          </HomeHubGrid>
         ) : (
-          <div className="flex flex-col gap-3">
+          <HomeHubListTable kind="space">
             {filteredSpaceSections.map(({ space, projects }) => {
               const stats = getSpaceStats(space.id, projects.length);
               return (
@@ -177,7 +284,7 @@ export default function Spaces() {
                 />
               );
             })}
-          </div>
+          </HomeHubListTable>
         )}
       </div>
     </div>

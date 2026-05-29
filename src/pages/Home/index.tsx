@@ -13,24 +13,32 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchPut, proxyFetchDelete } from '@/api/http';
-import VerticalNavigation, {
-  type VerticalNavItem,
-} from '@/components/Dashboard/VerticalNav';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { ChatTaskStatus } from '@/types/constants';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { HomeHubProvider, type HomeViewMode } from './context';
+import HomeHubToolbar from './components/HomeHubToolbar';
+import {
+  HomeHubProvider,
+  type HomeSortBy,
+  type HomeSortDirection,
+  type HomeViewMode,
+} from './context';
 import { useHomeHubCounts } from './hooks/useHomeHubCounts';
 import { useHomeHubProjects } from './hooks/useHomeHubProjects';
+import { useHomeHubTriggers } from './hooks/useHomeHubTriggers';
 import Projects from './Projects';
 import Spaces from './Spaces';
 import Tasks from './Tasks';
 import Triggers from './Triggers';
-import { capitalizeLabel } from './utils';
+import {
+  capitalizeLabel,
+  persistHomeViewMode,
+  readStoredHomeViewMode,
+} from './utils';
 
 const HOME_SECTIONS = ['spaces', 'projects', 'tasks', 'triggers'] as const;
 type HomeSection = (typeof HOME_SECTIONS)[number];
@@ -52,6 +60,7 @@ export default function HomeHub() {
     handleProjectRename,
     handleProjectDelete: hubHandleProjectDelete,
   } = useHomeHubProjects();
+  const { triggers, triggersLoading, reloadTriggers } = useHomeHubTriggers();
   const sectionCounts = useHomeHubCounts(projects);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -68,11 +77,21 @@ export default function HomeHub() {
   const activeTab: HomeSection = isHomeSection(sectionFromUrl)
     ? sectionFromUrl
     : 'spaces';
-  const [viewMode, setViewMode] = useState<HomeViewMode>('grid');
+  const [viewMode, setViewModeState] = useState<HomeViewMode>(
+    readStoredHomeViewMode
+  );
+  const setViewMode = useCallback((mode: HomeViewMode) => {
+    setViewModeState(mode);
+    persistHomeViewMode(mode);
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<HomeSortBy>('created');
+  const [sortDirection, setSortDirection] = useState<HomeSortDirection>('desc');
 
   useEffect(() => {
     setSearchQuery('');
+    setSortBy('created');
+    setSortDirection('desc');
   }, [activeTab]);
 
   const menuItems = useMemo(
@@ -183,8 +202,16 @@ export default function HomeHub() {
       setViewMode,
       searchQuery,
       setSearchQuery,
+      sortBy,
+      setSortBy,
+      sortDirection,
+      setSortDirection,
       projects,
       projectsLoading,
+      triggers,
+      triggersLoading,
+      reloadTriggers,
+      chatTasks: chatStore?.tasks,
       onTaskDelete: handleDelete,
       onTaskShare: handleShare,
       onProjectDelete: handleProjectDelete,
@@ -198,7 +225,19 @@ export default function HomeHub() {
     // `handle*` callbacks aren't memoized themselves and the parent re-renders
     // are infrequent; include only the data dependencies React tracks here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewMode, searchQuery, projects, projectsLoading, chatStore?.activeTaskId]
+    [
+      viewMode,
+      searchQuery,
+      sortBy,
+      sortDirection,
+      projects,
+      projectsLoading,
+      triggers,
+      triggersLoading,
+      reloadTriggers,
+      chatStore?.tasks,
+      chatStore?.activeTaskId,
+    ]
   );
 
   return (
@@ -226,35 +265,14 @@ export default function HomeHub() {
         cancelText={t('layout.cancel')}
       />
 
-      <div className="flex h-auto w-full">
-        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
-          <VerticalNavigation
-            items={
-              menuItems.map((menu) => ({
-                value: menu.id,
-                label: (
-                  <div className="flex w-full items-center justify-between">
-                    <span className="w-full text-left text-body-sm font-bold">
-                      {menu.name}
-                    </span>
-                    <div className="flex items-center justify-center rounded-full bg-ds-bg-brand-subtle-disabled px-1">
-                      <span className="text-label-xs font-normal tabular-nums text-ds-text-brand-strong-default">
-                        {menu.count}
-                      </span>
-                    </div>
-                  </div>
-                ),
-              })) as VerticalNavItem[]
-            }
-            value={activeTab}
-            onValueChange={handleTabChange}
-            className="h-full min-h-0 w-full flex-1 gap-0"
-            listClassName="w-full h-full overflow-y-auto"
-            contentClassName="hidden"
-          />
-        </div>
+      <div className="min-w-0 flex min-h-[calc(100vh-86px)] w-full flex-1 flex-col [--home-hub-history-tabs-offset:49px]">
+        <HomeHubToolbar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          menuItems={menuItems}
+        />
 
-        <div className="mx-auto flex min-h-[calc(100vh-86px)] w-full min-w-0 max-w-[940px] flex-1 flex-col">
+        <div className="min-w-0 w-full flex-1">
           {activeTab === 'spaces' && <Spaces />}
           {activeTab === 'projects' && <Projects />}
           {activeTab === 'tasks' && <Tasks />}

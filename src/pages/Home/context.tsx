@@ -12,18 +12,29 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { ChatStore } from '@/store/chatStore';
+import type { Trigger } from '@/types';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { createContext, useContext } from 'react';
+import type { HomeSortBy, HomeSortDirection, HomeViewMode } from './utils';
 
-export type HomeViewMode = 'grid' | 'list';
+export type { HomeSortBy, HomeSortDirection, HomeViewMode } from './utils';
 
 export type HomeHubContextValue = {
   viewMode: HomeViewMode;
   setViewMode: (mode: HomeViewMode) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  sortBy: HomeSortBy;
+  setSortBy: (sortBy: HomeSortBy) => void;
+  sortDirection: HomeSortDirection;
+  setSortDirection: (direction: HomeSortDirection) => void;
   projects: ProjectGroupType[];
   projectsLoading: boolean;
+  triggers: Trigger[];
+  triggersLoading: boolean;
+  reloadTriggers: () => Promise<void>;
+  chatTasks?: ChatStore['tasks'];
   onTaskDelete: (historyId: string, callback?: () => void) => void;
   onTaskShare: (taskId: string) => void;
   onProjectDelete: (projectId: string) => void;
