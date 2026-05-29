@@ -117,6 +117,10 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    /** Structured payload for an AgentStep.ASK message (optional — plain text is the fallback). */
+    askPayload?: import('@/components/ChatBox/renderSession/types').AskPayload;
+    /** Structured payload for an AgentStep.END message (optional — markdown+fileList is the fallback). */
+    replyPayload?: import('@/components/ChatBox/renderSession/types').ReplyPayload;
   }
 
   interface AgentMessage {

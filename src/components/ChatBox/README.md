@@ -1,112 +1,111 @@
 # ChatBox component structure
 
-This document describes the ChatBox layout, how the main pieces connect, and where to change behavior. Paths are relative to `src/components/ChatBox/`.
+Paths are relative to `src/components/ChatBox/`.
 
-## Overview
-
-ChatBox is the main chat surface: it wires **project + chat store** data to **message threads**, **task / workforce UI**, and the **BottomBox** composer. It supports multi-turn flows, task planning, splitting, and execution with scroll and timeline affordances.
-
-## Architecture (folders)
+## Folder layout
 
 ```text
 ChatBox/
-├── index.tsx                 # Main shell: layout, chat timeline, send/stop, BottomBox
-├── ChatTimeline.tsx         # Per-project task/chat rail or popover (narrow layout)
-├── ProjectChatContainer.tsx  # Scroll region + all chat stores for the active project
-├── ProjectSection.tsx        # One chat store: query groups, FloatingAction
-├── UserQueryGroup.tsx        # One user query → messages, task UI, agent results
+├── index.tsx                 # Top-level shell: layout, scroll, BottomBox, send/stop
 │
-├── TaskBox/                 # Plan / run task UI
-│   ├── TaskCard.tsx         # Plan list, progress, filter, expand (workforce subtasks)
-│   ├── TaskItem.tsx         # Editable line in the plan
-│   ├── TaskType.tsx         # Task type indicator
-│   ├── TypeCardSkeleton.tsx  # Loading skeleton while the plan is forming
-│   └── StreamingTaskList.tsx
+├── shell/                    # Rendering orchestrators (no pure-UI logic here)
+│   ├── SessionStackContainer.tsx  # One section per task across all chatStores (dedup)
+│   ├── SessionView.tsx            # One task: normalizes messages → query groups
+│   └── QueryGroup.tsx             # One user turn: user bubble, task UI, agent output
 │
-├── MessageItem/             # All message- and log-specific UI
+├── renderSession/            # Pure data normalization (no React)
+│   ├── types.ts              # ChatBlock, ChatTurn, AskPayload, HitlInputBlock, etc.
+│   ├── normalizeMessages.ts  # detectInputType, extractChoices, legacyAskPayload,
+│   │                         #   normalizeMessagesToChatTurns
+│   └── queryGroups.ts        # normalizeTaskToQueryGroups → ChatQueryGroup[]
+│
+├── messages/                 # Message bubble components
 │   ├── UserMessageCard.tsx
 │   ├── UserMessageRichContent.tsx
 │   ├── AgentMessageCard.tsx
-│   ├── NoticeCard.tsx
-│   ├── FeedbackCard.tsx
-│   ├── TaskCompletionCard.tsx
-│   ├── SplittingProgressRow.tsx   # “Splitting tasks” + token tick during decompose
-│   ├── TaskWorkLogAccordion.tsx  # Work log: tool / agent lines (workforce)
-│   ├── FloatingAction.tsx        # Pause / skip (used from ProjectSection)
-│   ├── MarkDown.tsx
 │   ├── SummaryMarkDown.tsx
-│   └── TokenUtils.tsx            # Token animation + splitting elapsed formatting
+│   ├── MarkDown.tsx
+│   ├── TaskCompletionCard.tsx
+│   └── askBlocks/
+│       └── QuestionBlock.tsx # View-only ASK card (reply controls are in BottomBox)
 │
-└── BottomBox/                # Composer and chrome above input
-    ├── index.tsx
-    ├── InputBox.tsx
-    ├── RichChatInput.tsx
-    ├── ChatInputModelDropdown.tsx
-    ├── BoxAction.tsx
+├── notices/                  # Non-message overlay cards
+│   ├── NoticeCard.tsx
+│   └── FeedbackCard.tsx
+│
+├── taskLog/                  # Task execution UI (work log, timers, action buttons)
+│   ├── TaskWorkLogAccordion.tsx  # Per-turn cursor-sliced work log + frozen timer
+│   ├── PreparingToExecuteTasks.tsx
+│   ├── FloatingAction.tsx
+│   └── TokenUtils.tsx
+│
+├── TaskBox/                  # Plan / subtask UI
+│   ├── TaskCard.tsx
+│   ├── PlanTaskBox/
+│   └── ...
+│
+└── BottomBox/                # Composer and chrome above the input
+    ├── index.tsx             # Routes to BoxHeaderAsk (state='ask') or normal input
+    ├── BoxHeaderAsk.tsx      # Inline HITL composer with visible 30-second countdown
+    ├── hitlInputs/
+    │   ├── TextInputBlock.tsx
+    │   ├── ChoiceInputBlock.tsx
+    │   └── index.ts
     ├── BoxHeader.tsx
+    ├── InputBox.tsx
     └── QueuedBox.tsx
 ```
 
-## Core responsibilities
+## Data flow
 
-### `index.tsx`
+```
+User input
+  └─▶ BottomBox / index.tsx / store → API / SSE
 
-- Composes `ProjectChatContainer`, `BottomBox`, and (when used) `ChatTimeline`.
-- Connects to `useChatStoreAdapter`, `projectStore`, navigation, and session chrome (e.g. scroll padding, task time display, pause/resume).
-- Owns high-level task operations (send, stop, share, history hooks) and passes props into children.
+SSE events → chatStore (addMessages)
+  └─▶ RenderGroupMeta[] (per-user-message cursor snapshot)
+        └─▶ SessionStackContainer → SessionView
+              └─▶ normalizeTaskToQueryGroups(task, taskId)
+                    └─▶ ChatQueryGroup[]
+                          └─▶ QueryGroup
+                                ├─▶ UserMessageCard
+                                ├─▶ TaskCard / PlanTaskBox
+                                ├─▶ TaskWorkLogAccordion (cursor-sliced per group)
+                                ├─▶ AgentMessageCard / QuestionBlock / NoticeCard …
+                                └─▶ TaskCompletionCard
+```
 
-### `ProjectChatContainer.tsx`
+## Key concepts
 
-- Renders the stack of per–chat-id sections for the active project.
-- Owns scroll behavior and “stick to bottom” / padding for the last message and BottomBox.
+### Per-turn work-log slicing
 
-### `ProjectSection.tsx`
+`chatStore.addMessages()` snapshots `WorkLogCursor` (per-agent log length) each time a
+user message arrives. `normalizeTaskToQueryGroups` attaches `startCursor`/`endCursor` to
+each `ChatQueryGroup.workLog`. `TaskWorkLogAccordion` slices `agent.log` to only show
+entries produced while that group was active and freezes the elapsed timer once the
+group is closed.
 
-- One **vanilla `chatStore`** instance: subscribes to it and maps **messages** into **query groups** (see `UserQueryGroup`).
-- Hosts `FloatingAction` (pause, skip) for the active task.
+### Inline HITL
 
-### `UserQueryGroup.tsx`
+When `task.activeAsk` is set, `index.tsx` builds an `AskPayload` via
+`legacyAskPayload()` (heuristic from question text) or the optional `message.askPayload`
+(structured, when the backend eventually emits it). `getBottomBoxState()` returns `'ask'`
+and both `BottomBox` instances render `BoxHeaderAsk` — a visible 30-second countdown ring
+that auto-submits `"skip"` and accepts text or choice input. `QuestionBlock` in the chat
+scroll shows the question as a view-only card.
 
-- A **single user turn**: user content, then downstream UI driven by `AgentStep` / `ChatTaskStatus` (e.g. splitting, task card, agent completion, notices).
-- Imports from `TaskBox/` and `MessageItem/`; this is the main place new message *shapes* are routed.
+### Multi-task scoping (#1655)
 
-## TaskBox (`TaskBox/`)
+`SessionStackContainer` deduplicates tasks across all chatStores for the active project
+and renders one `SessionView` per task. `SessionView` accepts `taskId?` (falls back to
+`chatState.activeTaskId`). `QueryGroup` uses `queryGroup.taskId` — carried through the
+normalized `ChatQueryGroup` — for all task-derived UI, so historic groups always show
+their own task's state, not the newest task's.
 
-- **`TaskCard`**: Task type 1/2/3 flows—plan text, `taskRunning` rows, filter tabs, link to the chat that owns a subtask, expand/collapse with session-backed preference.
-- **`TaskItem`**: Single plan line edit/delete.
-- **`TypeCardSkeleton`**: Shown while the model is decomposing before `to_sub_tasks` is ready.
-- **`StreamingTaskList`**: Renders running subtasks during streaming / updates.
+## Deferred scope
 
-## MessageItem (`MessageItem/`)
-
-- **`UserMessageCard` / `UserMessageRichContent`**: User bubble + rich blocks.
-- **`AgentMessageCard`**: Assistant markdown, optional typewriter, attachments.
-- **`SplittingProgressRow`**: Shown while the task is in the splitting phase; uses store `taskTime` / `elapsed` when present, with a per-session wall-clock fallback when not.
-- **`TaskWorkLogAccordion`**: Collapsible work log for running/finished/paused task (tool activate/deactivate, agent lines); Framer `height: auto` for expand, stable segment keys from the merged log.
-- **`TaskCompletionCard`**: Completion / summary style card when appropriate.
-- **`NoticeCard`**: Chain-of-thought or notice-style content.
-- **`FeedbackCard`**: Thumbs / feedback when enabled.
-- **`FloatingAction`**: Compact floating controls (wired from `ProjectSection`).
-- **`TokenUtils`**: Animated token number and `formatSplittingElapsed` helpers.
-
-## BottomBox (`BottomBox/`)
-
-- **`index.tsx`**: Wires `BoxHeader`, `InputBox` / `RichChatInput`, `BoxAction`, `QueuedBox` to task state (pending, running, confirm, etc.).
-- **`InputBox` / `RichChatInput` / `ChatInputModelDropdown`**: Text input, model picker, rich input where applicable.
-- **`BoxAction`**: Confirm, edit, send, stop, and related actions.
-- **`BoxHeader`**: Task summary, timing, and header affordances.
-- **`QueuedBox`**: Queued user messages when the task pipeline is busy.
-
-## Data flow (short)
-
-1. **User input** → `BottomBox` → `index.tsx` / store → API or store updates.
-1. **SSE / store updates** → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageItem` / `TaskBox` by step and status.
-1. **State** → **`chatStore`** (per chat), **`projectStore`** (project + which chat is active), plus local component state (expand, scroll, active query).
-
-## Extending the UI
-
-- **New agent or system message type**: branch in `UserQueryGroup.tsx` (and possibly `ProjectSection` if grouping changes).
-- **New task UI**: add under `TaskBox/` and mount from `UserQueryGroup` or `TaskCard` as needed.
-- **New bubble content**: add a card under `MessageItem/` and import it from `UserQueryGroup` (or the parent that owns that message list).
-
-This layout keeps **transport and layout** (`index`, `Project*`) separate from **message rendering** (`MessageItem/`) and **task planning/execution** (`TaskBox/`), and **composer** behavior (`BottomBox/`).
+Structured `askPayload` and `replyPayload` fields on `Message` exist in `types.ts` for
+forward compatibility, but the backend does not yet emit them. Rich HITL input kinds
+beyond `text` and `choice` (key_value, model, mcp, skill_upload, file_upload, redirect)
+and structured reply blocks (table, chart) are intentionally not built until the backend
+starts sending the corresponding payloads.

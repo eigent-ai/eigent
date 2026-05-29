@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { formatTokenCount } from '@/components/ChatBox/taskLog/TokenUtils';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Input } from '@/components/ui/input';
 import { useSpaceStore } from '@/store/spaceStore';

@@ -1,0 +1,241 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { AnimatePresence } from 'framer-motion';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { SessionView } from './SessionView';
+
+interface SessionStackContainerProps {
+  className?: string;
+  /** Scroll viewport lives in ChatBox (full width) so the scrollbar sits on the panel edge. */
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
+  scrollBottomInsetPx: number;
+  onSkip: () => void;
+  isPauseResumeLoading: boolean;
+}
+
+export const SessionStackContainer: React.FC<SessionStackContainerProps> = ({
+  className = '',
+  scrollContainerRef,
+  scrollBottomInsetPx,
+  onSkip,
+  isPauseResumeLoading,
+}) => {
+  const { projectStore, chatStore } = useChatStoreAdapter();
+  const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
+  const [lastMessageCount, setLastMessageCount] = useState(0);
+  const [, setChatRevision] = useState(0);
+
+  // Get all chat stores for the active project
+  const activeProjectId = projectStore.activeProjectId;
+  const chatStores = useMemo(
+    () =>
+      activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
+    [activeProjectId, projectStore]
+  );
+  // Defensive dedup: if the same taskId surfaces through more than one
+  // chatStore (which can happen during the multi-chatStore -> single-chatStore
+  // transition), render it exactly once. The earliest chatStore (sorted by
+  // createdAt in getAllChatStores) wins, matching insertion order.
+  const taskSections: Array<{
+    chatId: string;
+    chatStore: (typeof chatStores)[number]['chatStore'];
+    taskId: string;
+  }> = [];
+  const seenTaskIds = new Set<string>();
+  for (const { chatId, chatStore } of chatStores) {
+    const chatState = chatStore.getState();
+    for (const [taskId, task] of Object.entries(chatState.tasks)) {
+      if (seenTaskIds.has(taskId)) continue;
+      const hasUserMessage = (task.messages || []).some(
+        (msg: any) => msg.role === 'user' && msg.content
+      );
+      if (!hasUserMessage) continue;
+      seenTaskIds.add(taskId);
+      taskSections.push({ chatId, chatStore, taskId });
+    }
+  }
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const scheduleRefresh = () => {
+      if (timeoutId) return;
+      timeoutId = setTimeout(() => {
+        setChatRevision((value) => value + 1);
+        timeoutId = null;
+      }, 100);
+    };
+    const unsubscribe = chatStores.map(({ chatStore }) =>
+      chatStore.subscribe(scheduleRefresh)
+    );
+    return () => {
+      unsubscribe.forEach((fn) => fn());
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [chatStores]);
+
+  // Extract messages array to avoid complex expression in dependency array
+  const activeTaskId = chatStore?.activeTaskId as string;
+  const messages = useMemo(
+    () => chatStore?.tasks[activeTaskId]?.messages || [],
+    [chatStore, activeTaskId]
+  );
+
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    if (!scrollContainerRef.current) return;
+    setTimeout(() => {
+      const root = scrollContainerRef.current;
+      if (!root) return;
+      root.scrollTo({
+        top: root.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 100);
+  }, [scrollContainerRef]);
+
+  // Monitor for new user messages and auto-scroll
+  useEffect(() => {
+    if (!chatStore || !activeProjectId) return;
+    if (!activeTaskId) return;
+
+    const task = chatStore.tasks[activeTaskId];
+    if (!task) return;
+
+    const currentMessageCount = messages.length;
+
+    if (currentMessageCount > lastMessageCount) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === 'user') {
+        scrollToBottom();
+      }
+    }
+
+    setTimeout(() => {
+      setLastMessageCount(currentMessageCount);
+    }, 0);
+  }, [
+    messages,
+    lastMessageCount,
+    scrollToBottom,
+    activeProjectId,
+    chatStore,
+    activeTaskId,
+  ]);
+
+  // Reset message count when active task changes
+  useEffect(() => {
+    setTimeout(() => {
+      setLastMessageCount(0);
+    }, 0);
+  }, [chatStore?.activeTaskId]);
+
+  // Intersection Observer for scroll-based animations
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    if (!root) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const queryId = entry.target.getAttribute('data-query-id');
+            if (queryId) {
+              setActiveQueryId(queryId);
+            }
+          }
+        });
+      },
+      {
+        root,
+        rootMargin: '-20% 0px -60% 0px',
+        threshold: 0.1,
+      }
+    );
+
+    const queryGroups = root.querySelectorAll('[data-query-id]');
+    queryGroups.forEach((group) => observer.observe(group));
+
+    return () => {
+      queryGroups.forEach((group) => observer.unobserve(group));
+    };
+  }, [chatStores, scrollContainerRef]);
+
+  // Scroll to a specific query group when triggered from the sidebar
+  const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
+  const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
+
+  useEffect(() => {
+    if (!scrollToQueryId || !scrollContainerRef.current) return;
+
+    const el = scrollContainerRef.current.querySelector(
+      `[data-query-id="${scrollToQueryId}"]`
+    );
+    if (el) {
+      const container = scrollContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+      container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+    }
+
+    setScrollToQueryId(null);
+  }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
+
+  // Surface the task box when the side-panel Progress section asks for it.
+  const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
+  useEffect(() => {
+    if (!taskBoxFocusRequestId) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const matches = container.querySelectorAll<HTMLElement>(
+      '[data-task-card="true"]'
+    );
+    const target = matches[matches.length - 1];
+    if (!target) return;
+    const containerRect = container.getBoundingClientRect();
+    const elRect = target.getBoundingClientRect();
+    const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+    container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+  }, [taskBoxFocusRequestId, scrollContainerRef]);
+
+  return (
+    <div className={`relative z-10 w-full ${className}`}>
+      <div
+        className="pt-0 mx-auto w-full max-w-[600px]"
+        style={{ paddingBottom: scrollBottomInsetPx }}
+      >
+        <AnimatePresence mode="popLayout">
+          {taskSections.map(({ chatId, chatStore, taskId }) => {
+            return (
+              <SessionView
+                key={`${chatId}-${taskId}`}
+                chatId={chatId}
+                chatStore={chatStore}
+                taskId={taskId}
+                activeQueryId={activeQueryId}
+                onQueryActive={setActiveQueryId}
+                onSkip={onSkip}
+                isPauseResumeLoading={isPauseResumeLoading}
+              />
+            );
+          })}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+};
