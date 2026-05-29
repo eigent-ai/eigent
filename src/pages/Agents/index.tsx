@@ -79,7 +79,9 @@ export default function Capabilities() {
             menuItems.map((menu) => ({
               value: menu.id,
               label: (
-                <span className="text-body-sm font-bold">{menu.name}</span>
+                <span className="w-full text-left text-body-sm font-bold">
+                  {menu.name}
+                </span>
               ),
             })) as VerticalNavItem[]
           }

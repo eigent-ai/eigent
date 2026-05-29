@@ -51,8 +51,11 @@ import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList, type CloudModelType } from './authStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
+import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
 
 const API_CODE_TRIAL_LIMIT = '22';
+const PROJECT_CONTEXT_MAX_CHARS = 24_000;
+const PROJECT_CONTEXT_MAX_RUNS = 8;
 
 const hasApiCode = (value: unknown, code: string) =>
   typeof value === 'object' &&
@@ -82,6 +85,48 @@ function normalizeServerApiBaseUrl(url?: string): string | undefined {
   return `${trimmed}/api/v1`;
 }
 
+function resolveSpaceIdForProject(
+  projectId?: string | null
+): string | undefined {
+  const authStore = getAuthStore();
+  const project = projectId
+    ? useProjectStore.getState().getProjectById(projectId)
+    : null;
+  const spaceStore = useSpaceStore.getState();
+  const activeSpace = spaceStore.getActiveSpace();
+  const candidateSpaceId = project?.spaceId || activeSpace?.id || null;
+
+  if (!candidateSpaceId) {
+    return undefined;
+  }
+
+  if (
+    candidateSpaceId === legacySpaceIdForUser('local') ||
+    candidateSpaceId.startsWith('legacy_')
+  ) {
+    return undefined;
+  }
+
+  const candidateSpace = spaceStore.getSpaceById(candidateSpaceId);
+  if (!candidateSpace) {
+    return undefined;
+  }
+
+  const currentUserId =
+    authStore.user_id === undefined || authStore.user_id === null
+      ? null
+      : String(authStore.user_id);
+  if (
+    currentUserId &&
+    candidateSpace.userId &&
+    String(candidateSpace.userId) !== currentUserId
+  ) {
+    return undefined;
+  }
+
+  return candidateSpaceId;
+}
+
 function getDirectServerApiBaseUrl(): string | undefined {
   if (import.meta.env.DEV) {
     return normalizeServerApiBaseUrl(
@@ -107,6 +152,20 @@ function includesBrowserAgent(workerList: Agent[]): boolean {
     const tools = worker.workerInfo?.tools || worker.tools || [];
     return Array.isArray(tools) && tools.includes('Browser Toolkit');
   });
+}
+
+function shouldEnsureBrowserForRequest(
+  workerList: Agent[],
+  sessionMode: SessionModeType,
+  messageContent?: string
+): boolean {
+  if (includesBrowserAgent(workerList)) return true;
+  if (sessionMode !== SessionMode.SINGLE_AGENT) return false;
+
+  const content = messageContent || '';
+  const explicitBrowserIntent =
+    /\b(?:browser agent|use\s+(?:the\s+)?browser|open\s+(?:the\s+)?(?:browser|url|page|website|site)|visit\s+(?:the\s+)?(?:url|page|website|site))\b/i;
+  return /https?:\/\//i.test(content) || explicitBrowserIntent.test(content);
 }
 
 function getPersistedStepTimeMs(message: AgentMessage): number | null {
@@ -167,6 +226,7 @@ async function resolveCdpBrowsersForRequest(
 }
 
 interface Task {
+  source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
   messages: Message[];
   type: string;
@@ -260,6 +320,77 @@ function buildUploadName(
   }
 
   return `project_output/${fileName}`;
+}
+
+function syncProjectDisplayName(
+  projectId: string | null | undefined,
+  name?: string
+) {
+  const displayName = (name ?? '').trim();
+  if (!projectId || !displayName) return;
+  useSpaceStore.getState().updateProjectMeta(projectId, { name: displayName });
+  useProjectStore.getState().updateProject(projectId, { name: displayName });
+}
+
+const compactContextText = (value?: string | null) =>
+  (value ?? '').replace(/\s+/g, ' ').trim();
+
+const stripSummaryTag = (value?: string | null) =>
+  compactContextText(value?.replace(/<summary>.*?<\/summary>/gs, ''));
+
+function taskContextResult(task: Task): string {
+  const summaryParts = (task.summaryTask || '').split('|');
+  const summary = compactContextText(summaryParts[1] || summaryParts[0]);
+  if (summary) return summary;
+
+  const endMessage = [...task.messages]
+    .reverse()
+    .find((message) => message.step === AgentStep.END && message.content);
+  if (endMessage) return stripSummaryTag(endMessage.content);
+
+  const agentMessage = [...task.messages]
+    .reverse()
+    .find((message) => message.role === 'agent' && message.content);
+  return compactContextText(agentMessage?.content);
+}
+
+export function buildProjectContinuationContext(
+  projectId?: string | null,
+  excludeTaskId?: string | null
+): string | undefined {
+  if (!projectId) return undefined;
+
+  const projectStore = useProjectStore.getState();
+  const runs: string[] = [];
+
+  for (const { chatStore } of projectStore.getAllChatStores(projectId)) {
+    const state = chatStore.getState();
+    for (const [taskId, task] of Object.entries(state.tasks)) {
+      if (taskId === excludeTaskId) continue;
+      const userMessage = task.messages.find(
+        (message) => message.role === 'user' && message.content
+      );
+      const request = compactContextText(userMessage?.content);
+      const result = taskContextResult(task);
+      if (!request && !result) continue;
+      runs.push(
+        [
+          `Run ${runs.length + 1}:`,
+          request ? `User request: ${request}` : '',
+          result ? `Result: ${result}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
+    }
+  }
+
+  if (runs.length === 0) return undefined;
+  const selectedRuns = runs.slice(-PROJECT_CONTEXT_MAX_RUNS);
+  const context = selectedRuns.join('\n\n');
+  return context.length > PROJECT_CONTEXT_MAX_CHARS
+    ? context.slice(context.length - PROJECT_CONTEXT_MAX_CHARS)
+    : context;
 }
 
 export function collectTaskUploadFiles(
@@ -506,6 +637,7 @@ export interface ChatStore {
   setStreamingDecomposeText: (taskId: string, text: string) => void;
   clearStreamingDecomposeText: (taskId: string) => void;
   setExecutionId: (taskId: string, executionId: string | undefined) => void;
+  setTaskSource: (taskId: string, source: 'user' | 'trigger') => void;
   setNextExecutionId: (
     taskId: string,
     nextExecutionId: string | undefined
@@ -888,6 +1020,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             type: type,
+            source: 'user',
             messages: [],
             summaryTask: '',
             taskInfo: [],
@@ -1105,11 +1238,26 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       //ProjectStore must exist as chatStore is already
       const projectStore = useProjectStore.getState();
-      const project_id = projectId || projectStore.activeProjectId;
+      const isLiveTask = !type || type === 'normal';
+      const project_id = isLiveTask
+        ? projectId
+        : projectId || projectStore.activeProjectId;
+      if (isLiveTask && !project_id) {
+        throw new Error('No active Project selected.');
+      }
+      const project = project_id
+        ? projectStore.getProjectById(project_id)
+        : null;
+      if (isLiveTask && !project) {
+        throw new Error('Selected Project is not available.');
+      }
       const sessionModeForRequest =
-        sessionMode ||
-        usePageTabStore.getState().sessionSidePanelMode ||
-        SessionMode.WORKFORCE;
+        sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      if (project_id && !project?.mode) {
+        useSpaceStore
+          .getState()
+          .updateProjectMeta(project_id, { mode: sessionModeForRequest });
+      }
       //Create a new chatStore on Start
       let newTaskId = taskId;
       let targetChatStore = { getState: () => get() }; // Default to current store
@@ -1128,6 +1276,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // Set executionId if this is a trigger-initiated task
           if (executionId) {
             targetChatStore.getState().setExecutionId(newTaskId, executionId);
+            targetChatStore.getState().setTaskSource(newTaskId, 'trigger');
+          } else {
+            targetChatStore.getState().setTaskSource(newTaskId, 'user');
           }
 
           //From handleSend if message is given
@@ -1165,7 +1316,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null = projectStore.getHistoryId(project_id);
+      let historyId: string | null = project_id
+        ? projectStore.getHistoryId(project_id)
+        : null;
       let snapshots: any = [];
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
@@ -1309,13 +1462,31 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       // create history
+      const spaceId = resolveSpaceIdForProject(project_id);
+      if (spaceId && project_id && project?.spaceId !== spaceId) {
+        projectStore.setProjectSpace(project_id, spaceId);
+      }
+      const requestSpace = spaceId
+        ? useSpaceStore.getState().getSpaceById(spaceId)
+        : null;
+      const spaceRootPath =
+        requestSpace?.sourceType === 'folder'
+          ? requestSpace.rootPath || undefined
+          : undefined;
       if (!type) {
         const authStore = getAuthStore();
 
         const obj = {
+          space_id: spaceId,
           project_id: project_id,
           task_id: newTaskId,
+          run_id: newTaskId,
           user_id: authStore.user_id,
+          // Persist Project execution mode on the server so reload reflects
+          // the user's last choice (workforce vs single-agent). Without this
+          // Project.mode stays NULL and the picker defaults back to single.
+          mode: sessionModeForRequest,
+          workdir_mode: project?.workdirMode || undefined,
           question:
             messageContent ||
             (targetChatStore.getState().tasks[newTaskId]?.messages[0]
@@ -1346,7 +1517,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let cdp_browsers: any[] = [];
       try {
         ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
-          includesBrowserAgent(workerList)
+          shouldEnsureBrowserForRequest(
+            workerList,
+            sessionModeForRequest,
+            messageContent
+          )
         ));
       } catch {
         // Web mode: no CDP
@@ -1395,13 +1570,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       const requestBody = !type
         ? {
+            space_id: spaceId,
             project_id: project_id,
             task_id: newTaskId,
+            run_id: newTaskId,
+            space_root_path: spaceRootPath,
+            workdir_mode: project?.workdirMode || undefined,
             question:
               messageContent ||
               targetChatStore.getState().getLastUserMessage()?.content,
             model_platform: apiModel.model_platform,
             email,
+            user_id: getAuthStore().user_id,
             model_type: apiModel.model_type,
             api_key: apiModel.api_key,
             api_url: apiModel.api_url,
@@ -1423,6 +1603,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             server_url: getDirectServerApiBaseUrl(),
             session_mode: sessionModeForRequest,
             remote_sub_agent_config: remoteSubAgentConfig,
+            project_context: buildProjectContinuationContext(
+              project_id,
+              newTaskId
+            ),
           }
         : undefined;
 
@@ -1605,12 +1789,33 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         ...(messageAttaches || []),
                       ];
 
-                //Trick: by the time the question is retrieved from event,
-                //the last message from previous chatStore is at display
+                // Three candidate sources for the user prompt body, in
+                // descending order of trustworthiness:
+                //   1. lastMessage.content -- the prompt ChatBox.handleSend
+                //      just added to the previous chatStore. This is what
+                //      the user actually typed *this turn* and is therefore
+                //      authoritative for both startTask and improve flows.
+                //   2. messageContent -- the closure-captured arg passed to
+                //      startTask. Stale for improve turns (the SSE consumer
+                //      keeps the first prompt forever) but accurate for the
+                //      startTask path that drove this handler.
+                //   3. question -- the SSE CONFIRMED event's question field.
+                //      Drifts in Workforce when backend reuses task_lock
+                //      across turns; correct in Single Agent improve.
+                // Falling back from (1) → (2) → (3) covers replay (no
+                // optimistic message exists) and any unexpected paths
+                // without ever silently injecting the first-turn prompt.
+                const userMessageContent =
+                  (lastMessage?.role === 'user' &&
+                    typeof lastMessage.content === 'string' &&
+                    lastMessage.content) ||
+                  (messageContent as string) ||
+                  question ||
+                  '';
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',
-                  content: question || (messageContent as string),
+                  content: userMessageContent,
                   attaches: attachesForNewMessage,
                 });
                 console.log('[NEW CHATSTORE] Created for ', project_id);
@@ -1620,15 +1825,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   const authStore = getAuthStore();
 
                   const obj = {
+                    space_id: spaceId,
                     project_id: project_id,
                     task_id: newTaskId,
+                    run_id: newTaskId,
                     user_id: authStore.user_id,
+                    mode: sessionModeForRequest,
+                    // Mirror the user-message-content priority above: prefer
+                    // what we just wrote into the new task (the prompt the
+                    // user actually typed), and only fall back to SSE
+                    // `question` / closure `messageContent` if the new task
+                    // somehow has no user message yet.
                     question:
-                      question ||
-                      messageContent ||
                       (targetChatStore.getState().tasks[newTaskId]?.messages[0]
-                        ?.content ??
-                        ''),
+                        ?.content as string) ||
+                      userMessageContent ||
+                      '',
                     language: systemLanguage,
                     model_platform: apiModel.model_platform,
                     model_type: apiModel.model_type,
@@ -1908,13 +2120,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
 
             if (!type && historyId) {
+              const projectName =
+                agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
-                project_name:
-                  agentMessages.data!.summary_task?.split('|')[0] || '',
+                project_name: projectName,
                 summary: agentMessages.data!.summary_task?.split('|')[1] || '',
                 status: 1,
                 tokens: getTokens(currentTaskId),
               };
+              syncProjectDisplayName(project_id, projectName);
               proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
             }
             setSummaryTask(
@@ -1956,11 +2170,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 let activeWebviewIds: any = [];
                 if (agent_name == 'browser_agent') {
                   snapshots.forEach((item: any) => {
-                    const imgurl = !item.image_path.includes('/public')
-                      ? item.image_path
+                    const snapshotUrl = item.image_url || item.image_path || '';
+                    if (!snapshotUrl) return;
+                    const imgurl = !snapshotUrl.includes('/public')
+                      ? snapshotUrl
                       : (import.meta.env.DEV
                           ? import.meta.env.VITE_PROXY_URL
-                          : import.meta.env.VITE_BASE_URL) + item.image_path;
+                          : import.meta.env.VITE_BASE_URL) + snapshotUrl;
                     activeWebviewIds.push({
                       id: item.id,
                       img: imgurl,
@@ -2287,12 +2503,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               }
 
               if (!type && historyId) {
+                const projectName =
+                  tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
-                  project_name: tasks[currentTaskId].summaryTask.split('|')[0],
+                  project_name: projectName,
                   summary: tasks[currentTaskId].summaryTask.split('|')[1],
                   status: 1,
                   tokens: getTokens(currentTaskId),
                 };
+                syncProjectDisplayName(project_id, projectName);
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               }
 
@@ -2842,6 +3061,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   ? agentMessages.data
                   : null) ||
                 'An error occurred while processing your request';
+              const isProjectBusyError =
+                errorMessage === 'Single Agent is already processing a task.';
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -2897,11 +3118,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 errorMessage
               );
 
-              // Stop the workforce
-              try {
-                await fetchDelete(`/chat/${project_id}`);
-              } catch (error) {
-                console.log('Task may not exist on backend:', error);
+              // A busy Project means another run in the same long conversation
+              // is still active. Do not stop that active Project while marking
+              // only this rejected run as failed.
+              if (!isProjectBusyError) {
+                try {
+                  await fetchDelete(`/chat/${project_id}`);
+                } catch (error) {
+                  console.log('Task may not exist on backend:', error);
+                }
               }
             } catch (error) {
               console.error('Failed to handle model error:', error);
@@ -3117,12 +3342,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const wasStoppedByUser = rawEndPayload.startsWith(
                   '<summary>Task stopped</summary>'
                 );
+                const projectName = parts[0] || '';
                 const obj = {
-                  project_name: parts[0] || '',
+                  project_name: projectName,
                   summary: completionSummary,
                   status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
+                syncProjectDisplayName(project_id, projectName);
                 proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               } catch (e) {
                 console.warn('History update failed on END:', e);
@@ -4343,6 +4570,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...state.tasks[taskId],
               executionId,
+            },
+          },
+        };
+      });
+    },
+    setTaskSource: (taskId, source) => {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              source,
             },
           },
         };

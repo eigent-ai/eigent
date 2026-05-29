@@ -20,8 +20,11 @@ from camel.tasks.task import TaskState
 
 from app.model.chat import Chat, NewAgent
 from app.service.chat_service import (
+    _render_subtask_report,
+    _trim_in_process_history,
     add_sub_tasks,
     build_context_for_workforce,
+    check_conversation_history_length,
     collect_previous_task_context,
     construct_workforce,
     format_agent_description,
@@ -596,6 +599,246 @@ class TestChatServiceUtilities:
 
         assert "SimpleAgent:" in result
         assert "A specialized agent" in result  # Default description
+
+
+@pytest.mark.unit
+class TestInProcessHistoryCompaction:
+    """`_trim_in_process_history` keeps the workforce loop alive for long
+    Projects without losing durable transcript on disk."""
+
+    def _make_task_lock(self, convo_entries=0, snapshot_entries=0):
+        lock = MagicMock(spec=[])
+        lock.conversation_history = [
+            {"role": "assistant", "content": f"turn {i} result"}
+            for i in range(convo_entries)
+        ]
+        lock.agent_memory_history = [
+            {
+                "agent_name": "worker",
+                "scope": "workforce_worker",
+                "task_id": f"t{i}",
+                "task_content": f"task {i}",
+                "task_result": f"result {i}",
+                "messages": [],
+            }
+            for i in range(snapshot_entries)
+        ]
+        lock.memory_summary = ""
+        return lock
+
+    def test_returns_zero_when_nothing_to_trim(self):
+        lock = self._make_task_lock(convo_entries=2, snapshot_entries=2)
+        assert _trim_in_process_history(lock, keep_recent=4) == 0
+        assert len(lock.conversation_history) == 2
+        assert len(lock.agent_memory_history) == 2
+        assert lock.memory_summary == ""
+
+    def test_drops_oldest_entries_and_records_marker(self):
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=10)
+        dropped = _trim_in_process_history(lock, keep_recent=4)
+        # 6 dropped from convo + 6 dropped from snapshots.
+        assert dropped == 12
+        assert len(lock.conversation_history) == 4
+        assert len(lock.agent_memory_history) == 4
+        # Tail preserved, head discarded.
+        assert lock.conversation_history[-1]["content"] == "turn 9 result"
+        assert lock.conversation_history[0]["content"] == "turn 6 result"
+        assert (
+            "[memory] Compacted 12 older in-process turn"
+            in lock.memory_summary
+        )
+        assert "~/.eigent/memory" in lock.memory_summary
+
+    def test_marker_not_duplicated_across_compactions(self):
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=10)
+        _trim_in_process_history(lock, keep_recent=4)
+        first_summary = lock.memory_summary
+        # Add more entries then compact again.
+        lock.conversation_history.extend(
+            [{"role": "assistant", "content": f"new {i}"} for i in range(6)]
+        )
+        _trim_in_process_history(lock, keep_recent=4)
+        # We append a marker each compaction (different count), but the
+        # earlier marker text is still there once -- no duplicate-for-identical.
+        assert lock.memory_summary.count("[memory] Compacted 12") == 1
+
+    def test_only_runs_when_both_lists_exceed_keep_recent(self):
+        # Only convo exceeds; snapshots do not -- compaction only trims convo.
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=2)
+        dropped = _trim_in_process_history(lock, keep_recent=4)
+        assert dropped == 6  # only from convo
+        assert len(lock.conversation_history) == 4
+        assert len(lock.agent_memory_history) == 2
+
+    def test_check_conversation_history_length_with_trimmed_state(self):
+        # After trimming, check_conversation_history_length should reflect the
+        # shorter total -- if not, the compaction didn't really happen.
+        lock = self._make_task_lock(convo_entries=10, snapshot_entries=0)
+        lock.conversation_history = [
+            {"role": "assistant", "content": "x" * 50_000} for _ in range(6)
+        ]
+        before_exceeded, before_total = check_conversation_history_length(
+            lock, max_length=200_000
+        )
+        assert before_exceeded is True
+        assert before_total > 200_000
+        _trim_in_process_history(lock, keep_recent=2)
+        after_exceeded, after_total = check_conversation_history_length(
+            lock, max_length=200_000
+        )
+        assert after_exceeded is False
+        assert after_total < before_total
+
+
+@pytest.mark.unit
+class TestPartialFailureRender:
+    """`_render_partial_failure_result` ships the captured subtask output
+    even when Workforce skipped the LLM summary because one subtask failed.
+    Previously the SSE end event got `task.result or ""` (often empty) and
+    the UI rendered nothing."""
+
+    def _subtask(self, *, state_name, content, result):
+        sub = MagicMock(spec=[])
+        sub.state = MagicMock(name=state_name)
+        sub.state.name = state_name
+        sub.content = content
+        sub.result = result
+        return sub
+
+    def _task(self, subtasks, result=""):
+        task = MagicMock(spec=[])
+        task.subtasks = subtasks
+        task.result = result
+        task.id = "task_partial"
+        return task
+
+    def test_mixed_success_and_failure_returns_per_subtask_report(self):
+        task = self._task(
+            [
+                self._subtask(
+                    state_name="DONE",
+                    content="Generate v2 CSV with different dates",
+                    result="Saved to mock_bank_transfers_v2.csv (10 rows)",
+                ),
+                self._subtask(
+                    state_name="FAILED",
+                    content="Run quality check on the CSV",
+                    result="",
+                ),
+            ]
+        )
+        out = _render_subtask_report(task, is_failure=True)
+        assert out.startswith("⚠️ Task partially failed")
+        # Both subtasks listed, with the right markers + content + result.
+        assert "✅ **Subtask 1 (DONE)**" in out
+        assert "Generate v2 CSV with different dates" in out
+        assert "Saved to mock_bank_transfers_v2.csv" in out
+        assert "❌ **Subtask 2 (FAILED)**" in out
+        assert "Run quality check on the CSV" in out
+        assert "_No output captured._" in out
+
+    def test_parent_task_result_appended_when_present(self):
+        task = self._task(
+            [
+                self._subtask(
+                    state_name="DONE",
+                    content="x",
+                    result="ok",
+                ),
+                self._subtask(
+                    state_name="FAILED",
+                    content="y",
+                    result="",
+                ),
+            ],
+            result="Overall: partial completion",
+        )
+        out = _render_subtask_report(task, is_failure=True)
+        assert "**Overall task result**" in out
+        assert "Overall: partial completion" in out
+
+    def test_no_subtasks_still_produces_banner(self):
+        task = self._task([], result="")
+        out = _render_subtask_report(task, is_failure=True)
+        assert "⚠️ Task partially failed" in out
+        # Output is non-empty so the SSE end event isn't blank -- this is
+        # the whole point: the UI must have *something* to render.
+        assert out.strip()
+
+    def test_long_subtask_content_truncates_in_header(self):
+        long_text = "x" * 500
+        task = self._task(
+            [
+                self._subtask(
+                    state_name="DONE",
+                    content=long_text,
+                    result="done",
+                ),
+                self._subtask(state_name="FAILED", content="y", result=""),
+            ]
+        )
+        out = _render_subtask_report(task, is_failure=True)
+        # 200-char cap + ellipsis
+        assert "x" * 200 + "…" in out
+        # Result body unaffected
+        assert "done" in out
+
+
+@pytest.mark.unit
+class TestSingleSubtaskEmptyResultFallback:
+    """Regression: workforce sometimes finishes a single-subtask task with
+    empty task.result. Previously the SSE end event got "" and the UI showed
+    no body text under the "Done 1" card. Now we fall back to the per-subtask
+    render so the user always sees what the subtask produced."""
+
+    import pytest as _pytest
+
+    @_pytest.mark.asyncio
+    async def test_empty_task_result_falls_back_to_subtask_render(self):
+        from app.service.chat_service import (
+            get_task_result_with_optional_summary,
+        )
+
+        subtask = MagicMock(spec=[])
+        subtask.state = MagicMock(name="DONE")
+        subtask.state.name = "DONE"
+        subtask.content = "Generate v2 CSV"
+        subtask.result = "Saved mock_bank_transfers_v2.csv (10 rows)"
+
+        task = MagicMock(spec=[])
+        task.subtasks = [subtask]
+        task.result = ""  # the bug condition
+        task.id = "task_empty_result"
+
+        options = MagicMock(spec=[])
+        out = await get_task_result_with_optional_summary(task, options)
+        # Fallback kicked in -- output is non-empty + contains subtask body.
+        assert out.strip(), "result must not be empty"
+        assert "Saved mock_bank_transfers_v2.csv" in out
+        # Successful run must not show the failure banner.
+        assert "Task partially failed" not in out
+
+    @_pytest.mark.asyncio
+    async def test_non_empty_task_result_is_unchanged(self):
+        from app.service.chat_service import (
+            get_task_result_with_optional_summary,
+        )
+
+        subtask = MagicMock(spec=[])
+        subtask.state = MagicMock(name="DONE")
+        subtask.state.name = "DONE"
+        subtask.content = "x"
+        subtask.result = "y"
+
+        task = MagicMock(spec=[])
+        task.subtasks = [subtask]
+        task.result = "Direct task result body"
+        task.id = "task_direct"
+
+        options = MagicMock(spec=[])
+        out = await get_task_result_with_optional_summary(task, options)
+        # The original task.result wins; no fallback inserted.
+        assert out == "Direct task result body"
 
 
 @pytest.mark.unit

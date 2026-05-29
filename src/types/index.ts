@@ -59,6 +59,27 @@ export type Model = {
   [key: string]: any;
 };
 
+export type SkipReasonCode =
+  | 'space_disconnected'
+  | 'space_archived'
+  | 'project_archived'
+  | 'resource_cap'
+  | 'direct_write_conflict'
+  | 'workdir_mode_conflict'
+  | 'memory_pressure'
+  | 'apply_conflict'
+  | 'artifact_only_source_edit_attempt'
+  | 'apply_partial_fail'
+  | 'manual_cancelled'
+  | 'unknown';
+
+export type SkipReason = {
+  code: SkipReasonCode;
+  message?: string;
+  detail?: Record<string, any>;
+  [key: string]: any;
+};
+
 // Trigger types
 export enum TriggerType {
   Schedule = 'schedule',
@@ -120,6 +141,7 @@ export type Trigger = {
   id: number;
   user_id: string;
   name: string;
+  space_id?: string;
   project_id?: string;
   description: string;
   trigger_type: TriggerType;
@@ -148,6 +170,7 @@ export type Trigger = {
 export type TriggerInput = {
   name: string;
   description?: string;
+  space_id?: string;
   project_id?: string;
   trigger_type: TriggerType;
   custom_cron_expression?: string;
@@ -166,6 +189,7 @@ export type TriggerInput = {
 export type TriggerUpdate = {
   name?: string;
   description?: string;
+  space_id?: string;
   project_id?: string;
   status?: TriggerStatus;
   custom_cron_expression?: string;
@@ -192,6 +216,7 @@ export type TriggerExecution = {
   input_data?: Record<string, any>;
   output_data?: Record<string, any>;
   error_message?: string;
+  skip_reason?: SkipReason;
   attempts: number;
   max_retries: number;
   tokens_used?: number;

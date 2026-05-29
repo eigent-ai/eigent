@@ -11,6 +11,7 @@
   "grid": "グリッド",
   "table": "テーブル",
   "list": "リスト",
+  "board": "ボード",
   "search-dialog": "検索ダイアログ",
   "search-dialog-placeholder": "検索または質問を入力",
   "no-results": "結果が見つかりませんでした。",
@@ -23,5 +24,6 @@
   "document-agent": "ドキュメントエージェント",
   "multi-modal-agent": "マルチモーダルエージェント",
   "social-media-agent": "ソーシャルメディアエージェント",
-  "no-projects-found": "プロジェクトが見つかりませんでした。"
+  "no-projects-found": "プロジェクトが見つかりませんでした。",
+  "no-tasks-found": "タスクが見つかりません。"
 }

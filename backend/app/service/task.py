@@ -33,6 +33,7 @@ from app.model.chat import (
     UpdateData,
 )
 from app.model.enums import Status
+from app.run_context import RunContext
 
 logger = logging.getLogger("task_service")
 
@@ -79,6 +80,7 @@ class ImprovePayload(BaseModel):
 
     question: str
     attaches: list[str] = []
+    project_context: str | None = None
 
 
 class ActionImproveData(BaseModel):
@@ -359,12 +361,40 @@ class TaskLock:
     """Compressed summary of older serialized agent memory"""
     last_task_result: str
     """Store the last task execution result"""
+    last_task_summary: str
+    """Store the last generated task summary"""
     question_agent: Any | None
     """Persistent question confirmation agent"""
     summary_generated: bool
     """Track if summary has been generated for this project"""
     current_task_id: str | None
     """Current task ID to be used in SSE responses"""
+    run_context: RunContext | None
+    """Current task-scoped runtime context for this Project."""
+    user_id: str | int | None
+    """Canonical user id when provided by the control plane."""
+    working_directory: str | None
+    """Resolved source/work directory for the current Run."""
+    task_output_root: str | None
+    """Resolved artifact/output directory for the current Run."""
+    task_start_time: float | None
+    """Timestamp captured when the current Run directories were frozen."""
+    email: str | None
+    """Legacy/display user email associated with the current Run."""
+    project_id: str | None
+    """Project id associated with the current Run."""
+    space_id: str | None
+    """Space id associated with the current Run."""
+    workdir_mode: str | None
+    """Actual workdir mode used by the current Run."""
+    base_snapshot_id: str | None
+    """Project workdir baseline snapshot id, when available."""
+    new_folder_path: Any | None
+    """Legacy cleanup marker for default output directories."""
+    memory_service: Any | None
+    """MemoryService bound for this Run; used by single_agent_service for on_run_end."""
+    _memory_finalized_runs: set[str]
+    """Run ids whose durable memory lifecycle has already been finalized."""
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -384,7 +414,21 @@ class TaskLock:
         self.last_task_result = ""
         self.last_task_summary = ""
         self.question_agent = None
+        self.summary_generated = False
         self.current_task_id = None
+        self.run_context = None
+        self.user_id = None
+        self.working_directory = None
+        self.task_output_root = None
+        self.task_start_time = None
+        self.email = None
+        self.project_id = None
+        self.space_id = None
+        self.workdir_mode = None
+        self.base_snapshot_id = None
+        self.new_folder_path = None
+        self.memory_service = None
+        self._memory_finalized_runs = set()
 
         logger.info(
             "Task lock initialized",

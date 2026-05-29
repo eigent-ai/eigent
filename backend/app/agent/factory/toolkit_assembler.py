@@ -14,9 +14,11 @@
 
 import logging
 import os
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from camel.toolkits import (
     FunctionTool,
@@ -32,6 +34,7 @@ from app.agent.toolkit.depth_limited_agent_toolkit import (
 )
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
@@ -42,6 +45,7 @@ from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
+from app.utils.browser_launcher import normalize_cdp_url
 
 logger = logging.getLogger("toolkit_assembler")
 
@@ -53,6 +57,7 @@ DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG: dict[str, Any] = {
     "skill": {"enabled": True},
     "todo": {"enabled": True},
     "search": {"enabled": True},
+    "browser": {"enabled": True},
     "terminal": {"enabled": True},
     "web_fetch": {"enabled": True},
     "planning_worktree": {"enabled": True},
@@ -69,6 +74,11 @@ class ToolkitAssembly:
         default_factory=list
     )
     observable_todo_toolkit: ObservableTodoToolkit | None = None
+    browser_toolkit: HybridBrowserToolkit | None = None
+    browser_port: int | None = None
+    browser_cdp_url: str | None = None
+    browser_session_id: str | None = None
+    browser_owned_by_hands: bool = False
 
     def add_tools(
         self,
@@ -119,6 +129,50 @@ def _tag_tools(
             tool._toolkit_name = toolkit_name
         except Exception:
             pass
+
+
+def _get_browser_port(browser: dict) -> int:
+    raw_port = browser.get("port")
+    if raw_port is not None:
+        return int(raw_port)
+
+    raw_endpoint = browser.get("endpoint") or browser.get("cdp_url")
+    if raw_endpoint:
+        _, _, port = normalize_cdp_url(str(raw_endpoint))
+        return port
+
+    return int(env("browser_port", "9222"))
+
+
+def _get_browser_endpoint(browser: dict) -> str:
+    raw_endpoint = browser.get("endpoint") or browser.get("cdp_url")
+    if raw_endpoint:
+        endpoint, _, _ = normalize_cdp_url(str(raw_endpoint))
+        return endpoint
+
+    return f"http://localhost:{_get_browser_port(browser)}"
+
+
+def _browser_enabled_tools() -> list[str]:
+    return [
+        "browser_click",
+        "browser_type",
+        "browser_back",
+        "browser_forward",
+        "browser_select",
+        "browser_console_exec",
+        "browser_console_view",
+        "browser_switch_tab",
+        "browser_enter",
+        "browser_visit_page",
+        "browser_scroll",
+        "browser_sheet_read",
+        "browser_sheet_input",
+        "browser_get_page_snapshot",
+        "browser_open",
+        "browser_upload_file",
+        "browser_download_file",
+    ]
 
 
 def _mcp_config(options: Chat, hands: IHands | None) -> dict[str, Any] | None:
@@ -250,6 +304,83 @@ async def assemble_single_agent_toolkits(
         if search_tools:
             search_tools = message_integration.register_functions(search_tools)
             assembly.add_tools(search_tools, SearchToolkit.toolkit_name())
+
+    if _enabled(config, "browser") and (
+        hands is None or hands.can_use_browser()
+    ):
+        toolkit_session_id = str(uuid.uuid4())[:8]
+        selected_port: int | None = None
+        cdp_url: str | None = None
+        cdp_owned_by_hands = False
+
+        if options.cdp_browsers:
+            # Reuse the same pool as the Browser Agent so concurrent projects
+            # do not accidentally claim the same CDP browser tab set.
+            from app.agent.factory.browser import _cdp_pool_manager
+
+            selected_browser = _cdp_pool_manager.acquire_browser(
+                options.cdp_browsers,
+                toolkit_session_id,
+                options.task_id,
+            )
+            if selected_browser is None:
+                selected_browser = options.cdp_browsers[0]
+                logger.warning(
+                    "No available CDP browser in pool for Single Agent; "
+                    "using first browser",
+                    extra={
+                        "project_id": options.project_id,
+                        "task_id": options.task_id,
+                    },
+                )
+            selected_port = _get_browser_port(selected_browser)
+            cdp_url = _get_browser_endpoint(selected_browser)
+        else:
+            existing_cdp_url = env("EIGENT_CDP_URL", "").strip()
+            selected_port = int(env("browser_port", "9222"))
+            cdp_url = f"http://localhost:{selected_port}"
+            if existing_cdp_url:
+                cdp_url = existing_cdp_url
+                try:
+                    parsed = urlparse(existing_cdp_url)
+                    if parsed.port is not None:
+                        selected_port = parsed.port
+                except Exception:
+                    selected_port = int(env("browser_port", "9222"))
+            elif hands is not None:
+                try:
+                    cdp_url = hands.acquire_resource(
+                        "browser", toolkit_session_id, port=selected_port
+                    )
+                    cdp_owned_by_hands = True
+                except (NotImplementedError, ValueError):
+                    cdp_url = f"http://localhost:{selected_port}"
+
+        cdp_keep_current = bool(options.cdp_browsers)
+        default_start_url = None if cdp_keep_current else "about:blank"
+        browser_options = {
+            "cdp_keep_current_page": cdp_keep_current,
+            "default_start_url": default_start_url,
+            "headless": False,
+            "browser_log_to_file": True,
+            "stealth": True,
+            "session_id": toolkit_session_id,
+            "cdp_url": cdp_url,
+            "enabled_tools": _browser_enabled_tools(),
+            **_options(config, "browser"),
+        }
+        toolkit = HybridBrowserToolkit(options.project_id, **browser_options)
+        toolkit.agent_name = Agents.single_agent
+        assembly.browser_toolkit = toolkit
+        assembly.browser_port = selected_port
+        assembly.browser_cdp_url = cdp_url
+        assembly.browser_session_id = toolkit_session_id
+        assembly.browser_owned_by_hands = cdp_owned_by_hands
+        assembly.toolkits_to_register_agent.append(toolkit)
+        registered = message_integration.register_toolkits(toolkit)
+        assembly.add_tools(
+            registered.get_tools(), HybridBrowserToolkit.toolkit_name()
+        )
 
     if _enabled(config, "terminal") and (
         hands is None or hands.can_execute_terminal()

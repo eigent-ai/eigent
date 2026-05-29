@@ -36,7 +36,7 @@ interface SearchInputProps {
   clearTooltip?: string;
 }
 
-const COLLAPSED_WIDTH = 40;
+const COLLAPSED_WIDTH = 28;
 const EXPANDED_WIDTH = 240;
 
 export default function SearchInput({

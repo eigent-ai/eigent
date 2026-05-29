@@ -35,7 +35,7 @@ const underlineSlideTransition = {
 const underlineInstantTransition = { duration: 0 };
 
 export const HISTORY_TAB_IDS = [
-  'projects',
+  'home',
   'agents',
   'channels',
   'connectors',
@@ -56,7 +56,7 @@ type TabConfig = {
 };
 
 const HISTORY_TABS: TabConfig[] = [
-  { id: 'projects', icon: <Blocks />, iconAnimateOnHover: 'default' },
+  { id: 'home', icon: <Blocks />, iconAnimateOnHover: 'default' },
   { id: 'agents', icon: <Bot />, iconAnimateOnHover: 'default' },
   { id: 'channels', icon: <Radio />, iconAnimateOnHover: 'default' },
   { id: 'connectors', icon: <Hammer />, iconAnimateOnHover: 'default' },

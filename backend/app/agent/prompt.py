@@ -696,6 +696,9 @@ clearly matches an available skill. Call `list_skills`, then `load_skill`.
 implementation, verification, or artifact creation.
 - Use search/browser tools when current external information is required.
 - Use web fetch tools for URL-specific extraction and analysis when available.
+- For browser tasks that require login, first open the target site with the
+browser tools and ask the user to complete interactive login in the browser
+only after you reach an authentication prompt.
 - Use planning/worktree tools for explicit plan-mode or isolated worktree
 workflows when available.
 - You may delegate bounded independent work to a sub-agent when available, but

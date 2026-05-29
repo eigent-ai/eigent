@@ -138,6 +138,7 @@ export interface NavTabProps {
   mainButtonClassName?: string;
   /** Icon-only rail: fade/shrink label, trailing, and dot; keep leading icon fixed. */
   folded?: boolean;
+  disabled?: boolean;
 }
 
 function tabMainInner({
@@ -215,6 +216,7 @@ export function NavTab({
   folded = false,
   endAction,
   endActionMaxWidthClass,
+  disabled = false,
 }: NavTabProps) {
   const inner = tabMainInner({
     leading,
@@ -247,14 +249,19 @@ export function NavTab({
         >
           <button
             type="button"
-            onClick={onClick}
+            onClick={() => {
+              if (disabled) return;
+              onClick();
+            }}
             className={cn(
               SPLIT_MAIN_BUTTON_CLASS,
               folded && '!gap-0',
+              disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
               mainButtonClassName
             )}
             aria-label={ariaLabel}
             aria-current={ariaCurrentPage ? 'page' : undefined}
+            aria-disabled={disabled || undefined}
           >
             {inner}
           </button>
@@ -302,14 +309,19 @@ export function NavTab({
     >
       <button
         type="button"
-        onClick={onClick}
+        onClick={() => {
+          if (disabled) return;
+          onClick();
+        }}
         className={cn(
           workspaceTabButtonClass(active),
           folded && 'gap-0',
+          disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
           className
         )}
         aria-label={ariaLabel}
         aria-current={ariaCurrentPage ? 'page' : undefined}
+        aria-disabled={disabled || undefined}
       >
         {inner}
       </button>

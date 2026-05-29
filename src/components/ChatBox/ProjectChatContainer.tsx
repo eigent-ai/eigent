@@ -38,6 +38,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   const { projectStore, chatStore } = useChatStoreAdapter();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
   const [lastMessageCount, setLastMessageCount] = useState(0);
+  const [, setChatRevision] = useState(0);
 
   // Get all chat stores for the active project
   const activeProjectId = projectStore.activeProjectId;
@@ -46,6 +47,46 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
       activeProjectId ? projectStore.getAllChatStores(activeProjectId) : [],
     [activeProjectId, projectStore]
   );
+  // Defensive dedup: if the same taskId surfaces through more than one
+  // chatStore (which can happen during the multi-chatStore -> single-chatStore
+  // transition, see PR-X4 in space-frontend-refactor-consolidated-review.md),
+  // render it exactly once. The earliest chatStore (sorted by createdAt in
+  // getAllChatStores) wins, matching insertion order.
+  const taskSections: Array<{
+    chatId: string;
+    chatStore: (typeof chatStores)[number]['chatStore'];
+    taskId: string;
+  }> = [];
+  const seenTaskIds = new Set<string>();
+  for (const { chatId, chatStore } of chatStores) {
+    const chatState = chatStore.getState();
+    for (const [taskId, task] of Object.entries(chatState.tasks)) {
+      if (seenTaskIds.has(taskId)) continue;
+      const hasUserMessage = (task.messages || []).some(
+        (msg: any) => msg.role === 'user' && msg.content
+      );
+      if (!hasUserMessage) continue;
+      seenTaskIds.add(taskId);
+      taskSections.push({ chatId, chatStore, taskId });
+    }
+  }
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const scheduleRefresh = () => {
+      if (timeoutId) return;
+      timeoutId = setTimeout(() => {
+        setChatRevision((value) => value + 1);
+        timeoutId = null;
+      }, 100);
+    };
+    const unsubscribe = chatStores.map(({ chatStore }) =>
+      chatStore.subscribe(scheduleRefresh)
+    );
+    return () => {
+      unsubscribe.forEach((fn) => fn());
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [chatStores]);
 
   // Extract messages array to avoid complex expression in dependency array
   const activeTaskId = chatStore?.activeTaskId as string;
@@ -159,7 +200,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     }
 
     setScrollToQueryId(null);
-  }, [scrollToQueryId, setScrollToQueryId]);
+  }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
 
   // Surface the task box when the side-panel Progress section asks for it.
   // TaskCard listens to the same counter to expand itself; we own the
@@ -191,31 +232,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">
-          {chatStores.map(({ chatId, chatStore }) => {
-            const chatState = chatStore.getState();
-            const activeTaskId = chatState.activeTaskId;
-
-            if (!activeTaskId || !chatState.tasks[activeTaskId]) {
-              return null;
-            }
-
-            const task = chatState.tasks[activeTaskId];
-            const messages = task.messages || [];
-
-            // Only render if there are actual user messages (not just empty or system messages)
-            const hasUserMessages = messages.some(
-              (msg: any) => msg.role === 'user' && msg.content
-            );
-
-            if (!hasUserMessages) {
-              return null;
-            }
-
+          {taskSections.map(({ chatId, chatStore, taskId }) => {
             return (
               <ProjectSection
-                key={chatId}
+                key={`${chatId}-${taskId}`}
                 chatId={chatId}
                 chatStore={chatStore}
+                taskId={taskId}
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
                 onSkip={onSkip}

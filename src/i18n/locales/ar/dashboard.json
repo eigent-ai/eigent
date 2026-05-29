@@ -11,6 +11,7 @@
   "grid": "شبكة",
   "table": "جدول",
   "list": "قائمة",
+  "board": "لوحة",
   "search-dialog": "مربع حوار البحث",
   "search-dialog-placeholder": "ابحث أو اطرح سؤالاً",
   "no-results": "لا توجد نتائج",
@@ -23,5 +24,6 @@
   "document-agent": "وكيل المستندات",
   "multi-modal-agent": "وكيل متعدد الوسائط",
   "social-media-agent": "وكيل وسائل التواصل الاجتماعي",
-  "no-projects-found": "لا توجد مشاريع"
+  "no-projects-found": "لا توجد مشاريع",
+  "no-tasks-found": "لم يتم العثور على مهام."
 }

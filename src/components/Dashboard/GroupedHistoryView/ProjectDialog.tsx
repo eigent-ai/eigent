@@ -21,7 +21,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useProjectStore } from '@/store/projectStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ProjectGroup } from '@/types/history';
 import {
   CheckCircle,
@@ -62,7 +62,7 @@ export default function ProjectDialog({
   activeTaskId,
 }: ProjectDialogProps) {
   const { t } = useTranslation();
-  const projectStore = useProjectStore();
+  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
   const [projectName, setProjectName] = useState(
     project.project_name || t('layout.new-project')
   );
@@ -103,11 +103,7 @@ export default function ProjectDialog({
         // Update via callback (for history API)
         onProjectRename(project.project_id, trimmedName);
 
-        // Also update in projectStore if the project exists there
-        const storeProject = projectStore.getProjectById(project.project_id);
-        if (storeProject) {
-          projectStore.updateProject(project.project_id, { name: trimmedName });
-        }
+        updateProjectMeta(project.project_id, { name: trimmedName });
 
         lastSavedNameRef.current = trimmedName;
         setIsSaving(false);
@@ -126,7 +122,7 @@ export default function ProjectDialog({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [projectName, project.project_id, onProjectRename, projectStore]);
+  }, [projectName, project.project_id, onProjectRename, updateProjectMeta]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -159,7 +155,7 @@ export default function ProjectDialog({
         >
           {/* Project Name Section - Inline Edit with Auto-Save */}
           <div
-            className="mb-lg gap-sm flex flex-col"
+            className="mb-lg flex flex-col gap-sm"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -167,7 +163,7 @@ export default function ProjectDialog({
               {t('layout.project-name')}
             </label>
             <div
-              className="gap-sm flex items-center"
+              className="flex items-center gap-sm"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -181,7 +177,7 @@ export default function ProjectDialog({
                 placeholder={t('layout.enter-project-name')}
               />
               {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin text-ds-icon-brand-default-default flex-shrink-0" />
+                <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-ds-icon-brand-default-default" />
               ) : (
                 <></>
               )}
@@ -189,12 +185,12 @@ export default function ProjectDialog({
           </div>
 
           {/* Project Stats */}
-          <div className="gap-lg border-ds-border-neutral-muted-disabled pb-md grid grid-cols-4 border-x-0 border-t-0 border-solid">
-            <div className="gap-xs flex flex-col">
+          <div className="grid grid-cols-4 gap-lg border-x-0 border-t-0 border-solid border-ds-border-neutral-muted-disabled pb-md">
+            <div className="flex flex-col gap-xs">
               <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
                 {t('layout.total-tokens')}
               </span>
-              <div className="gap-sm flex flex-row items-center">
+              <div className="flex flex-row items-center gap-sm">
                 <Hash className="h-4 w-4 text-ds-icon-neutral-default-default" />
                 <span className="text-body-lg font-bold text-ds-text-neutral-default-default">
                   {project.total_tokens.toLocaleString()}
@@ -202,11 +198,11 @@ export default function ProjectDialog({
               </div>
             </div>
 
-            <div className="gap-xs flex flex-col">
+            <div className="flex flex-col gap-xs">
               <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
                 {t('layout.total-tasks')}
               </span>
-              <div className="gap-sm flex flex-row items-center">
+              <div className="flex flex-row items-center gap-sm">
                 <ListChecks className="h-4 w-4 text-ds-icon-neutral-default-default" />
                 <span className="text-body-lg font-bold text-ds-text-neutral-default-default">
                   {project.task_count}
@@ -214,11 +210,11 @@ export default function ProjectDialog({
               </div>
             </div>
 
-            <div className="gap-xs flex flex-col">
+            <div className="flex flex-col gap-xs">
               <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
                 {t('layout.completed')}
               </span>
-              <div className="gap-sm flex flex-row items-center">
+              <div className="flex flex-row items-center gap-sm">
                 <CheckCircle className="h-4 w-4 text-ds-icon-status-completed-default-default" />
                 <span className="text-body-lg font-bold text-ds-text-neutral-default-default">
                   {project.total_completed_tasks}
@@ -226,11 +222,11 @@ export default function ProjectDialog({
               </div>
             </div>
 
-            <div className="gap-xs flex flex-col">
+            <div className="flex flex-col gap-xs">
               <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
                 {t('layout.ongoing')}
               </span>
-              <div className="gap-sm flex flex-row items-center">
+              <div className="flex flex-row items-center gap-sm">
                 <LoaderCircle className="h-4 w-4 text-ds-icon-status-splitting-default-default" />
                 <span className="text-body-lg font-bold text-ds-text-neutral-default-default">
                   {project.total_ongoing_tasks}
@@ -240,8 +236,8 @@ export default function ProjectDialog({
           </div>
 
           {/* Tasks List */}
-          <div className="scrollbar mt-4 gap-sm flex h-full flex-col overflow-y-auto">
-            <div className="scrollbar gap-sm flex h-full flex-col overflow-y-auto">
+          <div className="scrollbar mt-4 flex h-full flex-col gap-sm overflow-y-auto">
+            <div className="scrollbar flex h-full flex-col gap-sm overflow-y-auto">
               {project.tasks.length > 0 ? (
                 project.tasks.map((task, index) => (
                   <TaskItem
@@ -263,8 +259,8 @@ export default function ProjectDialog({
                   />
                 ))
               ) : (
-                <div className="py-lg text-sm text-ds-text-neutral-muted-default text-center">
-                  <Clock className="mb-sm h-8 w-8 text-ds-icon-neutral-muted-default mx-auto opacity-50" />
+                <div className="py-lg text-center text-sm text-ds-text-neutral-muted-default">
+                  <Clock className="mx-auto mb-sm h-8 w-8 text-ds-icon-neutral-muted-default opacity-50" />
                   {t('layout.no-tasks-in-project')}
                 </div>
               )}

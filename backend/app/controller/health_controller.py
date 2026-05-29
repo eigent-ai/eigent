@@ -13,11 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
-import os
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from app.component.environment import env
 from app.router_layer.hands_resolver import get_environment_hands
 from app.utils.browser_launcher import _is_cdp_available, is_cdp_url_available
 
@@ -41,12 +41,12 @@ async def health_check(detail: bool = Query(False)):
     if detail:
         hands = get_environment_hands()
         capabilities = hands.get_capability_manifest()
-        cdp_url = os.environ.get("EIGENT_CDP_URL", "").strip()
+        cdp_url = env("EIGENT_CDP_URL", "").strip()
         if cdp_url:
             cdp_reachable = is_cdp_url_available(cdp_url)
         else:
             try:
-                browser_port = int(os.environ.get("browser_port", "9222"))
+                browser_port = int(env("browser_port", "9222"))
             except ValueError:
                 browser_port = 9222
             cdp_reachable = _is_cdp_available(browser_port)

@@ -14,6 +14,7 @@
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { useHost } from '@/host';
+import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { useAuthStore } from '@/store/authStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { useEffect, useMemo, useState } from 'react';
@@ -115,7 +116,7 @@ export function useProjectOutputFiles(
         }
       }
 
-      if (!cancelled) setFiles(nextFiles);
+      if (!cancelled) setFiles(filterVisibleAgentFiles(nextFiles));
     };
 
     void loadFiles();

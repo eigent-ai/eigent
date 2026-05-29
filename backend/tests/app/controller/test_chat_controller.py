@@ -75,10 +75,10 @@ class TestChatController:
             assert response.media_type == "text/event-stream"
 
     @pytest.mark.asyncio
-    async def test_post_chat_sets_environment_variables(
+    async def test_post_chat_sets_run_context_and_third_party_env(
         self, sample_chat_data, mock_request, mock_task_lock
     ):
-        """Test that environment variables are properly set."""
+        """Run-scoped values stay in RunContext; CAMEL path keys are published."""
         chat_data = Chat(**sample_chat_data)
 
         with (
@@ -107,14 +107,16 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            # Check environment variables were set
-            assert os.environ.get("OPENAI_API_KEY") == "test_key"
-            assert (
-                os.environ.get("OPENAI_API_BASE_URL")
-                == "https://api.openai.com/v1"
+            run_context = mock_task_lock.run_context
+            assert run_context.api_key == "test_key"
+            assert run_context.api_base_url == "https://api.openai.com/v1"
+            assert run_context.browser_port == 8080
+            assert os.environ.get("CAMEL_LOG_DIR") == str(
+                run_context.camel_log_dir
             )
-            assert os.environ.get("CAMEL_MODEL_LOG_ENABLED") == "true"
-            assert os.environ.get("browser_port") == "8080"
+            assert os.environ.get("CAMEL_WORKDIR") == str(
+                run_context.task_output_root
+            )
 
     @pytest.mark.asyncio
     async def test_post_chat_sets_cdp_url_when_browser_ready(
@@ -154,8 +156,10 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            assert os.environ.get("EIGENT_CDP_URL") == "http://127.0.0.1:8080"
-            assert os.environ.get("browser_port") == "8080"
+            assert (
+                mock_task_lock.run_context.cdp_url == "http://127.0.0.1:8080"
+            )
+            assert mock_task_lock.run_context.browser_port == 8080
             assert mock_request.state.browser_available is True
 
     @pytest.mark.asyncio
@@ -200,7 +204,8 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            assert "EIGENT_CDP_URL" not in os.environ
+            assert mock_task_lock.run_context.cdp_url is None
+            assert mock_task_lock.run_context.browser_port == 8080
             assert mock_request.state.browser_available is False
 
     @pytest.mark.asyncio
@@ -243,8 +248,10 @@ class TestChatController:
 
             await post(chat_data, mock_request)
 
-            assert os.environ.get("EIGENT_CDP_URL") == "http://worker-17:9222"
-            assert os.environ.get("browser_port") == "9222"
+            assert (
+                mock_task_lock.run_context.cdp_url == "http://worker-17:9222"
+            )
+            assert mock_task_lock.run_context.browser_port == 9222
             assert mock_request.state.browser_available is True
             mock_ensure_browser.assert_not_called()
 
@@ -291,6 +298,75 @@ class TestChatController:
             assert mock_task_lock.status == Status.confirming
             assert isinstance(response, Response)
             assert response.status_code == 201
+
+    def test_improve_skips_durable_on_run_start_when_rotation_failed(
+        self, mock_task_lock, mock_request
+    ):
+        """R27-1 regression: if run_context did not rotate to data.task_id
+        (e.g. freeze_task_directories_for raised inside the swallowing
+        try/except), we must NOT call MemoryService.on_run_start against the
+        previous, already-finalized run id -- doing so would reset its
+        status.json back to "running" and the finalize dedup set then blocks
+        future end-of-turn writers from closing it again.
+        """
+
+        # Use a real RunContext-shaped stand-in so getattr access works.
+        stale_run = SimpleNamespace(
+            run_id="stale_run_from_previous_turn",
+            space_id="blank_space_x",
+            project_id="project_x",
+            task_id="stale_task_id",
+            browser_port=9222,
+            cdp_url=None,
+            user_id="42",
+            email="u@example.com",
+        )
+        # Make isinstance(stale_run, RunContext) return True via patching.
+        mock_task_lock.run_context = stale_run
+        mock_task_lock.status = Status.processing
+        mock_task_lock.email = "u@example.com"
+
+        memory_service = MagicMock()
+        supplement_data = SupplementChat(
+            question="next turn", task_id="brand_new_task_id"
+        )
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.RunContext",
+                new=SimpleNamespace,
+            ),
+            patch(
+                "app.controller.chat_controller.get_workspace_resolver",
+                side_effect=RuntimeError(
+                    "simulated resolver failure -- rotation never happens"
+                ),
+            ),
+            patch(
+                "app.controller.chat_controller.get_memory_service",
+                return_value=memory_service,
+            ),
+            patch(
+                "app.controller.chat_controller._prepare_browser_for_request",
+                new=AsyncMock(return_value=True),
+            ),
+            patch("asyncio.run") as mock_run,
+        ):
+            mock_run.side_effect = lambda coro: coro.close()
+            response = improve("project_x", supplement_data, mock_request)
+
+            assert isinstance(response, Response)
+            # The improve request itself still succeeds -- chat must not break
+            # because durable memory is unhappy.
+            assert response.status_code == 201
+            # Critical assertion: on_run_start was NOT called against the stale
+            # context. The R26 fix only checked data.task_id; R27 strengthens
+            # it to compare refreshed_context.run_id == data.task_id.
+            memory_service.on_run_start.assert_not_called()
 
     def test_supplement_chat_success(self, mock_task_lock):
         """Test successful chat supplementation."""

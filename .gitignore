@@ -1,6 +1,7 @@
 # Logs
 logs
 *.log
+camel_logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

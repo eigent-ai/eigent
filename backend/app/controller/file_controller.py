@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse
 
 from app.component.environment import env
 from app.utils.file_utils import list_files, resolve_under_base
+from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
 file_logger = logging.getLogger("file_controller")
@@ -189,10 +190,33 @@ def _resolve_project_root(email: str, project_id: str) -> Path:
     return preferred
 
 
+def _resolve_file_root(
+    email: str,
+    project_id: str,
+    space_id: str | None = None,
+    user_id: str | int | None = None,
+) -> Path:
+    if space_id:
+        resolver = get_workspace_resolver()
+        space_root = resolver.space_root(
+            space_id=space_id,
+            project_id=project_id,
+            email=email,
+            user_id=user_id,
+        )
+        if space_root is not None:
+            return space_root
+    return _resolve_project_root(email, project_id)
+
+
 @router.get("/files")
 async def list_project_files(
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),
+    space_id: str | None = Query(None, description="Optional Space ID"),
+    user_id: str | None = Query(
+        None, description="Optional canonical user ID"
+    ),
     task_id: str | None = Query(
         None, description="Optional task ID to scope listing"
     ),
@@ -207,7 +231,7 @@ async def list_project_files(
             status_code=400,
             detail="project_id and email are required",
         )
-    project_root = _resolve_project_root(email, project_id)
+    project_root = _resolve_file_root(email, project_id, space_id, user_id)
     list_dir = str(project_root)
     if task_id:
         list_dir = str(project_root / f"task_{task_id}")
@@ -234,7 +258,13 @@ async def list_project_files(
             result.append(
                 {
                     "filename": Path(abs_path).name,
-                    "url": f"/files/stream?path={path_param}&project_id={quote(project_id)}&email={quote(email)}",
+                    "url": (
+                        f"/files/stream?path={path_param}"
+                        f"&project_id={quote(project_id)}"
+                        f"&email={quote(email)}"
+                        + (f"&space_id={quote(space_id)}" if space_id else "")
+                        + (f"&user_id={quote(user_id)}" if user_id else "")
+                    ),
                     "relativePath": rel,
                 }
             )
@@ -248,6 +278,10 @@ async def stream_file(
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),
+    space_id: str | None = Query(None, description="Optional Space ID"),
+    user_id: str | None = Query(
+        None, description="Optional canonical user ID"
+    ),
 ):
     """
     Stream file content. Path must be relative to project root.
@@ -258,7 +292,7 @@ async def stream_file(
             status_code=400,
             detail="path, project_id and email are required",
         )
-    project_root = _resolve_project_root(email, project_id)
+    project_root = _resolve_file_root(email, project_id, space_id, user_id)
     # Resolve path and ensure it stays under project root (security)
     try:
         resolved = resolve_under_base(path, str(project_root.resolve()))
@@ -285,6 +319,10 @@ async def preview_file(
     email: str,
     project_id: str,
     file_path: str,
+    space_id: str | None = Query(None, description="Optional Space ID"),
+    user_id: str | None = Query(
+        None, description="Optional canonical user ID"
+    ),
 ):
     """
     Preview file content with a path-based URL so relative references inside
@@ -296,7 +334,7 @@ async def preview_file(
             detail="file_path, project_id and email are required",
         )
 
-    project_root = _resolve_project_root(email, project_id)
+    project_root = _resolve_file_root(email, project_id, space_id, user_id)
     try:
         resolved = resolve_under_base(file_path, str(project_root.resolve()))
     except Exception as e:

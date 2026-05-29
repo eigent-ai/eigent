@@ -16,8 +16,8 @@ import asyncio
 import inspect
 import logging
 import os
-import re
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,8 +25,9 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.component import code
-from app.component.environment import sanitize_env_path, set_user_env_path
+from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
+from app.memory import get_memory_service
 from app.model.chat import (
     AddTaskRequest,
     Chat,
@@ -35,6 +36,11 @@ from app.model.chat import (
     Status,
     SupplementChat,
     sse_json,
+)
+from app.run_context import (
+    RunContext,
+    apply_run_env_for_third_party,
+    stream_with_run_context,
 )
 from app.service.chat_service import step_solve
 from app.service.task import (
@@ -59,6 +65,12 @@ from app.utils.browser_launcher import (
     is_cdp_url_available,
     normalize_cdp_url,
 )
+from app.utils.cdp_browser_state import (
+    clear_connected_cdp_browser_for_request,
+    get_connected_cdp_endpoint_for_request,
+)
+from app.utils.workspace_paths import camel_log_root
+from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
 
@@ -67,6 +79,9 @@ chat_logger = logging.getLogger("chat_controller")
 
 # SSE timeout configuration (60 minutes in seconds)
 SSE_TIMEOUT_SECONDS = 60 * 60
+
+# CAMEL reads this as a process-level logging toggle, not as per-run state.
+os.environ.setdefault("CAMEL_MODEL_LOG_ENABLED", "true")
 
 
 def _is_remote_browser_hands(request: Request | None) -> bool:
@@ -93,7 +108,10 @@ async def _prepare_browser_for_request(
     request: Request | None,
     port: int,
 ) -> bool:
-    existing_cdp_url = os.environ.get("EIGENT_CDP_URL", "").strip()
+    existing_cdp_url = (
+        get_connected_cdp_endpoint_for_request(request)
+        or env("EIGENT_CDP_URL", "")
+    ).strip()
     if existing_cdp_url:
         is_available = await asyncio.to_thread(
             is_cdp_url_available, existing_cdp_url
@@ -102,46 +120,97 @@ async def _prepare_browser_for_request(
             normalized_endpoint, _, selected_port = normalize_cdp_url(
                 existing_cdp_url
             )
-            os.environ["EIGENT_CDP_URL"] = normalized_endpoint
-            os.environ["browser_port"] = str(selected_port)
             if request is not None:
                 request.state.browser_available = True
+                request.state.cdp_url = normalized_endpoint
+                request.state.browser_port = selected_port
             return True
-        os.environ.pop("EIGENT_CDP_URL", None)
+        clear_connected_cdp_browser_for_request(request)
 
     if _is_remote_browser_hands(request):
         if request is not None:
             request.state.browser_available = True
+            request.state.cdp_url = None
+            request.state.browser_port = port
         return True
 
     try:
         endpoint = await asyncio.to_thread(ensure_cdp_browser_endpoint, port)
     except Exception as e:
-        os.environ.pop("EIGENT_CDP_URL", None)
         chat_logger.warning(
             "Could not ensure CDP browser for web mode",
             extra={"error": str(e), "port": port},
         )
         if request is not None:
             request.state.browser_available = False
+            request.state.cdp_url = None
+            request.state.browser_port = port
         return False
 
     if endpoint:
-        os.environ["EIGENT_CDP_URL"] = endpoint
         _, _, selected_port = normalize_cdp_url(endpoint)
-        os.environ["browser_port"] = str(selected_port)
         if request is not None:
             request.state.browser_available = True
+            request.state.cdp_url = endpoint
+            request.state.browser_port = selected_port
         return True
 
-    os.environ.pop("EIGENT_CDP_URL", None)
     chat_logger.warning(
         "CDP browser not available after ensure attempt",
         extra={"port": port},
     )
     if request is not None:
         request.state.browser_available = False
+        request.state.cdp_url = None
+        request.state.browser_port = port
     return False
+
+
+def _build_run_context(
+    data: Chat,
+    frozen_dirs,
+    request: Request,
+    camel_log: Path,
+) -> RunContext:
+    api_base_url = data.api_url or "https://api.openai.com/v1"
+    browser_port = int(
+        getattr(request.state, "browser_port", data.browser_port)
+    )
+    cdp_url = getattr(request.state, "cdp_url", None)
+    auth_header = request.headers.get("authorization")
+    return RunContext(
+        space_id=data.space_id or data.project_id,
+        project_id=data.project_id,
+        run_id=data.run_id or data.task_id,
+        task_id=data.task_id,
+        email=data.email,
+        user_id=str(data.user_id) if data.user_id is not None else None,
+        working_directory=frozen_dirs.working_directory,
+        task_output_root=frozen_dirs.task_output_root,
+        camel_log_dir=camel_log,
+        binding_source=frozen_dirs.binding_source,
+        workdir_mode=frozen_dirs.workdir_mode or data.workdir_mode,
+        browser_port=browser_port,
+        cdp_url=cdp_url,
+        api_key=data.api_key,
+        api_base_url=api_base_url,
+        cloud_api_key=data.api_key if data.is_cloud() else None,
+        server_url=data.server_url,
+        auth_header=auth_header,
+        search_config=data.search_config or {},
+        extra_env={
+            "baseSnapshotId": frozen_dirs.base_snapshot_id or "",
+        },
+    )
+
+
+def _camel_log_dir(
+    email: str,
+    project_id: str,
+    task_id: str,
+    user_id: str | int | None = None,
+) -> Path:
+    return camel_log_root(email, project_id, task_id, user_id)
 
 
 async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
@@ -180,6 +249,25 @@ async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
             exc_info=True,
         )
         return False
+
+
+def _should_preserve_task_lock_on_cancel(task_lock) -> bool:
+    """Keep completed Project state alive for follow-up turns.
+
+    The frontend closes the SSE stream after a run reaches `end`. That close is
+    reported to FastAPI as a cancellation, but for multi-turn Project semantics
+    it is not a user stop. The TaskLock carries the short-term conversation
+    context used by follow-up `/chat/{project_id}` requests, especially for the
+    single-agent harness, so completed locks with history must survive it.
+    """
+    if not task_lock:
+        return False
+    if getattr(task_lock, "status", None) not in {
+        Status.done,
+        Status.confirming,
+    }:
+        return False
+    return bool(getattr(task_lock, "conversation_history", None))
 
 
 async def timeout_stream_wrapper(
@@ -232,6 +320,12 @@ async def timeout_stream_wrapper(
         chat_logger.info(
             "[STREAM-CANCELLED] Stream cancelled, triggering cleanup"
         )
+        if _should_preserve_task_lock_on_cancel(task_lock):
+            chat_logger.info(
+                "[STREAM-CANCELLED] Preserving completed task lock for follow-up context",
+                extra={"task_id": getattr(task_lock, "id", None)},
+            )
+            raise
         if not cleanup_triggered:
             await _cleanup_task_lock_safe(task_lock, "CANCELLED")
         raise
@@ -251,6 +345,9 @@ async def start_chat_stream(data: Chat, request: Request):
     Setup and start chat stream. Used by POST /chat and Message Router.
     Returns async generator of SSE chunks.
     """
+    # TODO(brain-auth): Phase B should derive canonical user_id from
+    # request.state.brain_auth, then verify/replace Chat.email before any
+    # workspace snapshot, artifact path, or task lock is resolved.
     chat_logger.info(
         "Starting new chat session",
         extra={
@@ -269,48 +366,62 @@ async def start_chat_stream(data: Chat, request: Request):
     if safe_env_path:
         load_dotenv(dotenv_path=safe_env_path)
 
-    # TODO(multi-tenant): os.environ is global – concurrent sessions overwrite
-    # each other's API keys, file paths, and browser ports.  Pass these values
-    # through Chat / request context instead of mutating the process environment.
-    os.environ["file_save_path"] = data.file_save_path()
-    os.environ["browser_port"] = str(data.browser_port)
+    resolver = get_workspace_resolver()
+    try:
+        frozen_dirs = resolver.freeze_task_directories(data, task_lock)
+    except ValueError as exc:
+        raise UserException(code.error, str(exc)) from exc
+
+    try:
+        await asyncio.to_thread(
+            resolver.write_task_snapshot,
+            data.email,
+            frozen_dirs.snapshot,
+        )
+    except Exception:
+        chat_logger.warning(
+            "Failed to persist task workspace snapshot",
+            extra={"project_id": data.project_id, "task_id": data.task_id},
+            exc_info=True,
+        )
+
     # Web mode: reuse an existing CDP endpoint first, otherwise acquire browser
     # through RemoteHands or launch a local browser when available.
     if not data.cdp_browsers:
         await _prepare_browser_for_request(request, data.browser_port)
-    os.environ["OPENAI_API_KEY"] = data.api_key
-    os.environ["OPENAI_API_BASE_URL"] = (
-        data.api_url or "https://api.openai.com/v1"
-    )
-    os.environ["CAMEL_MODEL_LOG_ENABLED"] = "true"
 
-    # Set user-specific search engine configuration if provided
-    if data.search_config:
-        for key, value in data.search_config.items():
-            if value:
-                os.environ[key] = value
-                chat_logger.debug(
-                    f"Set search config: {key}",
-                    extra={"project_id": data.project_id},
-                )
-
-    email_sanitized = re.sub(
-        r'[\\/*?:"<>|\s]', "_", data.email.split("@")[0]
-    ).strip(".")
-    camel_log = (
-        Path.home()
-        / ".eigent"
-        / email_sanitized
-        / ("project_" + data.project_id)
-        / ("task_" + data.task_id)
-        / "camel_logs"
+    camel_log = _camel_log_dir(
+        data.email,
+        data.project_id,
+        data.run_id or data.task_id,
+        data.user_id,
     )
     camel_log.mkdir(parents=True, exist_ok=True)
+    run_context = _build_run_context(data, frozen_dirs, request, camel_log)
+    apply_run_env_for_third_party(run_context)
+    task_lock.run_context = run_context
 
-    os.environ["CAMEL_LOG_DIR"] = str(camel_log)
-
-    if data.is_cloud():
-        os.environ["cloud_api_key"] = data.api_key
+    # Local memory: write Space/Project/Run scaffolding + append user prompt.
+    # Best-effort; MemoryService swallows write errors so chat keeps working.
+    memory_service = get_memory_service()
+    memory_mode = (
+        "single_agent" if data.session_mode == "single-agent" else "workforce"
+    )
+    memory_space_source = (
+        "legacy"
+        if data.space_id and data.space_id.startswith("legacy_")
+        else ("folder" if data.space_root_path else "blank")
+    )
+    memory_service.on_run_start(
+        run_context=run_context,
+        space_name=None,
+        project_name=None,
+        space_source_type=memory_space_source,
+        mode=memory_mode,
+        user_prompt=data.question,
+        prompt_source="chat",
+    )
+    task_lock.memory_service = memory_service
 
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
@@ -321,6 +432,7 @@ async def start_chat_stream(data: Chat, request: Request):
             data=ImprovePayload(
                 question=data.question,
                 attaches=data.attaches or [],
+                project_context=data.project_context,
             ),
             new_task_id=data.task_id,
         )
@@ -332,10 +444,16 @@ async def start_chat_stream(data: Chat, request: Request):
             "project_id": data.project_id,
             "task_id": data.task_id,
             "log_dir": str(camel_log),
+            "working_directory": str(frozen_dirs.working_directory),
+            "binding_source": frozen_dirs.binding_source,
         },
     )
     return timeout_stream_wrapper(
-        step_solve(data, request, task_lock), task_lock=task_lock
+        stream_with_run_context(
+            step_solve(data, request, task_lock),
+            lambda: getattr(task_lock, "run_context", run_context),
+        ),
+        task_lock=task_lock,
     )
 
 
@@ -358,7 +476,12 @@ def improve(id: str, data: SupplementChat, request: Request):
 
     # Reuse an existing endpoint when possible to avoid tearing down
     # a browser that was manually connected through the Browser page.
-    port = int(os.environ.get("browser_port", "9222"))
+    current_context = getattr(task_lock, "run_context", None)
+    port = (
+        current_context.browser_port
+        if isinstance(current_context, RunContext)
+        else int(env("browser_port", "9222"))
+    )
     asyncio.run(_prepare_browser_for_request(request, port))
 
     # Allow continuing conversation even after task is done
@@ -390,39 +513,68 @@ def improve(id: str, data: SupplementChat, request: Request):
     new_folder_path = None
     if data.task_id:
         try:
-            # Get current environment values needed to construct new path
-            current_email = None
-
-            # Extract email from current file_save_path if available
-            current_file_save_path = os.environ.get("file_save_path", "")
-            if current_file_save_path:
-                path_parts = Path(current_file_save_path).parts
-                if len(path_parts) >= 3 and "eigent" in path_parts:
-                    eigent_index = path_parts.index("eigent")
-                    if eigent_index + 1 < len(path_parts):
-                        current_email = path_parts[eigent_index + 1]
+            current_email = getattr(task_lock, "email", None)
 
             # If we have the necessary info, update
             # the file_save_path
             if current_email and id:
-                # Create new path using the existing
-                # pattern: email/project_{id}/task_{id}
-                new_folder_path = (
-                    Path.home()
-                    / "eigent"
-                    / current_email
-                    / f"project_{id}"
-                    / f"task_{data.task_id}"
+                resolver = get_workspace_resolver()
+                frozen_dirs = resolver.freeze_task_directories_for(
+                    space_id=getattr(task_lock, "space_id", id),
+                    project_id=id,
+                    task_id=data.task_id,
+                    email=current_email,
+                    task_lock=task_lock,
+                    user_id=getattr(task_lock, "user_id", None),
                 )
-                new_folder_path.mkdir(parents=True, exist_ok=True)
-                os.environ["file_save_path"] = str(new_folder_path)
+                try:
+                    resolver.write_task_snapshot(
+                        current_email, frozen_dirs.snapshot
+                    )
+                except Exception:
+                    chat_logger.warning(
+                        "Failed to persist task workspace snapshot",
+                        extra={"project_id": id, "task_id": data.task_id},
+                        exc_info=True,
+                    )
+                new_folder_path = frozen_dirs.task_output_root
+                camel_log = _camel_log_dir(
+                    current_email,
+                    id,
+                    data.task_id,
+                    getattr(task_lock, "user_id", None),
+                )
+                camel_log.mkdir(parents=True, exist_ok=True)
+                current_context = getattr(task_lock, "run_context", None)
+                if isinstance(current_context, RunContext):
+                    updated_context = replace(
+                        current_context,
+                        run_id=data.task_id,
+                        task_id=data.task_id,
+                        working_directory=frozen_dirs.working_directory,
+                        task_output_root=frozen_dirs.task_output_root,
+                        camel_log_dir=camel_log,
+                        binding_source=frozen_dirs.binding_source,
+                        browser_port=int(
+                            getattr(request.state, "browser_port", port)
+                        ),
+                        cdp_url=getattr(
+                            request.state, "cdp_url", current_context.cdp_url
+                        ),
+                    )
+                    apply_run_env_for_third_party(updated_context)
+                    task_lock.run_context = updated_context
                 chat_logger.info(
                     f"Updated file_save_path to: {new_folder_path}"
                 )
 
                 # Store the new folder path in task_lock
                 # for potential cleanup and persistence
-                task_lock.new_folder_path = new_folder_path
+                task_lock.new_folder_path = (
+                    new_folder_path
+                    if frozen_dirs.binding_source == "default"
+                    else None
+                )
             else:
                 chat_logger.warning(
                     "Could not update"
@@ -439,12 +591,65 @@ def improve(id: str, data: SupplementChat, request: Request):
                 f" {e}"
             )
 
+    # Local memory: this is a follow-up turn within the same Project. The
+    # original on_run_start ran when the chat first started; here we open a
+    # new Run record for the supplement turn so its conversation events are
+    # bound to the right run_id.
+    #
+    # Strict guard: only open a new durable Run when run_context was actually
+    # rotated to the supplied task_id. The workspace-rotation block above is
+    # wrapped in a best-effort try/except, so a missing email, a resolver
+    # failure, or any other swallowed exception can leave task_lock.run_context
+    # pointing at the previous (finalized) run id. Calling on_run_start in
+    # that state would reset the old run's status.json back to "running" and
+    # the finalize dedup set then blocks the next end-of-turn writer from
+    # closing it again -- leaving durable memory permanently divergent from
+    # the visible chat flow.
+    refreshed_context = getattr(task_lock, "run_context", None)
+    rotation_succeeded = (
+        data.task_id
+        and isinstance(refreshed_context, RunContext)
+        and refreshed_context.run_id == data.task_id
+    )
+    if rotation_succeeded:
+        get_memory_service().on_run_start(
+            run_context=refreshed_context,
+            space_name=None,
+            project_name=None,
+            space_source_type=(
+                "legacy"
+                if refreshed_context.space_id.startswith("legacy_")
+                else "blank"
+            ),
+            mode=None,  # mode unchanged; preserve existing project.json value
+            user_prompt=data.question,
+            prompt_source="improve",
+        )
+    elif data.task_id:
+        # The client wanted a fresh run but rotation failed upstream. Don't
+        # touch durable memory; the in-process turn still proceeds so the
+        # user gets a response, but we leave a breadcrumb for diagnosis.
+        chat_logger.warning(
+            "Skipped durable on_run_start: run_context did not rotate to"
+            " requested task_id",
+            extra={
+                "project_id": id,
+                "requested_task_id": data.task_id,
+                "current_run_id": (
+                    refreshed_context.run_id
+                    if isinstance(refreshed_context, RunContext)
+                    else None
+                ),
+            },
+        )
+
     asyncio.run(
         task_lock.put_queue(
             ActionImproveData(
                 data=ImprovePayload(
                     question=data.question,
                     attaches=data.attaches or [],
+                    project_context=data.project_context,
                 ),
                 new_task_id=data.task_id,
             )
@@ -518,7 +723,17 @@ def human_reply(id: str, data: HumanReply):
         extra={"task_id": id, "reply_length": len(data.reply)},
     )
     task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_human_input(data.agent, data.reply))
+    try:
+        asyncio.run(task_lock.put_human_input(data.agent, data.reply))
+    except KeyError as exc:
+        chat_logger.warning(
+            "Human reply target is no longer waiting for input",
+            extra={"task_id": id, "agent": data.agent},
+        )
+        raise UserException(
+            code.error,
+            "This task is no longer waiting for a human reply. Please send a new message.",
+        ) from exc
     chat_logger.debug("Human reply processed", extra={"task_id": id})
     return Response(status_code=201)
 

@@ -58,9 +58,10 @@ const Layout = () => {
     if (!host?.ipcRenderer || !host?.electronAPI) return;
 
     const handleBeforeClose = () => {
-      const currentStatus =
-        chatStore.tasks[chatStore.activeTaskId as string]?.status;
-      if (['running', 'pause'].includes(currentStatus)) {
+      const currentStatus = chatStore?.activeTaskId
+        ? chatStore.tasks[chatStore.activeTaskId]?.status
+        : undefined;
+      if (currentStatus && ['running', 'pause'].includes(currentStatus)) {
         setNoticeOpen(true);
       } else {
         host.electronAPI.closeWindow(true);
@@ -71,7 +72,7 @@ const Layout = () => {
     return () => {
       host.ipcRenderer?.removeAllListeners('before-close');
     };
-  }, [chatStore.tasks, chatStore.activeTaskId, host]);
+  }, [chatStore, host]);
 
   // Determine what to show based on states
   const shouldShowOnboarding =
@@ -85,16 +86,10 @@ const Layout = () => {
     shouldShowInstallScreen || initState !== 'done' || !isBackendReady;
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
-  if (!chatStore) {
-    console.log(chatStore);
-
-    return <div>Loading...</div>;
-  }
-
   return (
-    <div className="bg-ds-bg-neutral-muted-default relative flex h-full flex-col overflow-hidden">
+    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-muted-default">
       <TopBar />
-      <div className="min-h-0 relative h-full flex-1 overflow-hidden">
+      <div className="relative h-full min-h-0 flex-1 overflow-hidden">
         {/* Onboarding animation */}
         {shouldShowOnboarding && (
           <AnimationJson

@@ -15,4 +15,5 @@ src/components/ui/colorPicker.tsx
 #
 # Electron shell surfaces use fixed native colors in preload HTML and BrowserWindow options.
 electron/main/index.ts
+electron/main/fileReader.ts
 electron/preload/index.ts

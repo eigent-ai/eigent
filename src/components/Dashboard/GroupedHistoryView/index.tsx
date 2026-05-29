@@ -16,14 +16,17 @@ import { proxyFetchDelete, proxyFetchPut } from '@/api/http';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tag } from '@/components/ui/tag';
 import { useHost } from '@/host';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useGlobalStore } from '@/store/globalStore';
-import { useProjectStore } from '@/store/projectStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Folder,
+  FolderKanban,
   FolderOpen,
   LayoutGrid,
   List,
@@ -38,6 +41,7 @@ import ProjectGroup from './ProjectGroup';
 /** Session cache so remounts (e.g. dialogs) show the project list immediately without refetching. */
 let groupedHistorySnapshot: {
   email: string | null;
+  scopeKey: string | null;
   projects: ProjectGroupType[];
   triggerKey: number | string;
 } | null = null;
@@ -45,6 +49,8 @@ let groupedHistorySnapshot: {
 interface GroupedHistoryViewProps {
   /** When true, grid/list tabs are hidden (e.g. controlled from a parent sidebar). */
   hideViewSwitcher?: boolean;
+  /** Active Space filter is still available, but the Hub/history default is all Spaces. */
+  spaceScope?: 'all' | 'active';
   searchValue?: string;
   onTaskSelect: (
     projectId: string,
@@ -67,6 +73,7 @@ interface GroupedHistoryViewProps {
 
 export default function GroupedHistoryView({
   hideViewSwitcher = false,
+  spaceScope = 'all',
   searchValue = '',
   onTaskSelect,
   onTaskDelete,
@@ -86,12 +93,17 @@ export default function GroupedHistoryView({
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const triggerKey = refreshTrigger ?? '_default';
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const spacesById = useSpaceStore((s) => s.spaces);
+  const scopeKey =
+    spaceScope === 'active' ? (activeSpaceId ?? null) : '__all_spaces__';
 
   const [projects, setProjects] = useState<ProjectGroupType[]>(() => {
     const snap = groupedHistorySnapshot;
     if (
       snap &&
       snap.email === (email ?? null) &&
+      snap.scopeKey === scopeKey &&
       snap.triggerKey === triggerKey
     ) {
       return snap.projects;
@@ -103,11 +115,12 @@ export default function GroupedHistoryView({
     return !(
       snap &&
       snap.email === (email ?? null) &&
+      snap.scopeKey === scopeKey &&
       snap.triggerKey === triggerKey
     );
   });
   const { history_type, setHistoryType } = useGlobalStore();
-  const projectStore = useProjectStore();
+  const projectStore = useProjectRuntimeStore();
 
   // Default to list view if not set
   const viewType = history_type || 'list';
@@ -117,14 +130,16 @@ export default function GroupedHistoryView({
     if (
       groupedHistorySnapshot &&
       groupedHistorySnapshot.email === u &&
+      groupedHistorySnapshot.scopeKey === scopeKey &&
       groupedHistorySnapshot.triggerKey === triggerKey
     ) {
       groupedHistorySnapshot = {
         ...groupedHistorySnapshot,
+        scopeKey,
         projects,
       };
     }
-  }, [projects, email, triggerKey]);
+  }, [projects, email, triggerKey, scopeKey]);
 
   const loadProjects = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -143,20 +158,23 @@ export default function GroupedHistoryView({
                 : action;
             groupedHistorySnapshot = {
               email: u,
+              scopeKey,
               projects: next,
               triggerKey,
             };
             return next;
           });
         };
-        await fetchGroupedHistoryTasks(snapshotSetter);
+        await fetchGroupedHistoryTasks(snapshotSetter, {
+          spaceId: spaceScope === 'active' ? activeSpaceId : undefined,
+        });
       } catch (error) {
         console.error('Failed to load grouped projects:', error);
       } finally {
         if (!opts?.silent) setLoading(false);
       }
     },
-    [email, triggerKey]
+    [email, triggerKey, activeSpaceId, scopeKey, spaceScope]
   );
 
   const onDelete = (historyId: string) => {
@@ -190,9 +208,6 @@ export default function GroupedHistoryView({
   const handleProjectEdit = (projectId: string) => {
     if (onProjectEdit) {
       onProjectEdit(projectId);
-    } else {
-      console.log('Edit project:', projectId);
-      // TODO: Implement project edit functionality
     }
   };
 
@@ -317,14 +332,19 @@ export default function GroupedHistoryView({
   useEffect(() => {
     const u = email ?? null;
     const snap = groupedHistorySnapshot;
-    if (snap && snap.email === u && snap.triggerKey === triggerKey) {
+    if (
+      snap &&
+      snap.email === u &&
+      snap.scopeKey === scopeKey &&
+      snap.triggerKey === triggerKey
+    ) {
       setProjects(snap.projects);
       setLoading(false);
       void loadProjects({ silent: true });
       return;
     }
     void loadProjects();
-  }, [email, triggerKey, loadProjects]);
+  }, [activeSpaceId, email, triggerKey, loadProjects, scopeKey]);
 
   // Filter projects based on search value
   const filteredProjects = projects.filter((project) => {
@@ -344,7 +364,9 @@ export default function GroupedHistoryView({
   });
 
   // Get all projects from projectStore and find empty ones
-  const allProjectsFromStore = projectStore.getAllProjects();
+  const allProjectsFromStore = projectStore.getAllProjects(
+    spaceScope === 'active' ? (activeSpaceId ?? undefined) : undefined
+  );
   const emptyProjects = allProjectsFromStore.filter((project) =>
     projectStore.isEmptyProject(project)
   );
@@ -358,6 +380,7 @@ export default function GroupedHistoryView({
     .filter((project) => !filteredProjectIds.has(project.id))
     .map((project) => ({
       project_id: project.id,
+      space_id: project.spaceId,
       project_name: project.name,
       total_tokens: 0,
       task_count: 0,
@@ -372,6 +395,45 @@ export default function GroupedHistoryView({
 
   // Combine filtered projects with empty projects from store
   const allProjects = [...emptyProjectGroups, ...filteredProjects];
+  const projectsBySpace = allProjects.reduce<
+    Record<
+      string,
+      {
+        spaceId: string;
+        spaceName: string;
+        isLegacy: boolean;
+        latestDate: number;
+        projects: ProjectGroupType[];
+      }
+    >
+  >((acc, project) => {
+    const spaceId = project.space_id || activeSpaceId || 'unknown';
+    const space = spacesById[spaceId];
+    const isLegacy = space ? isLegacySpace(space) : false;
+    const latestDate = new Date(project.latest_task_date || 0).getTime();
+    if (!acc[spaceId]) {
+      acc[spaceId] = {
+        spaceId,
+        spaceName:
+          space?.name?.trim() ||
+          (isLegacy
+            ? t('layout.spaces-hub-legacy-tag')
+            : t('layout.spaces-untitled')),
+        isLegacy,
+        latestDate: Number.isFinite(latestDate) ? latestDate : 0,
+        projects: [],
+      };
+    }
+    acc[spaceId].latestDate = Math.max(
+      acc[spaceId].latestDate,
+      Number.isFinite(latestDate) ? latestDate : 0
+    );
+    acc[spaceId].projects.push(project);
+    return acc;
+  }, {});
+  const projectSections = Object.values(projectsBySpace).sort(
+    (a, b) => b.latestDate - a.latestDate
+  );
 
   // Shimmer animation styles
   // Shimmer animation styles
@@ -384,35 +446,35 @@ export default function GroupedHistoryView({
 
   // Skeleton component for list card loading state
   const ListCardSkeleton = () => (
-    <div className="rounded-xl bg-ds-bg-neutral-default-default overflow-hidden">
-      <div className="px-6 py-4 flex w-full items-center justify-between">
+    <div className="overflow-hidden rounded-xl bg-ds-bg-neutral-default-default">
+      <div className="flex w-full items-center justify-between px-6 py-4">
         {/* Start: Folder icon and project name skeleton */}
-        <div className="w-48 gap-3 flex flex-shrink-0 items-center">
-          <div className="h-5 w-5 rounded bg-ds-bg-neutral-subtle-default relative flex-shrink-0 overflow-hidden">
-            <div className="inset-0 absolute" style={shimmerStyle} />
+        <div className="flex w-48 flex-shrink-0 items-center gap-3">
+          <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
+            <div className="absolute inset-0" style={shimmerStyle} />
           </div>
-          <div className="h-5 w-32 rounded bg-ds-bg-neutral-subtle-default relative overflow-hidden">
-            <div className="inset-0 absolute" style={shimmerStyle} />
+          <div className="relative h-5 w-32 overflow-hidden rounded bg-ds-bg-neutral-subtle-default">
+            <div className="absolute inset-0" style={shimmerStyle} />
           </div>
         </div>
 
         {/* Middle: Tags skeleton */}
-        <div className="gap-4 flex flex-1 items-center justify-end">
-          <div className="h-6 w-16 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
-            <div className="inset-0 absolute" style={shimmerStyle} />
+        <div className="flex flex-1 items-center justify-end gap-4">
+          <div className="relative h-6 w-16 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
+            <div className="absolute inset-0" style={shimmerStyle} />
           </div>
-          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
-            <div className="inset-0 absolute" style={shimmerStyle} />
+          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
+            <div className="absolute inset-0" style={shimmerStyle} />
           </div>
-          <div className="h-6 w-12 bg-ds-bg-neutral-subtle-default relative overflow-hidden rounded-full">
-            <div className="inset-0 absolute" style={shimmerStyle} />
+          <div className="relative h-6 w-12 overflow-hidden rounded-full bg-ds-bg-neutral-subtle-default">
+            <div className="absolute inset-0" style={shimmerStyle} />
           </div>
         </div>
 
         {/* End: Menu skeleton */}
-        <div className="ml-4 min-w-32 gap-2 pl-4 flex items-center justify-end">
-          <div className="h-8 w-8 rounded-md bg-ds-bg-neutral-subtle-default relative overflow-hidden">
-            <div className="inset-0 absolute" style={shimmerStyle} />
+        <div className="ml-4 flex min-w-32 items-center justify-end gap-2 pl-4">
+          <div className="relative h-8 w-8 overflow-hidden rounded-md bg-ds-bg-neutral-subtle-default">
+            <div className="absolute inset-0" style={shimmerStyle} />
           </div>
         </div>
       </div>
@@ -421,7 +483,7 @@ export default function GroupedHistoryView({
 
   if (loading) {
     return (
-      <div className="gap-4 pb-40 flex w-full flex-col">
+      <div className="flex w-full flex-col gap-4 pb-40">
         {/* Keyframe animation for shimmer effect */}
         <style>
           {`
@@ -433,24 +495,24 @@ export default function GroupedHistoryView({
         </style>
 
         {/* Summary skeleton */}
-        <div className="pb-4 flex items-center justify-between">
-          <div className="gap-2 flex items-center">
-            <div className="h-7 w-28 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
-              <div className="inset-0 absolute" style={shimmerStyle} />
+        <div className="flex items-center justify-between pb-4">
+          <div className="flex items-center gap-2">
+            <div className="relative h-7 w-28 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
+              <div className="absolute inset-0" style={shimmerStyle} />
             </div>
-            <div className="h-7 w-32 bg-ds-bg-neutral-strong-default relative overflow-hidden rounded-full">
-              <div className="inset-0 absolute" style={shimmerStyle} />
+            <div className="relative h-7 w-32 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
+              <div className="absolute inset-0" style={shimmerStyle} />
             </div>
           </div>
-          <div className="gap-md flex items-center">
-            <div className="h-9 w-40 rounded-lg bg-ds-bg-neutral-strong-default relative overflow-hidden">
-              <div className="inset-0 absolute" style={shimmerStyle} />
+          <div className="flex items-center gap-md">
+            <div className="relative h-9 w-40 overflow-hidden rounded-lg bg-ds-bg-neutral-strong-default">
+              <div className="absolute inset-0" style={shimmerStyle} />
             </div>
           </div>
         </div>
 
         {/* List skeleton cards */}
-        <div className="gap-3 flex flex-col">
+        <div className="flex flex-col gap-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <ListCardSkeleton key={i} />
           ))}
@@ -459,9 +521,9 @@ export default function GroupedHistoryView({
     );
   }
 
-  if (filteredProjects.length === 0) {
+  if (allProjects.length === 0) {
     return (
-      <div className="p-8 flex flex-col items-center justify-center text-center">
+      <div className="flex flex-col items-center justify-center p-8 text-center">
         <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
         <div className="text-sm text-ds-text-neutral-muted-default">
           {searchValue
@@ -477,13 +539,34 @@ export default function GroupedHistoryView({
     );
   }
 
+  const renderProjectGroup = (
+    project: ProjectGroupType,
+    viewMode: 'grid' | 'list'
+  ) => (
+    <ProjectGroup
+      project={project}
+      onTaskSelect={onTaskSelect}
+      onTaskDelete={onDelete}
+      onTaskShare={onTaskShare}
+      activeTaskId={activeTaskId}
+      searchValue={searchValue}
+      isOngoing={project.total_ongoing_tasks > 0}
+      onOngoingTaskPause={onOngoingTaskPause}
+      onOngoingTaskResume={onOngoingTaskResume}
+      onProjectEdit={handleProjectEdit}
+      onProjectDelete={handleProjectDelete}
+      onProjectRename={handleProjectRename}
+      viewMode={viewMode}
+    />
+  );
+
   return (
-    <div className="gap-4 pb-40 flex w-full flex-col">
+    <div className="flex w-full flex-col gap-4 pb-40">
       {/* Summary */}
       <div
-        className={`pb-4 flex items-center ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
+        className={`flex items-center pb-4 ${hideViewSwitcher ? 'justify-start' : 'justify-between'}`}
       >
-        <div className="gap-2 flex items-center">
+        <div className="flex items-center gap-2">
           <Tag variant="primary" tone="neutral" size="sm" className="gap-2">
             <Folder />
             <span className="text-body-sm"> {t('layout.projects')}</span>
@@ -512,7 +595,7 @@ export default function GroupedHistoryView({
             )}
           </Tag>
         </div>
-        <div className="gap-md flex items-center">
+        <div className="flex items-center gap-md">
           {!hideViewSwitcher && (
             <Tabs
               value={viewType}
@@ -522,13 +605,13 @@ export default function GroupedHistoryView({
             >
               <TabsList>
                 <TabsTrigger value="grid">
-                  <div className="gap-1 text-label-sm flex items-center">
+                  <div className="flex items-center gap-1 text-label-sm">
                     <LayoutGrid size={16} />
                     <span>{t('dashboard.grid')}</span>
                   </div>
                 </TabsTrigger>
                 <TabsTrigger value="list">
-                  <div className="gap-1 text-label-sm flex items-center">
+                  <div className="flex items-center gap-1 text-label-sm">
                     <List size={16} />
                     <span>{t('dashboard.list')}</span>
                   </div>
@@ -550,7 +633,7 @@ export default function GroupedHistoryView({
           {viewType === 'grid' ? (
             // Grid layout for project cards
             <motion.div
-              className="gap-4 md:grid-cols-2 grid auto-rows-fr grid-cols-1"
+              className="flex flex-col gap-6"
               initial="hidden"
               animate="visible"
               variants={{
@@ -564,9 +647,9 @@ export default function GroupedHistoryView({
               }}
             >
               <AnimatePresence mode="popLayout">
-                {allProjects.map((project, _index) => (
+                {projectSections.map((section) => (
                   <motion.div
-                    key={project.project_id}
+                    key={section.spaceId}
                     variants={{
                       hidden: { opacity: 0, y: 20, scale: 0.95 },
                       visible: {
@@ -587,22 +670,35 @@ export default function GroupedHistoryView({
                       },
                     }}
                     layout
+                    className="flex flex-col gap-3"
                   >
-                    <ProjectGroup
-                      project={project}
-                      onTaskSelect={onTaskSelect}
-                      onTaskDelete={onDelete}
-                      onTaskShare={onTaskShare}
-                      activeTaskId={activeTaskId}
-                      searchValue={searchValue}
-                      isOngoing={project.total_ongoing_tasks > 0}
-                      onOngoingTaskPause={onOngoingTaskPause}
-                      onOngoingTaskResume={onOngoingTaskResume}
-                      onProjectEdit={handleProjectEdit}
-                      onProjectDelete={handleProjectDelete}
-                      onProjectRename={handleProjectRename}
-                      viewMode="grid"
-                    />
+                    <div className="flex items-center gap-2 px-1">
+                      <FolderKanban
+                        className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                        aria-hidden
+                      />
+                      <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                        {section.spaceName}
+                      </span>
+                      {section.isLegacy ? (
+                        <Tag
+                          size="xs"
+                          variant="secondary"
+                          tone="default"
+                          text={t('layout.spaces-hub-legacy-tag')}
+                        />
+                      ) : null}
+                      <span className="text-body-xs text-ds-text-neutral-subtle-default">
+                        {section.projects.length}
+                      </span>
+                    </div>
+                    <div className="grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2">
+                      {section.projects.map((project) => (
+                        <div key={project.project_id}>
+                          {renderProjectGroup(project, 'grid')}
+                        </div>
+                      ))}
+                    </div>
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -610,7 +706,7 @@ export default function GroupedHistoryView({
           ) : (
             // List layout for projects
             <motion.div
-              className="gap-3 flex flex-col"
+              className="flex flex-col gap-3"
               initial="hidden"
               animate="visible"
               variants={{
@@ -624,9 +720,9 @@ export default function GroupedHistoryView({
               }}
             >
               <AnimatePresence mode="popLayout">
-                {allProjects.map((project, _index) => (
+                {projectSections.map((section) => (
                   <motion.div
-                    key={project.project_id}
+                    key={section.spaceId}
                     variants={{
                       hidden: { opacity: 0, x: -20 },
                       visible: {
@@ -646,22 +742,33 @@ export default function GroupedHistoryView({
                       },
                     }}
                     layout
+                    className="flex flex-col gap-3"
                   >
-                    <ProjectGroup
-                      project={project}
-                      onTaskSelect={onTaskSelect}
-                      onTaskDelete={onDelete}
-                      onTaskShare={onTaskShare}
-                      activeTaskId={activeTaskId}
-                      searchValue={searchValue}
-                      isOngoing={project.total_ongoing_tasks > 0}
-                      onOngoingTaskPause={onOngoingTaskPause}
-                      onOngoingTaskResume={onOngoingTaskResume}
-                      onProjectEdit={handleProjectEdit}
-                      onProjectDelete={handleProjectDelete}
-                      onProjectRename={handleProjectRename}
-                      viewMode="list"
-                    />
+                    <div className="flex items-center gap-2 px-1">
+                      <FolderKanban
+                        className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                        aria-hidden
+                      />
+                      <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                        {section.spaceName}
+                      </span>
+                      {section.isLegacy ? (
+                        <Tag
+                          size="xs"
+                          variant="secondary"
+                          tone="default"
+                          text={t('layout.spaces-hub-legacy-tag')}
+                        />
+                      ) : null}
+                      <span className="text-body-xs text-ds-text-neutral-subtle-default">
+                        {section.projects.length}
+                      </span>
+                    </div>
+                    {section.projects.map((project) => (
+                      <div key={project.project_id}>
+                        {renderProjectGroup(project, 'list')}
+                      </div>
+                    ))}
                   </motion.div>
                 ))}
               </AnimatePresence>

@@ -11,6 +11,7 @@
   "grid": "網格",
   "table": "表格",
   "list": "列表",
+  "board": "看板",
   "search-dialog": "搜尋對話框",
   "search-dialog-placeholder": "搜尋或提問",
   "no-results": "沒有結果",
@@ -23,5 +24,6 @@
   "document-agent": "文件智能體",
   "multi-modal-agent": "多模態智能體",
   "social-media-agent": "社群媒體智能體",
-  "no-projects-found": "沒有找到專案"
+  "no-projects-found": "沒有找到專案",
+  "no-tasks-found": "找不到任務。"
 }

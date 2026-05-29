@@ -563,6 +563,7 @@ export class FileReader {
   // Folders to hide in the Agent Folder view
   private readonly hiddenFolders = [
     'browser_agent',
+    'camel_logs',
     'developer_agent',
     'document_agent',
     'multi_modal_agent',

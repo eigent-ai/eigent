@@ -24,6 +24,7 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 class ChatStep(AbstractModel, DefaultTimes, table=True):
     id: int = Field(default=None, primary_key=True)
     task_id: str = Field(index=True)
+    run_id: str | None = Field(default=None, index=True)
     step: str
     data: str = Field(sa_type=JSON)
     timestamp: float | None = Field(default=None, nullable=True)
@@ -48,6 +49,7 @@ class ChatStep(AbstractModel, DefaultTimes, table=True):
 
 class ChatStepIn(BaseModel):
     task_id: str
+    run_id: str | None = None
     step: str
     data: Any
     timestamp: float | None = None
@@ -56,12 +58,14 @@ class ChatStepIn(BaseModel):
 class ChatStepOut(BaseModel):
     id: int
     task_id: str
+    run_id: str | None = None
     step: str
     data: Any
     timestamp: float | None = None
 
 
 class ChatStepUpdate(BaseModel):
+    run_id: str | None = None
     step: str | None = None
     data: Any | None = None
     timestamp: float | None = None

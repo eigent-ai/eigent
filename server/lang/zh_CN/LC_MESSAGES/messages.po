@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-08-06 09:56+0800\n"
+"POT-Creation-Date: 2026-05-27 22:31+0800\n"
 "PO-Revision-Date: 2025-08-06 09:56+0800\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans_CN\n"
@@ -16,200 +16,234 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.18.0\n"
 
-#: app/component/auth.py:41
-msgid "Validate credentials expired"
+#: app/api/demo_controller.py:27
+msgid "no auth"
 msgstr ""
 
-#: app/component/auth.py:43
-msgid "Could not validate credentials"
+#: app/api/demo_controller.py:27
+msgid "hello"
 msgstr ""
 
-#: app/component/permission.py:12
-msgid "User"
+#: app/domains/chat/api/snapshot_controller.py:42
+msgid "Invalid api_task_id: only letters, numbers, - and _ allowed"
 msgstr ""
 
-#: app/component/permission.py:13
-msgid "User manager"
-msgstr ""
-
-#: app/component/permission.py:17
-msgid "User Manage"
-msgstr ""
-
-#: app/component/permission.py:18
-msgid "View users"
-msgstr ""
-
-#: app/component/permission.py:22
-msgid "User Edit"
-msgstr ""
-
-#: app/component/permission.py:23
-msgid "Manage users"
-msgstr ""
-
-#: app/component/permission.py:28
-msgid "Admin"
-msgstr ""
-
-#: app/component/permission.py:29
-msgid "Admin manager"
-msgstr ""
-
-#: app/component/permission.py:33
-msgid "Admin View"
-msgstr ""
-
-#: app/component/permission.py:34
-msgid "View admins"
-msgstr ""
-
-#: app/component/permission.py:38
-msgid "Admin Edit"
-msgstr ""
-
-#: app/component/permission.py:39
-msgid "Edit admins"
-msgstr ""
-
-#: app/component/permission.py:44
-msgid "Role"
-msgstr ""
-
-#: app/component/permission.py:45
-msgid "Role manager"
-msgstr ""
-
-#: app/component/permission.py:49
-msgid "Role View"
-msgstr ""
-
-#: app/component/permission.py:50
-msgid "View roles"
-msgstr ""
-
-#: app/component/permission.py:54
-msgid "Role Edit"
-msgstr ""
-
-#: app/component/permission.py:55
-msgid "Edit roles"
-msgstr ""
-
-#: app/component/permission.py:60
-msgid "Mcp"
-msgstr ""
-
-#: app/component/permission.py:61
-msgid "Mcp manager"
-msgstr ""
-
-#: app/component/permission.py:65
-msgid "Mcp Edit"
-msgstr ""
-
-#: app/component/permission.py:66
-msgid "Edit mcp service"
-msgstr ""
-
-#: app/component/permission.py:70
-msgid "Mcp Category Edit"
-msgstr ""
-
-#: app/component/permission.py:71
-msgid "Edit mcp category"
-msgstr ""
-
-#: app/controller/chat/snapshot_controller.py:34
-#: app/controller/chat/snapshot_controller.py:68
-#: app/controller/chat/snapshot_controller.py:81
-msgid "Chat snapshot not found"
-msgstr ""
-
-#: app/controller/chat/step_controller.py:65
-#: app/controller/chat/step_controller.py:89
-#: app/controller/chat/step_controller.py:102
-msgid "Chat step not found"
-msgstr ""
-
-#: app/controller/config/config_controller.py:40
-#: app/controller/config/config_controller.py:76
-#: app/controller/config/config_controller.py:108
+#: app/domains/config/api/config_controller.py:40
+#: app/domains/config/api/config_controller.py:73
+#: app/domains/config/api/config_controller.py:85
 msgid "Configuration not found"
 msgstr ""
 
-#: app/controller/config/config_controller.py:47
-msgid "Config Name is valid"
+#: app/domains/config/api/config_controller.py:54
+msgid "Config Name is invalid"
 msgstr ""
 
-#: app/controller/config/config_controller.py:55
-#: app/controller/config/config_controller.py:92
+#: app/domains/config/api/config_controller.py:55
+#: app/domains/config/api/config_controller.py:75
 msgid "Configuration already exists for this user"
 msgstr ""
 
-#: app/controller/config/config_controller.py:80
+#: app/domains/config/api/config_controller.py:74
 msgid "Invalid configuration group"
 msgstr ""
 
-#: app/controller/mcp/mcp_controller.py:70
+#: app/domains/mcp/api/mcp_controller.py:80
 msgid "Mcp not found"
 msgstr ""
 
-#: app/controller/mcp/mcp_controller.py:73
-#: app/controller/mcp/user_controller.py:44
+#: app/domains/mcp/api/user_controller.py:65
 msgid "mcp is installed"
 msgstr ""
 
-#: app/controller/mcp/user_controller.py:34
-msgid "McpUser not found"
-msgstr ""
-
-#: app/controller/mcp/user_controller.py:61
-#: app/controller/mcp/user_controller.py:75
-msgid "Mcp Info not found"
-msgstr ""
-
-#: app/controller/mcp/user_controller.py:63
-msgid "current user have no permission to modify"
-msgstr ""
-
-#: app/controller/provider/provider_controller.py:41
-#: app/controller/provider/provider_controller.py:60
-#: app/controller/provider/provider_controller.py:79
+#: app/domains/model_provider/api/provider_controller.py:53
+#: app/domains/model_provider/api/provider_controller.py:67
+#: app/domains/model_provider/api/provider_controller.py:74
+#: app/domains/model_provider/api/provider_controller.py:82
 msgid "Provider not found"
 msgstr ""
 
-#: app/controller/user/login_controller.py:25
+#: app/domains/remote_sub_agent/api/provider_controller.py:63
+#: app/domains/remote_sub_agent/api/provider_controller.py:102
+#: app/domains/remote_sub_agent/api/provider_controller.py:118
+msgid "Remote sub agent provider not found"
+msgstr ""
+
+#: app/domains/user/api/login_controller.py:75
+msgid "Failed to create default user"
+msgstr ""
+
+#: app/domains/user/api/login_controller.py:90
 msgid "Account or password error"
 msgstr ""
 
-#: app/controller/user/login_controller.py:47
-msgid "User not found"
-msgstr ""
-
-#: app/controller/user/login_controller.py:64
-#: app/controller/user/login_controller.py:89
-msgid "Failed to register"
-msgstr ""
-
-#: app/controller/user/login_controller.py:67
+#: app/domains/user/api/login_controller.py:92
+#: app/domains/user/api/login_controller.py:116
 msgid "Your account has been blocked."
 msgstr ""
 
-#: app/controller/user/login_controller.py:75
-msgid "Email already registered"
+#: app/domains/user/api/login_controller.py:94
+#: app/domains/user/api/login_controller.py:118
+msgid "Please activate your account via the email link."
 msgstr ""
 
-#: app/controller/user/user_password_controller.py:19
+#: app/domains/user/api/login_controller.py:110
+msgid "Refresh token required"
+msgstr ""
+
+#: app/domains/user/api/login_controller.py:114
+#: app/shared/auth/user_auth.py:144
+msgid "User not found"
+msgstr ""
+
+#: app/domains/user/api/password_controller.py:36
 msgid "Password is incorrect"
 msgstr ""
 
-#: app/controller/user/user_password_controller.py:21
+#: app/domains/user/api/password_controller.py:38
 msgid "The two passwords do not match"
 msgstr ""
 
-#: app/model/abstract/model.py:66
+#: app/model/abstract/model.py:109
 msgid "There is no data that meets the conditions"
 msgstr ""
+
+#: app/shared/auth/admin_auth.py:56
+msgid "Admin user not found"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:69
+msgid "Your are not authorized to access this function"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:77
+msgid "Invalid token type - admin required"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:80 app/shared/auth/user_auth.py:73
+msgid "Validate credentials expired"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:83 app/shared/auth/user_auth.py:76
+#: app/shared/auth/user_auth.py:128
+msgid "Could not validate credentials"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:114 app/shared/auth/user_auth.py:137
+msgid "Token required"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:118 app/shared/auth/user_auth.py:125
+#: app/shared/auth/user_auth.py:141
+msgid "Token has been revoked"
+msgstr ""
+
+#: app/shared/auth/admin_auth.py:121
+msgid "Admin not found"
+msgstr ""
+
+#: app/shared/auth/user_auth.py:70
+msgid "Invalid token type"
+msgstr ""
+
+#: app/shared/auth/user_auth.py:120
+msgid "Invalid token type - refresh required"
+msgstr ""
+
+#~ msgid "User"
+#~ msgstr ""
+
+#~ msgid "User manager"
+#~ msgstr ""
+
+#~ msgid "User Manage"
+#~ msgstr ""
+
+#~ msgid "View users"
+#~ msgstr ""
+
+#~ msgid "User Edit"
+#~ msgstr ""
+
+#~ msgid "Manage users"
+#~ msgstr ""
+
+#~ msgid "Admin"
+#~ msgstr ""
+
+#~ msgid "Admin manager"
+#~ msgstr ""
+
+#~ msgid "Admin View"
+#~ msgstr ""
+
+#~ msgid "View admins"
+#~ msgstr ""
+
+#~ msgid "Admin Edit"
+#~ msgstr ""
+
+#~ msgid "Edit admins"
+#~ msgstr ""
+
+#~ msgid "Role"
+#~ msgstr ""
+
+#~ msgid "Role manager"
+#~ msgstr ""
+
+#~ msgid "Role View"
+#~ msgstr ""
+
+#~ msgid "View roles"
+#~ msgstr ""
+
+#~ msgid "Role Edit"
+#~ msgstr ""
+
+#~ msgid "Edit roles"
+#~ msgstr ""
+
+#~ msgid "Mcp"
+#~ msgstr ""
+
+#~ msgid "Mcp manager"
+#~ msgstr ""
+
+#~ msgid "Mcp Edit"
+#~ msgstr ""
+
+#~ msgid "Edit mcp service"
+#~ msgstr ""
+
+#~ msgid "Mcp Category Edit"
+#~ msgstr ""
+
+#~ msgid "Edit mcp category"
+#~ msgstr ""
+
+#~ msgid "Chat snapshot not found"
+#~ msgstr ""
+
+#~ msgid "Chat step not found"
+#~ msgstr ""
+
+#~ msgid "Config Name is valid"
+#~ msgstr ""
+
+#~ msgid "McpUser not found"
+#~ msgstr ""
+
+#~ msgid "Mcp Info not found"
+#~ msgstr ""
+
+#~ msgid "current user have no permission to modify"
+#~ msgstr ""
+
+#~ msgid "Failed to register"
+#~ msgstr ""
+
+#~ msgid "Email already registered"
+#~ msgstr ""
+

@@ -28,7 +28,9 @@ import { generateUniqueId, SITE_URL } from '@/lib';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
@@ -201,19 +203,36 @@ export default function ChatBox(): JSX.Element {
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
   );
-  const sessionSidePanelMode = usePageTabStore(
-    (s) => s.sessionSidePanelMode ?? SessionMode.SINGLE_AGENT
+  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectMeta = useSpaceStore((s) =>
+    activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
+  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
+  const activeProject = activeProjectId
+    ? projectStore.getProjectById(activeProjectId)
+    : null;
   const activeTask = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]
     : undefined;
-  // Session mode in three forms (see naming convention shared with
-  // Session/Workspace): `inferred` is the raw, nullable inference;
+  // Project mode in three forms: `inferred` is a legacy Run fallback;
   // `effective` always resolves to a concrete mode; `display` stays nullable
-  // so a still-loading session renders empty instead of the wrong mode.
+  // so a still-loading Project renders empty instead of the wrong mode.
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
-  const effectiveSessionMode = inferredSessionMode ?? sessionSidePanelMode;
-  const displaySessionMode = inferredSessionMode ?? undefined;
+  const activeProjectMode = activeProjectMeta?.mode ?? activeProject?.mode;
+  const effectiveSessionMode =
+    activeProjectMode ?? inferredSessionMode ?? SessionMode.SINGLE_AGENT;
+  const displaySessionMode =
+    activeProjectMode ?? inferredSessionMode ?? undefined;
+  const ensureActiveProjectMode = useCallback(() => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId || activeProjectMode) return;
+    updateProjectMeta(projectId, { mode: effectiveSessionMode });
+  }, [
+    activeProjectMode,
+    effectiveSessionMode,
+    projectStore,
+    updateProjectMeta,
+  ]);
   const { hasModel, isConfigLoaded, cloudUsageLimitReached } =
     useModelConfigCheck();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -402,26 +421,19 @@ export default function ChatBox(): JSX.Element {
 
   // Check if any chat store in the project has messages
   const hasAnyMessages = useMemo(() => {
-    if (!chatStore) return false;
-    // First check current active chat store
-    if (chatStore.activeTaskId && chatStore.tasks[chatStore.activeTaskId]) {
-      const activeTask = chatStore.tasks[chatStore.activeTaskId];
-      if (
-        (activeTask.messages && activeTask.messages.length > 0) ||
-        activeTask.hasMessages
-      ) {
-        return true;
-      }
-    }
+    const hasMessages = (store: typeof chatStore) =>
+      !!store &&
+      Object.values(store.tasks).some(
+        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
+      );
+
+    if (hasMessages(chatStore)) return true;
 
     // Then check all other chat stores in the project
     return getAllChatStoresMemoized.some(({ chatStore: store }) => {
       const state = store.getState();
-      return (
-        state.activeTaskId &&
-        state.tasks[state.activeTaskId] &&
-        (state.tasks[state.activeTaskId].messages.length > 0 ||
-          state.tasks[state.activeTaskId].hasMessages)
+      return Object.values(state.tasks).some(
+        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);
@@ -634,12 +646,18 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
+    const targetProjectId = projectStore.activeProjectId;
+    if (!targetProjectId) {
+      toast.error('No active Project selected.');
+      return;
+    }
+
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
     const displayContent = tempMessageContent;
 
-    if (executionId && projectStore.activeProjectId) {
-      const project = projectStore.getProjectById(projectStore.activeProjectId);
+    if (executionId && targetProjectId) {
+      const project = projectStore.getProjectById(targetProjectId);
       const isInQueue = project?.queuedMessages?.some(
         (m) => m.executionId === executionId
       );
@@ -705,7 +723,7 @@ export default function ChatBox(): JSX.Element {
 
         chatStore.setIsPending(_taskId, true);
 
-        await fetchPost(`/chat/${projectStore.activeProjectId}/human-reply`, {
+        await fetchPost(`/chat/${targetProjectId}/human-reply`, {
           agent: chatStore.tasks[_taskId].activeAsk,
           reply: tempMessageContent,
         });
@@ -778,6 +796,7 @@ export default function ChatBox(): JSX.Element {
               JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
               [];
             try {
+              ensureActiveProjectMode();
               await chatStore.startTask(
                 _taskId,
                 undefined,
@@ -786,7 +805,7 @@ export default function ChatBox(): JSX.Element {
                 tempMessageContent,
                 attachesToSend,
                 executionId,
-                undefined,
+                targetProjectId,
                 effectiveSessionMode
               );
               chatStore.setAttaches(_taskId, []);
@@ -815,10 +834,14 @@ export default function ChatBox(): JSX.Element {
             chatStore.setNextExecutionId(_taskId as string, executionId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            fetchPost(`/chat/${projectStore.activeProjectId}`, {
+            fetchPost(`/chat/${targetProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
+              project_context: buildProjectContinuationContext(
+                targetProjectId,
+                nextTaskId
+              ),
               target: undefined,
             });
             chatStore.setIsPending(_taskId, true);
@@ -842,6 +865,7 @@ export default function ChatBox(): JSX.Element {
             [];
           setMessage('');
           try {
+            ensureActiveProjectMode();
             await chatStore.startTask(
               _taskId,
               undefined,
@@ -850,7 +874,7 @@ export default function ChatBox(): JSX.Element {
               tempMessageContent,
               attachesToSend,
               executionId,
-              undefined,
+              targetProjectId,
               effectiveSessionMode
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
@@ -1257,7 +1281,7 @@ export default function ChatBox(): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px]">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] px-2">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}

@@ -46,6 +46,9 @@ auto_import("app.model.chat")
 auto_import("app.model.provider")
 auto_import("app.model.remote_sub_agent")
 auto_import("app.model.trigger")
+auto_import("app.model.space")
+auto_import("app.model.project")
+auto_import("app.model.memory")
 
 # target_metadata = mymodel.Base.metadata
 target_metadata = SQLModel.metadata

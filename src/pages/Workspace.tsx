@@ -33,6 +33,7 @@ import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
+import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -49,6 +50,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   EXECUTION_LOGS_OPEN_STORAGE_KEY,
   type TriggerSortKey,
@@ -92,18 +94,29 @@ function readStoredSidebarWidthPx(): number {
   }
 }
 
-export default function Home() {
+export default function WorkspacePage() {
   const { t } = useTranslation();
   const host = useHost();
   const ipc = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
+  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectMeta = useSpaceStore((state) =>
+    activeProjectId ? state.getProjectMeta(activeProjectId) : null
+  );
 
   const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
     usePageTabStore();
   const triggerAddDialogRequestId = usePageTabStore(
     (s) => s.triggerAddDialogRequestId
+  );
+  const triggerSelectRequestId = usePageTabStore(
+    (s) => s.triggerSelectRequestId
+  );
+  const pendingTriggerSelectId = usePageTabStore(
+    (s) => s.pendingTriggerSelectId
   );
   const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
   const setProjectSidebarFolded = usePageTabStore(
@@ -382,8 +395,55 @@ export default function Home() {
   }, [projectStore.activeProjectId]);
 
   useEffect(() => {
+    if (triggerSelectRequestId === 0) return;
+    if (pendingTriggerSelectId != null) {
+      setTriggerSelectedId(pendingTriggerSelectId);
+    }
+  }, [pendingTriggerSelectId, triggerSelectRequestId]);
+
+  useEffect(() => {
     checkLocalServerStale();
   }, []);
+
+  // Project-scoped tabs (except new-project shell) require an active project.
+  // When opening inbox/runs/project from the workspace tab without a selection,
+  // fall back to the last visited (or first) project in the space instead of
+  // bouncing back to workforce.
+  useLayoutEffect(() => {
+    const isProjectScopedTab =
+      activeWorkspaceTab === 'project' ||
+      activeWorkspaceTab === 'inbox' ||
+      activeWorkspaceTab === 'runs';
+
+    if (!isProjectScopedTab || activeProjectId) return;
+
+    const spaceStore = useSpaceStore.getState();
+    const spaceId = activeSpaceId ?? spaceStore.activeSpaceId;
+    if (!spaceId) {
+      setActiveWorkspaceTab('workforce');
+      return;
+    }
+
+    const projectsInSpace = spaceStore.getProjectsForSpace(spaceId);
+    if (projectsInSpace.length > 0) {
+      const lastVisitedProjectId =
+        spaceStore.lastVisitedProjectBySpace[spaceId];
+      const targetProject =
+        projectsInSpace.find(
+          (project) => project.id === lastVisitedProjectId
+        ) ?? projectsInSpace[0];
+      projectStore.setActiveProject(targetProject.id);
+      return;
+    }
+
+    setActiveWorkspaceTab('workforce');
+  }, [
+    activeProjectId,
+    activeSpaceId,
+    activeWorkspaceTab,
+    projectStore,
+    setActiveWorkspaceTab,
+  ]);
 
   // Detect files and triggers when project loads
   useEffect(() => {
@@ -395,7 +455,9 @@ export default function Home() {
           email,
           projectStore.activeProjectId
         );
-        setHasAgentFiles(files && files.length > 0);
+        setHasAgentFiles(
+          Array.isArray(files) && filterVisibleAgentFiles(files).length > 0
+        );
       } catch (error) {
         console.error('Error detecting agent files:', error);
       }
@@ -491,8 +553,13 @@ export default function Home() {
                 taskAssigning[browserAgentIndex].activeWebviewIds![
                   webview.index
                 ];
+              const projectId = activeProjectId || undefined;
               chatStore.setSnapshotsTemp(chatStore.activeTaskId as string, {
                 api_task_id: chatStore.activeTaskId,
+                run_id: chatStore.activeTaskId,
+                space_id:
+                  activeProjectMeta?.spaceId || activeSpaceId || undefined,
+                project_id: projectId,
                 camel_task_id: processTaskId,
                 browser_url: url,
                 image_base64: base64,
@@ -519,7 +586,14 @@ export default function Home() {
         clearInterval(intervalTimer);
       }
     };
-  }, [chatStore, taskAssigning, ipc]);
+  }, [
+    activeProjectId,
+    activeProjectMeta,
+    activeSpaceId,
+    chatStore,
+    taskAssigning,
+    ipc,
+  ]);
 
   const getSize = useCallback(() => {
     const webviewContainer = document.getElementById('webview-container');
@@ -537,10 +611,6 @@ export default function Home() {
   useEffect(() => {
     if (!chatStore) return;
 
-    if (!chatStore.activeTaskId) {
-      projectStore?.createProject('new project');
-    }
-
     const webviewContainer = document.getElementById('webview-container');
     if (webviewContainer) {
       const resizeObserver = new ResizeObserver(() => {
@@ -552,7 +622,7 @@ export default function Home() {
         resizeObserver.disconnect();
       };
     }
-  }, [chatStore, projectStore, getSize]);
+  }, [chatStore, getSize]);
 
   const mainPanelSurfaceClass =
     'rounded-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
@@ -561,8 +631,8 @@ export default function Home() {
 
   const useWorkspacePatternBg =
     activeWorkspaceTab === 'workforce' ||
-    activeWorkspaceTab === 'session' ||
-    activeWorkspaceTab === 'new-session';
+    activeWorkspaceTab === 'project' ||
+    activeWorkspaceTab === 'new-project';
   const workspacePatternKey = useMemo((): WorkspaceMainBackground => {
     if (!useWorkspacePatternBg) return 'empty';
     return (workspaceMainBackground ?? 'empty') as WorkspaceMainBackground;
@@ -570,8 +640,11 @@ export default function Home() {
 
   const workspaceMainContentClass = cn(
     mainPanelContentClass,
-    workspacePatternKey !== 'empty' && 'relative'
+    workspacePatternKey !== 'empty' && 'relative isolate'
   );
+
+  const workspaceMainForegroundClass =
+    'relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col';
 
   const workspacePatternOverlayEl = useMemo(() => {
     switch (workspacePatternKey) {
@@ -609,21 +682,27 @@ export default function Home() {
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Workspace />
+            <div className={workspaceMainForegroundClass}>
+              <Workspace />
+            </div>
           </div>
         );
-      case 'session':
+      case 'project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Session />
+            <div className={workspaceMainForegroundClass}>
+              <Session />
+            </div>
           </div>
         );
-      case 'new-session':
+      case 'new-project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Session isNewSession />
+            <div className={workspaceMainForegroundClass}>
+              <Session isNewProject />
+            </div>
           </div>
         );
       case 'dispatch':
@@ -652,15 +731,16 @@ export default function Home() {
             onDialogOpenChange={setTriggerDialogOpen}
           />
         );
-      case 'sessions':
+      case 'runs':
         return (
           <SessionGroup
             className={mainPanelContentClass}
-            tasks={chatStore.tasks}
-            activeSessionId={chatStore.activeTaskId}
+            tasks={chatStore?.tasks ?? {}}
+            activeSessionId={chatStore?.activeTaskId ?? undefined}
             onSelectSession={(sessionId) => {
+              if (!chatStore) return;
               chatStore.setActiveTaskId(sessionId);
-              setActiveWorkspaceTab('session');
+              setActiveWorkspaceTab('project');
             }}
             onDeleteSession={handleSessionGroupDeleteSession}
           />
@@ -670,22 +750,18 @@ export default function Home() {
     }
   };
 
-  if (!chatStore) {
-    return <div>{t('triggers.loading')}</div>;
-  }
-
   return (
     <ReactFlowProvider>
-      <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
+      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-default-default"
+          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
             id="home-shell-panel-group"
             direction="horizontal"
-            className="h-full min-h-0 w-full gap-0"
+            className="min-h-0 gap-0 h-full w-full"
             onLayout={handleShellPanelLayout}
           >
             <ResizablePanel
@@ -699,8 +775,8 @@ export default function Home() {
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-1 shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-colors',
-                'transition-colors hover:after:bg-ds-bg-brand-default-focus',
+                'w-1 after:bg-ds-bg-neutral-default-default shrink-0 bg-transparent after:transition-colors',
+                'hover:after:bg-ds-bg-brand-default-focus transition-colors',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />
@@ -713,7 +789,7 @@ export default function Home() {
               <motion.div
                 layout
                 transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-                className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden"
+                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
               >
                 <div className={mainPanelShellClass}>
                   {renderActiveWorkspaceTab()}

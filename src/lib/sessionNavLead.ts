@@ -34,6 +34,7 @@ import {
   TaskStatus,
   type TaskStatusType,
 } from '@/types/constants';
+import type { HistoryTask, ProjectGroup } from '@/types/history';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
@@ -62,6 +63,12 @@ export type SessionNavLeadPresentation = {
   iconClassName: string;
   spin?: boolean;
 };
+
+/** Chat history API: ongoing = 1, done = 2 (see `historyApi.ts`). */
+export const HISTORY_TASK_STATUS_ONGOING = 1;
+export const HISTORY_TASK_STATUS_DONE = 2;
+
+const STOPPED_BY_USER_SUMMARY_PREFIX = '<summary>Task stopped</summary>';
 
 type TaskRow = ChatStore['tasks'][string];
 
@@ -120,6 +127,81 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
   },
 };
 
+function presentationForKind(
+  kind: SessionNavLeadKind,
+  spin = false
+): SessionNavLeadPresentation {
+  const spec = SESSION_NAV_LEAD_BY_KIND[kind];
+  return {
+    kind,
+    Icon: spec.Icon,
+    iconClassName: spec.iconClassName,
+    spin: spin && kind === 'running' ? spec.spin : undefined,
+  };
+}
+
+export const SESSION_NAV_IDLE_LEAD: SessionNavLeadPresentation =
+  presentationForKind('idle');
+
+/** Map authoritative server history status to the final sidebar icon (no replay). */
+export function getSessionNavLeadFromHistoryTask(
+  task: Pick<HistoryTask, 'status' | 'summary'>
+): SessionNavLeadPresentation {
+  const summary = task.summary?.trim() ?? '';
+  if (summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)) {
+    return SESSION_NAV_IDLE_LEAD;
+  }
+  if (task.status === HISTORY_TASK_STATUS_DONE) {
+    return presentationForKind('finished');
+  }
+  // ONGOING (1) means the backend never finalized the status (e.g. app closed
+  // mid-run). We cannot confirm the task is actually running without a full
+  // replay, so we resolve to idle rather than a perpetual animated spinner.
+  // Genuinely-live tasks get their spinner from the chat-store subscription.
+  return SESSION_NAV_IDLE_LEAD;
+}
+
+/** Best-effort lead for a grouped history project before runtime hydration. */
+export function getSessionNavLeadFromHistoryProject(
+  project: Pick<
+    ProjectGroup,
+    'tasks' | 'total_ongoing_tasks' | 'total_completed_tasks'
+  >
+): SessionNavLeadPresentation {
+  const latestTask = project.tasks?.[0];
+  if (latestTask) {
+    return getSessionNavLeadFromHistoryTask(latestTask);
+  }
+  if (project.total_ongoing_tasks > 0) {
+    return SESSION_NAV_IDLE_LEAD;
+  }
+  if (project.total_completed_tasks > 0) {
+    return presentationForKind('finished');
+  }
+  return SESSION_NAV_IDLE_LEAD;
+}
+
+/**
+ * Sidebar project rows: prefer cached/history lead while hydrating; otherwise live task state.
+ */
+export function resolveProjectNavLeadPresentation(options: {
+  activeTask?: TaskRow;
+  cachedLead?: SessionNavLeadPresentation;
+  isHistoryLoading?: boolean;
+}): SessionNavLeadPresentation {
+  const { activeTask, cachedLead, isHistoryLoading } = options;
+  if (isHistoryLoading && cachedLead) {
+    return cachedLead;
+  }
+  if (activeTask && !isHistoryLoading) {
+    return getSessionNavLeadPresentation(activeTask);
+  }
+  if (cachedLead) {
+    return cachedLead;
+  }
+  return SESSION_NAV_IDLE_LEAD;
+}
+
 /**
  * Priority: error → warning → hitl → blocked → splitting → running → finished → idle.
  */
@@ -168,13 +250,8 @@ export function getSessionNavLeadPresentation(
     kind = 'idle';
   }
 
-  const spec = SESSION_NAV_LEAD_BY_KIND[kind];
-  return {
+  return presentationForKind(
     kind,
-    Icon: spec.Icon,
-    iconClassName: spec.iconClassName,
-    spin: Boolean(
-      spec.spin && task.status === ChatTaskStatus.RUNNING && kind === 'running'
-    ),
-  };
+    task.status === ChatTaskStatus.RUNNING && kind === 'running'
+  );
 }

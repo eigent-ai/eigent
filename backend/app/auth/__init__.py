@@ -12,6 +12,21 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from app.auth.brain_auth import (
+    BrainAuthContext,
+    get_brain_auth_context,
+    get_brain_auth_provider,
+    set_brain_auth_provider,
+    with_brain_auth_provider,
+)
 from app.auth.interface import IAuthProvider, NoneAuth
 
-__all__ = ["IAuthProvider", "NoneAuth"]
+__all__ = [
+    "BrainAuthContext",
+    "IAuthProvider",
+    "NoneAuth",
+    "get_brain_auth_context",
+    "get_brain_auth_provider",
+    "set_brain_auth_provider",
+    "with_brain_auth_provider",
+]
