@@ -19,7 +19,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /** Visual style of the tab strip (not `UiVariant` / `Button` chrome). */
-export type TabsAppearance = 'default' | 'outline' | 'border';
+export type TabsAppearance = 'default' | 'outline' | 'border' | 'ghost';
 
 /**
  * @deprecated Use {@link TabsAppearance} and the `appearance` prop instead of
@@ -42,6 +42,10 @@ const tabsTriggerClassName =
  */
 const tabsTriggerBorderClassName =
   'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-solid border-transparent bg-transparent px-2 text-label-sm font-bold text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-subtle-default hover:text-ds-text-neutral-default-default hover:shadow-[inset_0_1px_0_var(--colors-white-10)] hover:ring-1 hover:ring-ds-border-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none data-[state=active]:bg-transparent data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-none data-[state=active]:ring-0 data-[state=active]:hover:bg-ds-bg-neutral-subtle-default disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
+
+/** Borderless tab strip for sidebar navigation (Agents, Channels, Browser, Settings). */
+const tabsTriggerGhostClassName =
+  'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex w-full items-center justify-start gap-2 rounded-xl border-0 bg-transparent px-3 py-1.5 text-body-sm font-semibold text-ds-text-neutral-muted-default shadow-none ring-0 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:bg-transparent data-[state=inactive]:opacity-70 data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100 data-[state=active]:bg-ds-bg-neutral-default-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
 
 /** Gap (px) between tab row and underline — matches HistoryTabsNav. */
 const BORDER_TAB_UNDERLINE_GAP_PX = 8;
@@ -173,7 +177,9 @@ const TabsList = React.forwardRef<
               appearance === 'outline' &&
                 'rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5 relative border border-solid',
               appearance === 'default' &&
-                'rounded-xl bg-ds-bg-neutral-strong-default p-0.5 border-ds-bg-neutral-strong-default border border-solid',
+                'rounded-xl bg-ds-bg-neutral-strong-default ring-ds-ring-neutral-subtle-default ring-1',
+              appearance === 'ghost' &&
+                'gap-1.5 p-0 rounded-none border-0 bg-transparent shadow-none ring-0',
               'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
               className
             )}
@@ -242,7 +248,9 @@ const TabsTrigger = React.forwardRef<
     const triggerBase =
       appearance === 'border'
         ? tabsTriggerBorderClassName
-        : tabsTriggerClassName;
+        : appearance === 'ghost'
+          ? tabsTriggerGhostClassName
+          : tabsTriggerClassName;
 
     return (
       <TabsPrimitive.Trigger

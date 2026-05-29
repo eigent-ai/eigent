@@ -640,8 +640,11 @@ export default function WorkspacePage() {
 
   const workspaceMainContentClass = cn(
     mainPanelContentClass,
-    workspacePatternKey !== 'empty' && 'relative'
+    workspacePatternKey !== 'empty' && 'relative isolate'
   );
+
+  const workspaceMainForegroundClass =
+    'relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col';
 
   const workspacePatternOverlayEl = useMemo(() => {
     switch (workspacePatternKey) {
@@ -679,21 +682,27 @@ export default function WorkspacePage() {
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Workspace />
+            <div className={workspaceMainForegroundClass}>
+              <Workspace />
+            </div>
           </div>
         );
       case 'project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Session />
+            <div className={workspaceMainForegroundClass}>
+              <Session />
+            </div>
           </div>
         );
       case 'new-project':
         return (
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
-            <Session isNewProject />
+            <div className={workspaceMainForegroundClass}>
+              <Session isNewProject />
+            </div>
           </div>
         );
       case 'dispatch':
@@ -743,16 +752,16 @@ export default function WorkspacePage() {
 
   return (
     <ReactFlowProvider>
-      <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
+      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-default-default"
+          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
             id="home-shell-panel-group"
             direction="horizontal"
-            className="h-full min-h-0 w-full gap-0"
+            className="min-h-0 gap-0 h-full w-full"
             onLayout={handleShellPanelLayout}
           >
             <ResizablePanel
@@ -766,8 +775,8 @@ export default function WorkspacePage() {
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-1 shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-colors',
-                'transition-colors hover:after:bg-ds-bg-brand-default-focus',
+                'w-1 after:bg-ds-bg-neutral-default-default shrink-0 bg-transparent after:transition-colors',
+                'hover:after:bg-ds-bg-brand-default-focus transition-colors',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />
@@ -780,7 +789,7 @@ export default function WorkspacePage() {
               <motion.div
                 layout
                 transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-                className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden"
+                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
               >
                 <div className={mainPanelShellClass}>
                   {renderActiveWorkspaceTab()}
