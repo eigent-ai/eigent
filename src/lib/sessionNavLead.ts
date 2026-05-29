@@ -154,9 +154,10 @@ export function getSessionNavLeadFromHistoryTask(
   if (task.status === HISTORY_TASK_STATUS_DONE) {
     return presentationForKind('finished');
   }
-  if (task.status === HISTORY_TASK_STATUS_ONGOING) {
-    return presentationForKind('running', true);
-  }
+  // ONGOING (1) means the backend never finalized the status (e.g. app closed
+  // mid-run). We cannot confirm the task is actually running without a full
+  // replay, so we resolve to idle rather than a perpetual animated spinner.
+  // Genuinely-live tasks get their spinner from the chat-store subscription.
   return SESSION_NAV_IDLE_LEAD;
 }
 
@@ -172,7 +173,7 @@ export function getSessionNavLeadFromHistoryProject(
     return getSessionNavLeadFromHistoryTask(latestTask);
   }
   if (project.total_ongoing_tasks > 0) {
-    return presentationForKind('running', true);
+    return SESSION_NAV_IDLE_LEAD;
   }
   if (project.total_completed_tasks > 0) {
     return presentationForKind('finished');

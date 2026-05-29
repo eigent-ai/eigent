@@ -464,12 +464,26 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     })),
 
   setProjectNavLeads: (leads) =>
-    set((state) => ({
-      navLeadByProjectId: {
-        ...state.navLeadByProjectId,
-        ...leads,
-      },
-    })),
+    set((state) => {
+      const next = { ...state.navLeadByProjectId };
+      for (const [projectId, lead] of Object.entries(leads)) {
+        // Don't clobber a live lead: if the project already has an active
+        // chat store the subscription registry is maintaining a real-time
+        // lead (running spinner, etc.) that the history summary cannot know
+        // about.
+        const project = state.projects[projectId];
+        const hasLiveStore = Boolean(
+          project &&
+          (project.activeChatId
+            ? project.chatStores[project.activeChatId]
+            : Object.keys(project.chatStores ?? {}).length > 0)
+        );
+        if (!hasLiveStore) {
+          next[projectId] = lead;
+        }
+      }
+      return { navLeadByProjectId: next };
+    }),
 
   setHistoryLoadingProject: (projectId, loading) =>
     set((state) => {
