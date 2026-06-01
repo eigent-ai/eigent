@@ -127,6 +127,7 @@ import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
   getCloudModelPlatform,
+  resolveConfirmedUserMessageContent,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -146,6 +147,39 @@ import { ChatTaskStatus } from '../../../src/types/constants';
 describe('ChatStore - Core Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('Confirmed user prompt resolution', () => {
+    it('uses the optimistic user message when it exists', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          lastMessageContent: 'current typed prompt',
+          messageContent: 'first prompt',
+          question: 'backend current prompt',
+          isFollowUpConfirm: true,
+        })
+      ).toBe('current typed prompt');
+    });
+
+    it('uses the SSE question for follow-up confirms before stale startTask content', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          messageContent: 'first prompt',
+          question: 'follow-up prompt',
+          isFollowUpConfirm: true,
+        })
+      ).toBe('follow-up prompt');
+    });
+
+    it('keeps first-run confirms on the captured startTask content before question', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          messageContent: 'first prompt',
+          question: 'backend confirmed prompt',
+          isFollowUpConfirm: false,
+        })
+      ).toBe('first prompt');
+    });
   });
 
   describe('Task Upload Files', () => {
