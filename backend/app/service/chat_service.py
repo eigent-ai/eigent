@@ -82,6 +82,38 @@ from app.utils.workforce import Workforce
 
 logger = logging.getLogger("chat_service")
 
+SUMMARY_TASK_NAME_MAX_LENGTH = 80
+SUMMARY_TASK_SUMMARY_MAX_LENGTH = 240
+
+
+def _truncate_summary_part(value: str, max_length: int) -> str:
+    text = " ".join((value or "").replace("|", " ").split())
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3].rstrip() + "..."
+
+
+def normalize_summary_task(
+    summary_task_content: str,
+    fallback_content: str = "",
+) -> str:
+    raw = " ".join((summary_task_content or "").split())
+    if "|" in raw:
+        raw_name, raw_summary = raw.split("|", 1)
+    else:
+        raw_name = "Task"
+        raw_summary = raw
+
+    name = _truncate_summary_part(
+        raw_name or "Task",
+        SUMMARY_TASK_NAME_MAX_LENGTH,
+    )
+    summary = _truncate_summary_part(
+        raw_summary or fallback_content or name,
+        SUMMARY_TASK_SUMMARY_MAX_LENGTH,
+    )
+    return f"{name or 'Task'}|{summary or name or 'Task'}"
+
 
 def format_task_context(
     task_data: dict, seen_files: set | None = None, skip_files: bool = False
@@ -883,37 +915,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     },
                                 )
                                 task_lock.summary_generated = True
-                                content_preview = (
-                                    camel_task.content
-                                    if hasattr(camel_task, "content")
-                                    else ""
+                                content_preview = getattr(
+                                    camel_task, "content", ""
                                 )
-                                if content_preview is None:
-                                    content_preview = ""
-                                if len(content_preview) > 80:
-                                    cp = content_preview[:80]
-                                    summary_task_content = cp + "..."
-                                else:
-                                    summary_task_content = content_preview
-                                summary_task_content = (
-                                    f"Task|{summary_task_content}"
+                                summary_task_content = normalize_summary_task(
+                                    f"Task|{content_preview}",
+                                    content_preview,
                                 )
                             except Exception:
                                 task_lock.summary_generated = True
-                                content_preview = (
-                                    camel_task.content
-                                    if hasattr(camel_task, "content")
-                                    else ""
+                                content_preview = getattr(
+                                    camel_task, "content", ""
                                 )
-                                if content_preview is None:
-                                    content_preview = ""
-                                if len(content_preview) > 80:
-                                    cp = content_preview[:80]
-                                    summary_task_content = cp + "..."
-                                else:
-                                    summary_task_content = content_preview
-                                summary_task_content = (
-                                    f"Task|{summary_task_content}"
+                                summary_task_content = normalize_summary_task(
+                                    f"Task|{content_preview}",
+                                    content_preview,
                                 )
 
                             state_holder["summary_task"] = summary_task_content
@@ -1583,13 +1599,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             )
                             # Fallback to descriptive but not generic summary
                             task_content_for_summary = new_task_content
-                            tc = task_content_for_summary
-                            if len(tc) > 100:
-                                new_summary_content = (
-                                    f"Follow-up Task|{tc[:97]}..."
-                                )
-                            else:
-                                new_summary_content = f"Follow-up Task|{tc}"
+                            new_summary_content = normalize_summary_task(
+                                f"Follow-up Task|{task_content_for_summary}",
+                                task_content_for_summary,
+                            )
                         except Exception as e:
                             logger.error(
                                 "Error generating multi-turn "
@@ -1597,13 +1610,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             )
                             # Fallback to descriptive but not generic summary
                             task_content_for_summary = new_task_content
-                            tc = task_content_for_summary
-                            if len(tc) > 100:
-                                new_summary_content = (
-                                    f"Follow-up Task|{tc[:97]}..."
-                                )
-                            else:
-                                new_summary_content = f"Follow-up Task|{tc}"
+                            new_summary_content = normalize_summary_task(
+                                f"Follow-up Task|{task_content_for_summary}",
+                                task_content_for_summary,
+                            )
 
                         # Emit final subtasks once when
                         # decomposition is complete
@@ -2192,17 +2202,20 @@ async def summary_task(agent: ListenChatAgent, task: Task) -> str:
 {task.to_string()}
 ---
 Your instructions are:
-1.  Come up with a short and descriptive name for this task.
-2.  Create a concise summary of the task's main points and objectives.
+1.  Come up with a short and descriptive name for this task, max {SUMMARY_TASK_NAME_MAX_LENGTH} characters.
+2.  Create a concise summary of the task's main points and objectives, max {SUMMARY_TASK_SUMMARY_MAX_LENGTH} characters.
 3.  Return the task name and the summary, separated by a vertical bar (|).
 
 Example format: "Task Name|This is the summary of the task."
-Do not include any other text or formatting.
+Do not include any other text or formatting. Keep the output on one line.
 """
     logger.debug("Generating task summary", extra={"task_id": task.id})
     try:
         res = await _run_agent_step(agent, prompt)
-        summary = _extract_agent_response_content(res) or ""
+        summary = normalize_summary_task(
+            _extract_agent_response_content(res) or "",
+            getattr(task, "content", ""),
+        )
         logger.info("Task summary generated", extra={"summary": summary})
         return summary
     except Exception as e:

@@ -55,6 +55,7 @@ export default defineConfig(({ mode }) => {
             '/api': {
               target: env.VITE_PROXY_URL,
               changeOrigin: true,
+              ws: true,
               agent: env.VITE_PROXY_URL.startsWith('https')
                 ? proxyHttpsAgent
                 : proxyHttpAgent,

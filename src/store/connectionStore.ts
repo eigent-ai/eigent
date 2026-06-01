@@ -28,7 +28,8 @@ export type ConnectionChannel =
   | 'slack'
   | 'discord'
   | 'lark'
-  | 'browser_extension';
+  | 'browser_extension'
+  | 'remote_control';
 
 export interface ConnectionConfig {
   brainEndpoint: string;

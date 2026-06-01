@@ -1,0 +1,29 @@
+/**
+ * Stylesheet for the public remote-control link bundle.
+ *
+ * Imports only the vendored remote design tokens — not the desktop stylesheet —
+ * so the public link page stays small and does not depend on app-only sources.
+ */
+@import './styles/remote-tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}

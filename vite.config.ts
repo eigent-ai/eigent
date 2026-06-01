@@ -116,6 +116,7 @@ export default defineConfig(({ command, mode }) => {
             '/api': {
               target: env.VITE_PROXY_URL,
               changeOrigin: true,
+              ws: true,
             },
           }
         : undefined,

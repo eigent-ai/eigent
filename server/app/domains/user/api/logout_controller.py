@@ -19,8 +19,11 @@ from datetime import datetime
 import jwt
 from fastapi import APIRouter, Depends
 from loguru import logger
+from sqlmodel import Session
 
+from app.core.database import session
 from app.core.environment import env_not_empty
+from app.domains.remote_control.service.remote_control_service import RemoteControlService
 from app.shared.auth.token_blacklist import blacklist_token
 from app.shared.auth.user_auth import _get_jti, oauth2_scheme
 
@@ -28,7 +31,7 @@ router = APIRouter(prefix="/user", tags=["V1 Auth"])
 
 
 @router.post("/logout", name="logout")
-async def logout(token: str = Depends(oauth2_scheme)):
+async def logout(token: str = Depends(oauth2_scheme), db_session: Session = Depends(session)):
     """Revoke current token. Requires Bearer token."""
     if not token:
         logger.info("logout: no token provided")
@@ -46,6 +49,11 @@ async def logout(token: str = Depends(oauth2_scheme)):
             await blacklist_token(jti, ttl)
         except Exception as e:
             logger.warning("logout: token decode/blacklist failed", extra={"error": str(e)})
+    if user_id is not None:
+        try:
+            RemoteControlService.revoke_user_sessions(int(user_id), db_session, "logout")
+        except Exception as e:
+            logger.warning("logout: remote-control revoke failed", extra={"user_id": user_id, "error": str(e)})
     jti_safe = (jti[:8] + "...") if jti and len(jti) >= 8 else (jti or None)
     logger.info("logout", extra={"user_id": user_id, "jti_preview": jti_safe})
     return {"success": True, "message": "Logged out"}

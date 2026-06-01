@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-27 22:31+0800\n"
+"POT-Creation-Date: 2026-06-01 20:31+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -96,11 +96,11 @@ msgstr ""
 msgid "User not found"
 msgstr ""
 
-#: app/domains/user/api/password_controller.py:36
+#: app/domains/user/api/password_controller.py:37
 msgid "Password is incorrect"
 msgstr ""
 
-#: app/domains/user/api/password_controller.py:38
+#: app/domains/user/api/password_controller.py:39
 msgid "The two passwords do not match"
 msgstr ""
 

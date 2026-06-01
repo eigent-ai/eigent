@@ -204,11 +204,23 @@ async function handleResponse(
 
     if (!res.ok) {
       const detail = resData?.detail;
+      const detailMessage = Array.isArray(detail)
+        ? detail[0]
+        : typeof detail === 'string'
+          ? detail
+          : null;
+      const objectMessage =
+        detail && typeof detail === 'object'
+          ? detail.message || detail.code || JSON.stringify(detail)
+          : null;
       const msg =
-        (Array.isArray(detail) ? detail[0] : detail) ||
+        detailMessage ||
+        objectMessage ||
         resData?.message ||
         `HTTP ${res.status}`;
-      const err: any = new Error(typeof msg === 'string' ? msg : String(msg));
+      const err: any = new Error(
+        typeof msg === 'string' ? msg : JSON.stringify(msg)
+      );
       err.status = res.status;
       err.response = { data: resData, status: res.status };
       throw err;
@@ -325,7 +337,7 @@ export async function sseTransport(
 // =============== porxy ===============
 
 // get proxy base URL
-async function getProxyBaseURL() {
+export async function getProxyBaseURL() {
   const isDev = import.meta.env.DEV;
 
   if (isDev) {
@@ -333,11 +345,16 @@ async function getProxyBaseURL() {
     // This avoids CORS when running dev:web (browser at 5173, server at 3001)
     return '';
   } else {
-    const baseUrl = import.meta.env.VITE_BASE_URL;
+    const useLocalProxy = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+    const proxyUrl = import.meta.env.VITE_PROXY_URL;
+    const baseUrl =
+      !useLocalProxy && proxyUrl
+        ? proxyUrl
+        : import.meta.env.VITE_BASE_URL || proxyUrl;
     if (!baseUrl) {
-      throw new Error('VITE_BASE_URL not configured');
+      throw new Error('VITE_BASE_URL or VITE_PROXY_URL not configured');
     }
-    return baseUrl;
+    return String(baseUrl).replace(/\/$/, '');
   }
 }
 

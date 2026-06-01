@@ -12,10 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import larkIcon from '@/assets/icon/lark.png';
+import telegramIcon from '@/assets/icon/telegram.svg';
+import whatsappIcon from '@/assets/icon/whatsapp.svg';
+import { isDesktop } from '@/client/platform';
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
 import { Button } from '@/components/ui/button';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
@@ -29,9 +34,15 @@ import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentS
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
+import {
+  createRemoteControlSession,
+  getRemoteControlDesktopInstanceId,
+  waitForRemoteControlBridgeConnected,
+} from '@/lib/remoteControl';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
+import { getConnectionConfig } from '@/store/connectionStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -40,13 +51,36 @@ import {
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Cast, Loader2, MonitorSmartphone } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
+const REMOTE_CONTROL_TITLE_MAX_LENGTH = 80;
+
+function truncateRemoteControlTitle(value: string): string {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length <= REMOTE_CONTROL_TITLE_MAX_LENGTH) {
+    return text;
+  }
+  return `${text.slice(0, REMOTE_CONTROL_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
+}
+
+function buildRemoteControlTitle(task?: {
+  summaryTask?: string;
+  messages?: { role: string; content?: string }[];
+}): string {
+  const summaryTitle = task?.summaryTask?.split('|')[0]?.trim();
+  const firstUserMessage = task?.messages
+    ?.find((item) => item.role === 'user')
+    ?.content?.split(/[.!?\n。！？]/)[0]
+    ?.trim();
+  return truncateRemoteControlTitle(
+    summaryTitle || firstUserMessage || 'Remote control'
+  );
+}
 
 const MEMORY_STORAGE_KEY = 'eigent-sidebar-instructions-memory-on';
 
@@ -194,11 +228,23 @@ export default function Workspace({
     'instruction-md': t('layout.instructions-rules-tone'),
   };
   const [memoryOn, setMemoryOn] = useState(readMemoryInitial);
+  const [workspaceWorkWithPanelOpen, setWorkspaceWorkWithPanelOpen] =
+    useState(false);
+  const [remoteControlLoading, setRemoteControlLoading] = useState(false);
   const textareaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     window.localStorage.setItem(MEMORY_STORAGE_KEY, String(memoryOn));
   }, [memoryOn]);
+
+  useEffect(() => {
+    if (!workspaceWorkWithPanelOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setWorkspaceWorkWithPanelOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [workspaceWorkWithPanelOpen]);
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
@@ -355,6 +401,73 @@ export default function Workspace({
     }
   }, [chatStore, host, t]);
 
+  const handleCreateRemoteControl = useCallback(async () => {
+    const activeTaskId = chatStore?.activeTaskId;
+    const brainSessionId = getConnectionConfig().sessionId;
+    if (!isDesktop()) {
+      toast.error('Remote control must be started from the desktop app.');
+      return;
+    }
+    if (!activeSpaceId) {
+      toast.error('Open a Space before starting remote control.');
+      return;
+    }
+
+    setRemoteControlLoading(true);
+    try {
+      const bridgeReady = await waitForRemoteControlBridgeConnected();
+      if (!bridgeReady) {
+        toast.error('Remote control is still connecting.', {
+          description:
+            'Keep Eigent Desktop open and try again in a few seconds.',
+        });
+        return;
+      }
+      const task = activeTaskId ? chatStore?.tasks[activeTaskId] : null;
+      const title = task
+        ? buildRemoteControlTitle(task)
+        : activeSpace?.name || 'Eigent Remote Control';
+      const res = await createRemoteControlSession({
+        desktop_instance_id: getRemoteControlDesktopInstanceId(),
+        space_id: activeSpaceId,
+        ...(activeProjectId ? { project_id: activeProjectId } : {}),
+        ...(activeTaskId ? { active_task_id: activeTaskId } : {}),
+        ...(activeProjectId && brainSessionId
+          ? { brain_session_id: brainSessionId }
+          : {}),
+        title,
+      });
+      setWorkspaceWorkWithPanelOpen(false);
+      try {
+        await navigator.clipboard.writeText(res.url);
+        toast.success('Remote control link copied', {
+          description: res.url,
+          duration: 10000,
+        });
+      } catch {
+        toast.success('Remote control link created', {
+          description: res.url,
+          duration: 10000,
+        });
+      }
+    } catch (err: any) {
+      const code =
+        err?.response?.data?.detail?.code ||
+        err?.response?.data?.code ||
+        err?.code;
+      if (code === 'BRIDGE_OFFLINE') {
+        toast.error('Remote control bridge is offline.', {
+          description:
+            'Keep Eigent Desktop open and wait for the bridge to reconnect, then try again.',
+        });
+      } else {
+        toast.error(err?.message || 'Failed to create remote control link.');
+      }
+    } finally {
+      setRemoteControlLoading(false);
+    }
+  }, [activeProjectId, activeSpace?.name, activeSpaceId, chatStore]);
+
   const buildComposerInputProps = (
     targetChatStore: typeof chatStore | null = chatStore
   ) => ({
@@ -476,12 +589,12 @@ export default function Workspace({
   const composerTop = (
     <>
       <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
-      <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
+      <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT
           ? t('layout.workspace-cowork-single-agent')
           : t('layout.workspace-cowork-workforce')}
       </span>
-      <div className="mb-8 px-5 flex w-full justify-center">
+      <div className="mb-8 flex w-full justify-center px-5">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <SingleAgentList />
         ) : (
@@ -530,7 +643,7 @@ export default function Workspace({
 
   const composer = (
     <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-      <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
+      <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
         {composerTop}
         {composerInput}
       </div>
@@ -545,10 +658,10 @@ export default function Workspace({
 
   if (embedded && isNewProjectVariant) {
     return (
-      <div className="min-h-0 min-w-0 px-3 relative z-[1] flex flex-1 flex-col overflow-hidden">
+      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
         {composer}
         <div
-          className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+          className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
           id="workspace-bottom-group"
           aria-hidden
         />
@@ -575,17 +688,185 @@ export default function Workspace({
       </div>
     ) : null;
 
+  const workWithPanelToggleLabel = workspaceWorkWithPanelOpen
+    ? t('layout.workspace-work-with-panel-hide', {
+        defaultValue: 'Hide Work with panel',
+      })
+    : t('layout.workspace-work-with-panel-show', {
+        defaultValue: 'Show Work with panel',
+      });
+  const comingSoonLabel = t('layout.dispatch-coming-soon', {
+    defaultValue: 'Coming soon',
+  });
+
   return (
-    <div className="min-h-0 min-w-0 relative z-[1] flex h-full w-full flex-row overflow-hidden">
+    <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
+      {workspaceWorkWithPanelOpen ? (
+        <>
+          <button
+            type="button"
+            className="absolute inset-0 z-40 cursor-default bg-transparent backdrop-blur-[1px]"
+            aria-label={t('layout.workspace-work-with-dismiss-overlay', {
+              defaultValue: 'Dismiss',
+            })}
+            onClick={() => setWorkspaceWorkWithPanelOpen(false)}
+          />
+          <div
+            id="workspace-work-with-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workspace-work-with-heading"
+            className="absolute left-0 top-8 z-50 flex max-h-[calc(100%-2.75rem)] w-[300px] flex-col overflow-y-auto duration-200 ease-out animate-in fade-in-0 slide-in-from-left-2"
+          >
+            <div className="flex flex-col gap-3 p-3">
+              <div className="flex min-w-0 flex-col rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-3">
+                <span
+                  id="workspace-work-with-heading"
+                  className="text-body-sm font-semibold text-ds-text-neutral-default-default"
+                >
+                  {t('layout.workspace-work-with-title', {
+                    defaultValue: 'Work with',
+                  })}
+                </span>
+                <div className="mt-3 flex flex-col gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    tone="default"
+                    emphasis="default"
+                    size="sm"
+                    buttonContent="text"
+                    className="no-drag justify-start gap-2"
+                    disabled={remoteControlLoading}
+                    onClick={handleCreateRemoteControl}
+                  >
+                    {remoteControlLoading ? (
+                      <Loader2
+                        className="h-4 w-4 shrink-0 animate-spin text-ds-text-neutral-muted-default"
+                        aria-hidden
+                      />
+                    ) : (
+                      <MonitorSmartphone
+                        className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+                        aria-hidden
+                      />
+                    )}
+                    {t('layout.workspace-work-with-remote-control', {
+                      defaultValue: 'Remote control',
+                    })}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    tone="default"
+                    emphasis="default"
+                    size="sm"
+                    buttonContent="text"
+                    className="no-drag w-full justify-start gap-2"
+                    aria-label={t('layout.channels-telegram', {
+                      defaultValue: 'Telegram',
+                    })}
+                    disabled
+                  >
+                    <img
+                      src={telegramIcon}
+                      alt=""
+                      className="h-4 w-4 shrink-0 object-contain"
+                      aria-hidden
+                    />
+                    {t('layout.channels-telegram', {
+                      defaultValue: 'Telegram',
+                    })}
+                    <span className="ml-auto rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+                      {comingSoonLabel}
+                    </span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    tone="default"
+                    emphasis="default"
+                    size="sm"
+                    buttonContent="text"
+                    className="no-drag w-full justify-start gap-2"
+                    aria-label={t('layout.channels-lark', {
+                      defaultValue: 'Lark',
+                    })}
+                    disabled
+                  >
+                    <img
+                      src={larkIcon}
+                      alt=""
+                      className="h-4 w-4 shrink-0 rounded-lg object-contain"
+                      aria-hidden
+                    />
+                    {t('layout.channels-lark', { defaultValue: 'Lark' })}
+                    <span className="ml-auto rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+                      {comingSoonLabel}
+                    </span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    tone="default"
+                    emphasis="default"
+                    size="sm"
+                    buttonContent="text"
+                    className="no-drag w-full justify-start gap-2"
+                    aria-label={t('layout.channels-whatsapp', {
+                      defaultValue: 'WhatsApp',
+                    })}
+                    disabled
+                  >
+                    <img
+                      src={whatsappIcon}
+                      alt=""
+                      className="h-4 w-4 shrink-0 object-contain"
+                      aria-hidden
+                    />
+                    {t('layout.channels-whatsapp', {
+                      defaultValue: 'WhatsApp',
+                    })}
+                    <span className="ml-auto rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+                      {comingSoonLabel}
+                    </span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {/* Center section: header + content */}
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header toolbar */}
         <div
           className={cn(
-            'gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start',
+            'relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1',
             !isNewProjectVariant && 'px-3'
           )}
         >
+          {!isNewProjectVariant && workspaceSubPage === null && (
+            <TooltipSimple
+              content={workWithPanelToggleLabel}
+              delayDuration={300}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                buttonContent="icon-only"
+                onClick={() => setWorkspaceWorkWithPanelOpen((open) => !open)}
+                aria-expanded={workspaceWorkWithPanelOpen}
+                aria-controls="workspace-work-with-panel"
+                className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
+                aria-label={workWithPanelToggleLabel}
+              >
+                <Cast className="h-4 w-4" aria-hidden />
+              </Button>
+            </TooltipSimple>
+          )}
           {!isNewProjectVariant && workspaceSubPage !== null && (
             <Button
               type="button"
@@ -601,8 +882,8 @@ export default function Workspace({
             </Button>
           )}
           {!isNewProjectVariant && workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
                 {SUB_PAGE_TITLES[workspaceSubPage]}
               </span>
             </div>
@@ -631,7 +912,7 @@ export default function Workspace({
         </div>
 
         {/* Content */}
-        <div className="min-h-0 flex w-full flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           {/* Sub-pages */}
           {!isNewProjectVariant &&
             workspaceSubPage === 'all-sessions' &&
@@ -665,17 +946,17 @@ export default function Workspace({
 
           {/* Main content (hidden when a sub-page is active) */}
           {workspaceSubPage === null && (
-            <div className="min-h-0 min-w-0 relative flex flex-1 flex-col items-stretch overflow-hidden">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
               <div
                 className={cn(
-                  'min-h-0 flex w-full flex-1 flex-col',
+                  'flex min-h-0 w-full flex-1 flex-col',
                   !isNewProjectVariant && 'px-3'
                 )}
               >
                 {composer}
 
                 <div
-                  className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
                   id="workspace-bottom-group"
                 >
                   {showBottomExamplePrompts ? (

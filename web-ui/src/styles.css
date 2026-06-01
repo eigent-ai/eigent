@@ -1,0 +1,71 @@
+@import './styles/remote-tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: var(--ds-text-neutral-default-default);
+  background: var(--ds-bg-neutral-subtle-default);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  color: var(--ds-text-neutral-default-default);
+  background: var(--ds-bg-neutral-subtle-default);
+}
+
+.scrollbar-always-visible {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-border-neutral-default-default) transparent;
+}
+
+.line-clamp-2,
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  -webkit-line-clamp: 3;
+}
+
+.web-toaster-toast {
+  width: min(calc(100vw - 2rem), 320px) !important;
+  max-width: min(calc(100vw - 2rem), 320px);
+}
+
+@media (min-width: 768px) {
+  /* Align toast stack to the dispatch task panel (right of the 380px project column). */
+  .web-toaster-task-page {
+    left: min(380px, 100vw) !important;
+    right: 0 !important;
+    width: auto !important;
+    transform: none !important;
+    align-items: center !important;
+  }
+}

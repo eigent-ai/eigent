@@ -1,0 +1,412 @@
+{
+  "$description": "Component aliases resolved from semantic tokens.",
+  "component": {
+    "text": {
+      "heading": {
+        "$type": "color",
+        "$value": "{text.neutral.default.default}",
+        "$extensions": { "cssVar": "--text-heading" }
+      },
+      "body": {
+        "$type": "color",
+        "$value": "{text.neutral.default.default}",
+        "$extensions": { "cssVar": "--text-body" }
+      },
+      "label": {
+        "$type": "color",
+        "$value": "{text.neutral.muted.default}",
+        "$extensions": { "cssVar": "--text-label" }
+      },
+      "primary": {
+        "$type": "color",
+        "$value": "{text.neutral.default.default}",
+        "$extensions": { "cssVar": "--text-primary" }
+      },
+      "secondary": {
+        "$type": "color",
+        "$value": "{text.neutral.muted.default}",
+        "$extensions": { "cssVar": "--text-secondary" }
+      },
+      "tertiary": {
+        "$type": "color",
+        "$value": "{text.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--text-tertiary" }
+      },
+      "action": {
+        "$type": "color",
+        "$value": "{text.neutral.default.default}",
+        "$extensions": { "cssVar": "--text-action" }
+      },
+      "action-hover": {
+        "$type": "color",
+        "$value": "{text.neutral.default.hover}",
+        "$extensions": { "cssVar": "--text-action-hover" }
+      },
+      "disabled": {
+        "$type": "color",
+        "$value": "{text.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--text-disabled" }
+      },
+      "information": {
+        "$type": "color",
+        "$value": "{text.status-splitting.strong.default}",
+        "$extensions": { "cssVar": "--text-information" }
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{text.status-completed.strong.default}",
+        "$extensions": { "cssVar": "--text-success" }
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{text.status-pending.strong.default}",
+        "$extensions": { "cssVar": "--text-warning" }
+      },
+      "caution": {
+        "$type": "color",
+        "$value": "{text.status-error.strong.default}",
+        "$extensions": { "cssVar": "--text-caution" }
+      },
+      "on-action": {
+        "$type": "color",
+        "$value": "{text.brand.inverse.default}",
+        "$extensions": { "cssVar": "--text-on-action" }
+      },
+      "on-hover": {
+        "$type": "color",
+        "$value": "{text.brand.inverse.default}",
+        "$extensions": { "cssVar": "--text-on-hover" }
+      },
+      "on-disabled": {
+        "$type": "color",
+        "$value": "{text.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--text-on-disabled" }
+      }
+    },
+    "border": {
+      "primary": {
+        "$type": "color",
+        "$value": "{border.neutral.strong.default}",
+        "$extensions": { "cssVar": "--border-primary" }
+      },
+      "secondary": {
+        "$type": "color",
+        "$value": "{border.neutral.default.default}",
+        "$extensions": { "cssVar": "--border-secondary" }
+      },
+      "tertiary": {
+        "$type": "color",
+        "$value": "{border.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--border-tertiary" }
+      },
+      "focus": {
+        "$type": "color",
+        "$value": "{border.brand.default.focus}",
+        "$extensions": { "cssVar": "--border-focus" }
+      },
+      "information": {
+        "$type": "color",
+        "$value": "{border.status-splitting.default.default}",
+        "$extensions": { "cssVar": "--border-information" }
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{border.status-completed.default.default}",
+        "$extensions": { "cssVar": "--border-success" }
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{border.status-pending.default.default}",
+        "$extensions": { "cssVar": "--border-warning" }
+      },
+      "caution": {
+        "$type": "color",
+        "$value": "{border.status-error.default.default}",
+        "$extensions": { "cssVar": "--border-caution" }
+      },
+      "disabled": {
+        "$type": "color",
+        "$value": "{border.neutral.subtle.disabled}",
+        "$extensions": { "cssVar": "--border-disabled" }
+      }
+    },
+    "icon": {
+      "primary": {
+        "$type": "color",
+        "$value": "{icon.neutral.default.default}",
+        "$extensions": { "cssVar": "--icon-primary" }
+      },
+      "secondary": {
+        "$type": "color",
+        "$value": "{icon.neutral.muted.default}",
+        "$extensions": { "cssVar": "--icon-secondary" }
+      },
+      "action": {
+        "$type": "color",
+        "$value": "{icon.neutral.default.default}",
+        "$extensions": { "cssVar": "--icon-action" }
+      },
+      "action-hover": {
+        "$type": "color",
+        "$value": "{icon.neutral.default.hover}",
+        "$extensions": { "cssVar": "--icon-action-hover" }
+      },
+      "disabled": {
+        "$type": "color",
+        "$value": "{icon.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--icon-disabled" }
+      },
+      "information": {
+        "$type": "color",
+        "$value": "{icon.status-splitting.default.default}",
+        "$extensions": { "cssVar": "--icon-information" }
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{icon.status-completed.default.default}",
+        "$extensions": { "cssVar": "--icon-success" }
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{icon.status-pending.default.default}",
+        "$extensions": { "cssVar": "--icon-warning" }
+      },
+      "caution": {
+        "$type": "color",
+        "$value": "{icon.status-error.default.default}",
+        "$extensions": { "cssVar": "--icon-caution" }
+      }
+    },
+    "app": {
+      "background": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--bg-page" }
+      },
+      "fill-default": {
+        "$type": "color",
+        "$value": "{bg.neutral.strong.default}",
+        "$extensions": { "cssVar": "--fill-default" }
+      },
+      "code-bg": {
+        "$type": "color",
+        "$value": "{bg.neutral.inverse.default}",
+        "$extensions": { "cssVar": "--code-bg" }
+      },
+      "code-foreground": {
+        "$type": "color",
+        "$value": "{text.neutral.inverse.default}",
+        "$extensions": { "cssVar": "--code-foreground" }
+      },
+      "code-surface": {
+        "$type": "color",
+        "$value": "{bg.neutral.inverse.hover}",
+        "$extensions": { "cssVar": "--code-surface" }
+      },
+      "mask-default": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--mask-default" }
+      },
+      "mask-dark": {
+        "$type": "color",
+        "$value": "{bg.neutral.inverse.default}",
+        "$extensions": { "cssVar": "--mask-dark" }
+      },
+      "dialog-overlay-scrim": {
+        "$type": "color",
+        "$description": "Modal backdrop: pure black @ ~30% in light app mode, pure white @ ~30% in dark mode. Resolved per ThemeProvider mode (single var on :root, no Tailwind dark:).",
+        "$value": {
+          "light": "#0000004d",
+          "dark": "#ffffff4d"
+        },
+        "$extensions": { "cssVar": "--dialog-overlay-scrim" }
+      }
+    },
+    "terminal": {
+      "viewport-surface": {
+        "$type": "color",
+        "$description": "Fixed black backdrop for the embedded terminal viewport (xterm); not theme-tinted.",
+        "$value": "#000000",
+        "$extensions": { "cssVar": "--terminal-viewport-surface" }
+      }
+    },
+    "compat": {
+      "text-session-single-agent": {
+        "$type": "color",
+        "$value": "{text.single-agent.default.default}",
+        "$extensions": { "cssVar": "--text-session-single-agent" }
+      },
+      "text-session-workforce": {
+        "$type": "color",
+        "$value": "{text.workforce.default.default}",
+        "$extensions": { "cssVar": "--text-session-workforce" }
+      },
+      "fill-fill-primary": {
+        "$type": "color",
+        "$value": "{bg.brand.default.default}",
+        "$extensions": { "cssVar": "--fill-fill-primary" }
+      },
+      "fill-fill-primary-hover": {
+        "$type": "color",
+        "$value": "{bg.brand.default.hover}",
+        "$extensions": { "cssVar": "--fill-fill-primary-hover" }
+      },
+      "fill-fill-primary-active": {
+        "$type": "color",
+        "$value": "{bg.brand.default.active}",
+        "$extensions": { "cssVar": "--fill-fill-primary-active" }
+      },
+      "fill-fill-primary-disabled": {
+        "$type": "color",
+        "$value": "{bg.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--fill-fill-primary-disabled" }
+      },
+      "fill-fill-tertiary": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--fill-fill-tertiary" }
+      },
+      "fill-fill-tertiary-hover": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.hover}",
+        "$extensions": { "cssVar": "--fill-fill-tertiary-hover" }
+      },
+      "fill-fill-tertiary-active": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.active}",
+        "$extensions": { "cssVar": "--fill-fill-tertiary-active" }
+      },
+      "fill-fill-tertiary-disabled": {
+        "$type": "color",
+        "$value": "{bg.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--fill-fill-tertiary-disabled" }
+      },
+      "fill-fill-transparent": {
+        "$type": "color",
+        "$value": "transparent",
+        "$extensions": { "cssVar": "--fill-fill-transparent" }
+      },
+      "fill-fill-transparent-hover": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.hover}",
+        "$extensions": { "cssVar": "--fill-fill-transparent-hover" }
+      },
+      "fill-fill-transparent-active": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.active}",
+        "$extensions": { "cssVar": "--fill-fill-transparent-active" }
+      },
+      "fill-fill-transparent-disabled": {
+        "$type": "color",
+        "$value": "transparent",
+        "$extensions": { "cssVar": "--fill-fill-transparent-disabled" }
+      },
+      "fill-fill-secondary": {
+        "$type": "color",
+        "$value": "{bg.neutral.default.default}",
+        "$extensions": { "cssVar": "--fill-fill-secondary" }
+      },
+      "fill-fill-secondary-hover": {
+        "$type": "color",
+        "$value": "{bg.neutral.default.hover}",
+        "$extensions": { "cssVar": "--fill-fill-secondary-hover" }
+      },
+      "fill-fill-secondary-active": {
+        "$type": "color",
+        "$value": "{bg.neutral.default.active}",
+        "$extensions": { "cssVar": "--fill-fill-secondary-active" }
+      },
+      "fill-fill-secondary-disabled": {
+        "$type": "color",
+        "$value": "{bg.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--fill-fill-secondary-disabled" }
+      },
+      "fill-fill-success": {
+        "$type": "color",
+        "$value": "{bg.status-completed.default.default}",
+        "$extensions": { "cssVar": "--fill-fill-success" }
+      },
+      "fill-fill-success-hover": {
+        "$type": "color",
+        "$value": "{bg.status-completed.subtle.hover}",
+        "$extensions": { "cssVar": "--fill-fill-success-hover" }
+      },
+      "fill-fill-success-active": {
+        "$type": "color",
+        "$value": "{bg.status-completed.subtle.active}",
+        "$extensions": { "cssVar": "--fill-fill-success-active" }
+      },
+      "fill-fill-success-disable": {
+        "$type": "color",
+        "$value": "{bg.status-completed.subtle.default}",
+        "$extensions": { "cssVar": "--fill-fill-success-disable" }
+      },
+      "fill-fill-warning": {
+        "$type": "color",
+        "$value": "{bg.status-pending.default.default}",
+        "$extensions": { "cssVar": "--fill-fill-warning" }
+      },
+      "fill-fill-caution": {
+        "$type": "color",
+        "$value": "{bg.status-error.default.default}",
+        "$extensions": { "cssVar": "--fill-fill-caution" }
+      },
+      "fill-fill-information": {
+        "$type": "color",
+        "$value": "{bg.status-splitting.default.default}",
+        "$extensions": { "cssVar": "--fill-fill-information" }
+      },
+      "fill-browser": {
+        "$type": "color",
+        "$value": "{bg.browser.subtle.default}",
+        "$extensions": { "cssVar": "--fill-browser" }
+      },
+      "fill-document": {
+        "$type": "color",
+        "$value": "{bg.document.subtle.default}",
+        "$extensions": { "cssVar": "--fill-document" }
+      },
+      "fill-socialmedia": {
+        "$type": "color",
+        "$value": "{bg.single-agent.subtle.default}",
+        "$extensions": { "cssVar": "--fill-socialmedia" }
+      },
+      "fill-multimodal": {
+        "$type": "color",
+        "$value": "{bg.information.subtle.default}",
+        "$extensions": { "cssVar": "--fill-multimodal" }
+      },
+      "fill-developer": {
+        "$type": "color",
+        "$value": "{bg.workforce.subtle.default}",
+        "$extensions": { "cssVar": "--fill-developer" }
+      },
+      "icon-on-action": {
+        "$type": "color",
+        "$value": "{text.brand.inverse.default}",
+        "$extensions": { "cssVar": "--icon-on-action" }
+      },
+      "icon-on-hover": {
+        "$type": "color",
+        "$value": "{text.brand.inverse.default}",
+        "$extensions": { "cssVar": "--icon-on-hover" }
+      },
+      "icon-on-disabled": {
+        "$type": "color",
+        "$value": "{text.neutral.muted.disabled}",
+        "$extensions": { "cssVar": "--icon-on-disabled" }
+      },
+      "bg-page-default": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--bg-page-default" }
+      },
+      "background": {
+        "$type": "color",
+        "$value": "{bg.neutral.subtle.default}",
+        "$extensions": { "cssVar": "--background" }
+      }
+    }
+  }
+}

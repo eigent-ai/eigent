@@ -1,0 +1,29 @@
+{
+  "elements": ["bg", "text", "border", "icon", "ring"],
+  "emphasis": ["subtle", "muted", "default", "strong", "inverse"],
+  "states": ["default", "hover", "active", "selected", "focus", "disabled"],
+  "tones": [
+    "neutral",
+    "brand",
+    "status-running",
+    "status-splitting",
+    "status-pending",
+    "status-error",
+    "status-reassigning",
+    "status-completed",
+    "status-blocked",
+    "status-paused",
+    "status-skipped",
+    "status-cancelled",
+    "single-agent",
+    "workforce",
+    "browser",
+    "terminal",
+    "document",
+    "success",
+    "caution",
+    "error",
+    "warning",
+    "information"
+  ]
+}

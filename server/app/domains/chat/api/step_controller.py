@@ -22,6 +22,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
+from loguru import logger
 from sqlalchemy import or_
 from sqlalchemy.sql.expression import case
 from sqlmodel import Session, asc, select
@@ -33,6 +34,7 @@ from app.model.chat.chat_history import ChatHistory
 from app.shared.auth import auth_must
 from app.domains.chat.service import ChatService
 from app.domains.chat.schema import TaskOwnershipCheckReq
+from app.domains.remote_control.service.remote_control_service import RemoteControlService
 
 router = APIRouter(prefix="/chat", tags=["V1 Chat Step"])
 
@@ -208,6 +210,13 @@ async def create_chat_step(
     db_session.add(chat_step)
     db_session.commit()
     db_session.refresh(chat_step)
+    try:
+        RemoteControlService.publish_chat_step(chat_step, db_session)
+    except Exception as exc:
+        logger.warning(
+            "Remote-control step publish failed",
+            extra={"task_id": chat_step.task_id, "error": str(exc)},
+        )
     return {"code": 200, "msg": "success"}
 
 

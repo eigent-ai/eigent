@@ -1,0 +1,203 @@
+/* Vendored design tokens for the standalone web-ui. Source of truth: src/style/token.css. Run npm run check:remote-tokens after token changes. */
+@layer base {
+  :root {
+    --colors-red-50: #fef2f2;
+    --colors-red-100: #ffe2e2;
+    --colors-red-200: #ffc9c9;
+    --colors-red-300: #ffa2a2;
+    --colors-red-400: #ff6467;
+    --colors-red-500: #fb2c36;
+    --colors-red-700: #c10007;
+    --colors-red-800: #9f0712;
+    --colors-red-900: #82181a;
+    --colors-red-950: #460809;
+    --colors-red-default: #e7000b;
+
+    --colors-yellow-50: #fefce8;
+    --colors-yellow-100: #fef9c2;
+    --colors-yellow-200: #fff085;
+    --colors-yellow-300: #ffdf20;
+    --colors-yellow-400: #fdc700;
+    --colors-yellow-500: #f0b100;
+    --colors-yellow-700: #a65f00;
+    --colors-yellow-800: #894b00;
+    --colors-yellow-900: #733e0a;
+    --colors-yellow-950: #432004;
+    --colors-yellow-default: #d08700;
+
+    --colors-green-50: #f0fdf4;
+    --colors-green-100: #dcfce7;
+    --colors-green-200: #b9f8cf;
+    --colors-green-300: #7bf1a8;
+    --colors-green-400: #05df72;
+    --colors-green-500: #00c950;
+    --colors-green-700: #008236;
+    --colors-green-800: #016630;
+    --colors-green-900: #0d542b;
+    --colors-green-950: #032e15;
+    --colors-green-default: #00a63e;
+
+    --colors-indigo-50: #eef2ff;
+    --colors-indigo-100: #e0e7ff;
+    --colors-indigo-200: #c6d2ff;
+    --colors-indigo-300: #a3b3ff;
+    --colors-indigo-400: #7c86ff;
+    --colors-indigo-500: #615fff;
+    --colors-indigo-700: #432dd7;
+    --colors-indigo-800: #372aac;
+    --colors-indigo-900: #312c85;
+    --colors-indigo-950: #1e1a4d;
+    --colors-indigo-default: #4f39f6;
+
+    --colors-blue-50: #eff6ff;
+    --colors-blue-100: #dbeafe;
+    --colors-blue-200: #bedbff;
+    --colors-blue-300: #8ec5ff;
+    --colors-blue-400: #51a2ff;
+    --colors-blue-500: #2b7fff;
+    --colors-blue-700: #1447e6;
+    --colors-blue-800: #193cb8;
+    --colors-blue-900: #1c398e;
+    --colors-blue-950: #162456;
+    --colors-blue-default: #155dfc;
+
+    --colors-amber-50: #fffbeb;
+    --colors-amber-100: #fef3c6;
+    --colors-amber-200: #fee685;
+    --colors-amber-300: #ffd230;
+    --colors-amber-400: #ffb900;
+    --colors-amber-500: #fe9a00;
+    --colors-amber-700: #bb4d00;
+    --colors-amber-800: #973c00;
+    --colors-amber-900: #7b3306;
+    --colors-amber-950: #461901;
+    --colors-amber-default: #e17100;
+
+    --colors-emerald-50: #ecfdf5;
+    --colors-emerald-100: #d0fae5;
+    --colors-emerald-200: #a4f4cf;
+    --colors-emerald-300: #5ee9b5;
+    --colors-emerald-400: #00d492;
+    --colors-emerald-500: #00bc7d;
+    --colors-emerald-700: #007a55;
+    --colors-emerald-800: #006045;
+    --colors-emerald-900: #004f3b;
+    --colors-emerald-950: #002c22;
+    --colors-emerald-default: #009966;
+
+    --colors-purple-50: #faf5ff;
+    --colors-purple-100: #f3e8ff;
+    --colors-purple-200: #e9d5ff;
+    --colors-purple-300: #d8b4fe;
+    --colors-purple-400: #c084fc;
+    --colors-purple-500: #a855f7;
+    --colors-purple-700: #7e22ce;
+    --colors-purple-800: #6b21a8;
+    --colors-purple-900: #581c87;
+    --colors-purple-default: #9333ea;
+
+    --colors-orange-50: #fff7ed;
+    --colors-orange-100: #ffedd4;
+    --colors-orange-200: #ffd6a8;
+    --colors-orange-300: #ffb86a;
+    --colors-orange-400: #ff8904;
+    --colors-orange-500: #ff6900;
+    --colors-orange-700: #ca3500;
+    --colors-orange-800: #9f2d00;
+    --colors-orange-900: #7e2a0c;
+    --colors-orange-950: #441306;
+    --colors-orange-default: #f54900;
+
+    --colors-sky-50: #f0f9ff;
+    --colors-sky-100: #dff2fe;
+    --colors-sky-200: #b8e6fe;
+    --colors-sky-300: #74d4ff;
+    --colors-sky-400: #00bcff;
+    --colors-sky-500: #00a6f4;
+    --colors-sky-700: #0069a8;
+    --colors-sky-800: #00598a;
+    --colors-sky-900: #024a70;
+    --colors-sky-950: #052f4a;
+    --colors-sky-default: #0084d1;
+
+    --colors-fuchsia-50: #fdf4ff;
+    --colors-fuchsia-100: #fae8ff;
+    --colors-fuchsia-200: #f6cfff;
+    --colors-fuchsia-300: #f4a8ff;
+    --colors-fuchsia-400: #ed6aff;
+    --colors-fuchsia-500: #e12afb;
+    --colors-fuchsia-700: #a800b7;
+    --colors-fuchsia-800: #8a0194;
+    --colors-fuchsia-900: #721378;
+    --colors-fuchsia-950: #4b004f;
+    --colors-fuchsia-default: #c800de;
+
+    --colors-black-0: #00000000;
+    --colors-black-10: #0000001a;
+    --colors-black-30: #0000004d;
+    --colors-black-50: #00000080;
+    --colors-black-80: #000000cc;
+    --colors-black-100: #000000;
+
+    --colors-primary-1: #f5f5f5;
+    --colors-primary-2: #eeeeee;
+    --colors-primary-3: #cccccc;
+    --colors-primary-4: #aaaaaa;
+    --colors-primary-5: #888888;
+    --colors-primary-6: #666666;
+    --colors-primary-7: #444444;
+    --colors-primary-8: #333333;
+    --colors-primary-10: #111111;
+    --colors-primary-11: #000000;
+    --colors-primary-default: #222222;
+
+    --colors-off-white-0: #f5f5f500;
+    --colors-off-white-10: #f5f5f51a;
+    --colors-off-white-30: #f5f5f54d;
+    --colors-off-white-50: #f5f5f580;
+    --colors-off-white-80: #f5f5f5cc;
+    --colors-off-white-100: #f5f5f5;
+
+    --colors-white-0: #ffffff00;
+    --colors-white-10: #ffffff1a;
+    --colors-white-30: #ffffff4d;
+    --colors-white-50: #ffffff80;
+    --colors-white-80: #ffffffcc;
+    --colors-white-100: #ffffff;
+
+    --colors-off-black-0: #1d1c1b00;
+    --colors-off-black-10: #1d1c1b1a;
+    --colors-off-black-30: #1d1c1b4d;
+    --colors-off-black-50: #1d1c1b80;
+    --colors-off-black-80: #1d1c1bcc;
+    --colors-off-black-100: #1d1c1b;
+
+    --colors-gradient: #ffffff;
+
+    --colors-neon-50: #f2f2ff;
+    --colors-neon-100: #e9e7ff;
+    --colors-neon-200: #d5d3ff;
+    --colors-neon-300: #b5afff;
+    --colors-neon-400: #9081ff;
+    --colors-neon-500: #6d4fff;
+    --colors-neon-600: #5a2afd;
+    --colors-neon-700: #4c19e8;
+    --colors-neon-800: #4215cc;
+    --colors-neon-900: #36139f;
+    --colors-neon-950: #1e096c;
+    --colors-neon-default: #4c19e8;
+
+    --camel-color: var(--colors-neon-default);
+
+    --shadow-soft:
+      0 8px 20px -2px rgba(29, 33, 41, 0.1),
+      0 32px 48px -12px rgba(29, 33, 41, 0.12),
+      0 96px 120px -12px rgba(65, 74, 92, 0.06),
+      0 108px 72px -16px rgba(65, 74, 92, 0.08),
+      0 32px 64px -8px rgba(113, 153, 189, 0.12),
+      0 8px 10px 0 rgba(113, 153, 189, 0.12);
+    --shadow-perfect: var(--shadow-soft);
+    --shadow-button:
+      inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
+  }
+}

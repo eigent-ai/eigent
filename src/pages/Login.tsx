@@ -21,7 +21,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
 import WindowControls from '@/components/WindowControls';
 import { useHost } from '@/host';
-import { hasStackKeys } from '@/lib';
 import {
   DESKTOP_LOGIN_CALLBACK_URL,
   getExternalLoginUrl,
@@ -32,15 +31,13 @@ import { useTranslation } from 'react-i18next';
 import background from '@/assets/background.png';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 
-const HAS_STACK_KEYS = hasStackKeys();
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 let lock = false;
 
 export default function Login() {
   const host = useHost();
   // Always call hooks unconditionally - React Hooks must be called in the same order
-  const stackApp = useStackApp();
-  const app = HAS_STACK_KEYS ? stackApp : null;
+  const _stackApp = useStackApp();
   const {
     setAuth,
     setModelType,
@@ -56,8 +53,9 @@ export default function Login() {
   const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const titlebarRef = useRef<HTMLDivElement>(null);
   const handledWebTokenRef = useRef<string | null>(null);
-  const [platform, setPlatform] = useState<string>('');
   const isDesktopHost = !!host?.ipcRenderer && !!host?.electronAPI;
+  const redirectTo =
+    new URLSearchParams(location.search).get('redirect') || '/';
 
   const getLoginErrorMessage = useCallback(
     (data: any) => {
@@ -116,7 +114,7 @@ export default function Login() {
       setModelType('custom');
       setInitState('done');
       setIsFirstLaunch(false);
-      navigate('/');
+      navigate(redirectTo, { replace: true });
     } catch (error: any) {
       console.error('Auto login failed:', error);
       setGeneralError(t('layout.login-failed-please-try-again'));
@@ -145,7 +143,7 @@ export default function Login() {
         setAuth({ email: data.email, ...data });
         const localProxyValue = import.meta.env.VITE_USE_LOCAL_PROXY || null;
         setLocalProxyValue(localProxyValue);
-        navigate('/');
+        navigate(redirectTo, { replace: true });
       } catch (error: any) {
         console.error('Login failed:', error);
         setGeneralError(
@@ -162,6 +160,7 @@ export default function Login() {
       setLocalProxyValue,
       setGeneralError,
       setIsLoading,
+      redirectTo,
       getLoginErrorMessage,
       t,
     ]
@@ -247,7 +246,7 @@ export default function Login() {
               userInfo.id || JSON.parse(atob(token.split('.')[1])).id || 0,
           });
         }
-        navigate('/', { replace: true });
+        navigate(redirectTo, { replace: true });
       } catch (e) {
         console.error('Failed to fetch user info:', e);
         setGeneralError(t('layout.login-failed-please-try-again'));
@@ -262,6 +261,7 @@ export default function Login() {
       setIsLoading,
       setLocalProxyValue,
       setModelType,
+      redirectTo,
       t,
     ]
   );
@@ -302,11 +302,9 @@ export default function Login() {
 
   useEffect(() => {
     if (!host?.electronAPI?.getPlatform) {
-      setPlatform('web');
       return;
     }
     const p = host.electronAPI.getPlatform();
-    setPlatform(p);
     if (p === 'darwin') {
       titlebarRef.current?.classList.add('mac');
     }
@@ -342,7 +340,7 @@ export default function Login() {
         try {
           const url = await host?.ipcRenderer?.invoke('get-auth-callback-url');
           if (url) cbUrl = url;
-        } catch (e) {
+        } catch {
           // Fallback to eigent:// protocol
         }
       }
@@ -354,10 +352,10 @@ export default function Login() {
 
   // Render local mode: "Start Eigent" button only
   const renderLocalMode = () => (
-    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
       <img
         src={eigentLogo}
-        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
       />
       <div className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default">
         Eigent
@@ -383,16 +381,16 @@ export default function Login() {
 
   // Render hybrid/app mode: waiting for external login callback
   const renderHybridMode = () => (
-    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
       <img
         src={eigentLogo}
-        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
       />
       <div className="mb-4 text-heading-lg font-bold text-ds-text-neutral-default-default">
         {t('layout.login')}
       </div>
       {isLoading && (
-        <p className="mb-6 text-label-md text-ds-text-neutral-muted-default text-center">
+        <p className="mb-6 text-center text-label-md text-ds-text-neutral-muted-default">
           {t('layout.logging-in')}...
         </p>
       )}
@@ -426,7 +424,7 @@ export default function Login() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="left-0 right-0 top-0 !h-9 py-1 pl-2 absolute z-50 flex items-center justify-between"
+        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -456,10 +454,10 @@ export default function Login() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
+        className={`flex h-full items-center justify-center gap-2 px-1 pb-1 pt-10`}
       >
         <div
-          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',

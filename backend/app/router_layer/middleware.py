@@ -34,6 +34,7 @@ CHANNELS = frozenset(
         "discord",
         "lark",
         "browser_extension",
+        "remote_control",
     }
 )
 
