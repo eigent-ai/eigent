@@ -73,7 +73,9 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     },
     ref
   ) => {
-    const { onKeyDown, ...inputProps } = props;
+    const [isComposing, setIsComposing] = React.useState(false);
+    const { onKeyDown, onCompositionStart, onCompositionEnd, ...inputProps } =
+      props;
     const stateCls = formFieldInputStateClasses(
       disabled ? 'disabled' : (state as FormFieldInputState)
     );
@@ -139,6 +141,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
               stateCls.placeholder,
               hasLeft ? 'pl-9' : 'pl-3',
               hasRight ? 'pr-9' : 'pr-3',
+              isComposing && 'placeholder:opacity-0',
               className
             )}
             onKeyDown={(e) => {
@@ -146,6 +149,14 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
                 onEnter?.();
               }
               onKeyDown?.(e);
+            }}
+            onCompositionStart={(e) => {
+              setIsComposing(true);
+              onCompositionStart?.(e);
+            }}
+            onCompositionEnd={(e) => {
+              setIsComposing(false);
+              onCompositionEnd?.(e);
             }}
             {...inputProps}
           />

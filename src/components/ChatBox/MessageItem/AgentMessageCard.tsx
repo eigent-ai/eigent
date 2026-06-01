@@ -95,7 +95,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`rounded-xl px-sm py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
+      className={`rounded-xl px-6 py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
     >
       <MarkDown
         content={content}
@@ -113,11 +113,11 @@ export function AgentMessageCard({
                   ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
-                className="gap-2 rounded-2xl py-1 pl-2 flex w-full cursor-pointer items-center border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
+                className="gap-2 rounded-2xl py-1 pl-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default flex w-full cursor-pointer items-center border border-solid"
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 text-sm font-bold overflow-hidden text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
+                  <div className="text-body max-w-48 text-sm font-bold text-ds-text-neutral-default-default overflow-hidden text-ellipsis whitespace-nowrap">
                     {file?.fileName?.split('.')[0]}
                   </div>
                   <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">

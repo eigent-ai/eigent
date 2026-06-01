@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Check, PenLine } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -50,10 +50,10 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
     <button
       type="button"
       className={cn(
-        'group flex w-full items-start gap-2 rounded-xl bg-ds-bg-neutral-subtle-default p-2 text-left transition-colors',
+        'group gap-2 rounded-xl bg-ds-bg-neutral-subtle-default p-2 flex w-full items-start text-left transition-colors',
         checked
           ? 'cursor-default'
-          : 'cursor-pointer hover:bg-ds-bg-neutral-strong-default'
+          : 'hover:bg-ds-bg-neutral-strong-default cursor-pointer'
       )}
       onClick={checked ? undefined : onClick}
       aria-pressed={checked}
@@ -61,7 +61,7 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
       {/* Circle */}
       <div
         className={cn(
-          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+          'mt-0.5 h-4 w-4 flex shrink-0 items-center justify-center rounded-full',
           checked
             ? 'bg-ds-bg-success-default-default'
             : 'bg-ds-bg-neutral-muted-default'
@@ -73,14 +73,14 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
             aria-hidden
           />
         ) : (
-          <span className="text-[8px] font-bold leading-none text-ds-text-neutral-muted-default">
+          <span className="font-bold text-ds-text-neutral-muted-default text-[8px] leading-none">
             {id}
           </span>
         )}
       </div>
 
       {/* Text */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="min-w-0 flex flex-1 flex-col">
         <span
           className={cn(
             '!text-body-sm font-semibold',
@@ -102,15 +102,11 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
 export interface WorkspaceCoworkPanelProps {
   memoryOn: boolean;
   onMemoryToggle: () => void;
-  onEditInstructions: () => void;
-  onWorkforceSetting: () => void;
 }
 
 export function WorkspaceCoworkPanel({
   memoryOn,
   onMemoryToggle,
-  onEditInstructions,
-  onWorkforceSetting,
 }: WorkspaceCoworkPanelProps) {
   const { t } = useTranslation();
   const [checkedSteps, setCheckedSteps] =
@@ -140,42 +136,22 @@ export function WorkspaceCoworkPanel({
   };
 
   const instructionsTitle = t('layout.instructions');
-  const instructionsHint = t('layout.instructions-rules-tone');
   const memoryLabel = t('layout.memory');
   const memoryOnLabel = t('layout.memory-on');
   const memoryOffLabel = t('layout.memory-off');
-  const workforceSettingLabel = t('layout.workforce-setting');
-  const selectLabel = t('layout.select');
-  const editInstructionsLabel = t('layout.edit-instructions');
   const gettingStartedLabel = t('layout.getting-started');
 
   return (
-    <div className="flex h-full flex-col overflow-hidden py-1 pr-1">
+    <div className="py-1 pr-1 flex h-full flex-col overflow-hidden">
       {/* Settings area */}
-      <div className="flex shrink-0 flex-col gap-0.5 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1">
+      <div className="gap-0.5 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 flex shrink-0 flex-col">
         {/* Panel title */}
-        <div className="shrink-0 px-2 py-1.5">
+        <div className="px-2 py-1.5 shrink-0">
           <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
             {instructionsTitle}
           </span>
         </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default">
-          <span className="min-w-0 flex-1 text-body-sm font-medium text-ds-text-neutral-muted-default">
-            {instructionsHint}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            className="no-drag shrink-0"
-            aria-label={editInstructionsLabel}
-            onClick={onEditInstructions}
-          >
-            <PenLine className="h-4 w-4 shrink-0" aria-hidden />
-          </Button>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default">
+        <div className="min-w-0 gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default flex items-center justify-between">
           <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
             {memoryLabel}
           </span>
@@ -191,25 +167,10 @@ export function WorkspaceCoworkPanel({
             {memoryOn ? memoryOnLabel : memoryOffLabel}
           </Button>
         </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default">
-          <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
-            {workforceSettingLabel}
-          </span>
-          <Button
-            type="button"
-            variant="secondary"
-            size="xs"
-            className="no-drag shrink-0"
-            onClick={onWorkforceSetting}
-            aria-label={`${workforceSettingLabel}: ${selectLabel}`}
-          >
-            {selectLabel}
-          </Button>
-        </div>
       </div>
 
       {/* Scrollable onboarding area */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
+      <div className="min-h-0 py-2 flex flex-1 flex-col overflow-y-auto">
         {allChecked ? (
           <Accordion
             type="single"
@@ -219,20 +180,20 @@ export function WorkspaceCoworkPanel({
           >
             <AccordionItem
               value="onboarding"
-              className="overflow-hidden rounded-xl border-none data-[state=open]:bg-ds-bg-neutral-default-default"
+              className="rounded-xl data-[state=open]:bg-ds-bg-neutral-default-default overflow-hidden border-none"
             >
-              <AccordionTrigger className="rounded-xl px-4 py-2.5 text-body-sm font-medium hover:bg-ds-bg-neutral-default-default hover:no-underline data-[state=open]:rounded-b-none [&>svg]:text-ds-icon-neutral-muted-default">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-semibold text-ds-text-neutral-default-default">
+              <AccordionTrigger className="rounded-xl px-4 py-2.5 text-body-sm font-medium hover:bg-ds-bg-neutral-default-default [&>svg]:text-ds-icon-neutral-muted-default hover:no-underline data-[state=open]:rounded-b-none">
+                <div className="min-w-0 gap-2 flex items-center">
+                  <span className="font-semibold text-ds-text-neutral-default-default truncate">
                     {gettingStartedLabel}
                   </span>
-                  <span className="shrink-0 text-body-xs text-ds-text-neutral-muted-default">
+                  <span className="text-body-xs text-ds-text-neutral-muted-default shrink-0">
                     {checkedSteps.size}/{onboardingSteps.length}
                   </span>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-2">
-                <div className="flex flex-col gap-2 pb-2">
+                <div className="gap-2 pb-2 flex flex-col">
                   {onboardingSteps.map((step) => (
                     <StepCard
                       key={step.id}
@@ -248,7 +209,7 @@ export function WorkspaceCoworkPanel({
             </AccordionItem>
           </Accordion>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="gap-2 flex flex-col">
             {onboardingSteps.map((step) => (
               <StepCard
                 key={step.id}

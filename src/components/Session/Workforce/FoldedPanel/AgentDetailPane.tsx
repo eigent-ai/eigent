@@ -363,7 +363,7 @@ export function AgentDetailPane({
                       }
                     }}
                     className={cn(
-                      'rounded-xl px-sm py-sm gap-1 flex cursor-pointer flex-col border border-solid transition-all duration-300',
+                      'rounded-xl px-6 py-sm gap-1 flex cursor-pointer flex-col border border-solid transition-all duration-300',
                       task.reAssignTo
                         ? 'bg-ds-bg-status-blocked-subtle-default'
                         : task.status === TaskStatus.COMPLETED

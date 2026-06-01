@@ -38,6 +38,12 @@ import xIcon from '@/assets/icon/x.svg';
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
 import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
@@ -47,10 +53,21 @@ import {
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { motion } from 'framer-motion';
-import { ChevronDown, ChevronUp, Plus, Settings2, Wrench } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Settings2,
+  Trash2,
+  Wrench,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import { GoogleSearchPanel } from './components/GoogleSearchPanel';
 import MCPAddDialog from './components/MCPAddDialog';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
@@ -61,8 +78,10 @@ import { arrayToArgsJson, parseArgsToArray } from './components/utils';
 import { ConfigFile } from 'electron/main/utils/mcpConfig';
 import { toast } from 'sonner';
 
-// Filter out Search from integrations (Search has a dedicated settings area elsewhere)
+// Filter out Search from integrations (it's now a hardcoded connector item below)
 const EXCLUDED_FROM_MCP = ['Search'];
+
+const GOOGLE_SEARCH_ID = 'google-search' as const;
 
 const COMING_SOON_NAMES = [
   'X(Twitter)',
@@ -133,10 +152,13 @@ export default function SettingMCP() {
   const [searchQuery, setSearchQuery] = useState('');
   const [webCollapsed, setWebCollapsed] = useState(false);
   const [yourCollapsed, setYourCollapsed] = useState(false);
-  const [notConnectedCollapsed, setNotConnectedCollapsed] = useState(false);
   const [selected, setSelected] = useState<
-    { type: 'web'; key: string } | { type: 'your'; id: number } | null
+    | { type: 'web'; key: string }
+    | { type: 'your'; id: number }
+    | { type: typeof GOOGLE_SEARCH_ID }
+    | null
   >(null);
+  const [googleSearchConfigured, setGoogleSearchConfigured] = useState(false);
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<any | null>(null);
   const [folderHint, setFolderHint] = useState<'web' | 'your' | null>(null);
@@ -168,7 +190,6 @@ export default function SettingMCP() {
     if (section === 'mcp-tools') {
       setFolderHint('web');
       setWebCollapsed(false);
-      setNotConnectedCollapsed(false);
       setYourCollapsed(true);
       next.delete('connectorSection');
     }
@@ -176,7 +197,6 @@ export default function SettingMCP() {
       setFolderHint('your');
       setYourCollapsed(false);
       setWebCollapsed(true);
-      setNotConnectedCollapsed(true);
       next.delete('connectorSection');
     }
     setSearchParams(next, { replace: true });
@@ -211,10 +231,40 @@ export default function SettingMCP() {
     [filteredIntegrations, installed]
   );
 
-  const webNotConnected = useMemo(
-    () => filteredIntegrations.filter((i) => !installed[i.key]),
-    [filteredIntegrations, installed]
-  );
+  type SortedWebItem =
+    | { kind: 'google-search'; connected: boolean }
+    | {
+        kind: 'integration';
+        item: IntegrationItem;
+        connected: boolean;
+        comingSoon: boolean;
+      };
+
+  const sortedWebItems = useMemo((): SortedWebItem[] => {
+    const all: SortedWebItem[] = [
+      { kind: 'google-search', connected: googleSearchConfigured },
+      ...filteredIntegrations.map((item) => ({
+        kind: 'integration' as const,
+        item,
+        connected: !!installed[item.key],
+        comingSoon: (COMING_SOON_NAMES as readonly string[]).includes(
+          item.name
+        ),
+      })),
+    ];
+
+    const priority = (w: SortedWebItem) => {
+      if (w.kind === 'integration' && w.comingSoon) return 2;
+      return w.connected ? 0 : 1;
+    };
+    const getName = (w: SortedWebItem) =>
+      w.kind === 'google-search' ? 'Google Search' : w.item.name;
+
+    return [...all].sort((a, b) => {
+      const diff = priority(a) - priority(b);
+      return diff !== 0 ? diff : getName(a).localeCompare(getName(b));
+    });
+  }, [filteredIntegrations, installed, googleSearchConfigured]);
 
   // get list
   const fetchList = useCallback(() => {
@@ -581,13 +631,13 @@ export default function SettingMCP() {
         key={tabId}
         type="button"
         onClick={onSelect}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="flex min-w-0 items-center justify-center gap-3">
+        <div className="min-w-0 gap-3 flex items-center justify-center">
           {kind === 'web' ? (
             assetUrl ? (
               <img
@@ -608,16 +658,16 @@ export default function SettingMCP() {
               />
             )
           ) : (
-            <Wrench className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
+            <Wrench className="h-5 w-5 text-ds-icon-neutral-muted-default shrink-0" />
           )}
           <span
-            className={`truncate text-left text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+            className={`text-body-sm font-medium truncate text-left ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
           >
             {label}
           </span>
         </div>
         {kind === 'your' && yourEnabled ? (
-          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+          <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
         ) : null}
       </button>
     );
@@ -635,21 +685,21 @@ export default function SettingMCP() {
     }
     if (folderHint === 'web') {
       if (isLoadingIntegrations) return;
-      const pick = webConnected[0] || webNotConnected[0];
+      const pick = filteredIntegrations[0];
       if (pick) setSelected({ type: 'web', key: pick.key });
       setFolderHint(null);
     }
   }, [
     folderHint,
     filteredItems,
-    webConnected,
-    webNotConnected,
+    filteredIntegrations,
     isLoading,
     isLoadingIntegrations,
   ]);
 
   useEffect(() => {
     if (!selected) return;
+    if (selected.type === GOOGLE_SEARCH_ID) return;
     if (selected.type === 'web') {
       if (!integrations.some((i) => i.key === selected.key)) {
         setSelected(null);
@@ -663,7 +713,7 @@ export default function SettingMCP() {
 
   useEffect(() => {
     if (selected || isLoadingIntegrations || isLoading || folderHint) return;
-    const pick = webConnected[0] || filteredItems[0] || webNotConnected[0];
+    const pick = webConnected[0] || filteredItems[0] || filteredIntegrations[0];
     if (!pick) return;
     if ('mcp_name' in pick) {
       setSelected({ type: 'your', id: pick.id });
@@ -673,7 +723,7 @@ export default function SettingMCP() {
   }, [
     selected,
     webConnected,
-    webNotConnected,
+    filteredIntegrations,
     filteredItems,
     isLoadingIntegrations,
     isLoading,
@@ -683,8 +733,31 @@ export default function SettingMCP() {
   const renderConnectionPanel = () => {
     if (!selected) {
       return (
-        <div className="py-16 text-center text-body-md text-ds-text-neutral-muted-default">
+        <div className="py-16 text-body-md text-ds-text-neutral-muted-default text-center">
           {t('setting.mcp-select-connection')}
+        </div>
+      );
+    }
+
+    if (selected.type === GOOGLE_SEARCH_ID) {
+      return (
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="min-w-0 gap-2 flex items-center">
+              <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
+                <Search className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+              </div>
+              <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
+                Google Search
+              </div>
+            </div>
+            {googleSearchConfigured && (
+              <span className="bg-ds-bg-success-subtle-default px-2.5 py-0.5 text-label-xs font-medium text-ds-text-success-default-default rounded-full">
+                {t('setting.configured', { defaultValue: 'Configured' })}
+              </span>
+            )}
+          </div>
+          <GoogleSearchPanel onConfigured={setGoogleSearchConfigured} />
         </div>
       );
     }
@@ -701,11 +774,11 @@ export default function SettingMCP() {
       const headerAssetUrl = integrationLeadingIconUrl(item.key);
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
-            <div className="flex min-w-0 items-center gap-2">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="min-w-0 gap-2 flex items-center">
               {headerAssetUrl ? (
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
+                <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
                   <img
                     src={headerAssetUrl}
                     alt=""
@@ -713,7 +786,7 @@ export default function SettingMCP() {
                   />
                 </div>
               ) : (
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
+                <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
                   <img
                     src={ellipseIcon}
                     alt=""
@@ -726,11 +799,11 @@ export default function SettingMCP() {
                   />
                 </div>
               )}
-              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
+              <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
                 {item.name}
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <div className="gap-2 flex shrink-0 flex-wrap items-center justify-end">
               <Button
                 type="button"
                 disabled={isComingSoon}
@@ -766,38 +839,13 @@ export default function SettingMCP() {
               ) : null}
             </div>
           </div>
-          <div className="flex flex-col gap-3 px-6 py-4">
-            {typeof item.desc === 'string' ? (
-              <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
-                {item.desc || '—'}
+          {item.desc ? (
+            <div className="px-6 py-4">
+              <span className="text-body-sm text-ds-text-neutral-muted-default whitespace-pre-wrap">
+                {item.desc}
               </span>
-            ) : (
-              <span className="text-body-sm text-ds-text-neutral-muted-default">
-                {item.desc ?? '—'}
-              </span>
-            )}
-            <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-              {t('setting.tools')}
             </div>
-            <div className="flex flex-col gap-2">
-              {item.env_vars && item.env_vars.length > 0 ? (
-                item.env_vars.map((ev) => (
-                  <div
-                    key={ev}
-                    className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-default-default"
-                  >
-                    {ev}
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
-                  {isConn
-                    ? t('setting.configured')
-                    : t('setting.not-configured')}
-                </div>
-              )}
-            </div>
-          </div>
+          ) : null}
         </div>
       );
     }
@@ -805,18 +853,17 @@ export default function SettingMCP() {
     const userItem = items.find((i) => i.id === selected.id);
     if (!userItem) return null;
     const enabled = userItem.status === 1;
-    const argRows = userItem.args ? parseArgsToArray(userItem.args) : [];
 
     return (
-      <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-        <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <Wrench className="h-7 w-7 shrink-0 rounded-lg bg-ds-bg-neutral-default-default p-1 text-ds-icon-neutral-muted-default" />
-            <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
+      <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+        <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+          <div className="min-w-0 gap-2 flex items-center">
+            <Wrench className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 text-ds-icon-neutral-muted-default shrink-0" />
+            <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
               {capitalizeFirstLetter(userItem.mcp_name || '')}
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <div className="gap-2 flex shrink-0 items-center">
             <Switch
               size="default"
               checked={enabled}
@@ -826,59 +873,37 @@ export default function SettingMCP() {
               }
               aria-label={enabled ? t('setting.disable') : t('setting.enable')}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteTarget(userItem)}
-            >
-              {t('setting.disconnect')}
-            </Button>
-            <TooltipSimple content={t('setting.setting')}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                aria-label={t('setting.setting')}
-                onClick={() => setShowConfig(userItem)}
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
-            {userItem.mcp_desc || '—'}
-          </span>
-          <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-            {t('setting.tools')}
-          </div>
-          <div className="flex flex-col gap-2">
-            {userItem.command ? (
-              <div className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 font-mono text-body-sm text-ds-text-neutral-default-default">
-                {userItem.command}
-              </div>
-            ) : null}
-            {argRows.map((arg, idx) => (
-              <div
-                key={`${idx}-${arg}`}
-                className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 font-mono text-body-sm text-ds-text-neutral-default-default"
-              >
-                {arg}
-              </div>
-            ))}
-            {!userItem.command && argRows.length === 0 && userItem.mcp_key ? (
-              <div className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-default-default">
-                {userItem.mcp_key}
-              </div>
-            ) : null}
-            {!userItem.command && argRows.length === 0 && !userItem.mcp_key ? (
-              <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
-                —
-              </div>
-            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  aria-label={t('setting.more-options', {
+                    defaultValue: 'More options',
+                  })}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => setShowConfig(userItem)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  {t('setting.edit', { defaultValue: 'Edit' })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-ds-text-status-error-strong-default focus:text-ds-text-status-error-strong-default cursor-pointer"
+                  onClick={() => setDeleteTarget(userItem)}
+                >
+                  <Trash2 className="h-4 w-4 text-ds-text-status-error-strong-default" />
+                  {t('setting.delete', { defaultValue: 'Delete' })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -1036,19 +1061,19 @@ export default function SettingMCP() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
+      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
         <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('setting.mcps-and-tools')}
         </div>
       </div>
 
-      <div className="mb-12 flex flex-col gap-6">
-        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
-          <div className="z-10 mb-4 flex w-full flex-wrap items-center justify-between gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2">
+      <div className="mb-12 gap-6 flex flex-col">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
+          <div className="mb-4 gap-3 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.connectors')}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="gap-2 flex items-center">
               <SearchInput
                 variant="icon"
                 value={searchQuery}
@@ -1066,14 +1091,14 @@ export default function SettingMCP() {
             </div>
           </div>
 
-          <div className="flex w-full flex-row items-start justify-between gap-4 px-3">
-            <div className="-ml-2 mr-4 h-full w-[240px] shrink-0 rounded-2xl bg-ds-bg-neutral-default-default">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
+          <div className="gap-4 px-3 flex w-full flex-row items-start justify-between">
+            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px] shrink-0">
+              <div className="gap-4 flex flex-col">
+                <div className="gap-1 flex flex-col">
                   <button
                     type="button"
                     onClick={() => setWebCollapsed(!webCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.mcp-sidebar-web')}
@@ -1085,14 +1110,14 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       webCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
                     }`}
                   >
                     {isLoadingIntegrations ? (
-                      <div className="flex flex-col gap-2 px-1">
+                      <div className="gap-2 px-1 flex flex-col">
                         {[1, 2, 3].map((i) => (
                           <div
                             key={i}
@@ -1100,36 +1125,113 @@ export default function SettingMCP() {
                           />
                         ))}
                       </div>
-                    ) : webConnected.length === 0 ? (
-                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
-                        {searchQuery.trim()
-                          ? t('dashboard.no-results')
-                          : integrations.length === 0
-                            ? t('setting.no-mcp-servers')
-                            : t('setting.not-configured')}
-                      </div>
                     ) : (
-                      webConnected.map((item) =>
-                        renderSidebarRow(
-                          `web-${item.key}`,
-                          item.name,
-                          'web',
-                          selected?.type === 'web' && selected.key === item.key,
-                          () => setSelected({ type: 'web', key: item.key }),
-                          !!installed[item.key],
-                          undefined,
-                          item.key
-                        )
-                      )
+                      <>
+                        {sortedWebItems.map((wi) => {
+                          if (wi.kind === 'google-search') {
+                            const isActive =
+                              selected?.type === GOOGLE_SEARCH_ID;
+                            return (
+                              <button
+                                key="google-search"
+                                type="button"
+                                onClick={() =>
+                                  setSelected({ type: GOOGLE_SEARCH_ID })
+                                }
+                                className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+                                  isActive
+                                    ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                                    : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+                                }`}
+                              >
+                                <div className="min-w-0 gap-3 flex items-center">
+                                  <Search className="h-5 w-5 text-ds-icon-neutral-muted-default shrink-0" />
+                                  <span
+                                    className={`text-body-sm font-medium truncate text-left ${
+                                      isActive
+                                        ? 'text-ds-text-neutral-default-default'
+                                        : 'text-ds-text-neutral-muted-default'
+                                    }`}
+                                  >
+                                    Google Search
+                                  </span>
+                                </div>
+                                {wi.connected && (
+                                  <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+                                )}
+                              </button>
+                            );
+                          }
+
+                          const {
+                            item,
+                            connected: isConn,
+                            comingSoon: isComingSoon,
+                          } = wi;
+                          const assetUrl = integrationLeadingIconUrl(item.key);
+                          const isActive =
+                            selected?.type === 'web' &&
+                            selected.key === item.key;
+                          return (
+                            <button
+                              key={`web-${item.key}`}
+                              type="button"
+                              disabled={isComingSoon}
+                              onClick={() =>
+                                !isComingSoon &&
+                                setSelected({ type: 'web', key: item.key })
+                              }
+                              className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+                                isActive
+                                  ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                                  : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+                              } ${isComingSoon ? 'cursor-not-allowed opacity-40' : ''}`}
+                            >
+                              <div className="min-w-0 gap-3 flex items-center">
+                                {assetUrl ? (
+                                  <img
+                                    src={assetUrl}
+                                    alt=""
+                                    className="h-5 w-5 shrink-0 object-contain"
+                                  />
+                                ) : (
+                                  <img
+                                    src={ellipseIcon}
+                                    alt=""
+                                    className="h-3 w-3 shrink-0"
+                                    style={{
+                                      filter: isConn
+                                        ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
+                                        : 'none',
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  className={`text-body-sm font-medium truncate text-left ${
+                                    isActive
+                                      ? 'text-ds-text-neutral-default-default'
+                                      : 'text-ds-text-neutral-muted-default'
+                                  }`}
+                                >
+                                  {item.name}
+                                </span>
+                              </div>
+                              {isConn && (
+                                <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </>
                     )}
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     type="button"
                     onClick={() => setYourCollapsed(!yourCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.your-own-mcps')}
@@ -1141,7 +1243,7 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       yourCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -1156,22 +1258,14 @@ export default function SettingMCP() {
                         {error}
                       </div>
                     ) : filteredItems.length === 0 ? (
-                      <div className="flex flex-col items-start gap-2 px-3 py-2">
+                      <div className="px-3 py-2">
                         <p className="text-body-xs text-ds-text-neutral-muted-default">
                           {items.length === 0
-                            ? t('setting.no-mcp-servers')
+                            ? t('setting.no-mcp-servers', {
+                                defaultValue: 'No MCPs',
+                              })
                             : t('dashboard.no-results')}
                         </p>
-                        {items.length === 0 ? (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => setShowAdd(true)}
-                          >
-                            <Plus className="h-4 w-4" />
-                            {t('setting.mcp-add')}
-                          </Button>
-                        ) : null}
                       </div>
                     ) : (
                       filteredItems.map((item) =>
@@ -1188,82 +1282,26 @@ export default function SettingMCP() {
                     )}
                   </div>
                 </div>
-
-                <div className="flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNotConnectedCollapsed(!notConnectedCollapsed)
-                    }
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.mcp-sidebar-not-connected')}
-                    </div>
-                    {notConnectedCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    )}
-                  </button>
-                  <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      notConnectedCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {isLoadingIntegrations ? (
-                      <div className="flex flex-col gap-2 px-1">
-                        {[1, 2, 3].map((i) => (
-                          <div
-                            key={i}
-                            className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
-                          />
-                        ))}
-                      </div>
-                    ) : webNotConnected.length === 0 ? (
-                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
-                        {searchQuery.trim()
-                          ? t('dashboard.no-results')
-                          : t('setting.configured')}
-                      </div>
-                    ) : (
-                      webNotConnected.map((item) =>
-                        renderSidebarRow(
-                          `nc-${item.key}`,
-                          item.name,
-                          'web',
-                          selected?.type === 'web' && selected.key === item.key,
-                          () => setSelected({ type: 'web', key: item.key }),
-                          !!installed[item.key],
-                          undefined,
-                          item.key
-                        )
-                      )
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div className="sticky top-[80px] z-10 min-w-0 flex-1">
+            <div className="min-w-0 sticky top-[80px] z-10 flex-1">
               {isLoadingIntegrations && !selected ? (
-                <div className="flex w-full flex-col items-start justify-start gap-4">
+                <div className="gap-4 flex w-full flex-col items-start justify-start">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="relative w-full overflow-hidden rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4"
+                      className="rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4 relative w-full overflow-hidden"
                     >
-                      <div className="flex w-full flex-row items-center justify-between gap-xs">
-                        <div className="flex flex-row items-center gap-xs">
-                          <div className="mr-2 h-3 w-3 rounded-full bg-ds-bg-neutral-default-hover" />
+                      <div className="gap-xs flex w-full flex-row items-center justify-between">
+                        <div className="gap-xs flex flex-row items-center">
+                          <div className="mr-2 h-3 w-3 bg-ds-bg-neutral-default-hover rounded-full" />
                           <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
                         </div>
                         <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
                       </div>
                       <motion.div
-                        className="via-white/20 absolute inset-0 w-1/2 bg-gradient-to-r from-transparent to-transparent"
+                        className="via-white/20 inset-0 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
                         initial={{ x: '-100%' }}
                         animate={{ x: '200%' }}
                         transition={{

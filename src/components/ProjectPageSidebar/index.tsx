@@ -799,7 +799,7 @@ export default function ProjectPageSidebar({
           <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <div className="gap-2 flex w-full shrink-0 flex-col">
               <SpaceSwitchDropdown
-                triggerTooltip={activeSpaceLabel}
+                triggerTooltip="Spaces"
                 triggerTooltipEnabled={projectSidebarFolded}
                 trigger={
                   <button

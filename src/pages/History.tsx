@@ -167,7 +167,7 @@ export default function History() {
           <div
             className={
               activeTab === 'home'
-                ? 'flex h-auto min-h-[calc(100vh-80px)] w-full px-[70px]'
+                ? 'flex h-auto w-full px-[70px] pb-[120px]'
                 : 'hidden'
             }
             aria-hidden={activeTab !== 'home'}
@@ -176,7 +176,7 @@ export default function History() {
           </div>
         )}
         <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
-          <div className="px-6 flex h-auto min-h-[calc(100vh-80px)] w-full">
+          <div className="px-6 flex h-auto w-full pb-[120px]">
             {visitedTabs.includes('agents') && (
               <div
                 className={activeTab === 'agents' ? 'contents' : 'hidden'}

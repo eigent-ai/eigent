@@ -265,7 +265,7 @@ export default function HomeHub() {
         cancelText={t('layout.cancel')}
       />
 
-      <div className="min-w-0 flex min-h-[calc(100vh-86px)] w-full flex-1 flex-col [--home-hub-history-tabs-offset:49px]">
+      <div className="min-w-0 flex w-full flex-1 flex-col [--home-hub-history-tabs-offset:49px]">
         <HomeHubToolbar
           activeTab={activeTab}
           onTabChange={handleTabChange}

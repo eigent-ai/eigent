@@ -74,7 +74,13 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
     },
     ref
   ) => {
-    const { onKeyDown, ...textareaProps } = props;
+    const {
+      onKeyDown,
+      onCompositionStart,
+      onCompositionEnd,
+      ...textareaProps
+    } = props;
+    const [isComposing, setIsComposing] = React.useState(false);
     // Original "none" variant - keep the original styling
     if (variant === 'none') {
       return (
@@ -84,6 +90,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             data-scrollbar="ui-textarea"
             className={cn(
               'border-ds-border-neutral-default-default placeholder:text-ds-text-neutral-muted-default/20 focus-visible:ring-ds-ring-brand-default-focus rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              isComposing && 'placeholder:opacity-0',
               className
             )}
             style={mergeAliasStyles(formControlTokenAliases, {
@@ -93,6 +100,14 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             ref={ref}
             disabled={disabled}
             placeholder={placeholder}
+            onCompositionStart={(e) => {
+              setIsComposing(true);
+              onCompositionStart?.(e);
+            }}
+            onCompositionEnd={(e) => {
+              setIsComposing(false);
+              onCompositionEnd?.(e);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (onEnter) {
@@ -179,9 +194,18 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                 hasLeft ? 'pl-9' : 'pl-3',
                 hasRight ? 'pr-9' : 'pr-3',
                 'pb-2 pt-2',
+                isComposing && 'placeholder:opacity-0',
                 className
               )}
               style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
+              onCompositionStart={(e) => {
+                setIsComposing(true);
+                onCompositionStart?.(e);
+              }}
+              onCompositionEnd={(e) => {
+                setIsComposing(false);
+                onCompositionEnd?.(e);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   if (onEnter) {
