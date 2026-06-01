@@ -68,20 +68,21 @@ When saving your configuration, Eigent validates your API key and model. Here ar
 
 Eigent supports the following BYOK providers:
 
-| Provider              | Default API Host                                           | Official Documentation                                                                        |
-| --------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **OpenAI**            | `https://api.openai.com/v1`                                | [OpenAI API Docs](https://platform.openai.com/docs/api-reference)                             |
-| **Anthropic**         | `https://api.anthropic.com/`                               | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
-| **Google Gemini**     | `https://generativelanguage.googleapis.com/v1beta/openai/` | [Gemini API Docs](https://ai.google.dev/gemini-api/docs)                                      |
-| **OpenRouter**        | `https://openrouter.ai/api/v1`                             | [OpenRouter Docs](https://openrouter.ai/docs)                                                 |
-| **OrcaRouter**        | `https://api.orcarouter.ai/v1`                             | [OrcaRouter Docs](https://docs.orcarouter.ai/)                                                |
-| **Qwen (Alibaba)**    | `https://dashscope.aliyuncs.com/compatible-mode/v1`        | [Qwen API Docs](https://help.aliyun.com/zh/dashscope/developer-reference/api-details)         |
-| **DeepSeek**          | `https://api.deepseek.com`                                 | [DeepSeek API Docs](https://platform.deepseek.com/api-docs)                                   |
-| **Minimax**           | `https://api.minimax.io/v1`                                | [Minimax API Docs](https://platform.minimaxi.com/document/Announcement)                       |
-| **Z.ai**              | `https://api.z.ai/api/coding/paas/v4/`                     | [Z.ai Platform](https://z.ai)                                                                 |
-| **Azure OpenAI**      | _(user-provided)_                                          | [Azure OpenAI Docs](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)     |
-| **AWS Bedrock**       | _(user-provided)_                                          | [AWS Bedrock Docs](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html) |
-| **OpenAI Compatible** | _(user-provided)_                                          | For custom endpoints (e.g., xAI, local servers)                                               |
+| Provider                   | Default API Host                                           | Official Documentation                                                                        |
+| -------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **OpenAI**                 | `https://api.openai.com/v1`                                | [OpenAI API Docs](https://platform.openai.com/docs/api-reference)                             |
+| **Anthropic**              | `https://api.anthropic.com/`                               | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
+| **Google Gemini**          | `https://generativelanguage.googleapis.com/v1beta/openai/` | [Gemini API Docs](https://ai.google.dev/gemini-api/docs)                                      |
+| **OpenRouter**             | `https://openrouter.ai/api/v1`                             | [OpenRouter Docs](https://openrouter.ai/docs)                                                 |
+| **OrcaRouter**             | `https://api.orcarouter.ai/v1`                             | [OrcaRouter Docs](https://docs.orcarouter.ai/)                                                |
+| **Nebius Token Factory**   | `https://api.tokenfactory.nebius.com/v1`                   | [Nebius Token Factory Docs](https://docs.tokenfactory.nebius.com/quickstart)                  |
+| **Qwen (Alibaba)**         | `https://dashscope.aliyuncs.com/compatible-mode/v1`        | [Qwen API Docs](https://help.aliyun.com/zh/dashscope/developer-reference/api-details)         |
+| **DeepSeek**               | `https://api.deepseek.com`                                 | [DeepSeek API Docs](https://platform.deepseek.com/api-docs)                                   |
+| **Minimax**                | `https://api.minimax.io/v1`                                | [Minimax API Docs](https://platform.minimaxi.com/document/Announcement)                       |
+| **Z.ai**                   | `https://api.z.ai/api/coding/paas/v4/`                     | [Z.ai Platform](https://z.ai)                                                                 |
+| **Azure OpenAI**           | _(user-provided)_                                          | [Azure OpenAI Docs](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)     |
+| **AWS Bedrock**            | _(user-provided)_                                          | [AWS Bedrock Docs](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html) |
+| **OpenAI Compatible**      | _(user-provided)_                                          | For custom endpoints (e.g., xAI, local servers)                                               |
 
 ## Tips
 
