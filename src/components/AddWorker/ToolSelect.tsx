@@ -78,6 +78,9 @@ type ToolSelectCatalogSnapshot = {
 /** Session cache so Add Worker tool list + user MCPs show immediately when reopening. */
 let toolSelectCatalogSnapshot: ToolSelectCatalogSnapshot | null = null;
 
+/** Built-in MCP entries hidden from picker and connectors UI. */
+const EXCLUDED_BUILTIN_MCP = ['Search', 'RAG'];
+
 function buildIntegrationsFromConfigInfo(
   res: unknown,
   keyword: string | undefined,
@@ -91,6 +94,7 @@ function buildIntegrationsFromConfigInfo(
   const baseURL = getProxyBaseURL();
 
   return Object.entries(body)
+    .filter(([key]) => !EXCLUDED_BUILTIN_MCP.includes(key))
     .filter(([key]) => {
       if (!keyword) return true;
       return key.toLowerCase().includes(keyword.toLowerCase());
@@ -915,7 +919,7 @@ const ToolSelect = forwardRef<
                 {webConnectedItems.length > 0 && (
                   <div>
                     <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1">
-                      {t('setting.mcp-sidebar-web')}
+                      {t('setting.mcp-sidebar-built-in')}
                     </div>
                     <IntegrationList
                       className="!space-y-1.5"

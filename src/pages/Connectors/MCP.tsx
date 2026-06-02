@@ -23,6 +23,7 @@ import {
 } from '@/api/http';
 import cursorIcon from '@/assets/icon/cursor.svg';
 import githubIcon from '@/assets/icon/github.svg';
+import googleIcon from '@/assets/icon/google.svg';
 import googleCalendarIcon from '@/assets/icon/google_calendar.svg';
 import googleGmailIcon from '@/assets/icon/google_gmail.svg';
 import larkIcon from '@/assets/icon/lark.png';
@@ -59,7 +60,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Search,
   Settings2,
   Trash2,
   Wrench,
@@ -79,7 +79,7 @@ import { ConfigFile } from 'electron/main/utils/mcpConfig';
 import { toast } from 'sonner';
 
 // Filter out Search from integrations (it's now a hardcoded connector item below)
-const EXCLUDED_FROM_MCP = ['Search'];
+const EXCLUDED_FROM_MCP = ['Search', 'RAG'];
 
 const GOOGLE_SEARCH_ID = 'google-search' as const;
 
@@ -158,16 +158,24 @@ export default function SettingMCP() {
     | { type: typeof GOOGLE_SEARCH_ID }
     | null
   >(null);
-  const [googleSearchConfigured, setGoogleSearchConfigured] = useState(false);
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<any | null>(null);
   const [folderHint, setFolderHint] = useState<'web' | 'your' | null>(null);
 
-  // add: integrations list
   const [integrations, setIntegrations] = useState<any[]>([]);
   const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(true);
 
-  const integrationItems = integrations as IntegrationItem[];
+  const integrationItems = useMemo((): IntegrationItem[] => {
+    const searchItem: IntegrationItem = {
+      key: 'Search',
+      name: 'Search',
+      desc: '',
+      env_vars: [],
+      onInstall: async () => {},
+    };
+    return [searchItem, ...(integrations as IntegrationItem[])];
+  }, [integrations]);
+
   const {
     installed,
     fetchInstalled,
@@ -175,6 +183,12 @@ export default function SettingMCP() {
     handleUninstall,
     createMcpFromItem,
   } = useIntegrationManagement(integrationItems);
+
+  const searchConnected = !!installed.Search;
+
+  const refreshConnectorConfigs = useCallback(() => {
+    void fetchInstalled();
+  }, [fetchInstalled]);
 
   useEffect(() => {
     const action = searchParams.get('connectorAction');
@@ -242,7 +256,7 @@ export default function SettingMCP() {
 
   const sortedWebItems = useMemo((): SortedWebItem[] => {
     const all: SortedWebItem[] = [
-      { kind: 'google-search', connected: googleSearchConfigured },
+      { kind: 'google-search', connected: searchConnected },
       ...filteredIntegrations.map((item) => ({
         kind: 'integration' as const,
         item,
@@ -264,7 +278,7 @@ export default function SettingMCP() {
       const diff = priority(a) - priority(b);
       return diff !== 0 ? diff : getName(a).localeCompare(getName(b));
     });
-  }, [filteredIntegrations, installed, googleSearchConfigured]);
+  }, [filteredIntegrations, installed, searchConnected]);
 
   // get list
   const fetchList = useCallback(() => {
@@ -515,6 +529,7 @@ export default function SettingMCP() {
       })
       .finally(() => {
         setIsLoadingIntegrations(false);
+        void fetchInstalled();
       });
   }, [fetchList, t, fetchInstalled]);
 
@@ -745,19 +760,23 @@ export default function SettingMCP() {
           <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
             <div className="min-w-0 gap-2 flex items-center">
               <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
-                <Search className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+                <img
+                  src={googleIcon}
+                  alt=""
+                  className="h-5 w-5 object-contain"
+                />
               </div>
               <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
                 Google Search
               </div>
             </div>
-            {googleSearchConfigured && (
+            {searchConnected && (
               <span className="bg-ds-bg-success-subtle-default px-2.5 py-0.5 text-label-xs font-medium text-ds-text-success-default-default rounded-full">
                 {t('setting.configured', { defaultValue: 'Configured' })}
               </span>
             )}
           </div>
-          <GoogleSearchPanel onConfigured={setGoogleSearchConfigured} />
+          <GoogleSearchPanel onConfigured={refreshConnectorConfigs} />
         </div>
       );
     }
@@ -865,6 +884,7 @@ export default function SettingMCP() {
           </div>
           <div className="gap-2 flex shrink-0 items-center">
             <Switch
+              variant="outline"
               size="default"
               checked={enabled}
               disabled={!!switchLoading[userItem.id]}
@@ -1092,7 +1112,7 @@ export default function SettingMCP() {
           </div>
 
           <div className="gap-4 px-3 flex w-full flex-row items-start justify-between">
-            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px] shrink-0">
+            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 h-fit max-h-[calc(100vh-var(--home-hub-history-tabs-offset,49px)-2rem)] w-[240px] shrink-0 self-start overflow-y-auto">
               <div className="gap-4 flex flex-col">
                 <div className="gap-1 flex flex-col">
                   <button
@@ -1101,7 +1121,7 @@ export default function SettingMCP() {
                     className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.mcp-sidebar-web')}
+                      {t('setting.mcp-sidebar-built-in')}
                     </div>
                     {webCollapsed ? (
                       <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
@@ -1145,7 +1165,11 @@ export default function SettingMCP() {
                                 }`}
                               >
                                 <div className="min-w-0 gap-3 flex items-center">
-                                  <Search className="h-5 w-5 text-ds-icon-neutral-muted-default shrink-0" />
+                                  <img
+                                    src={googleIcon}
+                                    alt=""
+                                    className="h-5 w-5 shrink-0 object-contain"
+                                  />
                                   <span
                                     className={`text-body-sm font-medium truncate text-left ${
                                       isActive

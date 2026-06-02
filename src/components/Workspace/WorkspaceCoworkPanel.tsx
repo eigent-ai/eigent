@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,6 +28,8 @@ import { useTranslation } from 'react-i18next';
 const ONBOARDING_KEY = 'eigent-workspace-onboarding-checked';
 
 const ONBOARDING_STEP_IDS = [1, 2, 3, 4] as const;
+const LAST_ONBOARDING_STEP_ID =
+  ONBOARDING_STEP_IDS[ONBOARDING_STEP_IDS.length - 1];
 
 function readCheckedSteps(): Set<number> {
   try {
@@ -109,6 +112,7 @@ export function WorkspaceCoworkPanel({
   onMemoryToggle,
 }: WorkspaceCoworkPanelProps) {
   const { t } = useTranslation();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const [checkedSteps, setCheckedSteps] =
     useState<Set<number>>(readCheckedSteps);
   const [accordionOpen, setAccordionOpen] = useState<string | undefined>(
@@ -128,11 +132,20 @@ export function WorkspaceCoworkPanel({
   }, [checkedSteps]);
 
   const handleCheckStep = (id: number) => {
+    const isFirstCompletion =
+      id === LAST_ONBOARDING_STEP_ID &&
+      checkedSteps.size === ONBOARDING_STEP_IDS.length - 1 &&
+      !checkedSteps.has(id);
+
     setCheckedSteps((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
+
+    if (isFirstCompletion) {
+      setActiveWorkspaceTab('triggers');
+    }
   };
 
   const instructionsTitle = t('layout.instructions');

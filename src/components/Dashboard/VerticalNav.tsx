@@ -17,6 +17,10 @@ import * as React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
+/** Sticky left nav wrapper for History tab pages (Agents, Channels, Browser, Settings). */
+export const HISTORY_VERTICAL_SIDEBAR_CLASSNAME =
+  'sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 flex w-40 shrink-0 grow-0 flex-col self-start pr-6 pt-8';
+
 export type VerticalNavItem = {
   value: string;
   label: React.ReactNode;

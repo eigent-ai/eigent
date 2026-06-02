@@ -37,8 +37,8 @@ const FIELDS = [
 ] as const;
 
 interface GoogleSearchPanelProps {
-  /** Called when keys are successfully saved so the sidebar can refresh its status indicator. */
-  onConfigured?: (configured: boolean) => void;
+  /** Refresh parent MCP connection status after config changes. */
+  onConfigured?: () => void;
 }
 
 export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
@@ -51,10 +51,7 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!requiresApiKey) {
-      onConfigured?.(true);
-      return;
-    }
+    if (!requiresApiKey) return;
     proxyFetchGet('/api/v1/configs').then((configsRes) => {
       const list = Array.isArray(configsRes) ? configsRes : [];
       const data: Record<string, string> = {};
@@ -63,9 +60,8 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
         if (match) data[key] = match.config_value || '';
       });
       setFormData(data);
-      onConfigured?.(FIELDS.every(({ key }) => !!data[key]?.trim()));
     });
-  }, [requiresApiKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [requiresApiKey]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -90,7 +86,7 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
         if (match) refreshed[key] = match.config_value || '';
       });
       setFormData(refreshed);
-      onConfigured?.(FIELDS.every(({ key }) => !!refreshed[key]?.trim()));
+      onConfigured?.();
     } catch {
       toast.error(t('setting.failed-to-save-configuration'));
     } finally {

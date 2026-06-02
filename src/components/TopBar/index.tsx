@@ -20,7 +20,6 @@ import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
-import NotificationPanel from '@/components/Notification';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
@@ -55,7 +54,6 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
-  Bell,
   ChevronsUpDown,
   CircleHelp,
   Minus,
@@ -179,7 +177,6 @@ function HeaderWin() {
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const [homeNavMenuOpen, setHomeNavMenuOpen] = useState(false);
-  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
   const ipcRenderer = host?.ipcRenderer;
   const { isInstalling, installationState } = useInstallationUI();
@@ -688,25 +685,6 @@ function HeaderWin() {
       >
         <div className="flex h-full shrink-0 items-center">
           <TooltipSimple
-            content={t('layout.notifications')}
-            side="bottom"
-            align="end"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="no-drag rounded-full"
-              aria-label={t('layout.notifications')}
-              aria-expanded={notificationPanelOpen}
-              aria-controls="notification-panel"
-              onClick={() => setNotificationPanelOpen((open) => !open)}
-              buttonContent="icon-only"
-            >
-              <Bell aria-hidden />
-            </Button>
-          </TooltipSimple>
-          <TooltipSimple
             content={t('layout.support')}
             side="bottom"
             align="end"
@@ -852,10 +830,6 @@ function HeaderWin() {
           </div>
         </div>
       )}
-      <NotificationPanel
-        open={notificationPanelOpen}
-        onOpenChange={setNotificationPanelOpen}
-      />
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
       <InviteCodeDialog
         open={inviteCodeDialogOpen}

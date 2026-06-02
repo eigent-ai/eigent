@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import VerticalNavigation, {
+  HISTORY_VERTICAL_SIDEBAR_CLASSNAME,
   type VerticalNavItem,
 } from '@/components/Dashboard/VerticalNav';
 import { MessageSquare } from 'lucide-react';
@@ -36,7 +37,7 @@ export default function Channels() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="w-40 pr-6 pt-8 flex h-full flex-shrink-0 flex-grow-0 flex-col justify-between self-start">
+      <div className={HISTORY_VERTICAL_SIDEBAR_CLASSNAME}>
         <VerticalNavigation
           items={
             menuItems.map((menu) => ({

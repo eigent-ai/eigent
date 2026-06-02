@@ -100,7 +100,7 @@ export default function Skills() {
       <div className="mb-12 gap-6 flex flex-col">
         <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
           <Tabs defaultValue="your-skills" className="w-full">
-            <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default sticky top-[84px] z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
               <TabsList
                 appearance="border"
                 className="h-auto flex-1 justify-start"

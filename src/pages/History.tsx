@@ -176,7 +176,7 @@ export default function History() {
           </div>
         )}
         <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
-          <div className="px-6 flex h-auto w-full pb-[120px]">
+          <div className="px-6 flex h-auto w-full pb-[120px] [--home-hub-history-tabs-offset:49px]">
             {visitedTabs.includes('agents') && (
               <div
                 className={activeTab === 'agents' ? 'contents' : 'hidden'}
