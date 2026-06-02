@@ -38,20 +38,18 @@ import {
   revokeRemoteControlSession,
   sendRemoteControlCommand,
 } from '@web/api/remoteControl';
+import { ConversationTurnCard } from '@web/components/remote/ConversationTurnCard';
 import { RemoteInputBox } from '@web/components/remote/RemoteInputBox';
+import { RemoteSettingsPanel } from '@web/components/remote/RemoteSettingsPanel';
 import { RemoteSidePanel } from '@web/components/remote/RemoteSidePanel';
 import { parseRemoteControlToken } from '@web/lib/remoteControlToken';
+import { buildTurns } from '@web/lib/remoteControlTurns';
 import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  HelpCircle,
-  Info,
   Loader2,
   Menu,
   MessageSquareText,
   RefreshCw,
+  Settings,
 } from 'lucide-react';
 import {
   FormEvent,
@@ -82,17 +80,6 @@ const MAX_STEPS_IN_MEMORY = 500;
 const WS_PING_INTERVAL_MS = 30_000;
 const WS_PONG_TIMEOUT_MS = 75_000;
 const SWITCH_TARGET_TIMEOUT_MS = 60_000;
-
-const STEP_LABELS: Record<string, string> = {
-  ask: 'Input requested',
-  confirmed: 'Request confirmed',
-  create_agent: 'Agent created',
-  activate_agent: 'Agent started',
-  deactivate_agent: 'Agent completed',
-  done: 'Task completed',
-  finish: 'Task completed',
-  error: 'Needs attention',
-};
 
 function appendStep(
   list: RemoteControlStep[],
@@ -178,87 +165,6 @@ function getAskText(step: RemoteControlStep | null): string {
   );
 }
 
-function renderStepData(data: unknown): string {
-  if (typeof data === 'string') {
-    return data;
-  }
-  try {
-    return JSON.stringify(data, null, 2);
-  } catch {
-    return String(data);
-  }
-}
-
-function isEmptyStepData(data: unknown): boolean {
-  if (data == null) return true;
-  if (typeof data === 'string') return data.trim().length === 0;
-  if (Array.isArray(data)) return data.length === 0;
-  if (typeof data === 'object')
-    return Object.keys(data as Record<string, unknown>).length === 0;
-  return false;
-}
-
-function humanizeStepName(step: string): string {
-  const normalized = STEP_LABELS[step] || step.replace(/_/g, ' ');
-  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function stepSummary(step: RemoteControlStep): string {
-  if (typeof step.data === 'string') return step.data.trim();
-  const data = asRecord(step.data);
-  const directKeys = [
-    'content',
-    'message',
-    'notice',
-    'summary',
-    'description',
-    'question',
-    'answer',
-    'reply',
-    'title',
-    'name',
-    'agent',
-  ];
-  for (const key of directKeys) {
-    const value = data[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  if (typeof data.path === 'string' && data.path.trim())
-    return data.path.trim();
-  return '';
-}
-
-function stepIcon(step: RemoteControlStep) {
-  if (step.step === 'ask') return HelpCircle;
-  if (step.step.includes('error') || step.step.includes('fail'))
-    return AlertCircle;
-  if (
-    step.step === 'confirmed' ||
-    step.step === 'done' ||
-    step.step === 'finish' ||
-    step.step === 'deactivate_agent'
-  )
-    return CheckCircle2;
-  if (step.step.includes('message') || step.step.includes('reply'))
-    return MessageSquareText;
-  return Info;
-}
-
-function stepToneClass(step: RemoteControlStep): string {
-  if (step.step === 'ask')
-    return 'bg-ds-bg-information-subtle-default text-ds-icon-information-default-default';
-  if (step.step.includes('error') || step.step.includes('fail'))
-    return 'bg-ds-bg-error-subtle-default text-ds-icon-error-default-default';
-  if (
-    step.step === 'confirmed' ||
-    step.step === 'done' ||
-    step.step === 'finish' ||
-    step.step === 'deactivate_agent'
-  )
-    return 'bg-ds-bg-status-completed-subtle-default text-ds-text-status-completed-default-default';
-  return 'bg-ds-bg-neutral-default-default text-ds-icon-neutral-muted-default';
-}
-
 export default function RemoteControlPage() {
   const { sessionId = '' } = useParams();
   const linkToken = useMemo(
@@ -268,7 +174,6 @@ export default function RemoteControlPage() {
   const [session, setSession] = useState<RemoteControlSession | null>(null);
   const [space, setSpace] = useState<RemoteControlSpace | null>(null);
   const [projects, setProjects] = useState<RemoteControlProject[]>([]);
-  const [newProjectName, setNewProjectName] = useState('');
   const [steps, setSteps] = useState<RemoteControlStep[]>([]);
   const [commands, setCommands] = useState<CommandStatus[]>([]);
   const [message, setMessage] = useState('');
@@ -282,7 +187,7 @@ export default function RemoteControlPage() {
     () => new Set()
   );
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
 
   const nextSinceRef = useRef(0);
   const targetRef = useRef<RemoteControlTarget | null>(null);
@@ -319,6 +224,8 @@ export default function RemoteControlPage() {
     }
     return null;
   }, [answeredAskStepIds, steps]);
+
+  const turns = useMemo(() => buildTurns(steps, commands), [steps, commands]);
 
   const loadSteps = useCallback(
     async (historyTarget: RemoteControlTarget | null, since = 0) => {
@@ -667,8 +574,7 @@ export default function RemoteControlPage() {
     }
   };
 
-  const createProject = async () => {
-    const name = newProjectName.trim();
+  const createProject = async (name: string) => {
     if (!name || projectLoading || !bridgeOnline) return;
     setProjectLoading(true);
     try {
@@ -680,7 +586,6 @@ export default function RemoteControlPage() {
         project,
         ...current.filter((item) => item.id !== project.id),
       ]);
-      setNewProjectName('');
       await selectProject(project, true);
       toast.success('Project created');
     } catch (err) {
@@ -971,21 +876,28 @@ export default function RemoteControlPage() {
       <section className="min-h-0 min-w-0 bg-ds-bg-neutral-subtle-default flex flex-1 flex-col overflow-hidden rounded-[20px]">
         {/* Header */}
         <header className="h-12 px-2 shrink-0">
-          <div className="gap-2 flex h-full items-center">
+          <div className="flex h-full items-center">
+            <img
+              src={eigentAppIconBlack}
+              alt=""
+              className="h-7 w-7 mt-0.5 shrink-0 select-none"
+              aria-hidden
+            />
             <Button
               variant="ghost"
               size="md"
               buttonContent="icon-only"
               buttonRadius="full"
               aria-label="Open remote control panel"
-              onClick={() => setSidePanelOpen(true)}
+              onClick={() => {
+                setSettingsPanelOpen(false);
+                setSidePanelOpen(true);
+              }}
             >
               <Menu className="h-4 w-4" />
             </Button>
 
-            <span className="min-w-0 text-body-sm font-semibold text-ds-text-neutral-default-default flex-1 truncate">
-              {session.title || 'Eigent Remote Control'}
-            </span>
+            <div className="flex-1" />
 
             {/* Bridge status pill tag */}
             <span
@@ -1007,13 +919,20 @@ export default function RemoteControlPage() {
               {bridgeOnline ? 'Connected' : 'Offline'}
             </span>
 
-            {/* Logo */}
-            <img
-              src={eigentAppIconBlack}
-              alt=""
-              className="-mb-0.5 h-7 w-7 shrink-0 select-none"
-              aria-hidden
-            />
+            {/* Settings */}
+            <Button
+              variant="ghost"
+              size="md"
+              buttonContent="icon-only"
+              buttonRadius="full"
+              aria-label="Open settings panel"
+              onClick={() => {
+                setSidePanelOpen(false);
+                setSettingsPanelOpen(true);
+              }}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
         </header>
 
@@ -1056,92 +975,19 @@ export default function RemoteControlPage() {
                   </p>
                 </section>
               ) : (
-                /* Collapsible agent log */
-                <section className="rounded-2xl bg-ds-bg-neutral-subtle-default">
-                  {/* Log toggle header */}
-                  <button
-                    type="button"
-                    className={cn(
-                      'gap-3 px-4 py-3 rounded-t-2xl bg-ds-bg-neutral-muted-default flex w-full items-center justify-between border-none text-left',
-                      !logOpen && 'rounded-b-2xl'
-                    )}
-                    onClick={() => setLogOpen((open) => !open)}
-                  >
-                    <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-                      Activity
-                      <span className="ml-1.5 text-ds-text-neutral-muted-default">
-                        · {steps.length} event{steps.length !== 1 ? 's' : ''}
-                      </span>
-                    </span>
-                    {logOpen ? (
-                      <ChevronUp className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0" />
-                    )}
-                  </button>
-
-                  {/* Step list */}
-                  {logOpen && (
-                    <div className="border-ds-border-neutral-subtle-disabled flex flex-col border-t">
-                      {steps.map((step, index) => {
-                        const Icon = stepIcon(step);
-                        const summary = stepSummary(step);
-                        const hasData = !isEmptyStepData(step.data);
-                        return (
-                          <article
-                            key={step.step_id}
-                            className={cn(
-                              'gap-3 px-4 py-3 relative flex',
-                              index !== steps.length - 1 &&
-                                'border-ds-border-neutral-subtle-disabled border-b border-solid'
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                'mt-0.5 h-8 w-8 rounded-lg flex shrink-0 items-center justify-center',
-                                stepToneClass(step)
-                              )}
-                            >
-                              <Icon className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 gap-1 flex flex-1 flex-col">
-                              <div className="gap-3 flex items-center justify-between">
-                                <span className="text-body-sm font-semibold text-ds-text-neutral-default-default truncate">
-                                  {humanizeStepName(step.step)}
-                                </span>
-                                <span className="text-label-xs text-ds-text-neutral-muted-default shrink-0">
-                                  #{step.step_id}
-                                </span>
-                              </div>
-                              {summary ? (
-                                <span className="mt-1 text-body-sm text-ds-text-neutral-muted-default break-words whitespace-pre-wrap">
-                                  {summary}
-                                </span>
-                              ) : null}
-                              {hasData && !summary ? (
-                                <details className="mt-2">
-                                  <summary className="text-label-xs font-semibold text-ds-text-neutral-muted-default cursor-pointer">
-                                    View event data
-                                  </summary>
-                                  <pre className="mt-2 max-h-40 rounded-lg bg-ds-bg-neutral-subtle-default p-2 text-label-xs leading-5 text-ds-text-neutral-muted-default overflow-auto">
-                                    {renderStepData(step.data)}
-                                  </pre>
-                                </details>
-                              ) : null}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
+                /* Conversation turns */
+                <div className="gap-6 flex flex-col">
+                  {turns.map((turn) => (
+                    <ConversationTurnCard key={turn.id} turn={turn} />
+                  ))}
+                </div>
               )}
             </div>
           </div>
 
           {/* Sticky bottom input */}
-          <div className="inset-x-0 bottom-0 px-2 pb-3 bg-ds-bg-neutral-subtle-default rounded-t-2xl pointer-events-none absolute z-30 flex justify-center">
-            <div className="pointer-events-auto w-full max-w-[600px]">
+          <div className="inset-x-0 bottom-0 px-2 pb-1 bg-ds-bg-neutral-subtle-default rounded-t-2xl pointer-events-none absolute z-30 mx-auto flex max-w-[600px] justify-center">
+            <div className="pointer-events-auto w-full">
               {/* Send-failed banner */}
               {lastCommand?.status === 'failed' &&
                 lastCommand.type === 'user_message' && (
@@ -1170,13 +1016,14 @@ export default function RemoteControlPage() {
                 onSend={() => void submit(message)}
                 placeholder={inputPlaceholder}
                 disabled={!ready || sending}
+                agentMode={activeProject?.mode}
               />
             </div>
           </div>
         </div>
       </section>
 
-      {/* Side panel */}
+      {/* Left panel — project selector */}
       <RemoteSidePanel
         open={sidePanelOpen}
         onOpenChange={setSidePanelOpen}
@@ -1186,19 +1033,27 @@ export default function RemoteControlPage() {
         projects={projects}
         projectLoading={projectLoading}
         controlLoading={controlLoading}
-        newProjectName={newProjectName}
-        onNewProjectNameChange={setNewProjectName}
         onSelectProject={(project) => void selectProject(project)}
-        onCreateProject={() => void createProject()}
-        onSkip={() => void sendControlCommand('skip_task', 'Skip')}
-        onStop={() => void sendControlCommand('stop', 'Stop')}
-        onExtend={() => void extendSession()}
-        onRevoke={() => void revokeSession()}
+        onCreateProject={(name) => void createProject(name)}
         folderBacked={folderBacked}
         activeProject={activeProject}
         onRefresh={() => void sendFolderOperation('refresh')}
         onApply={() => void sendFolderOperation('apply')}
         onDiscard={() => void sendFolderOperation('discard')}
+        bridgeOnline={bridgeOnline}
+      />
+
+      {/* Right panel — connection status + controls */}
+      <RemoteSettingsPanel
+        open={settingsPanelOpen}
+        onOpenChange={setSettingsPanelOpen}
+        session={session}
+        target={target}
+        controlLoading={controlLoading}
+        onSkip={() => void sendControlCommand('skip_task', 'Skip')}
+        onStop={() => void sendControlCommand('stop', 'Stop')}
+        onExtend={() => void extendSession()}
+        onRevoke={() => void revokeSession()}
         ready={ready}
         bridgeOnline={bridgeOnline}
       />

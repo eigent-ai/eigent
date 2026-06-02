@@ -12,22 +12,31 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export function ProfilePlaceholderSection({
-  title,
-  description,
-}: {
-  title: string;
-  description?: string;
-}) {
+import './ShinyText.css';
+
+interface ShinyTextProps {
+  text: string;
+  disabled?: boolean;
+  speed?: number;
+  className?: string;
+}
+
+const ShinyText: React.FC<ShinyTextProps> = ({
+  text,
+  disabled = false,
+  speed = 3,
+  className = '',
+}) => {
+  const animationDuration = `${speed}s`;
+
   return (
-    <div className="mx-auto w-full max-w-[640px] rounded-xl border border-dashed border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-6 text-center">
-      <h2 className="text-heading-sm font-semibold text-ds-text-neutral-default-default">
-        {title}
-      </h2>
-      <p className="mt-2 text-body-sm text-ds-text-neutral-muted-default">
-        {description ??
-          `${title} settings are not available in Dispatch web yet.`}
-      </p>
+    <div
+      className={`shiny-text ${disabled ? 'disabled' : ''} ${className}`}
+      style={{ animationDuration }}
+    >
+      {text}
     </div>
   );
-}
+};
+
+export default ShinyText;

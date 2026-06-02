@@ -14,8 +14,27 @@
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight, Gamepad2, Joystick, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+
+/** Read-only agent-mode chip — mirrors the desktop `ProjectModeToggle` read-only state. */
+function AgentModeChip({ mode }: { mode: string }) {
+  const isSingle = mode === 'single-agent';
+  const Icon = isSingle ? Joystick : Gamepad2;
+  const label = isSingle ? 'Single Agent' : 'Workforce';
+  return (
+    <div
+      role="status"
+      aria-label={`Agent mode: ${label}`}
+      className="gap-1.5 px-1 text-ds-text-neutral-muted-default pointer-events-none inline-flex items-center"
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+      <span className="!text-label-xs font-semibold whitespace-nowrap">
+        {label}
+      </span>
+    </div>
+  );
+}
 
 interface RemoteInputBoxProps {
   value: string;
@@ -23,6 +42,8 @@ interface RemoteInputBoxProps {
   onSend: () => void;
   placeholder?: string;
   disabled?: boolean;
+  /** Agent mode of the active project (read-only display). */
+  agentMode?: string | null;
 }
 
 export function RemoteInputBox({
@@ -31,6 +52,7 @@ export function RemoteInputBox({
   onSend,
   placeholder = 'Send a message…',
   disabled = false,
+  agentMode,
 }: RemoteInputBoxProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
@@ -95,25 +117,28 @@ export function RemoteInputBox({
           <Plus />
         </Button>
 
-        {/* Right: send button */}
-        <Button
-          type="button"
-          size="xs"
-          buttonContent="icon-only"
-          buttonRadius="full"
-          variant="primary"
-          tone={hasContent ? 'success' : 'neutral'}
-          onClick={onSend}
-          disabled={disabled || !hasContent}
-          aria-label="Send"
-        >
-          <ArrowRight
-            className={cn(
-              'text-current transition-transform duration-200',
-              hasContent && '-rotate-90'
-            )}
-          />
-        </Button>
+        {/* Right: agent mode chip + send button */}
+        <div className="gap-2 flex items-center">
+          {agentMode ? <AgentModeChip mode={agentMode} /> : null}
+          <Button
+            type="button"
+            size="xs"
+            buttonContent="icon-only"
+            buttonRadius="full"
+            variant="primary"
+            tone={hasContent ? 'success' : 'neutral'}
+            onClick={onSend}
+            disabled={disabled || !hasContent}
+            aria-label="Send"
+          >
+            <ArrowRight
+              className={cn(
+                'text-current transition-transform duration-200',
+                hasContent && '-rotate-90'
+              )}
+            />
+          </Button>
+        </div>
       </div>
     </div>
   );

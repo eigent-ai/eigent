@@ -25,6 +25,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+button {
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
 textarea,
 input {
   font-family: inherit;
@@ -37,6 +44,12 @@ input {
 #root {
   color: var(--ds-text-neutral-default-default);
   background: var(--ds-bg-neutral-subtle-default);
+}
+
+.remote-btn-label {
+  display: inline-block;
+  min-width: 3.5rem;
+  text-align: center;
 }
 
 .scrollbar {

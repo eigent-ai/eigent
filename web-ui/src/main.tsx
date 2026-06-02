@@ -12,42 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ThemeProvider } from '@/components/layout/ThemeProvider';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import '@/i18n';
+import App from '@/App';
+import '@/styles.css';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
-import App from '@web/App';
-import { isWebUiMock } from '@web/lib/mockMode';
-import { mockBootstrapAuth } from '@web/mock/auth';
-import '@web/styles.css';
-import { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-
-if (isWebUiMock()) {
-  mockBootstrapAuth();
-  if (import.meta.env.DEV) {
-    console.info(
-      '[Eigent Dispatch] Running in mock mode — no server connection.'
-    );
-  }
-}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <Suspense
-    fallback={
-      <div className="flex h-full items-center justify-center">Loading…</div>
-    }
-  >
-    <BrowserRouter>
-      <ThemeProvider>
-        <TooltipProvider>
-          <App />
-        </TooltipProvider>
-      </ThemeProvider>
-    </BrowserRouter>
-  </Suspense>
+  <App />
 );

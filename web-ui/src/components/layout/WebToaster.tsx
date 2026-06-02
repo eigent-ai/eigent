@@ -12,22 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { cn } from '@/lib/utils';
-import { useIsMobile } from '@web/hooks/useWebAuth';
-import { useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
 export function WebToaster() {
-  const location = useLocation();
-  const isMobile = useIsMobile();
-  const isDispatchTaskPage =
-    !isMobile && /^\/projects\/[^/]+/.test(location.pathname);
-
   return (
     <Toaster
       position="top-center"
       richColors
-      className={cn(isDispatchTaskPage && 'web-toaster-task-page')}
       toastOptions={{
         classNames: {
           toast: 'web-toaster-toast',

@@ -199,5 +199,19 @@
     --shadow-perfect: var(--shadow-soft);
     --shadow-button:
       inset 0 1px 0 0 #ffffff54, 0 3px 4px -1px #00000040, 0 0 0 1px #d4d4d440;
+
+    /* Static fallback for brand inverse text — overridden at runtime by ThemeProvider */
+    --ds-text-brand-inverse-default: #ffffff;
+    --ds-text-brand-inverse-hover: #ffffff;
+    --ds-text-brand-inverse-active: #ffffff;
+    --ds-text-brand-inverse-disabled: rgba(255, 255, 255, 0.5);
+
+    /* Static fallback for brand fills — overridden at runtime by ThemeProvider */
+    --ds-bg-brand-default-default: #000000;
+    --ds-bg-brand-default-hover: #1a1a1a;
+    --ds-bg-brand-default-active: #333333;
+
+    /* Modal backdrop — overridden at runtime by ThemeProvider */
+    --dialog-overlay-scrim: #0000004d;
   }
 }
