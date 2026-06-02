@@ -38,24 +38,20 @@ import {
   revokeRemoteControlSession,
   sendRemoteControlCommand,
 } from '@web/api/remoteControl';
+import { RemoteInputBox } from '@web/components/remote/RemoteInputBox';
+import { RemoteSidePanel } from '@web/components/remote/RemoteSidePanel';
 import { parseRemoteControlToken } from '@web/lib/remoteControlToken';
 import {
   AlertCircle,
-  Ban,
   CheckCircle2,
-  Clock3,
-  FolderPlus,
+  ChevronDown,
+  ChevronUp,
   HelpCircle,
   Info,
   Loader2,
+  Menu,
   MessageSquareText,
-  Plus,
   RefreshCw,
-  SendHorizontal,
-  ShieldX,
-  SkipForward,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import {
   FormEvent,
@@ -194,18 +190,11 @@ function renderStepData(data: unknown): string {
 }
 
 function isEmptyStepData(data: unknown): boolean {
-  if (data == null) {
-    return true;
-  }
-  if (typeof data === 'string') {
-    return data.trim().length === 0;
-  }
-  if (Array.isArray(data)) {
-    return data.length === 0;
-  }
-  if (typeof data === 'object') {
+  if (data == null) return true;
+  if (typeof data === 'string') return data.trim().length === 0;
+  if (Array.isArray(data)) return data.length === 0;
+  if (typeof data === 'object')
     return Object.keys(data as Record<string, unknown>).length === 0;
-  }
   return false;
 }
 
@@ -215,9 +204,7 @@ function humanizeStepName(step: string): string {
 }
 
 function stepSummary(step: RemoteControlStep): string {
-  if (typeof step.data === 'string') {
-    return step.data.trim();
-  }
+  if (typeof step.data === 'string') return step.data.trim();
   const data = asRecord(step.data);
   const directKeys = [
     'content',
@@ -234,88 +221,42 @@ function stepSummary(step: RemoteControlStep): string {
   ];
   for (const key of directKeys) {
     const value = data[key];
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
-  if (typeof data.path === 'string' && data.path.trim()) {
+  if (typeof data.path === 'string' && data.path.trim())
     return data.path.trim();
-  }
   return '';
 }
 
 function stepIcon(step: RemoteControlStep) {
-  if (step.step === 'ask') {
-    return HelpCircle;
-  }
-  if (step.step.includes('error') || step.step.includes('fail')) {
+  if (step.step === 'ask') return HelpCircle;
+  if (step.step.includes('error') || step.step.includes('fail'))
     return AlertCircle;
-  }
   if (
     step.step === 'confirmed' ||
     step.step === 'done' ||
     step.step === 'finish' ||
     step.step === 'deactivate_agent'
-  ) {
+  )
     return CheckCircle2;
-  }
-  if (step.step.includes('message') || step.step.includes('reply')) {
+  if (step.step.includes('message') || step.step.includes('reply'))
     return MessageSquareText;
-  }
   return Info;
 }
 
 function stepToneClass(step: RemoteControlStep): string {
-  if (step.step === 'ask') {
+  if (step.step === 'ask')
     return 'bg-ds-bg-information-subtle-default text-ds-icon-information-default-default';
-  }
-  if (step.step.includes('error') || step.step.includes('fail')) {
+  if (step.step.includes('error') || step.step.includes('fail'))
     return 'bg-ds-bg-error-subtle-default text-ds-icon-error-default-default';
-  }
   if (
     step.step === 'confirmed' ||
     step.step === 'done' ||
     step.step === 'finish' ||
     step.step === 'deactivate_agent'
-  ) {
+  )
     return 'bg-ds-bg-status-completed-subtle-default text-ds-text-status-completed-default-default';
-  }
   return 'bg-ds-bg-neutral-default-default text-ds-icon-neutral-muted-default';
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return '';
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-}
-
-function remoteStateLabel(
-  session: RemoteControlSession | null,
-  target: RemoteControlTarget | null
-): string {
-  if (!session) {
-    return '';
-  }
-  if (session.status !== 'active') {
-    return 'Remote link inactive';
-  }
-  if (session.bridge_status !== 'online') {
-    return 'Desktop offline';
-  }
-  if (!isRemoteControlTargetReady(target)) {
-    return 'No active target';
-  }
-  return 'Desktop online';
 }
 
 export default function RemoteControlPage() {
@@ -340,6 +281,9 @@ export default function RemoteControlPage() {
   const [answeredAskStepIds, setAnsweredAskStepIds] = useState<Set<number>>(
     () => new Set()
   );
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+
   const nextSinceRef = useRef(0);
   const targetRef = useRef<RemoteControlTarget | null>(null);
   const eventSocketRef = useRef<WebSocket | null>(null);
@@ -378,9 +322,7 @@ export default function RemoteControlPage() {
 
   const loadSteps = useCallback(
     async (historyTarget: RemoteControlTarget | null, since = 0) => {
-      if (!sessionId || !linkToken || !historyTarget?.project_id) {
-        return;
-      }
+      if (!sessionId || !linkToken || !historyTarget?.project_id) return;
       try {
         const history = await listRemoteControlSteps(
           sessionId,
@@ -448,9 +390,7 @@ export default function RemoteControlPage() {
           setError(toPageError(err, 'Failed to open remote control session.'));
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
     void load();
@@ -460,9 +400,7 @@ export default function RemoteControlPage() {
   }, [reloadSession]);
 
   useEffect(() => {
-    if (!sessionId || !linkToken) {
-      return;
-    }
+    if (!sessionId || !linkToken) return;
     let ws: WebSocket | null = null;
     let pingTimer: number | null = null;
     let watchdogTimer: number | null = null;
@@ -475,10 +413,7 @@ export default function RemoteControlPage() {
     const armWatchdog = () => {
       if (watchdogTimer) window.clearInterval(watchdogTimer);
       watchdogTimer = window.setInterval(() => {
-        if (Date.now() - lastPongAt > WS_PONG_TIMEOUT_MS) {
-          // Server stopped responding — force close so onclose triggers reconnect.
-          ws?.close();
-        }
+        if (Date.now() - lastPongAt > WS_PONG_TIMEOUT_MS) ws?.close();
       }, WS_PING_INTERVAL_MS);
     };
 
@@ -495,12 +430,8 @@ export default function RemoteControlPage() {
             subscribed_project_id: targetRef.current?.project_id || null,
           })
         );
-        // On reconnect, the session metadata (target / status / expires_at)
-        // may have changed while disconnected — refetch and resync.
         if (isReconnect) {
-          void reloadSession().catch(() => {
-            // Errors are surfaced on the next user action; don't tear down WS.
-          });
+          void reloadSession().catch(() => {});
         }
         void loadSteps(targetRef.current, nextSinceRef.current);
         pingTimer = window.setInterval(() => {
@@ -511,7 +442,6 @@ export default function RemoteControlPage() {
       ws.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          // Any message from the server is a sign of life — refresh the watchdog.
           lastPongAt = Date.now();
           if (payload.type === 'connected') {
             setSession((current) =>
@@ -564,7 +494,6 @@ export default function RemoteControlPage() {
                   }
                 : current
             );
-            // Reset step pagination so the new project's history loads from scratch.
             nextSinceRef.current = 0;
             setSteps([]);
             setAnsweredAskStepIds(new Set());
@@ -587,9 +516,7 @@ export default function RemoteControlPage() {
                 })
               );
             }
-            if (nextTarget.project_id) {
-              void loadSteps(nextTarget, 0);
-            }
+            if (nextTarget.project_id) void loadSteps(nextTarget, 0);
           }
           if (payload.type === 'space_project_upserted' && payload.project) {
             setProjects((current) => [
@@ -622,9 +549,7 @@ export default function RemoteControlPage() {
               description:
                 payload.error || payload.error_code || 'Try switching again.',
             });
-            void reloadSession().catch(() => {
-              // Keep the failure toast visible; the next user action can retry metadata refresh.
-            });
+            void reloadSession().catch(() => {});
           }
           if (payload.type === 'command_status') {
             setCommands((current) =>
@@ -644,9 +569,7 @@ export default function RemoteControlPage() {
         }
       };
       ws.onclose = () => {
-        if (eventSocketRef.current === ws) {
-          eventSocketRef.current = null;
-        }
+        if (eventSocketRef.current === ws) eventSocketRef.current = null;
         if (pingTimer) {
           window.clearInterval(pingTimer);
           pingTimer = null;
@@ -656,7 +579,6 @@ export default function RemoteControlPage() {
           watchdogTimer = null;
         }
         if (!stopped) {
-          // Exponential backoff with jitter to avoid reconnect stampedes.
           const base = Math.min(30_000, 3_000 * 2 ** reconnectAttempt);
           const delay = base + Math.floor(Math.random() * 1_000);
           reconnectAttempt += 1;
@@ -664,27 +586,17 @@ export default function RemoteControlPage() {
           reconnectTimer = window.setTimeout(connect, delay);
         }
       };
-      ws.onerror = () => {
-        ws?.close();
-      };
+      ws.onerror = () => ws?.close();
     };
 
     connect();
     return () => {
       stopped = true;
-      if (pingTimer) {
-        window.clearInterval(pingTimer);
-      }
-      if (watchdogTimer) {
-        window.clearInterval(watchdogTimer);
-      }
-      if (reconnectTimer) {
-        window.clearTimeout(reconnectTimer);
-      }
+      if (pingTimer) window.clearInterval(pingTimer);
+      if (watchdogTimer) window.clearInterval(watchdogTimer);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
       ws?.close();
-      if (eventSocketRef.current === ws) {
-        eventSocketRef.current = null;
-      }
+      if (eventSocketRef.current === ws) eventSocketRef.current = null;
     };
   }, [clearSwitchTimeout, linkToken, loadSteps, reloadSession, sessionId]);
 
@@ -703,9 +615,8 @@ export default function RemoteControlPage() {
       !bridgeOnline ||
       (!force && projectLoading) ||
       project.id === target?.project_id
-    ) {
+    )
       return;
-    }
     setProjectLoading(true);
     clearSwitchTimeout();
     switchTimeoutRef.current = window.setTimeout(() => {
@@ -715,9 +626,7 @@ export default function RemoteControlPage() {
         description:
           'The desktop did not confirm the new project in time. Try switching again.',
       });
-      void reloadSession().catch(() => {
-        // The server-side timeout event normally handles rollback; this is a network fallback.
-      });
+      void reloadSession().catch(() => {});
     }, SWITCH_TARGET_TIMEOUT_MS);
     try {
       const response = await patchRemoteControlTarget(sessionId, linkToken, {
@@ -760,9 +669,7 @@ export default function RemoteControlPage() {
 
   const createProject = async () => {
     const name = newProjectName.trim();
-    if (!name || projectLoading || !bridgeOnline) {
-      return;
-    }
+    if (!name || projectLoading || !bridgeOnline) return;
     setProjectLoading(true);
     try {
       const project = await createRemoteControlProject(sessionId, linkToken, {
@@ -785,9 +692,7 @@ export default function RemoteControlPage() {
   };
 
   const sendFolderOperation = async (type: 'refresh' | 'apply' | 'discard') => {
-    if (!activeProject || controlLoading || !folderBacked) {
-      return;
-    }
+    if (!activeProject || controlLoading || !folderBacked) return;
     setControlLoading(type);
     try {
       let response;
@@ -839,9 +744,7 @@ export default function RemoteControlPage() {
   };
 
   const refreshOverlaySummary = async () => {
-    if (!activeProject || !folderBacked) {
-      return;
-    }
+    if (!activeProject || !folderBacked) return;
     try {
       const response = await listRemoteControlOverlays(
         sessionId,
@@ -854,12 +757,11 @@ export default function RemoteControlPage() {
       toast.error(pageError.message, { description: errorHint(pageError) });
     }
   };
+  void refreshOverlaySummary; // referenced only via side panel
 
   const submit = async (content: string) => {
     const trimmed = content.trim();
-    if (!trimmed || sending || !ready) {
-      return;
-    }
+    if (!trimmed || sending || !ready) return;
     setSending(true);
     try {
       const ask = pendingAsk;
@@ -907,12 +809,8 @@ export default function RemoteControlPage() {
     type: 'stop' | 'skip_task',
     label: string
   ) => {
-    if (!ready || controlLoading) {
-      return;
-    }
-    if (!window.confirm(`${label} this desktop task?`)) {
-      return;
-    }
+    if (!ready || controlLoading) return;
+    if (!window.confirm(`${label} this desktop task?`)) return;
     setControlLoading(type);
     try {
       const response = await sendRemoteControlCommand(
@@ -944,9 +842,7 @@ export default function RemoteControlPage() {
   };
 
   const extendSession = async () => {
-    if (!session || controlLoading) {
-      return;
-    }
+    if (!session || controlLoading) return;
     setControlLoading('extend');
     try {
       const response = await extendRemoteControlSession(
@@ -971,9 +867,8 @@ export default function RemoteControlPage() {
       !session ||
       controlLoading ||
       !window.confirm('Revoke this remote link?')
-    ) {
+    )
       return;
-    }
     setControlLoading('revoke');
     try {
       await revokeRemoteControlSession(sessionId, linkToken);
@@ -995,17 +890,20 @@ export default function RemoteControlPage() {
     event.preventDefault();
     void submit(message);
   };
+  void onSubmit; // submit is called directly from RemoteInputBox
 
+  // ── Loading state ────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="flex h-screen w-screen items-center justify-center overflow-hidden bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default">
-        <section className="flex h-[calc(100vh-4px)] w-[calc(100vw-4px)] items-center justify-center rounded-[20px] bg-ds-bg-neutral-subtle-default">
+      <main className="bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default flex h-screen w-screen items-center justify-center overflow-hidden">
+        <section className="bg-ds-bg-neutral-subtle-default flex h-[calc(100vh-4px)] w-[calc(100vw-4px)] items-center justify-center rounded-[20px]">
           <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-muted-default" />
         </section>
       </main>
     );
   }
 
+  // ── Error state ──────────────────────────────────────────────────────────────
   if (error || !session) {
     const pageError = error ?? { message: 'Unable to open this remote link.' };
     const isRetryable =
@@ -1014,10 +912,10 @@ export default function RemoteControlPage() {
       pageError.status === 409 ||
       pageError.status === 429;
     return (
-      <main className="flex h-screen w-screen items-center justify-center overflow-hidden bg-ds-bg-neutral-strong-default p-0.5 text-ds-text-neutral-default-default">
-        <section className="flex h-full w-full items-center justify-center rounded-[20px] bg-ds-bg-neutral-subtle-default px-4">
-          <div className="w-full max-w-md rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-5 shadow-sm">
-            <div className="flex items-center gap-3">
+      <main className="bg-ds-bg-neutral-strong-default p-0.5 text-ds-text-neutral-default-default flex h-screen w-screen items-center justify-center overflow-hidden">
+        <section className="bg-ds-bg-neutral-subtle-default px-4 flex h-full w-full items-center justify-center rounded-[20px]">
+          <div className="max-w-md rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-5 shadow-sm w-full border border-solid">
+            <div className="gap-3 flex items-center">
               <img src={eigentAppIconBlack} alt="" className="h-8 w-8" />
               <h1 className="text-heading-sm font-semibold">
                 Remote control unavailable
@@ -1044,9 +942,7 @@ export default function RemoteControlPage() {
                 buttonContent="text"
                 buttonRadius="full"
                 className="mt-4"
-                onClick={() => {
-                  void retryLoad();
-                }}
+                onClick={() => void retryLoad()}
                 disabled={reloading}
               >
                 {reloading ? (
@@ -1063,26 +959,55 @@ export default function RemoteControlPage() {
     );
   }
 
+  // ── Main UI ──────────────────────────────────────────────────────────────────
+  const inputPlaceholder = ready
+    ? pendingAsk
+      ? getAskText(pendingAsk) || 'Reply to the desktop question'
+      : 'Send a follow-up to the desktop task'
+    : 'Select a project to start';
+
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-ds-bg-neutral-strong-default p-0.5 text-ds-text-neutral-default-default">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-ds-bg-neutral-subtle-default">
-        <header className="h-12 shrink-0 px-3">
-          <div className="flex h-full items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
-                {session.title || 'Eigent Remote Control'}
-              </span>
+    <main className="bg-ds-bg-neutral-strong-default p-0.5 text-ds-text-neutral-default-default flex h-screen w-screen overflow-hidden">
+      <section className="min-h-0 min-w-0 bg-ds-bg-neutral-subtle-default flex flex-1 flex-col overflow-hidden rounded-[20px]">
+        {/* Header */}
+        <header className="h-12 px-2 shrink-0">
+          <div className="gap-2 flex h-full items-center">
+            <Button
+              variant="ghost"
+              size="md"
+              buttonContent="icon-only"
+              buttonRadius="full"
+              aria-label="Open remote control panel"
+              onClick={() => setSidePanelOpen(true)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+
+            <span className="min-w-0 text-body-sm font-semibold text-ds-text-neutral-default-default flex-1 truncate">
+              {session.title || 'Eigent Remote Control'}
+            </span>
+
+            {/* Bridge status pill tag */}
+            <span
+              className={cn(
+                'gap-1.5 px-2 py-0.5 !text-label-xs font-semibold inline-flex shrink-0 items-center rounded-full',
+                bridgeOnline
+                  ? 'bg-ds-bg-status-completed-subtle-default text-ds-text-status-completed-default-default'
+                  : 'bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default'
+              )}
+            >
               <span
                 className={cn(
-                  'hidden shrink-0 rounded-full px-2 py-0.5 text-label-xs font-semibold sm:inline-flex',
+                  'h-1.5 w-1.5 rounded-full',
                   bridgeOnline
-                    ? 'bg-ds-bg-status-completed-subtle-default text-ds-text-status-completed-default-default'
-                    : 'bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default'
+                    ? 'bg-ds-bg-status-completed-default-default'
+                    : 'bg-ds-icon-neutral-muted-default'
                 )}
-              >
-                {remoteStateLabel(session, target)}
-              </span>
-            </div>
+              />
+              {bridgeOnline ? 'Connected' : 'Offline'}
+            </span>
+
+            {/* Logo */}
             <img
               src={eigentAppIconBlack}
               alt=""
@@ -1092,229 +1017,35 @@ export default function RemoteControlPage() {
           </div>
         </header>
 
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2">
-            <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col gap-3 pb-36 pt-4">
-              <section className="rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-3 shadow-sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                          bridgeOnline
-                            ? 'bg-ds-bg-status-completed-subtle-default text-ds-text-status-completed-default-default'
-                            : 'bg-ds-bg-neutral-subtle-default text-ds-icon-neutral-muted-default'
-                        )}
-                      >
-                        {bridgeOnline ? (
-                          <Wifi className="h-4 w-4" />
-                        ) : (
-                          <WifiOff className="h-4 w-4" />
-                        )}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-                          {remoteStateLabel(session, target)}
-                        </p>
-                        <p className="truncate text-label-xs text-ds-text-neutral-muted-default">
-                          {session.expires_at
-                            ? `Expires ${formatDate(session.expires_at)}`
-                            : 'Remote link active'}
-                          {target?.project_id
-                            ? ` · Project ${target.project_id}`
-                            : ''}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="text"
-                      buttonRadius="full"
-                      disabled={!ready || !!controlLoading}
-                      onClick={() => sendControlCommand('skip_task', 'Skip')}
-                    >
-                      <SkipForward className="h-4 w-4" />
-                      Skip
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="text"
-                      buttonRadius="full"
-                      disabled={!ready || !!controlLoading}
-                      onClick={() => sendControlCommand('stop', 'Stop')}
-                    >
-                      <Ban className="h-4 w-4" />
-                      Stop
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="text"
-                      buttonRadius="full"
-                      disabled={!!controlLoading || session.status !== 'active'}
-                      onClick={extendSession}
-                    >
-                      <Clock3 className="h-4 w-4" />
-                      Extend
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="text"
-                      buttonRadius="full"
-                      disabled={!!controlLoading || session.status !== 'active'}
-                      onClick={revokeSession}
-                    >
-                      <ShieldX className="h-4 w-4" />
-                      Revoke
-                    </Button>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-3 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
-                      {space?.name || session.space_name || 'Space'}
-                    </p>
-                    <p className="text-label-xs text-ds-text-neutral-muted-default">
-                      {folderBacked ? 'Folder Space' : 'Space scoped'} ·{' '}
-                      {projects.length} project(s)
-                    </p>
-                  </div>
-                  {folderBacked && activeProject && (
-                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        buttonContent="icon-only"
-                        buttonRadius="full"
-                        title="Refresh overlays"
-                        disabled={!!controlLoading}
-                        onClick={() => void refreshOverlaySummary()}
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        buttonContent="text"
-                        buttonRadius="full"
-                        disabled={!!controlLoading}
-                        onClick={() => void sendFolderOperation('refresh')}
-                      >
-                        Refresh
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        buttonContent="text"
-                        buttonRadius="full"
-                        disabled={!!controlLoading}
-                        onClick={() => void sendFolderOperation('apply')}
-                      >
-                        Apply
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        buttonContent="text"
-                        buttonRadius="full"
-                        disabled={!!controlLoading}
-                        onClick={() => void sendFolderOperation('discard')}
-                      >
-                        Discard
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                <form
-                  className="mt-3 flex gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void createProject();
-                  }}
-                >
-                  <input
-                    value={newProjectName}
-                    onChange={(event) => setNewProjectName(event.target.value)}
-                    placeholder="New project"
-                    className="min-w-0 flex-1 rounded-full border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-sm outline-none transition focus:border-ds-border-neutral-default-default"
-                    disabled={!bridgeOnline || projectLoading}
-                  />
+        {/* Main content */}
+        <div className="min-h-0 pl-2 relative flex flex-1 flex-col overflow-hidden">
+          <div className="scrollbar scrollbar-always-visible min-h-0 px-2 flex-1 overflow-x-hidden overflow-y-auto">
+            <div className="gap-3 pb-36 pt-4 mx-auto flex min-h-full w-full max-w-[560px] flex-col">
+              {/* No target selected */}
+              {!isRemoteControlTargetReady(target) ? (
+                <section className="rounded-2xl bg-ds-bg-neutral-subtle-default p-6 text-center">
+                  <p className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+                    No project selected
+                  </p>
+                  <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+                    Open the menu to select a project in this Space.
+                  </p>
                   <Button
-                    type="submit"
                     variant="outline"
                     size="sm"
                     buttonContent="text"
                     buttonRadius="full"
-                    className="min-w-[104px] !border-ds-border-neutral-subtle-default !bg-ds-bg-neutral-default-default !text-ds-text-neutral-default-default hover:!bg-ds-bg-neutral-default-hover disabled:!bg-ds-bg-neutral-subtle-disabled disabled:!text-ds-text-neutral-muted-default"
-                    disabled={
-                      !bridgeOnline || projectLoading || !newProjectName.trim()
-                    }
+                    className="mt-4"
+                    onClick={() => setSidePanelOpen(true)}
                   >
-                    {projectLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    Create
+                    <Menu className="h-4 w-4" />
+                    Open panel
                   </Button>
-                </form>
-
-                {projects.length > 0 ? (
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    {projects.map((project) => {
-                      const selected = project.id === target?.project_id;
-                      return (
-                        <button
-                          key={project.id}
-                          type="button"
-                          className={cn(
-                            'max-w-[220px] shrink-0 rounded-full border border-solid px-3 py-2 text-left text-body-sm transition',
-                            selected
-                              ? 'text-ds-text-inverse-default-default border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default'
-                              : 'border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-subtle-hover'
-                          )}
-                          disabled={!bridgeOnline || projectLoading}
-                          onClick={() => void selectProject(project)}
-                        >
-                          <span className="block truncate">
-                            {project.name || project.id}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="mt-3 flex items-center gap-2 rounded-xl bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-sm text-ds-text-neutral-muted-default">
-                    <FolderPlus className="h-4 w-4" />
-                    Create a project to start working in this Space.
-                  </div>
-                )}
-              </section>
-
-              {!isRemoteControlTargetReady(target) ? (
-                <section className="rounded-2xl border border-dashed border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default p-6 text-center">
-                  <p className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-                    No desktop project is selected
-                  </p>
-                  <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
-                    Select or create a project in this Space to continue
-                    remotely.
-                  </p>
                 </section>
               ) : steps.length === 0 ? (
-                <section className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default p-8 text-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ds-bg-neutral-subtle-default text-ds-icon-neutral-muted-default">
+                /* Target ready, no steps yet */
+                <section className="rounded-2xl bg-ds-bg-neutral-subtle-default p-8 flex min-h-[280px] flex-col items-center justify-center text-center">
+                  <div className="h-10 w-10 rounded-xl bg-ds-bg-neutral-subtle-default text-ds-icon-neutral-muted-default flex items-center justify-center">
                     <MessageSquareText className="h-5 w-5" />
                   </div>
                   <p className="mt-3 text-body-sm font-semibold text-ds-text-neutral-default-default">
@@ -1325,68 +1056,96 @@ export default function RemoteControlPage() {
                   </p>
                 </section>
               ) : (
-                <section className="rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-2 shadow-sm">
-                  <div className="flex flex-col">
-                    {steps.map((step, index) => {
-                      const Icon = stepIcon(step);
-                      const summary = stepSummary(step);
-                      const hasData = !isEmptyStepData(step.data);
-                      return (
-                        <article
-                          key={step.step_id}
-                          className={cn(
-                            'relative flex gap-3 px-2 py-3',
-                            index !== steps.length - 1 &&
-                              'border-b border-solid border-ds-border-neutral-subtle-disabled'
-                          )}
-                        >
-                          <div
+                /* Collapsible agent log */
+                <section className="rounded-2xl bg-ds-bg-neutral-subtle-default">
+                  {/* Log toggle header */}
+                  <button
+                    type="button"
+                    className={cn(
+                      'gap-3 px-4 py-3 rounded-t-2xl bg-ds-bg-neutral-muted-default flex w-full items-center justify-between border-none text-left',
+                      !logOpen && 'rounded-b-2xl'
+                    )}
+                    onClick={() => setLogOpen((open) => !open)}
+                  >
+                    <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+                      Activity
+                      <span className="ml-1.5 text-ds-text-neutral-muted-default">
+                        · {steps.length} event{steps.length !== 1 ? 's' : ''}
+                      </span>
+                    </span>
+                    {logOpen ? (
+                      <ChevronUp className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0" />
+                    )}
+                  </button>
+
+                  {/* Step list */}
+                  {logOpen && (
+                    <div className="border-ds-border-neutral-subtle-disabled flex flex-col border-t">
+                      {steps.map((step, index) => {
+                        const Icon = stepIcon(step);
+                        const summary = stepSummary(step);
+                        const hasData = !isEmptyStepData(step.data);
+                        return (
+                          <article
+                            key={step.step_id}
                             className={cn(
-                              'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                              stepToneClass(step)
+                              'gap-3 px-4 py-3 relative flex',
+                              index !== steps.length - 1 &&
+                                'border-ds-border-neutral-subtle-disabled border-b border-solid'
                             )}
                           >
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
-                                {humanizeStepName(step.step)}
-                              </p>
-                              <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
-                                #{step.step_id}
-                              </span>
+                            <div
+                              className={cn(
+                                'mt-0.5 h-8 w-8 rounded-lg flex shrink-0 items-center justify-center',
+                                stepToneClass(step)
+                              )}
+                            >
+                              <Icon className="h-4 w-4" />
                             </div>
-                            {summary ? (
-                              <p className="mt-1 whitespace-pre-wrap break-words text-body-sm text-ds-text-neutral-muted-default">
-                                {summary}
-                              </p>
-                            ) : null}
-                            {hasData && !summary ? (
-                              <details className="mt-2">
-                                <summary className="cursor-pointer text-label-xs font-semibold text-ds-text-neutral-muted-default">
-                                  View event data
-                                </summary>
-                                <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-ds-bg-neutral-subtle-default p-2 text-label-xs leading-5 text-ds-text-neutral-muted-default">
-                                  {renderStepData(step.data)}
-                                </pre>
-                              </details>
-                            ) : null}
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
+                            <div className="min-w-0 gap-1 flex flex-1 flex-col">
+                              <div className="gap-3 flex items-center justify-between">
+                                <span className="text-body-sm font-semibold text-ds-text-neutral-default-default truncate">
+                                  {humanizeStepName(step.step)}
+                                </span>
+                                <span className="text-label-xs text-ds-text-neutral-muted-default shrink-0">
+                                  #{step.step_id}
+                                </span>
+                              </div>
+                              {summary ? (
+                                <span className="mt-1 text-body-sm text-ds-text-neutral-muted-default break-words whitespace-pre-wrap">
+                                  {summary}
+                                </span>
+                              ) : null}
+                              {hasData && !summary ? (
+                                <details className="mt-2">
+                                  <summary className="text-label-xs font-semibold text-ds-text-neutral-muted-default cursor-pointer">
+                                    View event data
+                                  </summary>
+                                  <pre className="mt-2 max-h-40 rounded-lg bg-ds-bg-neutral-subtle-default p-2 text-label-xs leading-5 text-ds-text-neutral-muted-default overflow-auto">
+                                    {renderStepData(step.data)}
+                                  </pre>
+                                </details>
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
                 </section>
               )}
             </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2 pb-3">
+          {/* Sticky bottom input */}
+          <div className="inset-x-0 bottom-0 px-2 pb-3 bg-ds-bg-neutral-subtle-default rounded-t-2xl pointer-events-none absolute z-30 flex justify-center">
             <div className="pointer-events-auto w-full max-w-[600px]">
+              {/* Send-failed banner */}
               {lastCommand?.status === 'failed' &&
                 lastCommand.type === 'user_message' && (
-                  <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-solid border-ds-border-error-subtle-default bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-default-default">
+                  <div className="mb-2 gap-3 rounded-2xl border-ds-border-error-subtle-default bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-default-default flex items-center justify-between border border-solid">
                     <span className="min-w-0 truncate">
                       Send failed: {lastCommand.error || lastCommand.content}
                     </span>
@@ -1397,7 +1156,7 @@ export default function RemoteControlPage() {
                       buttonContent="text"
                       buttonRadius="full"
                       className="shrink-0"
-                      onClick={() => submit(lastCommand.content)}
+                      onClick={() => void submit(lastCommand.content)}
                     >
                       <RefreshCw className="h-4 w-4" />
                       Resend
@@ -1405,45 +1164,44 @@ export default function RemoteControlPage() {
                   </div>
                 )}
 
-              <form
-                className="flex items-end gap-2 rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 shadow-lg"
-                onSubmit={onSubmit}
-              >
-                <textarea
-                  className="min-h-12 flex-1 resize-none bg-transparent px-1 py-1 text-body-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default disabled:cursor-not-allowed disabled:opacity-60"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder={
-                    ready
-                      ? pendingAsk
-                        ? getAskText(pendingAsk) ||
-                          'Reply to the desktop question'
-                        : 'Send a follow-up to the desktop task'
-                      : 'Remote control is not ready'
-                  }
-                  disabled={!ready || sending}
-                  rows={2}
-                />
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  buttonContent="icon-only"
-                  buttonRadius="full"
-                  disabled={!ready || sending || !message.trim()}
-                  aria-label="Send"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SendHorizontal className="h-4 w-4" />
-                  )}
-                </Button>
-              </form>
+              <RemoteInputBox
+                value={message}
+                onChange={setMessage}
+                onSend={() => void submit(message)}
+                placeholder={inputPlaceholder}
+                disabled={!ready || sending}
+              />
             </div>
           </div>
         </div>
       </section>
+
+      {/* Side panel */}
+      <RemoteSidePanel
+        open={sidePanelOpen}
+        onOpenChange={setSidePanelOpen}
+        session={session}
+        target={target}
+        space={space}
+        projects={projects}
+        projectLoading={projectLoading}
+        controlLoading={controlLoading}
+        newProjectName={newProjectName}
+        onNewProjectNameChange={setNewProjectName}
+        onSelectProject={(project) => void selectProject(project)}
+        onCreateProject={() => void createProject()}
+        onSkip={() => void sendControlCommand('skip_task', 'Skip')}
+        onStop={() => void sendControlCommand('stop', 'Stop')}
+        onExtend={() => void extendSession()}
+        onRevoke={() => void revokeSession()}
+        folderBacked={folderBacked}
+        activeProject={activeProject}
+        onRefresh={() => void sendFolderOperation('refresh')}
+        onApply={() => void sendFolderOperation('apply')}
+        onDiscard={() => void sendFolderOperation('discard')}
+        ready={ready}
+        bridgeOnline={bridgeOnline}
+      />
     </main>
   );
 }
