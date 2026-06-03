@@ -36,6 +36,7 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
+import { buildTaskQuestionsById } from '@/lib/replay';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
 import {
   getActiveSpaceTriggerLabel,
@@ -319,12 +320,15 @@ function HeaderWin() {
         );
 
         const firstTask = historyProject.tasks[0];
+        const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
           projectId,
           firstTask?.id != null ? String(firstTask.id) : undefined,
-          historyProject.project_name
+          historyProject.project_name,
+          undefined,
+          taskQuestionsById
         );
       } catch (error) {
         console.error(
@@ -475,8 +479,8 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-10 min-w-0 py-1 absolute z-50 flex items-center ${
-        platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
+      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1 ${
+        platform === 'darwin' ? 'pl-[68px] pr-[2px]' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
@@ -563,7 +567,7 @@ function HeaderWin() {
         )}
         {isHistoryRoute ? (
           <div
-            className="no-drag px-2 flex min-h-[28px] items-center"
+            className="no-drag flex min-h-[28px] items-center px-2"
             aria-hidden
           >
             <img
@@ -571,7 +575,7 @@ function HeaderWin() {
                 appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
               }
               alt=""
-              className="h-6 w-6 mt-[2px] select-none"
+              className="mt-[2px] h-6 w-6 select-none"
               width={16}
               height={16}
               draggable={false}
@@ -586,7 +590,7 @@ function HeaderWin() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 w-22 gap-1.5 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] items-center rounded-full outline-none focus-visible:ring-[3px]"
+                className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 w-22 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
                 aria-label={t('layout.home')}
                 aria-haspopup="menu"
               >
@@ -597,7 +601,7 @@ function HeaderWin() {
                       : eigentAppIconBlack
                   }
                   alt=""
-                  className="h-6 w-6 mt-[2px] select-none"
+                  className="mt-[2px] h-6 w-6 select-none"
                   width={16}
                   height={16}
                   draggable={false}
@@ -608,7 +612,7 @@ function HeaderWin() {
             <DropdownMenuContent
               align="start"
               sideOffset={6}
-              className="min-w-32 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 duration-100"
+              className="min-w-32 duration-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
             >
               {HOME_NAV_HISTORY_MENU.map(({ id, labelKey }) => (
                 <DropdownMenuItem
@@ -625,7 +629,7 @@ function HeaderWin() {
       </div>
 
       {/* Middle: full width on project home only (/) — nav + title */}
-      <div className="no-drag h-7 min-h-0 min-w-0 relative z-50 flex w-full">
+      <div className="no-drag relative z-50 flex h-7 min-h-0 w-full min-w-0">
         <AnimatePresence initial={false}>
           {isHomeRoute && projectSidebarFolded && (
             <motion.div
@@ -634,16 +638,16 @@ function HeaderWin() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={topBarCrossfade}
-              className="drag inset-0 min-w-0 absolute z-10 flex items-center"
+              className="drag absolute inset-0 z-10 flex min-w-0 items-center"
             >
-              <div className="ml-1 min-h-0 min-w-0 border-ds-border-neutral-subtle-default pl-1 relative z-50 flex h-full items-center border-y-0 border-r-0 border-l border-solid">
+              <div className="relative z-50 ml-1 flex h-full min-h-0 min-w-0 items-center border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1">
                 <SpaceSwitchDropdown
                   contentSideOffset={6}
                   trigger={
                     <button
                       id="active-space-title-btn"
                       type="button"
-                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 min-w-0 gap-1.5 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] w-full max-w-[300px] flex-1 items-center rounded-full text-left outline-none focus-visible:ring-[3px]"
+                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] w-full min-w-0 max-w-[300px] flex-1 items-center gap-1.5 rounded-full px-2 text-left text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
                       aria-haspopup="menu"
                       aria-label={activeSpaceTitle}
                     >
@@ -651,7 +655,7 @@ function HeaderWin() {
                         {activeSpaceTitle}
                       </span>
                       <ChevronsUpDown
-                        className="h-3.5 w-3.5 text-ds-icon-neutral-subtle-default shrink-0"
+                        className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
                         aria-hidden
                       />
                     </button>
@@ -681,7 +685,7 @@ function HeaderWin() {
       <div
         className={`${
           platform === 'darwin' && 'px-1.5'
-        } no-drag h-7 relative z-50 flex shrink-0 items-center`}
+        } no-drag relative z-50 flex h-7 shrink-0 items-center`}
       >
         <div className="flex h-full shrink-0 items-center">
           <TooltipSimple
@@ -724,7 +728,7 @@ function HeaderWin() {
             </Button>
           </TooltipSimple>
 
-          <div className="ml-1.5 gap-1 border-ds-border-neutral-subtle-default pl-1.5 flex h-full shrink-0 items-center border-y-0 border-r-0 border-l border-solid">
+          <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
             <AnimatePresence mode="wait" initial={false}>
               {isHomeRoute ? (
                 <motion.div
@@ -791,7 +795,7 @@ function HeaderWin() {
                   type="button"
                   variant="primary"
                   size="sm"
-                  className="no-drag px-3 shrink-0 rounded-full"
+                  className="no-drag shrink-0 rounded-full px-3"
                   onClick={handleStartDownload}
                   aria-label={t('layout.update')}
                 >
@@ -811,19 +815,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />

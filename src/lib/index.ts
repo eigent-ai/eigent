@@ -80,6 +80,7 @@ export function hasStackKeys() {
 }
 
 // Re-export replay utilities
+export { buildTaskQuestionsById } from './historyPrompts';
 export { loadProjectFromHistory, replayProject } from './replay';
 
 export async function uploadLog(taskId: string, type?: string | undefined) {

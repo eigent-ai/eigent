@@ -15,6 +15,7 @@
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
+import { buildTaskQuestionsById } from '@/lib/replay';
 import { isLegacySpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
@@ -151,13 +152,15 @@ export default function SpacesHub() {
         }
 
         const firstTask = historyProject.tasks[0];
+        const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
           project.id,
           firstTask?.id != null ? String(firstTask.id) : undefined,
           historyProject.project_name || project.name,
-          spaceId
+          spaceId,
+          taskQuestionsById
         );
         setActiveWorkspaceTab('project');
       } catch (error) {

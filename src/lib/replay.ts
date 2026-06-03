@@ -16,6 +16,8 @@ import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { NavigateFunction } from 'react-router-dom';
 
+export { buildTaskQuestionsById } from './historyPrompts';
+
 const activateHistorySpace = async (spaceId?: string | null) => {
   if (!spaceId) return;
   const spaceStore = useSpaceStore.getState();
@@ -41,6 +43,7 @@ const activateHistorySpace = async (spaceId?: string | null) => {
  * @param historyId - The history ID
  * @param taskIdsList - Optional list of task IDs (defaults to [projectId])
  * @param projectName - Optional project display name
+ * @param taskQuestionsById - Optional per-task prompt map for exact history restore
  */
 export const loadProjectFromHistory = async (
   projectStore: ProjectRuntimeStore,
@@ -50,7 +53,8 @@ export const loadProjectFromHistory = async (
   historyId: string,
   taskIdsList?: string[],
   projectName?: string,
-  spaceId?: string | null
+  spaceId?: string | null,
+  taskQuestionsById?: Record<string, string>
 ) => {
   await activateHistorySpace(spaceId);
   const taskIds = taskIdsList || [projectId];
@@ -60,7 +64,8 @@ export const loadProjectFromHistory = async (
     projectId,
     historyId,
     projectName,
-    spaceId ?? undefined
+    spaceId ?? undefined,
+    taskQuestionsById
   );
   navigate({ pathname: '/' });
 };
