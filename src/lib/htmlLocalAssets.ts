@@ -145,6 +145,11 @@ export async function inlineLocalProjectImagePaths(
     const relativePath = getRelativePathFromDir(htmlDir, file.path);
     if (!relativePath || !isImagePath(relativePath)) continue;
 
+    const quotedPathMatcher = new RegExp(
+      `(["'])${escapeRegExp(relativePath)}\\1`
+    );
+    if (!quotedPathMatcher.test(result)) continue;
+
     try {
       const dataUrl = await readFileAsDataUrl(file.path);
       const quotedPathPattern = new RegExp(

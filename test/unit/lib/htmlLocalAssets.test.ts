@@ -113,4 +113,37 @@ describe('inlineLocalProjectImagePaths', () => {
     expect(result).toContain('data:image/png;base64,abc123');
     expect(result).not.toContain('"assets/home.png"');
   });
+
+  it('does not read project images that are not referenced in the html', async () => {
+    const html = `
+      <script>
+        const CANVAS_DATA = {
+          nodes: [{ id: "home", image: "assets/home.png" }]
+        };
+      </script>
+    `;
+
+    const readFileAsDataUrl = vi
+      .fn()
+      .mockResolvedValue('data:image/png;base64,abc123');
+
+    await inlineLocalProjectImagePaths(
+      html,
+      '/Users/test/canvas_map',
+      [
+        {
+          path: '/Users/test/canvas_map/assets/home.png',
+        },
+        {
+          path: '/Users/test/canvas_map/assets/unused.png',
+        },
+      ],
+      readFileAsDataUrl
+    );
+
+    expect(readFileAsDataUrl).toHaveBeenCalledTimes(1);
+    expect(readFileAsDataUrl).toHaveBeenCalledWith(
+      '/Users/test/canvas_map/assets/home.png'
+    );
+  });
 });
