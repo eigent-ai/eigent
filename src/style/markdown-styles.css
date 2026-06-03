@@ -26,8 +26,8 @@
   font-weight: 700;
   margin-bottom: 0.5em;
   margin-top: 1em;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0;
+  border-bottom: none !important;
 }
 
 .markdown-body h2 {
@@ -35,8 +35,8 @@
   font-weight: 600;
   margin-bottom: 0.5em;
   margin-top: 1em;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0;
+  border-bottom: none !important;
 }
 
 .markdown-body h3 {
@@ -157,21 +157,17 @@
 
 /* Horizontal rule */
 .markdown-body hr {
-  height: 0.25em;
+  height: 0;
   padding: 0;
   margin: 24px 0;
-  background-color: #d0d7de;
+  background-color: transparent;
   border: 0;
+  border-top: 2px solid var(--ds-border-neutral-default-default);
 }
 
 /* Dark mode support - matches app's data-theme attribute */
 [data-theme='dark'] .markdown-body {
   color: #e6edf3;
-}
-
-[data-theme='dark'] .markdown-body h1,
-[data-theme='dark'] .markdown-body h2 {
-  border-bottom-color: #30363d;
 }
 
 [data-theme='dark'] .markdown-body pre {
@@ -207,10 +203,6 @@
 
 [data-theme='dark'] .markdown-body a {
   color: #58a6ff;
-}
-
-[data-theme='dark'] .markdown-body hr {
-  background-color: #30363d;
 }
 
 /* Task list styling */

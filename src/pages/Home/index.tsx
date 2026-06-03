@@ -265,14 +265,14 @@ export default function HomeHub() {
         cancelText={t('layout.cancel')}
       />
 
-      <div className="min-w-0 flex min-h-[calc(100vh-86px)] w-full flex-1 flex-col [--home-hub-history-tabs-offset:49px]">
+      <div className="flex w-full min-w-0 flex-1 flex-col [--home-hub-history-tabs-offset:49px]">
         <HomeHubToolbar
           activeTab={activeTab}
           onTabChange={handleTabChange}
           menuItems={menuItems}
         />
 
-        <div className="min-w-0 w-full flex-1">
+        <div className="w-full min-w-0 flex-1">
           {activeTab === 'spaces' && <Spaces />}
           {activeTab === 'projects' && <Projects />}
           {activeTab === 'tasks' && <Tasks />}

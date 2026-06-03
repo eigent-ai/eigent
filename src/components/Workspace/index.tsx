@@ -29,12 +29,16 @@ import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentS
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
+import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import {
+  getVisibleProjectMetasForSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
 import {
   ChatTaskStatus,
   SessionMode,
@@ -98,6 +102,10 @@ export default function Workspace({
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
   const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
+  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
+  const navLeadByProjectId = useProjectRuntimeStore(
+    (s) => s.navLeadByProjectId
+  );
   const activeProjectMetadata =
     activeProjectMeta?.metadata ?? activeProject?.metadata;
   const isEmptyProject = useProjectRuntimeStore((s) => s.isEmptyProject);
@@ -143,6 +151,41 @@ export default function Workspace({
     chatStore?.tasks,
     customAgentFolderPath,
   ]);
+  const navProjects = useMemo(() => {
+    if (!activeSpaceId) return [];
+    return getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId)
+      .filter((project) => {
+        if (project.metadata?.historyId) return true;
+        const historyDisplayName =
+          typeof project.metadata?.historyDisplayName === 'string'
+            ? project.metadata.historyDisplayName.trim()
+            : '';
+        if (historyDisplayName) return true;
+        const normalizedName = (project.name ?? '').trim().toLowerCase();
+        return (
+          Boolean(normalizedName) &&
+          normalizedName !== 'new project' &&
+          normalizedName !== 'new space'
+        );
+      })
+      .map((project) => ({
+        id: project.id,
+        title:
+          project.name && project.name !== 'new project'
+            ? project.name
+            : t('layout.new-project'),
+        sessionLead: resolveProjectNavLeadPresentation({
+          cachedLead: navLeadByProjectId[project.id],
+          isHistoryLoading: false,
+        }),
+      }));
+  }, [activeSpaceId, navLeadByProjectId, projectsBySpaceId, t]);
+
+  const handleSelectProject = useCallback((projectId: string) => {
+    useProjectRuntimeStore.getState().setActiveProject(projectId);
+    usePageTabStore.getState().setActiveWorkspaceTab('project');
+  }, []);
+
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const workspaceChatFocusRequestId = usePageTabStore(
@@ -178,6 +221,7 @@ export default function Workspace({
   );
 
   const [message, setMessage] = useState('');
+  const [draftFiles, setDraftFiles] = useState<FileAttachment[]>([]);
   const directProjectStartRef = useRef(false);
   const [isStartingDirectProject, setIsStartingDirectProject] = useState(false);
   const { hasModel } = useModelConfigCheck();
@@ -190,7 +234,7 @@ export default function Workspace({
   const [workspaceSubPage, setWorkspaceSubPage] =
     useState<WorkspaceSubPage>(null);
   const SUB_PAGE_TITLES: Record<NonNullable<WorkspaceSubPage>, string> = {
-    'all-sessions': t('layout.sessions-full-title'),
+    'all-sessions': t('layout.projects'),
     'instruction-md': t('layout.instructions-rules-tone'),
   };
   const [memoryOn, setMemoryOn] = useState(readMemoryInitial);
@@ -294,9 +338,16 @@ export default function Workspace({
         });
       }
       targetChatStore.setHasMessages(taskId, true);
-      const attachesToSend =
-        JSON.parse(JSON.stringify(targetChatStore.tasks[taskId]?.attaches)) ||
-        [];
+      const taskAttaches = targetChatStore.tasks[taskId]?.attaches || [];
+      const mergedAttaches = [
+        ...taskAttaches,
+        ...draftFiles.filter(
+          (draft) =>
+            !taskAttaches.some((file) => file.filePath === draft.filePath)
+        ),
+      ];
+      const attachesToSend = JSON.parse(JSON.stringify(mergedAttaches)) || [];
+      targetChatStore.setAttaches(taskId, attachesToSend);
 
       // Enter the live Project immediately; task startup continues in the background.
       setActiveWorkspaceTab('project');
@@ -314,6 +365,7 @@ export default function Workspace({
       );
       targetChatStore.setHasWaitComfirm(taskId, true);
       targetChatStore.setAttaches(taskId, []);
+      setDraftFiles([]);
       setMessage('');
     } catch (err: unknown) {
       setActiveWorkspaceTab('workforce');
@@ -330,14 +382,23 @@ export default function Workspace({
   };
 
   const handleFileSelect = useCallback(async () => {
-    if (!chatStore?.activeTaskId) return;
     try {
       const result = await host?.electronAPI?.selectFile({
         title: t('chat.select-file'),
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
 
-      if (result.success && result.files && result.files.length > 0) {
+      if (result?.success && result.files && result.files.length > 0) {
+        if (!chatStore?.activeTaskId) {
+          setDraftFiles((existingFiles) => [
+            ...existingFiles,
+            ...result.files.filter(
+              (r: File) => !existingFiles.some((f) => f.filePath === r.filePath)
+            ),
+          ]);
+          return;
+        }
+
         const taskId = chatStore.activeTaskId as string;
         const files = [
           ...(chatStore.tasks[taskId].attaches || []),
@@ -370,9 +431,12 @@ export default function Workspace({
               filePath: f.filePath,
             })
           ) || []
-        : [],
+        : draftFiles,
     onFilesChange: (files: FileAttachment[]) => {
-      if (!targetChatStore?.activeTaskId) return;
+      if (!targetChatStore?.activeTaskId) {
+        setDraftFiles(files);
+        return;
+      }
       targetChatStore.setAttaches(
         targetChatStore.activeTaskId as string,
         files as any
@@ -476,12 +540,12 @@ export default function Workspace({
   const composerTop = (
     <>
       <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
-      <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
+      <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT
           ? t('layout.workspace-cowork-single-agent')
           : t('layout.workspace-cowork-workforce')}
       </span>
-      <div className="mb-8 px-5 flex w-full justify-center">
+      <div className="mb-8 flex w-full justify-center px-5">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <SingleAgentList />
         ) : (
@@ -530,7 +594,7 @@ export default function Workspace({
 
   const composer = (
     <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-      <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
+      <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
         {composerTop}
         {composerInput}
       </div>
@@ -545,10 +609,10 @@ export default function Workspace({
 
   if (embedded && isNewProjectVariant) {
     return (
-      <div className="min-h-0 min-w-0 px-3 relative z-[1] flex flex-1 flex-col overflow-hidden">
+      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
         {composer}
         <div
-          className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+          className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
           id="workspace-bottom-group"
           aria-hidden
         />
@@ -568,21 +632,19 @@ export default function Workspace({
           <WorkspaceCoworkPanel
             memoryOn={memoryOn}
             onMemoryToggle={() => setMemoryOn((v) => !v)}
-            onEditInstructions={() => setWorkspaceSubPage('instruction-md')}
-            onWorkforceSetting={() => setActiveWorkspaceTab('workforce')}
           />
         </div>
       </div>
     ) : null;
 
   return (
-    <div className="min-h-0 min-w-0 relative z-[1] flex h-full w-full flex-row overflow-hidden">
+    <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
       {/* Center section: header + content */}
-      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header toolbar */}
         <div
           className={cn(
-            'gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start',
+            'relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1',
             !isNewProjectVariant && 'px-3'
           )}
         >
@@ -601,8 +663,8 @@ export default function Workspace({
             </Button>
           )}
           {!isNewProjectVariant && workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
                 {SUB_PAGE_TITLES[workspaceSubPage]}
               </span>
             </div>
@@ -631,29 +693,18 @@ export default function Workspace({
         </div>
 
         {/* Content */}
-        <div className="min-h-0 flex w-full flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
           {/* Sub-pages */}
-          {!isNewProjectVariant &&
-            workspaceSubPage === 'all-sessions' &&
-            chatStore && (
-              <WorkspaceAllSessions
-                tasks={chatStore.tasks}
-                activeTaskId={chatStore.activeTaskId}
-                onSelectSession={(id) => {
-                  chatStore.setActiveTaskId(id);
-                  setActiveWorkspaceTab('project');
-                  setWorkspaceSubPage(null);
-                }}
-                onDeleteSession={(id) => {
-                  if (!window.confirm(t('layout.delete-task-confirmation')))
-                    return;
-                  const wasActive = chatStore.activeTaskId === id;
-                  chatStore.removeTask(id);
-                  if (wasActive) setActiveWorkspaceTab('workforce');
-                  setWorkspaceSubPage(null);
-                }}
-              />
-            )}
+          {!isNewProjectVariant && workspaceSubPage === 'all-sessions' && (
+            <WorkspaceAllSessions
+              projects={navProjects}
+              activeProjectId={activeProjectId}
+              onProjectClick={(id) => {
+                handleSelectProject(id);
+                setWorkspaceSubPage(null);
+              }}
+            />
+          )}
           {!isNewProjectVariant &&
             workspaceSubPage === 'instruction-md' &&
             activeProjectId && (
@@ -665,17 +716,17 @@ export default function Workspace({
 
           {/* Main content (hidden when a sub-page is active) */}
           {workspaceSubPage === null && (
-            <div className="min-h-0 min-w-0 relative flex flex-1 flex-col items-stretch overflow-hidden">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
               <div
                 className={cn(
-                  'min-h-0 flex w-full flex-1 flex-col',
+                  'flex min-h-0 w-full flex-1 flex-col',
                   !isNewProjectVariant && 'px-3'
                 )}
               >
                 {composer}
 
                 <div
-                  className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
+                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
                   id="workspace-bottom-group"
                 >
                   {showBottomExamplePrompts ? (
@@ -683,15 +734,12 @@ export default function Workspace({
                       onSelectPrompt={setMessage}
                       disabled={!hasModel}
                     />
-                  ) : chatStore ? (
+                  ) : navProjects.length > 0 ? (
                     <WorkspaceRecentSessions
-                      tasks={chatStore.tasks}
-                      activeTaskId={chatStore.activeTaskId}
-                      onSelectSession={(id) => {
-                        chatStore.setActiveTaskId(id);
-                        setActiveWorkspaceTab('project');
-                      }}
-                      onOpenAllSessions={() =>
+                      projects={navProjects}
+                      activeProjectId={activeProjectId}
+                      onProjectClick={handleSelectProject}
+                      onOpenAllProjects={() =>
                         setWorkspaceSubPage('all-sessions')
                       }
                     />

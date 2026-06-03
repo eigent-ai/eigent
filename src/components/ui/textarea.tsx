@@ -74,7 +74,13 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
     },
     ref
   ) => {
-    const { onKeyDown, ...textareaProps } = props;
+    const {
+      onKeyDown,
+      onCompositionStart,
+      onCompositionEnd,
+      ...textareaProps
+    } = props;
+    const [isComposing, setIsComposing] = React.useState(false);
     // Original "none" variant - keep the original styling
     if (variant === 'none') {
       return (
@@ -83,7 +89,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             {...textareaProps}
             data-scrollbar="ui-textarea"
             className={cn(
-              'border-ds-border-neutral-default-default placeholder:text-ds-text-neutral-muted-default/20 focus-visible:ring-ds-ring-brand-default-focus rounded-lg py-2 pl-3 pr-3 text-body-sm shadow-sm flex min-h-[60px] w-full border bg-transparent [scrollbar-gutter:stable] focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              'placeholder:text-ds-text-neutral-muted-default/20 flex min-h-[60px] w-full rounded-lg border border-ds-border-neutral-default-default bg-transparent py-2 pl-3 pr-3 text-body-sm shadow-sm [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-ring-brand-default-focus disabled:cursor-not-allowed disabled:opacity-50',
+              isComposing && 'placeholder:opacity-0',
               className
             )}
             style={mergeAliasStyles(formControlTokenAliases, {
@@ -93,6 +100,14 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             ref={ref}
             disabled={disabled}
             placeholder={placeholder}
+            onCompositionStart={(e) => {
+              setIsComposing(true);
+              onCompositionStart?.(e);
+            }}
+            onCompositionEnd={(e) => {
+              setIsComposing(false);
+              onCompositionEnd?.(e);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (onEnter) {
@@ -131,7 +146,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           style={formControlTokenAliases}
         >
           {title ? (
-            <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
+            <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
               <span>{title}</span>
               {required && (
                 <span className="text-ds-text-neutral-default-default">*</span>
@@ -149,7 +164,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
 
           <div
             className={cn(
-              'rounded-lg shadow-sm relative flex items-start border border-solid transition-all',
+              'relative flex items-start rounded-lg border border-solid shadow-sm transition-all',
               stateCls.field,
               formFieldTextareaSizeClasses[size],
               state !== 'error' &&
@@ -162,7 +177,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             )}
           >
             {leadingIcon ? (
-              <span className="left-2 top-2 h-5 w-5 text-ds-icon-neutral-default-default pointer-events-none absolute inline-flex items-center justify-center">
+              <span className="pointer-events-none absolute left-2 top-2 inline-flex h-5 w-5 items-center justify-center text-ds-icon-neutral-default-default">
                 {leadingIcon}
               </span>
             ) : null}
@@ -179,9 +194,18 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                 hasLeft ? 'pl-9' : 'pl-3',
                 hasRight ? 'pr-9' : 'pr-3',
                 'pb-2 pt-2',
+                isComposing && 'placeholder:opacity-0',
                 className
               )}
               style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
+              onCompositionStart={(e) => {
+                setIsComposing(true);
+                onCompositionStart?.(e);
+              }}
+              onCompositionEnd={(e) => {
+                setIsComposing(false);
+                onCompositionEnd?.(e);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   if (onEnter) {
@@ -210,7 +234,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             {trailingButton ? (
               <div
                 className={cn(
-                  'right-2 top-2 absolute',
+                  'absolute right-2 top-2',
                   backIcon ? '-mr-7' : ''
                 )}
               >

@@ -13,66 +13,39 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  NavListSessionRows,
-  type NavListSession,
-} from '@/components/ProjectPageSidebar/NavList';
-import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
-import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import type { ChatStore } from '@/store/chatStore';
-import { ChatTaskStatus } from '@/types/constants';
-import { useMemo } from 'react';
+  ProjectNavListRows,
+  type ProjectNavItem,
+} from '@/components/ProjectPageSidebar/ProjectNavListRows';
 import { useTranslation } from 'react-i18next';
 
 interface WorkspaceAllSessionsProps {
-  tasks: ChatStore['tasks'];
-  activeTaskId?: string | null;
-  onSelectSession: (sessionId: string) => void;
-  onDeleteSession: (sessionId: string) => void;
+  projects: ProjectNavItem[];
+  activeProjectId?: string | null;
+  onProjectClick: (projectId: string) => void;
 }
 
 export function WorkspaceAllSessions({
-  tasks,
-  activeTaskId,
-  onSelectSession,
-  onDeleteSession,
+  projects,
+  activeProjectId,
+  onProjectClick,
 }: WorkspaceAllSessionsProps) {
   const { t } = useTranslation();
-
-  const sessions: NavListSession[] = useMemo(() => {
-    const entries = Object.entries(tasks)
-      .filter(([, task]) => {
-        return (
-          (task.messages?.length || 0) > 0 ||
-          task.hasMessages ||
-          task.status !== ChatTaskStatus.PENDING
-        );
-      })
-      .map(([id, task]) => ({
-        id,
-        title:
-          task.summaryTask?.trim() ||
-          t('layout.sessions-untitled', { defaultValue: 'Untitled session' }),
-        sessionLead: getSessionNavLeadPresentation(task),
-      }));
-    entries.sort((a, b) => taskIdToCreatedMs(b.id) - taskIdToCreatedMs(a.id));
-    return entries;
-  }, [tasks, t]);
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <div className="m-0 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {sessions.length === 0 ? (
+        {projects.length === 0 ? (
           <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
             {t('layout.sessions-create-task-hint')}
           </p>
         ) : (
-          <NavListSessionRows
-            sessions={sessions}
-            activeSessionId={activeTaskId}
-            onSessionClick={onSelectSession}
-            onDeleteSession={onDeleteSession}
+          <ProjectNavListRows
+            projects={projects}
+            activeProjectId={activeProjectId}
+            onProjectClick={onProjectClick}
             folded={false}
             panelListHover
+            showRowMenu={false}
           />
         )}
       </div>

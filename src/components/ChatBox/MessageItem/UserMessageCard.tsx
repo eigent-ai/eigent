@@ -131,7 +131,7 @@ export function UserMessageCard({
 
   return (
     <div key={id} className={cn('group/msg relative w-full', className)}>
-      <div className="w-full overflow-visible rounded-xl border border-solid border-ds-border-neutral-muted-default bg-ds-bg-neutral-subtle-default px-4 py-2">
+      <div className="w-full overflow-visible rounded-xl bg-ds-bg-neutral-strong-default px-4 py-2">
         {attaches && attaches.length > 0 && (
           <div className="relative mb-2 box-border flex w-full flex-wrap items-start gap-1">
             {(() => {
@@ -263,7 +263,7 @@ export function UserMessageCard({
             <UserMessageRichContent content={content} variant="card" />
             {canClamp && !expanded && (
               <div
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-bg-neutral-subtle-default"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-bg-neutral-strong-default"
                 style={USER_MESSAGE_FOLD_FADE_STYLE}
                 aria-hidden
               />

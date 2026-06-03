@@ -347,7 +347,9 @@ export const RichChatInput = React.forwardRef<
     ];
   }, [placeholdersProp, placeholder, t]);
 
-  const showPlaceholder = value.length === 0 && placeholders.length > 0;
+  const [isComposing, setIsComposing] = useState(false);
+  const showPlaceholder =
+    value.length === 0 && !isComposing && placeholders.length > 0;
   const [placeholderCycleIndex, setPlaceholderCycleIndex] = useState(0);
 
   useEffect(() => {
@@ -413,10 +415,12 @@ export const RichChatInput = React.forwardRef<
         onBlur={handleBlur}
         onCompositionStart={() => {
           composingRef.current = true;
+          setIsComposing(true);
           onCompositionStart?.();
         }}
         onCompositionEnd={() => {
           composingRef.current = false;
+          setIsComposing(false);
           onCompositionEnd?.();
           handleInput();
         }}

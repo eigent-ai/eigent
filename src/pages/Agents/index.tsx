@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import VerticalNavigation, {
+  HISTORY_VERTICAL_SIDEBAR_CLASSNAME,
   type VerticalNavItem,
 } from '@/components/Dashboard/VerticalNav';
 import { useEffect, useState } from 'react';
@@ -73,7 +74,7 @@ export default function Capabilities() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
+      <div className={HISTORY_VERTICAL_SIDEBAR_CLASSNAME}>
         <VerticalNavigation
           items={
             menuItems.map((menu) => ({

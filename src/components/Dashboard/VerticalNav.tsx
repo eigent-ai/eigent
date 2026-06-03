@@ -17,6 +17,10 @@ import * as React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
+/** Sticky left nav wrapper for History tab pages (Agents, Channels, Browser, Settings). */
+export const HISTORY_VERTICAL_SIDEBAR_CLASSNAME =
+  'sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 flex w-40 shrink-0 grow-0 flex-col self-start pr-6 pt-8';
+
 export type VerticalNavItem = {
   value: string;
   label: React.ReactNode;
@@ -73,11 +77,11 @@ export function VerticalNavigation({
             className={triggerClassName}
           >
             {item.icon ? (
-              <span className="h-4 w-4 inline-flex items-center justify-center">
+              <span className="inline-flex h-4 w-4 items-center justify-center">
                 {item.icon}
               </span>
             ) : null}
-            <span className="min-w-0 w-full truncate text-left">
+            <span className="w-full min-w-0 truncate text-left">
               {item.label}
             </span>
           </TabsTrigger>

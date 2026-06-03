@@ -20,13 +20,16 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Check, PenLine } from 'lucide-react';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const ONBOARDING_KEY = 'eigent-workspace-onboarding-checked';
 
 const ONBOARDING_STEP_IDS = [1, 2, 3, 4] as const;
+const LAST_ONBOARDING_STEP_ID =
+  ONBOARDING_STEP_IDS[ONBOARDING_STEP_IDS.length - 1];
 
 function readCheckedSteps(): Set<number> {
   try {
@@ -102,17 +105,14 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
 export interface WorkspaceCoworkPanelProps {
   memoryOn: boolean;
   onMemoryToggle: () => void;
-  onEditInstructions: () => void;
-  onWorkforceSetting: () => void;
 }
 
 export function WorkspaceCoworkPanel({
   memoryOn,
   onMemoryToggle,
-  onEditInstructions,
-  onWorkforceSetting,
 }: WorkspaceCoworkPanelProps) {
   const { t } = useTranslation();
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const [checkedSteps, setCheckedSteps] =
     useState<Set<number>>(readCheckedSteps);
   const [accordionOpen, setAccordionOpen] = useState<string | undefined>(
@@ -132,21 +132,26 @@ export function WorkspaceCoworkPanel({
   }, [checkedSteps]);
 
   const handleCheckStep = (id: number) => {
+    const isFirstCompletion =
+      id === LAST_ONBOARDING_STEP_ID &&
+      checkedSteps.size === ONBOARDING_STEP_IDS.length - 1 &&
+      !checkedSteps.has(id);
+
     setCheckedSteps((prev) => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
+
+    if (isFirstCompletion) {
+      setActiveWorkspaceTab('triggers');
+    }
   };
 
   const instructionsTitle = t('layout.instructions');
-  const instructionsHint = t('layout.instructions-rules-tone');
   const memoryLabel = t('layout.memory');
   const memoryOnLabel = t('layout.memory-on');
   const memoryOffLabel = t('layout.memory-off');
-  const workforceSettingLabel = t('layout.workforce-setting');
-  const selectLabel = t('layout.select');
-  const editInstructionsLabel = t('layout.edit-instructions');
   const gettingStartedLabel = t('layout.getting-started');
 
   return (
@@ -158,22 +163,6 @@ export function WorkspaceCoworkPanel({
           <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
             {instructionsTitle}
           </span>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default">
-          <span className="min-w-0 flex-1 text-body-sm font-medium text-ds-text-neutral-muted-default">
-            {instructionsHint}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            className="no-drag shrink-0"
-            aria-label={editInstructionsLabel}
-            onClick={onEditInstructions}
-          >
-            <PenLine className="h-4 w-4 shrink-0" aria-hidden />
-          </Button>
         </div>
         <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default">
           <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
@@ -189,21 +178,6 @@ export function WorkspaceCoworkPanel({
             aria-label={`${memoryLabel}: ${memoryOn ? memoryOnLabel : memoryOffLabel}`}
           >
             {memoryOn ? memoryOnLabel : memoryOffLabel}
-          </Button>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-strong-default">
-          <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
-            {workforceSettingLabel}
-          </span>
-          <Button
-            type="button"
-            variant="secondary"
-            size="xs"
-            className="no-drag shrink-0"
-            onClick={onWorkforceSetting}
-            aria-label={`${workforceSettingLabel}: ${selectLabel}`}
-          >
-            {selectLabel}
           </Button>
         </div>
       </div>

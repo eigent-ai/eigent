@@ -73,7 +73,9 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     },
     ref
   ) => {
-    const { onKeyDown, ...inputProps } = props;
+    const [isComposing, setIsComposing] = React.useState(false);
+    const { onKeyDown, onCompositionStart, onCompositionEnd, ...inputProps } =
+      props;
     const stateCls = formFieldInputStateClasses(
       disabled ? 'disabled' : (state as FormFieldInputState)
     );
@@ -82,11 +84,11 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
     return (
       <div
-        className={cn('min-w-0 w-full', stateCls.container)}
+        className={cn('w-full min-w-0', stateCls.container)}
         style={formControlTokenAliases}
       >
         {title ? (
-          <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
+          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
             <span>{title}</span>
             {required && (
               <span className="text-ds-text-neutral-default-default">*</span>
@@ -109,7 +111,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
         <div
           className={cn(
-            'rounded-xl shadow-sm relative flex items-center border border-solid transition-colors',
+            'relative flex items-center rounded-xl border border-solid shadow-sm transition-colors',
             stateCls.field,
             formFieldSizeClasses[size],
             // After field base so hover / focus background wins; subtle surface on interaction
@@ -123,7 +125,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           )}
         >
           {leadingIcon ? (
-            <span className="left-2 h-5 w-5 text-ds-icon-neutral-default-default pointer-events-none absolute inline-flex items-center justify-center">
+            <span className="pointer-events-none absolute left-2 inline-flex h-5 w-5 items-center justify-center text-ds-icon-neutral-default-default">
               {leadingIcon}
             </span>
           ) : null}
@@ -134,11 +136,12 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             disabled={disabled}
             placeholder={placeholder}
             className={cn(
-              'peer file:text-sm file:font-medium w-full bg-transparent outline-none file:border-0 file:bg-transparent placeholder:transition-colors',
+              'peer w-full bg-transparent outline-none file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:transition-colors',
               stateCls.input,
               stateCls.placeholder,
               hasLeft ? 'pl-9' : 'pl-3',
               hasRight ? 'pr-9' : 'pr-3',
+              isComposing && 'placeholder:opacity-0',
               className
             )}
             onKeyDown={(e) => {
@@ -146,6 +149,14 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
                 onEnter?.();
               }
               onKeyDown?.(e);
+            }}
+            onCompositionStart={(e) => {
+              setIsComposing(true);
+              onCompositionStart?.(e);
+            }}
+            onCompositionEnd={(e) => {
+              setIsComposing(false);
+              onCompositionEnd?.(e);
             }}
             {...inputProps}
           />
@@ -157,7 +168,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
               size="xs"
               buttonContent="icon-only"
               tabIndex={-1}
-              className="right-2 text-ds-icon-neutral-default-default absolute inline-flex items-center justify-center rounded-full focus:ring-0 disabled:opacity-50"
+              className="absolute right-2 inline-flex items-center justify-center rounded-full text-ds-icon-neutral-default-default focus:ring-0 disabled:opacity-50"
               disabled={disabled}
               onClick={onBackIconClick}
             >
@@ -166,7 +177,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
           ) : null}
 
           {trailingButton ? (
-            <div className={cn('right-2 absolute', backIcon ? '-mr-7' : '')}>
+            <div className={cn('absolute right-2', backIcon ? '-mr-7' : '')}>
               {trailingButton}
             </div>
           ) : null}
@@ -175,7 +186,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
         {note ? (
           <div
             className={cn(
-              'mt-1.5 !text-body-xs min-w-0 w-full overflow-hidden break-all',
+              'mt-1.5 w-full min-w-0 overflow-hidden break-all !text-body-xs',
               formFieldNoteTextClassName(
                 state === 'error'
                   ? 'error'

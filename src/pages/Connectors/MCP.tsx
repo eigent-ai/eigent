@@ -23,6 +23,7 @@ import {
 } from '@/api/http';
 import cursorIcon from '@/assets/icon/cursor.svg';
 import githubIcon from '@/assets/icon/github.svg';
+import googleIcon from '@/assets/icon/google.svg';
 import googleCalendarIcon from '@/assets/icon/google_calendar.svg';
 import googleGmailIcon from '@/assets/icon/google_gmail.svg';
 import larkIcon from '@/assets/icon/lark.png';
@@ -38,6 +39,12 @@ import xIcon from '@/assets/icon/x.svg';
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
 import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
@@ -47,10 +54,20 @@ import {
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { motion } from 'framer-motion';
-import { ChevronDown, ChevronUp, Plus, Settings2, Wrench } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Settings2,
+  Trash2,
+  Wrench,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import { GoogleSearchPanel } from './components/GoogleSearchPanel';
 import MCPAddDialog from './components/MCPAddDialog';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
@@ -61,8 +78,10 @@ import { arrayToArgsJson, parseArgsToArray } from './components/utils';
 import { ConfigFile } from 'electron/main/utils/mcpConfig';
 import { toast } from 'sonner';
 
-// Filter out Search from integrations (Search has a dedicated settings area elsewhere)
-const EXCLUDED_FROM_MCP = ['Search'];
+// Filter out Search from integrations (it's now a hardcoded connector item below)
+const EXCLUDED_FROM_MCP = ['Search', 'RAG'];
+
+const GOOGLE_SEARCH_ID = 'google-search' as const;
 
 const COMING_SOON_NAMES = [
   'X(Twitter)',
@@ -133,19 +152,30 @@ export default function SettingMCP() {
   const [searchQuery, setSearchQuery] = useState('');
   const [webCollapsed, setWebCollapsed] = useState(false);
   const [yourCollapsed, setYourCollapsed] = useState(false);
-  const [notConnectedCollapsed, setNotConnectedCollapsed] = useState(false);
   const [selected, setSelected] = useState<
-    { type: 'web'; key: string } | { type: 'your'; id: number } | null
+    | { type: 'web'; key: string }
+    | { type: 'your'; id: number }
+    | { type: typeof GOOGLE_SEARCH_ID }
+    | null
   >(null);
   const [showEnvConfig, setShowEnvConfig] = useState(false);
   const [activeMcp, setActiveMcp] = useState<any | null>(null);
   const [folderHint, setFolderHint] = useState<'web' | 'your' | null>(null);
 
-  // add: integrations list
   const [integrations, setIntegrations] = useState<any[]>([]);
   const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(true);
 
-  const integrationItems = integrations as IntegrationItem[];
+  const integrationItems = useMemo((): IntegrationItem[] => {
+    const searchItem: IntegrationItem = {
+      key: 'Search',
+      name: 'Search',
+      desc: '',
+      env_vars: [],
+      onInstall: async () => {},
+    };
+    return [searchItem, ...(integrations as IntegrationItem[])];
+  }, [integrations]);
+
   const {
     installed,
     fetchInstalled,
@@ -153,6 +183,12 @@ export default function SettingMCP() {
     handleUninstall,
     createMcpFromItem,
   } = useIntegrationManagement(integrationItems);
+
+  const searchConnected = !!installed.Search;
+
+  const refreshConnectorConfigs = useCallback(() => {
+    void fetchInstalled();
+  }, [fetchInstalled]);
 
   useEffect(() => {
     const action = searchParams.get('connectorAction');
@@ -168,7 +204,6 @@ export default function SettingMCP() {
     if (section === 'mcp-tools') {
       setFolderHint('web');
       setWebCollapsed(false);
-      setNotConnectedCollapsed(false);
       setYourCollapsed(true);
       next.delete('connectorSection');
     }
@@ -176,7 +211,6 @@ export default function SettingMCP() {
       setFolderHint('your');
       setYourCollapsed(false);
       setWebCollapsed(true);
-      setNotConnectedCollapsed(true);
       next.delete('connectorSection');
     }
     setSearchParams(next, { replace: true });
@@ -211,10 +245,40 @@ export default function SettingMCP() {
     [filteredIntegrations, installed]
   );
 
-  const webNotConnected = useMemo(
-    () => filteredIntegrations.filter((i) => !installed[i.key]),
-    [filteredIntegrations, installed]
-  );
+  type SortedWebItem =
+    | { kind: 'google-search'; connected: boolean }
+    | {
+        kind: 'integration';
+        item: IntegrationItem;
+        connected: boolean;
+        comingSoon: boolean;
+      };
+
+  const sortedWebItems = useMemo((): SortedWebItem[] => {
+    const all: SortedWebItem[] = [
+      { kind: 'google-search', connected: searchConnected },
+      ...filteredIntegrations.map((item) => ({
+        kind: 'integration' as const,
+        item,
+        connected: !!installed[item.key],
+        comingSoon: (COMING_SOON_NAMES as readonly string[]).includes(
+          item.name
+        ),
+      })),
+    ];
+
+    const priority = (w: SortedWebItem) => {
+      if (w.kind === 'integration' && w.comingSoon) return 2;
+      return w.connected ? 0 : 1;
+    };
+    const getName = (w: SortedWebItem) =>
+      w.kind === 'google-search' ? 'Google Search' : w.item.name;
+
+    return [...all].sort((a, b) => {
+      const diff = priority(a) - priority(b);
+      return diff !== 0 ? diff : getName(a).localeCompare(getName(b));
+    });
+  }, [filteredIntegrations, installed, searchConnected]);
 
   // get list
   const fetchList = useCallback(() => {
@@ -465,6 +529,7 @@ export default function SettingMCP() {
       })
       .finally(() => {
         setIsLoadingIntegrations(false);
+        void fetchInstalled();
       });
   }, [fetchList, t, fetchInstalled]);
 
@@ -635,21 +700,21 @@ export default function SettingMCP() {
     }
     if (folderHint === 'web') {
       if (isLoadingIntegrations) return;
-      const pick = webConnected[0] || webNotConnected[0];
+      const pick = filteredIntegrations[0];
       if (pick) setSelected({ type: 'web', key: pick.key });
       setFolderHint(null);
     }
   }, [
     folderHint,
     filteredItems,
-    webConnected,
-    webNotConnected,
+    filteredIntegrations,
     isLoading,
     isLoadingIntegrations,
   ]);
 
   useEffect(() => {
     if (!selected) return;
+    if (selected.type === GOOGLE_SEARCH_ID) return;
     if (selected.type === 'web') {
       if (!integrations.some((i) => i.key === selected.key)) {
         setSelected(null);
@@ -663,7 +728,7 @@ export default function SettingMCP() {
 
   useEffect(() => {
     if (selected || isLoadingIntegrations || isLoading || folderHint) return;
-    const pick = webConnected[0] || filteredItems[0] || webNotConnected[0];
+    const pick = webConnected[0] || filteredItems[0] || filteredIntegrations[0];
     if (!pick) return;
     if ('mcp_name' in pick) {
       setSelected({ type: 'your', id: pick.id });
@@ -673,7 +738,7 @@ export default function SettingMCP() {
   }, [
     selected,
     webConnected,
-    webNotConnected,
+    filteredIntegrations,
     filteredItems,
     isLoadingIntegrations,
     isLoading,
@@ -685,6 +750,33 @@ export default function SettingMCP() {
       return (
         <div className="py-16 text-center text-body-md text-ds-text-neutral-muted-default">
           {t('setting.mcp-select-connection')}
+        </div>
+      );
+    }
+
+    if (selected.type === GOOGLE_SEARCH_ID) {
+      return (
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
+                <img
+                  src={googleIcon}
+                  alt=""
+                  className="h-5 w-5 object-contain"
+                />
+              </div>
+              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
+                Google Search
+              </div>
+            </div>
+            {searchConnected && (
+              <span className="rounded-full bg-ds-bg-success-subtle-default px-2.5 py-0.5 text-label-xs font-medium text-ds-text-success-default-default">
+                {t('setting.configured', { defaultValue: 'Configured' })}
+              </span>
+            )}
+          </div>
+          <GoogleSearchPanel onConfigured={refreshConnectorConfigs} />
         </div>
       );
     }
@@ -766,38 +858,13 @@ export default function SettingMCP() {
               ) : null}
             </div>
           </div>
-          <div className="flex flex-col gap-3 px-6 py-4">
-            {typeof item.desc === 'string' ? (
+          {item.desc ? (
+            <div className="px-6 py-4">
               <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
-                {item.desc || '—'}
+                {item.desc}
               </span>
-            ) : (
-              <span className="text-body-sm text-ds-text-neutral-muted-default">
-                {item.desc ?? '—'}
-              </span>
-            )}
-            <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-              {t('setting.tools')}
             </div>
-            <div className="flex flex-col gap-2">
-              {item.env_vars && item.env_vars.length > 0 ? (
-                item.env_vars.map((ev) => (
-                  <div
-                    key={ev}
-                    className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-default-default"
-                  >
-                    {ev}
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
-                  {isConn
-                    ? t('setting.configured')
-                    : t('setting.not-configured')}
-                </div>
-              )}
-            </div>
-          </div>
+          ) : null}
         </div>
       );
     }
@@ -805,7 +872,6 @@ export default function SettingMCP() {
     const userItem = items.find((i) => i.id === selected.id);
     if (!userItem) return null;
     const enabled = userItem.status === 1;
-    const argRows = userItem.args ? parseArgsToArray(userItem.args) : [];
 
     return (
       <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
@@ -816,8 +882,9 @@ export default function SettingMCP() {
               {capitalizeFirstLetter(userItem.mcp_name || '')}
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Switch
+              variant="outline"
               size="default"
               checked={enabled}
               disabled={!!switchLoading[userItem.id]}
@@ -826,59 +893,37 @@ export default function SettingMCP() {
               }
               aria-label={enabled ? t('setting.disable') : t('setting.enable')}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteTarget(userItem)}
-            >
-              {t('setting.disconnect')}
-            </Button>
-            <TooltipSimple content={t('setting.setting')}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                aria-label={t('setting.setting')}
-                onClick={() => setShowConfig(userItem)}
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
-            {userItem.mcp_desc || '—'}
-          </span>
-          <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-            {t('setting.tools')}
-          </div>
-          <div className="flex flex-col gap-2">
-            {userItem.command ? (
-              <div className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 font-mono text-body-sm text-ds-text-neutral-default-default">
-                {userItem.command}
-              </div>
-            ) : null}
-            {argRows.map((arg, idx) => (
-              <div
-                key={`${idx}-${arg}`}
-                className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 font-mono text-body-sm text-ds-text-neutral-default-default"
-              >
-                {arg}
-              </div>
-            ))}
-            {!userItem.command && argRows.length === 0 && userItem.mcp_key ? (
-              <div className="break-all rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-default-default">
-                {userItem.mcp_key}
-              </div>
-            ) : null}
-            {!userItem.command && argRows.length === 0 && !userItem.mcp_key ? (
-              <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
-                —
-              </div>
-            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  aria-label={t('setting.more-options', {
+                    defaultValue: 'More options',
+                  })}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => setShowConfig(userItem)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  {t('setting.edit', { defaultValue: 'Edit' })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer text-ds-text-status-error-strong-default focus:text-ds-text-status-error-strong-default"
+                  onClick={() => setDeleteTarget(userItem)}
+                >
+                  <Trash2 className="h-4 w-4 text-ds-text-status-error-strong-default" />
+                  {t('setting.delete', { defaultValue: 'Delete' })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -1067,7 +1112,7 @@ export default function SettingMCP() {
           </div>
 
           <div className="flex w-full flex-row items-start justify-between gap-4 px-3">
-            <div className="-ml-2 mr-4 h-full w-[240px] shrink-0 rounded-2xl bg-ds-bg-neutral-default-default">
+            <div className="sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 -ml-2 mr-4 h-fit max-h-[calc(100vh-var(--home-hub-history-tabs-offset,49px)-2rem)] w-[240px] shrink-0 self-start overflow-y-auto rounded-2xl bg-ds-bg-neutral-default-default">
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                   <button
@@ -1076,7 +1121,7 @@ export default function SettingMCP() {
                     className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.mcp-sidebar-web')}
+                      {t('setting.mcp-sidebar-built-in')}
                     </div>
                     {webCollapsed ? (
                       <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
@@ -1100,27 +1145,108 @@ export default function SettingMCP() {
                           />
                         ))}
                       </div>
-                    ) : webConnected.length === 0 ? (
-                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
-                        {searchQuery.trim()
-                          ? t('dashboard.no-results')
-                          : integrations.length === 0
-                            ? t('setting.no-mcp-servers')
-                            : t('setting.not-configured')}
-                      </div>
                     ) : (
-                      webConnected.map((item) =>
-                        renderSidebarRow(
-                          `web-${item.key}`,
-                          item.name,
-                          'web',
-                          selected?.type === 'web' && selected.key === item.key,
-                          () => setSelected({ type: 'web', key: item.key }),
-                          !!installed[item.key],
-                          undefined,
-                          item.key
-                        )
-                      )
+                      <>
+                        {sortedWebItems.map((wi) => {
+                          if (wi.kind === 'google-search') {
+                            const isActive =
+                              selected?.type === GOOGLE_SEARCH_ID;
+                            return (
+                              <button
+                                key="google-search"
+                                type="button"
+                                onClick={() =>
+                                  setSelected({ type: GOOGLE_SEARCH_ID })
+                                }
+                                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+                                  isActive
+                                    ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                                    : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+                                }`}
+                              >
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <img
+                                    src={googleIcon}
+                                    alt=""
+                                    className="h-5 w-5 shrink-0 object-contain"
+                                  />
+                                  <span
+                                    className={`truncate text-left text-body-sm font-medium ${
+                                      isActive
+                                        ? 'text-ds-text-neutral-default-default'
+                                        : 'text-ds-text-neutral-muted-default'
+                                    }`}
+                                  >
+                                    Google Search
+                                  </span>
+                                </div>
+                                {wi.connected && (
+                                  <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+                                )}
+                              </button>
+                            );
+                          }
+
+                          const {
+                            item,
+                            connected: isConn,
+                            comingSoon: isComingSoon,
+                          } = wi;
+                          const assetUrl = integrationLeadingIconUrl(item.key);
+                          const isActive =
+                            selected?.type === 'web' &&
+                            selected.key === item.key;
+                          return (
+                            <button
+                              key={`web-${item.key}`}
+                              type="button"
+                              disabled={isComingSoon}
+                              onClick={() =>
+                                !isComingSoon &&
+                                setSelected({ type: 'web', key: item.key })
+                              }
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+                                isActive
+                                  ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                                  : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+                              } ${isComingSoon ? 'cursor-not-allowed opacity-40' : ''}`}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                {assetUrl ? (
+                                  <img
+                                    src={assetUrl}
+                                    alt=""
+                                    className="h-5 w-5 shrink-0 object-contain"
+                                  />
+                                ) : (
+                                  <img
+                                    src={ellipseIcon}
+                                    alt=""
+                                    className="h-3 w-3 shrink-0"
+                                    style={{
+                                      filter: isConn
+                                        ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
+                                        : 'none',
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  className={`truncate text-left text-body-sm font-medium ${
+                                    isActive
+                                      ? 'text-ds-text-neutral-default-default'
+                                      : 'text-ds-text-neutral-muted-default'
+                                  }`}
+                                >
+                                  {item.name}
+                                </span>
+                              </div>
+                              {isConn && (
+                                <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1156,22 +1282,14 @@ export default function SettingMCP() {
                         {error}
                       </div>
                     ) : filteredItems.length === 0 ? (
-                      <div className="flex flex-col items-start gap-2 px-3 py-2">
+                      <div className="px-3 py-2">
                         <p className="text-body-xs text-ds-text-neutral-muted-default">
                           {items.length === 0
-                            ? t('setting.no-mcp-servers')
+                            ? t('setting.no-mcp-servers', {
+                                defaultValue: 'No MCPs',
+                              })
                             : t('dashboard.no-results')}
                         </p>
-                        {items.length === 0 ? (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => setShowAdd(true)}
-                          >
-                            <Plus className="h-4 w-4" />
-                            {t('setting.mcp-add')}
-                          </Button>
-                        ) : null}
                       </div>
                     ) : (
                       filteredItems.map((item) =>
@@ -1183,62 +1301,6 @@ export default function SettingMCP() {
                           () => setSelected({ type: 'your', id: item.id }),
                           undefined,
                           item.status === 1
-                        )
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNotConnectedCollapsed(!notConnectedCollapsed)
-                    }
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.mcp-sidebar-not-connected')}
-                    </div>
-                    {notConnectedCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    )}
-                  </button>
-                  <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      notConnectedCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {isLoadingIntegrations ? (
-                      <div className="flex flex-col gap-2 px-1">
-                        {[1, 2, 3].map((i) => (
-                          <div
-                            key={i}
-                            className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
-                          />
-                        ))}
-                      </div>
-                    ) : webNotConnected.length === 0 ? (
-                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
-                        {searchQuery.trim()
-                          ? t('dashboard.no-results')
-                          : t('setting.configured')}
-                      </div>
-                    ) : (
-                      webNotConnected.map((item) =>
-                        renderSidebarRow(
-                          `nc-${item.key}`,
-                          item.name,
-                          'web',
-                          selected?.type === 'web' && selected.key === item.key,
-                          () => setSelected({ type: 'web', key: item.key }),
-                          !!installed[item.key],
-                          undefined,
-                          item.key
                         )
                       )
                     )}

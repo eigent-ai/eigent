@@ -22,9 +22,30 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { ArrowUpDown, Columns2, Filter, LayoutGrid, List } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useHost } from '@/host';
+import {
+  createSpaceFromFolderPicker,
+  getFolderSpaceErrorMessage,
+} from '@/lib/createSpaceFromFolder';
+import { getDefaultNewSpaceName } from '@/lib/spaceLabel';
+import { useAuthStore } from '@/store/authStore';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import {
+  ArrowUpDown,
+  ChevronDown,
+  Columns2,
+  Filter,
+  FolderOpen,
+  LayoutGrid,
+  List,
+  PlusCircle,
+} from 'lucide-react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useHomeHub } from '../context';
 import { defaultSortDirectionForField, type HomeSortBy } from '../utils';
 
@@ -53,6 +74,18 @@ export default function HomeHubToolbar({
   menuItems,
 }: HomeHubToolbarProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const host = useHost();
+  const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
+  const projectStore = useProjectRuntimeStore();
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
+  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
   const {
     viewMode,
     setViewMode,
@@ -85,6 +118,54 @@ export default function HomeHubToolbar({
     setSortDirection(defaultSortDirectionForField(nextSortBy));
   };
 
+  const goToWorkspace = useCallback(() => {
+    setActiveWorkspaceTab('workforce');
+    requestWorkspaceChatFocus();
+    navigate('/');
+  }, [navigate, requestWorkspaceChatFocus, setActiveWorkspaceTab]);
+
+  const handleCreateBlankSpace = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceOnServer({
+        name: getDefaultNewSpaceName(t),
+        sourceType: 'blank',
+        setActive: false,
+        metadata: {
+          createdFrom: 'home_hub_toolbar',
+          autoCreatedPlaceholder: true,
+        },
+      });
+      setActiveSpace(spaceId);
+      projectStore.setActiveProject(null);
+      goToWorkspace();
+    } catch (error) {
+      console.error('Failed to create Space:', error);
+      toast.error(t('layout.spaces-create-failed'), {
+        closeButton: true,
+      });
+    }
+  }, [createSpaceOnServer, goToWorkspace, projectStore, setActiveSpace, t]);
+
+  const handleCreateSpaceFromFolder = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceFromFolderPicker({
+        host,
+        email,
+        userId,
+        activeSpaceId,
+        projectStore,
+        createdFrom: 'home_hub_toolbar',
+      });
+      if (!spaceId) return;
+      goToWorkspace();
+    } catch (error) {
+      console.warn('[HomeHubToolbar] Failed to create folder Space:', error);
+      toast.error(getFolderSpaceErrorMessage(error, t), {
+        closeButton: true,
+      });
+    }
+  }, [activeSpaceId, email, goToWorkspace, host, projectStore, t, userId]);
+
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -109,14 +190,14 @@ export default function HomeHubToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="gap-3 pb-3 mb-3 pt-8 bg-ds-bg-neutral-subtle-default sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 flex w-full flex-wrap items-center justify-between"
+      className="sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 mb-3 flex w-full flex-wrap items-center justify-between gap-3 bg-ds-bg-neutral-subtle-default pb-3 pt-8"
     >
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList appearance="default" className="gap-1">
           {menuItems.map((menu) => (
             <TabsTrigger key={menu.id} value={menu.id}>
               <span className="text-label-sm font-semibold">{menu.name}</span>
-              <span className="bg-ds-bg-brand-subtle-disabled px-1.5 text-label-xs font-normal text-ds-text-brand-strong-default rounded-full tabular-nums">
+              <span className="rounded-full bg-ds-bg-brand-subtle-disabled px-1.5 text-label-xs font-normal tabular-nums text-ds-text-brand-strong-default">
                 {menu.count}
               </span>
             </TabsTrigger>
@@ -124,7 +205,7 @@ export default function HomeHubToolbar({
         </TabsList>
       </Tabs>
 
-      <div className="gap-1 flex flex-wrap items-center justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <SearchInput
           variant="icon"
           value={searchQuery}
@@ -139,7 +220,7 @@ export default function HomeHubToolbar({
               variant="ghost"
               buttonContent="icon-only"
               size="sm"
-              className="rounded-lg"
+              buttonRadius="full"
               disabled
               aria-label={t('layout.home-filter-disabled-tooltip')}
             >
@@ -187,27 +268,64 @@ export default function HomeHubToolbar({
           <TabsList appearance="default">
             <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
               <TooltipSimple content={t('dashboard.grid')}>
-                <div className="w-5 h-5 inline-flex items-center justify-center">
+                <div className="inline-flex h-5 w-5 items-center justify-center">
                   <LayoutGrid size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
             <TabsTrigger value="list" aria-label={t('dashboard.list')}>
               <TooltipSimple content={t('dashboard.list')}>
-                <div className="w-5 h-5 inline-flex items-center justify-center">
+                <div className="inline-flex h-5 w-5 items-center justify-center">
                   <List size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
             <TabsTrigger value="board" aria-label={t('dashboard.board')}>
               <TooltipSimple content={t('dashboard.board')}>
-                <div className="w-5 h-5 inline-flex items-center justify-center">
+                <div className="inline-flex h-5 w-5 items-center justify-center">
                   <Columns2 size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              buttonContent="text"
+              buttonRadius="full"
+            >
+              {t('layout.spaces-new-space')}
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44 p-1">
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onSelect={(event) => {
+                event.preventDefault();
+                void handleCreateBlankSpace();
+              }}
+            >
+              <PlusCircle className="h-4 w-4 shrink-0" aria-hidden />
+              {t('layout.workspace-start-from-scratch')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer gap-2"
+              onSelect={(event) => {
+                event.preventDefault();
+                void handleCreateSpaceFromFolder();
+              }}
+            >
+              <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
+              {t('layout.workspace-use-local-folder')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

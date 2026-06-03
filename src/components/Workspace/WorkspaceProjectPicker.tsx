@@ -579,7 +579,6 @@ export function WorkspaceProjectPicker({
       <SpaceSwitchDropdown
         open={menuOpen}
         onOpenChange={setMenuOpen}
-        openOnHover
         contentAlign="center"
         contentSideOffset={6}
         triggerWrapperClassName="w-fit"

@@ -20,7 +20,6 @@ import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
-import NotificationPanel from '@/components/Notification';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
@@ -54,7 +53,7 @@ import {
 } from '@/store/spaceStore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Bell,
+  ArrowLeft,
   ChevronsUpDown,
   CircleHelp,
   Minus,
@@ -136,14 +135,13 @@ const topBarCrossfade = {
 };
 
 const HOME_NAV_HISTORY_MENU: { id: HistoryTabId; labelKey: string }[] = [
+  { id: 'home', labelKey: 'layout.spaces' },
   { id: 'agents', labelKey: 'layout.agents' },
   { id: 'channels', labelKey: 'layout.channels' },
   { id: 'connectors', labelKey: 'layout.connectors' },
   { id: 'browser', labelKey: 'layout.browser' },
   { id: 'settings', labelKey: 'layout.settings' },
 ];
-
-const HOME_NAV_HOVER_CLOSE_MS = 120;
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -179,10 +177,6 @@ function HeaderWin() {
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const [homeNavMenuOpen, setHomeNavMenuOpen] = useState(false);
-  const homeNavHoverCloseTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
   const ipcRenderer = host?.ipcRenderer;
   const { isInstalling, installationState } = useInstallationUI();
@@ -285,35 +279,8 @@ function HeaderWin() {
     setInviteCodeDialogOpen(true);
   };
 
-  const clearHomeNavHoverCloseTimer = useCallback(() => {
-    if (homeNavHoverCloseTimerRef.current) {
-      clearTimeout(homeNavHoverCloseTimerRef.current);
-      homeNavHoverCloseTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleHomeNavClose = useCallback(() => {
-    clearHomeNavHoverCloseTimer();
-    homeNavHoverCloseTimerRef.current = setTimeout(() => {
-      homeNavHoverCloseTimerRef.current = null;
-      setHomeNavMenuOpen(false);
-    }, HOME_NAV_HOVER_CLOSE_MS);
-  }, [clearHomeNavHoverCloseTimer]);
-
-  const openHomeNavMenu = useCallback(() => {
-    clearHomeNavHoverCloseTimer();
-    setHomeNavMenuOpen(true);
-  }, [clearHomeNavHoverCloseTimer]);
-
-  const navigateToHistoryDefault = useCallback(() => {
-    clearHomeNavHoverCloseTimer();
-    setHomeNavMenuOpen(false);
-    navigate('/history?tab=home&section=spaces');
-  }, [clearHomeNavHoverCloseTimer, navigate]);
-
   const navigateToHistoryTab = useCallback(
     (tab: HistoryTabId) => {
-      clearHomeNavHoverCloseTimer();
       setHomeNavMenuOpen(false);
       if (tab === 'home') {
         navigate('/history?tab=home&section=spaces');
@@ -321,20 +288,7 @@ function HeaderWin() {
       }
       navigate(`/history?tab=${tab}`);
     },
-    [clearHomeNavHoverCloseTimer, navigate]
-  );
-
-  const handleHomeNavTriggerClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      navigateToHistoryDefault();
-    },
-    [navigateToHistoryDefault]
-  );
-
-  useEffect(
-    () => () => clearHomeNavHoverCloseTimer(),
-    [clearHomeNavHoverCloseTimer]
+    [navigate]
   );
 
   const ensureProjectLoaded = useCallback(
@@ -552,7 +506,22 @@ function HeaderWin() {
       {/* Leading: home ↔ dashboard / new Space */}
       <div className="no-drag flex shrink-0 items-center justify-center">
         {isHistoryRoute ? (
-          <div className="no-drag h-[28px] w-[28px] shrink-0" aria-hidden />
+          <TooltipSimple
+            content={t('layout.back', { defaultValue: 'Back' })}
+            side="bottom"
+            align="center"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              className="no-drag shrink-0 rounded-full"
+              onClick={handleExitHistoryOrSettings}
+              aria-label={t('layout.back', { defaultValue: 'Back' })}
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipSimple>
         ) : (
           <TooltipSimple
             content={
@@ -593,52 +562,26 @@ function HeaderWin() {
           </TooltipSimple>
         )}
         {isHistoryRoute ? (
-          <TooltipSimple
-            content={t('layout.back', { defaultValue: 'Back' })}
-            side="bottom"
-            align="center"
+          <div
+            className="no-drag flex min-h-[28px] items-center px-2"
+            aria-hidden
           >
-            <Button
-              variant="ghost"
-              size="sm"
-              buttonContent="text"
-              textWeight="bold"
-              className="no-drag w-22 gap-1.5 rounded-full"
-              onClick={handleExitHistoryOrSettings}
-              aria-label={t('layout.back', { defaultValue: 'Back' })}
-            >
-              <motion.span
-                key="leading-history"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={topBarCrossfade}
-                className="flex min-w-0 items-center gap-1.5"
-              >
-                <img
-                  src={
-                    appearance === 'dark'
-                      ? eigentAppIconWhite
-                      : eigentAppIconBlack
-                  }
-                  alt=""
-                  className="mt-[2px] h-6 w-6 select-none"
-                  width={16}
-                  height={16}
-                  draggable={false}
-                />
-                {t('layout.back', { defaultValue: 'Back' })}
-              </motion.span>
-            </Button>
-          </TooltipSimple>
+            <img
+              src={
+                appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
+              }
+              alt=""
+              className="mt-[2px] h-6 w-6 select-none"
+              width={16}
+              height={16}
+              draggable={false}
+            />
+          </div>
         ) : (
           <DropdownMenu
             modal={false}
             open={homeNavMenuOpen}
-            onOpenChange={(open) => {
-              if (!open) clearHomeNavHoverCloseTimer();
-              setHomeNavMenuOpen(open);
-            }}
+            onOpenChange={setHomeNavMenuOpen}
           >
             <DropdownMenuTrigger asChild>
               <button
@@ -646,10 +589,6 @@ function HeaderWin() {
                 className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 w-22 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
                 aria-label={t('layout.home')}
                 aria-haspopup="menu"
-                onPointerDown={(event) => event.preventDefault()}
-                onMouseEnter={openHomeNavMenu}
-                onMouseLeave={scheduleHomeNavClose}
-                onClick={handleHomeNavTriggerClick}
               >
                 <img
                   src={
@@ -670,8 +609,6 @@ function HeaderWin() {
               align="start"
               sideOffset={6}
               className="min-w-32 duration-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-              onMouseEnter={openHomeNavMenu}
-              onMouseLeave={scheduleHomeNavClose}
             >
               {HOME_NAV_HISTORY_MENU.map(({ id, labelKey }) => (
                 <DropdownMenuItem
@@ -701,13 +638,12 @@ function HeaderWin() {
             >
               <div className="relative z-50 ml-1 flex h-full min-h-0 min-w-0 items-center border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1">
                 <SpaceSwitchDropdown
-                  openOnHover
                   contentSideOffset={6}
                   trigger={
                     <button
                       id="active-space-title-btn"
                       type="button"
-                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] w-full min-w-0 max-w-[300px] flex-1 items-center gap-1.5 px-2 text-left text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
+                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] w-full min-w-0 max-w-[300px] flex-1 items-center gap-1.5 rounded-full px-2 text-left text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
                       aria-haspopup="menu"
                       aria-label={activeSpaceTitle}
                     >
@@ -748,25 +684,6 @@ function HeaderWin() {
         } no-drag relative z-50 flex h-7 shrink-0 items-center`}
       >
         <div className="flex h-full shrink-0 items-center">
-          <TooltipSimple
-            content={t('layout.notifications')}
-            side="bottom"
-            align="end"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="no-drag rounded-full"
-              aria-label={t('layout.notifications')}
-              aria-expanded={notificationPanelOpen}
-              aria-controls="notification-panel"
-              onClick={() => setNotificationPanelOpen((open) => !open)}
-              buttonContent="icon-only"
-            >
-              <Bell aria-hidden />
-            </Button>
-          </TooltipSimple>
           <TooltipSimple
             content={t('layout.support')}
             side="bottom"
@@ -913,10 +830,6 @@ function HeaderWin() {
           </div>
         </div>
       )}
-      <NotificationPanel
-        open={notificationPanelOpen}
-        onOpenChange={setNotificationPanelOpen}
-      />
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
       <InviteCodeDialog
         open={inviteCodeDialogOpen}

@@ -57,6 +57,35 @@ const API_CODE_TRIAL_LIMIT = '22';
 const PROJECT_CONTEXT_MAX_CHARS = 24_000;
 const PROJECT_CONTEXT_MAX_RUNS = 8;
 
+type ConfirmedUserPromptSources = {
+  lastMessageContent?: unknown;
+  messageContent?: unknown;
+  question?: unknown;
+  isFollowUpConfirm: boolean;
+};
+
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+export function resolveConfirmedUserMessageContent({
+  lastMessageContent,
+  messageContent,
+  question,
+  isFollowUpConfirm,
+}: ConfirmedUserPromptSources): string {
+  const optimisticMessage = nonEmptyString(lastMessageContent);
+  if (optimisticMessage) return optimisticMessage;
+
+  const capturedStartMessage = nonEmptyString(messageContent);
+  const eventQuestion = nonEmptyString(question);
+
+  if (isFollowUpConfirm) {
+    return eventQuestion || capturedStartMessage || '';
+  }
+
+  return capturedStartMessage || eventQuestion || '';
+}
+
 const hasApiCode = (value: unknown, code: string) =>
   typeof value === 'object' &&
   value !== null &&
@@ -1788,6 +1817,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   newChatStore.getState().setType(newTaskId, 'replay');
                 }
 
+                const isFollowUpConfirm = Boolean(previousChatStore.nextTaskId);
                 const lastMessage =
                   previousChatStore.tasks[currentTaskId]?.messages.at(-1);
                 if (lastMessage?.role === 'user' && lastMessage?.id) {
@@ -1806,29 +1836,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         ...(messageAttaches || []),
                       ];
 
-                // Three candidate sources for the user prompt body, in
-                // descending order of trustworthiness:
+                // Three candidate sources for the user prompt body.
                 //   1. lastMessage.content -- the prompt ChatBox.handleSend
                 //      just added to the previous chatStore. This is what
                 //      the user actually typed *this turn* and is therefore
                 //      authoritative for both startTask and improve flows.
-                //   2. messageContent -- the closure-captured arg passed to
-                //      startTask. Stale for improve turns (the SSE consumer
-                //      keeps the first prompt forever) but accurate for the
-                //      startTask path that drove this handler.
-                //   3. question -- the SSE CONFIRMED event's question field.
-                //      Drifts in Workforce when backend reuses task_lock
-                //      across turns; correct in Single Agent improve.
-                // Falling back from (1) → (2) → (3) covers replay (no
-                // optimistic message exists) and any unexpected paths
-                // without ever silently injecting the first-turn prompt.
-                const userMessageContent =
-                  (lastMessage?.role === 'user' &&
-                    typeof lastMessage.content === 'string' &&
-                    lastMessage.content) ||
-                  (messageContent as string) ||
-                  question ||
-                  '';
+                //   2. question -- the SSE CONFIRMED event's question field.
+                //      This is the current improve/follow-up prompt.
+                //   3. messageContent -- the closure-captured arg passed to
+                //      the original startTask call. It is accurate for the
+                //      first run but stale for improve turns because the SSE
+                //      consumer remains alive across the whole Project.
+                //
+                // So the fallback order depends on the lifecycle:
+                // - first startTask confirmed: messageContent before question
+                // - follow-up confirmed: question before stale messageContent
+                const userMessageContent = resolveConfirmedUserMessageContent({
+                  lastMessageContent:
+                    lastMessage?.role === 'user'
+                      ? lastMessage.content
+                      : undefined,
+                  messageContent,
+                  question,
+                  isFollowUpConfirm,
+                });
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',

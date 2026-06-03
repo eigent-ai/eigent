@@ -550,7 +550,7 @@ export const Inputbox = ({
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent
                   sideOffset={6}
-                  alignOffset={-40}
+                  alignOffset={-36}
                   className="min-w-[13.5rem]"
                 >
                   <DropdownMenuItem
@@ -581,7 +581,7 @@ export const Inputbox = ({
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent
                   sideOffset={6}
-                  alignOffset={-40}
+                  alignOffset={-36}
                   className="min-w-[13.5rem]"
                 >
                   <DropdownMenuItem
@@ -608,7 +608,7 @@ export const Inputbox = ({
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent
                   sideOffset={6}
-                  alignOffset={-40}
+                  alignOffset={-36}
                   className="min-w-[13.5rem]"
                 >
                   <DropdownMenuItem

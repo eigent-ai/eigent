@@ -15,6 +15,7 @@
 import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
 import VerticalNavigation, {
+  HISTORY_VERTICAL_SIDEBAR_CLASSNAME,
   type VerticalNavItem,
 } from '@/components/Dashboard/VerticalNav';
 import useAppVersion from '@/hooks/use-app-version';
@@ -121,7 +122,7 @@ export default function Setting() {
 
   return (
     <div className="flex h-auto w-full">
-      <div className="flex h-auto w-40 flex-shrink-0 flex-grow-0 flex-col self-start pr-6 pt-8">
+      <div className={HISTORY_VERTICAL_SIDEBAR_CLASSNAME}>
         <VerticalNavigation
           items={
             settingMenus.map((menu) => {

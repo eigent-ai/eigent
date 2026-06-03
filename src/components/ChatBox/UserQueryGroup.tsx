@@ -29,7 +29,6 @@ import React, {
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
-import { TaskCompletionCard } from './MessageItem/TaskCompletionCard';
 import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
@@ -135,25 +134,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   taskId: scopedTaskId,
 }) => {
   const groupRef = useRef<HTMLDivElement>(null);
-  const taskBoxRef = useRef<HTMLDivElement>(null);
-  const [_isTaskBoxSticky, setIsTaskBoxSticky] = useState(false);
-  const [taskCompletionMarkdownReady, setTaskCompletionMarkdownReady] =
-    useState(false);
-  const [taskCompletionDismissed, setTaskCompletionDismissed] = useState(false);
   const chatState = chatStore.getState();
 
-  const completionEndMessage = queryGroup.otherMessages.find(
-    (m: any) => m.step === AgentStep.END && m.content.length > 0
-  );
-
-  useEffect(() => {
-    setTaskCompletionMarkdownReady(false);
-    setTaskCompletionDismissed(false);
-  }, [queryGroup.queryId, completionEndMessage?.id]);
-
-  const onTaskCompletionMarkdownReady = useCallback(() => {
-    setTaskCompletionMarkdownReady(true);
-  }, []);
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
   const activeProjectId = useProjectRuntimeStore(
     (state) => state.activeProjectId
@@ -298,45 +280,6 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     };
   }, [queryGroup.queryId, onQueryActive]);
 
-  // Set up intersection observer for sticky detection
-  useEffect(() => {
-    if (!taskBoxRef.current || !task) return;
-
-    // Create a sentinel element to detect when the sticky element becomes stuck
-    const sentinel = document.createElement('div');
-    sentinel.style.position = 'absolute';
-    sentinel.style.top = '0px';
-    sentinel.style.left = '0px';
-    sentinel.style.width = '1px';
-    sentinel.style.height = '1px';
-    sentinel.style.pointerEvents = 'none';
-    sentinel.style.zIndex = '-1';
-
-    // Insert sentinel before the sticky element
-    taskBoxRef.current.parentNode?.insertBefore(sentinel, taskBoxRef.current);
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          // When sentinel is not visible, the sticky element is stuck
-          const isSticky = !entry.isIntersecting;
-          setIsTaskBoxSticky(isSticky);
-        });
-      },
-      {
-        rootMargin: '0px 0px 0px 0px',
-        threshold: 0,
-      }
-    );
-
-    observer.observe(sentinel);
-
-    return () => {
-      observer.disconnect();
-      sentinel.remove();
-    };
-  }, [task]);
-
   // Check if we're in skeleton phase — never for single agent (no splitting).
   // Gate on `isLastUserQuery`: historic turns that quit before emitting
   // `to_sub_tasks` (e.g. context_too_long, browser-aborted, parent killed)
@@ -377,8 +320,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       }}
       className="relative"
     >
-      {/* User query: scrolls with content unless workforce task is shown (then sticky user row only). */}
-      {queryGroup.userMessage && !taskCardVisible && (
+      {/* User query: always rendered as a regular component in the chat flow. */}
+      {queryGroup.userMessage && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -390,32 +333,6 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             content={queryGroup.userMessage.content}
             attaches={queryGroup.userMessage.attaches}
           />
-        </motion.div>
-      )}
-
-      {/* Sticky user message only — task box scrolls away. */}
-      {taskCardVisible && queryGroup.userMessage && (
-        <motion.div
-          ref={taskBoxRef}
-          className="sticky top-0 z-20"
-          style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 20,
-          }}
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mb-sm"
-          >
-            <UserMessageCard
-              id={queryGroup.userMessage.id}
-              content={queryGroup.userMessage.content}
-              attaches={queryGroup.userMessage.attaches}
-            />
-          </motion.div>
         </motion.div>
       )}
 
@@ -480,7 +397,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, delay: 0.05 }}
-          className="px-sm"
+          className="px-6"
         >
           {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
@@ -504,7 +421,6 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   id={message.id}
                   content={message.content}
                   onTyping={() => {}}
-                  onMarkdownRenderComplete={onTaskCompletionMarkdownReady}
                   deferredFooter={
                     message.fileList?.length ? (
                       <div className="my-2 flex flex-wrap gap-2">
@@ -565,7 +481,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="px-sm"
+                className="px-6"
               >
                 <AgentResultCard
                   id={message.id}
@@ -651,38 +567,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         return null;
       })}
 
-      {task?.status === ChatTaskStatus.FINISHED &&
-        completionEndMessage &&
-        taskCompletionMarkdownReady &&
-        !taskCompletionDismissed && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="mb-md flex flex-col gap-4 px-sm"
-          >
-            <TaskCompletionCard
-              taskPrompt={queryGroup.userMessage?.content}
-              onRerun={() => {
-                const inputElement = document.querySelector(
-                  '[data-chat-input]'
-                ) as HTMLInputElement;
-                if (inputElement) {
-                  inputElement.focus();
-                }
-              }}
-              onDismiss={() => setTaskCompletionDismissed(true)}
-            />
-          </motion.div>
-        )}
-
       {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="px-sm"
+          className="px-6"
         >
           <PlanTaskBox
             chatStore={chatStore}

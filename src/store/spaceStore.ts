@@ -232,6 +232,7 @@ const hasVisibleProjectsForSpace = (
 ) => getVisibleProjectMetasForSpace(projectsBySpaceId, spaceId).length > 0;
 
 const DISPOSABLE_BLANK_SPACE_CREATED_FROM = new Set([
+  'home_hub_toolbar',
   'top_bar',
   'project_sidebar_space_selector',
   'workspace_space_picker',

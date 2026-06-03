@@ -46,7 +46,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   const host = useHost();
   const electronAPI = host?.electronAPI;
   const ipcRenderer = host?.ipcRenderer;
-  const { email, checkAgentTool } = useAuthStore();
+  const { email, checkAgentTool, modelType } = useAuthStore();
 
   // Local installed status
   const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
@@ -140,6 +140,22 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
             String(c.config_value).length > 0
         );
         map[item.key] = hasAccessToken;
+      } else if (item.key === 'Search') {
+        if (modelType !== 'custom') {
+          map[item.key] = true;
+        } else {
+          const hasApiKey = configs.some(
+            (c: any) =>
+              c.config_name === 'GOOGLE_API_KEY' &&
+              String(c.config_value ?? '').trim().length > 0
+          );
+          const hasEngineId = configs.some(
+            (c: any) =>
+              c.config_name === 'SEARCH_ENGINE_ID' &&
+              String(c.config_value ?? '').trim().length > 0
+          );
+          map[item.key] = hasApiKey && hasEngineId;
+        }
       } else {
         // For other integrations, use config_group presence
         const hasConfig = configs.some(
@@ -150,7 +166,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     });
 
     setInstalled(map);
-  }, [items, configs]);
+  }, [items, configs, modelType]);
 
   // Save environment variable and config
   const saveEnvAndConfig = useCallback(
