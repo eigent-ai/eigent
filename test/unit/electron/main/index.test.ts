@@ -1370,6 +1370,15 @@ describe('Electron Main Index Functions', () => {
         false
       );
     });
+
+    it('should preserve Windows drive letters from standard localfile URLs', () => {
+      const decodedUrl = '/C:/Users/test/canvas_map/image.png';
+      const normalizedUrl = decodedUrl.replace(/^\/([A-Za-z]:[\\/])/, '$1');
+
+      expect(path.win32.resolve(path.win32.normalize(normalizedUrl))).toBe(
+        'C:\\Users\\test\\canvas_map\\image.png'
+      );
+    });
   });
 
   describe('Application Lifecycle', () => {

@@ -62,6 +62,11 @@ import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
 } from '@/lib/htmlFontStyles';
+import {
+  inlineLocalHtmlImgElements,
+  inlineLocalProjectImagePaths,
+  toLocalFileUrl,
+} from '@/lib/htmlLocalAssets';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -367,8 +372,12 @@ interface FileInfo {
 
 function getNormalizedTreeRelativePath(file: FileInfo): string {
   const rel = (file.relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  if (rel) return rel;
-  return (file.path || file.name || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const name = (file.name || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (rel) {
+    const relBasename = rel.split('/').filter(Boolean).at(-1);
+    return relBasename === name || !name ? rel : `${rel}/${name}`;
+  }
+  return name || (file.path || '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 function getComparableRelativePath(file?: FileInfo | null): string {
@@ -436,9 +445,10 @@ function getFileBreadcrumbSegments(
   if (file.isRemote) {
     return [options.remoteRootLabel, file.name];
   }
-  const rel = (file.relativePath || '').replace(/\\/g, '/').trim();
-  const folders = rel ? rel.split('/').filter(Boolean) : [];
-  return [options.projectRootLabel, ...folders, file.name];
+  const segments = getNormalizedTreeRelativePath(file)
+    .split('/')
+    .filter(Boolean);
+  return [options.projectRootLabel, ...segments];
 }
 
 // FileTree component to render nested file structure
@@ -970,29 +980,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     const folderMap = new Map<string, FileTreeNode>();
     folderMap.set('', root);
 
-    const sortedFiles = [...files].sort((left, right) => {
-      const leftRelativePath = getNormalizedTreeRelativePath(left);
-      const rightRelativePath = getNormalizedTreeRelativePath(right);
-      const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
-      const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
-
-      if (leftDepth !== rightDepth) {
-        return leftDepth - rightDepth;
-      }
-
-      return leftRelativePath.localeCompare(rightRelativePath);
-    });
-
-    for (const file of sortedFiles) {
-      const normalizedRelativePath = getNormalizedTreeRelativePath(file);
-      const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
-      const folderSegments = pathSegments.slice(0, -1);
-      const fileName = pathSegments[pathSegments.length - 1] || file.name;
-
+    const ensureFolderNode = (segments: string[]): FileTreeNode => {
       let parentNode = root;
       let currentFolderPath = '';
 
-      for (const segment of folderSegments) {
+      for (const segment of segments) {
         currentFolderPath = currentFolderPath
           ? `${currentFolderPath}/${segment}`
           : segment;
@@ -1012,6 +1004,36 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         parentNode = folderNode;
       }
+
+      return parentNode;
+    };
+
+    const sortedFiles = [...files].sort((left, right) => {
+      const leftRelativePath = getNormalizedTreeRelativePath(left);
+      const rightRelativePath = getNormalizedTreeRelativePath(right);
+      const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
+      const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
+
+      if (leftDepth !== rightDepth) {
+        return leftDepth - rightDepth;
+      }
+
+      return leftRelativePath.localeCompare(rightRelativePath);
+    });
+
+    for (const file of sortedFiles) {
+      const normalizedRelativePath = getNormalizedTreeRelativePath(file);
+      const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
+      if (!pathSegments.length) continue;
+
+      if (file.isFolder) {
+        ensureFolderNode(pathSegments);
+        continue;
+      }
+
+      const folderSegments = pathSegments.slice(0, -1);
+      const fileName = pathSegments[pathSegments.length - 1] || file.name;
+      const parentNode = ensureFolderNode(folderSegments);
 
       parentNode.children!.push({
         name: fileName || file.name,
@@ -2445,72 +2467,14 @@ function HtmlRenderer({
         return;
       }
 
-      // Find all img tags with relative paths (match various formats)
-      const imgRegex = /<img\s+([^>]*?)(?:\s*\/\s*>|>)/gi;
-      const matches = Array.from(html.matchAll(imgRegex));
-
-      // Process each img tag
-      const processedImages = await Promise.all(
-        matches.map(async (match) => {
-          const fullMatch = match[0];
-          const attributes = match[1];
-          // Reconstruct the img tag to handle both <img ...> and <img ... />
-          const imgTag = fullMatch;
-
-          // Extract src attribute
-          const srcMatch = attributes.match(/src\s*=\s*["']([^"']+)["']/i);
-          if (!srcMatch) return { original: imgTag, processed: imgTag };
-
-          const src = srcMatch[1];
-
-          // Skip if src is already absolute (http, https, data:, localfile:)
-          if (
-            src.startsWith('http://') ||
-            src.startsWith('https://') ||
-            src.startsWith('data:') ||
-            src.startsWith('localfile://')
-          ) {
-            return { original: imgTag, processed: imgTag };
-          }
-
-          // Build full path for relative image
-          const imagePath = joinPath(htmlDir, src);
-
-          try {
-            if (!electronAPI?.readFileAsDataUrl) {
-              return { original: imgTag, processed: imgTag };
-            }
-            // Read image as data URL
-            const dataUrl = await electronAPI.readFileAsDataUrl(imagePath);
-
-            // Replace src with data URL
-            const newAttributes = attributes.replace(
-              /src\s*=\s*["'][^"']+["']/i,
-              `src="${dataUrl}"`
-            );
-            // Preserve the original tag format (self-closing or not)
-            const isSelfClosing = imgTag.trim().endsWith('/>');
-            const processedTag = isSelfClosing
-              ? `<img ${newAttributes} />`
-              : `<img ${newAttributes}>`;
-
-            return { original: imgTag, processed: processedTag };
-          } catch (error) {
-            console.error(`Failed to load image: ${imagePath}`, error);
-            // Keep original tag if image loading fails
-            return { original: imgTag, processed: imgTag };
-          }
-        })
-      );
-
-      // Replace all img tags in HTML
       let processedHtmlContent = html;
-      processedImages.forEach(({ original, processed }) => {
-        processedHtmlContent = processedHtmlContent.replace(
-          original,
-          processed
+      if (electronAPI?.readFileAsDataUrl) {
+        processedHtmlContent = await inlineLocalHtmlImgElements(
+          processedHtmlContent,
+          htmlDir,
+          electronAPI.readFileAsDataUrl
         );
-      });
+      }
 
       // Load and inject CSS files, replacing external link tags
       for (const cssFile of cssFiles) {
@@ -2571,6 +2535,20 @@ function HtmlRenderer({
           console.error(`Failed to load JS file: ${jsFile.path}`, error);
         }
       }
+
+      if (electronAPI?.readFileAsDataUrl) {
+        processedHtmlContent = await inlineLocalProjectImagePaths(
+          processedHtmlContent,
+          htmlDir,
+          projectFiles,
+          electronAPI.readFileAsDataUrl
+        );
+      }
+
+      processedHtmlContent = injectBaseHref(
+        processedHtmlContent,
+        toLocalFileUrl(htmlDir)
+      );
 
       // Final check for dangerous content after all processing (including injected JS)
       if (containsDangerousContent(processedHtmlContent)) {
