@@ -367,8 +367,12 @@ interface FileInfo {
 
 function getNormalizedTreeRelativePath(file: FileInfo): string {
   const rel = (file.relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  if (rel) return rel;
-  return (file.path || file.name || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const name = (file.name || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (rel) {
+    const relBasename = rel.split('/').filter(Boolean).at(-1);
+    return relBasename === name || !name ? rel : `${rel}/${name}`;
+  }
+  return name || (file.path || '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 function getComparableRelativePath(file?: FileInfo | null): string {
@@ -436,9 +440,10 @@ function getFileBreadcrumbSegments(
   if (file.isRemote) {
     return [options.remoteRootLabel, file.name];
   }
-  const rel = (file.relativePath || '').replace(/\\/g, '/').trim();
-  const folders = rel ? rel.split('/').filter(Boolean) : [];
-  return [options.projectRootLabel, ...folders, file.name];
+  const segments = getNormalizedTreeRelativePath(file)
+    .split('/')
+    .filter(Boolean);
+  return [options.projectRootLabel, ...segments];
 }
 
 // FileTree component to render nested file structure
@@ -970,29 +975,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     const folderMap = new Map<string, FileTreeNode>();
     folderMap.set('', root);
 
-    const sortedFiles = [...files].sort((left, right) => {
-      const leftRelativePath = getNormalizedTreeRelativePath(left);
-      const rightRelativePath = getNormalizedTreeRelativePath(right);
-      const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
-      const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
-
-      if (leftDepth !== rightDepth) {
-        return leftDepth - rightDepth;
-      }
-
-      return leftRelativePath.localeCompare(rightRelativePath);
-    });
-
-    for (const file of sortedFiles) {
-      const normalizedRelativePath = getNormalizedTreeRelativePath(file);
-      const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
-      const folderSegments = pathSegments.slice(0, -1);
-      const fileName = pathSegments[pathSegments.length - 1] || file.name;
-
+    const ensureFolderNode = (segments: string[]): FileTreeNode => {
       let parentNode = root;
       let currentFolderPath = '';
 
-      for (const segment of folderSegments) {
+      for (const segment of segments) {
         currentFolderPath = currentFolderPath
           ? `${currentFolderPath}/${segment}`
           : segment;
@@ -1012,6 +999,36 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
         parentNode = folderNode;
       }
+
+      return parentNode;
+    };
+
+    const sortedFiles = [...files].sort((left, right) => {
+      const leftRelativePath = getNormalizedTreeRelativePath(left);
+      const rightRelativePath = getNormalizedTreeRelativePath(right);
+      const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
+      const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
+
+      if (leftDepth !== rightDepth) {
+        return leftDepth - rightDepth;
+      }
+
+      return leftRelativePath.localeCompare(rightRelativePath);
+    });
+
+    for (const file of sortedFiles) {
+      const normalizedRelativePath = getNormalizedTreeRelativePath(file);
+      const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
+      if (!pathSegments.length) continue;
+
+      if (file.isFolder) {
+        ensureFolderNode(pathSegments);
+        continue;
+      }
+
+      const folderSegments = pathSegments.slice(0, -1);
+      const fileName = pathSegments[pathSegments.length - 1] || file.name;
+      const parentNode = ensureFolderNode(folderSegments);
 
       parentNode.children!.push({
         name: fileName || file.name,
