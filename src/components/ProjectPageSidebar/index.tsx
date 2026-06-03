@@ -29,6 +29,7 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
+import { buildTaskQuestionsById } from '@/lib/replay';
 import {
   getSessionNavLeadFromHistoryProject,
   resolveProjectNavLeadPresentation,
@@ -268,12 +269,15 @@ export default function ProjectPageSidebar({
         );
 
         const firstTask = historyProject.tasks[0];
+        const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
           projectId,
           firstTask?.id != null ? String(firstTask.id) : undefined,
-          historyProject.project_name
+          historyProject.project_name,
+          undefined,
+          taskQuestionsById
         );
       } catch (error) {
         console.error(

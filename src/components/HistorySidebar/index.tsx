@@ -19,7 +19,7 @@ import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import { loadProjectFromHistory } from '@/lib';
+import { buildTaskQuestionsById, loadProjectFromHistory } from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
@@ -215,7 +215,8 @@ export default function HistorySidebar() {
       historyId,
       taskIdsList,
       project?.project_name,
-      project?.space_id
+      project?.space_id,
+      buildTaskQuestionsById(project?.tasks)
     );
   };
 

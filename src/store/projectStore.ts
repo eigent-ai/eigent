@@ -317,7 +317,8 @@ interface ProjectStore {
     projectId: string,
     historyId?: string,
     projectName?: string,
-    spaceId?: string
+    spaceId?: string,
+    taskQuestionsById?: Record<string, string>
   ) => Promise<string>;
   setProjectNavLead: (
     projectId: string,
@@ -1097,7 +1098,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     projectId: string,
     historyId?: string,
     projectName?: string,
-    spaceId?: string
+    spaceId?: string,
+    taskQuestionsById?: Record<string, string>
   ) => {
     const { projects, removeProject, createProject, createChatStore } = get();
     const existingProject = projects[projectId];
@@ -1172,7 +1174,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           const chatStore = project.chatStores[chatId];
           if (chatStore) {
             try {
-              await chatStore.getState().replay(taskId, question, 0);
+              await chatStore
+                .getState()
+                .replay(taskId, taskQuestionsById?.[taskId] || question, 0);
               loadedChatStoresByTaskId.set(taskId, chatStore);
               console.log(`[ProjectStore] Loaded task ${taskId}`);
             } catch (error) {

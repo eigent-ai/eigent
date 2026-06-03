@@ -25,7 +25,7 @@ import {
 import { Tag } from '@/components/ui/tag';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { loadProjectFromHistory } from '@/lib/replay';
+import { buildTaskQuestionsById, loadProjectFromHistory } from '@/lib/replay';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { ChatTaskStatus } from '@/types/constants';
@@ -183,7 +183,8 @@ export default function ProjectGroup({
             historyId,
             taskIdsList,
             project.project_name,
-            project.space_id
+            project.space_id,
+            buildTaskQuestionsById(project.tasks)
           );
         } catch (error) {
           console.error('Failed to load project:', error);

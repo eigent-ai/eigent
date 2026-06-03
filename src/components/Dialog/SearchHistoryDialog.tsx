@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/command';
 import { DialogTitle } from '@/components/ui/dialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { loadProjectFromHistory } from '@/lib';
+import { buildTaskQuestionsById, loadProjectFromHistory } from '@/lib';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { useGlobalStore } from '@/store/globalStore';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -50,7 +50,7 @@ export function SearchHistoryDialog() {
     question: string,
     historyId: string,
     project?: {
-      tasks: { task_id: string }[];
+      tasks: { task_id: string; question?: string | null }[];
       project_name?: string;
       space_id?: string;
     }
@@ -74,7 +74,10 @@ export function SearchHistoryDialog() {
         historyId,
         taskIdsList,
         project?.project_name,
-        project?.space_id
+        project?.space_id,
+        project
+          ? buildTaskQuestionsById(project.tasks)
+          : { [taskIdsList[0]]: question }
       );
     }
   };
