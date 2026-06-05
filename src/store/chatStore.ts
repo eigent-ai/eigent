@@ -1885,7 +1885,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     // `question` / closure `messageContent` if the new task
                     // somehow has no user message yet.
                     question:
-                      (targetChatStore.getState().tasks[newTaskId]?.messages[0]
+                      (newChatStore.getState().tasks[newTaskId]?.messages[0]
                         ?.content as string) ||
                       userMessageContent ||
                       '',

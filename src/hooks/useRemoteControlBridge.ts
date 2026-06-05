@@ -377,6 +377,50 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
   });
 }
 
+function seedRemoteFollowUpPrompt(command: RemoteCommand): void {
+  const projectId = getCommandProjectId(command);
+  const nextTaskId = command.next_task_id;
+  const content = String(
+    command.payload?.content || command.payload?.question || ''
+  );
+  if (!projectId || !nextTaskId || !content) {
+    return;
+  }
+
+  ensureRemoteProjectLoaded(command);
+
+  const projectStore = useProjectStore.getState();
+  const chatStore = projectStore.getChatStore(projectId);
+  const chatState = chatStore?.getState();
+  const activeTaskId = chatState?.activeTaskId;
+  if (
+    !chatStore ||
+    !chatState ||
+    !activeTaskId ||
+    !chatState.tasks[activeTaskId]
+  ) {
+    return;
+  }
+
+  const messageId = `remote-command:${command.id}`;
+  const alreadySeeded = chatState.tasks[activeTaskId].messages.some(
+    (message) => message.id === messageId
+  );
+  if (alreadySeeded) {
+    return;
+  }
+
+  chatState.setNextTaskId(nextTaskId);
+  chatState.setIsPending(activeTaskId, true);
+  chatState.addMessages(activeTaskId, {
+    id: messageId,
+    role: 'user',
+    content,
+    attaches: [],
+  });
+  chatState.setHasMessages(activeTaskId, true);
+}
+
 function commandErrorAck(commandId: string, error: any): BridgeAck {
   return {
     type: 'command_ack',
@@ -406,6 +450,7 @@ async function executeRemoteCommand(
         `/chat/${projectId}/status`
       );
       if (status?.has_lock) {
+        seedRemoteFollowUpPrompt(command);
         await requestBrain(command, token, 'POST', `/chat/${projectId}`, {
           question: command.payload.content || command.payload.question || '',
           task_id: command.next_task_id,
