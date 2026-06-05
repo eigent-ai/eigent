@@ -74,6 +74,17 @@ export const INIT_PROVODERS: Provider[] = [
     model_type: '',
   },
   {
+    id: 'tokenmix',
+    name: 'TokenMix',
+    apiKey: '',
+    apiHost: 'https://api.tokenmix.ai/v1',
+    description: 'TokenMix — 171 AI models from 14 providers via a single OpenAI-compatible API.',
+    is_valid: false,
+    model_type: '',
+    modelsEndpoint: '/models',
+    websiteUrl: 'https://tokenmix.ai',
+  },
+  {
     id: 'tongyi-qianwen',
     name: 'Qwen',
     apiKey: '',
