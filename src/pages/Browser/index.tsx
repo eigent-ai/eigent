@@ -85,14 +85,14 @@ export default function Browser() {
           }
           value={activeTab}
           onValueChange={handleTabChange}
-          className="min-h-0 gap-0 h-full w-full flex-1"
+          className="h-full min-h-0 w-full flex-1 gap-0"
           listClassName="w-full h-full overflow-y-auto"
           contentClassName="hidden"
         />
       </div>
 
       <div className="flex h-auto w-full flex-1 flex-col">
-        <div className="gap-4 flex flex-col">
+        <div className="flex flex-col gap-4">
           {activeTab === 'cdp' && <CDP />}
           {activeTab === 'extension' && <Extension />}
           {activeTab === 'cookies' && <Cookies />}

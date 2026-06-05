@@ -567,6 +567,12 @@ async function uploadTaskFiles(
   return results;
 }
 
+export interface StartTaskOptions {
+  preserveTaskId?: boolean;
+  skipHistoryCreate?: boolean;
+  historyId?: string | number | null;
+}
+
 export interface ChatStore {
   updateCount: number;
   activeTaskId: string | null;
@@ -588,7 +594,8 @@ export interface ChatStore {
     messageAttaches?: File[],
     executionId?: string,
     projectId?: string,
-    sessionMode?: SessionModeType
+    sessionMode?: SessionModeType,
+    options?: StartTaskOptions
   ) => Promise<void>;
   handleConfirmTask: (
     project_id: string,
@@ -1221,7 +1228,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       messageAttaches?: File[],
       executionId?: string,
       projectId?: string,
-      sessionMode?: SessionModeType
+      sessionMode?: SessionModeType,
+      options?: StartTaskOptions
     ) => {
       // ✅ Wait for backend to be ready before starting task (except for replay/share)
       if (!type || type === 'normal') {
@@ -1274,6 +1282,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (isLiveTask && !project_id) {
         throw new Error('No active Project selected.');
       }
+      const startOptions = options || {};
       const project = project_id
         ? projectStore.getProjectById(project_id)
         : null;
@@ -1295,7 +1304,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
        */
       if (project_id && type !== 'replay') {
         console.log('Creating a new Chat Instance for current project on end');
-        const newChatResult = projectStore.appendInitChatStore(project_id);
+        const newChatResult = projectStore.appendInitChatStore(
+          project_id,
+          startOptions.preserveTaskId ? taskId : undefined
+        );
 
         if (newChatResult) {
           newTaskId = newChatResult.taskId;
@@ -1345,9 +1357,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null = project_id
-        ? projectStore.getHistoryId(project_id)
-        : null;
+      let historyId: string | null =
+        startOptions.historyId != null
+          ? String(startOptions.historyId)
+          : project_id
+            ? projectStore.getHistoryId(project_id)
+            : null;
       let snapshots: any = [];
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
@@ -1502,7 +1517,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         requestSpace?.sourceType === 'folder'
           ? requestSpace.rootPath || undefined
           : undefined;
-      if (!type) {
+      if (!type && !startOptions.skipHistoryCreate) {
         const authStore = getAuthStore();
 
         const obj = {
@@ -1541,6 +1556,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (project_id && historyId)
             projectStore.setHistoryId(project_id, historyId);
         });
+      } else if (!type && project_id && historyId) {
+        projectStore.setHistoryId(project_id, historyId);
       }
       let browser_port: number | undefined;
       let cdp_browsers: any[] = [];

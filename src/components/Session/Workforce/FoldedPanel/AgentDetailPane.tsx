@@ -190,22 +190,22 @@ export function AgentDetailPane({
   }
 
   return (
-    <div className="min-h-0 min-w-0 bg-ds-bg-neutral-strong-default rounded-xl flex h-full w-full flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-strong-default">
       <div
         className={cn(
-          'bg-ds-bg-neutral-strong-default top-0 min-h-0 min-w-0 pb-2 pt-2 w-full max-w-full shrink-0'
+          'top-0 min-h-0 w-full min-w-0 max-w-full shrink-0 bg-ds-bg-neutral-strong-default pb-2 pt-2'
         )}
       >
         <div
           className={cn(
-            'min-w-0 text-base px-3 font-bold leading-relaxed',
+            'min-w-0 px-3 text-base font-bold leading-relaxed',
             preset?.textColor ?? 'text-ds-text-neutral-default-default'
           )}
         >
           {preset?.name ?? agent.name}
         </div>
         <div
-          className="mt-sm min-h-4 min-w-0 px-3 w-full max-w-full"
+          className="mt-sm min-h-4 w-full min-w-0 max-w-full px-3"
           onPointerEnter={() => setToolkitHovered(true)}
           onPointerLeave={() => setToolkitHovered(false)}
         >
@@ -217,7 +217,7 @@ export function AgentDetailPane({
           />
         </div>
         {agent.tasks && agent.tasks.length > 0 && (
-          <div className="gap-1 border-ds-border-neutral-default-default px-3 py-sm flex flex-col items-start justify-between border-0 border-b border-solid">
+          <div className="flex flex-col items-start justify-between gap-1 border-0 border-b border-solid border-ds-border-neutral-default-default px-3 py-sm">
             <div className="flex w-full flex-1 justify-start">
               <TaskState
                 all={agent.tasks?.length || 0}
@@ -268,26 +268,26 @@ export function AgentDetailPane({
       </div>
 
       {/* Content: agent summary + task list; task log slides in from the right */}
-      <div className="min-h-0 relative flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <div
-          className="scrollbar scrollbar-always-visible min-h-0 h-full overflow-y-auto"
+          className="scrollbar scrollbar-always-visible h-full min-h-0 overflow-y-auto"
           onWheel={(e) => e.stopPropagation()}
         >
           <div
-            className="pl-3 mb-2 mt-1 max-h-[180px] w-full"
+            className="mb-2 mt-1 max-h-[180px] w-full pl-3"
             onClick={focusAgent}
           >
             {browserImages.length > 0 && (
               <div
-                className={`gap-1 grid h-[180px] w-full overflow-hidden ${browserImageGridClass}`}
+                className={`grid h-[180px] w-full gap-1 overflow-hidden ${browserImageGridClass}`}
               >
                 {browserImages.map((img, index) => (
                   <div
                     key={`${img.img}-${index}`}
-                    className="rounded-lg relative h-full w-full overflow-hidden"
+                    className="relative h-full w-full overflow-hidden rounded-lg"
                   >
                     <img
-                      className="left-0 top-0 absolute h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
                       src={img.img}
                       alt={agent.type}
                     />
@@ -297,7 +297,7 @@ export function AgentDetailPane({
                   (_, index) => (
                     <div
                       key={`browser-placeholder-${index}`}
-                      className="rounded-sm bg-ds-bg-neutral-subtle-default h-full w-full"
+                      className="h-full w-full rounded-sm bg-ds-bg-neutral-subtle-default"
                     />
                   )
                 )}
@@ -306,8 +306,8 @@ export function AgentDetailPane({
             {agent.type === 'document_agent' &&
               agent.tasks &&
               agent.tasks.length > 0 && (
-                <div className="rounded-sm relative h-[180px] w-full overflow-hidden">
-                  <div className="left-0 top-0 absolute h-[500px] w-[900px] origin-top-left scale-[0.36]">
+                <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
+                  <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
                     <Folder data={agent} />
                   </div>
                 </div>
@@ -315,14 +315,14 @@ export function AgentDetailPane({
 
             {agent.type === 'developer_agent' && terminalTasks.length > 0 && (
               <div
-                className={`gap-1 grid h-[180px] w-full overflow-hidden ${terminalGridClass}`}
+                className={`grid h-[180px] w-full gap-1 overflow-hidden ${terminalGridClass}`}
               >
                 {terminalTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="rounded-lg relative h-full w-full overflow-hidden object-cover"
+                    className="relative h-full w-full overflow-hidden rounded-lg object-cover"
                   >
-                    <div className="left-0 top-0 absolute h-[250%] w-[250%] origin-top-left scale-[0.4]">
+                    <div className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
                       <Terminal content={task.terminal} />
                     </div>
                   </div>
@@ -331,7 +331,7 @@ export function AgentDetailPane({
                   (_, index) => (
                     <div
                       key={`terminal-placeholder-${index}`}
-                      className="rounded-lg bg-ds-bg-neutral-subtle-default h-full w-full"
+                      className="h-full w-full rounded-lg bg-ds-bg-neutral-subtle-default"
                     />
                   )
                 )}
@@ -339,7 +339,7 @@ export function AgentDetailPane({
             )}
           </div>
 
-          <div className="gap-2 pl-3 pb-3 flex flex-col">
+          <div className="flex flex-col gap-2 pb-3 pl-3">
             {agent.tasks &&
               filterTasks.map((task) => {
                 const lastActiveToolkit = task.toolkits
@@ -363,7 +363,7 @@ export function AgentDetailPane({
                       }
                     }}
                     className={cn(
-                      'rounded-xl px-6 py-sm gap-1 flex cursor-pointer flex-col border border-solid transition-all duration-300',
+                      'flex cursor-pointer flex-col gap-1 rounded-xl border border-solid px-6 py-sm transition-all duration-300',
                       task.reAssignTo
                         ? 'bg-ds-bg-status-blocked-subtle-default'
                         : task.status === TaskStatus.COMPLETED
@@ -395,9 +395,9 @@ export function AgentDetailPane({
                       'border-transparent'
                     )}
                   >
-                    <div className="gap-2 flex w-full items-center justify-between">
-                      <div className="min-w-0 gap-x-2 gap-y-0.5 flex items-center">
-                        <div className="h-4 flex shrink-0 items-center justify-center">
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-x-2 gap-y-0.5">
+                        <div className="flex h-4 shrink-0 items-center justify-center">
                           {task.reAssignTo ? (
                             <CircleSlash2
                               size={16}
@@ -451,12 +451,12 @@ export function AgentDetailPane({
                             </>
                           )}
                         </div>
-                        <div className="min-w-0 gap-x-2 gap-y-0.5 flex flex-wrap items-center">
-                          <span className="text-xs font-bold leading-13 text-ds-text-neutral-default-default shrink-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="shrink-0 text-xs font-bold leading-13 text-ds-text-neutral-default-default">
                             No. {getTaskIdDisplay(task.id)}
                           </span>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold text-ds-text-warning-strong-default leading-none">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold leading-none text-ds-text-warning-strong-default">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
@@ -467,7 +467,7 @@ export function AgentDetailPane({
                                   task.status === TaskStatus.FAILED
                                     ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-strong-default'
                                     : task.status === TaskStatus.COMPLETED
-                                      ? 'text-ds-text-status-completed-strong-default bg-ds-bg-neutral-default-default'
+                                      ? 'bg-ds-bg-neutral-default-default text-ds-text-status-completed-strong-default'
                                       : 'bg-ds-bg-neutral-default-hover text-ds-text-neutral-muted-default'
                                 )}
                               >
@@ -483,7 +483,7 @@ export function AgentDetailPane({
                         size="xxs"
                         buttonContent="icon-only"
                         buttonRadius="lg"
-                        className="text-ds-icon-neutral-muted-default shrink-0 opacity-50"
+                        className="shrink-0 text-ds-icon-neutral-muted-default opacity-50"
                         aria-expanded={isExpanded}
                         aria-label={
                           isExpanded ? 'Collapse task details' : 'Expand task'
@@ -507,7 +507,7 @@ export function AgentDetailPane({
                     </div>
                     <div
                       className={cn(
-                        'mt-0.5 pl-4 min-w-0 w-full max-w-full text-left',
+                        'mt-0.5 w-full min-w-0 max-w-full pl-4 text-left',
                         task.status === TaskStatus.FAILED
                           ? 'text-ds-text-status-error-strong-default'
                           : task.status === TaskStatus.BLOCKED
@@ -517,7 +517,7 @@ export function AgentDetailPane({
                     >
                       <div
                         className={cn(
-                          'text-label-xs font-medium block break-words select-text',
+                          'block select-text break-words text-label-xs font-medium',
                           !isExpanded && 'line-clamp-2 overflow-hidden',
                           isExpanded && 'whitespace-pre-line'
                         )}
@@ -526,17 +526,17 @@ export function AgentDetailPane({
                       </div>
                     </div>
                     {task.status === TaskStatus.RUNNING && isExpanded && (
-                      <div className="ml-4 mt-0.5 gap-2 flex items-center duration-400">
+                      <div className="duration-400 ml-4 mt-0.5 flex items-center gap-2">
                         {lastActiveToolkit?.toolkitStatus ===
                           AgentStatusValue.RUNNING && (
-                          <div className="min-w-0 gap-sm flex flex-1 items-center justify-start duration-300">
+                          <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300">
                             {getToolkitIcon(
                               lastActiveToolkit.toolkitName ?? ''
                             )}
-                            <div className="min-w-0 pt-1 text-xs leading-17 text-ds-text-neutral-default-default max-w-full flex-shrink flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                            <div className="min-w-0 max-w-full flex-shrink flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-ds-text-neutral-default-default">
                               <ShinyText
                                 text={task.toolkits?.[0]?.toolkitName ?? ''}
-                                className="text-xs font-bold leading-17 text-ds-text-neutral-default-default pointer-events-auto w-full overflow-hidden text-ellipsis whitespace-nowrap select-text"
+                                className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-ds-text-neutral-default-default"
                               />
                             </div>
                           </div>
@@ -557,28 +557,28 @@ export function AgentDetailPane({
               initial="initial"
               animate="animate"
               exit="exit"
-              className="inset-0 rounded-br-xl bg-ds-bg-neutral-strong-default absolute z-20 flex flex-col overflow-hidden will-change-transform"
+              className="absolute inset-0 z-20 flex flex-col overflow-hidden rounded-br-xl bg-ds-bg-neutral-strong-default will-change-transform"
             >
-              <div className="gap-1 px-2 pb-2 flex shrink-0 items-center">
+              <div className="flex shrink-0 items-center gap-1 px-2 pb-2">
                 <Button
                   type="button"
                   variant="ghost"
                   size="xxs"
                   buttonContent="icon-only"
                   buttonRadius="lg"
-                  className="text-ds-icon-neutral-muted-default shrink-0"
+                  className="shrink-0 text-ds-icon-neutral-muted-default"
                   aria-label="Back to agent details"
                   onClick={() => setDetailTask(null)}
                 >
                   <ChevronLeft className="size-4" aria-hidden />
                 </Button>
-                <span className="min-w-0 text-label-sm font-bold text-ds-text-neutral-default-default truncate">
+                <span className="min-w-0 truncate text-label-sm font-bold text-ds-text-neutral-default-default">
                   No. {getTaskIdDisplay(detailTask.id)}
                 </span>
               </div>
               <div
                 onWheel={(e) => e.stopPropagation()}
-                className="scrollbar scrollbar-always-visible min-h-0 pb-2 pl-3 pr-1 flex-1 overflow-y-auto"
+                className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pb-2 pl-3 pr-1"
               >
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -587,7 +587,7 @@ export function AgentDetailPane({
                     initial="initial"
                     animate="animate"
                     exit="exit"
-                    className="gap-sm flex w-full flex-col"
+                    className="flex w-full flex-col gap-sm"
                   >
                     <TaskLogPanelContent
                       selectedTask={detailTask}

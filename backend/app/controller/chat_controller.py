@@ -466,6 +466,24 @@ async def post(data: Chat, request: Request):
     )
 
 
+@router.get("/chat/{project_id}/status", name="get chat status")
+def status(project_id: str):
+    task_lock = get_task_lock_if_exists(project_id)
+    if task_lock is None:
+        return {
+            "project_id": project_id,
+            "has_lock": False,
+            "status": "offline",
+            "current_task_id": None,
+        }
+    return {
+        "project_id": project_id,
+        "has_lock": True,
+        "status": task_lock.status.value,
+        "current_task_id": task_lock.current_task_id,
+    }
+
+
 @router.post("/chat/{id}", name="improve chat")
 def improve(id: str, data: SupplementChat, request: Request):
     chat_logger.info(

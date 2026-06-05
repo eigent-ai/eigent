@@ -90,17 +90,17 @@ export default function Skills() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('agents.skills')}
         </div>
       </div>
 
       {/* Content Section */}
-      <div className="mb-12 gap-6 flex flex-col">
-        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-center justify-between">
+      <div className="mb-12 flex flex-col gap-6">
+        <div className="flex w-full flex-col items-center justify-between gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <Tabs defaultValue="your-skills" className="w-full">
-            <div className="gap-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default z-10 flex w-full items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="z-10 flex w-full items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
               <TabsList
                 appearance="border"
                 className="h-auto flex-1 justify-start"
@@ -112,7 +112,7 @@ export default function Skills() {
                   {t('agents.example-skills')}
                 </TabsTrigger>
               </TabsList>
-              <div className="gap-2 mb-2 flex items-center">
+              <div className="mb-2 flex items-center gap-2">
                 <SearchInput
                   variant="icon"
                   value={searchQuery}
@@ -154,7 +154,7 @@ export default function Skills() {
                   }
                 />
               ) : (
-                <div className="gap-3 flex flex-col">
+                <div className="flex flex-col gap-3">
                   {yourSkills.map((skill) => (
                     <SkillListItem
                       key={skill.id}
@@ -176,7 +176,7 @@ export default function Skills() {
                   }
                 />
               ) : (
-                <div className="gap-3 flex flex-col">
+                <div className="flex flex-col gap-3">
                   {exampleSkills.map((skill) => (
                     <SkillListItem
                       key={skill.id}

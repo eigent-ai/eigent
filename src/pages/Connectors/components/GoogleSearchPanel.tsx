@@ -95,10 +95,10 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
   };
 
   return (
-    <div className="gap-3 px-6 py-4 flex flex-col">
+    <div className="flex flex-col gap-3 px-6 py-4">
       {requiresApiKey ? (
         <>
-          <span className="text-body-sm text-ds-text-neutral-muted-default whitespace-pre-wrap">
+          <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
             {t('setting.google-search-custom-desc', {
               defaultValue:
                 'Connect to Google Custom Search. Requires a Google API key and a Custom Search Engine (CSE) ID.',
@@ -137,7 +137,7 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
             ))}
           </div>
 
-          <div className="pt-2 flex items-center justify-end">
+          <div className="flex items-center justify-end pt-2">
             <Button size="sm" onClick={handleSave} disabled={saving}>
               {saving ? t('setting.saving') : t('setting.save-changes')}
             </Button>

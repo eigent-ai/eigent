@@ -31,6 +31,7 @@ from app.service.chat_service import (
     format_task_context,
     install_mcp,
     new_agent_model,
+    normalize_summary_task,
     question_confirm,
     step_solve,
     summary_task,
@@ -888,6 +889,19 @@ class TestChatServiceAgentOperations:
             == "Web App Creation|Create a modern web application with user authentication and dashboard"
         )
         mock_camel_agent.step.assert_called_once()
+
+    def test_normalize_summary_task_limits_name_and_summary(self):
+        """Test summary_task output is normalized before it reaches UI state."""
+        result = normalize_summary_task(
+            ("Long Task Name " * 20) + "|" + ("Long summary text " * 40),
+            "fallback",
+        )
+        name, summary = result.split("|", 1)
+
+        assert len(name) <= 80
+        assert len(summary) <= 240
+        assert name.endswith("...")
+        assert summary.endswith("...")
 
     @pytest.mark.asyncio
     async def test_new_agent_model_creation(self, sample_chat_data):

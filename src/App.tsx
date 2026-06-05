@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
+import { useRemoteControlBridge } from './hooks/useRemoteControlBridge';
 import { useTriggerTaskExecutor } from './hooks/useTriggerTaskExecutor';
 import { hasStackKeys } from './lib';
 import { useAuthStore } from './store/authStore';
@@ -43,6 +44,7 @@ function App() {
 
   // Execute triggered tasks automatically when WebSocket events are received
   useTriggerTaskExecutor();
+  useRemoteControlBridge(token);
 
   useEffect(() => {
     const handleShareCode = (event: any, share_token: string) => {

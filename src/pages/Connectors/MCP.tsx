@@ -646,13 +646,13 @@ export default function SettingMCP() {
         key={tabId}
         type="button"
         onClick={onSelect}
-        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="min-w-0 gap-3 flex items-center justify-center">
+        <div className="flex min-w-0 items-center justify-center gap-3">
           {kind === 'web' ? (
             assetUrl ? (
               <img
@@ -673,16 +673,16 @@ export default function SettingMCP() {
               />
             )
           ) : (
-            <Wrench className="h-5 w-5 text-ds-icon-neutral-muted-default shrink-0" />
+            <Wrench className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
           )}
           <span
-            className={`text-body-sm font-medium truncate text-left ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+            className={`truncate text-left text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
           >
             {label}
           </span>
         </div>
         {kind === 'your' && yourEnabled ? (
-          <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
         ) : null}
       </button>
     );
@@ -748,7 +748,7 @@ export default function SettingMCP() {
   const renderConnectionPanel = () => {
     if (!selected) {
       return (
-        <div className="py-16 text-body-md text-ds-text-neutral-muted-default text-center">
+        <div className="py-16 text-center text-body-md text-ds-text-neutral-muted-default">
           {t('setting.mcp-select-connection')}
         </div>
       );
@@ -756,22 +756,22 @@ export default function SettingMCP() {
 
     if (selected.type === GOOGLE_SEARCH_ID) {
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-          <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="min-w-0 gap-2 flex items-center">
-              <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
                 <img
                   src={googleIcon}
                   alt=""
                   className="h-5 w-5 object-contain"
                 />
               </div>
-              <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
+              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
                 Google Search
               </div>
             </div>
             {searchConnected && (
-              <span className="bg-ds-bg-success-subtle-default px-2.5 py-0.5 text-label-xs font-medium text-ds-text-success-default-default rounded-full">
+              <span className="rounded-full bg-ds-bg-success-subtle-default px-2.5 py-0.5 text-label-xs font-medium text-ds-text-success-default-default">
                 {t('setting.configured', { defaultValue: 'Configured' })}
               </span>
             )}
@@ -793,11 +793,11 @@ export default function SettingMCP() {
       const headerAssetUrl = integrationLeadingIconUrl(item.key);
 
       return (
-        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-          <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-            <div className="min-w-0 gap-2 flex items-center">
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+            <div className="flex min-w-0 items-center gap-2">
               {headerAssetUrl ? (
-                <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
                   <img
                     src={headerAssetUrl}
                     alt=""
@@ -805,7 +805,7 @@ export default function SettingMCP() {
                   />
                 </div>
               ) : (
-                <div className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 flex shrink-0 items-center justify-center">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
                   <img
                     src={ellipseIcon}
                     alt=""
@@ -818,11 +818,11 @@ export default function SettingMCP() {
                   />
                 </div>
               )}
-              <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
+              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
             </div>
-            <div className="gap-2 flex shrink-0 flex-wrap items-center justify-end">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 disabled={isComingSoon}
@@ -860,7 +860,7 @@ export default function SettingMCP() {
           </div>
           {item.desc ? (
             <div className="px-6 py-4">
-              <span className="text-body-sm text-ds-text-neutral-muted-default whitespace-pre-wrap">
+              <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
                 {item.desc}
               </span>
             </div>
@@ -874,15 +874,15 @@ export default function SettingMCP() {
     const enabled = userItem.status === 1;
 
     return (
-      <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
-        <div className="mx-6 gap-4 border-ds-border-neutral-default-default py-4 flex flex-row flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
-          <div className="min-w-0 gap-2 flex items-center">
-            <Wrench className="h-7 w-7 rounded-lg bg-ds-bg-neutral-default-default p-1 text-ds-icon-neutral-muted-default shrink-0" />
-            <div className="text-body-base min-w-0 font-bold text-ds-text-neutral-default-default truncate">
+      <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+        <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Wrench className="h-7 w-7 shrink-0 rounded-lg bg-ds-bg-neutral-default-default p-1 text-ds-icon-neutral-muted-default" />
+            <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
               {capitalizeFirstLetter(userItem.mcp_name || '')}
             </div>
           </div>
-          <div className="gap-2 flex shrink-0 items-center">
+          <div className="flex shrink-0 items-center gap-2">
             <Switch
               variant="outline"
               size="default"
@@ -916,7 +916,7 @@ export default function SettingMCP() {
                   {t('setting.edit', { defaultValue: 'Edit' })}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-ds-text-status-error-strong-default focus:text-ds-text-status-error-strong-default cursor-pointer"
+                  className="cursor-pointer text-ds-text-status-error-strong-default focus:text-ds-text-status-error-strong-default"
                   onClick={() => setDeleteTarget(userItem)}
                 >
                   <Trash2 className="h-4 w-4 text-ds-text-status-error-strong-default" />
@@ -1081,19 +1081,19 @@ export default function SettingMCP() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="px-6 pb-6 pt-8 flex w-full items-center justify-between">
+      <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
         <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('setting.mcps-and-tools')}
         </div>
       </div>
 
-      <div className="mb-12 gap-6 flex flex-col">
-        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
-          <div className="mb-4 gap-3 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 z-10 flex w-full flex-wrap items-center justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+      <div className="mb-12 flex flex-col gap-6">
+        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
+          <div className="z-10 mb-4 flex w-full flex-wrap items-center justify-between gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.connectors')}
             </div>
-            <div className="gap-2 flex items-center">
+            <div className="flex items-center gap-2">
               <SearchInput
                 variant="icon"
                 value={searchQuery}
@@ -1111,14 +1111,14 @@ export default function SettingMCP() {
             </div>
           </div>
 
-          <div className="gap-4 px-3 flex w-full flex-row items-start justify-between">
-            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 h-fit max-h-[calc(100vh-var(--home-hub-history-tabs-offset,49px)-2rem)] w-[240px] shrink-0 self-start overflow-y-auto">
-              <div className="gap-4 flex flex-col">
-                <div className="gap-1 flex flex-col">
+          <div className="flex w-full flex-row items-start justify-between gap-4 px-3">
+            <div className="sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 -ml-2 mr-4 h-fit max-h-[calc(100vh-var(--home-hub-history-tabs-offset,49px)-2rem)] w-[240px] shrink-0 self-start overflow-y-auto rounded-2xl bg-ds-bg-neutral-default-default">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
                     onClick={() => setWebCollapsed(!webCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.mcp-sidebar-built-in')}
@@ -1130,14 +1130,14 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       webCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
                     }`}
                   >
                     {isLoadingIntegrations ? (
-                      <div className="gap-2 px-1 flex flex-col">
+                      <div className="flex flex-col gap-2 px-1">
                         {[1, 2, 3].map((i) => (
                           <div
                             key={i}
@@ -1158,20 +1158,20 @@ export default function SettingMCP() {
                                 onClick={() =>
                                   setSelected({ type: GOOGLE_SEARCH_ID })
                                 }
-                                className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+                                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
                                   isActive
                                     ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
                                     : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
                                 }`}
                               >
-                                <div className="min-w-0 gap-3 flex items-center">
+                                <div className="flex min-w-0 items-center gap-3">
                                   <img
                                     src={googleIcon}
                                     alt=""
                                     className="h-5 w-5 shrink-0 object-contain"
                                   />
                                   <span
-                                    className={`text-body-sm font-medium truncate text-left ${
+                                    className={`truncate text-left text-body-sm font-medium ${
                                       isActive
                                         ? 'text-ds-text-neutral-default-default'
                                         : 'text-ds-text-neutral-muted-default'
@@ -1181,7 +1181,7 @@ export default function SettingMCP() {
                                   </span>
                                 </div>
                                 {wi.connected && (
-                                  <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+                                  <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
                                 )}
                               </button>
                             );
@@ -1205,13 +1205,13 @@ export default function SettingMCP() {
                                 !isComingSoon &&
                                 setSelected({ type: 'web', key: item.key })
                               }
-                              className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
                                 isActive
                                   ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
                                   : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
                               } ${isComingSoon ? 'cursor-not-allowed opacity-40' : ''}`}
                             >
-                              <div className="min-w-0 gap-3 flex items-center">
+                              <div className="flex min-w-0 items-center gap-3">
                                 {assetUrl ? (
                                   <img
                                     src={assetUrl}
@@ -1231,7 +1231,7 @@ export default function SettingMCP() {
                                   />
                                 )}
                                 <span
-                                  className={`text-body-sm font-medium truncate text-left ${
+                                  className={`truncate text-left text-body-sm font-medium ${
                                     isActive
                                       ? 'text-ds-text-neutral-default-default'
                                       : 'text-ds-text-neutral-muted-default'
@@ -1241,7 +1241,7 @@ export default function SettingMCP() {
                                 </span>
                               </div>
                               {isConn && (
-                                <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+                                <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
                               )}
                             </button>
                           );
@@ -1251,11 +1251,11 @@ export default function SettingMCP() {
                   </div>
                 </div>
 
-                <div className="gap-1 flex flex-col">
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
                     onClick={() => setYourCollapsed(!yourCollapsed)}
-                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.your-own-mcps')}
@@ -1267,7 +1267,7 @@ export default function SettingMCP() {
                     )}
                   </button>
                   <div
-                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
                       yourCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -1309,23 +1309,23 @@ export default function SettingMCP() {
               </div>
             </div>
 
-            <div className="min-w-0 sticky top-[80px] z-10 flex-1">
+            <div className="sticky top-[80px] z-10 min-w-0 flex-1">
               {isLoadingIntegrations && !selected ? (
-                <div className="gap-4 flex w-full flex-col items-start justify-start">
+                <div className="flex w-full flex-col items-start justify-start gap-4">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4 relative w-full overflow-hidden"
+                      className="relative w-full overflow-hidden rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4"
                     >
-                      <div className="gap-xs flex w-full flex-row items-center justify-between">
-                        <div className="gap-xs flex flex-row items-center">
-                          <div className="mr-2 h-3 w-3 bg-ds-bg-neutral-default-hover rounded-full" />
+                      <div className="flex w-full flex-row items-center justify-between gap-xs">
+                        <div className="flex flex-row items-center gap-xs">
+                          <div className="mr-2 h-3 w-3 rounded-full bg-ds-bg-neutral-default-hover" />
                           <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
                         </div>
                         <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
                       </div>
                       <motion.div
-                        className="via-white/20 inset-0 absolute w-1/2 bg-gradient-to-r from-transparent to-transparent"
+                        className="via-white/20 absolute inset-0 w-1/2 bg-gradient-to-r from-transparent to-transparent"
                         initial={{ x: '-100%' }}
                         animate={{ x: '200%' }}
                         transition={{

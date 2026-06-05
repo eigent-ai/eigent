@@ -122,6 +122,8 @@ module.exports = {
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
+    './web-ui/index.html',
+    './web-ui/src/**/*.{js,ts,jsx,tsx}',
     './.storybook/**/*.{js,ts,jsx,tsx}',
   ],
   safelist: neutralDsSemanticSafelist(),
@@ -770,6 +772,13 @@ module.exports = {
         inter: ['Inter'],
         menlo: ['Menlo'],
         serif: ['Palatino'],
+        display: [
+          'Palatino LT',
+          'Palatino Linotype',
+          'Book Antiqua',
+          'Palatino',
+          'serif',
+        ],
       },
       fontSize: {
         xs: 'var(--fontSize-xs, 10px)',

@@ -190,14 +190,14 @@ export default function HomeHubToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="gap-3 pb-3 mb-3 pt-8 bg-ds-bg-neutral-subtle-default sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 flex w-full flex-wrap items-center justify-between"
+      className="sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 mb-3 flex w-full flex-wrap items-center justify-between gap-3 bg-ds-bg-neutral-subtle-default pb-3 pt-8"
     >
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList appearance="default" className="gap-1">
           {menuItems.map((menu) => (
             <TabsTrigger key={menu.id} value={menu.id}>
               <span className="text-label-sm font-semibold">{menu.name}</span>
-              <span className="bg-ds-bg-brand-subtle-disabled px-1.5 text-label-xs font-normal text-ds-text-brand-strong-default rounded-full tabular-nums">
+              <span className="rounded-full bg-ds-bg-brand-subtle-disabled px-1.5 text-label-xs font-normal tabular-nums text-ds-text-brand-strong-default">
                 {menu.count}
               </span>
             </TabsTrigger>
@@ -205,7 +205,7 @@ export default function HomeHubToolbar({
         </TabsList>
       </Tabs>
 
-      <div className="gap-2 flex flex-wrap items-center justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <SearchInput
           variant="icon"
           value={searchQuery}
@@ -268,21 +268,21 @@ export default function HomeHubToolbar({
           <TabsList appearance="default">
             <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
               <TooltipSimple content={t('dashboard.grid')}>
-                <div className="w-5 h-5 inline-flex items-center justify-center">
+                <div className="inline-flex h-5 w-5 items-center justify-center">
                   <LayoutGrid size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
             <TabsTrigger value="list" aria-label={t('dashboard.list')}>
               <TooltipSimple content={t('dashboard.list')}>
-                <div className="w-5 h-5 inline-flex items-center justify-center">
+                <div className="inline-flex h-5 w-5 items-center justify-center">
                   <List size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
             <TabsTrigger value="board" aria-label={t('dashboard.board')}>
               <TooltipSimple content={t('dashboard.board')}>
-                <div className="w-5 h-5 inline-flex items-center justify-center">
+                <div className="inline-flex h-5 w-5 items-center justify-center">
                   <Columns2 size={16} />
                 </div>
               </TooltipSimple>
@@ -305,7 +305,7 @@ export default function HomeHubToolbar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44 p-1">
             <DropdownMenuItem
-              className="gap-2 cursor-pointer"
+              className="cursor-pointer gap-2"
               onSelect={(event) => {
                 event.preventDefault();
                 void handleCreateBlankSpace();
@@ -315,7 +315,7 @@ export default function HomeHubToolbar({
               {t('layout.workspace-start-from-scratch')}
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="gap-2 cursor-pointer"
+              className="cursor-pointer gap-2"
               onSelect={(event) => {
                 event.preventDefault();
                 void handleCreateSpaceFromFolder();

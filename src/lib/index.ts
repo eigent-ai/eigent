@@ -12,9 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { createHost } from '@/host';
-import { getAuthStore } from '@/store/authStore';
-
 export const SITE_URL =
   import.meta.env.VITE_SITE_URL || 'https://www.eigent.ai';
 
@@ -28,11 +25,16 @@ export function getProxyBaseURL() {
     }
     return proxyUrl;
   } else {
-    const baseUrl = import.meta.env.VITE_BASE_URL;
+    const useLocalProxy = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+    const proxyUrl = import.meta.env.VITE_PROXY_URL;
+    const baseUrl =
+      !useLocalProxy && proxyUrl
+        ? proxyUrl
+        : import.meta.env.VITE_BASE_URL || proxyUrl;
     if (!baseUrl) {
-      throw new Error('VITE_BASE_URL is not configured');
+      throw new Error('VITE_BASE_URL or VITE_PROXY_URL is not configured');
     }
-    return baseUrl;
+    return String(baseUrl).replace(/\/$/, '');
   }
 }
 
@@ -86,6 +88,10 @@ export { loadProjectFromHistory, replayProject } from './replay';
 export async function uploadLog(taskId: string, type?: string | undefined) {
   if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && !type) {
     try {
+      const [{ createHost }, { getAuthStore }] = await Promise.all([
+        import('@/host'),
+        import('@/store/authStore'),
+      ]);
       const { email, token } = getAuthStore();
       const electronAPI = createHost().electronAPI;
       const baseUrl = import.meta.env.DEV

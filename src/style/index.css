@@ -73,7 +73,8 @@
   font-display: swap;
 }
 
-.history-welcome-headline {
+.history-welcome-headline,
+.font-display {
   font-family:
     'Palatino LT', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
 }

@@ -59,9 +59,13 @@ export default [
       // Config files
       'vite.config.ts',
       'vite.config.*.ts',
+      '**/vite.config.ts',
       'vitest.config.ts',
+      '**/vitest.config.ts',
       'tailwind.config.js',
+      '**/tailwind.config.js',
       'postcss.config.cjs',
+      '**/postcss.config.cjs',
       // Generated files
       '**/*.d.ts',
       '**/*.map',

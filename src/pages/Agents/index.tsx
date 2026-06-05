@@ -80,7 +80,7 @@ export default function Capabilities() {
             menuItems.map((menu) => ({
               value: menu.id,
               label: (
-                <span className="text-body-sm font-bold w-full text-left">
+                <span className="w-full text-left text-body-sm font-bold">
                   {menu.name}
                 </span>
               ),
@@ -88,14 +88,14 @@ export default function Capabilities() {
           }
           value={activeTab}
           onValueChange={handleTabChange}
-          className="min-h-0 gap-0 h-full w-full flex-1"
+          className="h-full min-h-0 w-full flex-1 gap-0"
           listClassName="w-full h-full overflow-y-auto"
           contentClassName="hidden"
         />
       </div>
 
       <div className="flex h-auto w-full flex-1 flex-col">
-        <div className="gap-4 flex flex-col">
+        <div className="flex flex-col gap-4">
           {activeTab === 'models' && <Models />}
           {activeTab === 'skills' && <Skills />}
           {activeTab === 'sub-agents' && <SubAgents />}

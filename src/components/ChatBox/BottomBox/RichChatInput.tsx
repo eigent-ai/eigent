@@ -369,16 +369,16 @@ export const RichChatInput = React.forwardRef<
     : undefined;
 
   return (
-    <div className="min-w-0 relative isolate w-full flex-1">
+    <div className="relative isolate w-full min-w-0 flex-1">
       <div
         aria-hidden
-        className="left-1 top-0 pointer-events-none absolute z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
+        className="pointer-events-none absolute left-1 top-0 z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
       >
         <AnimatePresence mode="wait">
           {showPlaceholder ? (
             <motion.span
               key={placeholders[placeholderCycleIndex % placeholders.length]}
-              className="text-body-sm text-ds-text-neutral-subtle-disabled block w-full"
+              className="block w-full text-body-sm text-ds-text-neutral-subtle-disabled"
               initial={{
                 opacity: 0,
                 filter: 'blur(8px)',
@@ -426,8 +426,8 @@ export const RichChatInput = React.forwardRef<
         }}
         className={cn(
           'w-full flex-1 resize-none overflow-auto outline-none',
-          'scrollbar py-0 pl-1 max-h-[200px] min-h-[40px]',
-          'relative break-words whitespace-pre-wrap',
+          'scrollbar max-h-[200px] min-h-[40px] py-0 pl-1',
+          'relative whitespace-pre-wrap break-words',
           disabled && 'cursor-not-allowed opacity-60',
           textClassName,
           className

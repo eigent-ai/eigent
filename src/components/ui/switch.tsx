@@ -61,7 +61,7 @@ const Switch = React.forwardRef<
   ) => (
     <SwitchPrimitives.Root
       className={cn(
-        'peer focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-subtle-default inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+        'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-subtle-default disabled:cursor-not-allowed disabled:opacity-50',
         sizeClasses[size].root,
         variantClasses[variant].root,
         className
@@ -72,7 +72,7 @@ const Switch = React.forwardRef<
     >
       <SwitchPrimitives.Thumb
         className={cn(
-          'data-[state=unchecked]:translate-x-0 shadow-lg pointer-events-none block rounded-full ring-0 transition-transform',
+          'pointer-events-none block rounded-full shadow-lg ring-0 transition-transform data-[state=unchecked]:translate-x-0',
           sizeClasses[size].thumb,
           variantClasses[variant].thumb
         )}

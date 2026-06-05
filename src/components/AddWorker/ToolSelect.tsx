@@ -828,9 +828,9 @@ const ToolSelect = forwardRef<
           className="flex w-auto flex-shrink-0"
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
-          <div className="rounded-sm flex items-center justify-center bg-transparent">
+          <div className="flex items-center justify-center rounded-sm bg-transparent">
             <X
-              className="h-4 w-4 text-ds-text-neutral-default-disabled hover:text-ds-text-neutral-default-default shrink-0 cursor-pointer"
+              className="h-4 w-4 shrink-0 cursor-pointer text-ds-text-neutral-default-disabled hover:text-ds-text-neutral-default-default"
               onClick={() => removeOption(item)}
             />
           </div>
@@ -852,9 +852,9 @@ const ToolSelect = forwardRef<
         aria-label={label}
         onClick={() => handleToggleUserMcp(item, !checked)}
         className={cn(
-          'gap-2 rounded-lg bg-ds-bg-neutral-subtle-default py-2 px-3 last:mb-1 min-h-0 min-w-0 flex w-full items-center text-left',
+          'flex min-h-0 w-full min-w-0 items-center gap-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-left last:mb-1',
           'cursor-pointer border-none shadow-none transition-colors',
-          'focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
         )}
       >
         <Checkbox
@@ -863,7 +863,7 @@ const ToolSelect = forwardRef<
           className="pointer-events-none"
           aria-hidden
         />
-        <span className="min-w-0 text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base line-clamp-2 flex-1 break-words">
+        <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base">
           {capitalizeFirstLetter(item.mcp_name || '')}
         </span>
       </button>
@@ -871,21 +871,21 @@ const ToolSelect = forwardRef<
   };
 
   return (
-    <div className="min-w-0 w-full" ref={containerRef}>
-      <div className="gap-1.5 min-w-0 flex w-full flex-col">
-        <div className="gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default min-h-5 flex shrink-0 items-center">
+    <div className="w-full min-w-0" ref={containerRef}>
+      <div className="flex w-full min-w-0 flex-col gap-1.5">
+        <div className="flex min-h-5 shrink-0 items-center gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
             <CircleAlert
               size={16}
-              className="text-ds-icon-neutral-default-default shrink-0"
+              className="shrink-0 text-ds-icon-neutral-default-default"
             />
           </TooltipSimple>
         </div>
         <div
           onMouseDown={() => inputRef.current?.focus()}
           className={cn(
-            'focus-within:ring-ds-border-brand-default-default/35 gap-1.5 rounded-lg bg-ds-bg-neutral-default-default min-w-0 px-2 py-1.5 flex max-h-[120px] min-h-[40px] w-full flex-wrap content-center items-center justify-start focus-within:ring-2'
+            'focus-within:ring-ds-border-brand-default-default/35 flex max-h-[120px] min-h-[40px] w-full min-w-0 flex-wrap content-center items-center justify-start gap-1.5 rounded-lg bg-ds-bg-neutral-default-default px-2 py-1.5 focus-within:ring-2'
           )}
         >
           {renderSelectedItems()}
@@ -899,7 +899,7 @@ const ToolSelect = forwardRef<
             }
             aria-label={t('workforce.agent-tool')}
             aria-controls="agent-tool-picker-panel"
-            className="p-0 text-sm leading-5 text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-muted-default !min-h-[20px] min-w-[8ch] flex-1 resize-none border-none !shadow-none !ring-0 !ring-offset-0 focus-visible:ring-0"
+            className="!min-h-[20px] min-w-[8ch] flex-1 resize-none border-none p-0 text-sm leading-5 text-ds-text-neutral-default-default !shadow-none !ring-0 !ring-offset-0 placeholder:text-ds-text-neutral-muted-default focus-visible:ring-0"
             rows={1}
           />
         </div>
@@ -908,17 +908,17 @@ const ToolSelect = forwardRef<
           id="agent-tool-picker-panel"
           role="region"
           aria-label={t('workforce.agent-tool')}
-          className="min-w-0 rounded-lg bg-ds-bg-neutral-default-default border-ds-border-neutral-subtle-default w-full overflow-hidden border border-solid"
+          className="w-full min-w-0 overflow-hidden rounded-lg border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
         >
-          <div className="scrollbar-always-visible gap-1.5 px-2 py-2 min-h-0 flex h-[260px] flex-col overflow-x-hidden overflow-y-auto">
+          <div className="scrollbar-always-visible flex h-[260px] min-h-0 flex-col gap-1.5 overflow-y-auto overflow-x-hidden px-2 py-2">
             {listHasItems ? (
               <div
-                className="text-ds-text-neutral-default-default min-w-0 gap-3 flex flex-col"
+                className="flex min-w-0 flex-col gap-3 text-ds-text-neutral-default-default"
                 data-mcp-list="unified"
               >
                 {webConnectedItems.length > 0 && (
                   <div>
-                    <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1">
+                    <div className="px-2 py-1 text-body-sm font-medium text-ds-text-neutral-subtle-default">
                       {t('setting.mcp-sidebar-built-in')}
                     </div>
                     <IntegrationList
@@ -936,17 +936,17 @@ const ToolSelect = forwardRef<
                 )}
                 {ownPicks.length > 0 && (
                   <div>
-                    <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1 mb-1">
+                    <div className="mb-1 px-2 py-1 text-body-sm font-medium text-ds-text-neutral-subtle-default">
                       {t('setting.your-own-mcps')}
                     </div>
-                    <div className="min-w-0 gap-2 flex flex-col">
+                    <div className="flex min-w-0 flex-col gap-2">
                       {ownPicks.map(renderCustomMcpItem)}
                     </div>
                   </div>
                 )}
                 {webNotConnectedItems.length > 0 && (
                   <div>
-                    <div className="text-body-sm font-medium text-ds-text-neutral-subtle-default px-2 py-1">
+                    <div className="px-2 py-1 text-body-sm font-medium text-ds-text-neutral-subtle-default">
                       {t('setting.mcp-sidebar-not-connected')}
                     </div>
                     <IntegrationList
@@ -964,7 +964,7 @@ const ToolSelect = forwardRef<
                 )}
               </div>
             ) : (
-              <p className="text-body-md text-ds-text-neutral-muted-default px-2 py-2 text-center break-words">
+              <p className="break-words px-2 py-2 text-center text-body-md text-ds-text-neutral-muted-default">
                 {t('dashboard.no-results')}
               </p>
             )}
