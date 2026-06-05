@@ -706,28 +706,33 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       return true;
     };
 
-    const handleCommand = (command: RemoteCommand) => {
+    const executeCommand = (command: RemoteCommand): Promise<BridgeAck> => {
       if (
         command.type === 'switch_project_view' ||
         command.type === 'space_project_upsert' ||
         command.type.startsWith('space_')
       ) {
-        send({
-          type: 'command_delivered',
-          command_id: command.id,
-        });
-        const localCommand =
-          command.type === 'switch_project_view'
-            ? executeSwitchProjectView(command)
-            : command.type === 'space_project_upsert'
-              ? executeSpaceProjectUpsert(command)
-              : executeSpaceCommand(command, token);
-        localCommand
-          .then(sendAck)
-          .catch((error) => sendAck(commandErrorAck(command.id, error)));
-        return;
+        return command.type === 'switch_project_view'
+          ? executeSwitchProjectView(command)
+          : command.type === 'space_project_upsert'
+            ? executeSpaceProjectUpsert(command)
+            : executeSpaceCommand(command, token);
       }
 
+      if (!checkRateLimit()) {
+        return Promise.resolve({
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'BRIDGE_RATE_LIMIT',
+          error: 'Too many remote commands in a short time',
+        });
+      }
+
+      return executeRemoteCommand(command, token);
+    };
+
+    const handleCommand = (command: RemoteCommand) => {
       const cache = cacheRef.current;
       const existing = cache.get(command.id);
       if (existing?.state === 'done') {
@@ -737,16 +742,6 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       if (existing?.state === 'in_progress') {
         existing.promise.then(sendAck).catch((error) => {
           sendAck(commandErrorAck(command.id, error));
-        });
-        return;
-      }
-      if (!checkRateLimit()) {
-        sendAck({
-          type: 'command_ack',
-          command_id: command.id,
-          status: 'failed',
-          error_code: 'BRIDGE_RATE_LIMIT',
-          error: 'Too many remote commands in a short time',
         });
         return;
       }
@@ -763,7 +758,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         command_id: command.id,
       });
 
-      executeRemoteCommand(command, token)
+      executeCommand(command)
         .then(resolveAck!)
         .catch((error) => resolveAck!(commandErrorAck(command.id, error)));
 

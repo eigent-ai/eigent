@@ -226,8 +226,13 @@ class RemoteControlRedis:
     @staticmethod
     def publish(channel: str, payload: dict[str, Any]) -> bool:
         try:
-            get_redis_manager().client.publish(channel, json.dumps(payload))
-            return True
+            subscriber_count = get_redis_manager().client.publish(channel, json.dumps(payload))
+            if subscriber_count == 0 and channel.startswith("rc:cmd:"):
+                logger.warning(
+                    "Remote control command publish had no Redis subscribers",
+                    extra={"channel": channel},
+                )
+            return subscriber_count > 0
         except Exception as exc:
             logger.warning("Remote control Redis publish failed", extra={"channel": channel, "error": str(exc)})
             return False
