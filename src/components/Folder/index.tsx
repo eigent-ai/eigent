@@ -446,20 +446,21 @@ function getAncestorFolderPathsForFile(file?: FileInfo | null): string[] {
 /** Breadcrumb: project root label → parent folders (from `relativePath`) → file name. */
 function getFileBreadcrumbSegments(
   file: FileInfo,
-  options: { projectRootLabel: string; remoteRootLabel: string }
+  options: {
+    projectRootLabel: string;
+    remoteRootLabel: string;
+    useProjectRootForRemote?: boolean;
+  }
 ): string[] {
-  if (file.isRemote) {
-    const segments = getNormalizedTreeRelativePath(file)
-      .split('/')
-      .filter(Boolean);
+  const segments = getNormalizedTreeRelativePath(file)
+    .split('/')
+    .filter(Boolean);
+  if (file.isRemote && !options.useProjectRootForRemote) {
     return [
       options.remoteRootLabel,
       ...(segments.length ? segments : [file.name]),
     ];
   }
-  const segments = getNormalizedTreeRelativePath(file)
-    .split('/')
-    .filter(Boolean);
   return [options.projectRootLabel, ...segments];
 }
 
@@ -1426,8 +1427,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       remoteRootLabel: t('folder.file-path-remote-root', {
         defaultValue: 'Remote',
       }),
+      useProjectRootForRemote: useBrainWorkspaceFiles,
     });
-  }, [selectedFile, workingFolderPath, t]);
+  }, [selectedFile, useBrainWorkspaceFiles, workingFolderPath, t]);
 
   if (!chatStore && !activeSpace) {
     return <div>Loading...</div>;
