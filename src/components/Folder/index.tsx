@@ -68,6 +68,7 @@ import {
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
+import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTranslation } from 'react-i18next';
@@ -253,6 +254,11 @@ function workingFolderBasename(path: string) {
   const normalized = path.replace(/\\/g, '/').replace(/\/$/, '');
   const parts = normalized.split('/').filter(Boolean);
   return parts[parts.length - 1] || normalized;
+}
+
+function treeSegmentLabel(value?: string | null, fallback = 'Project') {
+  const trimmed = (value || '').trim();
+  return (trimmed || fallback).replace(/[\\/]/g, '-');
 }
 
 function isImageFile(file: FileTypeTarget) {
@@ -443,7 +449,13 @@ function getFileBreadcrumbSegments(
   options: { projectRootLabel: string; remoteRootLabel: string }
 ): string[] {
   if (file.isRemote) {
-    return [options.remoteRootLabel, file.name];
+    const segments = getNormalizedTreeRelativePath(file)
+      .split('/')
+      .filter(Boolean);
+    return [
+      options.remoteRootLabel,
+      ...(segments.length ? segments : [file.name]),
+    ];
   }
   const segments = getNormalizedTreeRelativePath(file)
     .split('/')
@@ -754,10 +766,18 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
+  const resolvedSpaceId =
+    activeProjectMeta?.spaceId || activeSpaceId || undefined;
   const activeSpace = useSpaceStore((s) => {
-    const spaceId = activeProjectMeta?.spaceId || s.activeSpaceId;
-    return spaceId ? (s.spaces[spaceId] ?? null) : null;
+    return resolvedSpaceId ? (s.spaces[resolvedSpaceId] ?? null) : null;
   });
+  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
+  const spaceProjects = useMemo(() => {
+    if (!resolvedSpaceId) return [];
+    return Object.values(projectsBySpaceId[resolvedSpaceId] ?? {}).filter(
+      (project) => project.status !== 'archived'
+    );
+  }, [projectsBySpaceId, resolvedSpaceId]);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
@@ -797,6 +817,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     Set<string>
   >(() => new Set());
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
+
+  const rememberSelectedFile = (file: FileInfo) => {
+    if (!chatStore?.activeTaskId) return;
+    chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+  };
 
   const filteredFileTree = useMemo(
     () => filterFileTree(fileTree, fileSearchQuery),
@@ -853,11 +878,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           try {
             const content = await fetchRemoteFileAsDataUrl(file.path);
             setSelectedFile({ ...file, content });
-            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+            rememberSelectedFile(file);
           } catch (error) {
             console.error('Failed to load remote image:', error);
             setSelectedFile({ ...file });
-            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+            rememberSelectedFile(file);
           } finally {
             setLoading(false);
           }
@@ -868,7 +893,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
       if (isAudioFile(file) || isVideoFile(file)) {
         setSelectedFile({ ...file });
-        chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+        rememberSelectedFile(file);
         setLoading(false);
         return;
       }
@@ -878,7 +903,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           .invoke('open-file', file.type, file.path, isShowSourceCode)
           .then((res: string) => {
             setSelectedFile({ ...file, content: res });
-            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+            rememberSelectedFile(file);
             setLoading(false);
           })
           .catch((error: unknown) => {
@@ -906,7 +931,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             content = await resp.text();
           }
           setSelectedFile({ ...file, content });
-          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+          rememberSelectedFile(file);
         } catch (error) {
           console.error('Failed to load remote file:', error);
         } finally {
@@ -924,7 +949,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           .invoke('read-file-dataurl', file.path)
           .then((dataUrl: string) => {
             setSelectedFile({ ...file, content: dataUrl });
-            chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+            rememberSelectedFile(file);
             setLoading(false);
           })
           .catch((error: unknown) => {
@@ -940,7 +965,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // For audio/video files, skip open-file — loaders handle reading themselves
     if (isAudioFile(file) || isVideoFile(file)) {
       setSelectedFile({ ...file });
-      chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+      rememberSelectedFile(file);
       setLoading(false);
       return;
     }
@@ -951,7 +976,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         .invoke('open-file', file.type, file.path, isShowSourceCode)
         .then((res: string) => {
           setSelectedFile({ ...file, content: res });
-          chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+          rememberSelectedFile(file);
           setLoading(false);
         })
         .catch((error: unknown) => {
@@ -1076,7 +1101,64 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  // Reset state when activeTaskId changes (e.g., new project created)
+  const activeTaskId = chatStore?.activeTaskId as string | undefined;
+  const activeWorkspace = activeTaskId
+    ? chatStore?.tasks[activeTaskId]?.activeWorkspace
+    : undefined;
+  const taskAssigning = activeTaskId
+    ? chatStore?.tasks[activeTaskId]?.taskAssigning
+    : undefined;
+  const projectId = (activeProjectId as string) || activeTaskId || '';
+  const fileSpaceId = resolvedSpaceId;
+  const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
+  const useSpaceScopedRemoteFiles = !isLocalWorkspaceSpace(activeSpace);
+  const projectFetchTargets = useMemo(() => {
+    if (useSpaceScopedRemoteFiles && fileSpaceId) {
+      const targets = spaceProjects.length
+        ? spaceProjects
+        : activeProjectMeta
+          ? [activeProjectMeta]
+          : [];
+      return targets
+        .filter((project) => project.id)
+        .map((project) => ({
+          id: project.id,
+          name: treeSegmentLabel(project.name, project.id),
+        }));
+    }
+    const targetProjectId =
+      projectId || (useBrainWorkspaceFiles ? fileSpaceId : '');
+    return targetProjectId
+      ? [
+          {
+            id: targetProjectId,
+            name: treeSegmentLabel(activeProjectMeta?.name, targetProjectId),
+          },
+        ]
+      : [];
+  }, [
+    activeProjectMeta,
+    fileSpaceId,
+    projectId,
+    spaceProjects,
+    useBrainWorkspaceFiles,
+    useSpaceScopedRemoteFiles,
+  ]);
+  const projectFetchKey = projectFetchTargets
+    .map((project) => project.id)
+    .join(',');
+  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}`;
+  const fileContextResetKey =
+    useSpaceScopedRemoteFiles || useBrainWorkspaceFiles
+      ? fileSpaceId
+      : activeTaskId;
+  const taskRunning =
+    !!taskAssigning?.length &&
+    taskAssigning.some(
+      (agent) => agent.status === 'running' || agent.status === 'pending'
+    );
+
+  // Reset state when the file context changes.
   useEffect(() => {
     hasFetchedRemote.current = false;
     setSelectedFile(null);
@@ -1086,11 +1168,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     priorFilePathsSnapshotRef.current = new Set();
     setNewFilePathsAccumulated(new Set());
     setFileTreeScope('all');
-  }, [chatStore?.activeTaskId]);
+  }, [fileContextResetKey]);
 
   useEffect(() => {
     let cancelled = false;
     const loadPath = async () => {
+      if (activeSpace?.rootPath) {
+        setWorkingFolderPath(activeSpace.rootPath);
+        return;
+      }
       if (!authStore.email || !projectStore.activeProjectId) {
         setWorkingFolderPath(null);
         return;
@@ -1113,19 +1199,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     return () => {
       cancelled = true;
     };
-  }, [authStore.email, projectStore.activeProjectId, electronAPI]);
-
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const activeWorkspace = chatStore?.tasks[activeTaskId]?.activeWorkspace;
-  const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
-  const projectId = (activeProjectId as string) || activeTaskId;
-  const fileSpaceId = activeProjectMeta?.spaceId || activeSpaceId || undefined;
-  const fetchKey = `${fileSpaceId || ''}|${projectId || ''}|${activeTaskId || ''}`;
-  const taskRunning =
-    !!taskAssigning?.length &&
-    taskAssigning.some(
-      (agent) => agent.status === 'running' || agent.status === 'pending'
-    );
+  }, [
+    activeSpace?.rootPath,
+    authStore.email,
+    projectStore.activeProjectId,
+    electronAPI,
+  ]);
 
   const expandFoldersForFile = (file?: FileInfo | null) => {
     const folderPaths = getAncestorFolderPathsForFile(file);
@@ -1145,17 +1224,28 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   };
 
   useEffect(() => {
-    if (!chatStore || !projectId || !authStore.email) return;
+    if (
+      (!chatStore && !useSpaceScopedRemoteFiles && !useBrainWorkspaceFiles) ||
+      !projectFetchTargets.length ||
+      !authStore.email
+    ) {
+      return;
+    }
 
     const setFileList = async () => {
       let res: FileInfo[] = [];
+      const primaryProjectId = projectFetchTargets[0]?.id || projectId;
 
-      if (ipcRenderer) {
+      if (
+        ipcRenderer &&
+        !useSpaceScopedRemoteFiles &&
+        !useBrainWorkspaceFiles
+      ) {
         try {
           const localFiles = await ipcRenderer.invoke(
             'get-project-file-list',
             authStore.email,
-            projectId
+            primaryProjectId
           );
           if (Array.isArray(localFiles)) {
             res = localFiles;
@@ -1168,37 +1258,48 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (
         !res.length ||
         !ipcRenderer ||
-        import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
+        import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ||
+        useSpaceScopedRemoteFiles ||
+        useBrainWorkspaceFiles
       ) {
         try {
           const baseURL = await getBaseURL();
           if (!baseURL) {
             console.warn('[Folder] Brain not connected, cannot fetch files');
           } else {
-            const listRes = await fetchGet('/files', {
-              project_id: projectId,
-              email: authStore.email,
-              ...(fileSpaceId ? { space_id: fileSpaceId } : {}),
-              ...(authStore.user_id != null
-                ? { user_id: String(authStore.user_id) }
-                : {}),
-            });
+            const lists = await Promise.all(
+              projectFetchTargets.map(async (target) => {
+                const listRes = await fetchGet('/files', {
+                  project_id: target.id,
+                  email: authStore.email,
+                  ...(fileSpaceId ? { space_id: fileSpaceId } : {}),
+                  ...(authStore.user_id != null
+                    ? { user_id: String(authStore.user_id) }
+                    : {}),
+                });
+                return { target, listRes };
+              })
+            );
 
-            if (Array.isArray(listRes)) {
-              res = listRes.map((item: any) => {
+            res = lists.flatMap(({ target, listRes }) => {
+              if (!Array.isArray(listRes)) return [];
+              return listRes.map((item: any) => {
                 const filename = item.filename || '';
                 const url = item.url?.startsWith('http')
                   ? item.url
                   : `${baseURL}${item.url || ''}`;
+                const relativePath = item.relativePath || filename;
                 return {
                   name: filename,
                   type: filename.split('.').pop() || '',
                   path: url,
-                  relativePath: item.relativePath || filename,
+                  relativePath: useSpaceScopedRemoteFiles
+                    ? `${target.name}/${relativePath}`
+                    : relativePath,
                   isRemote: true,
                 };
               });
-            }
+            });
           }
         } catch (error) {
           console.warn('[Folder] Failed to fetch files from Brain:', error);
@@ -1232,7 +1333,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       // Keep the old structure for compatibility
       setFileGroups((prev) => {
         const chatStoreSelectedFile =
-          chatStore.tasks[activeTaskId]?.selectedFile;
+          activeTaskId && chatStore?.tasks[activeTaskId]?.selectedFile;
         if (chatStoreSelectedFile) {
           const file = findMatchingFile(visibleFiles, chatStoreSelectedFile);
           if (file) {
@@ -1283,6 +1384,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     activeTaskId,
     authStore.email,
     authStore.user_id,
+    projectFetchTargets,
+    useBrainWorkspaceFiles,
+    useSpaceScopedRemoteFiles,
   ]);
 
   useEffect(() => {
@@ -1325,22 +1429,31 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   }, [selectedFile, workingFolderPath, t]);
 
-  if (!chatStore) {
+  if (!chatStore && !activeSpace) {
     return <div>Loading...</div>;
   }
 
   const _handleBack = () => {
+    if (!chatStore?.activeTaskId) return;
     chatStore.setActiveWorkspace(chatStore.activeTaskId as string, 'workflow');
   };
 
   const handleOpenInIDE = async (ide: 'vscode' | 'cursor' | 'system') => {
     try {
-      if (!authStore.email || !projectStore.activeProjectId) return;
+      if (!authStore.email) return;
       if (!electronAPI) return;
-      const folderPath = await electronAPI.getProjectFolderPath(
-        authStore.email,
-        projectStore.activeProjectId
-      );
+      let folderPath = activeSpace?.rootPath || '';
+      if (
+        !folderPath &&
+        projectStore.activeProjectId &&
+        typeof electronAPI.getProjectFolderPath === 'function'
+      ) {
+        folderPath = await electronAPI.getProjectFolderPath(
+          authStore.email,
+          projectStore.activeProjectId
+        );
+      }
+      if (!folderPath) return;
 
       if (ide === 'system' && selectedFile && !selectedFile.isFolder) {
         const p = selectedFile.path?.trim() ?? '';
@@ -1367,8 +1480,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
   const folderHeaderTitle =
     activeSpace?.name?.trim() || t('layout.spaces-untitled');
-  const canOpenInExternalEditor =
-    electronAPI?.getProjectFolderPath && electronAPI?.openInIDE;
+  const canOpenInExternalEditor = Boolean(
+    electronAPI?.openInIDE &&
+    (activeSpace?.rootPath || electronAPI?.getProjectFolderPath)
+  );
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -1769,14 +1884,45 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     setSrc('');
     if (selectedFile.isRemote) {
-      setSrc((selectedFile.content as string) || selectedFile.path);
-      return;
+      const contentSrc = selectedFile.content as string | undefined;
+      if (contentSrc) {
+        setSrc(contentSrc);
+        return;
+      }
+
+      void fetchRemoteFileAsDataUrl(selectedFile.path)
+        .then((dataUrl) => {
+          if (!cancelled) setSrc(dataUrl);
+        })
+        .catch((error) => {
+          console.warn(
+            '[ImageLoader] Failed to fetch remote image as data URL, falling back to direct URL:',
+            selectedFile.path,
+            error
+          );
+          if (!cancelled) setSrc(selectedFile.path);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     // Use file:// source so Chromium can stream/seek large media files.
     setSrc(toFileUrl(selectedFile.path));
+    return () => {
+      cancelled = true;
+    };
   }, [selectedFile]);
+
+  if (!src) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <img
@@ -2150,6 +2296,57 @@ async function inlineCssImageUrls(
   }, cssText);
 }
 
+function injectSandboxStorageShim(html: string): string {
+  if (!html || html.includes('data-eigent-sandbox-storage-shim')) {
+    return html;
+  }
+
+  const shim = `<script data-eigent-sandbox-storage-shim>
+(function () {
+  function createMemoryStorage() {
+    var values = Object.create(null);
+    return {
+      get length() { return Object.keys(values).length; },
+      key: function (index) { return Object.keys(values)[index] || null; },
+      getItem: function (key) {
+        key = String(key);
+        return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null;
+      },
+      setItem: function (key, value) { values[String(key)] = String(value); },
+      removeItem: function (key) { delete values[String(key)]; },
+      clear: function () { values = Object.create(null); }
+    };
+  }
+  function install(name) {
+    try {
+      void window[name];
+      return;
+    } catch {
+      // Access throws in opaque-origin sandboxed iframes.
+    }
+    try {
+      Object.defineProperty(window, name, {
+        value: createMemoryStorage(),
+        configurable: true
+      });
+    } catch {
+      // If the browser refuses replacement, keep the original sandbox error.
+    }
+  }
+  install('localStorage');
+  install('sessionStorage');
+})();
+</script>`;
+
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/(<head[^>]*>)/i, `$1${shim}`);
+  }
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(/(<html[^>]*>)/i, `$1<head>${shim}</head>`);
+  }
+  return `${shim}${html}`;
+}
+
 async function inlineRemoteHtmlImages(
   html: string,
   baseHref?: string
@@ -2461,8 +2658,10 @@ function HtmlRenderer({
           htmlWithBaseHref,
           previewBaseHref
         );
+        const htmlWithStorageShim =
+          injectSandboxStorageShim(htmlWithInlineImages);
         setProcessedHtml(
-          injectFontStyles(deferInlineScriptsUntilLoad(htmlWithInlineImages))
+          injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
         );
         return;
       }
@@ -2557,8 +2756,9 @@ function HtmlRenderer({
       }
 
       // Defer inline scripts until load when document has external scripts (e.g. Chart.js),
-      const htmlWithDeferredScripts =
-        deferInlineScriptsUntilLoad(processedHtmlContent);
+      const htmlWithDeferredScripts = deferInlineScriptsUntilLoad(
+        injectSandboxStorageShim(processedHtmlContent)
+      );
 
       // Set the processed HTML with font styles - iframe sandbox provides security
       setProcessedHtml(injectFontStyles(htmlWithDeferredScripts));

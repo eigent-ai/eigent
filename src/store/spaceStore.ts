@@ -19,6 +19,7 @@ import {
   type SessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import {
+  isLocalWorkspaceSpace,
   isPlaceholderProjectName,
   isPlaceholderSpaceNameStatic,
 } from '@/lib/spaceLabel';
@@ -1134,7 +1135,7 @@ export const useSpaceStore = create<SpaceStore>()(
         const workdirMode = project?.workdirMode ?? null;
         const isDirectWrite =
           workdirMode === 'direct-write' ||
-          (!workdirMode && space?.sourceType === 'folder');
+          (!workdirMode && isLocalWorkspaceSpace(space));
         if (isDirectWrite) {
           return;
         }
@@ -1209,7 +1210,7 @@ export const useSpaceStore = create<SpaceStore>()(
             error
           );
         });
-        if (space.sourceType === 'folder' && space.rootPath) {
+        if (isLocalWorkspaceSpace(space) && space.rootPath) {
           const [{ bindWorkspaceToSpace }, { getAuthStore }] =
             await Promise.all([
               import('@/service/workspaceApi'),

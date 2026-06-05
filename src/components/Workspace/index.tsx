@@ -30,6 +30,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
+import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
@@ -305,10 +306,9 @@ export default function Workspace({
           spaceId: activeSpaceId,
           name: trimmedMessage.slice(0, 120),
           mode: effectiveSessionMode,
-          workdirMode:
-            activeSpace?.sourceType === 'folder'
-              ? 'direct-write'
-              : 'artifact-only',
+          workdirMode: isLocalWorkspaceSpace(activeSpace)
+            ? 'direct-write'
+            : 'artifact-only',
           metadata: {
             createdFrom: 'workspace_direct_chat',
           },

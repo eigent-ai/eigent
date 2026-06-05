@@ -37,6 +37,7 @@ import {
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
 import { buildTaskQuestionsById } from '@/lib/replay';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
 import {
   getActiveSpaceTriggerLabel,
@@ -354,6 +355,11 @@ function HeaderWin() {
           autoCreatedPlaceholder: true,
         },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
       setActiveWorkspaceTab('workforce');
@@ -366,11 +372,13 @@ function HeaderWin() {
     }
   }, [
     createSpaceOnServer,
+    email,
     projectStore,
     requestWorkspaceChatFocus,
     setActiveSpace,
     setActiveWorkspaceTab,
     t,
+    userId,
   ]);
 
   const handleCreateSpaceFromFolder = useCallback(async () => {

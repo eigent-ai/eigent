@@ -52,6 +52,14 @@ export function isLegacySpace(space: Space): boolean {
   return space.metadata?.legacy === true || space.sourceType === 'legacy';
 }
 
+/** Folder-backed and scratch Spaces with a local workspace root behave locally. */
+export function isLocalWorkspaceSpace(
+  space: Space | null | undefined
+): boolean {
+  if (!space) return false;
+  return space.sourceType === 'folder' || Boolean(space.rootPath);
+}
+
 export function isPlaceholderSpaceName(
   name: string | undefined | null,
   t: TFunction
@@ -120,7 +128,7 @@ export function getContextTabBindingLabel(
       tooltip: t('layout.context-tab-unbound-tooltip'),
     };
   }
-  if (space.sourceType === 'folder') {
+  if (isLocalWorkspaceSpace(space)) {
     return { label: t('layout.context-tab-local') };
   }
   return { label: t('layout.context-tab-remote') };
@@ -131,7 +139,7 @@ export function getSpaceKindLabel(space: Space, t: TFunction) {
   if (space.metadata?.legacy === true || space.sourceType === 'legacy') {
     return t('layout.spaces-hub-legacy-tag');
   }
-  if (space.sourceType === 'folder') {
+  if (isLocalWorkspaceSpace(space)) {
     return t('layout.spaces-hub-local-tag', { defaultValue: 'Local' });
   }
   return t('layout.spaces-hub-remote-tag', { defaultValue: 'Remote' });

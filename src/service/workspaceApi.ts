@@ -52,6 +52,12 @@ export interface WorkspaceBindPayload {
   path: string;
 }
 
+export interface WorkspaceScratchPayload {
+  space_id: string;
+  email: string;
+  user_id?: string | number | null;
+}
+
 export interface WorkspaceReconcileResult {
   email: string;
   user_id?: string | number | null;
@@ -91,6 +97,10 @@ export const fetchWorkspaceCurrent = async (
 export const bindWorkspaceToSpace = async (
   payload: WorkspaceBindPayload
 ): Promise<WorkspaceCurrent> => fetchPost('/workspace/bind', payload);
+
+export const createScratchWorkspaceForSpace = async (
+  payload: WorkspaceScratchPayload
+): Promise<WorkspaceCurrent> => fetchPost('/workspace/scratch', payload);
 
 export const unbindWorkspaceFromBrain = async (
   spaceId: string,

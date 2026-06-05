@@ -33,6 +33,7 @@ import {
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
+import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -1513,10 +1514,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const requestSpace = spaceId
         ? useSpaceStore.getState().getSpaceById(spaceId)
         : null;
-      const spaceRootPath =
-        requestSpace?.sourceType === 'folder'
-          ? requestSpace.rootPath || undefined
-          : undefined;
+      const spaceRootPath = isLocalWorkspaceSpace(requestSpace)
+        ? requestSpace?.rootPath || undefined
+        : undefined;
       if (!type && !startOptions.skipHistoryCreate) {
         const authStore = getAuthStore();
 
