@@ -15,6 +15,7 @@
 import { fetchPut } from '@/api/http';
 import Terminal from '@/components/Terminal';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import {
   ArrowDown,
@@ -33,7 +34,11 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 
-export default function TerminalAgentWorkspace() {
+export default function TerminalAgentWorkspace({
+  selectedTurn,
+}: {
+  selectedTurn?: SelectedProjectTurn;
+}) {
   //Get Chatstore for the active project's task
   const host = useHost();
   const electronAPI = host?.electronAPI;
@@ -43,20 +48,23 @@ export default function TerminalAgentWorkspace() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isTakeControl, setIsTakeControl] = useState(false);
 
-  const activeTaskId = chatStore?.activeTaskId;
-  const taskAssigning = chatStore?.tasks[activeTaskId as string]?.taskAssigning;
+  const selectedChatState = selectedTurn?.chatStore?.getState();
+  const targetChatStore = selectedChatState ?? chatStore;
+  const activeTaskId = selectedTurn?.taskId ?? targetChatStore?.activeTaskId;
+  const taskAssigning =
+    targetChatStore?.tasks[activeTaskId as string]?.taskAssigning;
   const activeWorkspace =
-    chatStore?.tasks[activeTaskId as string]?.activeWorkspace;
+    targetChatStore?.tasks[activeTaskId as string]?.activeWorkspace;
 
   // Use useMemo to derive activeAgent from taskAssigning and activeWorkspace
   const activeAgent = useMemo(() => {
-    if (!chatStore || !taskAssigning) return null;
+    if (!targetChatStore || !taskAssigning) return null;
     return (
       taskAssigning.find((item) => item.agent_id === activeWorkspace) || null
     );
-  }, [chatStore, taskAssigning, activeWorkspace]);
+  }, [targetChatStore, taskAssigning, activeWorkspace]);
 
-  if (!chatStore) {
+  if (!targetChatStore) {
     return <div>Loading...</div>;
   }
 
@@ -163,8 +171,8 @@ export default function TerminalAgentWorkspace() {
               buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkspace(
-                  chatStore.activeTaskId as string,
+                targetChatStore.setActiveWorkspace(
+                  activeTaskId as string,
                   'workflow'
                 );
               }}

@@ -295,6 +295,8 @@ interface Task {
   // Trigger execution ID for tracking trigger task completion
   executionId?: string;
   nextExecutionId?: string;
+  /** Unix ms timestamp when this task was created — used for TurnTabs ordering. */
+  createdAt: number;
 }
 
 type UploadFileSource = 'project_output' | 'camel_log' | 'user_attachment';
@@ -1090,6 +1092,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             autoConfirmDeadline: null,
             streamingDecomposeText: '',
             executionId: undefined,
+            createdAt: Date.now(),
           },
         },
       }));
@@ -1232,43 +1235,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       sessionMode?: SessionModeType,
       options?: StartTaskOptions
     ) => {
-      // ✅ Wait for backend to be ready before starting task (except for replay/share)
-      if (!type || type === 'normal') {
-        console.log('[startTask] Checking if backend is ready...');
-        const isBackendReady = await waitForBackendReady(60000, 500); // Wait up to 60 seconds
-
-        if (!isBackendReady) {
-          console.error('[startTask] Backend is not ready, cannot start task');
-          const { addMessages } = get();
-          addMessages(taskId, {
-            id: generateUniqueId(),
-            role: 'agent',
-            content:
-              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
-          });
-          return;
-        }
-        console.log('[startTask] Backend is ready, proceeding with task...');
-      }
-
-      const { token, language, modelType, cloud_model_type, email } =
-        getAuthStore();
-      const workerList = getWorkerList();
-      const {
-        getLastUserMessage: _getLastUserMessage,
-        setDelayTime,
-        setType,
-      } = get();
-      let systemLanguage = language;
-      if (language === 'system') {
-        try {
-          systemLanguage =
-            (await getHostIpcRenderer()?.invoke?.('get-system-language')) ??
-            'en';
-        } catch {
-          systemLanguage = 'en';
-        }
-      }
+      const { setDelayTime, setType } = get();
       if (type === 'replay') {
         setDelayTime(taskId, delayTime as number);
         setType(taskId, type);
@@ -1284,9 +1251,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         throw new Error('No active Project selected.');
       }
       const startOptions = options || {};
-      const project = project_id
-        ? projectStore.getProjectById(project_id)
-        : null;
+      const project =
+        isLiveTask && project_id
+          ? projectStore.getProjectById(project_id)
+          : null;
       if (isLiveTask && !project) {
         throw new Error('Selected Project is not available.');
       }
@@ -1344,6 +1312,43 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         targetChatStore
           .getState()
           .setTaskSessionMode(newTaskId, sessionModeForRequest);
+      }
+
+      // Render the new turn before waiting for Brain. This keeps the project
+      // page responsive and locks the composer through the task's pending state.
+      if (!type || type === 'normal') {
+        console.log('[startTask] Checking if backend is ready...');
+        const isBackendReady = await waitForBackendReady(60000, 500);
+
+        if (!isBackendReady) {
+          console.error('[startTask] Backend is not ready, cannot start task');
+          const targetState = targetChatStore.getState();
+          targetState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content:
+              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+          });
+          targetState.setIsPending(newTaskId, false);
+          targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+          return;
+        }
+        console.log('[startTask] Backend is ready, proceeding with task...');
+      }
+
+      const { token, language, modelType, cloud_model_type, email } =
+        getAuthStore();
+      const workerList = getWorkerList();
+      const { getLastUserMessage: _getLastUserMessage } = get();
+      let systemLanguage = language;
+      if (language === 'system') {
+        try {
+          systemLanguage =
+            (await getHostIpcRenderer()?.invoke?.('get-system-language')) ??
+            'en';
+        } catch {
+          systemLanguage = 'en';
+        }
       }
 
       // Replay/share APIs live on the server side, not Brain.
@@ -4125,33 +4130,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
     },
     setIsPending(taskId: string, isPending: boolean) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            isPending,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              isPending,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setActiveWorkspace(taskId: string, activeWorkspace: string) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            activeWorkspace,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              activeWorkspace,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setActiveAgent(taskId: string, agent_id: string) {
       console.log('setActiveAgent', taskId, agent_id);
 
       set((state) => {
+        if (!state.tasks[taskId]) return state;
         if (state.tasks[taskId]?.activeAgent === agent_id) {
           return state;
         }
@@ -4360,16 +4372,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       return tasks[taskId]?.tokens ?? 0;
     },
     setSelectedFile(taskId: string, selectedFile: FileInfo | null) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            selectedFile: selectedFile,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              selectedFile: selectedFile,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setSnapshots(taskId: string, snapshots: any[]) {
       set((state) => ({

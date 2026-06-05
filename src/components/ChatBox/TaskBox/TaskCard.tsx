@@ -75,6 +75,7 @@ interface TaskCardProps {
   onDeleteTask: (taskIndex: number) => void;
   clickable?: boolean;
   chatId?: string;
+  taskId?: string;
 }
 
 export function TaskCard({
@@ -89,6 +90,7 @@ export function TaskCard({
   onDeleteTask,
   clickable = true,
   chatId,
+  taskId,
 }: TaskCardProps) {
   const host = useHost();
   const electronAPI = host?.electronAPI;
@@ -101,7 +103,7 @@ export function TaskCard({
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   // Extract values for dependency arrays (must be before any conditional returns)
-  const activeTaskId = chatStore?.activeTaskId as string;
+  const activeTaskId = taskId ?? (chatStore?.activeTaskId as string);
   const activeTask = chatStore?.tasks?.[activeTaskId];
   const activeTaskStatus = activeTask?.status;
   const expandStorageKey = getTaskCardExpandStorageKey(chatId, activeTaskId);
@@ -124,13 +126,17 @@ export function TaskCard({
   // bump of the counter forces the card open; ProjectChatContainer handles
   // the scroll. Skip the initial value so we don't pop on mount.
   const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
+  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
   const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
-    if (taskBoxFocusRequestId !== lastSeenFocusRef.current) {
+    if (
+      taskBoxFocusRequestId !== lastSeenFocusRef.current &&
+      (!taskBoxFocusTaskId || taskBoxFocusTaskId === activeTaskId)
+    ) {
       lastSeenFocusRef.current = taskBoxFocusRequestId;
       setIsExpanded(true);
     }
-  }, [taskBoxFocusRequestId]);
+  }, [activeTaskId, taskBoxFocusRequestId, taskBoxFocusTaskId]);
 
   useEffect(() => {
     const tasks = taskRunning || [];

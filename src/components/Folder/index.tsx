@@ -56,6 +56,7 @@ import FolderComponent from './FolderComponent';
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import {
@@ -521,14 +522,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`mb-1 flex w-full min-w-0 flex-row items-center justify-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ds-bg-neutral-subtle-hover ${
+              className={`mb-1 min-w-0 gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-subtle-hover flex w-full flex-row items-center justify-start text-left transition-colors ${
                 isRowSelected
                   ? 'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                  : 'bg-transparent text-ds-text-neutral-muted-default'
+                  : 'text-ds-text-neutral-muted-default bg-transparent'
               }`}
             >
               {child.isFolder ? (
-                <span className="inline-flex w-4 shrink-0 items-center justify-start">
+                <span className="w-4 inline-flex shrink-0 items-center justify-start">
                   {isExpanded ? (
                     <ChevronDown className={rowIconClass} />
                   ) : (
@@ -547,13 +548,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 )
               )}
 
-              <span className="min-w-0 flex-1 truncate text-left text-body-sm font-medium leading-normal">
+              <span className="min-w-0 text-body-sm font-medium leading-normal flex-1 truncate text-left">
                 {child.name}
               </span>
             </button>
 
             {hasNested ? (
-              <div className="ml-4 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1">
+              <div className="ml-4 border-ds-border-neutral-subtle-default pl-1 border-y-0 border-r-0 border-l border-solid">
                 <FileTree
                   node={child}
                   level={level + 1}
@@ -764,6 +765,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const authStore = useAuthStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const activeProjectId = projectStore.activeProjectId;
+  const selectedTurn = useSelectedProjectTurn(activeProjectId);
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -820,8 +822,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
 
   const rememberSelectedFile = (file: FileInfo) => {
-    if (!chatStore?.activeTaskId) return;
-    chatStore.setSelectedFile(chatStore.activeTaskId as string, file);
+    if (!selectedTurn.chatStore || !selectedTurn.taskId) return;
+    selectedTurn.chatStore
+      .getState()
+      .setSelectedFile(selectedTurn.taskId, file);
   };
 
   const filteredFileTree = useMemo(
@@ -1102,13 +1106,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  const activeTaskId = chatStore?.activeTaskId as string | undefined;
-  const activeWorkspace = activeTaskId
-    ? chatStore?.tasks[activeTaskId]?.activeWorkspace
-    : undefined;
-  const taskAssigning = activeTaskId
-    ? chatStore?.tasks[activeTaskId]?.taskAssigning
-    : undefined;
+  const activeTaskId = selectedTurn.taskId ?? undefined;
+  const activeWorkspace = selectedTurn.task?.activeWorkspace;
+  const taskAssigning = selectedTurn.task?.taskAssigning;
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
   const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
@@ -1333,8 +1333,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setFileTree(tree);
       // Keep the old structure for compatibility
       setFileGroups((prev) => {
-        const chatStoreSelectedFile =
-          activeTaskId && chatStore?.tasks[activeTaskId]?.selectedFile;
+        const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
         if (chatStoreSelectedFile) {
           const file = findMatchingFile(visibleFiles, chatStoreSelectedFile);
           if (file) {
@@ -1394,13 +1393,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     hasFetchedRemote.current = false;
   }, [projectId, activeTaskId]);
 
-  const selectedFilePath =
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.selectedFile?.path;
+  const selectedFilePath = selectedTurn.task?.selectedFile?.path;
 
   useEffect(() => {
-    if (!chatStore) return;
-    const chatStoreSelectedFile =
-      chatStore.tasks[chatStore.activeTaskId as string]?.selectedFile;
+    const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
       const file = findMatchingFile(fileGroups[0].files, chatStoreSelectedFile);
       if (file) {
@@ -1415,7 +1411,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFilePath, fileGroups, isShowSourceCode, chatStore?.activeTaskId]);
+  }, [selectedFilePath, fileGroups, isShowSourceCode, selectedTurn.taskId]);
 
   const fileBreadcrumbSegments = useMemo(() => {
     if (!selectedFile) return [];
@@ -1490,15 +1486,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default p-2">
-        <div className="flex min-w-0 max-w-[min(20rem,45%)] items-center">
+      <div className="gap-2 border-ds-border-neutral-subtle-default p-2 flex w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
+        <div className="min-w-0 flex max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
             aria-pressed={isFileSidebarOpen}
-            className="shrink-0 text-ds-icon-neutral-default-default"
+            className="text-ds-icon-neutral-default-default shrink-0"
             aria-label={
               isFileSidebarOpen
                 ? t('chat.hide-file-sidebar', {
@@ -1526,21 +1522,21 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             )}
           </Button>
           <span
-            className="min-w-0 truncate text-body-sm font-semibold leading-none text-ds-text-neutral-default-default"
+            className="min-w-0 text-body-sm font-semibold text-ds-text-neutral-default-default truncate leading-none"
             title={folderHeaderTitle}
           >
             {folderHeaderTitle}
           </span>
         </div>
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          <div className="relative h-7 w-32 min-w-[10rem] max-w-xs shrink-0 rounded-lg">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ds-text-brand-default-default" />
+        <div className="min-w-0 gap-2 ml-auto flex items-center">
+          <div className="h-7 w-32 max-w-xs rounded-lg relative min-w-[10rem] shrink-0">
+            <Search className="left-2 h-3.5 w-3.5 text-ds-text-brand-default-default pointer-events-none absolute top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={fileSearchQuery}
               onChange={(e) => setFileSearchQuery(e.target.value)}
               placeholder={t('chat.search')}
-              className="h-7 w-full rounded-lg border border-solid border-ds-border-neutral-subtle-default py-0 pl-7 pr-2 text-sm leading-none focus:outline-none focus:ring-2 focus:ring-ds-ring-brand-default-focus focus:ring-offset-0"
+              className="h-7 rounded-lg border-ds-border-neutral-subtle-default py-0 pl-7 pr-2 text-sm focus:ring-ds-ring-brand-default-focus w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
               aria-label={t('chat.search')}
             />
           </div>
@@ -1561,18 +1557,18 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="z-50 border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default"
+                className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
               >
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('system')}
-                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
                   <FolderIcon className="size-4 shrink-0" aria-hidden />
                   {t('chat.open-in-file-manager')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('cursor')}
-                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
                   <img
                     src={cursorIcon}
@@ -1584,7 +1580,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('vscode')}
-                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                 >
                   <img
                     src={vsCodeIcon}
@@ -1600,11 +1596,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex flex-1 overflow-hidden">
         {/* sidebar */}
         {isFileSidebarOpen ? (
-          <div className="flex h-full w-64 flex-shrink-0 flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default">
-            <div className="flex h-8 items-center px-1">
+          <div className="w-64 border-ds-border-neutral-subtle-default flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
+            <div className="h-8 px-1 flex items-center">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -1613,7 +1609,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     size="sm"
                     buttonContent="text"
                   >
-                    <span className="min-w-0 truncate text-left font-bold">
+                    <span className="min-w-0 font-bold truncate text-left">
                       {t('chat.files')}
                     </span>
                     <ChevronDown className="size-3.5 shrink-0 opacity-70" />
@@ -1622,7 +1618,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 <DropdownMenuContent
                   side="bottom"
                   align="start"
-                  className="z-50 min-w-[10rem] border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default"
+                  className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50 min-w-[10rem]"
                 >
                   <DropdownMenuRadioGroup
                     value={fileTreeScope}
@@ -1632,7 +1628,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   >
                     <DropdownMenuRadioItem
                       value="all"
-                      className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                     >
                       {t('folder.files-scope-all', {
                         defaultValue: 'All files',
@@ -1640,7 +1636,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     </DropdownMenuRadioItem>
                     <DropdownMenuRadioItem
                       value="new"
-                      className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
+                      className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
                     >
                       {t('folder.files-scope-new', {
                         defaultValue: 'New files',
@@ -1651,7 +1647,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </DropdownMenu>
             </div>
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
-              <div className="h-full pl-1.5">
+              <div className="pl-1.5 h-full">
                 <FileTree
                   node={sidebarFileTree}
                   selectedFile={selectedFile}
@@ -1668,10 +1664,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         ) : null}
 
         {/* content */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ds-bg-neutral-subtle-default">
+        <div className="min-w-0 bg-ds-bg-neutral-subtle-default flex flex-1 flex-col overflow-hidden">
           {/* head */}
           {selectedFile && (
-            <div className="flex h-8 flex-shrink-0 items-center justify-between gap-2 pl-3 pr-2">
+            <div className="h-8 gap-2 pl-3 pr-2 flex flex-shrink-0 items-center justify-between">
               <div
                 onClick={() => {
                   // if file is remote, don't call reveal-in-folder
@@ -1681,10 +1677,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   }
                   ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
                 }}
-                className="flex min-w-0 flex-1 cursor-pointer items-center overflow-hidden"
+                className="min-w-0 flex flex-1 cursor-pointer items-center overflow-hidden"
               >
                 <nav
-                  className="scrollbar-always-visible flex min-w-0 max-w-full items-center gap-1 overflow-x-auto text-body-sm text-ds-text-neutral-muted-default"
+                  className="scrollbar-always-visible min-w-0 gap-1 text-body-sm text-ds-text-neutral-muted-default flex max-w-full items-center overflow-x-auto"
                   aria-label={t('folder.file-path-breadcrumb', {
                     defaultValue: 'File path',
                   })}
@@ -1695,15 +1691,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       <Fragment key={`${index}-${segment}`}>
                         {index > 0 ? (
                           <ChevronRight
-                            className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
+                            className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default shrink-0"
                             aria-hidden
                           />
                         ) : null}
                         <span
                           className={
                             isLast
-                              ? 'shrink-0 font-bold text-ds-text-neutral-default-default'
-                              : 'shrink-0 font-normal'
+                              ? 'font-bold text-ds-text-neutral-default-default shrink-0'
+                              : 'font-normal shrink-0'
                           }
                         >
                           {segment}
@@ -1713,7 +1709,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   })}
                 </nav>
               </div>
-              <div className="flex flex-shrink-0 items-center gap-0.5">
+              <div className="gap-0.5 flex flex-shrink-0 items-center">
                 <Button
                   size="icon"
                   variant="ghost"
@@ -1742,7 +1738,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
           {/* content */}
           <div
-            className={`flex min-h-0 flex-1 flex-col ${
+            className={`min-h-0 flex flex-1 flex-col ${
               selectedFile?.type === 'html' && !isShowSourceCode
                 ? 'overflow-hidden'
                 : 'scrollbar-always-visible overflow-y-auto'
@@ -1751,8 +1747,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             <div
               className={`flex flex-col ${
                 selectedFile?.type === 'html' && !isShowSourceCode
-                  ? 'h-full min-h-0'
-                  : 'min-h-full py-2 pl-4 pr-2'
+                  ? 'min-h-0 h-full'
+                  : 'py-2 pl-4 pr-2 min-h-full'
               } file-viewer-content`}
             >
               {selectedFile ? (
@@ -1789,9 +1785,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       />
                     )
                   ) : selectedFile.type === 'zip' ? (
-                    <div className="flex h-full w-full items-center justify-center text-ds-text-neutral-muted-default">
+                    <div className="text-ds-text-neutral-muted-default flex h-full w-full items-center justify-center">
                       <div className="text-center">
-                        <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
+                        <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
                         <p className="text-sm">
                           {t('folder.zip-file-is-not-supported-yet')}
                         </p>
@@ -1810,14 +1806,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       <ImageLoader selectedFile={selectedFile} />
                     </div>
                   ) : (
-                    <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
+                    <pre className="font-mono text-sm text-ds-text-neutral-default-default overflow-auto break-words whitespace-pre-wrap">
                       {selectedFile.content}
                     </pre>
                   )
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <div className="text-center">
-                      <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full"></div>
+                      <div className="mb-4 h-8 w-8 animate-spin mx-auto rounded-full"></div>
                       <p className="text-body-sm text-ds-text-neutral-muted-default">
                         {t('chat.loading')}
                       </p>
@@ -1825,9 +1821,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   </div>
                 )
               ) : (
-                <div className="flex h-full w-full flex-1 items-center justify-center text-ds-text-neutral-muted-default">
+                <div className="text-ds-text-neutral-muted-default flex h-full w-full flex-1 items-center justify-center">
                   <div className="text-center">
-                    <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
+                    <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
                     <p className="text-sm">
                       {t('chat.select-a-file-to-view-its-contents')}
                     </p>
@@ -1921,7 +1917,7 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   if (!src) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full" />
+        <div className="h-8 w-8 animate-spin mx-auto rounded-full" />
       </div>
     );
   }
@@ -1950,7 +1946,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   }, [selectedFile]);
 
   return (
-    <div className="flex w-full flex-col items-center gap-4 px-8">
+    <div className="gap-4 px-8 flex w-full flex-col items-center">
       <p className="text-sm font-medium text-ds-text-neutral-default-default">
         {selectedFile.name}
       </p>
@@ -2791,7 +2787,7 @@ function HtmlRenderer({
   if (selectedFile.content && !processedHtml) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full" />
+        <div className="mb-4 h-8 w-8 animate-spin mx-auto rounded-full" />
       </div>
     );
   }
@@ -2808,7 +2804,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
+        className="min-h-0 bg-code-surface flex-1 overflow-hidden"
         onWheel={handleWheel}
       >
         <div

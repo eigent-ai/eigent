@@ -121,7 +121,7 @@ vi.mock('../../../src/store/projectStore', () => ({
   },
 }));
 
-import { proxyFetchGet } from '@/api/http';
+import { proxyFetchGet, waitForBackendReady } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
@@ -718,6 +718,107 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       expect(result.current.getState().updateCount).toBe(initialCount + 2);
+    });
+  });
+
+  describe('Task startup', () => {
+    it('renders the pending user turn before backend readiness resolves', async () => {
+      let resolveBackendReady!: (ready: boolean) => void;
+      vi.mocked(waitForBackendReady).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveBackendReady = resolve;
+        })
+      );
+
+      const { result } = renderHook(() => useChatStore());
+      const appendInitChatStore = vi.fn(() => {
+        const optimisticTaskId = result.current
+          .getState()
+          .create('optimistic-task');
+        result.current.getState().setActiveTaskId(optimisticTaskId);
+        return {
+          taskId: optimisticTaskId,
+          chatStore: result.current,
+        };
+      });
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+      } as any);
+
+      let startPromise!: Promise<void>;
+      act(() => {
+        const initialTaskId = result.current.getState().create('initial-task');
+        startPromise = result.current
+          .getState()
+          .startTask(
+            initialTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'Resume this project',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+      });
+
+      expect(appendInitChatStore).toHaveBeenCalledTimes(1);
+      expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
+        isPending: true,
+        status: ChatTaskStatus.PENDING,
+        messages: [
+          expect.objectContaining({
+            role: 'user',
+            content: 'Resume this project',
+          }),
+        ],
+      });
+
+      resolveBackendReady(false);
+      await act(async () => {
+        await startPromise;
+      });
+
+      expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
+        isPending: false,
+        status: ChatTaskStatus.FINISHED,
+      });
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+  });
+
+  describe('Cross-store task safety', () => {
+    it('does not create phantom tasks through task-scoped setters', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      act(() => {
+        result.current.getState().setSelectedFile('missing-task', {
+          name: 'missing.md',
+          path: '/missing.md',
+          type: 'md',
+        });
+        result.current
+          .getState()
+          .setActiveWorkspace('missing-task', 'workflow');
+        result.current.getState().setActiveAgent('missing-task', 'agent-1');
+      });
+
+      expect(result.current.getState().tasks['missing-task']).toBeUndefined();
     });
   });
 

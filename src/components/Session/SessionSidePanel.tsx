@@ -14,6 +14,7 @@
 
 import { SessionSidePanelHeader } from '@/components/Session/SessionSidePanelHeader';
 import { SingleAgentSidePanel } from '@/components/Session/SingleAgent/SingleAgentSidePanel';
+import { TurnTabs } from '@/components/Session/TurnTabs';
 import { WorkforceSidePanel } from '@/components/Session/Workforce/WorkforceSidePanel';
 import { WorkforceSidePanelHeaderEnd } from '@/components/Session/Workforce/WorkforceSidePanelHeaderEnd';
 import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
@@ -77,6 +78,7 @@ export function SessionSidePanel({
           mode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggleSidePanel}
+          start={<TurnTabs />}
           end={
             mode === SessionMode.WORKFORCE ? (
               <WorkforceSidePanelHeaderEnd

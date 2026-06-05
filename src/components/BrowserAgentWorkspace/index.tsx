@@ -14,6 +14,7 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
@@ -32,7 +33,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
-export default function BrowserAgentWorkspace() {
+export default function BrowserAgentWorkspace({
+  selectedTurn,
+}: {
+  selectedTurn?: SelectedProjectTurn;
+}) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const host = useHost();
@@ -96,9 +101,12 @@ export default function BrowserAgentWorkspace() {
     },
   };
   // Extract complex expressions to avoid lint error in dependency array
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
-  const activeWorkspace = chatStore?.tasks[activeTaskId]?.activeWorkspace;
+  const selectedChatState = selectedTurn?.chatStore?.getState();
+  const targetChatStore = selectedChatState ?? chatStore;
+  const activeTaskId =
+    selectedTurn?.taskId ?? (targetChatStore?.activeTaskId as string);
+  const taskAssigning = targetChatStore?.tasks[activeTaskId]?.taskAssigning;
+  const activeWorkspace = targetChatStore?.tasks[activeTaskId]?.activeWorkspace;
 
   // Derive activeAgent from taskAssigning and activeWorkspace (no setState in effect)
   const activeAgent = useMemo(() => {
@@ -165,14 +173,14 @@ export default function BrowserAgentWorkspace() {
     };
   }, [host]);
 
-  if (!chatStore) {
+  if (!targetChatStore) {
     return <div>Loading...</div>;
   }
 
   return isTakeControl ? (
-    <div className="flex h-full w-full flex-col items-center justify-start rounded-xl border border-solid border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default">
-      <div className="flex w-full items-start justify-start gap-sm p-sm">
-        <div className="rounded-full border border-solid border-ds-border-neutral-strong-default bg-transparent p-1">
+    <div className="rounded-xl border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default flex h-full w-full flex-col items-center justify-start border border-solid">
+      <div className="gap-sm p-sm flex w-full items-start justify-start">
+        <div className="border-ds-border-neutral-strong-default p-1 rounded-full border border-solid bg-transparent">
           <Button
             onClick={() => {
               fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
@@ -195,20 +203,17 @@ export default function BrowserAgentWorkspace() {
     </div>
   ) : (
     <div
-      className={`flex h-full w-full flex-1 items-center justify-center transition-all duration-300 ease-in-out`}
+      className={`ease-in-out flex h-full w-full flex-1 items-center justify-center transition-all duration-300`}
     >
-      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm">
-        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
-          <div className="flex items-center justify-start gap-sm">
+      <div className="rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm relative flex h-full w-full flex-col overflow-hidden">
+        <div className="rounded-t-2xl px-2 pb-2 pt-3 flex flex-shrink-0 items-center justify-between">
+          <div className="gap-sm flex items-center justify-start">
             <Button
               size="xs"
               buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkspace(
-                  chatStore.activeTaskId as string,
-                  'workflow'
-                );
+                targetChatStore.setActiveWorkspace(activeTaskId, 'workflow');
               }}
             >
               <ChevronLeft size={16} />
@@ -282,14 +287,14 @@ export default function BrowserAgentWorkspace() {
                     activeAgent?.activeWebviewIds?.[0]?.id || ''
                   )
                 }
-                className="group relative h-full w-full cursor-pointer rounded-b-2xl pt-sm"
+                className="group rounded-b-2xl pt-sm relative h-full w-full cursor-pointer"
               >
                 <img
                   src={activeAgent?.activeWebviewIds[0]?.img}
                   alt=""
-                  className="h-full w-full rounded-b-2xl object-contain"
+                  className="rounded-b-2xl h-full w-full object-contain"
                 />
-                <div className="bg-dialog-overlay-dark pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-b-lg opacity-0 transition-all group-hover:opacity-[0.67]">
+                <div className="bg-dialog-overlay-dark inset-0 rounded-b-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-[0.67]">
                   <Button
                     size="sm"
                     variant="primary"
@@ -309,7 +314,7 @@ export default function BrowserAgentWorkspace() {
             ref={scrollContainerRef}
             className={`${
               isSingleMode ? 'px-0' : 'px-2 pb-2'
-            } scrollbar relative flex min-h-0 flex-1 flex-wrap justify-start gap-4 overflow-y-auto`}
+            } scrollbar min-h-0 gap-4 relative flex flex-1 flex-wrap justify-start overflow-y-auto`}
           >
             {activeAgent?.activeWebviewIds
               ?.filter((item) => item?.img)
@@ -318,7 +323,7 @@ export default function BrowserAgentWorkspace() {
                   <div
                     key={index}
                     onClick={() => handleTakeControl(item.id)}
-                    className={`card-box group relative cursor-pointer rounded-lg ${
+                    className={`card-box group rounded-lg relative cursor-pointer ${
                       isSingleMode
                         ? 'h-[calc(100%)] w-[calc(100%)]'
                         : 'h-[calc(50%-8px)] w-[calc(50%-8px)]'
@@ -328,7 +333,7 @@ export default function BrowserAgentWorkspace() {
                       <img
                         src={item.img}
                         alt=""
-                        className="h-full w-full rounded-2xl object-contain"
+                        className="rounded-2xl h-full w-full object-contain"
                       />
                     )}
                     <div
@@ -337,7 +342,7 @@ export default function BrowserAgentWorkspace() {
                           activeAgent?.activeWebviewIds?.[0]?.id || ''
                         )
                       }
-                      className="bg-dialog-overlay-dark pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-[0.67]"
+                      className="bg-dialog-overlay-dark inset-0 rounded-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-[0.67]"
                     >
                       <Button
                         size="sm"
@@ -356,7 +361,7 @@ export default function BrowserAgentWorkspace() {
           </div>
         )}
         {activeAgent?.activeWebviewIds?.length !== 1 && (
-          <div className="z-100 absolute bottom-2 right-2 flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
+          <div className="bottom-2 right-2 gap-1 rounded-lg border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1 absolute z-100 flex w-auto items-center border border-solid">
             <Button
               size="xs"
               buttonContent="icon-only"

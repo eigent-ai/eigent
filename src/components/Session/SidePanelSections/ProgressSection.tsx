@@ -32,9 +32,16 @@ function isDone(task: TaskInfo) {
 interface ProgressSectionProps {
   title: string;
   subtasks: TaskInfo[];
+  projectId?: string | null;
+  taskId?: string | null;
 }
 
-export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
+export function ProgressSection({
+  title,
+  subtasks,
+  projectId,
+  taskId,
+}: ProgressSectionProps) {
   const visibleSubtasks = useMemo(
     () => subtasks.filter((task) => task.content.trim() !== ''),
     [subtasks]
@@ -95,7 +102,7 @@ export function ProgressSection({ title, subtasks }: ProgressSectionProps) {
                   <SidePanelListRow
                     className="hover:bg-ds-bg-neutral-subtle-default"
                     leading={<ProgressCircle done={isDone(task)} />}
-                    onClick={requestTaskBoxFocus}
+                    onClick={() => requestTaskBoxFocus(projectId, taskId)}
                   >
                     <span className={cn(isDone(task) && 'line-through')}>
                       {task.content}

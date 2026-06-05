@@ -25,6 +25,10 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
+import {
+  isProjectAchieved,
+  setProjectAchievedState,
+} from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -652,6 +656,11 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
+    const targetProjectMeta = useSpaceStore
+      .getState()
+      .getProjectMeta(targetProjectId);
+    const shouldResumeProject = isProjectAchieved(targetProjectMeta?.metadata);
+
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
     const displayContent = tempMessageContent;
@@ -701,6 +710,17 @@ export default function ChatBox(): JSX.Element {
         }
       );
       return;
+    }
+
+    if (shouldResumeProject) {
+      void setProjectAchievedState({
+        projectStore,
+        projectId: targetProjectId,
+        achieved: false,
+      }).catch((error) => {
+        console.error('[handleSend] Failed to resume achieved Project:', error);
+        toast.error('Failed to persist resumed Project state.');
+      });
     }
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
@@ -809,6 +829,11 @@ export default function ChatBox(): JSX.Element {
                 effectiveSessionMode
               );
               chatStore.setAttaches(_taskId, []);
+              // If activeTaskId changed (new task created), clear its draft too
+              const newActiveId = chatStore.activeTaskId;
+              if (newActiveId && newActiveId !== _taskId) {
+                chatStore.setAttaches(newActiveId, []);
+              }
             } catch (err: any) {
               console.error('Failed to start task:', err);
               toast.error(
@@ -879,6 +904,11 @@ export default function ChatBox(): JSX.Element {
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
             chatStore.setAttaches(_taskId, []);
+            // If activeTaskId changed (new task created), clear its draft too
+            const newActiveId2 = chatStore.activeTaskId;
+            if (newActiveId2 && newActiveId2 !== _taskId) {
+              chatStore.setAttaches(newActiveId2, []);
+            }
           } catch (err: any) {
             console.error('Failed to start task:', err);
             toast.error(
@@ -1218,10 +1248,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
+          className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -1232,7 +1262,7 @@ export default function ChatBox(): JSX.Element {
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
+              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -1279,9 +1309,9 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] px-2">
+            <div className="px-2 pointer-events-auto mx-auto w-full max-w-[600px]">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
@@ -1358,7 +1388,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

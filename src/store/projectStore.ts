@@ -131,6 +131,7 @@ interface ProjectMetadata {
   tags?: string[];
   priority?: 'low' | 'medium' | 'high';
   status?: 'active' | 'completed' | 'archived';
+  achievedAt?: number | null;
   legacyRootPath?: string | null;
   baseSnapshotId?: string | null;
   legacyAlias?: string;
@@ -205,7 +206,7 @@ const projectShellFromMeta = (meta: SpaceProjectMeta): Project => ({
   queuedMessages: [],
   metadata: {
     ...meta.metadata,
-    status: meta.status,
+    status: meta.metadata?.status ?? meta.status,
     serverSynced: true,
   },
 });
@@ -229,7 +230,7 @@ const mergeProjectMeta = (
     metadata: {
       ...existing.metadata,
       ...meta.metadata,
-      status: meta.status,
+      status: meta.metadata?.status ?? meta.status,
       serverSynced: true,
     },
     updatedAt: meta.updatedAt,

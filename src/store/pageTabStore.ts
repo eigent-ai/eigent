@@ -78,7 +78,12 @@ interface PageTabState {
    * the active query group so the task box sits at the top.
    */
   taskBoxFocusRequestId: number;
-  requestTaskBoxFocus: () => void;
+  taskBoxFocusProjectId: string | null;
+  taskBoxFocusTaskId: string | null;
+  requestTaskBoxFocus: (
+    projectId?: string | null,
+    taskId?: string | null
+  ) => void;
   /**
    * Optional absolute path override for the agent folder (per project).
    * When unset for a project, the default Eigent project folder is used.
@@ -101,6 +106,34 @@ interface PageTabState {
   pendingTriggerSelectId: number | null;
   triggerSelectRequestId: number;
   requestSelectTrigger: (triggerId: number) => void;
+
+  // ── TurnTabs: per-project turn selection ─────────────────────────────────
+  /**
+   * Which task (turn) is currently highlighted in the side-panel TurnTabs,
+   * per project. `null` / absent → default to the chatStore's activeTaskId.
+   */
+  sidePanelSelectedTurnByProject: Record<string, string>;
+  /**
+   * Unix-ms timestamp until which a user tab-click overrides the
+   * scroll-driven viewport selection, per project.
+   */
+  sidePanelManualUntilByProject: Record<string, number>;
+  /**
+   * Task ID currently visible in the chatbox scroll viewport, per project.
+   * Written by the IntersectionObserver in ProjectChatContainer.
+   */
+  sidePanelViewedTurnByProject: Record<string, string>;
+  setSidePanelSelectedTurn: (
+    projectId: string,
+    taskId: string,
+    manualDurationMs?: number
+  ) => void;
+  setSidePanelViewedTurn: (projectId: string, taskId: string) => void;
+  /** Set by TurnTabs to tell the matching ProjectChatContainer to scroll. */
+  scrollToTurnRequest: { projectId: string; taskId: string } | null;
+  setScrollToTurnRequest: (
+    request: { projectId: string; taskId: string } | null
+  ) => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -188,9 +221,13 @@ export const usePageTabStore = create<PageTabState>()(
       scrollToQueryId: null,
       setScrollToQueryId: (queryId) => set({ scrollToQueryId: queryId }),
       taskBoxFocusRequestId: 0,
-      requestTaskBoxFocus: () =>
+      taskBoxFocusProjectId: null,
+      taskBoxFocusTaskId: null,
+      requestTaskBoxFocus: (projectId, taskId) =>
         set((state) => ({
           taskBoxFocusRequestId: state.taskBoxFocusRequestId + 1,
+          taskBoxFocusProjectId: projectId ?? null,
+          taskBoxFocusTaskId: taskId ?? null,
         })),
       customAgentFolderPathByProjectId: {},
       setProjectCustomAgentFolderPath: (projectId, path) =>
@@ -237,6 +274,53 @@ export const usePageTabStore = create<PageTabState>()(
           pendingTriggerSelectId: triggerId,
           triggerSelectRequestId: state.triggerSelectRequestId + 1,
         })),
+
+      sidePanelSelectedTurnByProject: {},
+      sidePanelManualUntilByProject: {},
+      sidePanelViewedTurnByProject: {},
+      setSidePanelSelectedTurn: (projectId, taskId, manualDurationMs = 1500) =>
+        set((state) => ({
+          sidePanelSelectedTurnByProject: {
+            ...state.sidePanelSelectedTurnByProject,
+            [projectId]: taskId,
+          },
+          sidePanelManualUntilByProject: {
+            ...state.sidePanelManualUntilByProject,
+            [projectId]: Date.now() + manualDurationMs,
+          },
+        })),
+      setSidePanelViewedTurn: (projectId, taskId) =>
+        set((state) => {
+          const manualUntil =
+            state.sidePanelManualUntilByProject[projectId] ?? 0;
+          // Suppress viewport updates during the manual-selection window so a
+          // tab click isn't immediately overwritten by an in-flight observer
+          // firing while the chatbox is mid-scroll.
+          const selectedTaskId =
+            state.sidePanelSelectedTurnByProject[projectId];
+          if (Date.now() < manualUntil && selectedTaskId !== taskId) {
+            return state;
+          }
+          // Once the window expires, drive both fields so components only need
+          // to read `sidePanelSelectedTurnByProject` — no Date.now() in render.
+          return {
+            sidePanelViewedTurnByProject: {
+              ...state.sidePanelViewedTurnByProject,
+              [projectId]: taskId,
+            },
+            sidePanelSelectedTurnByProject: {
+              ...state.sidePanelSelectedTurnByProject,
+              [projectId]: taskId,
+            },
+            sidePanelManualUntilByProject: {
+              ...state.sidePanelManualUntilByProject,
+              [projectId]: 0,
+            },
+          };
+        }),
+      scrollToTurnRequest: null,
+      setScrollToTurnRequest: (request) =>
+        set({ scrollToTurnRequest: request }),
     }),
     {
       name: 'eigent-page-tab',

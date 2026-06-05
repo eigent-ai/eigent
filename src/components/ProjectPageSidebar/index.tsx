@@ -29,6 +29,10 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
+import {
+  isProjectAchieved,
+  setProjectAchievedState,
+} from '@/lib/projectAchievement';
 import { buildTaskQuestionsById } from '@/lib/replay';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import {
@@ -364,7 +368,9 @@ export default function ProjectPageSidebar({
             sessionLead: resolveProjectNavLeadPresentation({
               cachedLead: navLeadByProjectId[project.id],
               isHistoryLoading: Boolean(historyLoadingProjectIds[project.id]),
+              isAchieved: isProjectAchieved(project.metadata),
             }),
+            achieved: isProjectAchieved(project.metadata),
             source: activeTask?.source,
           };
         }),
@@ -554,7 +560,7 @@ export default function ProjectPageSidebar({
 
   const confirmAchieveProject = useCallback(async () => {
     const projectId = achieveProjectId;
-    if (!projectId || !activeSpaceId) return;
+    if (!projectId) return;
 
     setAchieveProjectLoading(true);
     try {
@@ -565,39 +571,22 @@ export default function ProjectPageSidebar({
       const taskId = projectChatState?.activeTaskId;
       const task = taskId ? projectChatState?.tasks[taskId] : undefined;
 
-      if (taskId && task?.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, { action: 'stop' });
-      }
-
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch {
-        /* Backend may already have removed the chat */
-      }
-
-      const historyId = projectStore.getHistoryId(projectId);
-      if (
-        historyId &&
-        taskId &&
+      const hasActiveRun =
         task &&
-        task.status !== ChatTaskStatus.FINISHED
-      ) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          projectChatStore?.getState().removeTask(taskId);
-        } catch {
-          /* History may already be deleted */
-        }
+        (task.status === ChatTaskStatus.RUNNING ||
+          task.status === ChatTaskStatus.PAUSE ||
+          task.isPending);
+      if (taskId && hasActiveRun) {
+        await fetchPut(`/task/${taskId}/take-control`, { action: 'stop' });
+        projectChatStore?.getState().stopTask(taskId);
+        projectChatStore?.getState().setIsPending(taskId, false);
       }
 
-      const { proxyUpdateSpaceProject } = await import('@/service/spaceApi');
-      const archived = await proxyUpdateSpaceProject(activeSpaceId, projectId, {
-        status: 'archived',
+      await setProjectAchievedState({
+        projectStore,
+        projectId,
+        achieved: true,
       });
-      useSpaceStore.getState().updateProjectMeta(projectId, {
-        status: archived.status,
-      });
-      projectStore.removeProject(projectId);
       if (wasActive) {
         setActiveWorkspaceTab('workforce');
         requestWorkspaceChatFocus();
@@ -617,7 +606,6 @@ export default function ProjectPageSidebar({
     }
   }, [
     achieveProjectId,
-    activeSpaceId,
     ensureProjectLoaded,
     projectStore,
     requestWorkspaceChatFocus,
@@ -825,13 +813,13 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden py-1.5',
+          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
           className
         )}
       >
-        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="flex w-full shrink-0 flex-col gap-2">
+        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
+          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="gap-2 flex w-full shrink-0 flex-col">
               <SpaceSwitchDropdown
                 triggerTooltip="Spaces"
                 triggerTooltipEnabled={projectSidebarFolded}
@@ -842,7 +830,7 @@ export default function ProjectPageSidebar({
                     aria-label={t('layout.spaces-switch-space')}
                   >
                     <FolderIcon
-                      className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                      className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                       aria-hidden
                     />
                     <span
@@ -855,7 +843,7 @@ export default function ProjectPageSidebar({
                     </span>
                     <ChevronsUpDown
                       className={cn(
-                        'ml-auto h-4 w-4 shrink-0 text-ds-icon-neutral-subtle-default',
+                        'h-4 w-4 text-ds-icon-neutral-subtle-default ml-auto shrink-0',
                         projectSidebarFolded && 'hidden'
                       )}
                       aria-hidden
@@ -874,7 +862,7 @@ export default function ProjectPageSidebar({
                 onSpaceSelect={handleSpaceSelect}
               />
 
-              <div className="flex w-full min-w-0 flex-col gap-2">
+              <div className="min-w-0 gap-2 flex w-full flex-col">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -893,11 +881,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="relative inline-flex h-4 w-4 shrink-0">
+                    <span className="h-4 w-4 relative inline-flex shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
+                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
                           aria-hidden
                         />
                       ) : null}
@@ -908,7 +896,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
+                          'rounded-xl bg-ds-bg-neutral-muted-default px-1.5 flex shrink-0 flex-col items-center',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -983,8 +971,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
-                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
+                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
+                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -1025,9 +1013,9 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="mt-6 flex min-h-0 flex-1 flex-col"
+                className="mt-6 min-h-0 flex flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null
