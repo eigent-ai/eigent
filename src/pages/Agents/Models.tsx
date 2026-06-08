@@ -130,6 +130,13 @@ const PLAN_CREDITS_BY_KEY: Record<string, number> = {
   pro: 10000,
 };
 
+const VALID_PROVIDER_STATUS = 2;
+
+const isProviderValid = (provider: any): boolean =>
+  provider?.is_valid === true ||
+  provider?.is_vaild === VALID_PROVIDER_STATUS ||
+  provider?.is_vaild === 'is_valid';
+
 export default function SettingModels() {
   const {
     modelType,
@@ -375,7 +382,7 @@ export default function SettingModels() {
                 apiKey: found.api_key || '',
                 // Fall back to provider's default API host if endpoint_url is empty
                 apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
+                is_valid: isProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 externalConfig: fi.externalConfig
@@ -677,7 +684,7 @@ export default function SettingModels() {
       provider_name: item.id,
       api_key: form[idx].apiKey,
       endpoint_url: form[idx].apiHost,
-      is_valid: form[idx].is_valid,
+      is_vaild: VALID_PROVIDER_STATUS,
       model_type: form[idx].model_type,
     };
     if (externalConfig) {
@@ -695,6 +702,9 @@ export default function SettingModels() {
       // add: refresh provider list after saving, update form and switch editable status
       const res = await proxyFetchGet('/api/v1/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
+      const savedProvider = providerList.find(
+        (p: any) => p.provider_name === item.id
+      );
       setForm((f) =>
         f.map((fi, i) => {
           const item = items[i];
@@ -708,7 +718,7 @@ export default function SettingModels() {
               apiKey: found.api_key || '',
               // Fall back to provider's default API host if endpoint_url is empty
               apiHost: found.endpoint_url || item.apiHost,
-              is_valid: !!found.is_valid,
+              is_valid: isProviderValid(found),
               prefer: found.prefer ?? false,
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
@@ -733,10 +743,10 @@ export default function SettingModels() {
         pendingDefaultModel.category === 'custom' &&
         pendingDefaultModel.modelId === item.id
       ) {
-        await handleSwitch(idx, true);
+        await handleSwitch(idx, true, savedProvider?.id);
         setPendingDefaultModel(null);
       } else {
-        handleSwitch(idx, true);
+        await handleSwitch(idx, true, savedProvider?.id);
       }
     } finally {
       setLoading(null);
@@ -873,7 +883,7 @@ export default function SettingModels() {
         provider_name: localPlatform,
         api_key: 'not-required',
         endpoint_url: currentEndpoint, // Save base URL without specific endpoints
-        is_valid: true,
+        is_vaild: VALID_PROVIDER_STATUS,
         model_type: currentType,
         encrypted_config: {
           model_platform: localPlatform,
@@ -950,12 +960,19 @@ export default function SettingModels() {
     }
   }, [selectedTab, localPlatform]);
 
-  const handleSwitch = async (idx: number, checked: boolean) => {
+  const handleSwitch = async (
+    idx: number,
+    checked: boolean,
+    providerId?: number
+  ) => {
     if (!checked) {
       setActiveModelIdx(null);
       setLocalEnabled(true);
       return;
     }
+    const targetProviderId =
+      providerId !== undefined ? providerId : form[idx].provider_id;
+    if (targetProviderId === undefined) return;
     const hasSearchKey = await checkHasSearchKey();
     if (!hasSearchKey) {
       // Show warning toast instead of blocking
@@ -968,7 +985,7 @@ export default function SettingModels() {
     }
     try {
       await proxyFetchPost('/api/v1/provider/prefer', {
-        provider_id: form[idx].provider_id,
+        provider_id: targetProviderId,
       });
       setModelType('custom');
       setActiveModelIdx(idx);

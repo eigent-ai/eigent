@@ -14,9 +14,9 @@
 
 """ProviderService: model provider CRUD with prefer/invalidate. Follows CreditsService pattern."""
 
-from sqlalchemy import update
-from sqlmodel import select, col
 from loguru import logger
+from sqlalchemy import update
+from sqlmodel import col, select
 
 from app.core.database import session_make
 from app.model.provider.provider import Provider, VaildStatus
@@ -66,7 +66,15 @@ class ProviderService:
             if not model:
                 return {"success": False, "error_code": "PROVIDER_NOT_FOUND"}
             # H10: only allow updating safe fields
-            _UPDATABLE_FIELDS = {"provider_name", "api_key", "api_base", "extra_config", "prefer", "is_vaild"}
+            _UPDATABLE_FIELDS = {
+                "provider_name",
+                "api_key",
+                "endpoint_url",
+                "encrypted_config",
+                "model_type",
+                "prefer",
+                "is_vaild",
+            }
             for key, value in data.items():
                 if key in _UPDATABLE_FIELDS:
                     setattr(model, key, value)

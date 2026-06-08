@@ -13,8 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import IntEnum
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import Boolean, Column, SmallInteger, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import JSON, Field
@@ -50,6 +51,25 @@ class ProviderIn(BaseModel):
     encrypted_config: dict | None = None
     is_vaild: VaildStatus = VaildStatus.not_valid
     prefer: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_valid_field(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if "is_vaild" in data or "is_valid" not in data:
+            return data
+        data = dict(data)
+        is_valid = data.pop("is_valid")
+        if isinstance(is_valid, bool):
+            data["is_vaild"] = (
+                VaildStatus.is_valid
+                if is_valid
+                else VaildStatus.not_valid
+            )
+        else:
+            data["is_vaild"] = is_valid
+        return data
 
 
 class ProviderPreferIn(BaseModel):
