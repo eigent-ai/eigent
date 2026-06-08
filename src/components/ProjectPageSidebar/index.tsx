@@ -1013,9 +1013,9 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 min-w-0 border-ds-border-neutral-default-default mt-2 pt-2 flex flex-1 flex-col overflow-hidden border border-x-0 border-t-1 border-b-0 border-solid">
               <ProjectNavList
-                className="mt-6 min-h-0 flex flex-1 flex-col"
+                className="min-h-0 flex flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null

@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import tokenDarkIcon from '@/assets/token-dark.svg';
-import tokenLightIcon from '@/assets/token-light.svg';
+import tokenDarkIcon from '@/assets/custom/token-dark.svg';
+import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -47,7 +47,7 @@ export function HeaderBox({
   if (empty) {
     return (
       <div
-        className={`flex h-[44px] w-full shrink-0 flex-row items-center justify-between px-3 ${className || ''}`}
+        className={`px-3 flex h-[44px] w-full shrink-0 flex-row items-center justify-between ${className || ''}`}
         aria-hidden
       />
     );
@@ -55,10 +55,10 @@ export function HeaderBox({
 
   return (
     <div
-      className={`flex h-[44px] w-full flex-row items-center justify-between px-3 ${className || ''}`}
+      className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
     >
       {/* Left: return to project workspace */}
-      <div className="flex items-center gap-2">
+      <div className="gap-2 flex items-center">
         <TooltipSimple content={backToWorkspaceTooltip}>
           <Button
             type="button"
@@ -66,7 +66,7 @@ export function HeaderBox({
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
+            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
             aria-label={backToWorkspaceTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -75,8 +75,8 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count */}
-      <div className="flex items-center gap-2 text-ds-text-neutral-muted-default">
-        <div className="flex items-center gap-1">
+      <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
+        <div className="gap-1 flex items-center">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
             {t('chat.token-total-label')}{' '}

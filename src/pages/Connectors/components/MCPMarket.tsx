@@ -14,7 +14,7 @@
 
 import { mcpInstall, mcpRemove } from '@/api/brain';
 import { proxyFetchDelete, proxyFetchGet, proxyFetchPost } from '@/api/http';
-import githubIcon from '@/assets/github.svg';
+import githubIcon from '@/assets/icon/github.svg';
 import AnthropicIcon from '@/assets/mcp/Anthropic.svg?url';
 import CamelIcon from '@/assets/mcp/Camel.svg?url';
 import CommunityIcon from '@/assets/mcp/Community.svg?url';

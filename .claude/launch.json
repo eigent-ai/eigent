@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:web"],
       "port": 5173
+    },
+    {
+      "name": "animation-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "vite.config.animation.ts"],
+      "port": 5199
     }
   ]
 }

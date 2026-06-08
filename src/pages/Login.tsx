@@ -28,7 +28,7 @@ import {
 } from '@/pages/loginUtils';
 import { useTranslation } from 'react-i18next';
 
-import background from '@/assets/background.png';
+import background from '@/assets/custom/background.png';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
@@ -352,10 +352,10 @@ export default function Login() {
 
   // Render local mode: "Start Eigent" button only
   const renderLocalMode = () => (
-    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
       <img
         src={eigentLogo}
-        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
       />
       <div className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default">
         Eigent
@@ -381,16 +381,16 @@ export default function Login() {
 
   // Render hybrid/app mode: waiting for external login callback
   const renderHybridMode = () => (
-    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
+    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
       <img
         src={eigentLogo}
-        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
       />
       <div className="mb-4 text-heading-lg font-bold text-ds-text-neutral-default-default">
         {t('layout.login')}
       </div>
       {isLoading && (
-        <p className="mb-6 text-center text-label-md text-ds-text-neutral-muted-default">
+        <p className="mb-6 text-label-md text-ds-text-neutral-muted-default text-center">
           {t('layout.logging-in')}...
         </p>
       )}
@@ -424,7 +424,7 @@ export default function Login() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
+        className="left-0 right-0 top-0 !h-9 py-1 pl-2 absolute z-50 flex items-center justify-between"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -454,10 +454,10 @@ export default function Login() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`flex h-full items-center justify-center gap-2 px-1 pb-1 pt-10`}
+        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
       >
         <div
-          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2"
+          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',

@@ -351,7 +351,7 @@ export default function Overview({
           }`}
         >
           <div className="min-h-0 flex h-full flex-col">
-            <div className="bg-ds-bg-neutral-muted-default px-3 py-3 relative flex flex-row items-center justify-start">
+            <div className="px-3 py-3 relative flex flex-row items-center justify-start">
               <span className="text-label-sm font-bold text-ds-text-neutral-default-default">
                 {t('triggers.execution-logs')}
               </span>

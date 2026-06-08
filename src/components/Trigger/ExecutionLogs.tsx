@@ -310,7 +310,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Stats */}
-      <div className="px-4 pb-4 border-ds-border-neutral-subtle-default flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-b-1 border-solid">
+      <div className="px-3 pb-3 border-ds-border-neutral-subtle-default flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-b-1 border-solid">
         <div className="mb-4 flex w-full flex-row items-center justify-between">
           <span
             className="text-label-sm font-medium text-ds-text-neutral-default-default max-w-[150px] truncate"

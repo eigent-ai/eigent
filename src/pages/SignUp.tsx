@@ -16,17 +16,16 @@ import { Button } from '@/components/ui/button';
 import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Input } from '@/components/ui/input';
 
 import { proxyFetchPost } from '@/api/http';
-import background from '@/assets/background.png';
-import eyeOff from '@/assets/eye-off.svg';
-import eye from '@/assets/eye.svg';
-import github2 from '@/assets/github2.svg';
-import google from '@/assets/google.svg';
+import background from '@/assets/custom/background.png';
+import github2 from '@/assets/icon/github.svg';
+import google from '@/assets/icon/google.svg';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 import WindowControls from '@/components/WindowControls';
 import { useHost } from '@/host';
@@ -424,7 +423,13 @@ export default function SignUp() {
                   }
                   state={errors.password ? 'error' : undefined}
                   note={errors.password}
-                  backIcon={<img src={hidePassword ? eye : eyeOff} />}
+                  backIcon={
+                    hidePassword ? (
+                      <Eye className="h-5 w-5" />
+                    ) : (
+                      <EyeOff className="h-5 w-5" />
+                    )
+                  }
                   onBackIconClick={() => setHidePassword(!hidePassword)}
                 />
 

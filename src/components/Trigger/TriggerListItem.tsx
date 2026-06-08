@@ -95,12 +95,12 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   return (
     <div
       onClick={() => onSelect(trigger.id)}
-      className={`group gap-3 p-3 !bg-ds-bg-neutral-default-default rounded-xl flex cursor-pointer items-center border transition-all duration-200 ${
+      className={`group gap-3 p-3 !bg-ds-bg-neutral-default-default rounded-xl flex cursor-pointer items-center border border-solid border-transparent transition-all duration-200 ${
         isSelected
-          ? 'border-ds-border-brand-default-default'
+          ? '!bg-ds-bg-neutral-strong-default !border-ds-border-neutral-strong-default'
           : needsAuth
-            ? 'border-ds-border-warning-default-default hover:border-ds-border-warning-default-hover hover:bg-ds-bg-neutral-strong-default'
-            : 'border-ds-border-neutral-subtle-default hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-strong-default'
+            ? 'hover:!bg-ds-bg-neutral-strong-default'
+            : 'hover:!bg-ds-bg-neutral-strong-default'
       }`}
     >
       {/* 1. Zap Icon */}
