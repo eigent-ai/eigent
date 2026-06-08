@@ -25,7 +25,7 @@ description: Configure your own API keys to use various LLM providers with Eigen
 
 1. Find the **OpenAI** card in the Custom Model section
 
-![byok_1](/docs/images/byok_1.png)
+![byok_1](/images/byok_1.png)
 
 1. Fill in the following fields:
 

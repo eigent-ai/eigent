@@ -27,7 +27,8 @@ With Workforce, agents plan, solve, and verify work together—like a project te
 ### **Architecture: How Workforce Works**
 
 Workforce uses a **hierarchical, modular design** for real-world team problem-solving.
-![Workforce](/docs/images/workforce.jpg)
+
+> **Screenshot placeholder:** Add a current screenshot for “Workforce”.
 
 See how the coordinator and task planner agents orchestrate a multi-agent workflow:
 

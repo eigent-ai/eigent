@@ -76,6 +76,7 @@ interface AuthState {
   themeContrast: number;
   language: string;
   isFirstLaunch: boolean;
+  onboardingCompleted: boolean;
   modelType: ModelType;
   cloud_model_type: CloudModelType;
   /**
@@ -124,6 +125,7 @@ interface AuthState {
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
+  setOnboardingCompleted: (completed: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
 
@@ -188,6 +190,7 @@ const authStore = create<AuthState>()(
       themeContrast: getRecommendedContrast(),
       language: 'system',
       isFirstLaunch: true,
+      onboardingCompleted: false,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       hasModelConfigured: false,
@@ -290,6 +293,9 @@ const authStore = create<AuthState>()(
 
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
+      setOnboardingCompleted: (onboardingCompleted) =>
+        set({ onboardingCompleted }),
+
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
 
       setWorkspaceMainBackground: (workspaceMainBackground) =>
@@ -340,7 +346,7 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 7,
+      version: 8,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -423,6 +429,7 @@ const authStore = create<AuthState>()(
         cloud_model_type: state.cloud_model_type,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
+        onboardingCompleted: state.onboardingCompleted,
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,

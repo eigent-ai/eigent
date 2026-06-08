@@ -8,12 +8,7 @@ icon: wave
 
 Built on CAMEL-AI's acclaimed open-source project (CAMEL with 13k⭐ on GitHub, #1 on GitHub Daily Trending), our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection. Previously #1 opensource project on GAIA.
 
-<img
-src="/docs/images/thumbnail.png"
-alt="Dynamic Workforce"
-width="100%"
-height="auto"
-/>
+> **Screenshot placeholder:** Add a current screenshot for “Dynamic Workforce”.
 
 ## Core Features and Capabilities
 

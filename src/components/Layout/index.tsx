@@ -12,9 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import animationData from '@/assets/animation/onboarding_success.json';
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
-import { AnimationJson } from '@/components/Layout/AnimationJson';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
@@ -32,7 +30,7 @@ const Layout = () => {
   const {
     initState,
     isFirstLaunch,
-    setIsFirstLaunch,
+    onboardingCompleted,
     setInitState: _setInitState,
   } = useAuthStore();
   const [noticeOpen, setNoticeOpen] = useState(false);
@@ -74,30 +72,30 @@ const Layout = () => {
     };
   }, [chatStore, host]);
 
-  // Determine what to show based on states
-  const shouldShowOnboarding =
-    initState === 'done' && isFirstLaunch && !isInstalling;
-
   // Show install screen if: installation UI is active, user hasn't finished setup,
   // or backend hasn't passed health check yet.
   // isBackendReady defaults to false on each app launch (non-persisted),
   // so the main UI is gated until health check passes — no race condition.
+  // Also wait for first-launch onboarding to be completed before showing main UI.
   const actualShouldShowInstallScreen =
-    shouldShowInstallScreen || initState !== 'done' || !isBackendReady;
+    shouldShowInstallScreen ||
+    initState !== 'done' ||
+    !isBackendReady ||
+    (isFirstLaunch && !onboardingCompleted);
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-muted-default">
-      <TopBar />
-      <div className="relative h-full min-h-0 flex-1 overflow-hidden">
-        {/* Onboarding animation */}
-        {shouldShowOnboarding && (
-          <AnimationJson
-            onComplete={() => setIsFirstLaunch(false)}
-            animationData={animationData}
-          />
-        )}
-
+    <div className="bg-ds-bg-neutral-muted-default relative flex h-full flex-col overflow-hidden">
+      <div
+        className={
+          actualShouldShowInstallScreen
+            ? 'pointer-events-none select-none'
+            : undefined
+        }
+      >
+        <TopBar />
+      </div>
+      <div className="min-h-0 relative h-full flex-1 overflow-hidden">
         {/* Installation screen */}
         {actualShouldShowInstallScreen && <InstallDependencies />}
 

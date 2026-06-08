@@ -10,20 +10,20 @@ icon: plug
 
 1. Click Settings
 
-![click_settings](/docs/images/models_settings.png)
+> **Screenshot placeholder:** Add a current screenshot for “click_settings”.
 
 2. Click Add MCP Server
 
-![add_mcp](/docs/images/tools_add_mcp.png)
+> **Screenshot placeholder:** Add a current screenshot for “add_mcp”.
 
 3. Configure Your MCP Server and install
 
-![configure_mcp](/docs/images/tools_configure_mcp.png)
+> **Screenshot placeholder:** Add a current screenshot for “configure_mcp”.
 
 4.Add external servers to your own Agent
 
 - You can check the installed mcp server in the Added external servers column
 
-![check_mcp](/docs/images/tools_check.png)
+> **Screenshot placeholder:** Add a current screenshot for “check_mcp”.
 
 - After configuring your mcp server, you can add it to a Custom Agent.
