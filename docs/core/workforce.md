@@ -197,7 +197,7 @@ _Provides access to various web search engines._
 
 This toolkit is the primary tool for web research. It allows an agent to search information on engines like Google, Wikipedia, Bing, and Baidu. The agent can submit a query and receive a list of relevant URLs and snippets, which it can then use as a starting point for deeper investigation with the `HybridBrowserToolkit`.
 
-### SkillToolkit
+### [SkillToolkit](https://docs.camel-ai.org/reference/camel.toolkits.skill_toolkit)
 
 _Loads custom Skills assigned to the current agent._
 
