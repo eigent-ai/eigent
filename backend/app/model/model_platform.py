@@ -17,7 +17,11 @@ from typing import Annotated, Final
 from pydantic import BeforeValidator
 
 PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
-    "z.ai": "zhipu",
+    "z.ai": "openai-compatible-model",
+    "deepseek": "openai-compatible-model",
+    "minimax": "openai-compatible-model",
+    "moonshot": "openai-compatible-model",
+    "samba-nova": "openai-compatible-model",
     "ModelArk": "openai-compatible-model",
     "grok": "openai-compatible-model",
     "ernie": "qianfan",
