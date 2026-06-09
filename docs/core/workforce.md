@@ -78,6 +78,7 @@ _A skilled coding assistant that can write and execute code, run terminal comman
 - TerminalToolkit
 - NoteTakingToolkit
 - WebDeployToolkit
+- SkillToolkit
 
 ### BrowserAgent
 
@@ -90,6 +91,7 @@ _Can search the web, extract webpage content, simulate browser actions, and prov
 - HumanToolkit
 - NoteTakingToolkit
 - TerminalToolkit
+- SkillToolkit
 
 ### DocumentAgent
 
@@ -106,6 +108,7 @@ _A document processing assistant for creating, modifying, and managing various d
 - TerminalToolkit
 - GoogleDriveMCPToolkit
 - SearchToolkit
+- SkillToolkit
 
 ### Multi-ModalAgent
 
@@ -115,12 +118,12 @@ _A multi-modal processing assistant for analyzing and generating media content l
 
 - VideoDownloaderToolkit
 - AudioAnalysisToolkit
-- ImageAnalysisToolkit
 - OpenAIImageToolkit
 - HumanToolkit
 - TerminalToolkit
 - NoteTakingToolkit
 - SearchToolkit
+- SkillToolkit
 
 ## Toolkit Reference
 
@@ -164,12 +167,6 @@ _Provides a powerful, stateful browser for web navigation and interaction._
 
 This toolkit gives an agent a fully-featured web browser that it can control programmatically. Unlike simple web scraping, this toolkit maintains a session, allowing the agent to click, type, hover, screenshot, and live _Take Control_ from the UI.
 
-### [ImageAnalysisToolkit](https://docs.camel-ai.org/reference/camel.toolkits.image_analysis_toolkit)
-
-_Provides tools for understanding the content of images._
-
-This toolkit enables an agent to "see" and interpret images. It can generate a detailed text description of an image or answer specific questions about what an image contains. This is crucial for tasks that involve visual data, such as describing products, analyzing charts, or identifying objects in a photo.
-
 ### [MarkItDownToolkit](https://docs.camel-ai.org/reference/camel.toolkits.markitdown_toolkit)
 
 _A specialized toolkit for converting content into clean Markdown._
@@ -200,6 +197,12 @@ _Provides access to various web search engines._
 
 This toolkit is the primary tool for web research. It allows an agent to search information on engines like Google, Wikipedia, Bing, and Baidu. The agent can submit a query and receive a list of relevant URLs and snippets, which it can then use as a starting point for deeper investigation with the `HybridBrowserToolkit`.
 
+### [SkillToolkit](https://docs.camel-ai.org/reference/camel.toolkits.skill_toolkit)
+
+_Loads custom Skills assigned to the current agent._
+
+This toolkit gives agents access to enabled Skills from the user's or project's Skill configuration. Skills can add reusable instructions, domain knowledge, or procedures, and can be scoped globally or to selected agents.
+
 ### [TerminalToolkit](https://docs.camel-ai.org/reference/camel.toolkits.terminal_toolkit)
 
 _A toolkit for terminal operations across multiple operating systems._
@@ -210,7 +213,7 @@ This toolkit gives an agent access to a command-line interface. It supports term
 
 _Allows an agent to download and process videos from popular platforms._
 
-This toolkit enables an agent to download video content from URLs (e.g., from YouTube) and optionally split them into chunks. The saved video can then be analyzed by other toolkits, such as the `AudioAnalysisToolkit` for transcription, or `ImageAnalysisToolkit` for object detection.
+This toolkit enables an agent to download video content from URLs (e.g., from YouTube) and optionally split them into chunks. The saved video can then be analyzed by other tools, such as the `AudioAnalysisToolkit` for transcription.
 
 ### [WebDeployToolkit](https://docs.camel-ai.org/reference/camel.toolkits.web_deploy_toolkit)
 
