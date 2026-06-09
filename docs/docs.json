@@ -2,7 +2,6 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "Eigent Documentation",
   "theme": "aspen",
-  "defaultPage": "/get_started/welcome",
   "logo": {
     "light": "images/logo-light.png",
     "dark": "images/logo-dark.png",
@@ -49,67 +48,67 @@
             "group": "Get Started",
             "icon": "rocket",
             "pages": [
-              "/get_started/welcome",
-              "/get_started/installation",
-              "/get_started/quick_start",
-              "/get_started/self-hosting",
-              "/core/concepts"
+              "get_started/welcome",
+              "get_started/installation",
+              "get_started/quick_start",
+              "get_started/self-hosting",
+              "core/concepts"
             ]
           },
           {
             "group": "Dashboard",
             "icon": "grid-2",
             "pages": [
-              "/dashboard/overview",
-              "/dashboard/spaces",
-              "/dashboard/projects",
-              "/dashboard/tasks",
-              "/dashboard/views-and-search"
+              "dashboard/overview",
+              "dashboard/spaces",
+              "dashboard/projects",
+              "dashboard/tasks",
+              "dashboard/views-and-search"
             ]
           },
           {
             "group": "Projects",
             "icon": "folder-kanban",
             "pages": [
-              "/projects/overview",
-              "/projects/create-project",
-              "/projects/workspace",
-              "/projects/context-and-files",
-              "/projects/sessions",
-              "/core/project-runs",
-              "/projects/single-agent",
-              "/core/workforce"
+              "projects/overview",
+              "projects/create-project",
+              "projects/workspace",
+              "projects/context-and-files",
+              "projects/sessions",
+              "core/project-runs",
+              "projects/single-agent",
+              "core/workforce"
             ]
           },
           {
             "group": "Agents",
             "icon": "bot",
             "pages": [
-              "/agents/overview",
-              "/core/workers",
-              "/core/agent-skills",
-              "/agents/remote-sub-agents",
-              "/agents/memory"
+              "agents/overview",
+              "core/workers",
+              "core/agent-skills",
+              "agents/remote-sub-agents",
+              "agents/memory"
             ]
           },
           {
             "group": "Models",
             "icon": "brain",
             "pages": [
-              "/models/overview",
-              "/models/eigent-cloud",
-              "/core/models/byok",
-              "/core/models/local-model",
-              "/models/provider-reference",
+              "models/overview",
+              "models/eigent-cloud",
+              "core/models/byok",
+              "core/models/local-model",
+              "models/provider-reference",
               {
                 "group": "Provider Guides",
                 "expanded": false,
                 "pages": [
-                  "/core/models/gemini",
-                  "/core/models/ernie",
-                  "/core/models/minimax",
-                  "/core/models/kimi",
-                  "/core/models/sambanova"
+                  "core/models/gemini",
+                  "core/models/ernie",
+                  "core/models/minimax",
+                  "core/models/kimi",
+                  "core/models/sambanova"
                 ]
               }
             ]
@@ -118,50 +117,50 @@
             "group": "Connectors",
             "icon": "plug",
             "pages": [
-              "/connectors/overview",
-              "/connectors/mcp-marketplace",
-              "/connectors/custom-mcp",
-              "/connectors/google-search",
-              "/core/tools"
+              "connectors/overview",
+              "connectors/mcp-marketplace",
+              "connectors/custom-mcp",
+              "connectors/google-search",
+              "core/tools"
             ]
           },
           {
             "group": "Browser",
             "icon": "compass",
             "pages": [
-              "/browser/overview",
-              "/browser/connections",
-              "/browser/cookies"
+              "browser/overview",
+              "browser/connections",
+              "browser/cookies"
             ]
           },
           {
             "group": "Automation",
             "icon": "bolt",
             "pages": [
-              "/automation/overview",
-              "/automation/scheduled-triggers",
-              "/automation/webhook-triggers",
-              "/automation/dispatch"
+              "automation/overview",
+              "automation/scheduled-triggers",
+              "automation/webhook-triggers",
+              "automation/dispatch"
             ]
           },
           {
             "group": "Settings",
             "icon": "gear",
             "pages": [
-              "/settings/general",
-              "/settings/appearance",
-              "/settings/privacy"
+              "settings/general",
+              "settings/appearance",
+              "settings/privacy"
             ]
           },
           {
             "group": "Open Source",
             "icon": "code-branch",
-            "pages": ["/open-source/overview", "/core/brain-architecture"]
+            "pages": ["open-source/overview", "core/brain-architecture"]
           },
           {
             "group": "Troubleshooting",
             "icon": "question-circle",
-            "pages": ["/troubleshooting/support", "/troubleshooting/bug"]
+            "pages": ["troubleshooting/support", "troubleshooting/bug"]
           }
         ]
       }

@@ -10,12 +10,11 @@ icon: wrench
     - Download for macOS
     - Download for Windows
 
-```
 <Warning>
   **macOS Prerequisite**
+
   Please ensure you are running macOS 11 (Big Sur) or a newer version to install Eigent.
 </Warning>
-```
 
 </Step>
   <Step title="Install the Application">
