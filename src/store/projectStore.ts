@@ -96,7 +96,8 @@ interface ProjectStore {
     question: string,
     projectId: string,
     historyId?: string,
-    projectName?: string
+    projectName?: string,
+    taskQuestions?: string[]
   ) => Promise<string>;
 
   // Project-level queued messages management
@@ -635,7 +636,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     question: string,
     projectId: string,
     historyId?: string,
-    projectName?: string
+    projectName?: string,
+    taskQuestions?: string[]
   ) => {
     const { projects, removeProject, createProject, createChatStore } = get();
 
@@ -679,7 +681,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         const chatStore = project.chatStores[chatId];
         if (chatStore) {
           try {
-            await chatStore.getState().replay(taskId, question, 0);
+            const taskQuestion = taskQuestions?.[index] || question;
+            await chatStore.getState().replay(taskId, taskQuestion, 0);
             console.log(`[ProjectStore] Loaded task ${taskId}`);
           } catch (error) {
             console.error(

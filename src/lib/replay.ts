@@ -36,7 +36,8 @@ export const loadProjectFromHistory = async (
   question: string,
   historyId: string,
   taskIdsList?: string[],
-  projectName?: string
+  projectName?: string,
+  taskQuestions?: string[]
 ) => {
   const taskIds = taskIdsList || [projectId];
   await projectStore.loadProjectFromHistory(
@@ -44,7 +45,8 @@ export const loadProjectFromHistory = async (
     question,
     projectId,
     historyId,
-    projectName
+    projectName,
+    taskQuestions
   );
   navigate({ pathname: '/' });
 };
