@@ -4,8 +4,8 @@
   "theme": "aspen",
   "defaultPage": "/get_started/welcome",
   "logo": {
-    "light": "images/logo-light.png",
-    "dark": "images/logo-dark.png",
+    "light": "/images/logo-light.png",
+    "dark": "/images/logo-dark.png",
     "href": "https://www.eigent.ai"
   },
   "favicon": "images/favicon.png",
@@ -18,12 +18,6 @@
     "color": {
       "light": "#F5F4F0",
       "dark": "#1d1d1d"
-    }
-  },
-  "styling": {
-    "logo": {
-      "width": "auto",
-      "height": "100%"
     }
   },
   "navbar": {
