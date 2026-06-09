@@ -921,6 +921,20 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
+      // A human-reply (or the 30s auto-skip) can fail when the backend has
+      // already torn down the task lock (e.g. after a restart/crash) or is no
+      // longer awaiting input. If we leave activeAsk set, the auto-skip effect
+      // (keyed on activeAsk) keeps re-firing handleSend('skip', ...) every 30s
+      // in an infinite loop. Clear the pending ask to break that loop and let
+      // the user start fresh.
+      if (requiresHumanReply && _taskId && chatStore.tasks[_taskId]) {
+        chatStore.setActiveAsk(_taskId, '');
+        chatStore.setIsPending(_taskId, false);
+        toast.error(
+          'This task is no longer waiting for a reply. Please start a new message.',
+          { closeButton: true }
+        );
+      }
     } finally {
       scheduleUsageRefresh();
     }
