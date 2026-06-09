@@ -108,15 +108,17 @@ Product documentation lives in `docs/`.
 
 ## Community and support
 
-Use GitHub issues for reproducible bugs and feature requests. Include:
-
-- Eigent version
-- Operating system
-- Deployment mode
-- Model provider or local runtime
-- Reproduction steps
-- Expected and actual behavior
-- Sanitized logs
+<CardGroup cols={3}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/eigent-ai/eigent/issues">
+    Report reproducible bugs and feature requests. Please include Eigent version, operating system, deployment mode, model provider, reproduction steps, expected and actual behavior, and sanitized logs.
+  </Card>
+  <Card title="Discord Community" icon="discord" href="https://discord.camel-ai.org/">
+    Join our Discord community to ask questions, share ideas, and connect with other Eigent users and contributors.
+  </Card>
+  <Card title="Email" icon="envelope" href="mailto:info@eigent.ai">
+    Reach out to us at info@eigent.ai for general inquiries and support.
+  </Card>
+</CardGroup>
 
 ## Related guides
 

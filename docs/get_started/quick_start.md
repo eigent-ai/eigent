@@ -76,6 +76,7 @@ Click **“+ Add Workers”**, provide:
 - **Name** (required)
 - **Description** (optional): the role of your customized agent
 - **Agent Tool**: install any tool available from our MCP Servers to give your agent the exact skills it needs.
+- **Custom Model Configuration**: use the "Use custom model configuration" option to assign a specific model to this new worker.
 
 > **Video placeholder:** Add a current video walkthrough for “Add Your Own Workers”. Include captions.
 
@@ -149,8 +150,8 @@ Click the gear icon in the top-right corner to open Settings. Here’s a brief o
 ### **General**
 
 - **Account:** Manage your subscription or log out.
-- **Language:** Choose between English, Simplified Chinese, or your System Default.
-- **Appearance:** Switch between Light mode. On macOS, a Transparent mode is also available.
+- **Language:** Eigent supports multiple languages, including English, Simplified Chinese (简体中文), Traditional Chinese (繁體中文), Japanese (日本語), Korean (한국어), French (Français), German (Deutsch), Spanish (Español), Italian (Italiano), Russian (Русский), and Arabic (العربية).
+- **Appearance:** Eigent now supports custom themes, allowing you to personalize the look and feel of your workspace.
 
 > **Screenshot placeholder:** Add a current screenshot for “General”.
 
@@ -165,7 +166,7 @@ Eigent can run in two modes. Your choice here affects how you are billed and wha
 
 > **Screenshot placeholder:** Add a current screenshot for “Models”.
 
-- **Cloud Version:** We provide pre-configured, state-of-the-art models, including GPT-4.1, GPT-4.1 mini and Gemini 2.5 Pro. Using these models is the easiest way to get started and will be billed to your account based on usage (credits).
+- **Cloud Version:** We provide pre-configured, state-of-the-art models from leading providers including OpenAI, Anthropic, Google, DeepSeek, and Minimax. Using these models is the easiest way to get started and will be billed to your account based on usage (credits).
 - **Self-hosted Version:** You can connect your own models.
   - **Cloud Models:** Connect your personal accounts from providers like OpenAI, Anthropic, Qwen, Deepseek and Azure by entering your own API key.
   - **Local Models:** For advanced users, you can run models locally using Ollama, vLLM, SGLang, LM Studio, or LLaMA.cpp server.
