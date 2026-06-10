@@ -582,6 +582,13 @@ export interface ChatStore {
   nextTaskId: string | null;
   tasks: { [key: string]: Task };
   create: (id?: string, type?: any) => string;
+  /**
+   * Replace a task's full state in one commit — used by the IDB-backed
+   * project cache to skip the SSE replay path when we already have a
+   * reconstructed final state from a previous session. Volatile fields
+   * (pending/streaming/timers) are forced to safe defaults.
+   */
+  hydrateTask: (taskId: string, state: Task) => void;
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
@@ -1050,6 +1057,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
     updateCount: 0,
+    hydrateTask(taskId: string, state: Task) {
+      set((s) => ({
+        activeTaskId: taskId,
+        tasks: {
+          ...s.tasks,
+          [taskId]: {
+            ...state,
+            // Never resurrect a task as pending / awaiting confirmation
+            // from a cached snapshot — those are in-flight flags only.
+            isPending: false,
+            autoConfirmDeadline: null,
+            streamingDecomposeText: '',
+            // File handles can't round-trip through JSON, so cached
+            // attaches always come back empty.
+            attaches: [],
+          },
+        },
+      }));
+    },
     create(id?: string, type?: any) {
       const taskId = id ? id : generateUniqueId();
       console.log('Create Task', taskId);
@@ -3537,7 +3563,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       task.id === agentMessages.data.process_task_id
                   )
               );
-              const task = taskAssigning[assigneeAgentIndex].tasks.find(
+              // Single-agent runs never emit `assign_task`, so no agent
+              // ever owns this notice's process_task_id and the findIndex
+              // above returns -1. Optional chaining keeps the access safe;
+              // the existing guard at the bottom of this block already
+              // skips the toolkit push when the index is -1.
+              const task = taskAssigning[assigneeAgentIndex]?.tasks.find(
                 (task: TaskInfo) =>
                   task.id === agentMessages.data.process_task_id
               );

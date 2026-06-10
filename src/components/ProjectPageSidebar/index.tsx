@@ -33,7 +33,10 @@ import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
-import { buildTaskQuestionsById } from '@/lib/replay';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import {
   getSessionNavLeadFromHistoryProject,
@@ -304,7 +307,8 @@ export default function ProjectPageSidebar({
           firstTask?.id != null ? String(firstTask.id) : undefined,
           historyProject.project_name,
           undefined,
-          taskQuestionsById
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
         );
       } catch (error) {
         console.error(
@@ -334,8 +338,20 @@ export default function ProjectPageSidebar({
       // to 'workforce', producing a flicker on slow loads).
       await ensureProjectLoaded(projectId);
 
+      // History-loaded projects are known to have content. Trust the project
+      // type tag (set by createProject(REPLAY)) over `projectHasStarted`,
+      // which can read a transiently-empty chatStore during the brief
+      // window between loadProjectFromHistory's remove+create rebuild.
+      const meta = useSpaceStore.getState().getProjectMeta(projectId);
+      const projectInStore = projectStore.getProjectById(projectId);
+      const isReplayProject = Boolean(
+        meta?.metadata?.tags?.includes('replay') ||
+        projectInStore?.metadata?.tags?.includes('replay')
+      );
       setActiveWorkspaceTab(
-        projectHasStarted(projectId) ? 'project' : 'new-project'
+        isReplayProject || projectHasStarted(projectId)
+          ? 'project'
+          : 'new-project'
       );
     },
     [
@@ -813,13 +829,13 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden py-1.5',
           className
         )}
       >
-        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-2 flex w-full shrink-0 flex-col">
+        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex w-full shrink-0 flex-col gap-2">
               <SpaceSwitchDropdown
                 triggerTooltip="Spaces"
                 triggerTooltipEnabled={projectSidebarFolded}
@@ -830,7 +846,7 @@ export default function ProjectPageSidebar({
                     aria-label={t('layout.spaces-switch-space')}
                   >
                     <FolderIcon
-                      className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
+                      className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
                       aria-hidden
                     />
                     <span
@@ -843,7 +859,7 @@ export default function ProjectPageSidebar({
                     </span>
                     <ChevronsUpDown
                       className={cn(
-                        'h-4 w-4 text-ds-icon-neutral-subtle-default ml-auto shrink-0',
+                        'ml-auto h-4 w-4 shrink-0 text-ds-icon-neutral-subtle-default',
                         projectSidebarFolded && 'hidden'
                       )}
                       aria-hidden
@@ -862,7 +878,7 @@ export default function ProjectPageSidebar({
                 onSpaceSelect={handleSpaceSelect}
               />
 
-              <div className="min-w-0 gap-2 flex w-full flex-col">
+              <div className="flex w-full min-w-0 flex-col gap-2">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -881,11 +897,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <span className="relative inline-flex h-4 w-4 shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
+                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                           aria-hidden
                         />
                       ) : null}
@@ -896,7 +912,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'rounded-xl bg-ds-bg-neutral-muted-default px-1.5 flex shrink-0 flex-col items-center',
+                          'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -971,8 +987,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -1013,9 +1029,9 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="min-h-0 min-w-0 border-ds-border-neutral-default-default mt-2 pt-2 flex flex-1 flex-col overflow-hidden border border-x-0 border-t-1 border-b-0 border-solid">
+            <div className="border-t-1 mt-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-x-0 border-b-0 border-solid border-ds-border-neutral-default-default pt-2">
               <ProjectNavList
-                className="min-h-0 flex flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null
