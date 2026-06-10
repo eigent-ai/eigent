@@ -79,6 +79,12 @@ interface WorkerModelOption {
 
 const EIGENT_MODEL_OPTIONS: ReadonlyArray<WorkerModelOption> = [
   {
+    value: 'gemini-3.5-flash',
+    label: 'Gemini 3.5 Flash',
+    model_platform: 'gemini',
+    model_type: 'gemini-3.5-flash',
+  },
+  {
     value: 'gemini-3.1-pro-preview',
     label: 'Gemini 3.1 Pro Preview',
     model_platform: 'gemini',
@@ -97,46 +103,16 @@ const EIGENT_MODEL_OPTIONS: ReadonlyArray<WorkerModelOption> = [
     model_type: 'gemini-3-flash-preview',
   },
   {
-    value: 'gpt-4.1-mini',
-    label: 'GPT-4.1 Mini',
-    model_platform: 'openai',
-    model_type: 'gpt-4.1-mini',
-  },
-  {
-    value: 'gpt-4.1',
-    label: 'GPT-4.1',
-    model_platform: 'openai',
-    model_type: 'gpt-4.1',
-  },
-  {
-    value: 'gpt-5',
-    label: 'GPT-5',
-    model_platform: 'openai',
-    model_type: 'gpt-5',
-  },
-  {
-    value: 'gpt-5.1',
-    label: 'GPT-5.1',
-    model_platform: 'openai',
-    model_type: 'gpt-5.1',
-  },
-  {
-    value: 'gpt-5.2',
-    label: 'GPT-5.2',
-    model_platform: 'openai',
-    model_type: 'gpt-5.2',
-  },
-  {
     value: 'gpt-5.4',
     label: 'GPT-5.4',
-    model_platform: 'openai',
+    model_platform: 'azure',
     model_type: 'gpt-5.4',
   },
   {
-    value: 'gpt-5-mini',
-    label: 'GPT-5 Mini',
-    model_platform: 'openai',
-    model_type: 'gpt-5-mini',
+    value: 'gpt-5.5',
+    label: 'GPT-5.5',
+    model_platform: 'azure',
+    model_type: 'gpt-5.5',
   },
   {
     value: 'claude-haiku-4-5',
@@ -163,10 +139,22 @@ const EIGENT_MODEL_OPTIONS: ReadonlyArray<WorkerModelOption> = [
     model_type: 'claude-opus-4-6',
   },
   {
-    value: 'minimax_m2_5',
-    label: 'Minimax M2.5',
-    model_platform: 'openai-compatible-model',
-    model_type: 'minimax_m2_5',
+    value: 'claude-opus-4-7',
+    label: 'Claude Opus 4.7',
+    model_platform: 'aws-bedrock-converse',
+    model_type: 'claude-opus-4-7',
+  },
+  {
+    value: 'deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro',
+    model_platform: 'deepseek',
+    model_type: 'deepseek-v4-pro',
+  },
+  {
+    value: 'minimax_m2_7',
+    label: 'Minimax M2.7',
+    model_platform: 'minimax',
+    model_type: 'minimax_m2_7',
   },
 ];
 
@@ -652,7 +640,7 @@ export function AddWorker({
         </DialogTrigger>
         <DialogContent
           size="md"
-          className="gap-0 p-0 min-h-[60vh]"
+          className="min-h-[60vh] gap-0 p-0"
           onInteractOutside={(e: any) => {
             if (isValidating) e.preventDefault();
           }}
@@ -678,8 +666,8 @@ export function AddWorker({
           {showEnvConfig ? (
             // environment configuration interface
             <>
-              <DialogContentSection className="scrollbar-always-visible gap-3 p-md flex flex-col overflow-y-auto">
-                <div className="gap-md flex items-center">
+              <DialogContentSection className="scrollbar-always-visible flex flex-col gap-3 overflow-y-auto p-md">
+                <div className="flex items-center gap-md">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
                     <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
@@ -699,7 +687,7 @@ export function AddWorker({
                               verticalAlign: 'middle',
                             }}
                           />
-                          <span className="text-xs font-medium leading-normal line-clamp-1 items-center justify-center self-stretch overflow-hidden break-words text-ellipsis">
+                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
                             {getGithubRepoName(activeMcp?.home_page)}
                           </span>
                         </div>
@@ -707,7 +695,7 @@ export function AddWorker({
                     </div>
                   </div>
                 </div>
-                <div className="gap-sm flex flex-col">
+                <div className="flex flex-col gap-sm">
                   {Object.keys(activeMcp?.install_command?.env || {}).map(
                     (key) => (
                       <div key={key}>
@@ -777,10 +765,10 @@ export function AddWorker({
           ) : (
             // default add interface
             <>
-              <DialogContentSection className="scrollbar-always-visible gap-3 p-md flex flex-col overflow-y-auto">
-                <div className="gap-4 flex flex-col">
-                  <div className="gap-sm flex items-center">
-                    <div className="h-16 w-16 flex items-center justify-center">
+              <DialogContentSection className="scrollbar-always-visible flex flex-col gap-3 overflow-y-auto p-md">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-sm">
+                    <div className="flex h-16 w-16 items-center justify-center">
                       <Bot
                         size={32}
                         className="text-ds-icon-neutral-default-default"
@@ -820,8 +808,8 @@ export function AddWorker({
                 />
 
                 {/* Model Configuration Section */}
-                <div className="mt-2 gap-2 flex flex-col">
-                  <div className="gap-3 flex items-center justify-start">
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="flex items-center justify-start gap-3">
                     <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('workforce.use-custom-model')}
                     </span>
@@ -834,13 +822,13 @@ export function AddWorker({
                         }
                       }}
                       aria-label={t('workforce.use-custom-model')}
-                      className="border-ds-border-neutral-default-default border-[0.5px] border-solid"
+                      className="border-[0.5px] border-solid border-ds-border-neutral-default-default"
                     />
                   </div>
 
                   {showModelConfig && (
-                    <div className="gap-3 rounded-lg bg-ds-bg-neutral-muted-default px-3 py-2 flex flex-row">
-                      <div className="gap-1 flex w-full flex-1 flex-col">
+                    <div className="flex flex-row gap-3 rounded-lg bg-ds-bg-neutral-muted-default px-3 py-2">
+                      <div className="flex w-full flex-1 flex-col gap-1">
                         <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
                           {t('workforce.model-platform')}
                         </label>
@@ -872,7 +860,7 @@ export function AddWorker({
                         </Select>
                       </div>
 
-                      <div className="gap-1 flex w-full flex-1 flex-col">
+                      <div className="flex w-full flex-1 flex-col gap-1">
                         <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
                           {t('workforce.model-type')}
                         </label>
