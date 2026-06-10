@@ -15,7 +15,9 @@
 import {
   buildAgentBlocks,
   getBlockHeaderParts,
+  groupBlocksByAgent,
   type AgentBlock,
+  type AgentGroup,
   type TimelineItem,
 } from '@/components/ChatBox/MessageItem/TaskWorkLogAccordion';
 import { AgentStep, type AgentStepType } from '@/types/constants';
@@ -712,5 +714,226 @@ describe('getBlockHeaderParts', () => {
     expect(parts.agentLabel).toBe('Preparing agents');
     expect(parts.detail).toBe('2 Registered');
     expect(parts.detailRunning).toBe(false);
+  });
+});
+
+describe('groupBlocksByAgent', () => {
+  function makeBlock(
+    agentId: string,
+    agentType: string,
+    agentName: string,
+    items: TimelineItem[],
+    status: 'running' | 'done' = 'running',
+    kind: 'preparation' | 'action' = 'action'
+  ): AgentBlock {
+    return {
+      id: `b-${agentId}-${Math.random().toString(36).slice(2, 6)}`,
+      agentId,
+      agentType,
+      agentName,
+      items,
+      status,
+      kind,
+    };
+  }
+
+  function makeTool(
+    id: string,
+    status: 'running' | 'done' = 'done'
+  ): TimelineItem {
+    return {
+      kind: 'tool',
+      id,
+      rowTitle: `Toolkit · Method`,
+      toolkitName: 'Toolkit',
+      method: 'Method',
+      detail: '',
+      status,
+    };
+  }
+
+  function makeMessage(id: string): TimelineItem {
+    return {
+      kind: 'message',
+      id,
+      text: 'some narration',
+      source: 'reasoning',
+      running: false,
+      pairKey: null,
+    };
+  }
+
+  it('produces a single AgentGroup for a single agent with one block', () => {
+    const blocks: AgentBlock[] = [
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t1'), makeTool('t2')]),
+    ];
+    const result = groupBlocksByAgent(blocks);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.kind).toBe('agent-group');
+    const group = result[0] as AgentGroup;
+    expect(group.agentId).toBe('a1');
+    expect(group.items).toHaveLength(2);
+    expect(group.totalToolCount).toBe(2);
+    expect(group.doneToolCount).toBe(2);
+  });
+
+  it('merges alternating blocks from the same agent (A, B, A) into two groups', () => {
+    const blocks: AgentBlock[] = [
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t1')], 'done'),
+      makeBlock('a2', 'browser', 'Browser', [makeTool('t2')], 'done'),
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t3')], 'running'),
+    ];
+    const result = groupBlocksByAgent(blocks);
+    expect(result).toHaveLength(2);
+
+    const g1 = result[0] as AgentGroup;
+    expect(g1.kind).toBe('agent-group');
+    expect(g1.agentId).toBe('a1');
+    expect(g1.items).toHaveLength(2);
+    expect(g1.items.map((i) => i.id)).toEqual(['t1', 't3']);
+    expect(g1.status).toBe('running');
+
+    const g2 = result[1] as AgentGroup;
+    expect(g2.kind).toBe('agent-group');
+    expect(g2.agentId).toBe('a2');
+    expect(g2.items).toHaveLength(1);
+    expect(g2.status).toBe('done');
+  });
+
+  it('preserves the preparation block at its original position', () => {
+    const prep: AgentBlock = {
+      id: 'b-prep',
+      agentId: '__prep__',
+      agentType: '__prep__',
+      agentName: 'Preparing agents',
+      items: [makeTool('tp1')],
+      status: 'done',
+      kind: 'preparation',
+    };
+    const blocks: AgentBlock[] = [
+      prep,
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t1')]),
+    ];
+    const result = groupBlocksByAgent(blocks);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.kind).toBe('preparation');
+    expect(result[1]!.kind).toBe('agent-group');
+  });
+
+  it('propagates running status when any block is running', () => {
+    const blocks: AgentBlock[] = [
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t1')], 'done'),
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t2', 'running')], 'running'),
+    ];
+    const result = groupBlocksByAgent(blocks);
+    const group = result[0] as AgentGroup;
+    expect(group.status).toBe('running');
+  });
+
+  it('computes tool counts correctly across merged blocks', () => {
+    const blocks: AgentBlock[] = [
+      makeBlock(
+        'a1',
+        'dev',
+        'Dev',
+        [makeTool('t1', 'done'), makeMessage('m1'), makeTool('t2', 'done')],
+        'done'
+      ),
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t3', 'running')], 'running'),
+    ];
+    const result = groupBlocksByAgent(blocks);
+    const group = result[0] as AgentGroup;
+    expect(group.totalToolCount).toBe(3);
+    expect(group.doneToolCount).toBe(2);
+    expect(group.items).toHaveLength(4);
+  });
+
+  it('handles an empty block merged into a group', () => {
+    const blocks: AgentBlock[] = [makeBlock('a1', 'dev', 'Dev', [], 'done')];
+    const result = groupBlocksByAgent(blocks);
+    const group = result[0] as AgentGroup;
+    expect(group.items).toHaveLength(0);
+    expect(group.totalToolCount).toBe(0);
+    expect(group.doneToolCount).toBe(0);
+  });
+
+  it('orders groups by first appearance of the agent', () => {
+    const blocks: AgentBlock[] = [
+      makeBlock('a2', 'browser', 'Browser', [makeTool('t1')], 'done'),
+      makeBlock('a1', 'dev', 'Dev', [makeTool('t2')], 'done'),
+      makeBlock('a3', 'doc', 'Doc', [makeTool('t3')], 'done'),
+      makeBlock('a2', 'browser', 'Browser', [makeTool('t4')], 'running'),
+    ];
+    const result = groupBlocksByAgent(blocks);
+    expect(result).toHaveLength(3);
+    expect((result[0] as AgentGroup).agentId).toBe('a2');
+    expect((result[1] as AgentGroup).agentId).toBe('a1');
+    expect((result[2] as AgentGroup).agentId).toBe('a3');
+  });
+
+  it('integrates with buildAgentBlocks for interleaved multi-agent logs', () => {
+    const logs = [
+      tag(
+        'a1',
+        'dev',
+        'Dev',
+        mk(AgentStep.ACTIVATE_AGENT, { message: 'plan' })
+      ),
+      tag(
+        'a1',
+        'dev',
+        'Dev',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'T',
+          method_name: 'one',
+          message: 'x',
+        })
+      ),
+      tag(
+        'a2',
+        'browser',
+        'Browser',
+        mk(AgentStep.ACTIVATE_AGENT, { message: 'browse' })
+      ),
+      tag(
+        'a2',
+        'browser',
+        'Browser',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'B',
+          method_name: 'open',
+          message: 'y',
+        })
+      ),
+      tag(
+        'a1',
+        'dev',
+        'Dev',
+        mk(AgentStep.ACTIVATE_AGENT, { message: 'continue' })
+      ),
+      tag(
+        'a1',
+        'dev',
+        'Dev',
+        mk(AgentStep.ACTIVATE_TOOLKIT, {
+          toolkit_name: 'T',
+          method_name: 'two',
+          message: 'z',
+        })
+      ),
+    ];
+    const blocks = buildAgentBlocks(logs);
+    expect(blocks.length).toBeGreaterThanOrEqual(3);
+
+    const grouped = groupBlocksByAgent(blocks);
+    const agentGroups = grouped.filter(
+      (e): e is AgentGroup => e.kind === 'agent-group'
+    );
+    expect(agentGroups).toHaveLength(2);
+    expect(agentGroups[0]!.agentId).toBe('a1');
+    expect(agentGroups[1]!.agentId).toBe('a2');
+
+    const devTools = agentGroups[0]!.items.filter((i) => i.kind === 'tool');
+    expect(devTools).toHaveLength(2);
   });
 });
