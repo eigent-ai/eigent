@@ -386,6 +386,7 @@
   "spaces-rename-failed": "Failed to rename Space",
   "spaces-delete-failed": "Space konnte nicht gelöscht werden",
   "spaces-create-project-failed": "Failed to create Project",
+  "spaces-legacy-readonly-hint": "Legacy Spaces are read-only. Create a new Space to start a Project.",
   "spaces-hub-title": "Spaces Hub",
   "spaces-hub-description": "Browse every Space and jump back into any Project.",
   "spaces-hub-space-count": "{{count}} Spaces",
