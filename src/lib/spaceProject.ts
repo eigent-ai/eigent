@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { generateUniqueId } from '@/lib';
+import { isLegacySpace } from '@/lib/spaceLabel';
 import {
   proxyCreateSpaceProject,
   proxyEnsureLegacySpace,
@@ -23,6 +24,19 @@ import type {
   ProjectWorkdirMode,
 } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
+
+/**
+ * Thrown when something tries to create a Project inside a legacy Space. Legacy
+ * Spaces are read-only — see {@link canCreateProjectInSpace}. UI entry points
+ * disable creation up front; this is the backstop that guarantees the invariant
+ * for any caller that slips through.
+ */
+export class LegacySpaceProjectError extends Error {
+  constructor() {
+    super('Cannot create a Project inside a legacy Space.');
+    this.name = 'LegacySpaceProjectError';
+  }
+}
 
 interface CreateSyncedProjectInSpaceInput {
   projectStore: ProjectRuntimeStore;
@@ -79,6 +93,17 @@ export const createSyncedProjectInSpace = async ({
   metadata,
   setActive = true,
 }: CreateSyncedProjectInSpaceInput): Promise<CreateSyncedProjectInSpaceResult> => {
+  // Reject legacy Spaces before `resolveServerBackedSpaceId` runs any of its
+  // ensure/remap side effects. A bare `legacy_` id is always legacy; otherwise
+  // consult the loaded Space metadata.
+  const requestedSpace = useSpaceStore.getState().getSpaceById(spaceId);
+  if (
+    spaceId.startsWith('legacy_') ||
+    (requestedSpace && isLegacySpace(requestedSpace))
+  ) {
+    throw new LegacySpaceProjectError();
+  }
+
   const resolvedSpaceId = await resolveServerBackedSpaceId(
     projectStore,
     spaceId

@@ -52,6 +52,19 @@ export function isLegacySpace(space: Space): boolean {
   return space.metadata?.legacy === true || space.sourceType === 'legacy';
 }
 
+/**
+ * New Projects may only be created in non-legacy Spaces. Legacy Spaces are
+ * read-only containers for Projects that predate the Space layer migration —
+ * we deliberately stop growing them so there's only one Project-creation path
+ * (blank / folder) to maintain, not a parallel legacy flow.
+ */
+export function canCreateProjectInSpace(
+  space: Space | null | undefined
+): boolean {
+  if (!space) return false;
+  return !isLegacySpace(space);
+}
+
 /** Folder-backed and scratch Spaces with a local workspace root behave locally. */
 export function isLocalWorkspaceSpace(
   space: Space | null | undefined

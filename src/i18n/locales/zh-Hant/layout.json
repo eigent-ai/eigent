@@ -386,6 +386,7 @@
   "spaces-rename-failed": "重新命名 Space 失敗",
   "spaces-delete-failed": "刪除 Space 失敗",
   "spaces-create-project-failed": "建立 Project 失敗",
+  "spaces-legacy-readonly-hint": "Legacy Space 為唯讀，無法新建 Project。請建立一個新的 Space。",
   "spaces-hub-title": "Spaces 中心",
   "spaces-hub-description": "查看所有 Space，並繼續任意 Project。",
   "spaces-hub-space-count": "{{count}} 個 Space",
