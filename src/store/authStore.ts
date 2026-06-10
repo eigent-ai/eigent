@@ -142,6 +142,7 @@ const getRandomDefaultModel = (): CloudModelType => {
 
 const SUPPORTED_CLOUD_MODEL_TYPES: ReadonlySet<CloudModelType> =
   new Set<CloudModelType>([
+    'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
     'gemini-3-pro-preview',
     'gemini-3-flash-preview',
